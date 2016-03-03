@@ -135,10 +135,14 @@ class ReadStructure(segs: Seq[ReadSegment], resetOffsets: Boolean = false) exten
   }
 
   private def collectSegments[T <: ReadSegment: ClassTag]: Seq[T] = this.collect { case t: T => t }
-  def template: Seq[Template] = this.collectSegments[Template]
-  def sampleBarcode: Seq[SampleBarcode] = this.collectSegments[SampleBarcode]
+  def template: Seq[Template]                 = this.collectSegments[Template]
+  def sampleBarcode: Seq[SampleBarcode]       = this.collectSegments[SampleBarcode]
   def molecularBarcode: Seq[MolecularBarcode] = this.collectSegments[MolecularBarcode]
-  def skip: Seq[Skip] = this.collectSegments[Skip]
+  def skip: Seq[Skip]                         = this.collectSegments[Skip]
+  def templateStructure(resetOffsets: Boolean = false): ReadStructure         = new ReadStructure(this.template, resetOffsets=resetOffsets)
+  def sampleBarcodeStructure(resetOffsets: Boolean = false): ReadStructure    = new ReadStructure(this.sampleBarcode, resetOffsets=resetOffsets)
+  def molecularBarcodeStructure(resetOffsets: Boolean = false): ReadStructure = new ReadStructure(this.molecularBarcode, resetOffsets=resetOffsets)
+  def skipStructure(resetOffsets: Boolean = false): ReadStructure             = new ReadStructure(this.skip, resetOffsets=resetOffsets)
 }
 
 object ReadSegment {
