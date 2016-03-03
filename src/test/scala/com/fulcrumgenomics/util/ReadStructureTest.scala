@@ -188,6 +188,20 @@ class ReadStructureTest extends UnitSpec with OptionValues {
     an[Exception] should be thrownBy ReadStructure("101T")(1)
   }
 
+  "ReadStructure.sampleBarcodeStructure and friends" should "return a new read structure with the correct offsets" in {
+    val readStructure = ReadStructure("1B1M1S1T1B1M1S1T")
+
+    readStructure.templateStructure(resetOffsets=false) should contain theSameElementsInOrderAs readStructure.template
+    readStructure.sampleBarcodeStructure(resetOffsets=false) should contain theSameElementsInOrderAs readStructure.sampleBarcode
+    readStructure.molecularBarcodeStructure(resetOffsets=false) should contain theSameElementsInOrderAs readStructure.molecularBarcode
+    readStructure.skipStructure(resetOffsets=false) should contain theSameElementsInOrderAs readStructure.skip
+
+    readStructure.templateStructure(resetOffsets=true) should contain theSameElementsInOrderAs ReadStructure("1T1T")
+    readStructure.sampleBarcodeStructure(resetOffsets=true) should contain theSameElementsInOrderAs ReadStructure("1B1B")
+    readStructure.molecularBarcodeStructure(resetOffsets=true) should contain theSameElementsInOrderAs ReadStructure("1M1M")
+    readStructure.skipStructure(resetOffsets=true) should contain theSameElementsInOrderAs ReadStructure("1S1S")
+  }
+
   "ReadSegment.apply(offset: Int, length: Int, s: String)" should "create a new ReadSegment" in {
     ReadSegment(1, 2, "T") shouldBe Template(1, 2)
     ReadSegment(1, 2, "M") shouldBe MolecularBarcode(1, 2)
