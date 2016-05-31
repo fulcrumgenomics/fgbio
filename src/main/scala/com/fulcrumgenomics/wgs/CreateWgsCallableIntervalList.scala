@@ -30,6 +30,7 @@ import dagr.commons.CommonsDef._
 import dagr.commons.io.Io
 import dagr.commons.util.LazyLogging
 import dagr.sopt._
+import dagr.sopt.cmdline.ValidationException
 import htsjdk.samtools.util.SamLocusIterator.LocusInfo
 import htsjdk.samtools.util.{IntervalList, Interval, SamLocusIterator, CloserUtil}
 import htsjdk.samtools.{SAMFileHeader, SamReaderFactory, SamReader}
@@ -46,30 +47,37 @@ import scala.collection.mutable.ListBuffer
     |
     |The output intervals will only contain sites that have both a minimum and maximum coverage as set by the user.
     |This tool is useful for when sites with too much coverage cause too much slow down in variant calling.
+    |
+    |When accumulating records per locus, we scale the maximum number to be accumulated to reduce any bias during
+    |the accumulation process (see `SamLocusIterator.setMaxReadsToAccumulatePerLocus`).
   """,
   group = ClpGroups.Utilities)
 class CreateWgsCallableIntervalList
 ( @arg(flag="i", doc="Input BAM file.") val input: PathToBam,
   @arg(flag="o", doc="Output interval list") val output: PathToIntervals,
   @arg(flag="m", doc="Minimum coverage.") val minCoverage: Int = 1,
-  @arg(flag="M", doc="Maximum coverage.") val maxCoverage: Int = 1024
+  @arg(flag="M", doc="Maximum coverage.") val maxCoverage: Int = 1024,
+  @arg(flag="f", doc="Scale the maximum number of reads to accumulate at any position relative to the maximum.") val maxToAccumulatePerLocus: Float = 2.0f
 ) extends FgBioTool with LazyLogging {
 
   Io.assertReadable(input)
   Io.assertCanWriteFile(output)
+  if (maxToAccumulatePerLocus < 1.0f) throw new ValidationException("The scaling factor for maximum number of reads to accumulate per locus must be => 1.")
 
   override def execute(): Unit = {
     val progress: ProgressLogger = new ProgressLogger(logger, noun="positions", unit=10*1000*1000)
     val in: SamReader = SamReaderFactory.make.open(input.toFile)
     val locusIterator = new SamLocusIterator(in)
-    locusIterator.setMaxReadsToAccumulatePerLocus(maxCoverage+1) // +1 so we know when we have hit the maximum
     if (0 < minCoverage) locusIterator.setEmitUncoveredLoci(false)
+    locusIterator.setMaxReadsToAccumulatePerLocus((maxToAccumulatePerLocus*maxCoverage).toInt)
 
     val converter = new CoveredLociToIntervals(header=in.getFileHeader, minCoverage=minCoverage, maxCoverage=maxCoverage)
-    locusIterator.iterator().foreach { locus =>
+    val numLoci = locusIterator.iterator().count { locus =>
       converter.add(locus)
       progress.record(locus.getSequenceName, locus.getPosition)
+      true
     }
+    logger.info(s"Examined $numLoci positions.")
     converter.intervalList.write(output.toFile)
 
     CloserUtil.close(locusIterator)
