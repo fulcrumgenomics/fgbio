@@ -38,6 +38,11 @@ object ClpGroups {
     override val description: String = "Tools for manipulating SAM, BAM, or related data."
   }
 
+  class _FastaGroup extends ClpGroup {
+    override val name: String = "FASTA"
+    override val description: String = "Tools for manipulating FASTA files."
+  }
+
   class _FastqGroup extends ClpGroup {
     override val name: String = "FASTQ"
     override val description: String = "Tools for manipulating FASTQ files."
@@ -50,6 +55,7 @@ object ClpGroups {
 
   final val Personal  = classOf[_PersonalGroup]
   final val SamOrBam  = classOf[_SamOrBamGroup]
+  final val Fasta     = classOf[_FastaGroup]
   final val Fastq     = classOf[_FastqGroup]
   final val Utilities = classOf[_UtilitiesGroup]
 }
