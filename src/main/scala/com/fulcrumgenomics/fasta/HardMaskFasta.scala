@@ -38,40 +38,33 @@ import htsjdk.samtools.reference.{ReferenceSequenceFileFactory, ReferenceSequenc
   */
 @clp(description =
   """
-     Converts soft-masked sequence to hard-masked in a FASTA file. All lower case bases are
-     converted to Ns, all other bases are left unchanged.  Line lengths are also standardized
-     to allow easy indexing with "samtools faidx".
+     |Converts soft-masked sequence to hard-masked in a FASTA file. All lower case bases are
+     |converted to Ns, all other bases are left unchanged.  Line lengths are also standardized
+     |to allow easy indexing with "samtools faidx".
   """,
   group = ClpGroups.Fasta)
 class HardMaskFasta
-( @arg(flag="i", doc = "Input FASTA file.")              val input: PathToFasta,
-  @arg(flag="o", doc = "Output FASTA file.")             val output: PathToFasta,
-  @arg(flag="l", doc = "Line length or sequence lines.") val lineLength: Int = 100
+( @arg(flag="i", doc="Input FASTA file.")              val input: PathToFasta,
+  @arg(flag="o", doc="Output FASTA file.")             val output: PathToFasta,
+  @arg(flag="l", doc="Line length or sequence lines.") val lineLength: Int = 100
  ) extends FgBioTool with LazyLogging {
 
   override def execute(): Unit = {
     Io.assertReadable(input)
     Io.assertCanWriteFile(output)
 
-    val ref = ReferenceSequenceFileFactory.getReferenceSequenceFile(input, false, false)
-    val out = Io.toWriter(output)
+    val out      = Io.toWriter(output)
     val progress = new ProgressLogger(logger, noun="sequences", verb="masked", unit=5000)
 
-    var opt = Option(ref.nextSequence())
-    while (opt.isDefined) {
-      val seq = opt.getOrElse(unreachable("opt must be define due to while loop condition"))
-      val name  = seq.getName
-      val bases = seq.getBases
-      bases.indices.foreach(i => if (bases(i).toChar.isLower) bases(i) = 'N')
-
-      out.append('>').append(name).append('\n')
-      bases.grouped(lineLength).foreach(bs => {
+    for (seq <- ReferenceSequenceIterator(input)) {
+      out.append('>').append(seq.getName).append('\n')
+      seq.getBases.grouped(lineLength).foreach(bs => {
+        bs.indices.foreach(i => if (bs(i).toChar.isLower) bs(i) = 'N')
         bs.foreach(out.write(_))
         out.newLine()
       })
 
       progress.record()
-      opt = Option(ref.nextSequence())
     }
 
     out.close()

@@ -69,7 +69,7 @@ class HardMaskFastaTest extends UnitSpec {
 
     // Check that the line length limit worked
     Io.readLines(out).foreach(line =>
-      if (!line.startsWith(">")) line.length should be <= 60
+      if (!line.startsWith(">")) line.length should be <= LineLength
     )
 
     Files.delete(out)
