@@ -134,7 +134,7 @@ class PickIlluminaIndicesCommand {
             for (final Index that : this.related) {
                 final byte distance = calculateEditDistance(that);
 
-                _score += SCORE_BY_DISTANCE[distance];
+                if (distance < SCORE_BY_DISTANCE.length) _score += SCORE_BY_DISTANCE[distance];
                 if (distance < _minEditDistance) _minEditDistance = distance;
             }
         }
