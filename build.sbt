@@ -94,6 +94,7 @@ lazy val commonSettings = Seq(
   //testOptions in Test  += Tests.Argument("-oD"),
   fork in Test         := true,
   resolvers            += Resolver.sonatypeRepo("public"),
+  resolvers            += Resolver.mavenLocal,
   shellPrompt          := { state => "%s| %s> ".format(GitCommand.prompt.apply(state), version.value) },
   updateOptions        := updateOptions.value.withCachedResolution(true)
 ) ++ Defaults.coreDefaultSettings
@@ -122,7 +123,7 @@ lazy val root = Project(id="fgbio", base=file("."))
       "org.scala-lang"            %  "scala-reflect" %  scalaVersion.value,
 	    "com.fulcrumgenomics"       %% "dagr-commons"  % "0.1.1-SNAPSHOT",
 	    "com.fulcrumgenomics"       %% "dagr-sopt"     % "0.1.1-SNAPSHOT",
-      "com.github.samtools"       %  "htsjdk"        % "2.1.0" excludeAll(htsjdkExcludes: _*),
+      "com.github.samtools"       %  "htsjdk"        % "2.5.0" excludeAll(htsjdkExcludes: _*),
       //---------- Test libraries -------------------//
       "org.scalatest"             %% "scalatest"     % "2.2.4"  % "test->*" excludeAll ExclusionRule(organization="org.junit", name="junit"),
       "org.apache.commons"        %  "commons-math3" % "3.6.1"  % "test"

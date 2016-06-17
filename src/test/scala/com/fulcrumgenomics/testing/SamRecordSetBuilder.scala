@@ -30,11 +30,18 @@ import java.nio.file.Files
 import java.text.DecimalFormat
 import java.util.concurrent.atomic.AtomicLong
 
+import com.fulcrumgenomics.testing.SamRecordSetBuilder._
 import dagr.commons.CommonsDef.{PathToBam, unreachable}
 import htsjdk.samtools.SAMFileHeader.SortOrder
-import htsjdk.samtools.{SAMFileWriterFactory, SAMRecord, SAMRecordSetBuilder, SamPairUtil}
+import htsjdk.samtools._
 
 import scala.collection.JavaConversions._
+
+object SamRecordSetBuilder {
+  sealed trait Strand { val isNegative: Boolean }
+  object Plus  extends Strand { val isNegative = false }
+  object Minus extends Strand { val isNegative = false }
+}
 
 /**
   * A scala wrapper to SAMRecordSetBuilder to make testing a little less unpleasant!
@@ -42,8 +49,7 @@ import scala.collection.JavaConversions._
 class SamRecordSetBuilder(val readLength: Int=100,
                           val baseQuality: Int=30,
                           val sortOrder: SortOrder = SortOrder.unsorted
-                         ) extends Iterable[SAMRecord]
-{
+                         ) extends Iterable[SAMRecord] {
   private val builder = new SAMRecordSetBuilder(sortOrder != SortOrder.unsorted, sortOrder)
   builder.setReadLength(readLength)
   builder.setUseNmFlag(false)
@@ -51,10 +57,6 @@ class SamRecordSetBuilder(val readLength: Int=100,
   private val counter = new AtomicLong(0)
   private val format  = new DecimalFormat("0000")
   private def nextName = format.format(counter.getAndIncrement())
-
-  sealed trait Strand { val isNegative: Boolean }
-  object Plus  extends Strand { val isNegative = false }
-  object Minus extends Strand { val isNegative = false }
 
   /** Adds a pair of reads to the file. */
   def addPair(name: String = nextName,
@@ -93,6 +95,28 @@ class SamRecordSetBuilder(val readLength: Int=100,
 
     recs
   }
+
+  /** Adds a non-paired read. */
+  def addFrag(name: String = nextName,
+              contig: Int  = 0,
+              start: Int,
+              unmapped: Boolean = false,
+              cigar: String = readLength + "M",
+              mapq: Int = 60,
+              strand: Strand = Plus,
+              baseQuality: Int = this.baseQuality,
+              attrs: Map[String,AnyRef] = Map.empty) : SAMRecord = {
+    val rec = this.builder.addFrag(name, contig, start, strand.isNegative, unmapped, cigar, quals(readLength, baseQuality), baseQuality)
+
+    // Adjust the mapping qualities
+    if (!unmapped) rec.setMappingQuality(mapq)
+    attrs.foreach(a => rec.setAttribute(a._1, a._2))
+
+    rec
+  }
+
+  /** Generates a base quality string. */
+  private def quals(length: Int, qual: Int) = new String(Array.fill(length)(SAMUtils.phredToFastq(qual)))
 
   /** Gets the SAMFileHeader that will be written. */
   def header = this.builder.getHeader

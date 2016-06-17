@@ -53,10 +53,16 @@ object ClpGroups {
     override val description: String = "Various utility programs."
   }
 
+  class _Umi extends ClpGroup {
+    override def name: String = "Unique Molecular Identifiers (UMIs)"
+    override def description: String = "Tools for manipulating UMIs & reads tagged with UMIs"
+  }
+
   final val Personal  = classOf[_PersonalGroup]
   final val SamOrBam  = classOf[_SamOrBamGroup]
   final val Fasta     = classOf[_FastaGroup]
   final val Fastq     = classOf[_FastqGroup]
+  final val Umi       = classOf[_Umi]
   final val Utilities = classOf[_UtilitiesGroup]
 }
 
