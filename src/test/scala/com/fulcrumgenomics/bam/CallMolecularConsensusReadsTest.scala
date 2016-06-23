@@ -25,10 +25,10 @@
 package com.fulcrumgenomics.bam
 
 import com.fulcrumgenomics.testing.UnitSpec
-import com.fulcrumgenomics.bam.ConsensusCallerOptions.DefaultAttribute
+import com.fulcrumgenomics.bam.ConsensusCallerOptions.DefaultTag
 import htsjdk.samtools.util.CloserUtil
 import htsjdk.samtools.{SAMRecordSetBuilder, SAMUtils}
-import com.fulcrumgenomics.util.PhredValue.ZeroProbability
+import com.fulcrumgenomics.util.LogDouble.Zero
 
 import scala.collection.JavaConversions._
 import scala.collection.JavaConverters._
@@ -36,15 +36,15 @@ import scala.collection.JavaConverters._
 /**
   * Tests for CallConsensusFromUmis.
   */
-class CallConsensusFromUmisTest extends UnitSpec {
+class CallMolecularConsensusReadsTest extends UnitSpec {
 
   // There be dragons below!
   "CallConsensusFromUmis" should "should create two consensus for two UMI groups" in {
     val builder = new SAMRecordSetBuilder()
-    builder.addFrag("READ1", 0, 1, false).setAttribute(DefaultAttribute, "GATTACA")
-    builder.addFrag("READ2", 0, 1, false).setAttribute(DefaultAttribute, "GATTACA")
-    builder.addFrag("READ3", 0, 1, false).setAttribute(DefaultAttribute, "ACATTAG")
-    builder.addFrag("READ4", 0, 1, false).setAttribute(DefaultAttribute, "ACATTAG")
+    builder.addFrag("READ1", 0, 1, false).setAttribute(DefaultTag, "GATTACA")
+    builder.addFrag("READ2", 0, 1, false).setAttribute(DefaultTag, "GATTACA")
+    builder.addFrag("READ3", 0, 1, false).setAttribute(DefaultTag, "ACATTAG")
+    builder.addFrag("READ4", 0, 1, false).setAttribute(DefaultTag, "ACATTAG")
     builder.getRecords.foreach { rec =>
       rec.setReadString("A" * rec.getReadLength)
       rec.setBaseQualityString(SAMUtils.phredToFastq(40).toString * rec.getReadLength)
@@ -55,8 +55,8 @@ class CallConsensusFromUmisTest extends UnitSpec {
       header = reader.getFileHeader,
       options = new ConsensusCallerOptions(
         minReads=1,
-        errorRatePreUmi=ZeroProbability,
-        errorRatePostUmi=ZeroProbability
+        errorRatePreUmi=Zero,
+        errorRatePostUmi=Zero
       )
     )
     consensusCaller.hasNext shouldBe true
@@ -71,7 +71,7 @@ class CallConsensusFromUmisTest extends UnitSpec {
     builder.addPair("READ1", 0, 1, 1000)
     builder.getRecords.foreach {
       rec =>
-        rec.setAttribute(DefaultAttribute, "GATTACA")
+        rec.setAttribute(DefaultTag, "GATTACA")
         rec.setReadString("A" * rec.getReadLength)
         rec.setBaseQualityString(SAMUtils.phredToFastq(40).toString * rec.getReadLength)
     }
@@ -81,8 +81,8 @@ class CallConsensusFromUmisTest extends UnitSpec {
       header = reader.getFileHeader,
       options = new ConsensusCallerOptions(
         minReads=1,
-        errorRatePreUmi=ZeroProbability,
-        errorRatePostUmi=ZeroProbability
+        errorRatePreUmi=Zero,
+        errorRatePostUmi=Zero
       )
     )
     consensusCaller.hasNext shouldBe true
@@ -105,13 +105,13 @@ class CallConsensusFromUmisTest extends UnitSpec {
 
     builder.getRecords.slice(0, 2).foreach {
       rec =>
-        rec.setAttribute(DefaultAttribute, "GATTACA")
+        rec.setAttribute(DefaultTag, "GATTACA")
         rec.setReadString("A" * rec.getReadLength)
         rec.setBaseQualityString(SAMUtils.phredToFastq(40).toString * rec.getReadLength)
     }
     builder.getRecords.slice(2, 4).foreach {
       rec =>
-        rec.setAttribute(DefaultAttribute, "ACATTAG")
+        rec.setAttribute(DefaultTag, "ACATTAG")
         rec.setReadString("A" * rec.getReadLength)
         rec.setBaseQualityString(SAMUtils.phredToFastq(40).toString * rec.getReadLength)
     }
@@ -121,8 +121,8 @@ class CallConsensusFromUmisTest extends UnitSpec {
       header = reader.getFileHeader,
       options = new ConsensusCallerOptions(
         minReads=1,
-        errorRatePreUmi=ZeroProbability,
-        errorRatePostUmi=ZeroProbability
+        errorRatePreUmi=Zero,
+        errorRatePostUmi=Zero
       )
     )
     consensusCaller.hasNext shouldBe true

@@ -26,7 +26,8 @@ package com.fulcrumgenomics.bam
 
 import com.fulcrumgenomics.bam.ConsensusCallerOptions._
 import com.fulcrumgenomics.cmdline.{ClpGroups, FgBioTool}
-import com.fulcrumgenomics.util.{PhredValue, ProgressLogger}
+import com.fulcrumgenomics.util.{LogDouble, ProgressLogger}
+import com.fulcrumgenomics.util.LogDouble._
 import dagr.commons.CommonsDef.PathToBam
 import dagr.commons.io.Io
 import dagr.commons.util.LazyLogging
@@ -45,27 +46,28 @@ import scala.collection.JavaConverters._
     |This tool assumes that reads with the same identifier are grouped together (consecutive in the file).
   """,
   group = ClpGroups.SamOrBam)
-class CallConsensusFromUmis
-(  @arg(flag="i", doc="The input SAM or BAM file.") val input: PathToBam,
-   @arg(flag="o", doc="Output SAM or BAM file to write consensus reads.") val output: PathToBam,
-   @arg(flag="r", doc="Output SAM or BAM file to write reads not used.") val rejects: PathToBam,
-   @arg(flag="t", doc="The SAM attribute with the unique UMI identifier.") val attribute: String = DefaultAttribute,
-   @arg(flag="p", doc="The Prefix all consensus read names") val readNamePrefix: Option[String] = None,
-   @arg(flag="R", doc="The Read Group for all the consensus reads.") val readGroup: String = "A",
-   @arg(flag="1", doc="The Phred-scaled error rate for an error prior to the UMIs being integrated.") val errorRatePreUmi: PhredValue = DefaultErrorRatePreUmi,
-   @arg(flag="2", doc="The Phred-scaled error rate for an error post the UMIs have been integrated.") val errorRatePostUmi: PhredValue = DefaultErrorRatePostUmi,
-   @arg(flag="q", doc="Cap the maximum base quality in the input.") val maxBaseQuality: PhredValue = DefaultMaxBaseQuality,
-   @arg(flag="s", doc="Subtract this base quality from the input base qualities.") val baseQualityShift: PhredValue = DefaultBaseQualityShift,
-   @arg(flag="N", doc="Mask (make 'N') consensus bases with quality less than this threshold.") val minConsensusBaseQuality: PhredValue = DefaultMinConsensusBaseQuality,
-   @arg(flag="M", doc="The minimum number of reads to produce a consensus base.") val minReads: Int = DefaultMinReads,
-   @arg(flag="Q", doc="The minimum mean base quality across a consensus base to output.") val minMeanConsensusBaseQuality: PhredValue = DefaultMinMeanConsensusBaseQuality
-  ) extends FgBioTool with LazyLogging {
+class CallMolecularConsensusReads
+( @arg(flag="i", doc="The input SAM or BAM file.") val input: PathToBam,
+  @arg(flag="o", doc="Output SAM or BAM file to write consensus reads.") val output: PathToBam,
+  @arg(flag="r", doc="Output SAM or BAM file to write reads not used.") val rejects: PathToBam,
+  @arg(flag="t", doc="The SAM attribute with the unique UMI identifier.") val tag: String = DefaultTag,
+  @arg(flag="p", doc="The Prefix all consensus read names") val readNamePrefix: Option[String] = None,
+  @arg(flag="R", doc="The new read group ID for all the consensus reads.") val readGroupId: String = "A",
+  @arg(flag="1", doc="The Phred-scaled error rate for an error prior to the UMIs being integrated.") val errorRatePreUmi: LogDouble = DefaultErrorRatePreUmi,
+  @arg(flag="2", doc="The Phred-scaled error rate for an error post the UMIs have been integrated.") val errorRatePostUmi: LogDouble = DefaultErrorRatePostUmi,
+  @arg(flag="q", doc="Cap the maximum base quality in the input (after shifting).") val maxBaseQuality: LogDouble = DefaultMaxBaseQuality,
+  @arg(flag="s", doc="Subtract this base quality from the input base qualities (prior to capping).") val baseQualityShift: Double = DefaultBaseQualityShift,
+  @arg(flag="N", doc="Mask (make 'N') consensus bases with quality less than this threshold.") val minConsensusBaseQuality: LogDouble = DefaultMinConsensusBaseQuality,
+  @arg(flag="M", doc="The minimum number of reads to produce a consensus base.") val minReads: Int = DefaultMinReads,
+  @arg(flag="Q", doc="The minimum mean base quality across a consensus base to output.") val minMeanConsensusBaseQuality: LogDouble = DefaultMinMeanConsensusBaseQuality,
+  @arg(flag="P", doc="Require a consensus call for both ends of a pair if true.") val requireConsensusForBothPairs: Boolean = DefaultRequireConsensusForBothPairs
+) extends FgBioTool with LazyLogging {
 
   Io.assertReadable(input)
   Seq(output, rejects).foreach(Io.assertCanWriteFile(_))
-  if (attribute.length != 2) throw new ValidationException("attribute must be of length 2")
-  if (errorRatePreUmi < 0)   throw new ValidationException("Error rate pre UMI must be >= 0")
-  if (errorRatePostUmi < 0)  throw new ValidationException("Error rate post UMI must be >= 0")
+  if (tag.length != 2)         throw new ValidationException("attribute must be of length 2")
+  if (errorRatePreUmi < Zero)  throw new ValidationException("Error rate pre UMI must be >= 0")
+  if (errorRatePostUmi < Zero) throw new ValidationException("Error rate post UMI must be >= 0")
 
   /** TODO
     * - what about when a read has an indel causing the rest of the bases to mismatch?
@@ -83,14 +85,15 @@ class CallConsensusFromUmis
     // TODO: metrics...
 
     val options = new ConsensusCallerOptions(
-      attribute                   = attribute,
-      errorRatePreUmi             = errorRatePreUmi,
-      errorRatePostUmi            = errorRatePostUmi,
-      maxBaseQuality              = maxBaseQuality,
-      baseQualityShift            = baseQualityShift,
-      minConsensusBaseQuality     = minConsensusBaseQuality,
-      minReads                    = minReads,
-      minMeanConsensusBaseQuality = minMeanConsensusBaseQuality
+      tag                          = tag,
+      errorRatePreUmi              = errorRatePreUmi,
+      errorRatePostUmi             = errorRatePostUmi,
+      maxBaseQuality               = maxBaseQuality,
+      baseQualityShift             = baseQualityShift,
+      minConsensusBaseQuality      = minConsensusBaseQuality,
+      minReads                     = minReads,
+      minMeanConsensusBaseQuality  = minMeanConsensusBaseQuality,
+      requireConsensusForBothPairs = requireConsensusForBothPairs
     )
 
     val progress = new ProgressLogger(logger)
@@ -98,7 +101,7 @@ class CallConsensusFromUmis
       input          = in.iterator().asScala,
       header         = in.getFileHeader,
       readNamePrefix = readNamePrefix,
-      readGroup      = readGroup,
+      readGroupId    = readGroupId,
       options        = options,
       rejects        = Some(rej),
       progress       = Some(progress)
