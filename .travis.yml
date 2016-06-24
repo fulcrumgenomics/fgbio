@@ -5,21 +5,14 @@ scala:
 jdk:
 - oraclejdk8
 script:
-- sbt clean test #- sbt clean coverage test && sbt coverageAggregate
+- sbt clean coverage test && sbt coverageAggregate
 - find $HOME/.sbt -name "*.lock" | xargs rm
 - find $HOME/.ivy2 -name "ivydata-*.properties" | xargs rm
 cache:
   directories:
   - $HOME/.ivy2/cache
   - $HOME/.sbt/boot/
-# TODO: enable code coverage
-#before_install:
-#- pip install --user codecov
-#after_success:
-#- codecov
-# TODO: enable tests
-#- test "${TRAVIS_PULL_REQUEST}" = 'false' && sbt 'set version := version.value + "." + System.getenv("TRAVIS_BUILD_NUMBER")' publish
-#env:
-#  global:
-#  - secure: # TODO sonatype publish username
-#  - secure: # TODO sonatype publish password
+before_install:
+- pip install --user codecov
+after_success:
+- codecov
