@@ -42,7 +42,8 @@ import scala.collection.JavaConversions._
 class SamRecordSetBuilder(val readLength: Int=100,
                           val baseQuality: Int=30,
                           val sortOrder: SortOrder = SortOrder.unsorted
-                         ) {
+                         ) extends Iterable[SAMRecord]
+{
   private val builder = new SAMRecordSetBuilder(sortOrder != SortOrder.unsorted, sortOrder)
   builder.setReadLength(readLength)
   builder.setUseNmFlag(false)
@@ -93,8 +94,14 @@ class SamRecordSetBuilder(val readLength: Int=100,
     recs
   }
 
+  /** Gets the SAMFileHeader that will be written. */
+  def header = this.builder.getHeader
+
+  /** Gets the SAMSequenceDictionary that will be written. */
+  def dict   = this.builder.getHeader.getSequenceDictionary
+
   /** Returns an iterator over the records that have been built. */
-  def iterator = this.builder.iterator().toIterator
+  override def iterator = this.builder.iterator()
 
   /** Adds all the records from another builder to this one. */
   def += (other: SamRecordSetBuilder) : Unit = {

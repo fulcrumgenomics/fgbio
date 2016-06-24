@@ -23,9 +23,12 @@
  */
 package com.fulcrumgenomics.testing
 
-import java.nio.file.{Path, Files}
+import java.nio.file.{Files, Path}
 
+import htsjdk.samtools.{SAMRecord, SamReaderFactory}
 import org.scalatest.{FlatSpec, Matchers}
+import com.fulcrumgenomics.FgBioDef._
+import scala.collection.JavaConversions.asScalaIterator
 
 /** Base class for unit and integration testing */
 trait UnitSpec extends FlatSpec with Matchers {
@@ -34,5 +37,11 @@ trait UnitSpec extends FlatSpec with Matchers {
     val path = Files.createTempFile(prefix, suffix)
     path.toFile.deleteOnExit()
     path
+  }
+
+  /** Reads all the records from a SAM or BAM file into an indexed seq. */
+  protected def readBamRecs(bam: PathToBam): IndexedSeq[SAMRecord] = {
+    val in = SamReaderFactory.make().open(bam.toFile)
+    yieldAndThen(in.iterator().toIndexedSeq) { in.safelyClose() }
   }
 }

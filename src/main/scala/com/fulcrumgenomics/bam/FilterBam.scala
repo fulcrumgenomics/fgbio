@@ -28,12 +28,13 @@ import java.nio.file.Path
 import java.text.DecimalFormat
 
 import com.fulcrumgenomics.cmdline.{ClpGroups, FgBioTool}
-import dagr.commons.CommonsDef.{PathToIntervals, PathToBam}
+import com.fulcrumgenomics.util.ProgressLogger
+import dagr.commons.CommonsDef.{PathToBam, PathToIntervals}
 import dagr.commons.io.Io
 import dagr.commons.util.LazyLogging
 import dagr.sopt._
 import htsjdk.samtools._
-import htsjdk.samtools.util._
+import htsjdk.samtools.util.{CloserUtil, IntervalList}
 
 import scala.collection.JavaConversions._
 
@@ -52,13 +53,13 @@ import scala.collection.JavaConversions._
   "read 2 is included, but not both), but does not update any flag fields.",
   group = ClpGroups.SamOrBam)
 class FilterBam
-( @arg(doc = "If supplied, remove all reads that do not overlap the provided intervals.") var intervals: Option[PathToIntervals] = None,
-  @arg(doc = "Input BAM file.")                                         var input: PathToBam,
-  @arg(doc = "Output BAM file.")                                        var output: PathToBam,
-  @arg(doc = "If true remove all reads that are marked as duplicates.") var removeDuplicates: Boolean = true,
-  @arg(doc = "Remove all unmapped reads.")                              var removeUnmappedReads: Boolean = true,
-  @arg(doc = "Remove all reads with MAPQ lower than this number.")      var minMapQ: Int = 1,
-  @arg(doc = "Remove all reads marked as secondary alignments.")        var removeSecondaryAlignments: Boolean = true
+( @arg(flag="i", doc="Input BAM file.")                                           val input: PathToBam,
+  @arg(flag="o", doc="Output BAM file.")                                          val output: PathToBam,
+  @arg(flag="l", doc="Optionally remove reads not overlapping intervals.")        val intervals: Option[PathToIntervals] = None,
+  @arg(flag="D", doc="If true remove all reads that are marked as duplicates.")   val removeDuplicates: Boolean = true,
+  @arg(flag="U", doc="Remove all unmapped reads.")                                val removeUnmappedReads: Boolean = true,
+  @arg(flag="M", doc="Remove all mapped reads with MAPQ lower than this number.") val minMapQ: Int = 1,
+  @arg(flag="S", doc="Remove all reads marked as secondary alignments.")          val removeSecondaryAlignments: Boolean = true
 ) extends FgBioTool with LazyLogging {
 
   Io.assertReadable(input)
@@ -66,17 +67,25 @@ class FilterBam
   intervals.foreach(Io.assertReadable)
 
   override def execute(): Unit = {
-    //val progress: ProgressLogger = new ProgressLogger(log)
-    val in: SamReader = SamReaderFactory.make.open(input.toFile)
-    val iterator: SAMRecordIterator = buildInputIterator(in, intervals)
-    val out: SAMFileWriter = new SAMFileWriterFactory().makeSAMOrBAMWriter(in.getFileHeader, true, output.toFile)
-    val kept: Long = iterator.count { rec =>
-      val throwOut = (removeDuplicates && rec.getDuplicateReadFlag) ||
-        (removeUnmappedReads && rec.getReadUnmappedFlag) ||
-        (rec.getMappingQuality < minMapQ) ||
-        (removeSecondaryAlignments && !rec.getReadUnmappedFlag && rec.getNotPrimaryAlignmentFlag)
-      if (!throwOut) out.addAlignment(rec)
-      !throwOut
+    val progress = new ProgressLogger(logger, verb="written", unit=5e6.toInt)
+    val in       = SamReaderFactory.make.open(input.toFile)
+    val iterator = buildInputIterator(in, intervals)
+    val out      = new SAMFileWriterFactory().makeWriter(in.getFileHeader, true, output.toFile, null)
+    val kept = iterator.count { rec => {
+        val throwOut = (removeDuplicates && rec.getDuplicateReadFlag) ||
+          (removeUnmappedReads && rec.getReadUnmappedFlag) ||
+          (!rec.getReadUnmappedFlag && rec.getMappingQuality < minMapQ) ||
+          (removeSecondaryAlignments && !rec.getReadUnmappedFlag && rec.getNotPrimaryAlignmentFlag)
+
+        if (throwOut) {
+          false
+        }
+        else {
+          out.addAlignment(rec)
+          progress.record(rec)
+          true
+        }
+      }
     }
     logger.info("Kept " + new DecimalFormat("#,##0").format(kept) + " records.")
     out.close()
@@ -90,9 +99,9 @@ class FilterBam
     intervalListFile match {
       case None => in.iterator()
       case Some(file) =>
-        val intervals: IntervalList = IntervalList.fromFile(file.toFile).uniqued
-        val dict: SAMSequenceDictionary = intervals.getHeader.getSequenceDictionary
-        val qs: Array[QueryInterval] = intervals.getIntervals.map(interval =>
+        val intervals = IntervalList.fromFile(file.toFile).uniqued
+        val dict      = intervals.getHeader.getSequenceDictionary
+        val qs        = intervals.getIntervals.map(interval =>
           new QueryInterval(dict.getSequenceIndex(interval.getContig), interval.getStart, interval.getEnd)).toArray
         in.queryOverlapping(qs)
     }
