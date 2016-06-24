@@ -33,7 +33,7 @@ import dagr.sopt.cmdline.CommandLineParser
   */
 object FgBioMain {
   /** The main method */
-  def main(args: Array[String]): Unit = new FgBioMain().makeItSo(args)
+  def main(args: Array[String]): Unit = new FgBioMain().makeItSoAndExit(args)
 
   /**
     * Exception class intended to be used by [[FgBioMain]] and [[FgBioTool]] to communicate
@@ -43,21 +43,26 @@ object FgBioMain {
 }
 
 class FgBioMain extends LazyLogging {
-  /** The main method */
-  def makeItSo(args: Array[String]): Unit = {
+  /** A main method that invokes System.exit with the exit code. */
+  def makeItSoAndExit(args: Array[String]): Unit = {
+    System.exit(makeItSo(args))
+  }
+
+  /** A main method that returns an exit code instead of exiting. */
+  def makeItSo(args: Array[String]): Int = {
     val parser = new CommandLineParser[FgBioTool]("fgbio")
 
     parser.parseSubCommand(args=args, packageList=packageList) match {
-      case None => System.exit(1)
+      case None => 1
       case Some(tool) =>
         try {
           tool.execute()
-          System.exit(0)
+          0
         }
         catch {
           case ex: FailureException =>
             ex.message.foreach(logger.fatal)
-            System.exit(ex.exit)
+            ex.exit
         }
     }
   }
