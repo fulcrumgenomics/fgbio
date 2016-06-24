@@ -23,11 +23,12 @@
  */
 package com.fulcrumgenomics.util
 
-import java.io.{OutputStream, InputStream}
-import java.nio.file.{Files, Path}
-import java.util.zip.{GZIPOutputStream, GZIPInputStream}
+import java.io.{InputStream, OutputStream}
+import java.nio.file.{Files, Path, Paths}
+import java.util.zip.{GZIPInputStream, GZIPOutputStream}
 
-import dagr.commons.io.{PathUtil, IoUtil}
+import dagr.commons.io.{IoUtil, PathUtil}
+import dagr.commons.CommonsDef.DirPath
 
 /**
   * Provides common IO utility methods.  Can be instantiated to create a custom factory, or
@@ -49,6 +50,9 @@ class Io(val compressionLevel: Int = 5, override val bufferSize: Int = 128*1024)
       case _           => super.toOutputStream(path)
     }
   }
+
+  /** Returns the system default temporary directory path. */
+  def defaultTempDir(): DirPath = Paths.get(System.getProperty("java.io.tmpdir"))
 }
 
 /** Singleton object that can be used when the default buffer size and compression are desired. */
