@@ -27,8 +27,8 @@ package com.fulcrumgenomics.umi
 
 import com.fulcrumgenomics.cmdline.{ClpGroups, FgBioTool}
 import com.fulcrumgenomics.umi.ConsensusCallerOptions._
-import com.fulcrumgenomics.util.LogDouble._
 import com.fulcrumgenomics.util.{LogDouble, ProgressLogger}
+import com.fulcrumgenomics.util.LogDouble._
 import dagr.commons.CommonsDef.PathToBam
 import dagr.commons.io.Io
 import dagr.commons.util.LazyLogging
