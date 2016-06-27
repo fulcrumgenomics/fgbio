@@ -26,9 +26,8 @@
 package com.fulcrumgenomics.umi
 
 import com.fulcrumgenomics.testing.UnitSpec
-import com.fulcrumgenomics.util.LogDouble
+import com.fulcrumgenomics.util.{LogDouble, PhredScore}
 import com.fulcrumgenomics.util.LogDouble._
-import com.fulcrumgenomics.util.LogProbability._
 import com.fulcrumgenomics.util.PhredScore._
 
 
@@ -47,7 +46,7 @@ class ConsensusCallerTest extends UnitSpec {
       quals=Seq(20, 15, 10, 5).map(_.fromPhredScore),
       maxBaseQuality   = 10.fromPhredScore,
       baseQualityShift = 0,
-      errorRatePostUmi = ZeroProbability
+      errorRatePostUmi = ZeroProbability.fromPhredScore
     )
     qualtiesEqual(quals, Seq(10, 10, 10, 5))
   }
@@ -57,7 +56,7 @@ class ConsensusCallerTest extends UnitSpec {
       quals=Seq(20, 15, 10, 5).map(_.fromPhredScore),
       maxBaseQuality   = Int.MaxValue.fromPhredScore,
       baseQualityShift = 10,
-      errorRatePostUmi = ZeroProbability
+      errorRatePostUmi =  ZeroProbability.fromPhredScore
     )
     qualtiesEqual(quals, Seq(10, 5, 0, 0))
   }
@@ -88,7 +87,7 @@ class ConsensusCallerTest extends UnitSpec {
     val (cBases, cQuals) = ConsensusCaller.consensusCalls(
       baseStrings             = Seq(bases),
       qualSeqs                = Seq(quals),
-      errorRatePreUmi         = ZeroProbability,
+      errorRatePreUmi         = ZeroProbability.fromPhredScore,
       minReads                = 1,
       minConsensusBaseQuality = 0.fromPhredScore
     )
@@ -120,10 +119,10 @@ class ConsensusCallerTest extends UnitSpec {
     val otherBases = "GATTTCA"
     val quals = Array(10, 10, 10, 10, 10, 10, 10).map(_.fromPhredScore)
     val (cBases, cQuals) = ConsensusCaller.consensusCalls(
-      baseStrings = Seq(bases, bases, otherBases),
-      qualSeqs = Seq(quals, quals, quals),
-      errorRatePreUmi = ZeroProbability,
-      minReads = 1,
+      baseStrings             = Seq(bases, bases, otherBases),
+      qualSeqs                = Seq(quals, quals, quals),
+      errorRatePreUmi         = ZeroProbability.fromPhredScore,
+      minReads                = 1,
       minConsensusBaseQuality = 0.fromPhredScore
     )
     val err = 10.fromPhredScore / 3.0.toLogDouble
@@ -170,10 +169,10 @@ class ConsensusCallerTest extends UnitSpec {
     val quals = Array(10, 10, 10, 10, 10, 10, 0)
     val expectedQuals = Array(10, 10, 10, 10, 10, 10, 1)
     val (cBases, cQuals) = ConsensusCaller.consensusCalls(
-      baseStrings = Seq(bases),
-      qualSeqs = Seq(quals.map(_.fromPhredScore)),
-      errorRatePreUmi = ZeroProbability,
-      minReads = 1,
+      baseStrings             = Seq(bases),
+      qualSeqs                = Seq(quals.map(_.fromPhredScore)),
+      errorRatePreUmi         = ZeroProbability.fromPhredScore,
+      minReads                = 1,
       minConsensusBaseQuality = 10.fromPhredScore
     )
     cBases shouldBe "GATTACN"
@@ -194,9 +193,9 @@ class ConsensusCallerTest extends UnitSpec {
     val call1 = ConsensusCaller.consensusFromStringBasesAndQualities(
       basesAndQualities = Seq(("GATTACA", "AAAAAAA")),
       options           = ConsensusCallerOptions(
-        errorRatePreUmi = ZeroProbability,
+        errorRatePreUmi = PhredScore.ZeroProbability,
         minReads=1,
-        minMeanConsensusBaseQuality=255.fromPhredScore
+        minMeanConsensusBaseQuality=255
       )
     )
     call1 shouldBe None
@@ -206,7 +205,7 @@ class ConsensusCallerTest extends UnitSpec {
       options           = ConsensusCallerOptions(
         errorRatePreUmi = ZeroProbability,
         minReads=1,
-        minMeanConsensusBaseQuality=0.fromPhredScore
+        minMeanConsensusBaseQuality=0
       )
     )
     call2 shouldBe 'defined
@@ -220,11 +219,11 @@ class ConsensusCallerTest extends UnitSpec {
       options = ConsensusCallerOptions(
         errorRatePreUmi             = ZeroProbability,
         errorRatePostUmi            = ZeroProbability,
-        maxBaseQuality              = 255.fromPhredScore,
+        maxBaseQuality              = 255,
         baseQualityShift            = 0,
-        minConsensusBaseQuality     = 0.fromPhredScore,
+        minConsensusBaseQuality     = 0,
         minReads                    = 1,
-        minMeanConsensusBaseQuality = 0.fromPhredScore
+        minMeanConsensusBaseQuality = 0
       )
     ) match {
       case None => fail
@@ -242,13 +241,13 @@ class ConsensusCallerTest extends UnitSpec {
     ConsensusCaller.consensusFromStringBasesAndQualities(
       basesAndQualities=Seq(("GATTACA", inputQualsString)),
       options = ConsensusCallerOptions(
-        errorRatePreUmi             = 10.fromPhredScore,
+        errorRatePreUmi             = 10,
         errorRatePostUmi            = ZeroProbability,
-        maxBaseQuality              = 255.fromPhredScore,
+        maxBaseQuality              = 255,
         baseQualityShift            = 0,
-        minConsensusBaseQuality     = 0.fromPhredScore,
+        minConsensusBaseQuality     = 0,
         minReads                    = 1,
-        minMeanConsensusBaseQuality = 0.fromPhredScore
+        minMeanConsensusBaseQuality = 0
       )
     ) match {
       case None => fail
@@ -267,12 +266,12 @@ class ConsensusCallerTest extends UnitSpec {
       basesAndQualities=Seq(("GATTACA", inputQualsString)),
       options = ConsensusCallerOptions(
         errorRatePreUmi             = ZeroProbability,
-        errorRatePostUmi            = 10.fromPhredScore,
-        maxBaseQuality              = 255.fromPhredScore,
+        errorRatePostUmi            = 10,
+        maxBaseQuality              = 255,
         baseQualityShift            = 0,
-        minConsensusBaseQuality     = 0.fromPhredScore,
+        minConsensusBaseQuality     = 0,
         minReads                    = 1,
-        minMeanConsensusBaseQuality = 0.fromPhredScore
+        minMeanConsensusBaseQuality = 0
       )
     ) match {
       case None => fail

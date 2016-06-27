@@ -26,10 +26,10 @@
 package com.fulcrumgenomics.umi
 
 import com.fulcrumgenomics.testing.UnitSpec
-import com.fulcrumgenomics.util.LogDouble.Zero
 import htsjdk.samtools.util.CloserUtil
 import htsjdk.samtools.{SAMRecordSetBuilder, SAMUtils}
 import com.fulcrumgenomics.umi.ConsensusCallerOptions._
+import com.fulcrumgenomics.util.PhredScore
 
 import scala.collection.JavaConversions._
 import scala.collection.JavaConverters._
@@ -40,7 +40,7 @@ import scala.collection.JavaConverters._
 class CallMolecularConsensusReadsTest extends UnitSpec {
 
   // There be dragons below!
-  "CallConsensusFromUmis" should "should create two consensus for two UMI groups" in {
+  "CallMolecularConsensusReads" should "should create two consensus for two UMI groups" in {
     val builder = new SAMRecordSetBuilder()
     builder.addFrag("READ1", 0, 1, false).setAttribute(DefaultTag, "GATTACA")
     builder.addFrag("READ2", 0, 1, false).setAttribute(DefaultTag, "GATTACA")
@@ -55,9 +55,9 @@ class CallMolecularConsensusReadsTest extends UnitSpec {
       input = reader.iterator().asScala,
       header = reader.getFileHeader,
       options = new ConsensusCallerOptions(
-        minReads=1,
-        errorRatePreUmi=Zero,
-        errorRatePostUmi=Zero
+        minReads         = 1,
+        errorRatePreUmi  = PhredScore.ZeroProbability,
+        errorRatePostUmi = PhredScore.ZeroProbability
       )
     )
     consensusCaller.hasNext shouldBe true
@@ -81,9 +81,9 @@ class CallMolecularConsensusReadsTest extends UnitSpec {
       input = reader.iterator().asScala,
       header = reader.getFileHeader,
       options = new ConsensusCallerOptions(
-        minReads=1,
-        errorRatePreUmi=Zero,
-        errorRatePostUmi=Zero
+        minReads         = 1,
+        errorRatePreUmi  = PhredScore.ZeroProbability,
+        errorRatePostUmi = PhredScore.ZeroProbability
       )
     )
     consensusCaller.hasNext shouldBe true
@@ -121,9 +121,9 @@ class CallMolecularConsensusReadsTest extends UnitSpec {
       input = reader.iterator().asScala,
       header = reader.getFileHeader,
       options = new ConsensusCallerOptions(
-        minReads=1,
-        errorRatePreUmi=Zero,
-        errorRatePostUmi=Zero
+        minReads         = 1,
+        errorRatePreUmi  = PhredScore.ZeroProbability,
+        errorRatePostUmi = PhredScore.ZeroProbability
       )
     )
     consensusCaller.hasNext shouldBe true

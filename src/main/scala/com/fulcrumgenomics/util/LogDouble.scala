@@ -28,14 +28,6 @@ import htsjdk.samtools.SAMUtils
 
 import scala.math._
 
-object LogProbability {
-  /** The log-space representation of 1.0. */
-  val OneProbability: LogDouble = LogDouble.toLogDouble(1.0)
-
-  /** The log-space representation of 0.0. */
-  val ZeroProbability: LogDouble = LogDouble.toLogDouble(0.0)
-}
-
 object PhredScore {
   /** The maximum Phred Value. */
   val MaxValue: Int = SAMUtils.MAX_PHRED_SCORE
@@ -45,6 +37,10 @@ object PhredScore {
 
   /** The precision to use when converting to an Integer. */
   val Precision = 0.001
+
+  val ZeroProbability: Double = Double.PositiveInfinity
+
+  val OneProbability: Double = 0.0
 
   /** The value of log(10.0). */
   private val LogOf10: Double= log(10.0)
@@ -94,10 +90,10 @@ object PhredScore {
 object LogDouble {
 
   /** log(X) == 0. */
-  val Zero = new LogDouble(logValue=Double.NegativeInfinity)
+  private[util] val Zero = new LogDouble(logValue=Double.NegativeInfinity)
 
   /** log(X) == 1. */
-  val One = new LogDouble(logValue=0.0)
+  private[util] val One = new LogDouble(logValue=0.0)
 
   /** Converts the double to log-space. */
   def toLogDouble(value: Double): LogDouble = {
@@ -155,7 +151,11 @@ class LogDouble(val logValue: Double) extends Ordered[LogDouble] {
   def - (that: LogDouble): LogDouble = new LogDouble(logValue=sub(this.logValue, that.logValue))
 
   /** 1.0 - this; useful for probabilities. */
-  def oneMinus(): LogDouble           = LogDouble.One - this
+  def oneMinus(): LogDouble           = {
+    if (LogDouble.One < this) LogDouble.Zero
+    else if (this < LogDouble.Zero) LogDouble.One
+    else LogDouble.One - this
+  }
 
   /** Compares two doubles in log space. */
   def compare(that: LogDouble): Int = this.logValue.compare(that.logValue)
@@ -176,5 +176,5 @@ class LogDouble(val logValue: Double) extends Ordered[LogDouble] {
     else a + log1p(0.0 - exp(b - a)) // using log1p, otherwise it would be `a + log(1.0 - exp(b - a))`
   }
 
-  override def toString: String = s"$linearValue.to ($logValue)"
+  override def toString: String = s"$linearValue:$logValue"
 }

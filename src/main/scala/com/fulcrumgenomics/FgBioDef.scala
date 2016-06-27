@@ -30,4 +30,6 @@ import dagr.commons.CommonsDef
   * Place to put common function, type and implicit definitions that can be
   * imported into other classes easily.
   */
-object FgBioDef extends CommonsDef 
+object FgBioDef extends CommonsDef {
+  type PhredScore = Double
+}

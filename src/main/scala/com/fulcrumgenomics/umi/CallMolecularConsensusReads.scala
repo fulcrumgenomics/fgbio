@@ -27,8 +27,7 @@ package com.fulcrumgenomics.umi
 
 import com.fulcrumgenomics.cmdline.{ClpGroups, FgBioTool}
 import com.fulcrumgenomics.umi.ConsensusCallerOptions._
-import com.fulcrumgenomics.util.{LogDouble, ProgressLogger}
-import com.fulcrumgenomics.util.LogDouble._
+import com.fulcrumgenomics.util.ProgressLogger
 import dagr.commons.CommonsDef.PathToBam
 import dagr.commons.io.Io
 import dagr.commons.util.LazyLogging
@@ -36,6 +35,7 @@ import dagr.sopt._
 import dagr.sopt.cmdline.ValidationException
 import htsjdk.samtools._
 import htsjdk.samtools.util.CloserUtil
+import com.fulcrumgenomics.FgBioDef._
 
 import scala.collection.JavaConverters._
 
@@ -54,21 +54,21 @@ class CallMolecularConsensusReads
   @arg(flag="t", doc="The SAM attribute with the unique UMI identifier.") val tag: String = DefaultTag,
   @arg(flag="p", doc="The Prefix all consensus read names") val readNamePrefix: Option[String] = None,
   @arg(flag="R", doc="The new read group ID for all the consensus reads.") val readGroupId: String = "A",
-  @arg(flag="1", doc="The Phred-scaled error rate for an error prior to the UMIs being integrated.") val errorRatePreUmi: LogDouble = DefaultErrorRatePreUmi,
-  @arg(flag="2", doc="The Phred-scaled error rate for an error post the UMIs have been integrated.") val errorRatePostUmi: LogDouble = DefaultErrorRatePostUmi,
-  @arg(flag="q", doc="Cap the maximum base quality in the input (after shifting).") val maxBaseQuality: LogDouble = DefaultMaxBaseQuality,
-  @arg(flag="s", doc="Subtract this base quality from the input base qualities (prior to capping).") val baseQualityShift: Double = DefaultBaseQualityShift,
-  @arg(flag="N", doc="Mask (make 'N') consensus bases with quality less than this threshold.") val minConsensusBaseQuality: LogDouble = DefaultMinConsensusBaseQuality,
+  @arg(flag="1", doc="The Phred-scaled error rate for an error prior to the UMIs being integrated.") val errorRatePreUmi: PhredScore = DefaultErrorRatePreUmi,
+  @arg(flag="2", doc="The Phred-scaled error rate for an error post the UMIs have been integrated.") val errorRatePostUmi: PhredScore = DefaultErrorRatePostUmi,
+  @arg(flag="q", doc="Cap the maximum base quality in the input (after shifting).") val maxBaseQuality: Double = 40,
+  @arg(flag="s", doc="Subtract this base quality from the input base qualities (prior to capping).") val baseQualityShift: PhredScore = DefaultBaseQualityShift,
+  @arg(flag="N", doc="Mask (make 'N') consensus bases with quality less than this threshold.") val minConsensusBaseQuality: PhredScore = DefaultMinConsensusBaseQuality,
   @arg(flag="M", doc="The minimum number of reads to produce a consensus base.") val minReads: Int = DefaultMinReads,
-  @arg(flag="Q", doc="The minimum mean base quality across a consensus base to output.") val minMeanConsensusBaseQuality: LogDouble = DefaultMinMeanConsensusBaseQuality,
+  @arg(flag="Q", doc="The minimum mean base quality across a consensus base to output.") val minMeanConsensusBaseQuality: PhredScore = DefaultMinMeanConsensusBaseQuality,
   @arg(flag="P", doc="Require a consensus call for both ends of a pair if true.") val requireConsensusForBothPairs: Boolean = DefaultRequireConsensusForBothPairs
 ) extends FgBioTool with LazyLogging {
 
   Io.assertReadable(input)
   Seq(output, rejects).foreach(Io.assertCanWriteFile(_))
-  if (tag.length != 2)         throw new ValidationException("attribute must be of length 2")
-  if (errorRatePreUmi < Zero)  throw new ValidationException("Error rate pre UMI must be >= 0")
-  if (errorRatePostUmi < Zero) throw new ValidationException("Error rate post UMI must be >= 0")
+  if (tag.length != 2)      throw new ValidationException("attribute must be of length 2")
+  if (errorRatePreUmi < 0)  throw new ValidationException("Phred-scaled error rate pre UMI must be >= 0")
+  if (errorRatePostUmi < 0) throw new ValidationException("Phred-scaled error rate post UMI must be >= 0")
 
   /** TODO
     * - what about when a read has an indel causing the rest of the bases to mismatch?
@@ -97,7 +97,7 @@ class CallMolecularConsensusReads
       requireConsensusForBothPairs = requireConsensusForBothPairs
     )
 
-    val progress = new ProgressLogger(logger)
+    val progress = new ProgressLogger(logger, unit=10000)
     val consensusCaller = new ConsensusCaller(
       input          = in.iterator().asScala,
       header         = in.getFileHeader,
@@ -115,8 +115,4 @@ class CallMolecularConsensusReads
     rej.close()
     logger.info(s"Processed ${progress.getCount} records.")
   }
-}
-
-// TODO
-class ConsensusCallingMetricsCollector {
 }

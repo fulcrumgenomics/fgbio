@@ -80,22 +80,22 @@ class LogDoubleTest extends UnitSpec {
   }
 
   it should "divide doubles in log space" in {
-    LogDouble(10.0) / LogDouble(10) shouldBe LogDouble(0.0)
+    (LogDouble(10.0) / LogDouble(10)).logValue shouldBe LogDouble(0.0).logValue +- 0.00001
     (LogDouble(Double.NegativeInfinity) / LogDouble(10)).logValue shouldBe Zero.logValue +- 0.00001
     (toLogDouble(100.0) / toLogDouble(10.0)).linearValue shouldBe toLogDouble(10.0).linearValue +- 0.00001
     (toLogDouble(0.1) / toLogDouble(5.0)).linearValue shouldBe toLogDouble(0.02).linearValue +- 0.00001
     an[IllegalStateException] should be thrownBy toLogDouble(10) / Zero
-    (toLogDouble(10) / 10.0.toLogDouble) shouldBe One
+    (toLogDouble(10) / 10.0.toLogDouble).logValue shouldBe 0.0
   }
 
   it should "multiply doubles in log space" in {
-    LogDouble(10) *  LogDouble(10) shouldBe  LogDouble(20.0)
-    LogDouble(10) * Zero shouldBe Zero
-    Zero * LogDouble(10) shouldBe Zero
+    (LogDouble(10) *  LogDouble(10)).logValue shouldBe  LogDouble(20.0).logValue
+    (LogDouble(10) * Zero).logValue shouldBe Zero.logValue
+    (Zero * LogDouble(10)).logValue shouldBe Zero.logValue
     (LogDouble(0.0) * LogDouble(10.0)).linearValue shouldBe LogDouble(10.0).linearValue +- 0.00001
     (toLogDouble(10) * 5.0.toLogDouble).linearValue shouldBe toLogDouble(50).linearValue +- 0.00001
-    LogDouble(0.0) * 0.1.toLogDouble shouldBe toLogDouble(0.1)
-    toLogDouble(0.0) * 1.0.toLogDouble shouldBe toLogDouble(0.0)
+    (LogDouble(0.0) * 0.1.toLogDouble).logValue shouldBe toLogDouble(0.1).logValue
+    (toLogDouble(0.0) * 1.0.toLogDouble).logValue shouldBe toLogDouble(0.0).logValue
   }
 
   it should "add doubles in log space" in {
@@ -114,6 +114,8 @@ class LogDoubleTest extends UnitSpec {
     an[IllegalArgumentException] should be thrownBy (20.fromPhredScore - 10.fromPhredScore).linearValue
     (toLogDouble(10) - Zero).linearValue shouldBe 10.0 +- 0.00001
     (toLogDouble(10) - 0.0.toLogDouble).linearValue shouldBe 10.0 +- 0.00001
+    an[IllegalArgumentException] should be thrownBy (toLogDouble(1.0) - toLogDouble(1.0000000000000004))
+    an[IllegalArgumentException] should be thrownBy (toLogDouble(1.0) - toLogDouble(-0.0000000000000004))
   }
 
   it should "1 - doubles in log space" in {
@@ -127,6 +129,8 @@ class LogDoubleTest extends UnitSpec {
     Zero.logValue shouldBe Double.NegativeInfinity
     Zero.oneMinus().linearValue shouldBe One.linearValue +- 0.00001
     One.oneMinus().linearValue shouldBe Zero.linearValue
+    toLogDouble(1.0000000000000004).oneMinus().linearValue shouldBe 0.0 +- 0.00001
+    LogDouble(log(0.0000000000000004)).oneMinus().linearValue shouldBe 1.0 +- 0.00001
   }
 
   it should "compute the mean of doubles in log space" in {
