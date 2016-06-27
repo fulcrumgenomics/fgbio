@@ -1,7 +1,7 @@
 /*
  * The MIT License
  *
- * Copyright (c) 2016 Fulcrum Genomics LLC
+ * Copyright (c) $year Fulcrum Genomics
  *
  * Permission is hereby granted, free of charge, to any person obtaining a copy
  * of this software and associated documentation files (the "Software"), to deal
@@ -20,15 +20,16 @@
  * LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
  * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
  * THE SOFTWARE.
+ *
  */
 
-package com.fulcrumgenomics.bam
+package com.fulcrumgenomics.umi
 
 import com.fulcrumgenomics.testing.UnitSpec
-import com.fulcrumgenomics.bam.ConsensusCallerOptions.DefaultTag
+import com.fulcrumgenomics.util.LogDouble.Zero
 import htsjdk.samtools.util.CloserUtil
 import htsjdk.samtools.{SAMRecordSetBuilder, SAMUtils}
-import com.fulcrumgenomics.util.LogDouble.Zero
+import com.fulcrumgenomics.umi.ConsensusCallerOptions._
 
 import scala.collection.JavaConversions._
 import scala.collection.JavaConverters._

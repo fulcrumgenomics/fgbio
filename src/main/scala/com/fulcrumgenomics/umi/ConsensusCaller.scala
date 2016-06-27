@@ -1,7 +1,7 @@
 /*
  * The MIT License
  *
- * Copyright (c) 2016 Fulcrum Genomics LLC
+ * Copyright (c) $year Fulcrum Genomics
  *
  * Permission is hereby granted, free of charge, to any person obtaining a copy
  * of this software and associated documentation files (the "Software"), to deal
@@ -20,16 +20,16 @@
  * LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
  * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
  * THE SOFTWARE.
+ *
  */
 
-package com.fulcrumgenomics.bam
+package com.fulcrumgenomics.umi
 
-import com.fulcrumgenomics.bam.ConsensusCallerOptions._
-import com.fulcrumgenomics.util.{PhredScore, LogDouble, ProgressLogger}
-import com.fulcrumgenomics.util.PhredScore._
+import com.fulcrumgenomics.umi.ConsensusCallerOptions._
 import com.fulcrumgenomics.util.LogDouble._
 import com.fulcrumgenomics.util.LogProbability._
-
+import com.fulcrumgenomics.util.PhredScore._
+import com.fulcrumgenomics.util.{LogDouble, PhredScore, ProgressLogger}
 import dagr.commons.CommonsDef._
 import htsjdk.samtools._
 import htsjdk.samtools.util.SequenceUtil
@@ -110,7 +110,7 @@ object ConsensusCaller {
 
   /** Creates a consensus read from the given read and quality string tuples.  If no consensus read was created, None is returned.
     * Currently used for testing. */
-  private[bam] def consensusFromStringBasesAndQualities(basesAndQualities: Seq[(String, String)],
+  private[umi] def consensusFromStringBasesAndQualities(basesAndQualities: Seq[(String, String)],
                                      options: ConsensusCallerOptions = new ConsensusCallerOptions()
                                     ): Option[ConsensusRead] = {
     consensusFromBasesAndQualities(
@@ -136,7 +136,7 @@ object ConsensusCaller {
   }
 
   /** Get the most likely consensus bases and qualities. */
-  private[bam] def consensusCalls(baseStrings: Seq[String],
+  private[umi] def consensusCalls(baseStrings: Seq[String],
                                   qualSeqs: Seq[Seq[LogDouble]], // probability of an error
                                   errorRatePreUmi: LogDouble         = DefaultErrorRatePreUmi,
                                   minConsensusBaseQuality: LogDouble = DefaultMinConsensusBaseQuality,
@@ -192,7 +192,7 @@ object ConsensusCaller {
   /** Adjusts the given base qualities.  The base qualities are first shifted by `baseQualityShift`, then capped using
     * `maxBaseQuality`, and finally the `errorRatePostUmi` is incorporated.
     */
-  private[bam] def adjustBaseQualities(quals: Seq[LogDouble],
+  private[umi] def adjustBaseQualities(quals: Seq[LogDouble],
                                        maxBaseQuality: LogDouble   = DefaultMaxBaseQuality,
                                        baseQualityShift: Double = DefaultBaseQualityShift,
                                        errorRatePostUmi: LogDouble = DefaultErrorRatePostUmi
@@ -221,7 +221,7 @@ object ConsensusCaller {
     * 3. the probability of an error in both trials, but when the second trial does not reverse the error in first one, which
     *    for DNA (4 bases) would only occur 2/3 times: Pr(A=x->y, B=y->z) * Pr(x!=z | x!=y, y!=z, x,y,z \in {A,C,G,T})
     */
-  private[bam] def probabilityOfErrorTwoTrials(prErrorTrialOne: LogDouble, prErrorTrialTwo: LogDouble): LogDouble = {
+  private[umi] def probabilityOfErrorTwoTrials(prErrorTrialOne: LogDouble, prErrorTrialTwo: LogDouble): LogDouble = {
     val pr1 = prErrorTrialOne       * prErrorTrialTwo.oneMinus()
     val pr2 = prErrorTrialOne.oneMinus() * prErrorTrialTwo
     val pr3 = prErrorTrialOne       * prErrorTrialTwo       * TwoThirdsLogDouble
@@ -263,7 +263,6 @@ class ConsensusCaller
 ) extends Iterator[SAMRecord] {
   import ConsensusCaller.ReadType
   import ConsensusCaller.ReadType._
-  import ConsensusCaller._
 
   private val iter = input.buffered
   private val nextConsensusRecords: mutable.Queue[SAMRecord] = mutable.Queue[SAMRecord]() // one per UMI group
@@ -353,7 +352,7 @@ class ConsensusCaller
   private def nextReadName(records: Seq[SAMRecord]): String = {
     if (records.isEmpty) return ""
     val curIdx = yieldAndThen(readIdx)(readIdx += 1)
-    val prefix = readNamePrefix.getOrElse(longestCommonPrefix(records.map(_.getReadName)).getOrElse("CONSENSUS"))
+    val prefix = readNamePrefix.getOrElse(ConsensusCaller.longestCommonPrefix(records.map(_.getReadName)).getOrElse("CONSENSUS"))
     s"$prefix:$curIdx"
   }
 

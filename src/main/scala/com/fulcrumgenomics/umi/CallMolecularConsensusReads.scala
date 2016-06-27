@@ -1,7 +1,7 @@
 /*
  * The MIT License
  *
- * Copyright (c) 2016 Fulcrum Genomics LLC
+ * Copyright (c) $year Fulcrum Genomics
  *
  * Permission is hereby granted, free of charge, to any person obtaining a copy
  * of this software and associated documentation files (the "Software"), to deal
@@ -20,14 +20,15 @@
  * LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
  * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
  * THE SOFTWARE.
+ *
  */
 
-package com.fulcrumgenomics.bam
+package com.fulcrumgenomics.umi
 
-import com.fulcrumgenomics.bam.ConsensusCallerOptions._
 import com.fulcrumgenomics.cmdline.{ClpGroups, FgBioTool}
-import com.fulcrumgenomics.util.{LogDouble, ProgressLogger}
+import com.fulcrumgenomics.umi.ConsensusCallerOptions._
 import com.fulcrumgenomics.util.LogDouble._
+import com.fulcrumgenomics.util.{LogDouble, ProgressLogger}
 import dagr.commons.CommonsDef.PathToBam
 import dagr.commons.io.Io
 import dagr.commons.util.LazyLogging
@@ -45,7 +46,7 @@ import scala.collection.JavaConverters._
     |
     |This tool assumes that reads with the same identifier are grouped together (consecutive in the file).
   """,
-  group = ClpGroups.SamOrBam)
+  group = ClpGroups.Umi)
 class CallMolecularConsensusReads
 ( @arg(flag="i", doc="The input SAM or BAM file.") val input: PathToBam,
   @arg(flag="o", doc="Output SAM or BAM file to write consensus reads.") val output: PathToBam,

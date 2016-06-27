@@ -40,10 +40,10 @@ class LogDoubleTest extends UnitSpec {
   }
 
   it should "convert phred scores to probabilities" in {
-    Double.PositiveInfinity.fromPhredScore.value shouldBe 0.0 +- Precision
-    10.0.fromPhredScore.value shouldBe 0.1 +- Precision
-    3.0103.fromPhredScore.value shouldBe 0.5 +- Precision
-    0.0.fromPhredScore.value shouldBe 1.0
+    Double.PositiveInfinity.fromPhredScore.linearValue shouldBe 0.0 +- Precision
+    10.0.fromPhredScore.linearValue shouldBe 0.1 +- Precision
+    3.0103.fromPhredScore.linearValue shouldBe 0.5 +- Precision
+    0.0.fromPhredScore.linearValue shouldBe 1.0
   }
 
   it should "display phred scores as integers" in {
@@ -72,18 +72,18 @@ class LogDoubleTest extends UnitSpec {
   }
 
   it should "convert log-space doubles to doubles" in {
-    toLogDouble(0.0).value shouldBe 0.0 +- 0.00001
-    toLogDouble(0.1).value shouldBe 0.1 +- 0.00001
-    toLogDouble(0.5).value shouldBe 0.5 +- 0.00001
-    toLogDouble(1.0).value shouldBe 1.0 +- 0.00001
-    toLogDouble(100.0).value shouldBe 100.0 +- 0.00001
+    toLogDouble(0.0).linearValue shouldBe 0.0 +- 0.00001
+    toLogDouble(0.1).linearValue shouldBe 0.1 +- 0.00001
+    toLogDouble(0.5).linearValue shouldBe 0.5 +- 0.00001
+    toLogDouble(1.0).linearValue shouldBe 1.0 +- 0.00001
+    toLogDouble(100.0).linearValue shouldBe 100.0 +- 0.00001
   }
 
   it should "divide doubles in log space" in {
     LogDouble(10.0) / LogDouble(10) shouldBe LogDouble(0.0)
     (LogDouble(Double.NegativeInfinity) / LogDouble(10)).logValue shouldBe Zero.logValue +- 0.00001
-    (toLogDouble(100.0) / toLogDouble(10.0)).value shouldBe toLogDouble(10.0).value +- 0.00001
-    (toLogDouble(0.1) / toLogDouble(5.0)).value shouldBe toLogDouble(0.02).value +- 0.00001
+    (toLogDouble(100.0) / toLogDouble(10.0)).linearValue shouldBe toLogDouble(10.0).linearValue +- 0.00001
+    (toLogDouble(0.1) / toLogDouble(5.0)).linearValue shouldBe toLogDouble(0.02).linearValue +- 0.00001
     an[IllegalStateException] should be thrownBy toLogDouble(10) / Zero
     (toLogDouble(10) / 10.0.toLogDouble) shouldBe One
   }
@@ -92,47 +92,47 @@ class LogDoubleTest extends UnitSpec {
     LogDouble(10) *  LogDouble(10) shouldBe  LogDouble(20.0)
     LogDouble(10) * Zero shouldBe Zero
     Zero * LogDouble(10) shouldBe Zero
-    (LogDouble(0.0) * LogDouble(10.0)).value shouldBe LogDouble(10.0).value +- 0.00001
-    (toLogDouble(10) * 5.0.toLogDouble).value shouldBe toLogDouble(50).value +- 0.00001
+    (LogDouble(0.0) * LogDouble(10.0)).linearValue shouldBe LogDouble(10.0).linearValue +- 0.00001
+    (toLogDouble(10) * 5.0.toLogDouble).linearValue shouldBe toLogDouble(50).linearValue +- 0.00001
     LogDouble(0.0) * 0.1.toLogDouble shouldBe toLogDouble(0.1)
     toLogDouble(0.0) * 1.0.toLogDouble shouldBe toLogDouble(0.0)
   }
 
   it should "add doubles in log space" in {
-    (LogDouble(10) + LogDouble(10)).value shouldBe exp(10)*2 +- 0.00001
-    (LogDouble(10) + LogDouble(20)).value shouldBe exp(10)+exp(20) +- 0.00001
-    (LogDouble(20) + LogDouble(10)).value shouldBe exp(20)+exp(10) +- 0.00001
-    (LogDouble(10) + Zero).value shouldBe exp(10)
-    (Zero + LogDouble(10)).value shouldBe exp(10)
-    (LogDouble(10) + 0.0.toLogDouble).value shouldBe exp(10)
+    (LogDouble(10) + LogDouble(10)).linearValue shouldBe exp(10)*2 +- 0.00001
+    (LogDouble(10) + LogDouble(20)).linearValue shouldBe exp(10)+exp(20) +- 0.00001
+    (LogDouble(20) + LogDouble(10)).linearValue shouldBe exp(20)+exp(10) +- 0.00001
+    (LogDouble(10) + Zero).linearValue shouldBe exp(10)
+    (Zero + LogDouble(10)).linearValue shouldBe exp(10)
+    (LogDouble(10) + 0.0.toLogDouble).linearValue shouldBe exp(10)
   }
 
   it should "subtract doubles in log space" in {
-    (LogDouble(10) - LogDouble(10)).value shouldBe Zero.value
-    (10.fromPhredScore - 10.fromPhredScore).value shouldBe Zero.value
-    (10.fromPhredScore - 20.fromPhredScore).value shouldBe (0.1-0.01) +- 0.00001
-    an[IllegalArgumentException] should be thrownBy (20.fromPhredScore - 10.fromPhredScore).value
-    (toLogDouble(10) - Zero).value shouldBe 10.0 +- 0.00001
-    (toLogDouble(10) - 0.0.toLogDouble).value shouldBe 10.0 +- 0.00001
+    (LogDouble(10) - LogDouble(10)).linearValue shouldBe Zero.linearValue
+    (10.fromPhredScore - 10.fromPhredScore).linearValue shouldBe Zero.linearValue
+    (10.fromPhredScore - 20.fromPhredScore).linearValue shouldBe (0.1-0.01) +- 0.00001
+    an[IllegalArgumentException] should be thrownBy (20.fromPhredScore - 10.fromPhredScore).linearValue
+    (toLogDouble(10) - Zero).linearValue shouldBe 10.0 +- 0.00001
+    (toLogDouble(10) - 0.0.toLogDouble).linearValue shouldBe 10.0 +- 0.00001
   }
 
   it should "1 - doubles in log space" in {
-    10.fromPhredScore.oneMinus().value shouldBe 0.9 +- 0.00001
-    20.fromPhredScore.oneMinus().value shouldBe 0.99 +- 0.00001
-    toLogDouble(0.9).oneMinus().value shouldBe  0.1 +- 0.00001
-    toLogDouble(0.99).oneMinus().value shouldBe 0.01 +- 0.00001
+    10.fromPhredScore.oneMinus().linearValue shouldBe 0.9 +- 0.00001
+    20.fromPhredScore.oneMinus().linearValue shouldBe 0.99 +- 0.00001
+    toLogDouble(0.9).oneMinus().linearValue shouldBe  0.1 +- 0.00001
+    toLogDouble(0.99).oneMinus().linearValue shouldBe 0.01 +- 0.00001
     One.logValue shouldBe 0.0
-    One.value shouldBe 1.0
-    Zero.value shouldBe 0.0
+    One.linearValue shouldBe 1.0
+    Zero.linearValue shouldBe 0.0
     Zero.logValue shouldBe Double.NegativeInfinity
-    Zero.oneMinus().value shouldBe One.value +- 0.00001
-    One.oneMinus().value shouldBe Zero.value
+    Zero.oneMinus().linearValue shouldBe One.linearValue +- 0.00001
+    One.oneMinus().linearValue shouldBe Zero.linearValue
   }
 
   it should "compute the mean of doubles in log space" in {
-    mean(toLogDouble(0.1)).value shouldBe 0.1  +- 0.00001
-    mean(toLogDouble(0.1), toLogDouble(0.1)).value shouldBe 0.1  +- 0.00001
-    mean(toLogDouble(0.4), toLogDouble(0.2)).value shouldBe 0.3  +- 0.00001
+    mean(toLogDouble(0.1)).linearValue shouldBe 0.1  +- 0.00001
+    mean(toLogDouble(0.1), toLogDouble(0.1)).linearValue shouldBe 0.1  +- 0.00001
+    mean(toLogDouble(0.4), toLogDouble(0.2)).linearValue shouldBe 0.3  +- 0.00001
   }
 
   it should "compare doubles in log space" in {

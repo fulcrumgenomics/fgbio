@@ -131,7 +131,7 @@ object LogDouble {
   */
 class LogDouble(val logValue: Double) extends AnyVal with Ordered[LogDouble] {
   /** Returns the value as a Double. */
-  def value: Double = exp(logValue)
+  def linearValue: Double = exp(logValue)
 
   /** Division. */
   def /(that: LogDouble): LogDouble = {
