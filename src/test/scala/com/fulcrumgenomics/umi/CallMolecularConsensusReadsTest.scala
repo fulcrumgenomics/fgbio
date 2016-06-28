@@ -25,119 +25,50 @@
 
 package com.fulcrumgenomics.umi
 
-import com.fulcrumgenomics.testing.UnitSpec
-import htsjdk.samtools.util.CloserUtil
-import htsjdk.samtools.{SAMRecordSetBuilder, SAMUtils}
+import com.fulcrumgenomics.testing.{SamRecordSetBuilder, UnitSpec}
 import com.fulcrumgenomics.umi.ConsensusCallerOptions._
-import com.fulcrumgenomics.util.PhredScore
-
-import scala.collection.JavaConversions._
-import scala.collection.JavaConverters._
+import htsjdk.samtools.SAMFileHeader.SortOrder
 
 /**
-  * Tests for CallConsensusFromUmis.
+  * Tests for CallMolecularConsensusReads.
+  *
+  * This makes sure the tool runs end-to-end, and the majority of the tests that cover various options are covered
+  * in [[ConsensusCallerTest]].
   */
 class CallMolecularConsensusReadsTest extends UnitSpec {
 
-  // There be dragons below!
-  "CallMolecularConsensusReads" should "should create two consensus for two UMI groups" in {
-    val builder = new SAMRecordSetBuilder()
-    builder.addFrag("READ1", 0, 1, false).setAttribute(DefaultTag, "GATTACA")
-    builder.addFrag("READ2", 0, 1, false).setAttribute(DefaultTag, "GATTACA")
-    builder.addFrag("READ3", 0, 1, false).setAttribute(DefaultTag, "ACATTAG")
-    builder.addFrag("READ4", 0, 1, false).setAttribute(DefaultTag, "ACATTAG")
-    builder.getRecords.foreach { rec =>
-      rec.setReadString("A" * rec.getReadLength)
-      rec.setBaseQualityString(SAMUtils.phredToFastq(40).toString * rec.getReadLength)
-    }
-    val reader = builder.getSamReader
-    val consensusCaller = new ConsensusCaller(
-      input = reader.iterator().asScala,
-      header = reader.getFileHeader,
-      options = new ConsensusCallerOptions(
-        minReads         = 1,
-        errorRatePreUmi  = PhredScore.ZeroProbability,
-        errorRatePostUmi = PhredScore.ZeroProbability
-      )
-    )
-    consensusCaller.hasNext shouldBe true
-    val calls = consensusCaller.toList
-    consensusCaller.hasNext shouldBe false
-    calls should have size 2
-    CloserUtil.close(reader)
-  }
+  def newBam = makeTempFile("call_molecular_consensus_reads_test.", ".bam")
 
-  it should "should create two consensus for a read pair" in {
-    val builder = new SAMRecordSetBuilder()
-    builder.addPair("READ1", 0, 1, 1000)
-    builder.getRecords.foreach {
-      rec =>
-        rec.setAttribute(DefaultTag, "GATTACA")
-        rec.setReadString("A" * rec.getReadLength)
-        rec.setBaseQualityString(SAMUtils.phredToFastq(40).toString * rec.getReadLength)
-    }
-    val reader = builder.getSamReader
-    val consensusCaller = new ConsensusCaller(
-      input = reader.iterator().asScala,
-      header = reader.getFileHeader,
-      options = new ConsensusCallerOptions(
-        minReads         = 1,
-        errorRatePreUmi  = PhredScore.ZeroProbability,
-        errorRatePostUmi = PhredScore.ZeroProbability
-      )
-    )
-    consensusCaller.hasNext shouldBe true
-    val calls = consensusCaller.toList
-    consensusCaller.hasNext shouldBe false
-    calls should have size 2
-    calls.foreach { rec =>
-      rec.getReadPairedFlag shouldBe true
-    }
-    calls.head.getFirstOfPairFlag shouldBe true
-    calls.last.getSecondOfPairFlag shouldBe true
-    calls.head.getReadName shouldBe calls.last.getReadName
-    CloserUtil.close(reader)
-  }
+  "CallMolecularConsensusReads" should "run end-to-end" in {
+    val builder = new SamRecordSetBuilder(sortOrder=SortOrder.unsorted, baseQuality=30, readLength=100, readGroupId=Some("ABC"))
+    val output  = newBam
+    val rejects = newBam
 
-  it should "should create four consensus for two read pairs with different group ids" in {
-    val builder = new SAMRecordSetBuilder()
-    builder.addPair("READ1", 0, 1, 1000)
-    builder.addPair("READ2", 1, 1, 1000)
+    // Create 2000 paired end reads, where there are two pairs with the same coordinates and have the same group tag.
+    Stream.range(0, 2).foreach { idx =>
+      val firstPair  = builder.addPair(s"READ:" + 2*idx,   0, 1+idx, 1000000+idx)
+      val secondPair = builder.addPair(s"READ:" + 2*idx+1, 0, 1+idx, 1000000+idx)
+      // set the read and add the unique molecule tag.
+      (firstPair ++ secondPair).foreach { rec =>
+        rec.setAttribute(DefaultTag, "GATTACA:" + idx)
+        rec.setReadString("A" * rec.getReadLength)
+      }
+    }
 
-    builder.getRecords.slice(0, 2).foreach {
-      rec =>
-        rec.setAttribute(DefaultTag, "GATTACA")
-        rec.setReadString("A" * rec.getReadLength)
-        rec.setBaseQualityString(SAMUtils.phredToFastq(40).toString * rec.getReadLength)
+    // Run the tool
+    new CallMolecularConsensusReads(input=builder.toTempFile(), output=output, rejects=rejects, readGroupId="ABC").execute()
+
+    // check we have no rejected records
+    readBamRecs(rejects) shouldBe 'empty
+
+    // we should have 1000 consensus paired end reads
+    val records = readBamRecs(output)
+    records.count { rec => rec.getFirstOfPairFlag } shouldBe 2
+    records.count { rec => rec.getSecondOfPairFlag } shouldBe 2
+    records.foreach { rec =>
+      rec.getReadGroup.getId shouldBe "ABC"
+      rec.getReadString shouldBe "A" * rec.getReadLength
+      rec.getReadLength shouldBe 100
     }
-    builder.getRecords.slice(2, 4).foreach {
-      rec =>
-        rec.setAttribute(DefaultTag, "ACATTAG")
-        rec.setReadString("A" * rec.getReadLength)
-        rec.setBaseQualityString(SAMUtils.phredToFastq(40).toString * rec.getReadLength)
-    }
-    val reader = builder.getSamReader
-    val consensusCaller = new ConsensusCaller(
-      input = reader.iterator().asScala,
-      header = reader.getFileHeader,
-      options = new ConsensusCallerOptions(
-        minReads         = 1,
-        errorRatePreUmi  = PhredScore.ZeroProbability,
-        errorRatePostUmi = PhredScore.ZeroProbability
-      )
-    )
-    consensusCaller.hasNext shouldBe true
-    val calls = consensusCaller.toList
-    consensusCaller.hasNext shouldBe false
-    calls should have size 4
-    calls.foreach { rec =>
-      rec.getReadPairedFlag shouldBe true
-    }
-    calls.map(_.getFirstOfPairFlag) should contain theSameElementsInOrderAs Seq(true, false, true, false)
-    calls.map(_.getSecondOfPairFlag) should contain theSameElementsInOrderAs Seq(false, true, false, true)
-    calls(0).getReadName shouldBe calls(1).getReadName
-    calls(2).getReadName shouldBe calls(3).getReadName
-    calls(0).getReadName should not be calls(2).getReadName
-    CloserUtil.close(reader)
   }
 }
