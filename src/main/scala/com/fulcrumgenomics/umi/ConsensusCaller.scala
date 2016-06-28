@@ -38,7 +38,7 @@ import scala.collection.mutable.ListBuffer
 
 object ConsensusCallerOptions {
   /** Various default values for the consensus caller. */
-  val DefaultTag: String                             = "RX"
+  val DefaultTag: String                             = "MI"
   val DefaultErrorRatePreUmi: PhredScore             = 45
   val DefaultErrorRatePostUmi: PhredScore            = 40
   val DefaultMaxBaseQuality: PhredScore              = 40
