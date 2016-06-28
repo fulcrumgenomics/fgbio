@@ -51,7 +51,7 @@ class SamRecordSetBuilder(val readLength: Int=100,
                           val sortOrder: SortOrder = SortOrder.unsorted,
                           val readGroupId: Option[String] = None
                          ) extends Iterable[SAMRecord] {
-  private val builder = new SAMRecordSetBuilder(sortOrder != SortOrder.unsorted, sortOrder, readGroupId.isDefined)
+  private val builder = new SAMRecordSetBuilder(sortOrder != SortOrder.unsorted, sortOrder)
   readGroupId.foreach { id =>
     val readGroup = new SAMReadGroupRecord(id)
     readGroup.setSample("Sample")
