@@ -45,7 +45,7 @@ class CallMolecularConsensusReadsTest extends UnitSpec {
     val rejects = newBam
 
     // Create 2000 paired end reads, where there are two pairs with the same coordinates and have the same group tag.
-    Stream.range(0, 2).foreach { idx =>
+    Stream.range(0, 1000).foreach { idx =>
       val firstPair  = builder.addPair(s"READ:" + 2*idx,   0, 1+idx, 1000000+idx)
       val secondPair = builder.addPair(s"READ:" + 2*idx+1, 0, 1+idx, 1000000+idx)
       // set the read and add the unique molecule tag.
@@ -63,8 +63,8 @@ class CallMolecularConsensusReadsTest extends UnitSpec {
 
     // we should have 1000 consensus paired end reads
     val records = readBamRecs(output)
-    records.count { rec => rec.getFirstOfPairFlag } shouldBe 2
-    records.count { rec => rec.getSecondOfPairFlag } shouldBe 2
+    records.count { rec => rec.getFirstOfPairFlag } shouldBe 1000
+    records.count { rec => rec.getSecondOfPairFlag } shouldBe 1000
     records.foreach { rec =>
       rec.getReadGroup.getId shouldBe "ABC"
       rec.getReadString shouldBe "A" * rec.getReadLength
