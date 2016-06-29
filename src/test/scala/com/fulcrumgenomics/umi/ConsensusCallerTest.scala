@@ -89,7 +89,7 @@ class ConsensusCallerTest extends UnitSpec {
   "ConsensusCaller.consensusCalls" should "produce a consensus from one read" in {
     val bases = "GATTACA"
     val quals = Seq(10, 10, 10, 10, 10, 10, 10).map(_.fromPhredScore)
-    val (cBases, cQuals) = ConsensusCaller.consensusCalls(
+    val (cBases, cQuals) = ConsensusCaller.consensusCallFromStringBasesAndQualities(
       baseStrings             = Seq(bases),
       qualSeqs                = Seq(quals),
       errorRatePreUmi         = ZeroProbability.fromPhredScore,
@@ -103,7 +103,7 @@ class ConsensusCallerTest extends UnitSpec {
   it should "produce a consensus from two reads" in {
     val bases = "GATTACA"
     val quals = Seq(10, 10, 10, 10, 10, 10, 10).map(_.fromPhredScore)
-    val (cBases, cQuals) = ConsensusCaller.consensusCalls(
+    val (cBases, cQuals) = ConsensusCaller.consensusCallFromStringBasesAndQualities(
       baseStrings = Seq(bases, bases),
       qualSeqs = Seq(quals, quals),
       minReads = 1,
@@ -123,7 +123,7 @@ class ConsensusCallerTest extends UnitSpec {
     val bases = "GATTACA"
     val otherBases = "GATTTCA"
     val quals = Array(10, 10, 10, 10, 10, 10, 10).map(_.fromPhredScore)
-    val (cBases, cQuals) = ConsensusCaller.consensusCalls(
+    val (cBases, cQuals) = ConsensusCaller.consensusCallFromStringBasesAndQualities(
       baseStrings             = Seq(bases, bases, otherBases),
       qualSeqs                = Seq(quals, quals, quals),
       errorRatePreUmi         = ZeroProbability.fromPhredScore,
@@ -152,7 +152,7 @@ class ConsensusCallerTest extends UnitSpec {
 
   it should "produce a consensus from two reads of differing lengths" in {
     val quals = Array(10, 10, 10, 10, 10, 10, 10).map(_.fromPhredScore)
-    val (cBases, cQuals) = ConsensusCaller.consensusCalls(
+    val (cBases, cQuals) = ConsensusCaller.consensusCallFromStringBasesAndQualities(
       baseStrings = Seq("GATTACA", "GATTAC"),
       qualSeqs = Seq(quals, quals.slice(0, quals.length-1)),
       minReads = 2,
@@ -173,7 +173,7 @@ class ConsensusCallerTest extends UnitSpec {
     val bases = "GATTACA"
     val quals = Array(10, 10, 10, 10, 10, 10, 0)
     val expectedQuals = Array(10, 10, 10, 10, 10, 10, 1)
-    val (cBases, cQuals) = ConsensusCaller.consensusCalls(
+    val (cBases, cQuals) = ConsensusCaller.consensusCallFromStringBasesAndQualities(
       baseStrings             = Seq(bases),
       qualSeqs                = Seq(quals.map(_.fromPhredScore)),
       errorRatePreUmi         = ZeroProbability.fromPhredScore,

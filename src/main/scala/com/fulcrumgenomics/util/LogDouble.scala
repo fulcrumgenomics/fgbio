@@ -24,6 +24,7 @@
 
 package com.fulcrumgenomics.util
 
+import com.fulcrumgenomics.util
 import htsjdk.samtools.SAMUtils
 
 import scala.math._
@@ -111,11 +112,13 @@ object LogDouble {
 
   /** Converts a string to log-space. */
   implicit class StringValue(doubleValue: String) {
-    def toLogDouble: LogDouble = new LogDouble(doubleValue=doubleValue)
+    def toLogDouble: LogDouble = LogDouble(doubleValue=doubleValue)
   }
 
   /** String constructor when a double (not in log-space) is given. */
-  def apply(doubleValue: String): LogDouble = new LogDouble(doubleValue=doubleValue)
+  def apply(doubleValue: String): LogDouble = {
+    new util.LogDouble(logValue=log(if (doubleValue.contains(".")) doubleValue.toDouble else doubleValue.toInt))
+  }
 
   /** Convenience constructor. */
   def apply(logValue: Double): LogDouble = new LogDouble(logValue=logValue)
@@ -125,12 +128,8 @@ object LogDouble {
   * Represents a Double in log-space, to prevent underflow and overflow.
   * @param logValue the Double in log-space
   */
-class LogDouble(val logValue: Double) extends Ordered[LogDouble] {
+class LogDouble(val logValue: Double) extends AnyVal with Ordered[LogDouble] {
 
-  /** String constructor when a double (not in log-space) is given. */
-  def this(doubleValue: String) = {
-    this(logValue=log(if (doubleValue.contains(".")) doubleValue.toDouble else doubleValue.toInt))
-  }
 
   /** Returns the value as a Double. */
   def linearValue: Double = exp(logValue)

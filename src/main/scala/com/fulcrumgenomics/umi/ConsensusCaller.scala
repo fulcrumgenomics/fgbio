@@ -66,27 +66,63 @@ case class ConsensusRead(bases: String, quals: String)
 
 object ConsensusCaller {
   private val DnaBasesUpperCase = Array('A', 'C', 'G', 'T')
-
-
   private val ThreeLogDouble = 3.0.toLogDouble
   private val TwoThirdsLogDouble = 2.0.toLogDouble / ThreeLogDouble
 
-  /** Creates a consensus read from the given read string and qualities tuples.  If no consensus read was created, None is returned. */
-  def consensusFromBasesAndQualities(basesAndQualities: Seq[(String, Seq[PhredScore])],
-                                     options: ConsensusCallerOptions = new ConsensusCallerOptions()
-                                     ): Option[ConsensusRead] = {
-    if (basesAndQualities.exists { case (b, q) => b.length != q.length }) {
-      throw new IllegalArgumentException("Found a read with the bases and qualities having different length")
+  /** Creates a consensus read from the given records.  If no consensus read was created, None is returned. */
+  def consensusFromSamRecords(records: Seq[SAMRecord],
+                              options: ConsensusCallerOptions = new ConsensusCallerOptions()
+                              ): Option[ConsensusRead] = {
+    val bases = records.map { rec =>
+      if (rec.getReadNegativeStrandFlag) {
+        val newBases = new Array[Byte](rec.getReadLength)
+        Array.copy(rec.getReadBases, 0, newBases, 0, rec.getReadLength)
+        SequenceUtil.reverseComplement(newBases)
+        newBases
+      }
+      else rec.getReadBases
     }
+    val quals = records.map { rec =>
+      if (rec.getReadNegativeStrandFlag) rec.getBaseQualities.reverse
+      else rec.getBaseQualities
+    }.map(qs => qs.map(_.toDouble))
+    consensusFromBasesAndQualities(bases=bases, quals=quals, options=options)
+  }
+
+  /** Creates a consensus read from the given read and quality string tuples.  If no consensus read was created, None is returned.
+    * Currently used for testing. */
+  private[umi] def consensusFromStringBasesAndQualities(basesAndQualities: Seq[(String, String)],
+                                                        options: ConsensusCallerOptions = new ConsensusCallerOptions()
+                                                       ): Option[ConsensusRead] = {
+    consensusFromBasesAndQualities(
+      bases = basesAndQualities.map(_._1.getBytes),
+      quals = basesAndQualities.map { _._2 }.map(SAMUtils.fastqToPhred).map(qs => qs.map(_.toDouble)),
+      options           = options
+    )
+  }
+
+  /** Creates a consensus read from the given read and qualities sequences.  If no consensus read was created, None
+    * is returned.
+    *
+    * The same number of base sequences and quality sequences should be given.
+    * */
+  private[umi] def consensusFromBasesAndQualities(bases: Seq[Array[Byte]],
+                                                  quals: Seq[Array[PhredScore]],
+                                                  options: ConsensusCallerOptions = new ConsensusCallerOptions()
+                                                 ): Option[ConsensusRead] = {
+    // TODO: uncomment me
+    if (bases.length != quals.length) throw new IllegalArgumentException("The # of base and quality sequences must be the same.")
+    if (bases.zip(quals).exists { case (b, q) => b.length != q.length }) {
+      throw new IllegalArgumentException("Found a read with different lengths for its bases and qualities.")
+    }
+
     // check to see if we have enough reads.
-    if (basesAndQualities.length < options.minReads) return None
+    if (bases.length < options.minReads) return None
 
     // extract the bases and qualities, and adjust the qualities based on the given options.s
-    val baseStrings: Seq[String] = basesAndQualities.map { _._1.toUpperCase }
-    val qualSeqs: Seq[Seq[LogDouble]] = basesAndQualities.map(bq => bq._2)
-      .map { quals =>
+    val qualSeqs: Seq[Seq[LogDouble]] = quals.map { qs =>
         adjustBaseQualities(
-          quals            = quals.map(_.fromPhredScore),
+          quals            = qs.map(_.fromPhredScore),
           maxBaseQuality   = options.maxBaseQuality.fromPhredScore,
           baseQualityShift = options.baseQualityShift,
           errorRatePostUmi = options.errorRatePostUmi.fromPhredScore
@@ -94,8 +130,8 @@ object ConsensusCaller {
       } // NB: binary Phred, not ASCII
 
     // get the most likely consensus bases and qualities
-    val (consensusBases, consensusQualities) = consensusCalls(
-      baseStrings             = baseStrings,
+    val (consensusBases, consensusQualities) = consensusCall(
+      baseSeqs             = bases,
       qualSeqs                = qualSeqs,
       errorRatePreUmi         = options.errorRatePreUmi.fromPhredScore,
       minConsensusBaseQuality = options.minConsensusBaseQuality.fromPhredScore,
@@ -107,73 +143,96 @@ object ConsensusCaller {
     else Some(ConsensusRead(bases=consensusBases, quals=consensusQualities.map(_.toPhredScoreChar).mkString))
   }
 
-  /** Creates a consensus read from the given read and quality string tuples.  If no consensus read was created, None is returned.
-    * Currently used for testing. */
-  private[umi] def consensusFromStringBasesAndQualities(basesAndQualities: Seq[(String, String)],
-                                     options: ConsensusCallerOptions = new ConsensusCallerOptions()
-                                    ): Option[ConsensusRead] = {
-    consensusFromBasesAndQualities(
-      basesAndQualities = basesAndQualities.map { case (b, q) => (b, q.map(SAMUtils.fastqToPhred).map(_.toDouble)) },
-      options           = options
+  /** Get the most likely consensus bases and qualities. Used for testing. */
+  private[umi] def consensusCallFromStringBasesAndQualities(baseStrings: Seq[String],
+                                 qualSeqs: Seq[Seq[LogDouble]], // probability of an error
+                                 errorRatePreUmi: LogDouble         = DefaultErrorRatePreUmi.fromPhredScore,
+                                 minConsensusBaseQuality: LogDouble = DefaultMinConsensusBaseQuality.fromPhredScore,
+                                 minReads: Int                      = DefaultMinReads): (String, Seq[LogDouble]) = {
+    consensusCall(
+      baseSeqs=baseStrings.map(_.getBytes()),
+      qualSeqs=qualSeqs,
+      errorRatePreUmi=errorRatePreUmi,
+      minConsensusBaseQuality=minConsensusBaseQuality,
+      minReads=minReads
     )
   }
 
-  /** Creates a consensus read from the given records.  If no consensus read was created, None is returned. */
-  def consensusFromSamRecords(records: Seq[SAMRecord],
-                              options: ConsensusCallerOptions = new ConsensusCallerOptions()
-                              ): Option[ConsensusRead] = {
-    val baseStrings = records.map { rec =>
-      if (rec.getReadNegativeStrandFlag) SequenceUtil.reverseComplement(rec.getReadString.toUpperCase)
-      else rec.getReadString.toUpperCase
-    }
-    val qualSeqs = records.map { rec =>
-      //rec.getBaseQualities
-      if (rec.getReadNegativeStrandFlag) rec.getBaseQualities.map(_.toDouble).reverse.toSeq
-      else rec.getBaseQualities.map(_.toDouble).toSeq
-    }
-    consensusFromBasesAndQualities(basesAndQualities=baseStrings.zip(qualSeqs), options = options)
-  }
-
   /** Get the most likely consensus bases and qualities. */
-  private[umi] def consensusCalls(baseStrings: Seq[String],
-                                  qualSeqs: Seq[Seq[LogDouble]], // probability of an error
-                                  errorRatePreUmi: LogDouble         = DefaultErrorRatePreUmi.fromPhredScore,
-                                  minConsensusBaseQuality: LogDouble = DefaultMinConsensusBaseQuality.fromPhredScore,
-                                  minReads: Int                      = DefaultMinReads): (String, Seq[LogDouble]) = {
-    val maxReadLength = baseStrings.map(_.length).max
+  private[umi] def consensusCall(baseSeqs: Seq[Array[Byte]],
+                                 qualSeqs: Seq[Seq[LogDouble]], // probability of an error
+                                 errorRatePreUmi: LogDouble         = DefaultErrorRatePreUmi.fromPhredScore,
+                                 minConsensusBaseQuality: LogDouble = DefaultMinConsensusBaseQuality.fromPhredScore,
+                                 minReads: Int                      = DefaultMinReads): (String, Seq[LogDouble]) = {
+    val maxReadLength = baseSeqs.map(_.length).max
 
-    // go through each position in the read(s).
-    val (consensusBases, consensusErrorProbabilities) = Seq.range(0, maxReadLength, 1).map { baseIdx =>
-      val basesAndQualsAtIdx = baseStrings.zip(qualSeqs).filter { case (baseString, qualSeq) =>
-          baseIdx < baseString.length && baseString(baseIdx) != 'N'
-      }.map { case (baseString, qualSeq) =>
-        (baseString(baseIdx), qualSeq(baseIdx))
+
+    // Array
+    // by cycle, by candidate base
+    val likelihoods = Array.ofDim[LogDouble](maxReadLength, DnaBasesUpperCase.length)
+    val numReads = new Array[Int](maxReadLength)
+    // init
+    for (baseIdx <- 0 until maxReadLength) {
+      for (i <- DnaBasesUpperCase.indices) {
+        likelihoods(baseIdx)(i) = OneProbability.fromPhredScore
       }
+      numReads(baseIdx) = 0
+    }
 
-      // check to see if we heave a enough reads to produce a consensus base.
-      if (basesAndQualsAtIdx.length < minReads) (SequenceUtil.N.toChar, OneProbability.fromPhredScore)
-      else {
-        // Get the likelihood of the data given each candidate consensus base
-        val likelihoods = DnaBasesUpperCase.map { candidateBase =>
-          // Get the likelihood of this single observation given the specific candidate consensus base
-          basesAndQualsAtIdx.map { case (base, pError) =>
-            if (base == candidateBase) pError.oneMinus() // 1.0 - Pr(Error)
-            else pError / ThreeLogDouble //  Pr(Error) for this specific base, assuming the error distributes uniformly across the other three bases
-          }.foldLeft(OneProbability.fromPhredScore)((likelihoodSum, likelihood) => likelihoodSum * likelihood)
+    // Calculate the likelihoods
+    for (readIdx <- baseSeqs.indices) { // for each read
+      val bases = baseSeqs(readIdx)
+      for (baseIdx <- bases.indices) { // for each base in the read
+        val base = bases(baseIdx)
+        if (base != 'N') {
+          val pError = qualSeqs(readIdx)(baseIdx)
+          for (i <- DnaBasesUpperCase.indices) {
+            val candidateBase = DnaBasesUpperCase(i)
+            val likelihood = {
+              if (base == candidateBase) pError.oneMinus() // 1.0 - Pr(Error)
+              else pError / ThreeLogDouble //  Pr(Error) for this specific base, assuming the error distributes uniformly across the other three bases
+            }
+            likelihoods(baseIdx)(i) *= likelihood
+          }
+          numReads(baseIdx) += 1
         }
-        // normalize, assumes a uniform prior, so omits from the above calculation
-        val likelihoodSum = likelihoods.foldLeft(ZeroProbability.fromPhredScore)((a, b) => a + b)
-        val posteriors = likelihoods.map { likelihood => likelihood / likelihoodSum }
-
-        // Find the consensus base with the maximum posterior.  Since the probabilities are in log-space, still find the maximum.
-        val maxPosterior    = posteriors.max
-        val maxPosteriorIdx = posteriors.indexOf(maxPosterior)
-        val pConsensusError = maxPosterior.oneMinus() // convert to probability of the called consensus being wrong
-        // Masks a base if the phred score would be too low
-        if (pConsensusError.toPhredScoreInt < minConsensusBaseQuality.toPhredScoreInt) (SequenceUtil.N.toChar, pConsensusError)
-        else (DnaBasesUpperCase(maxPosteriorIdx), pConsensusError)
       }
-    }.unzip
+    }
+
+    // Calculate the posteriors
+    val consensusBases = new Array[Char](maxReadLength)
+    val consensusErrorProbabilities = new Array[LogDouble](maxReadLength)
+    for (baseIdx <- likelihoods.indices) { // for each base in the read
+      if (numReads(baseIdx) < minReads) {
+        consensusBases(baseIdx) = SequenceUtil.N.toChar
+        consensusErrorProbabilities(baseIdx) = OneProbability.fromPhredScore
+      }
+      else {
+        // get the sum of the likelihoods
+        // pick the base with the maximum posterior
+        var likelihoodSum = ZeroProbability.fromPhredScore
+        var maxPosterior = LogDouble.toLogDouble(0)
+        var maxPosteriorIdx = -1
+        for (i <- DnaBasesUpperCase.indices) {
+          val likelihood = likelihoods(baseIdx)(i)
+          likelihoodSum = likelihoodSum + likelihood
+          if (maxPosterior < likelihood) {
+            maxPosterior = likelihood
+            maxPosteriorIdx = i
+          }
+        }
+        // normalize, assumes a uniform prior, so omits from the following calculation
+        maxPosterior /= likelihoodSum
+        val pConsensusError = maxPosterior.oneMinus() // convert to probability of the called consensus being wrong
+
+        // Masks a base if the phred score would be too low
+        consensusBases(baseIdx) = {
+          if (pConsensusError.toPhredScoreInt < minConsensusBaseQuality.toPhredScoreInt) SequenceUtil.N.toChar
+          else DnaBasesUpperCase(maxPosteriorIdx)
+        }
+        consensusErrorProbabilities(baseIdx) = pConsensusError
+      }
+    }
 
     // Factor in the pre-UMI error rate.
     val consensusErrorProbabilitiesScaled = consensusErrorProbabilities.map { pConsensusError =>
