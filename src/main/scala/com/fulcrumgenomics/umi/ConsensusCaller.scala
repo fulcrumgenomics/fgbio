@@ -131,7 +131,7 @@ object ConsensusCaller {
 
     // get the most likely consensus bases and qualities
     val (consensusBases, consensusQualities) = consensusCall(
-      baseSeqs             = bases,
+      baseSeqs                = bases,
       qualSeqs                = qualSeqs,
       errorRatePreUmi         = options.errorRatePreUmi.fromPhredScore,
       minConsensusBaseQuality = options.minConsensusBaseQuality.fromPhredScore,
@@ -230,21 +230,19 @@ object ConsensusCaller {
           if (pConsensusError.toPhredScoreInt < minConsensusBaseQuality.toPhredScoreInt) SequenceUtil.N.toChar
           else DnaBasesUpperCase(maxPosteriorIdx)
         }
-        consensusErrorProbabilities(baseIdx) = pConsensusError
+
+        // Factor in the pre-UMI error rate.
+        // Pr(error) = Pr(any pre-UMI error AND correct consensus) + Pr(no pre-UMI error AND any error in consensus)
+        //               + Pr(pre-UMI error AND error in consensus, that do not give us the correct bases)
+        // The last term tries to capture the case where a pre-UMI error modifies the base (ex. A->C) but a sequencing
+        // error calls it the correct base (C->A).  Only 2/3 times will the two errors result in the incorrect base.
+        val p = probabilityOfErrorTwoTrials(errorRatePreUmi, pConsensusError)
+
+        // Cap the quality
+        consensusErrorProbabilities(baseIdx) = Math.min(PhredScore.MaxValue, p.toPhredScoreInt).fromPhredScore
       }
     }
-
-    // Factor in the pre-UMI error rate.
-    val consensusErrorProbabilitiesScaled = consensusErrorProbabilities.map { pConsensusError =>
-      // Pr(error) = Pr(any pre-UMI error AND correct consensus) + Pr(no pre-UMI error AND any error in consensus)
-      //               + Pr(pre-UMI error AND error in consensus, that do not give us the correct bases)
-      // The last term tries to capture the case where a pre-UMI error modifies the base (ex. A->C) but a sequencing
-      // error calls it the correct base (C->A).  Only 2/3 times will the two errors result in the incorrect base.
-      val p = probabilityOfErrorTwoTrials(errorRatePreUmi, pConsensusError)
-      // Cap the quality
-      Math.min(PhredScore.MaxValue, p.toPhredScoreInt).fromPhredScore
-    }
-    (consensusBases.mkString, consensusErrorProbabilitiesScaled)
+    (consensusBases.mkString, consensusErrorProbabilities)
   }
 
   /** Adjusts the given base qualities.  The base qualities are first shifted by `baseQualityShift`, then capped using
@@ -257,18 +255,17 @@ object ConsensusCaller {
                                       ): Seq[LogDouble] = {
     quals.map { qual =>
       // shift the base qualities, then cap it.
-      if (qual.toPhredScore < baseQualityShift) ZeroProbability.fromPhredScore
+      val newQual = if (qual.toPhredScore < baseQualityShift) ZeroProbability.fromPhredScore
       else {
         val shiftedQual = (qual.toPhredScore - baseQualityShift).fromPhredScore
         if (maxBaseQuality.toPhredScore < shiftedQual.toPhredScore) maxBaseQuality
         else shiftedQual
       }
-    }.map { qual =>
       // Pr(err) = Pr(no post-UMI error AND any sequencing error) + Pr(any post-UMI error and no sequencing error) +
       //             Pr(post-UMI error AND sequencing error)
       // The last term tries to capture the case where a post-UMI error modifies the base (ex. A->C) but a sequencing
       // error calls it the correct base (C->A).  Only 2/3 times will the two errors result in the incorrect base.
-      probabilityOfErrorTwoTrials(errorRatePostUmi, qual)
+      probabilityOfErrorTwoTrials(errorRatePostUmi, newQual)
     }
   }
 
@@ -280,9 +277,9 @@ object ConsensusCaller {
     *    for DNA (4 bases) would only occur 2/3 times: Pr(A=x->y, B=y->z) * Pr(x!=z | x!=y, y!=z, x,y,z \in {A,C,G,T})
     */
   private[umi] def probabilityOfErrorTwoTrials(prErrorTrialOne: LogDouble, prErrorTrialTwo: LogDouble): LogDouble = {
-    val pr1 = prErrorTrialOne       * prErrorTrialTwo.oneMinus()
+    val pr1 = prErrorTrialOne            * prErrorTrialTwo.oneMinus()
     val pr2 = prErrorTrialOne.oneMinus() * prErrorTrialTwo
-    val pr3 = prErrorTrialOne       * prErrorTrialTwo       * TwoThirdsLogDouble
+    val pr3 = prErrorTrialOne            * prErrorTrialTwo            * TwoThirdsLogDouble
     pr1 + pr2 + pr3
   }
 
