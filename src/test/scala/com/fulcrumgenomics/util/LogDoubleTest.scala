@@ -144,4 +144,8 @@ class LogDoubleTest extends UnitSpec {
     toLogDouble(0.1) should be > toLogDouble(0.01)
     toLogDouble(0.1) should be >= toLogDouble(0.1)
   }
+
+  it should "addAll" in {
+    LogDouble.addAll(log(10), log(10), log(10)) shouldBe log(30)
+  }
 }

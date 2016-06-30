@@ -122,6 +122,37 @@ object LogDouble {
 
   /** Convenience constructor. */
   def apply(logValue: Double): LogDouble = new LogDouble(logValue=logValue)
+
+  /** Implementation of addition. */
+  def add(a: Double, b: Double): Double = {
+    if (a.isNegInfinity) b
+    else if (b.isNegInfinity) a
+    else if (b < a) add(b, a)
+    else a + log1p(exp(b - a)) // using log1p, otherwise it would be `a + log(1.0 + exp(b - a))`
+  }
+
+  /** Implementation of subtraction. */
+  def sub(a: Double, b: Double): Double = {
+    if (b.isNegInfinity) a
+    else if (a == b) Double.NegativeInfinity
+    else if (a < b) throw new IllegalArgumentException("Subtraction will be less than zero.")
+    else a + log1p(0.0 - exp(b - a)) // using log1p, otherwise it would be `a + log(1.0 - exp(b - a))`
+  }
+
+  def addAll(values: Double*): Double = {
+    val minValue = values.min
+    if (minValue.isNegInfinity) minValue
+    else {
+      val minValueIndex = values.indexOf(minValue)
+      var sum: Double = 0.0
+      var i = 0
+      while (i < values.length) {
+        if (minValueIndex != i) sum += exp(values(i) - minValue)
+        i += 1
+      }
+      minValue + log1p(sum)
+    }
+  }
 }
 
 /**
@@ -144,10 +175,10 @@ class LogDouble(val logValue: Double) extends AnyVal with Ordered[LogDouble] {
   def * (that: LogDouble): LogDouble = new LogDouble(logValue=this.logValue + that.logValue)
 
   /** Addition. */
-  def + (that: LogDouble): LogDouble = new LogDouble(logValue=add(this.logValue, that.logValue))
+  def + (that: LogDouble): LogDouble = new LogDouble(logValue=LogDouble.add(this.logValue, that.logValue))
 
   /** Subtraction. */
-  def - (that: LogDouble): LogDouble = new LogDouble(logValue=sub(this.logValue, that.logValue))
+  def - (that: LogDouble): LogDouble = new LogDouble(logValue=LogDouble.sub(this.logValue, that.logValue))
 
   /** 1.0 - this; useful for probabilities. */
   def oneMinus(): LogDouble           = {
@@ -158,22 +189,6 @@ class LogDouble(val logValue: Double) extends AnyVal with Ordered[LogDouble] {
 
   /** Compares two doubles in log space. */
   def compare(that: LogDouble): Int = this.logValue.compare(that.logValue)
-
-  /** Implementation of addition. */
-  private def add(a: Double, b: Double): Double = {
-    if (a.isNegInfinity) b
-    else if (b.isNegInfinity) a
-    else if (b < a) add(b, a)
-    else a + log1p(exp(b - a)) // using log1p, otherwise it would be `a + log(1.0 + exp(b - a))`
-  }
-
-  /** Implementation of subtraction. */
-  private def sub(a: Double, b: Double): Double = {
-    if (b.isNegInfinity) a
-    else if (a == b) Double.NegativeInfinity
-    else if (a < b) throw new IllegalArgumentException("Subtraction will be less than zero.")
-    else a + log1p(0.0 - exp(b - a)) // using log1p, otherwise it would be `a + log(1.0 - exp(b - a))`
-  }
 
   override def toString: String = s"$linearValue:$logValue"
 }
