@@ -24,9 +24,14 @@
 
 package com.fulcrumgenomics.cmdline
 
+import java.net.InetAddress
+import java.text.DecimalFormat
+import java.util.Date
+
 import com.fulcrumgenomics.cmdline.FgBioMain.FailureException
-import dagr.commons.util.LazyLogging
-import dagr.sopt.cmdline.CommandLineParser
+import com.fulcrumgenomics.util.Io
+import dagr.commons.util.{LazyLogging, StringUtil}
+import dagr.sopt.cmdline.{CommandLineParser, CommandLineProgramParserStrings}
 
 /**
   * Main program for fgbio that loads everything up and runs the appropriate sub-command
@@ -50,12 +55,27 @@ class FgBioMain extends LazyLogging {
 
   /** A main method that returns an exit code instead of exiting. */
   def makeItSo(args: Array[String]): Int = {
+    val startDate: Date = new Date
+
+    // Print out some basic info
+    logger.info("fgbio " + CommandLineProgramParserStrings.version(classOf[FgBioMain], color=false))
+    logger.info("Executing as " + sysProp("user.name") + "@" + InetAddress.getLocalHost.getHostName +
+      " on " + sysProp("os.name") + " " + sysProp("os.version") + " " + sysProp("os.arch"))
+    logger.info(sysProp("java.vm.name") + " " + sysProp("java.runtime.version"))
+    StringUtil.wordWrap(args.mkString(" "), 80).split("\n").filter(_.nonEmpty).zipWithIndex.foreach { case (str, idx) =>
+      if (0 == idx) logger.info("Args: " + str)
+      else logger.info("        " + str)
+    }
+
     val parser = new CommandLineParser[FgBioTool]("fgbio")
 
-    parser.parseSubCommand(args=args, packageList=packageList) match {
+    var name = this.getClass.getName
+    val exitCode = parser.parseSubCommand(args=args, packageList=packageList) match {
       case None => 1
       case Some(tool) =>
         try {
+          name = tool.getClass.getName
+          logger.info(name + " starting " + name)
           tool.execute()
           0
         }
@@ -65,8 +85,18 @@ class FgBioMain extends LazyLogging {
             ex.exit
         }
     }
+
+    val endDate: Date = new Date
+    val elapsedMinutes: Double = (endDate.getTime - startDate.getTime) / (1000d * 60d)
+    val elapsedString: String = new DecimalFormat("#,##0.00").format(elapsedMinutes)
+    logger.info(s"$name done. Elapsed time: $elapsedString minutes.")
+    logger.info("Runtime.totalMemory()=" + Runtime.getRuntime.totalMemory)
+
+    exitCode
   }
 
   /** The packages we wish to include in our command line **/
   protected def packageList: List[String] = List[String]("com.fulcrumgenomics")
+
+  private def sysProp(key: String): String = System.getProperty(key)
 }
