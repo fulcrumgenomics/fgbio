@@ -48,9 +48,15 @@ object SamRecordSetBuilder {
   */
 class SamRecordSetBuilder(val readLength: Int=100,
                           val baseQuality: Int=30,
-                          val sortOrder: SortOrder = SortOrder.unsorted
+                          val sortOrder: SortOrder = SortOrder.unsorted,
+                          val readGroupId: Option[String] = None
                          ) extends Iterable[SAMRecord] {
   private val builder = new SAMRecordSetBuilder(sortOrder != SortOrder.unsorted, sortOrder)
+  readGroupId.foreach { id =>
+    val readGroup = new SAMReadGroupRecord(id)
+    readGroup.setSample("Sample")
+    builder.setReadGroup(readGroup)
+  }
   builder.setReadLength(readLength)
   builder.setUseNmFlag(false)
 
@@ -126,6 +132,9 @@ class SamRecordSetBuilder(val readLength: Int=100,
 
   /** Returns an iterator over the records that have been built. */
   override def iterator = this.builder.iterator()
+
+  /** Returns the number of records that have been built. */
+  override def size = this.builder.size()
 
   /** Adds all the records from another builder to this one. */
   def += (other: SamRecordSetBuilder) : Unit = {
