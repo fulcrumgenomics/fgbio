@@ -66,7 +66,7 @@ case class ConsensusCallerOptions(tag: String                             = Defa
 }
 
 /** Stores all the information about a read going into a consensus. */
-private[umi] case class AdjustedRead(bases: Array[Byte], pError: Array[LogProbability], pCorrect: Array[LogProbability]) {
+case class AdjustedRead(bases: Array[Byte], pError: Array[LogProbability], pCorrect: Array[LogProbability]) {
   assert(bases.length == pError.length,   "Bases and qualities not the same length.")
   assert(bases.length == pCorrect.length, "Bases and qualities not the same length.")
 
@@ -87,6 +87,89 @@ case class ConsensusRead(bases: Array[Byte], quals: Array[Byte]) {
   def baseString = new String(bases)
 }
 
+/** Contains methods to help perform perform various consensus calling operations efficiently. Requires some upfront
+  * computation of various probabilities. */
+trait ConsensusCallerMath {
+
+  /** The Phred-scaled error rate for an error post the UMIs have been integrated. */
+  protected def errorRatePostUmi: PhredScore
+
+  // Some useful constants
+  protected val LogThree      = LogProbability.toLogProbability(3.0)
+  protected val LogFourThirds = LogProbability.toLogProbability(4.0) - LogThree
+
+  /** Computes the probability of seeing an error in the base sequence if there are two independent error processes.
+    * We sum three terms:
+    * 1. the probability of an error in trial one and no error in trial two: Pr(A=Error, B=NoError).
+    * 2. the probability of no error in trial one and an error in trial two: Pr(A=NoError, B=Error).
+    * 3. the probability of an error in both trials, but when the second trial does not reverse the error in first one, which
+    *    for DNA (4 bases) would only occur 2/3 times: Pr(A=x->y, B=y->z) * Pr(x!=z | x!=y, y!=z, x,y,z \in {A,C,G,T})
+    */
+  def probabilityOfErrorTwoTrials(prErrorTrialOne: LogProbability, prErrorTrialTwo: LogProbability): LogProbability = {
+    if (prErrorTrialOne < prErrorTrialTwo) probabilityOfErrorTwoTrials(prErrorTrialTwo, prErrorTrialOne)
+    else if (prErrorTrialOne - prErrorTrialTwo >= 6) prErrorTrialOne // a simple approximation since prErrorTrialOne will dominate
+    else {
+      // f(X, Y) = X(1-Y) + (1-X)Y + 2/3*XY
+      //         = X - XY + Y - XY + 2/3*XY
+      //         = X + Y - 2XY + 2/3*XY
+      //         = X + Y + XY*(2/3 - 6/3)
+      //         = X + Y - 4/3*XY
+      val term1 = LogProbability.or(prErrorTrialOne, prErrorTrialTwo) // X + Y
+      val term2 = LogFourThirds + prErrorTrialOne + prErrorTrialTwo // 4/3*XY
+      LogProbability.aOrNotB(term1, term2)
+    }
+  }
+
+  /** Pre-computes the the log-scale probabilities of an error for each a phred-scaled base quality from 0-100. */
+  protected lazy val phredToLogProbError: Array[Double] = Range(0, 100).toArray.map(p => {
+    val e1 = LogProbability.fromPhredScore(errorRatePostUmi)
+    val e2 = LogProbability.fromPhredScore(p.toByte)
+    probabilityOfErrorTwoTrials(e1, e2)
+  })
+
+  /** Pre-computes the the log-scale probabilities of an not an error for each a phred-scaled base quality from 0-100. */
+  protected lazy val phredToLogProbCorrect: Array[Double] = phredToLogProbError.map(LogProbability.not)
+
+  /**
+    * Adjusts the given base qualities.  The base qualities are first shifted by `baseQualityShift`, then capped using
+    *`maxBaseQuality`, and finally the `errorRatePostUmi` is incorporated.
+    *
+    * Implemented as a while loop with assignment into pre-created arrays as this function is called on every
+    * single input read and unfortunately Array[Double].map() causes boxing on all the values which is a
+    * significant performance drain.
+    */
+  def adjustBaseQualities(read: SourceRead, maxBaseQuality: PhredScore, baseQualityShift: PhredScore): AdjustedRead = {
+    val len = read.length
+    val pErrors   = new Array[LogProbability](len)
+    val pCorrects = new Array[LogProbability](len)
+
+    val qs = read.quals
+    var i = 0
+    while (i < len) {
+      val q = qs(i)
+      val newQ = Math.min(maxBaseQuality, Math.max(PhredScore.MinValue, q - baseQualityShift))
+      pErrors(i)   = this.phredToLogProbError(newQ)
+      pCorrects(i) = this.phredToLogProbCorrect(newQ)
+      i += 1
+    }
+
+    new AdjustedRead(read.bases, pErrors, pCorrects)
+  }
+
+  /**
+    * Adjusts the given base qualities.  The base qualities are first shifted by `baseQualityShift`, then capped using
+    *`maxBaseQuality`, and finally the `errorRatePostUmi` is incorporated.
+    *
+    * Implemented as a while loop with assignment into pre-created arrays as this function is called on every
+    * single input read and unfortunately Array[Double].map() causes boxing on all the values which is a
+    * significant performance drain.
+    */
+  def adjustBaseQualities(read: SourceRead, options: ConsensusCallerOptions): AdjustedRead = {
+    adjustBaseQualities(read=read, maxBaseQuality=options.maxBaseQuality, baseQualityShift=options.baseQualityShift)
+  }
+}
+
+
 /** Calls consensus reads by grouping consecutive reads with the same SAM tag.
   *
   * Consecutive reads with the SAM tag are partitioned into fragments, first of pair, and
@@ -102,7 +185,7 @@ class ConsensusCaller
   val options: ConsensusCallerOptions  = new ConsensusCallerOptions(),
   val rejects: Option[SAMFileWriter]   = None,
   val progress: Option[ProgressLogger] = None
-) extends Iterator[SAMRecord] {
+) extends Iterator[SAMRecord] with ConsensusCallerMath {
   /** The type of consensus read to output. */
   private object ReadType extends Enumeration {
     val Fragment, FirstOfPair, SecondOfPair = Value
@@ -110,22 +193,12 @@ class ConsensusCaller
   import ReadType._
 
   private val DnaBasesUpperCase: Array[Byte] = Array('A', 'C', 'G', 'T').map(_.toByte)
-  private val LogThree      = LogProbability.toLogProbability(3.0)
-  private val LogFourThirds = LogProbability.toLogProbability(4.0) - LogThree
-
-  /** Pre-computes the the log-scale probabilities of an error for each a phred-scaled base quality from 0-100. */
-  private val phredToLogProbError: Array[Double] = Range(0, 100).toArray.map(p => {
-    val e1 = LogProbability.fromPhredScore(options.errorRatePostUmi)
-    val e2 = LogProbability.fromPhredScore(p.toByte)
-    probabilityOfErrorTwoTrials(e1, e2)
-  })
-
-  /** Pre-computes the the log-scale probabilities of an not an error for each a phred-scaled base quality from 0-100. */
-  private val phredToLogProbCorrect: Array[Double] = phredToLogProbError.map(LogProbability.not)
 
   private val iter = input.buffered
   private val nextConsensusRecords: mutable.Queue[SAMRecord] = mutable.Queue[SAMRecord]() // one per UMI group
   private var readIdx = 1
+
+  protected val errorRatePostUmi = this.options.errorRatePostUmi
 
   /** Creates a consensus read from the given records.  If no consensus read was created, None is returned. */
   def consensusFromSamRecords(records: Seq[SAMRecord]): Option[ConsensusRead] = {
@@ -155,7 +228,7 @@ class ConsensusCaller
     if (reads.length < options.minReads) return None
 
     // extract the bases and qualities, and adjust the qualities based on the given options.s
-    val adjustedReads = reads.map(adjustBaseQualities)
+    val adjustedReads = reads.map(read => adjustBaseQualities(read, options))
 
     // get the most likely consensus bases and qualities
     val consensusRead = consensusCallAdjustedReads(reads=adjustedReads)
@@ -250,53 +323,7 @@ class ConsensusCaller
     ConsensusRead(consensusBases, consensusQualities)
   }
 
-  /**
-    * Adjusts the given base qualities.  The base qualities are first shifted by `baseQualityShift`, then capped using
-    *`maxBaseQuality`, and finally the `errorRatePostUmi` is incorporated.
-    *
-    * Implemented as a while loop with assignment into pre-created arrays as this function is called on every
-    * single input read and unfortunately Array[Double].map() causes boxing on all the values which is a
-    * significant performance drain.
-    */
-  private[umi] def adjustBaseQualities(read: SourceRead): AdjustedRead = {
-    val len = read.length
-    val pErrors   = new Array[LogProbability](len)
-    val pCorrects = new Array[LogProbability](len)
-
-    val qs = read.quals
-    var i = 0
-    while (i < len) {
-      val q = qs(i)
-      val newQ = Math.min(this.options.maxBaseQuality, Math.max(PhredScore.MinValue, q - this.options.baseQualityShift))
-      pErrors(i)   = this.phredToLogProbError(newQ)
-      pCorrects(i) = this.phredToLogProbCorrect(newQ)
-      i += 1
-    }
-
-    new AdjustedRead(read.bases, pErrors, pCorrects)
-  }
-
-  /** Computes the probability of seeing an error in the base sequence if there are two independent error processes.
-    * We sum three terms:
-    * 1. the probability of an error in trial one and no error in trial two: Pr(A=Error, B=NoError).
-    * 2. the probability of no error in trial one and an error in trial two: Pr(A=NoError, B=Error).
-    * 3. the probability of an error in both trials, but when the second trial does not reverse the error in first one, which
-    *    for DNA (4 bases) would only occur 2/3 times: Pr(A=x->y, B=y->z) * Pr(x!=z | x!=y, y!=z, x,y,z \in {A,C,G,T})
-    */
-  private[umi] def probabilityOfErrorTwoTrials(prErrorTrialOne: LogProbability, prErrorTrialTwo: LogProbability): LogProbability = {
-    if (prErrorTrialOne < prErrorTrialTwo) probabilityOfErrorTwoTrials(prErrorTrialTwo, prErrorTrialOne)
-    else if (prErrorTrialOne - prErrorTrialTwo >= 6) prErrorTrialOne // a simple approximation since prErrorTrialOne will dominate
-    else {
-      // f(X, Y) = X(1-Y) + (1-X)Y + 2/3*XY
-      //         = X - XY + Y - XY + 2/3*XY
-      //         = X + Y - 2XY + 2/3*XY
-      //         = X + Y + XY*(2/3 - 6/3)
-      //         = X + Y - 4/3*XY
-      val term1 = LogProbability.or(prErrorTrialOne, prErrorTrialTwo) // X + Y
-      val term2 = LogFourThirds + prErrorTrialOne + prErrorTrialTwo // 4/3*XY
-      LogProbability.aOrNotB(term1, term2)
-    }
-  }
+  private[umi] def adjustBaseQualities(read: SourceRead): AdjustedRead = adjustBaseQualities(read=read, options=this.options)
 
   /** Gets the longest common prefix of the given strings, None if there is only one string or if there is an empty string. */
   @annotation.tailrec
