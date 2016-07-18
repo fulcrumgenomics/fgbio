@@ -30,8 +30,8 @@ import java.nio.file.Paths
 import java.util.concurrent.atomic.AtomicLong
 
 import com.fulcrumgenomics.cmdline.{ClpGroups, FgBioTool}
-import com.fulcrumgenomics.util.{Io, ProgressLogger, Sequences, SimpleCounter}
 import com.fulcrumgenomics.util.Sequences.countMismatches
+import com.fulcrumgenomics.util.{Io, ProgressLogger, Sequences, SimpleCounter}
 import dagr.commons.CommonsDef.{DirPath, PathToBam}
 import dagr.commons.util.LazyLogging
 import dagr.sopt.cmdline.ValidationException
@@ -45,24 +45,45 @@ import scala.collection.mutable.ListBuffer
 
 
 object GroupReadsByUmi {
+  /** A type representing an actual UMI that is a string of DNA sequence. */
+  type Umi = String
+  /** A type to represent a unique ID assigned to a molecule. */
+  type MoleculeId = String
+
   private val SortPositionAttribute        = "__GRs"
   private val LibraryAttribute             = "__GRlb"
   private val InsertEndsAndStrandAttribute = "__Insert"
 
   /** Trait that can be implemented to provide a UMI assignment strategy. */
   private[umi] sealed trait UmiAssigner {
-    def assign(rawUmis: Seq[String]) : Map[String, String]
+    private val counter = new AtomicLong()
+
+    /** Take in a sequence of UMIs and assign each UMI to a unique UMI group ID. */
+    def assign(rawUmis: Seq[Umi]) : Map[Umi, MoleculeId]
+
+    /** Default implementation of a method to retrieve the next ID based on a counter. */
+    protected def nextId: MoleculeId = this.counter.getAndIncrement().toString
+
+    /** Takes in a map of UMI to "sentinel" UMI, and outputs a map of UMI -> Molecule ID. */
+    protected def assignIds(assignments: Map[Umi,Umi]): Map[Umi,MoleculeId] = {
+      val idMap = assignments.values.map(umi => umi -> nextId).toMap
+      assignments.map { case (k,v) => (k, idMap(v)) }
+    }
   }
 
-  /** Assigns UMIs based solely on sequence identity. */
+  /**
+    * Assigns UMIs based solely on sequence identity.
+    */
   private[umi] class IdentityUmiAssigner extends UmiAssigner {
-    override def assign(rawUmis: Seq[String]): Map[String, String] = rawUmis.map(umi => umi -> umi.toUpperCase).toMap
+    override def assign(rawUmis: Seq[Umi]): Map[Umi, MoleculeId] = assignIds(rawUmis.map(umi => umi -> umi.toUpperCase).toMap)
   }
 
-  /** Assigns UMIs based solely on sequence identity. */
+  /**
+    * Assigns UMIs based solely on sequence identity.
+    */
   private[umi] class SimpleErrorUmiAssigner(val maxMismatches: Int) extends UmiAssigner {
-    override def assign(rawUmis: Seq[String]): Map[String, String] = {
-      type UmiSet = mutable.SortedSet[String]
+    override def assign(rawUmis: Seq[Umi]): Map[Umi, MoleculeId] = {
+      type UmiSet = mutable.SortedSet[Umi]
       val umiSets = ListBuffer[UmiSet]()
       for (umi <- rawUmis) {
         val matchedSets = mutable.Set[UmiSet]()
@@ -86,9 +107,10 @@ object GroupReadsByUmi {
         }
       }
 
-      umiSets.flatMap(set => set.map(umi => umi -> set.head)).toMap
+      assignIds(umiSets.flatMap(set => set.map(umi => umi -> set.head)).toMap)
     }
   }
+
 
   /**
     * Class that implements the directed adjacency graph method from umi_tools.
@@ -96,7 +118,7 @@ object GroupReadsByUmi {
     */
   private[umi] class AdjacencyUmiAssigner(val maxMismatches: Int) extends UmiAssigner {
     /** Represents a node in the adjacency graph; equality is just by UMI sequence. */
-    private class Node(val umi: String, val count: Long, val children: mutable.Buffer[Node] = mutable.Buffer()) {
+    class Node(val umi: Umi, val count: Long, val children: mutable.Buffer[Node] = mutable.Buffer()) {
       /** Gets the full set of descendants from this node. */
       def descendants: List[Node] = {
         val buffer = ListBuffer[Node]()
@@ -112,9 +134,27 @@ object GroupReadsByUmi {
       override def equals(other: scala.Any): Boolean = other.isInstanceOf[Node] && this.umi == other.asInstanceOf[Node].umi
     }
 
-    override def assign(rawUmis: Seq[String]): Map[String, String] = {
+    /** Returns the count of each raw UMI that was observed. */
+    protected def count(umis: Seq[Umi]) : Iterator[(Umi,Long)] = SimpleCounter(umis).iterator
+
+    /** Returns the differences between a pair of UMIs. */
+    protected def differences(lhs: Umi, rhs: Umi): Int = Sequences.countMismatches(lhs, rhs)
+
+    /** Assigns IDs to each UMI based on the root to which is it mapped. */
+    protected def assignIds(roots: Seq[Node]) : Map[Umi, MoleculeId] = {
+      val mappings = mutable.Buffer[(Umi,MoleculeId)]()
+      roots.foreach(root => {
+        val id = nextId
+        mappings.append((root.umi, id))
+        root.descendants.foreach(child => mappings.append((child.umi, id)))
+      })
+
+      mappings.toMap
+    }
+
+    override def assign(rawUmis: Seq[Umi]): Map[Umi, MoleculeId] = {
       // Make a list of counts of all UMIs in order from most to least abundant
-      val nodes = SimpleCounter(rawUmis).map{case(umi,count) => new Node(umi, count)}.toBuffer.sortBy((n:Node) => -n.count)
+      val nodes = count(rawUmis).map{case(umi,count) => new Node(umi, count)}.toBuffer.sortBy((n:Node) => -n.count)
       val roots = mutable.Buffer[Node]()
 
       /** Function that takes a root or starting node and finds all children in the "others"
@@ -127,7 +167,7 @@ object GroupReadsByUmi {
         * but as counts of the root go up they must be >= approximately twice the child count.
         */
       def addChildren(root: Node, others: mutable.Buffer[Node]) : Unit = {
-        val xs = others.filter(other => countMismatches(root.umi, other.umi) <= maxMismatches && root.count >= 2 * other.count - 1)
+        val xs = others.filter(other => root.count >= 2 * other.count - 1 && differences(root.umi, other.umi) <= maxMismatches )
         root.children ++= xs
         others --= xs
         root.children.foreach(r => addChildren(r, others))
@@ -140,14 +180,75 @@ object GroupReadsByUmi {
         roots += root
       }
 
-      // And finally make the output mapping
-      val mappings = mutable.Buffer[(String,String)]()
+      assignIds(roots)
+    }
+  }
+
+
+  /**
+    * Version of the adjacency assigner that works for paired UMIs stored as a single tag of
+    * the form A-B where reads with A-B and B-A are related but not identical.
+    *
+    * @param maxMismatches the maximum number of mismatches between UMIs
+    */
+  class PairedUmiAssigner(maxMismatches: Int) extends AdjacencyUmiAssigner(maxMismatches) {
+    /** Takes a UMI of the form "A-B" and returns "B-A". */
+    def reverse(umi: Umi): Umi = umi.indexOf('-') match {
+      case -1 => umi
+      case i  =>
+        val first  = umi.substring(0, i)
+        val second = umi.substring(i+1, umi.length)
+        second + '-' + first
+    }
+
+    /** Turns each UMI into the lexically earlier of A-B or B-A and then counts them. */
+    override protected def count(umis: Seq[Umi]): Iterator[(Umi, Long)] = {
+      val counter = new SimpleCounter[Umi]()
+      umis.foreach { umi =>
+        val reversed = reverse(umi)
+        val lower = if (umi.compare(reversed) < 0) umi else reversed
+        counter.count(lower)
+      }
+
+      counter.iterator
+    }
+
+    /** Returns the differences between a pair of UMIs. */
+    override protected def differences(lhs: Umi, rhs: Umi): Int = Math.min(countMismatches(lhs, rhs), countMismatches(reverse(lhs), rhs))
+
+    /** Takes in a map of UMI to "sentinel" UMI, and outputs a map of UMI -> Molecule ID. */
+    override protected def assignIds(roots: Seq[Node]): Map[Umi, MoleculeId] = {
+      val mappings = mutable.Buffer[(Umi,MoleculeId)]()
       roots.foreach(root => {
-        mappings.append((root.umi, root.umi))
-        root.descendants.foreach(child => mappings.append((child.umi, root.umi)))
+        val id = nextId
+        val ab = id + "/AB"
+        val ba = id + "/BA"
+
+        mappings.append((root.umi, ab))
+        mappings.append((reverse(root.umi), ba))
+        root.descendants.foreach { child =>
+          val childUmi    = child.umi
+          val childUmiRev = reverse(child.umi)
+
+          if (countMismatches(root.umi, childUmi) < countMismatches(root.umi, childUmiRev)) {
+            mappings.append((childUmi, ab))
+            mappings.append((childUmiRev, ba))
+          }
+          else {
+            mappings.append((childUmi, ba))
+            mappings.append((childUmiRev, ab))
+          }
+        }
       })
 
       mappings.toMap
+    }
+
+    /** Since we generate mappings for A-B and B-A whether we've seen both or not, we override
+      * the main assignment method to filter out the ones that shouldn't be in the Map.
+      */
+    override def assign(rawUmis: Seq[Umi]): Map[Umi, MoleculeId] = {
+      super.assign(rawUmis).filter { case (umi, id) => rawUmis.contains(umi) }
     }
   }
 
@@ -249,7 +350,7 @@ object GroupReadsByUmi {
     |
     |Grouping of UMIs is performed by one of three strategies:
     |   1. identity:  only reads with identical UMI sequences are grouped together. This strategy
-    |                 may be usful for evaluating data, but should generally be avoided as it will
+    |                 may be useful for evaluating data, but should generally be avoided as it will
     |                 generate multiple UMI groups per original molecule in the presence of errors.
     |   2. edit:      reads are clustered into groups such that each read within a group has at least
     |                 one other read in the group with <= edits differences and there are inter-group
@@ -257,8 +358,14 @@ object GroupReadsByUmi {
     |                 reads per UMI, but breaks down at very high coverage of UMIs.
     |   3. adjacency: a version of the directed adjacency method described in umi_tools
     |                 (ref: http://dx.doi.org/10.1101/051755).
+    |   4. paired:    similar to adjacency but for methods that produce template with a pair of UMIs
+    |                 such that a read with A-B is related to but not identical to a read with B-A.
+    |                 Expects the pair of UMIs to be stored in a single tag, separated by a hyphen
+    |                 (e.g. ACGT-CCGG).  The molecular IDs produced have more structure than for single
+    |                 UMI strategies, and are of the form {base}/{AB|BA}.  E.g. two UMI pairs would be
+    |                 mapped as follows AAAA-GGGG -> 1/AB, GGGG-AAAA -> 1/BA.
     |
-    |Both 'edit' and 'adjacency' make use of the 'edits' parameter to control the matching of
+    |'edit', 'adjacency' and 'paired' make use of the 'edits' parameter to control the matching of
     |non-identical UMIs.
   """
 )
@@ -268,7 +375,7 @@ class GroupReadsByUmi
   @arg(flag="t", doc="The tag containing the raw UMI.")  rawTag: String    = "RX",
   @arg(flag="T", doc="The output tag for UMI grouping.") assignTag: String = "MI",
   @arg(flag="m", doc="Minimum mapping quality.")         minMapQ: Int      = 30,
-  @arg(flag="s", doc="The UMI assignment strategy; one of 'identity', 'edit', 'adjacency'.") strategy: String,
+  @arg(flag="s", doc="The UMI assignment strategy; one of 'identity', 'edit', 'adjacency' or 'paired'.") strategy: String,
   @arg(flag="e", doc="The allowable number of edits between UMIs.") edits: Int = 1,
   @arg(          doc="Temporary directory for sorting.") tmpDir: DirPath = Paths.get(System.getProperty("java.io.tmpdir"))
 )extends FgBioTool with LazyLogging {
@@ -278,10 +385,10 @@ class GroupReadsByUmi
     case "identity"  => new IdentityUmiAssigner
     case "edit"      => new SimpleErrorUmiAssigner(edits)
     case "adjacency" => new AdjacencyUmiAssigner(edits)
+    case "paired"    => new PairedUmiAssigner(edits)
     case other       => throw new ValidationException(s"Unknown strategy: $other")
   }
 
-  private val counter = new AtomicLong()
   type ReadPair = (SAMRecord, SAMRecord)
 
   override def execute(): Unit = {
@@ -349,13 +456,11 @@ class GroupReadsByUmi
     */
   def assignUmiGroups(pairs: Seq[ReadPair]): Unit = {
     val rawUmis       = pairs.map(_._1).map(_.getStringAttribute(this.rawTag).toUpperCase)
-    val rawToAssigned = this.assigner.assign(rawUmis)
-    val assignedToId  = rawToAssigned.values.toSet[String].map(_ -> counter.getAndIncrement().toString).toMap
+    val rawToId       = this.assigner.assign(rawUmis)
 
     pairs.foreach(pair => Seq(pair._1, pair._2).foreach(rec => {
       val raw = rec.getStringAttribute(this.rawTag).toUpperCase
-      val assigned = rawToAssigned(raw)
-      val id = assignedToId(assigned)
+      val id  = rawToId(raw)
       rec.setAttribute(this.assignTag, id)
     }))
   }

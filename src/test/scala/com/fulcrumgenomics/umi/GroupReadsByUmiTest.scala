@@ -29,13 +29,14 @@ package com.fulcrumgenomics.umi
 import java.nio.file.Files
 
 import com.fulcrumgenomics.testing.{SamRecordSetBuilder, UnitSpec}
-import com.fulcrumgenomics.umi.GroupReadsByUmi.{AdjacencyUmiAssigner, EarlierReadComparator}
+import com.fulcrumgenomics.umi.GroupReadsByUmi._
 import htsjdk.samtools.SAMFileHeader.SortOrder
 import htsjdk.samtools.{SAMRecord, SamPairUtil, SamReaderFactory}
 import com.fulcrumgenomics.FgBioDef._
 import SamRecordSetBuilder._
 
 import scala.collection.JavaConversions._
+import scala.collection.mutable
 import scala.collection.mutable.ListBuffer
 
 
@@ -47,16 +48,24 @@ class GroupReadsByUmiTest extends UnitSpec {
   // Returns a List of the element 't' repeated 'n' times
   private def n[T](t: T, n:Int =1): List[T] = List.tabulate(n)(x => t)
 
+  /**
+    * Converts a mapping of umi->id to a Set of Sets of Umis that are assigned the same ID.
+    * E.g. { "AAA" -> 1, "AAC" -> 1, "CCC" -> 2 } => (("AAA", "AAC"), ("CCC"))
+    */
+  private def group(assignments: Map[Umi,MoleculeId], stripSuffix: Boolean = false): Set[Set[Umi]] = {
+    def strip(s:String) = { if (stripSuffix) s.substring(0, s.indexOf('/')) else s }
+
+    val groups: Map[MoleculeId, mutable.Set[Umi]] = assignments.map(kv => (strip(kv._2), mutable.Set[Umi]()))
+    assignments.foreach { case (umi, id) => groups(strip(id)).add(umi) }
+    groups.values.map(_.toSet).toSet
+  }
+
+
   {
     "IdentityUmiAssigner" should "group UMIs together that have the exact same sequence" in {
       val assigner = new GroupReadsByUmi.IdentityUmiAssigner
       val umis = Seq("AAAAAA", "AAAAAT", "ACGTAC", "ACGTAC", "AAAAAA")
-      assigner.assign(umis) should contain theSameElementsAs Map(
-        "AAAAAA" -> "AAAAAA",
-        "AAAAAT" -> "AAAAAT",
-        "ACGTAC" -> "ACGTAC",
-        "AAAAAA" -> "AAAAAA"
-      )
+      group(assigner.assign(umis)) should contain theSameElementsAs Set(Set("AAAAAA"), Set("AAAAAT"), Set("ACGTAC"))
     }
   }
 
@@ -67,48 +76,33 @@ class GroupReadsByUmiTest extends UnitSpec {
                      "TGCACC", "TGCACG",
                      "GGCGGC", "GGCGGC", "GGCGGC")
 
-      assigner.assign(umis) should contain theSameElementsAs Map(
-        "AAAAAA" -> "AAAAAA",
-        "AAAATT" -> "AAAAAA",
-        "AAAATA" -> "AAAAAA",
-        "GGCGGC" -> "GGCGGC",
-        "TGCACC" -> "TGCACC",
-        "TGCACG" -> "TGCACC"
-      )
+      group(assigner.assign(umis)) should contain theSameElementsAs Set(Set("AAAAAA", "AAAATT", "AAAATA"), Set("GGCGGC"), Set("TGCACC", "TGCACG"))
     }
 
     it should "(stupidly) assign everything to the same tag" in {
       val assigner = new GroupReadsByUmi.SimpleErrorUmiAssigner(6)
       val umis = Seq("AAAAAA", "AAAATT", "AAAATA", "TGCACC", "TGCACG", "GGCGGC", "GGCGGC", "GGCGGC")
 
-      assigner.assign(umis) should contain theSameElementsAs Map(
-        "AAAAAA" -> "AAAAAA",
-        "AAAATA" -> "AAAAAA",
-        "AAAATT" -> "AAAAAA",
-        "GGCGGC" -> "AAAAAA",
-        "TGCACC" -> "AAAAAA",
-        "TGCACG" -> "AAAAAA"
-      )
+      group(assigner.assign(umis)) should contain theSameElementsAs Set(Set("AAAAAA", "AAAATA", "AAAATT", "GGCGGC", "TGCACC", "TGCACG"))
     }
 
     {
       "AdjacencyUmiAssigner" should "assign each UMI to separate groups" in {
         val umis = Seq("AAAAAA", "CCCCCC", "GGGGGG", "TTTTTT", "AAATTT", "TTTAAA", "AGAGAG")
-        val map  = new AdjacencyUmiAssigner(maxMismatches=2).assign(umis)
-        map shouldEqual umis.map(u => u -> u).toMap
+        val groups  = group(new AdjacencyUmiAssigner(maxMismatches=2).assign(umis))
+        groups shouldBe umis.map(Set(_)).toSet
       }
 
       it should "assign everything into one group when all counts=1 and within mismatch threshold" in {
         val umis = Seq("AAAAAA", "AAAAAc", "AAAAAg").map(_.toUpperCase)
-        val map  = new AdjacencyUmiAssigner(maxMismatches=1).assign(umis)
-        map should have size 3
-        map.values.toSet should have size 1
+        val groups = group(new AdjacencyUmiAssigner(maxMismatches=1).assign(umis))
+        groups shouldBe Set(umis.toSet)
       }
 
-      it should "assign everything into one group pointing at AAAAAA" in {
+      it should "assign everything into one group" in {
         val umis = Seq("AAAAAA", "AAAAAA", "AAAAAA", "AAAAAc", "AAAAAc", "AAAAAg", "AAAtAA").map(_.toUpperCase)
-        val map  = new AdjacencyUmiAssigner(maxMismatches=1).assign(umis)
-        map shouldEqual umis.map(umi => umi -> "AAAAAA").toMap
+        val groups = group(new AdjacencyUmiAssigner(maxMismatches=1).assign(umis))
+        groups shouldBe Set(umis.toSet)
       }
 
       it should "make three groups" in {
@@ -116,30 +110,54 @@ class GroupReadsByUmiTest extends UnitSpec {
                                 n("GACGAC", 9) ++ n("GACGAT", 1) ++ n("GACGCC", 4) ++
                                 n("TACGAC", 7)
 
-        val map  = new AdjacencyUmiAssigner(maxMismatches=2).assign(umis)
-        map shouldEqual umis.map(umi => {
-          if (umi.startsWith("A"))      umi -> "AAAAAA"
-          else if (umi.startsWith("G")) umi -> "GACGAC"
-          else                          umi -> "TACGAC"
-        }).toMap
+        val groups  = group(new AdjacencyUmiAssigner(maxMismatches=2).assign(umis))
+        groups shouldBe Set(
+          Set("AAAAAA", "AAAAAT", "AATAAT", "AATAAA"),
+          Set("GACGAC", "GACGAT", "GACGCC"),
+          Set("TACGAC")
+        )
       }
 
       // Unit test for something that failed when running on real data
       it should "correctly assign the following UMIs" in {
-        val umis = Seq("CGGGGG", "GTGGGG", "GGGGGG", "CTCACA", "TGCAGT", "CTCACA", "CGGGGG")
-        val map  = new AdjacencyUmiAssigner(maxMismatches=1).assign(umis)
-        val exp  = Map("CGGGGG" -> "CGGGGG", // 2 obs
-                       "GGGGGG" -> "CGGGGG", // 1 obs
-                       "GTGGGG" -> "CGGGGG", // 1 obs
-                       "CTCACA" -> "CTCACA", // 2 obs
-                       "TGCAGT" -> "TGCAGT") // 1 obs
-        map should contain theSameElementsAs exp
+        val umis   = Seq("CGGGGG", "GTGGGG", "GGGGGG", "CTCACA", "TGCAGT", "CTCACA", "CGGGGG")
+        val groups = group(new AdjacencyUmiAssigner(maxMismatches=1).assign(umis))
+        groups shouldBe Set(Set("CGGGGG", "GGGGGG", "GTGGGG"), Set("CTCACA"), Set("TGCAGT"))
       }
 
       it should "handle a deep tree of UMIs" in {
-        val umis = n("AAAAAA", 256) ++ n("TAAAAA", 128) ++ n("TTAAAA", 64) ++ n("TTTAAA", 32) ++ n("TTTTAA", 16)
-        val map  = new AdjacencyUmiAssigner(maxMismatches=1).assign(umis)
-        umis.foreach(umi => map should contain (umi -> "AAAAAA"))
+        val umis   = n("AAAAAA", 256) ++ n("TAAAAA", 128) ++ n("TTAAAA", 64) ++ n("TTTAAA", 32) ++ n("TTTTAA", 16)
+        val groups = group(new AdjacencyUmiAssigner(maxMismatches=1).assign(umis))
+        groups shouldBe Set(Set("AAAAAA", "TAAAAA", "TTAAAA", "TTTAAA", "TTTTAA"))
+      }
+    }
+
+    {
+      "PairedUmiAssigner" should "assign A-B and B-A into groups with the same prefix but different suffix" in {
+        val umis = Seq("AAAA-CCCC", "CCCC-AAAA")
+        val map = new PairedUmiAssigner(maxMismatches=1).assign(umis)
+        group(map, stripSuffix=false) shouldBe Set(Set("AAAA-CCCC"), Set("CCCC-AAAA"))
+        group(map, stripSuffix=true)  shouldBe Set(Set("AAAA-CCCC", "CCCC-AAAA"))
+      }
+
+      it should "assign A-B and B-A into groups with the same prefix but different suffix, with errors" in {
+        val umis = Seq("AAAA-CCCC", "CCCC-CAAA", "AAAA-GGGG", "GGGG-AAGA")
+        val map = new PairedUmiAssigner(maxMismatches=1).assign(umis)
+        group(map, stripSuffix=false) shouldBe Set(Set("AAAA-CCCC"), Set("CCCC-CAAA"), Set("AAAA-GGGG"), Set("GGGG-AAGA"))
+        group(map, stripSuffix=true)  shouldBe Set(Set("AAAA-CCCC", "CCCC-CAAA"), Set("AAAA-GGGG", "GGGG-AAGA"))
+      }
+
+      it should "count A-B and B-A together when constructing adjacency graph" in {
+        // Since the graph only creates nodes where count(child) <= count(parent) / 2 + 1, it should
+        // group everything together in the first set, but not in the second set.
+        val umis1   = n("AAAA-CCCC", 256) ++ n("AAAA-CCCG", 64)  ++ n("CCCG-AAAA", 64)
+        val umis2   = n("AAAA-CCCC", 256) ++ n("AAAA-CCCG", 128) ++ n("CCCG-AAAA", 128)
+
+        val map1 = new PairedUmiAssigner(maxMismatches=1).assign(umis1)
+        val map2 = new PairedUmiAssigner(maxMismatches=1).assign(umis2)
+        group(map1, stripSuffix=true) shouldBe Set(Set("AAAA-CCCC", "AAAA-CCCG", "CCCG-AAAA"))
+        group(map2, stripSuffix=true) shouldBe Set(Set("AAAA-CCCC"), Set("AAAA-CCCG", "CCCG-AAAA"))
+
       }
     }
   }
