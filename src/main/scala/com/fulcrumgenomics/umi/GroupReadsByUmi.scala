@@ -66,7 +66,7 @@ object GroupReadsByUmi {
 
     /** Takes in a map of UMI to "sentinel" UMI, and outputs a map of UMI -> Molecule ID. */
     protected def assignIds(assignments: Map[Umi,Umi]): Map[Umi,MoleculeId] = {
-      val idMap = assignments.values.map(umi => umi -> nextId).toMap
+      val idMap = assignments.values.toSet.map((umi:Umi) => umi -> nextId).toMap
       assignments.map { case (k,v) => (k, idMap(v)) }
     }
   }
@@ -135,13 +135,13 @@ object GroupReadsByUmi {
     }
 
     /** Returns the count of each raw UMI that was observed. */
-    protected def count(umis: Seq[Umi]) : Iterator[(Umi,Long)] = SimpleCounter(umis).iterator
+    protected def count(umis: Seq[Umi]): Iterator[(Umi,Long)] = SimpleCounter(umis).iterator
 
-    /** Returns the differences between a pair of UMIs. */
+    /** Returns the number of differences between a pair of UMIs. */
     protected def differences(lhs: Umi, rhs: Umi): Int = Sequences.countMismatches(lhs, rhs)
 
     /** Assigns IDs to each UMI based on the root to which is it mapped. */
-    protected def assignIds(roots: Seq[Node]) : Map[Umi, MoleculeId] = {
+    protected def assignIdsToNodes(roots: Seq[Node]): Map[Umi, MoleculeId] = {
       val mappings = mutable.Buffer[(Umi,MoleculeId)]()
       roots.foreach(root => {
         val id = nextId
@@ -180,7 +180,7 @@ object GroupReadsByUmi {
         roots += root
       }
 
-      assignIds(roots)
+      assignIdsToNodes(roots)
     }
   }
 
@@ -194,7 +194,7 @@ object GroupReadsByUmi {
   class PairedUmiAssigner(maxMismatches: Int) extends AdjacencyUmiAssigner(maxMismatches) {
     /** Takes a UMI of the form "A-B" and returns "B-A". */
     def reverse(umi: Umi): Umi = umi.indexOf('-') match {
-      case -1 => umi
+      case -1 => throw new IllegalStateException(s"UMI ${umi} is not a paired UMI.")
       case i  =>
         val first  = umi.substring(0, i)
         val second = umi.substring(i+1, umi.length)
@@ -217,12 +217,12 @@ object GroupReadsByUmi {
     override protected def differences(lhs: Umi, rhs: Umi): Int = Math.min(countMismatches(lhs, rhs), countMismatches(reverse(lhs), rhs))
 
     /** Takes in a map of UMI to "sentinel" UMI, and outputs a map of UMI -> Molecule ID. */
-    override protected def assignIds(roots: Seq[Node]): Map[Umi, MoleculeId] = {
+    override protected def assignIdsToNodes(roots: Seq[Node]): Map[Umi, MoleculeId] = {
       val mappings = mutable.Buffer[(Umi,MoleculeId)]()
       roots.foreach(root => {
         val id = nextId
-        val ab = id + "/AB"
-        val ba = id + "/BA"
+        val ab = id + "/A"
+        val ba = id + "/B"
 
         mappings.append((root.umi, ab))
         mappings.append((reverse(root.umi), ba))
@@ -230,6 +230,9 @@ object GroupReadsByUmi {
           val childUmi    = child.umi
           val childUmiRev = reverse(child.umi)
 
+          // If the root UMI and child UMI are more similar then presumably they originate
+          // from the same pairing of UMIs, otherwise if the root UMI is more similar to the
+          // reversed child UMI, they are paired with each other's inverse
           if (countMismatches(root.umi, childUmi) < countMismatches(root.umi, childUmiRev)) {
             mappings.append((childUmi, ab))
             mappings.append((childUmiRev, ba))
@@ -455,8 +458,8 @@ class GroupReadsByUmi
     * sub-grouping into UMI groups by original molecule.
     */
   def assignUmiGroups(pairs: Seq[ReadPair]): Unit = {
-    val rawUmis       = pairs.map(_._1).map(_.getStringAttribute(this.rawTag).toUpperCase)
-    val rawToId       = this.assigner.assign(rawUmis)
+    val rawUmis = pairs.map(_._1).map(_.getStringAttribute(this.rawTag).toUpperCase)
+    val rawToId = this.assigner.assign(rawUmis)
 
     pairs.foreach(pair => Seq(pair._1, pair._2).foreach(rec => {
       val raw = rec.getStringAttribute(this.rawTag).toUpperCase

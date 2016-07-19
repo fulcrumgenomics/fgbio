@@ -147,6 +147,14 @@ class GroupReadsByUmiTest extends UnitSpec {
         group(map, stripSuffix=true)  shouldBe Set(Set("AAAA-CCCC", "CCCC-CAAA"), Set("AAAA-GGGG", "GGGG-AAGA"))
       }
 
+      it should "handle errors in the first base changing lexical ordering of AB vs. BA" in {
+        val umis   = n("GTGT-ACAC", 500) ++ n("ACAC-GTGT", 460) ++ n("GTGT-TCAC", 6)  ++ n("TCAC-GTGT", 6) ++ n("GTGT-TGAC", 1)
+
+        val map = new PairedUmiAssigner(maxMismatches=1).assign(umis)
+        group(map, stripSuffix=false) shouldBe Set(Set("GTGT-ACAC", "GTGT-TCAC", "GTGT-TGAC"), Set("TCAC-GTGT", "ACAC-GTGT"))
+        group(map, stripSuffix=true)  shouldBe Set(Set("GTGT-ACAC", "ACAC-GTGT", "GTGT-TCAC", "TCAC-GTGT", "GTGT-TGAC"))
+      }
+
       it should "count A-B and B-A together when constructing adjacency graph" in {
         // Since the graph only creates nodes where count(child) <= count(parent) / 2 + 1, it should
         // group everything together in the first set, but not in the second set.
@@ -157,7 +165,11 @@ class GroupReadsByUmiTest extends UnitSpec {
         val map2 = new PairedUmiAssigner(maxMismatches=1).assign(umis2)
         group(map1, stripSuffix=true) shouldBe Set(Set("AAAA-CCCC", "AAAA-CCCG", "CCCG-AAAA"))
         group(map2, stripSuffix=true) shouldBe Set(Set("AAAA-CCCC"), Set("AAAA-CCCG", "CCCG-AAAA"))
+      }
 
+      it should "fail if supplied non-paired UMIs" in {
+        val umis   = Seq("AAAAAAAA", "GGGGGGGG")
+        an[IllegalStateException] shouldBe thrownBy { new PairedUmiAssigner(maxMismatches=1).assign(umis) }
       }
     }
   }
@@ -221,7 +233,6 @@ class GroupReadsByUmiTest extends UnitSpec {
       actual should contain theSameElementsInOrderAs expected
     }
   }
-
 
   // Test for running the GroupReadsByUmi command line program with some sample input
   "GroupReadsByUmi" should "group reads correctly" in {
