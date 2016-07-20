@@ -88,7 +88,8 @@ class CallMolecularConsensusReads
   @arg(flag="N", doc="Mask (make 'N') consensus bases with quality less than this threshold.") val minConsensusBaseQuality: PhredScore = DefaultMinConsensusBaseQuality,
   @arg(flag="M", doc="The minimum number of reads to produce a consensus base.") val minReads: Int = DefaultMinReads,
   @arg(flag="Q", doc="The minimum mean base quality across a consensus base to output.") val minMeanConsensusBaseQuality: PhredScore = DefaultMinMeanConsensusBaseQuality,
-  @arg(flag="P", doc="Require a consensus call for both ends of a pair if true.") val requireConsensusForBothPairs: Boolean = DefaultRequireConsensusForBothPairs
+  @arg(flag="P", doc="Require a consensus call for both ends of a pair if true.") val requireConsensusForBothPairs: Boolean = DefaultRequireConsensusForBothPairs,
+  @arg(flag="S", doc="The sort order of the output, if None then the same as the input.") val sortOrder: Option[SortOrder] = Some(SortOrder.queryname)
 ) extends FgBioTool with LazyLogging {
 
   Io.assertReadable(input)
@@ -103,14 +104,14 @@ class CallMolecularConsensusReads
     val rej = new SAMFileWriterFactory().makeWriter(in.getFileHeader, true, rejects.toFile, null)
 
     // The output file is unmapped, so for now let's clear out the sequence dictionary & PGs
-    val out = new SAMFileWriterFactory().makeWriter(outputHeader(in.getFileHeader), true, output.toFile, null)
+    val out = new SAMFileWriterFactory().makeWriter(outputHeader(in.getFileHeader, sortOrder), sortOrder.forall(_ == in.getFileHeader.getSortOrder), output.toFile, null)
 
     val options = new VanillaUmiConsensusCallerOptions(
       tag                          = tag,
       errorRatePreUmi              = errorRatePreUmi,
       errorRatePostUmi             = errorRatePostUmi,
-      maxRawBaseQuality               = maxBaseQuality,
-      rawBaseQualityShift             = baseQualityShift,
+      maxRawBaseQuality            = maxBaseQuality,
+      rawBaseQualityShift          = baseQualityShift,
       minConsensusBaseQuality      = minConsensusBaseQuality,
       minReads                     = minReads,
       minMeanConsensusBaseQuality  = minMeanConsensusBaseQuality,
@@ -137,7 +138,7 @@ class CallMolecularConsensusReads
   }
 
   /** Constructs an output header with a single read group for the consensus BAM. */
-  private def outputHeader(in: SAMFileHeader): SAMFileHeader = {
+  private def outputHeader(in: SAMFileHeader, sortOrder: Option[SortOrder] = None): SAMFileHeader = {
     val oldRgs = in.getReadGroups.asScala
     def collapse(f: SAMReadGroupRecord => String): String = oldRgs.map(f).filter(_ != null).toSet.toList match {
       case Nil      => null
@@ -155,7 +156,7 @@ class CallMolecularConsensusReads
 
     val outHeader = new SAMFileHeader
     outHeader.addReadGroup(rg)
-    outHeader.setSortOrder(SortOrder.unsorted)
+    outHeader.setSortOrder(sortOrder.getOrElse(SortOrder.unsorted))
     outHeader.setGroupOrder(GroupOrder.query)
     outHeader
   }
