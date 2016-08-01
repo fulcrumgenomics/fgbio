@@ -71,6 +71,13 @@ object NumericTypes {
       else score
     }
 
+    /** Caps the scores to the range MinValue..MaxValue. */
+    def cap(score: Int): PhredScore = {
+      if (score < MinValue) MinValue
+      else if (score > MaxValue) MaxValue
+      else score.toByte
+    }
+
     /** Converts a probability (log-space) to a phred score. */
     def fromLogProbability(lnProbError: LogProbability): PhredScore = {
       if (lnProbError < MaxValueAsLogDouble) MaxValue

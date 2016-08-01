@@ -59,18 +59,32 @@ class ConsensusCallerTest extends UnitSpec {
     val (base, qual) = builder.call()
     base shouldBe 'A'
     qual shouldBe 20
+
+    val lls = builder.logLikelihoods
+    lls(0) should be > lls(1)
+    lls(0) should be > lls(2)
+    lls(0) should be > lls(3)
   }
 
-  it should "calculate consensus base and quality given a massive pileup" in {
+  it should "calculate consensus base and quality, and observation counts, given a massive pileup" in {
     val caller = new ConsensusCaller(errorRatePreLabeling=50.toByte, errorRatePostLabeling=50.toByte)
     val builder = caller.builder()
     (0 to 999).foreach(i => builder.add('C'.toByte, 20.toByte))
     builder.call() shouldBe ('C', 50)
     builder.contributions shouldBe 1000
+    builder.observations('A'.toByte) shouldBe 0
+    builder.observations('C'.toByte) shouldBe 1000
+    builder.observations('G'.toByte) shouldBe 0
+    builder.observations('T'.toByte) shouldBe 0
 
     (0 to 9).foreach(i => builder.add('T'.toByte, 20.toByte))
     builder.call() shouldBe ('C', 50)
     builder.contributions shouldBe 1010
+    builder.observations('A'.toByte) shouldBe 0
+    builder.observations('C'.toByte) shouldBe 1000
+    builder.observations('G'.toByte) shouldBe 0
+    builder.observations('T'.toByte) shouldBe 10
+    an[Exception] should be thrownBy builder.observations('Z'.toByte)
   }
 
   it should "calculate consensus base and quality given conflicting evidence" in {

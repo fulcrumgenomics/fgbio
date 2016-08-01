@@ -26,7 +26,6 @@ package com.fulcrumgenomics.umi
 
 import java.util
 
-import com.fulcrumgenomics.umi.ConsensusCaller.Base
 import com.fulcrumgenomics.util.MathUtil
 import com.fulcrumgenomics.util.NumericTypes._
 import htsjdk.samtools.util.SequenceUtil
@@ -35,6 +34,13 @@ import scala.math.{max, min}
 
 object ConsensusCaller {
   type Base = Byte
+
+  private val DnaBasesUpperCase: Array[Base] = Array('A', 'C', 'G', 'T').map(_.toByte)
+  private val DnaBaseCount  = DnaBasesUpperCase.length
+
+  /** Returns a copy of the DNA bases in the order they are used in all internal arrays. */
+  def DnaBases: Array[Base] = DnaBasesUpperCase.clone()
+
 }
 
 /**
@@ -73,25 +79,24 @@ class ConsensusCaller(errorRatePreLabeling:  PhredScore,
                       rawBaseQualityShift:   PhredScore = 0.toByte,
                       maxRawBaseQuality:     PhredScore = PhredScore.MaxValue
                       ) {
+  import ConsensusCaller._
 
   assert(maxRawBaseQuality >= PhredScore.MinValue, s"maxBaseQuality must be >= ${PhredScore.MinValue}")
   assert(maxRawBaseQuality <= PhredScore.MaxValue, s"maxBaseQuality must be <= ${PhredScore.MaxValue}")
 
   private val LnErrorRatePreLabeling  = LogProbability.fromPhredScore(errorRatePreLabeling)
   private val LnErrorRatePostLabeling = LogProbability.fromPhredScore(errorRatePostLabeling)
-  private val DnaBasesUpperCase: Array[Base] = Array('A', 'C', 'G', 'T').map(_.toByte)
-  private val DnaBaseCount  = DnaBasesUpperCase.length
 
   /**
     * An inner class for tracking the likelihoods for the consensus for a single base.
     */
   class ConsensusBaseBuilder {
-    private var contributors: Int = 0
+    private val observations = new Array[Int](DnaBaseCount)
     private val likelihoods = new Array[LogProbability](DnaBaseCount)
 
     /** Resets the likelihoods to p=1 so that the builder can be re-used. */
     def reset(): Unit = {
-      this.contributors = 0
+      util.Arrays.fill(observations, 0)
       util.Arrays.fill(this.likelihoods, LnOne)
     }
 
@@ -102,14 +107,18 @@ class ConsensusCaller(errorRatePreLabeling:  PhredScore,
     def add(base: Base, pError: LogProbability, pTruth: LogProbability) = {
       val b = SequenceUtil.upperCase(base)
       if (b != 'N') {
-        this.contributors += 1
-
         var i = 0
         while (i < DnaBaseCount) {
           val candidateBase = DnaBasesUpperCase(i)
 
-          //  Pr(Error) for this specific base, assuming the error distributes uniformly across the other three bases
-          likelihoods(i) += ( if (base == candidateBase) pTruth else LogProbability.normalizeByScalar(pError, 3) )
+          if (base == candidateBase) {
+            likelihoods(i) += pTruth
+            observations(i) += 1
+          }
+          else {
+            likelihoods(i) += LogProbability.normalizeByScalar(pError, 3)
+          }
+
           i += 1
         }
       }
@@ -119,7 +128,16 @@ class ConsensusCaller(errorRatePreLabeling:  PhredScore,
       * Returns the number of reads that contributed evidence to the consensus. The value is equal
       * to the number of times add() was called with non-ambiguous bases.
       */
-    def contributions: Int = this.contributors
+    def contributions: Int = this.observations.sum
+
+    /** Gets the number of observations of the base in question. */
+    def observations(base: Base): Int = base match {
+      case 'A' => this.observations(0)
+      case 'C' => this.observations(1)
+      case 'G' => this.observations(2)
+      case 'T' => this.observations(3)
+      case x   => throw new IllegalArgumentException("Unsupported base: " + x.toChar)
+    }
 
     /** Call the consensus base and quality score given the current set of likelihoods. */
     def call() : (Base, PhredScore) = {
@@ -140,6 +158,20 @@ class ConsensusCaller(errorRatePreLabeling:  PhredScore,
       val q = PhredScore.cap(PhredScore.fromLogProbability(p))
       val base = DnaBasesUpperCase(maxLlIndex)
       (base, q)
+    }
+
+    /**
+      * Gives the calculated likelihoods of the four bases given the data and the model. The likelihoods
+      * returned factor in both the base observations and the probability of error prior to applying the
+      * labels.
+      */
+    def logLikelihoods: Array[LogProbability] = {
+      val lls             = likelihoods
+      val likelihoodSum   = LogProbability.or(lls)
+      val posteriors      = lls.map(l => LogProbability.normalizeByLogProbability(l, likelihoodSum))
+      val errors          = posteriors.map(LogProbability.not)
+      val errorsTwoTrials = errors.map(e => LogProbability.probabilityOfErrorTwoTrials(LnErrorRatePreLabeling, e))
+      errorsTwoTrials.map(LogProbability.not)
     }
   }
 
