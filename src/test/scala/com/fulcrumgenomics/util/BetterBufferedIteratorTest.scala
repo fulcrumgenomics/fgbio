@@ -22,23 +22,22 @@
  * THE SOFTWARE.
  */
 
-package com.fulcrumgenomics
+package com.fulcrumgenomics.util
 
-import com.fulcrumgenomics.util.BetterBufferedIterator
-import dagr.commons.CommonsDef
+import com.fulcrumgenomics.FgBioDef._
+import com.fulcrumgenomics.testing.UnitSpec
 
-/**
-  * Place to put common function, type and implicit definitions that can be
-  * imported into other classes easily.
-  */
-object FgBioDef extends CommonsDef {
-  /** Implicit class that provides a method to wrap an iterator into a BetterBufferedIterator. */
-  implicit class BetterBufferedIteratorScalaWrapper[A](val iterator: Iterator[A]) {
-    def bufferBetter = new BetterBufferedIterator(iterator)
-  }
+class BetterBufferedIteratorTest extends UnitSpec {
+  "BetterBufferedIterator" should "takeWhile and dropWhile without losing elements" in {
+    val list = List(1,2,3,4,5,6,7,8,9)
+    val xs = list.iterator.bufferBetter
+    xs.takeWhile(_ < 5).toSeq shouldBe Seq(1,2,3,4)
+    xs.toSeq shouldBe Seq(5,6,7,8,9)
 
-  /** Implicit class that provides a method to wrap a Java iterator into a BetterBufferedIterator. */
-  implicit class BetterBufferedIteratorJavaWrapper[A](val iterator: java.util.Iterator[A]) {
-    def bufferBetter = new BetterBufferedIterator(scala.collection.JavaConversions.asScalaIterator(iterator))
+    val ys = list.iterator.bufferBetter
+    ys.dropWhile(_ <= 3)
+    ys.takeWhile(_ <  7).toSeq shouldBe Seq(4,5,6)
+    ys.dropWhile(_ <= 8)
+    ys.takeWhile(_ => true).toSeq shouldBe Seq(9)
   }
 }
