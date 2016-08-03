@@ -60,25 +60,36 @@ object MathUtil {
     * @param ds an array of doubles of length >= 1
     * @param allowNegativeInfinity if true allow the result to be Double.NegativeInfinity
     *                              otherwise return the lowest non-infinite value
+    * @param requireUniqueMinimum When false the earliest index at which the minimum value occurs is
+    *                             reported. When true, if there are multiple indices with the minimum
+    *                             value then -1 will be returned for the index.
     * @throws NoSuchElementException if either the input array is zero length or the array
     *                                contains only invalid values (NaN and possibly NegativeInfinity)
     */
-  def minWithIndex(ds: Array[Double], allowNegativeInfinity: Boolean=false): (Double,Int) = {
+  def minWithIndex(ds: Array[Double], allowNegativeInfinity: Boolean=false, requireUniqueMinimum: Boolean=false): (Double,Int) = {
     if (ds.length == 0) throw new NoSuchElementException("Cannot find the min of a zero length array.")
     var min      = Double.MaxValue
     var minIndex = -1
+    var assigned = false
     val len      = ds.length
     var idx      = 0
     while (idx < len) {
       val v = ds(idx)
-      if ((v < min || (minIndex == -1 && !java.lang.Double.isNaN(v))) && (allowNegativeInfinity || Double.NegativeInfinity != v)) {
-        min = v
-        minIndex = idx
+      if (!java.lang.Double.isNaN(v) && (Double.NegativeInfinity != v || allowNegativeInfinity)) {
+        if (!assigned || v < min) {
+          min = v
+          minIndex = idx
+          assigned = true
+        }
+        else if (v == min && requireUniqueMinimum) {
+          minIndex = -1
+        }
       }
+
       idx += 1
     }
 
-    if (minIndex == -1) throw new NoSuchElementException("All values are negative infinity, and negative infinity not allowed.")
+    if (!assigned) throw new NoSuchElementException("All values are NaNs or negative infinity.")
     (min, minIndex)
   }
 
@@ -90,25 +101,35 @@ object MathUtil {
     * first one will be returned.
     *
     * @param ds an array of doubles of length >= 1
+    * @param requireUniqueMaximum When false the earliest index at which the maximum value occurs is
+    *                             reported. When true, if there are multiple indices with the maximum
+    *                             value then -1 will be returned for the index.
     * @throws NoSuchElementException if either the input array is zero length or the array
     *                                contains only invalid values (NaN)
     */
-  def maxWithIndex(ds: Array[Double]): (Double,Int) = {
+  def maxWithIndex(ds: Array[Double], requireUniqueMaximum: Boolean=false): (Double,Int) = {
     if (ds.length == 0) throw new NoSuchElementException("Cannot find the max of a zero length array.")
     var max      =  Double.MinValue
     var maxIndex = -1
+    var assigned = false
     val len = ds.length
     var idx = 0
     while (idx < len) {
       val v = ds(idx)
-      if (v > max || (maxIndex == -1 && !java.lang.Double.isNaN(v))) {
-        max = v
-        maxIndex = idx
+      if (!java.lang.Double.isNaN(v)) {
+        if (!assigned || v > max) {
+          max = v
+          maxIndex = idx
+          assigned = true
+        }
+        else if (v == max && requireUniqueMaximum) {
+          maxIndex = -1
+        }
       }
       idx += 1
     }
 
-    if (maxIndex == -1) throw new NoSuchElementException("Array contained only NaNs.")
+    if (!assigned) throw new NoSuchElementException("Array contained only NaNs.")
     (max, maxIndex)
   }
 }

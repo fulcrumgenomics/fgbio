@@ -66,6 +66,16 @@ class ConsensusCallerTest extends UnitSpec {
     lls(0) should be > lls(3)
   }
 
+  it should "produce a no-call if two bases are of equal likelihood" in {
+    val caller = new ConsensusCaller(errorRatePreLabeling=PhredScore.MaxValue, errorRatePostLabeling=PhredScore.MaxValue)
+    val builder = caller.builder()
+    builder.call() shouldBe ('N'.toByte, 2.toByte)
+
+    builder.add('A'.toByte, 20.toByte)
+    builder.add('C'.toByte, 20.toByte)
+    builder.call() shouldBe ('N'.toByte, 2.toByte)
+  }
+
   it should "calculate consensus base and quality, and observation counts, given a massive pileup" in {
     val caller = new ConsensusCaller(errorRatePreLabeling=50.toByte, errorRatePostLabeling=50.toByte)
     val builder = caller.builder()

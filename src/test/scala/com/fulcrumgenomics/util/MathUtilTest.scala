@@ -44,12 +44,12 @@ class MathUtilTest extends UnitSpec {
   }
 
   "MathUtil.minWithIndex" should "find the minimum value" in {
-    minWithIndex(Array[Double](5.0, 10.0, -5.0, 100)) shouldBe (-5.0, 2)
-    minWithIndex(Array[Double](5.0, 10.0, -5.0, 100, Double.NegativeInfinity)) shouldBe (-5.0, 2)
-    minWithIndex(Array[Double](5.0, 10.0, -5.0, 100, Double.PositiveInfinity, Double.NaN, Double.NegativeInfinity)) shouldBe (-5.0, 2)
-    minWithIndex(Array[Double](5.0, Double.NegativeInfinity, -5.0, Double.NaN), allowNegativeInfinity=true) shouldBe (Double.NegativeInfinity, 1)
-    minWithIndex(Array[Double](Double.NegativeInfinity, Double.NegativeInfinity, Double.NaN), allowNegativeInfinity=true) shouldBe (Double.NegativeInfinity, 0)
-    minWithIndex(Array[Double](Double.NaN, Double.MaxValue), allowNegativeInfinity=true) shouldBe (Double.MaxValue, 1)
+    minWithIndex(Array(5.0, 10.0, -5.0, 100.0)) shouldBe (-5.0, 2)
+    minWithIndex(Array(5.0, 10.0, -5.0, 100.0, Double.NegativeInfinity)) shouldBe (-5.0, 2)
+    minWithIndex(Array(5.0, 10.0, -5.0, 10.00, Double.PositiveInfinity, Double.NaN, Double.NegativeInfinity)) shouldBe (-5.0, 2)
+    minWithIndex(Array(5.0, Double.NegativeInfinity, -5.0, Double.NaN), allowNegativeInfinity=true) shouldBe (Double.NegativeInfinity, 1)
+    minWithIndex(Array(Double.NegativeInfinity, Double.NegativeInfinity, Double.NaN), allowNegativeInfinity=true) shouldBe (Double.NegativeInfinity, 0)
+    minWithIndex(Array(Double.NaN, Double.MaxValue), allowNegativeInfinity=true) shouldBe (Double.MaxValue, 1)
   }
 
   it should "throw exceptions on invalid inputs" in {
@@ -58,15 +58,25 @@ class MathUtilTest extends UnitSpec {
     an[NoSuchElementException] should be thrownBy minWithIndex(Array[Double](Double.NegativeInfinity, Double.NaN))
   }
 
+  it should "report -1 as the index when requireUniqueMinimum is true" in {
+    minWithIndex(Array(1.0, 2.0, 3.0, 4.0, 1.0)) shouldBe (1.0, 0)
+    minWithIndex(Array(1.0, 2.0, 3.0, 4.0, 1.0), requireUniqueMinimum=true) shouldBe (1.0, -1)
+  }
+
   "MathUtil.maxWithIndex" should "find the maximum value" in {
-    maxWithIndex(Array[Double](5.0, 10.0, -5.0, 100)) shouldBe (100, 3)
-    maxWithIndex(Array[Double](5.0, 100, -5.0, 100)) shouldBe (100, 1)
-    maxWithIndex(Array[Double](Double.MinValue)) shouldBe (Double.MinValue, 0)
-    maxWithIndex(Array[Double](Double.NaN, Double.MinValue)) shouldBe (Double.MinValue, 1)
+    maxWithIndex(Array(5.0, 10.0, -5.0, 100.0)) shouldBe (100, 3)
+    maxWithIndex(Array(5.0, 100, -5.0, 100.0)) shouldBe (100, 1)
+    maxWithIndex(Array(Double.MinValue)) shouldBe (Double.MinValue, 0)
+    maxWithIndex(Array(Double.NaN, Double.MinValue)) shouldBe (Double.MinValue, 1)
   }
 
   it should "throw exceptions on invalid inputs" in {
     an[NoSuchElementException] should be thrownBy minWithIndex(Array[Double]())
     an[NoSuchElementException] should be thrownBy minWithIndex(Array[Double](Double.NaN))
+  }
+
+  it should "report -1 as the index when requireUniqueMaximum is true" in {
+    maxWithIndex(Array(1.0, 20.0, 20.0, 20.0, 5.0)) shouldBe (20.0, 1)
+    maxWithIndex(Array(1.0, 20.0, 20.0, 20.0, 5.0), requireUniqueMaximum=true) shouldBe (20.0, -1)
   }
 }

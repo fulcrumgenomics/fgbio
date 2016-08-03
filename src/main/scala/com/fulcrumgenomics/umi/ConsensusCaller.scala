@@ -35,6 +35,7 @@ import scala.math.{max, min}
 object ConsensusCaller {
   type Base = Byte
 
+  private val NoCall = 'N'.toByte
   private val DnaBasesUpperCase: Array[Base] = Array('A', 'C', 'G', 'T').map(_.toByte)
   private val DnaBaseCount  = DnaBasesUpperCase.length
 
@@ -145,19 +146,25 @@ class ConsensusCaller(errorRatePreLabeling:  PhredScore,
       // pick the base with the maximum posterior
       val lls  = likelihoods
       val likelihoodSum   = LogProbability.or(lls)
-      val (maxLikelihood, maxLlIndex) = MathUtil.maxWithIndex(lls)
-      val maxPosterior    = LogProbability.normalizeByLogProbability(maxLikelihood, likelihoodSum)
-      val pConsensusError = LogProbability.not(maxPosterior) // convert to probability of the called consensus being wrong
+      val (maxLikelihood, maxLlIndex) = MathUtil.maxWithIndex(lls, requireUniqueMaximum=true)
 
-      // Factor in the pre-UMI error rate.
-      // Pr(error) = Pr(any pre-UMI error AND correct consensus) + Pr(no pre-UMI error AND any error in consensus)
-      //               + Pr(pre-UMI error AND error in consensus, that do not give us the correct bases)
-      // The last term tries to capture the case where a pre-UMI error modifies the base (ex. A->C) but a sequencing
-      // error calls it the correct base (C->A).  Only 2/3 times will the two errors result in the incorrect base.
-      val p = LogProbability.probabilityOfErrorTwoTrials(LnErrorRatePreLabeling, pConsensusError)
-      val q = PhredScore.cap(PhredScore.fromLogProbability(p))
-      val base = DnaBasesUpperCase(maxLlIndex)
-      (base, q)
+      maxLlIndex match {
+        case -1 =>
+          (NoCall, PhredScore.MinValue) // Multiple equally likely bases
+        case i  =>
+          val maxPosterior    = LogProbability.normalizeByLogProbability(maxLikelihood, likelihoodSum)
+          val pConsensusError = LogProbability.not(maxPosterior) // convert to probability of the called consensus being wrong
+
+          // Factor in the pre-UMI error rate.
+          // Pr(error) = Pr(any pre-UMI error AND correct consensus) + Pr(no pre-UMI error AND any error in consensus)
+          //               + Pr(pre-UMI error AND error in consensus, that do not give us the correct bases)
+          // The last term tries to capture the case where a pre-UMI error modifies the base (ex. A->C) but a sequencing
+          // error calls it the correct base (C->A).  Only 2/3 times will the two errors result in the incorrect base.
+          val p = LogProbability.probabilityOfErrorTwoTrials(LnErrorRatePreLabeling, pConsensusError)
+          val q = PhredScore.cap(PhredScore.fromLogProbability(p))
+          val base = DnaBasesUpperCase(i)
+          (base, q)
+      }
     }
 
     /**
