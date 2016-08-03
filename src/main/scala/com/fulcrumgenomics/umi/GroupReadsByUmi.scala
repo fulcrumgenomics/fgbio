@@ -50,9 +50,100 @@ object GroupReadsByUmi {
   /** A type to represent a unique ID assigned to a molecule. */
   type MoleculeId = String
 
-  private val SortPositionAttribute        = "__GRs"
-  private val LibraryAttribute             = "__GRlb"
-  private val InsertEndsAndStrandAttribute = "__Insert"
+  private val ReadInfoTempAttributeName = "__GRBU_ReadInfo"
+
+  /** A case class to represent all the information we need to order reads for duplicate marking / grouping. */
+  case class ReadInfo(refIndex: Int, start1: Int, start2: Int, strand1: Boolean, strand2: Boolean, library: String) extends Ordered[ReadInfo] {
+    override def compare(that: ReadInfo): Int = ReadInfo.Comparisons.map(f => f(this, that)).find(_ != 0).getOrElse(0)
+  }
+
+  object ReadInfo {
+    /* The set of comparisons by which we order ReadInfo objects. */
+    private val Comparisons: Seq[(ReadInfo,ReadInfo) => Int] = Seq(
+      (lhs, rhs) => lhs.refIndex - rhs.refIndex,
+      (lhs, rhs) => lhs.start1   - rhs.start1,
+      (lhs, rhs) => lhs.start2   - rhs.start2,
+      (lhs, rhs) => lhs.strand1.compare(rhs.strand1),
+      (lhs, rhs) => lhs.strand2.compare(rhs.strand2),
+      (lhs, rhs) => lhs.library.compare(rhs.library)
+    )
+
+    /** Looks in all the places the library name can be hiding. Returns the library name
+      * if one is found, otherwise returns "unknown".
+      */
+    private def library(rec: SAMRecord): String = {
+      val rg = rec.getReadGroup
+      if (rg != null && rg.getLibrary != null) rg.getLibrary
+      else "unknown"
+    }
+
+    /** Creates/retrieves a ReadEnds object from a SAMRecord and stores it in a temporary attribute for later user. */
+    def apply(rec: SAMRecord) : ReadInfo = {
+      val tmp = rec.getTransientAttribute(GroupReadsByUmi.ReadInfoTempAttributeName)
+      if (tmp != null) {
+        tmp.asInstanceOf[ReadInfo]
+      }
+      else {
+        if (rec.getReferenceIndex != rec.getMateReferenceIndex) throw new IllegalArgumentException("Mate on different chrom.")
+        val chrom   = rec.getReferenceIndex.toInt
+        val recNeg  = rec.getReadNegativeStrandFlag
+        val recPos  = if (recNeg) rec.getUnclippedEnd else rec.getUnclippedStart
+        val mateNeg = rec.getMateNegativeStrandFlag
+        val matePos = if (mateNeg) SAMUtils.getMateUnclippedEnd(rec) else SAMUtils.getMateUnclippedStart(rec)
+        val lib = library(rec)
+
+        val result = if (recPos < matePos || (recPos == matePos && !recNeg)) {
+          new ReadInfo(chrom, recPos, matePos, recNeg, mateNeg, lib)
+        }
+        else {
+          new ReadInfo(chrom, matePos, recPos, mateNeg, recNeg, lib)
+        }
+
+        rec.setTransientAttribute(GroupReadsByUmi.ReadInfoTempAttributeName, result)
+        result
+      }
+    }
+  }
+
+    /** Comparator to sort the reads by the earlier of the unclipped 5' position of the
+    * first or second read.  Groups reads in a convenient way for duplicate-marking and
+    * UMI assignment, and ensures that both ends of a read come together.
+    *
+    * Private because it has some serious restrictions!  Only allows:
+    *   - Paired reads only
+    *   - Mapped reads with mapped mates only
+    *   - No secondary or supplementary reads
+    *   - Read and mate _must_ be mapped to the same chromosome
+    * If any of these conditions are violated it will go badly!
+    */
+  private[umi] class EarlierReadComparator extends SAMRecordComparator {
+    override def fileOrderCompare(lhs: SAMRecord, rhs: SAMRecord): Int = compare(lhs, rhs)
+
+    /** Compares two reads for sort order. */
+    override def compare(lhs: SAMRecord, rhs: SAMRecord): Int = {
+      // Do some asserting!
+      assertValidRead(lhs)
+      assertValidRead(rhs)
+      val l = ReadInfo(lhs)
+      val r = ReadInfo(rhs)
+      val result = l.compare(r)
+
+      if (result == 0) lhs.getReadName.compareTo(rhs.getReadName)
+      else result
+    }
+
+    /** Asserts that we didn't get reads we are unable to sort. */
+    final def assertValidRead(rec: SAMRecord) = {
+      assert(rec.getReadPairedFlag,    "Unpaired read: " + rec.getReadName)
+      assert(!rec.getReadUnmappedFlag, "Unmapped read: " + rec.getReadName)
+      assert(!rec.getMateUnmappedFlag, "Read w/unmapped mate: " + rec.getReadName)
+      assert(rec.getReferenceIndex == rec.getMateReferenceIndex, "Read w/mate on different chr: " + rec.getReadName)
+      assert(SAMUtils.getMateCigarString(rec) != null, "Read w/o Mate Cigar tag: " + rec.getReadName)
+      assert(rec.getAttribute("MQ") != null, "Read w/o Mate MQ tag: " + rec.getReadName)
+      assert(!rec.isSecondaryOrSupplementary, "Secondary or supplementary read: " + rec.getReadName)
+    }
+  }
+
 
   /** Trait that can be implemented to provide a UMI assignment strategy. */
   private[umi] sealed trait UmiAssigner {
@@ -254,81 +345,6 @@ object GroupReadsByUmi {
       super.assign(rawUmis).filter { case (umi, id) => rawUmis.contains(umi) }
     }
   }
-
-  /** Looks in all the places the library name can be hiding. Returns the library name
-    * if one is found, otherwise returns "unknown".
-    */
-  final def library(rec: SAMRecord): String = {
-    var lib: String = rec.getTransientAttribute(LibraryAttribute).asInstanceOf[String]
-    if (lib == null) {
-      val rg = rec.getReadGroup
-      if (rg != null && rg.getLibrary != null) lib = rg.getLibrary
-      else lib = rec.getStringAttribute("LB")
-
-      if (lib == null) lib = "unknown"
-      rec.setTransientAttribute(LibraryAttribute, lib)
-    }
-
-    lib
-  }
-
-  /** Comparator to sort the reads by the earlier of the unclipped 5' position of the
-    * first or second read.  Groups reads in a convenient way for duplicate-marking and
-    * UMI assignment, and ensures that both ends of a read come together.
-    *
-    * Private because it has some serious restrictions!  Only allows:
-    *   - Paired reads only
-    *   - Mapped reads with mapped mates only
-    *   - No secondary or supplementary reads
-    *   - Read and mate _must_ be mapped to the same chromosome
-    * If any of these conditions are violated it will go badly!
-    */
-  private[umi] class EarlierReadComparator extends SAMRecordComparator {
-    override def fileOrderCompare(lhs: SAMRecord, rhs: SAMRecord): Int = compare(lhs, rhs)
-
-    /** A set of functions that extract a value from a read, used in order to compare reads. */
-    private val comparisons: Seq[(SAMRecord,SAMRecord) => Int] = Seq(
-      (lhs, rhs) => lhs.getReferenceIndex - rhs.getReferenceIndex,
-      (lhs, rhs) => sortPosition(lhs) - sortPosition(rhs),
-      (lhs, rhs) => library(lhs).compareTo(library(rhs)),
-      (lhs, rhs) => lhs.getReadName.compareTo(rhs.getReadName),
-      (lhs, rhs) => if (lhs.getFirstOfPairFlag) -1 else 1
-    )
-
-    /** Compares two reads for sort order. */
-    override def compare(lhs: SAMRecord, rhs: SAMRecord): Int = {
-      // Do some asserting!
-      assertValidRead(lhs)
-      assertValidRead(rhs)
-      comparisons.iterator.map(f => f(lhs, rhs)).find(_ != 0).getOrElse(0)
-    }
-
-    /** Asserts that we didn't get reads we are unable to sort. */
-    final def assertValidRead(rec: SAMRecord) = {
-      assert(rec.getReadPairedFlag,    "Unpaired read: " + rec.getReadName)
-      assert(!rec.getReadUnmappedFlag, "Unmapped read: " + rec.getReadName)
-      assert(!rec.getMateUnmappedFlag, "Read w/unmapped mate: " + rec.getReadName)
-      assert(rec.getReferenceIndex == rec.getMateReferenceIndex, "Read w/mate on different chr: " + rec.getReadName)
-      assert(SAMUtils.getMateCigarString(rec) != null, "Read w/o Mate Cigar tag: " + rec.getReadName)
-      assert(rec.getAttribute("MQ") != null, "Read w/o Mate MQ tag: " + rec.getReadName)
-      assert(!rec.isSecondaryOrSupplementary, "Secondary or supplementary read: " + rec.getReadName)
-    }
-
-    /** Retrieves the lower of the rec's and mate's 5' unclipped position for sorting. */
-    final def sortPosition(rec: SAMRecord): Int = {
-      val tmp = rec.getTransientAttribute(SortPositionAttribute)
-      if (tmp != null) {
-        tmp.asInstanceOf[Int]
-      }
-      else {
-        val p1 = if (rec.getReadNegativeStrandFlag) rec.getUnclippedEnd else rec.getUnclippedStart
-        val p2 = if (rec.getMateNegativeStrandFlag) SAMUtils.getMateUnclippedEnd(rec) else SAMUtils.getMateUnclippedStart(rec)
-        val pick = Math.min(p1, p2)
-        rec.setTransientAttribute(SortPositionAttribute, pick)
-        pick
-      }
-    }
-  }
 }
 
 @clp(group=ClpGroups.Umi, description =
@@ -445,11 +461,9 @@ class GroupReadsByUmi
   /** Consumes the next group of pairs with all matching end positions and returns them. */
   def takeNextGroup(iterator: BufferedIterator[ReadPair]) : Seq[ReadPair] = {
     val first = iterator.next()
-    val firstEnds = extractEnds(first._1)
+    val firstEnds = ReadInfo(first._1)
     val buffer = ListBuffer[(SAMRecord, SAMRecord)]()
-    while (iterator.hasNext &&
-           library(first._1) == library(iterator.head._1) &&
-           firstEnds == extractEnds(iterator.head._1)) buffer += iterator.next()
+    while (iterator.hasNext && firstEnds == ReadInfo(iterator.head._1)) buffer += iterator.next()
     first :: buffer.toList
   }
 
@@ -466,33 +480,5 @@ class GroupReadsByUmi
       val id  = rawToId(raw)
       rec.setAttribute(this.assignTag, id)
     }))
-  }
-
-  /** Extracts a tuple of:
-    *    (RefIndex, Lower 5' End, Higher 5' End, Strand of Lower, Strand of Higher)
-    * that is appropriate to group reads by for duplicate marking/UMI grouping.
-    */
-  def extractEnds(rec: SAMRecord) : (Int,Int,Int,Boolean,Boolean) = {
-    val tmp = rec.getTransientAttribute(GroupReadsByUmi.InsertEndsAndStrandAttribute)
-    if (tmp != null) {
-      tmp.asInstanceOf[(Int,Int,Int,Boolean,Boolean)]
-    }
-    else {
-      val chrom   = rec.getReferenceIndex.toInt
-      val recNeg  = rec.getReadNegativeStrandFlag
-      val recPos  = if (recNeg) rec.getUnclippedEnd else rec.getUnclippedStart
-      val mateNeg = rec.getMateNegativeStrandFlag
-      val matePos = if (mateNeg) SAMUtils.getMateUnclippedEnd(rec) else SAMUtils.getMateUnclippedStart(rec)
-
-      val result = if (recPos < matePos || (recPos == matePos && !recNeg)) {
-        (chrom, recPos, matePos, recNeg, mateNeg)
-      }
-      else {
-        (chrom, matePos, recPos, mateNeg, recNeg)
-      }
-
-      rec.setTransientAttribute(GroupReadsByUmi.InsertEndsAndStrandAttribute, result)
-      result
-    }
   }
 }

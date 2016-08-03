@@ -227,7 +227,8 @@ class GroupReadsByUmiTest extends UnitSpec {
       exp ++= builder.addPair("q6", 1, 1, 200)
 
       val f = (r:SAMRecord) => r.getReadName + "/" + (if (r.getFirstOfPairFlag) 1 else 2 )
-      val expected = exp.map(f)
+      // Order they are added in except for q4 gets it's mate's flipped because of strand order
+      val expected = List("q1/1", "q1/2", "q2/1", "q2/2", "q3/1", "q3/2", "q4/2", "q4/1", "q5/1", "q5/2", "q6/1", "q6/2")
       val actual   = builder.toList.sorted(Ordering.comparatorToOrdering(comparator)).map(f)
 
       actual should contain theSameElementsInOrderAs expected
