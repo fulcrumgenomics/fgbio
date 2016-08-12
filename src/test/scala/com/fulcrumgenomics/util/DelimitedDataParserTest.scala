@@ -30,6 +30,11 @@ import com.fulcrumgenomics.testing.UnitSpec
 class DelimitedDataParserTest extends UnitSpec {
   def csv(lines: Seq[String], trim: Boolean=true) = new DelimitedDataParser(lines, delimiter=',', trimFields=trim)
 
+  "DelimitedDataParser.split" should "split this" in {
+    val parser = csv(Seq("a,b,c,d"))
+    parser.split("foo,bar") shouldBe Array("foo", "bar")
+  }
+
   "DelimitedDataParser" should "parse some basic fields" in {
     val parser = csv(Seq("zero,one,two", "1,foo,5.0", "2,bar,10.0"))
     parser.hasNext shouldBe true
@@ -110,5 +115,36 @@ class DelimitedDataParserTest extends UnitSpec {
     row2[Int]("two") shouldBe 4
     row3[Int]("one") shouldBe 5
     row3[Int]("two") shouldBe 6
+  }
+
+  it should "handle lines that are empty except for delimiters" in {
+    val parser = csv(Seq("a,b,c", ",1,", ",,"))
+    val row1 = parser.next()
+    val row2 = parser.next()
+
+    row1[Int]("b") shouldBe 1
+    row2.get[String]("a") shouldBe None
+    row2.get[String]("b") shouldBe None
+    row2.get[String]("c") shouldBe None
+
+  }
+
+  it should "read present and absent values correctly using get()" in {
+    val parser = csv(Seq("a,b,c", ",2,3", "1,,", ",,3"))
+    val row1 = parser.next()
+    val row2 = parser.next()
+    val row3 = parser.next()
+    parser.hasNext shouldBe false
+    row1.get[Int]("a") shouldBe None
+    row1.get[Int]("b") shouldBe Some(2)
+    row1.get[Int]("c") shouldBe Some(3)
+
+    row2.get[Int]("a") shouldBe Some(1)
+    row2.get[Int]("b") shouldBe None
+    row2.get[Int]("c") shouldBe None
+
+    row3.get[Int]("a") shouldBe None
+    row3.get[Int]("b") shouldBe None
+    row3.get[Int]("c") shouldBe Some(3)
   }
 }
