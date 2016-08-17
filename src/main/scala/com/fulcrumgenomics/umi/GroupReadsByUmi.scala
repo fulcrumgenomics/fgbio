@@ -394,6 +394,7 @@ class GroupReadsByUmi
   @arg(flag="t", doc="The tag containing the raw UMI.")  rawTag: String    = "RX",
   @arg(flag="T", doc="The output tag for UMI grouping.") assignTag: String = "MI",
   @arg(flag="m", doc="Minimum mapping quality.")         minMapQ: Int      = 30,
+  @arg(flag="n", doc="Include non-PF reads.")            includeNonPfReads: Boolean = false,
   @arg(flag="s", doc="The UMI assignment strategy; one of 'identity', 'edit', 'adjacency' or 'paired'.") strategy: String,
   @arg(flag="e", doc="The allowable number of edits between UMIs.") edits: Int = 1,
   @arg(          doc="Temporary directory for sorting.") tmpDir: DirPath = Paths.get(System.getProperty("java.io.tmpdir"))
@@ -423,6 +424,7 @@ class GroupReadsByUmi
     // Filter and sort the input BAM file
     logger.info("Filtering and sorting input.")
     in.iterator
+      .filter(r => includeNonPfReads || !r.getReadFailsVendorQualityCheckFlag)
       .filter(r => !r.isSecondaryOrSupplementary)
       .filter(r => r.getReadPairedFlag)
       .filter(r => !r.getReadUnmappedFlag && !r.getMateUnmappedFlag)
