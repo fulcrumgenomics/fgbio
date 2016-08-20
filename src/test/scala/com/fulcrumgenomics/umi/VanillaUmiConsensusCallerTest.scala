@@ -166,7 +166,7 @@ class VanillaUmiConsensusCallerTest extends UnitSpec {
     consensus.get.quals shouldBe expectedQuals
   }
 
-  "ConsensusCaller.consensusFromStringBasesAndQualities" should "return None if there are not enough reads" in {
+  it should "return None if there are not enough reads" in {
     cc(cco(minReads=1)).consensusCall(Seq.empty) shouldBe None
     cc(cco(minReads=2)).consensusCall(Seq(src("GATTACA", Array(20,20,20,20,20,20,20)))) shouldBe None
   }
@@ -254,7 +254,29 @@ class VanillaUmiConsensusCallerTest extends UnitSpec {
     }
   }
 
-  "VanillaUmiConsensusCaller" should "should create two consensus for two UMI groups" in {
+  it should "apply the minInputBaseQuality appropriately" in {
+    val sources    = Seq(src("GATTACA", Array.tabulate(7)(_ => 20)), src("GATTACA", Array.tabulate(7)(_ => 30)))
+    val opts = cco(
+      errorRatePreUmi             = PhredScore.MaxValue,
+      errorRatePostUmi            = PhredScore.MaxValue,
+      minInputBaseQuality         = 30.toByte,
+      maxRawBaseQuality           = PhredScore.MaxValue,
+      rawBaseQualityShift         = 0.toByte,
+      minConsensusBaseQuality     = PhredScore.MinValue,
+      minReads                    = 1,
+      minMeanConsensusBaseQuality = PhredScore.MinValue
+    )
+
+    cc(opts).consensusCall(sources) match {
+      case None => fail
+      case Some(consensus) =>
+        consensus.baseString shouldBe "GATTACA"
+        consensus.quals.foreach(q => q shouldBe 30.toByte)
+    }
+  }
+
+
+  it should "should create two consensus for two UMI groups" in {
     val builder = new SAMRecordSetBuilder()
     builder.addFrag("READ1", 0, 1, false).setAttribute(DefaultTag, "GATTACA")
     builder.addFrag("READ2", 0, 1, false).setAttribute(DefaultTag, "GATTACA")

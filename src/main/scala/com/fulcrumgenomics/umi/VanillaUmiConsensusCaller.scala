@@ -31,7 +31,7 @@ import com.fulcrumgenomics.umi.VanillaUmiConsensusCallerOptions._
 import com.fulcrumgenomics.util.NumericTypes._
 import com.fulcrumgenomics.util.{MathUtil, ProgressLogger}
 import htsjdk.samtools._
-import htsjdk.samtools.util.SequenceUtil
+import htsjdk.samtools.util.{Murmur3, SequenceUtil}
 
 import scala.collection.JavaConversions.collectionAsScalaIterable
 import scala.collection.mutable
@@ -44,6 +44,7 @@ object VanillaUmiConsensusCallerOptions {
   val DefaultTag: String                             = "MI"
   val DefaultErrorRatePreUmi: PhredScore             = 45.toByte
   val DefaultErrorRatePostUmi: PhredScore            = 40.toByte
+  val DefaultMinInputBaseQuality: PhredScore         = 2.toByte
   val DefaultMaxBaseQuality: PhredScore              = 40.toByte
   val DefaultBaseQualityShift: PhredScore            = 10.toByte
   val DefaultMinConsensusBaseQuality: PhredScore     = 13.toByte
@@ -56,6 +57,7 @@ object VanillaUmiConsensusCallerOptions {
 case class VanillaUmiConsensusCallerOptions(tag: String                             = DefaultTag,
                                             errorRatePreUmi: PhredScore             = DefaultErrorRatePreUmi,
                                             errorRatePostUmi: PhredScore            = DefaultErrorRatePostUmi,
+                                            minInputBaseQuality: PhredScore         = DefaultMinInputBaseQuality,
                                             maxRawBaseQuality: PhredScore           = DefaultMaxBaseQuality,
                                             rawBaseQualityShift: PhredScore         = DefaultBaseQualityShift,
                                             minConsensusBaseQuality: PhredScore     = DefaultMinConsensusBaseQuality,
@@ -117,7 +119,10 @@ class VanillaUmiConsensusCaller
 
   // Initializes the prefix that will be used to make sure read names are (hopefully) unique
   private val actualReadNamePrefix = readNamePrefix.getOrElse {
-    header.getReadGroups.map(rg => Option(rg.getLibrary).getOrElse(rg.getReadGroupId)).toSet.toList.sorted.mkString("|")
+    val ids = header.getReadGroups.map(rg => Option(rg.getLibrary).getOrElse(rg.getReadGroupId)).toList.sorted.distinct
+    // Read names have to fit into 255 bytes, and this is just the prefix
+    if (ids.map(_.length+1).sum <= 200) ids.mkString("|")
+    else Integer.toHexString(new Murmur3(1).hashUnencodedChars(ids.mkString("|")))
   }
 
   /** Creates a consensus read from the given records.  If no consensus read was created, None is returned. */
@@ -160,7 +165,11 @@ class VanillaUmiConsensusCaller
         // Add the evidence from all reads that are long enough to cover this base
         reads.foreach { read =>
           if (read.length > positionInRead) {
-            builder.add(base=read.bases(positionInRead), qual=read.quals(positionInRead))
+            val base = read.bases(positionInRead)
+            val qual = read.quals(positionInRead)
+            if (qual >= this.options.minInputBaseQuality) {
+              builder.add(base=base, qual=qual)
+            }
           }
         }
 
