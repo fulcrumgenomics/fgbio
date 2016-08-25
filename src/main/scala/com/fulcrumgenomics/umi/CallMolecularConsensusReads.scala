@@ -25,17 +25,16 @@
 
 package com.fulcrumgenomics.umi
 
+import com.fulcrumgenomics.FgBioDef._
 import com.fulcrumgenomics.cmdline.{ClpGroups, FgBioTool}
 import com.fulcrumgenomics.umi.VanillaUmiConsensusCallerOptions._
 import com.fulcrumgenomics.util.ProgressLogger
-import dagr.commons.CommonsDef.PathToBam
 import dagr.commons.io.Io
 import dagr.commons.util.LazyLogging
 import dagr.sopt._
 import dagr.sopt.cmdline.ValidationException
 import htsjdk.samtools.SAMFileHeader.{GroupOrder, SortOrder}
 import htsjdk.samtools._
-import htsjdk.samtools.util.CloserUtil
 
 import scala.collection.JavaConverters._
 
@@ -77,7 +76,7 @@ import scala.collection.JavaConverters._
 class CallMolecularConsensusReads
 ( @arg(flag="i", doc="The input SAM or BAM file.") val input: PathToBam,
   @arg(flag="o", doc="Output SAM or BAM file to write consensus reads.") val output: PathToBam,
-  @arg(flag="r", doc="Output SAM or BAM file to write reads not used.") val rejects: PathToBam,
+  @arg(flag="r", doc="Optional output SAM or BAM file to write reads not used.") val rejects: Option[PathToBam] = None,
   @arg(flag="t", doc="The SAM attribute with the unique molecule tag.") val tag: String = DefaultTag,
   @arg(flag="p", doc="The Prefix all consensus read names") val readNamePrefix: Option[String] = None,
   @arg(flag="R", doc="The new read group ID for all the consensus reads.") val readGroupId: String = "A",
@@ -93,7 +92,9 @@ class CallMolecularConsensusReads
 ) extends FgBioTool with LazyLogging {
 
   Io.assertReadable(input)
-  Seq(output, rejects).foreach(Io.assertCanWriteFile(_))
+  Io.assertCanWriteFile(output)
+  rejects.foreach(Io.assertCanWriteFile(_))
+
   if (tag.length != 2)      throw new ValidationException("attribute must be of length 2")
   if (errorRatePreUmi < 0)  throw new ValidationException("Phred-scaled error rate pre UMI must be >= 0")
   if (errorRatePostUmi < 0) throw new ValidationException("Phred-scaled error rate post UMI must be >= 0")
@@ -101,7 +102,7 @@ class CallMolecularConsensusReads
   /** Main method that does the work of reading input files, creating the consensus reads, and writing the output file. */
   override def execute(): Unit = {
     val in  = SamReaderFactory.make().open(input.toFile)
-    val rej = new SAMFileWriterFactory().makeWriter(in.getFileHeader, true, rejects.toFile, null)
+    val rej = rejects.map(r => new SAMFileWriterFactory().makeWriter(in.getFileHeader, true, r.toFile, null))
 
     // The output file is unmapped, so for now let's clear out the sequence dictionary & PGs
     val out = new SAMFileWriterFactory().makeWriter(outputHeader(in.getFileHeader, sortOrder), sortOrder.forall(_ == in.getFileHeader.getSortOrder), output.toFile, null)
@@ -125,15 +126,15 @@ class CallMolecularConsensusReads
       readNamePrefix = readNamePrefix,
       readGroupId    = readGroupId,
       options        = options,
-      rejects        = Some(rej),
+      rejects        = rej,
       progress       = Some(progress)
     )
 
     consensusCaller.foreach { rec => out.addAlignment(rec) }
 
-    CloserUtil.close(in)
+    in.safelyClose()
     out.close()
-    rej.close()
+    rej.foreach(_.close())
     logger.info(s"Processed ${progress.getCount} records.")
   }
 
