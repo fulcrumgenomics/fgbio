@@ -29,6 +29,7 @@ import java.nio.file.Path
 import com.fulcrumgenomics.FgBioDef._
 import com.fulcrumgenomics.cmdline.{ClpGroups, FgBioTool}
 import com.fulcrumgenomics.util.Io
+import dagr.commons.util.LazyLogging
 import dagr.sopt.{arg, clp}
 import htsjdk.samtools.reference.{ReferenceSequenceFile, ReferenceSequenceFileFactory}
 import htsjdk.samtools.util.IOUtil.{VCF_EXTENSIONS => VcfExtensions}
@@ -43,15 +44,21 @@ import scala.collection.mutable.ListBuffer
 @clp(group=ClpGroups.Umi, description=
   """
     |Extracts data to make reviewing of variant calls from consensus reads easier. Creates
-    |a list of variant sites from the input VCF or IntervalList and then extracts all the
-    |consensus reads that do not contain a reference allele at the the variant sites, and
+    |a list of variant sites from the input VCF (SNPs only) or IntervalList then extracts all
+    |the consensus reads that do not contain a reference allele at the the variant sites, and
     |all raw reads that contributed to those consensus reads.  This will include consensus
     |reads that carry the alternate allele, a third allele, a no-call or a spanning
     |deletion at the variant site.
     |
+    |Reads are correlated between consensus and grouped BAMs using a molecule ID stored
+    |in an optional attribute, MI by default.  In order to support paired molecule IDs
+    |where two or more molecule IDs are related (e.g. see the Paired assignment strategy
+    |in GroupReadsByUmi) the molecule ID is truncated at the first '/' if present
+    |(e.g. "1/A" => "1" and "2" => "2").
+    |
     |Both input BAMs must be coordinate sorted and indexed.
     |
-    |A pair of output BAMs named {output}.consensus.bam and {output}.grouped.bam
+    |A pair of output BAMs named <output>.consensus.bam and <output>.grouped.bam
     |are created with the relevant reads from each input BAM.
   """)
 class ReviewConsensusVariants
@@ -61,7 +68,7 @@ class ReviewConsensusVariants
   @arg(flag="r", doc="Reference fasta file.") val ref: PathToFasta,
   @arg(flag="o", doc="Basename of output files to create.") val output : PathPrefix,
   @arg(flag="t", doc="The SAM/BAM tag used to uniquely identify source molecules.") val tag: String = "MI"
-)extends FgBioTool {
+)extends FgBioTool with LazyLogging {
   Io.assertReadable(Seq(input, consensusBam, groupedBam, ref))
   Io.assertCanWriteFile(output)
   private val refFile = ReferenceSequenceFileFactory.getReferenceSequenceFile(ref)
@@ -73,17 +80,20 @@ class ReviewConsensusVariants
 
   override def execute(): Unit = {
     def f(ext: String): Path = output.getParent.resolve(output.getFileName + ext)
-    val consensusIn = SamReaderFactory.make().open(consensusBam)
-    val groupedIn   = SamReaderFactory.make().open(groupedBam)
-    val factory = new SAMFileWriterFactory().setCreateIndex(true)
+    val consensusIn  = SamReaderFactory.make().open(consensusBam)
+    val groupedIn    = SamReaderFactory.make().open(groupedBam)
+    val factory      = new SAMFileWriterFactory().setCreateIndex(true)
     val consensusOut = factory.makeWriter(consensusIn.getFileHeader, true, f(".consensus.bam").toFile, ref.toFile)
     val groupedOut   = factory.makeWriter(groupedIn.getFileHeader, true, f(".grouped.bam").toFile, ref.toFile)
 
     // Pull out the consensus reads
+    logger.info(s"Loading variants from ${input.toAbsolutePath}")
     val variants        = loadPositions(path=input, refFile=refFile)
     val variantsByChrom = variants.groupBy(v => v.chrom)
     val queries         = variants.map(_.toQueryInterval).toArray
     val sources         = mutable.HashSet[String]()
+
+    logger.info(s"Extracting consensus reads from ${consensusBam.toAbsolutePath}")
     consensusIn.query(queries, false).filter(r => nonReferenceAtAnyVariant(r, variantsByChrom)).foreach { rec =>
       consensusOut.addAlignment(rec)
       Option(rec.getStringAttribute(tag)).map(mi => mi.takeWhile(_ != '/')).foreach(sources.add)
@@ -92,6 +102,7 @@ class ReviewConsensusVariants
     consensusOut.close()
 
     // And now the raw reads
+    logger.info(s"Extracting raw/grouped reads from ${groupedBam.toAbsolutePath}")
     groupedIn.query(queries, false)
       .filter(rec => Option(rec.getStringAttribute(tag)).map(mi => mi.takeWhile(_ != '/')).exists(sources.contains))
       .foreach(groupedOut.addAlignment)
@@ -129,7 +140,7 @@ class ReviewConsensusVariants
     !rec.getReadUnmappedFlag && variantsByChromAndPos(rec.getContig).exists { v =>
       if (v.start >= rec.getAlignmentStart && v.start <= rec.getAlignmentEnd) {
         val readPos = rec.getReadPositionAtReferencePosition(v.start)
-        readPos == 0 || !SequenceUtil.basesEqual(rec.getReadBases()(readPos-1), v.refBase.toByte )
+        readPos == 0 || !SequenceUtil.basesEqual(rec.getReadBases()(readPos-1), v.refBase.toByte)
       }
       else {
         false
