@@ -41,6 +41,47 @@ class FgBioDef extends CommonsDef {
   implicit class BetterBufferedIteratorJavaWrapper[A](val iterator: java.util.Iterator[A]) {
     def bufferBetter = new BetterBufferedIterator(scala.collection.JavaConversions.asScalaIterator(iterator))
   }
+
+  /**
+    * An implementation of a for loop that has performance similar to writing a custom
+    * while loop for primitive types, which suffer great performance loss when iterating
+    * via foreach(), and especially with zipWithIndex.foreach().
+    *
+    * Equivalent to: for(int i=from; i<until; i+=by) f(i)
+    *
+    * @param from an initial integer values
+    * @param until a value one higher than the last value that should be accepted
+    * @param by a step value to increment by each iteration
+    * @param f a function that takes the index and is called each iteration
+    */
+  @inline def forloop(from: Int, until: Int, by: Int=1)(f: Int => Unit): Unit = {
+    val comp: (Int,Int) => Boolean = if (by > 0) (_ < _) else (_ > _)
+    var i = from
+    while (comp(i, until)) {
+      f(i)
+      i += by
+    }
+  }
+
+  /**
+    * A more generic for loop, that gives performance similar, but slightly worse than,
+    * FgBioDef#forloop(Int,Int,Int).  Equivalent to:
+    *
+    *  for (i=from; check(i); i=next(i)) f(i)
+    *
+    * @param from an initial value
+    * @param check a function that checks to see if a value should be evaluated (not cause termination)
+    * @param next a function that takes a value and produced the next value
+    * @param f a function called on all values
+    * @tparam T the type of the index
+    */
+  @inline def forloop[@specialized T](from: T)(check: T => Boolean)(next: T => T)(f: T => Unit): Unit = {
+    var t = from
+    while (check(t)) {
+      f(t)
+      t = next(t)
+    }
+  }
 }
 
 /** Singleton object that extends from the class. */

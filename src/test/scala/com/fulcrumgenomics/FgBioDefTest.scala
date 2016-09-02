@@ -21,24 +21,36 @@
  * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
  * THE SOFTWARE.
  */
-package com.fulcrumgenomics.cmdline
 
-import com.fulcrumgenomics.cmdline.FgBioMain.FailureException
-import dagr.sopt.cmdline.ValidationException
+package com.fulcrumgenomics
 
-/** All fgbio tools should extend this. */
-trait FgBioTool {
-  def execute(): Unit
+import com.fulcrumgenomics.FgBioDef._
+import com.fulcrumgenomics.testing.UnitSpec
 
-  /** Fail with just an exit code. */
-  def fail(exit: Int) = throw new FailureException(exit=exit)
+import scala.collection.mutable.ListBuffer
 
-  /** Fail with the default exit code and a message. */
-  def fail(message: String) = throw new FailureException(message=Some(message))
+class FgBioDefTest extends UnitSpec {
+  "forloop(Int,Int,Int)" should "work just like a regular single-index for loop" in {
+    val buffer = ListBuffer[Int]()
+    forloop (0, 10) { buffer += _ }
+    buffer.toList should contain theSameElementsInOrderAs Range(0, 10).toList
 
-  /** Fail with a specific error code and message. */
-  def fail(exit: Int, message: String) = throw new FailureException(exit=exit, message=Some(message))
+    buffer.clear()
+    forloop (0, 10, by=2) { buffer += _ }
+    buffer.toList should contain theSameElementsInOrderAs Range(0, 10, step=2).toList
 
-  /** Generates a new validation exception with the given message. */
-  def invalid(message: String) = throw new ValidationException(message)
+    buffer.clear()
+    forloop (0, 10, by= -2) { buffer += _ }
+    buffer.toList should contain theSameElementsInOrderAs List.empty
+
+    buffer.clear()
+    forloop (10, 0, by= -2) { buffer += _ }
+    buffer.toList should contain theSameElementsInOrderAs List(10, 8, 6, 4, 2)
+  }
+
+  "forloop[T]" should "work like a regular for loop" in {
+    val buffer = ListBuffer[String]()
+    forloop ("A")(_.length < 6)(_ + "A") { buffer += _ }
+    buffer.toList should contain theSameElementsInOrderAs List("A", "AA", "AAA", "AAAA", "AAAAA")
+  }
 }
