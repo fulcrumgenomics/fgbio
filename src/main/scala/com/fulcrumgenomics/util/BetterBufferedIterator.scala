@@ -51,9 +51,11 @@ class BetterBufferedIterator[A](private val iterator: Iterator[A]) extends Buffe
     * Returns an iterator over contiguous elements that match the predicate.
     */
   override def takeWhile(p: (A) => Boolean): Iterator[A] = {
-    val xs = new ListBuffer[A]
-    while (hasNext && p(head)) xs += next()
-    xs.iterator
+    val outer = this
+    new Iterator[A] {
+      def hasNext: Boolean = outer.hasNext && p(outer.head)
+      def next(): A = outer.next()
+    }
   }
 
   /** Drops items while they match the predicate. */
