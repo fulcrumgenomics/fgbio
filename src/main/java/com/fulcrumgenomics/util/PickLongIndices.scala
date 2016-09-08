@@ -183,10 +183,16 @@ class PickLongIndices
     existingIndices.foreach(i => indices += i)
 
     var ok = true
+    var startTime = System.currentTimeMillis()
     while (ok && indices.size < numberOfIndices) {
       val pick = nextIndex(indices, this.length, this.editDistance, this.attempts)
       pick.foreach(p => indices += p)
       ok = pick.nonEmpty
+
+      if (System.currentTimeMillis() - startTime > 30000) {
+        logger.info(s"Picked ${indices.size} indices so far.")
+        startTime = System.currentTimeMillis()
+      }
     }
 
     indices
