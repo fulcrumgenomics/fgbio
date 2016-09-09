@@ -46,9 +46,14 @@ import scala.collection.JavaConversions.iterableAsScalaIterable
     |primers for each amplicon.
     |
     |Paired end reads that map to a given amplicon position are trimmed so that the
-    |alignment no-longer includes the primer sequences.
+    |alignment no-longer includes the primer sequences. All other aligned reads have the
+    |maximum primer length trimmed!
     |
-    |All other aligned reads have the maximum primer length trimmed!
+    |Reads that are clipped will have the NM, UQ and MD tags cleared as they are no longer
+    |guaranteed to be accurate.
+    |
+    |If the input BAM is not queryname sorted it will be sorted internally so that mate
+    |information between paired-end reads can be corrected before writing the output file.
   """)
 class TrimPrimers
 ( @arg(flag="i", doc="Input BAM file.")  val input: PathToBam,
@@ -101,8 +106,7 @@ class TrimPrimers
             val (left, right) = if (r1.getReadNegativeStrandFlag) (r2, r1) else (r1, r2)
             val (start, end ) = (left.getUnclippedStart, right.getUnclippedEnd)
             val insert = new Interval(left.getContig, start, end)
-            val amp = detector.getOverlaps(insert).find(amp => abs(amp.leftStart - start) <= slop && abs(amp.rightEnd - end) <= slop)
-            amp match {
+            detector.getOverlaps(insert).find(amp => abs(amp.leftStart - start) <= slop && abs(amp.rightEnd - end) <= slop) match {
               case Some(amplicon) =>
                 val leftClip  = amplicon.leftPrimerLength
                 val rightClip = amplicon.rightPrimerLength
@@ -163,7 +167,7 @@ class TrimPrimers
     val detector = new OverlapDetector[Amplicon](0,0)
     parser.foreach { row =>
       val amp = Amplicon(
-        chrom = row[String]("chrom"),
+        chrom      = row[String]("chrom"),
         leftStart  = row[Int]("left_start"),
         leftEnd    = row[Int]("left_end"),
         rightStart = row[Int]("right_start"),

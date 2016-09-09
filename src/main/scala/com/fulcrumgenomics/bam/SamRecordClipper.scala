@@ -50,6 +50,9 @@ object SamRecordClipper {
   object ClippingMode extends Enumeration { val Soft, Hard, SoftWithMask = Value }
   type ClippingMode = ClippingMode.Value
 
+  /** The set of tags that should be invalidated if a read undergoes clipping. */
+  val TagsToInvalidate = Seq("MD", "NM", "UQ")
+
   private val NoCallBase = 'N'.toByte
   private val NoCallQual = 2.toByte
 
@@ -91,6 +94,7 @@ object SamRecordClipper {
       rec.setCigar(new Cigar(util.Arrays.asList(newElems:_*)))
       rec.setReadBases(bases)
       rec.setBaseQualities(quals)
+      invalidateTags(rec)
     }
   }
 
@@ -131,6 +135,7 @@ object SamRecordClipper {
       rec.setCigar(new Cigar(util.Arrays.asList(newElems.reverse:_*)))
       rec.setReadBases(bases.reverse)
       rec.setBaseQualities(quals.reverse)
+      invalidateTags(rec)
     }
   }
 
@@ -143,7 +148,7 @@ object SamRecordClipper {
     * @param mode the clipping mode
     */
   def clip5PrimeEndOfAlignment(rec: SAMRecord, numberOfBasesToClip: Int, mode: ClippingMode) = {
-    if (!rec.getReadUnmappedFlag && rec.getReadNegativeStrandFlag) clipEndOfAlignment(rec, numberOfBasesToClip, mode)
+    if (rec.getReadNegativeStrandFlag) clipEndOfAlignment(rec, numberOfBasesToClip, mode)
     else clipStartOfAlignment(rec, numberOfBasesToClip, mode)
   }
 
@@ -156,7 +161,7 @@ object SamRecordClipper {
     * @param mode the clipping mode
     */
   def clip3PrimeEndOfAlignment(rec: SAMRecord, numberOfBasesToClip: Int, mode: ClippingMode) = {
-    if (!rec.getReadUnmappedFlag && rec.getReadNegativeStrandFlag) clipStartOfAlignment(rec, numberOfBasesToClip, mode)
+    if (rec.getReadNegativeStrandFlag) clipStartOfAlignment(rec, numberOfBasesToClip, mode)
     else clipEndOfAlignment(rec, numberOfBasesToClip, mode)
   }
 
@@ -247,7 +252,15 @@ object SamRecordClipper {
     var refBasesClipped  = 0
     val newElems = ListBuffer[CigarElement]()
 
-    // At the end of the loop newElems is either:
+    // The loop skips over all operators that are getting turned into clipping, while keeping track of
+    // how many reference bases and how many read bases are skipped over.  If the clipping point falls
+    // between existing operators then the `newElems` buffer is empty at the end of the while loop. If
+    // the clip point falls within:
+    //    a) a match/mismatch operator then the operator is split and the remainder added to the buffer
+    //    b) an insertion: the remainder of the insertion is also clipped
+    // If the operator immediately after the clip is a deletion, it is also discarded.
+    //
+    // At the end of the while loop newElems is either:
     //   a) Empty
     //   b) Contains a single element which is the remainder of an element that had to be split
     while (readBasesClipped < numberOfBasesToClip ||
@@ -300,4 +313,7 @@ object SamRecordClipper {
       quals(i) = NoCallQual
     }
   }
+
+  /** Invalidates the set of tags that cannot be trusted if clipping is applied to a read. */
+  def invalidateTags(rec: SAMRecord): Unit = TagsToInvalidate.foreach(tag => rec.setAttribute(tag, null))
 }

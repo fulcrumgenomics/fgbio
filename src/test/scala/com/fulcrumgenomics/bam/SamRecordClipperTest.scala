@@ -148,6 +148,13 @@ class SamRecordClipperTest extends UnitSpec {
     rec.getBaseQualities shouldBe quals.drop(20)
   }
 
+  it should "unmap a read when more clipping is requested than there is alignment to clip" in {
+    val rec = r(10, "10S40M")
+    SamRecordClipper.clipStartOfAlignment(rec, 50, ClippingMode.Soft)
+    rec.getReadUnmappedFlag shouldBe true
+    rec.getCigar shouldBe 'empty
+  }
+
   //////////////////////////////////////////////////////////////////////////////
 
   "SamRecordClipper.clipEndOfAlignment" should "soft-clip 10 matched bases" in {
@@ -205,7 +212,7 @@ class SamRecordClipperTest extends UnitSpec {
     rec.getAlignmentStart shouldBe 10
     rec.getCigarString shouldBe "36M4I10S"
   }
-//
+
   it should "remove deletions that immediately follow the clipping" in {
     val rec = r(10, "40M4D10M")
     SamRecordClipper.clipEndOfAlignment(rec, 10, ClippingMode.Soft)
@@ -259,6 +266,14 @@ class SamRecordClipperTest extends UnitSpec {
     rec.getReadBases shouldBe bases.take(30)
     rec.getBaseQualities shouldBe quals.take(30)
   }
+
+    it should "unmap a read when more clipping is requested than there is alignment to clip" in {
+    val rec = r(10, "40M10S")
+    SamRecordClipper.clipEndOfAlignment(rec, 50, ClippingMode.Soft)
+    rec.getReadUnmappedFlag shouldBe true
+    rec.getCigar shouldBe 'empty
+  }
+
 
   //////////////////////////////////////////////////////////////////////////////
   // One test each for all the derived methods.
