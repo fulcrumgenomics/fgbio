@@ -30,7 +30,7 @@ import java.util.Date
 
 import com.fulcrumgenomics.cmdline.FgBioMain.FailureException
 import com.fulcrumgenomics.util.Io
-import dagr.commons.util.{LazyLogging, StringUtil}
+import dagr.commons.util.{LazyLogging, Logger, StringUtil}
 import dagr.sopt.cmdline.{CommandLineParser, CommandLineProgramParserStrings}
 
 /**
@@ -55,6 +55,8 @@ class FgBioMain extends LazyLogging {
 
   /** A main method that returns an exit code instead of exiting. */
   def makeItSo(args: Array[String]): Int = {
+    // Log to stderr
+    Logger.out = System.err
     // Turn down HTSJDK logging
     htsjdk.samtools.util.Log.setGlobalLogLevel(htsjdk.samtools.util.Log.LogLevel.WARNING)
 
