@@ -45,18 +45,10 @@ import scala.collection.mutable.ListBuffer
   *     attempt to make it so that the read has N bases clipped, including any existing
   *     clipping (clip[Start|End|5PrimeEnd|3PrimeEnd]OfRead)
   */
-object SamRecordClipper {
-  /** An enumeration representing the various ways to clip bases within a read. */
-  object ClippingMode extends Enumeration { val Soft, Hard, SoftWithMask = Value }
-  type ClippingMode = ClippingMode.Value
+trait SamRecordClipper {
+  import SamRecordClipper._
 
-  /** The set of tags that should be invalidated if a read undergoes clipping. */
-  val TagsToInvalidate = Seq("MD", "NM", "UQ")
-
-  private val NoCallBase = 'N'.toByte
-  private val NoCallQual = 2.toByte
-
-  /**
+    /**
     * Adds clipping of _at least_ numberOfBasesToClip to the start (left hand end)
     * of an alignment. If clipping already exists at the start of the read it is
     * preserved, and numberOfBasesToClip more clipping is added.
@@ -94,7 +86,7 @@ object SamRecordClipper {
       rec.setCigar(new Cigar(util.Arrays.asList(newElems:_*)))
       rec.setReadBases(bases)
       rec.setBaseQualities(quals)
-      invalidateTags(rec)
+      cleanupClippedRecord(rec)
     }
   }
 
@@ -135,7 +127,7 @@ object SamRecordClipper {
       rec.setCigar(new Cigar(util.Arrays.asList(newElems.reverse:_*)))
       rec.setReadBases(bases.reverse)
       rec.setBaseQualities(quals.reverse)
-      invalidateTags(rec)
+      cleanupClippedRecord(rec)
     }
   }
 
@@ -315,5 +307,18 @@ object SamRecordClipper {
   }
 
   /** Invalidates the set of tags that cannot be trusted if clipping is applied to a read. */
-  def invalidateTags(rec: SAMRecord): Unit = TagsToInvalidate.foreach(tag => rec.setAttribute(tag, null))
+  protected def cleanupClippedRecord(rec: SAMRecord): Unit = TagsToInvalidate.foreach(tag => rec.setAttribute(tag, null))
+}
+
+/** Singleton instantiation of a basic SamRecordClipper. */
+object SamRecordClipper extends SamRecordClipper {
+  /** An enumeration representing the various ways to clip bases within a read. */
+  object ClippingMode extends Enumeration { val Soft, Hard, SoftWithMask = Value }
+  type ClippingMode = ClippingMode.Value
+
+  /** The set of tags that should be invalidated if a read undergoes clipping. */
+  val TagsToInvalidate = Seq("MD", "NM", "UQ")
+
+  private val NoCallBase = 'N'.toByte
+  private val NoCallQual = 2.toByte
 }
