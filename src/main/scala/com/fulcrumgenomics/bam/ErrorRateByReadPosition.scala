@@ -205,6 +205,11 @@ private class ErrorRateByReadPositionWithReferenceCounter
   var referenceSequence = referenceFile.getSequence(referenceFile.getSequenceDictionary.getSequence(0).getSequenceName)
 
   protected def updateErrors(rec: SAMRecord, readIndex: Int): Unit = {
+    // Move to the correct reference.
+    if (rec.getReferenceIndex != referenceSequence.getContigIndex) {
+      referenceSequence = referenceFile.getSequence(referenceFile.getSequenceDictionary.getSequence(rec.getReferenceIndex).getSequenceName)
+    }
+
     // Get the reference bases
     val referenceBases = referenceSequence.getBases
 
@@ -218,7 +223,7 @@ private class ErrorRateByReadPositionWithReferenceCounter
     val quals = rec.getBaseQualities
 
     // For each alignment block
-    rec.getAlignmentBlocks.foreach { block =>
+    for (block <- rec.getAlignmentBlocks) {
       var refPosition  = block.getReferenceStart - 1
       var readPosition = block.getReadStart - 1
       val readEnd      = readPosition + block.getLength
