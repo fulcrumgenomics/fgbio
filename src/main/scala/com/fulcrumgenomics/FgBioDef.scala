@@ -27,6 +27,9 @@ package com.fulcrumgenomics
 import com.fulcrumgenomics.util.BetterBufferedIterator
 import dagr.commons.CommonsDef
 
+import scala.collection.parallel.{ForkJoinTaskSupport, ParIterable, TaskSupport}
+import scala.concurrent.forkjoin.ForkJoinPool
+
 /**
   * Place to put common function, type and implicit definitions that can be
   * imported into other classes easily.
@@ -80,6 +83,37 @@ class FgBioDef extends CommonsDef {
     while (check(t)) {
       f(t)
       t = next(t)
+    }
+  }
+
+  /**
+    * Provides simple methods to make configuring a parallel iterable easier.
+    *
+    * We can set a fixed a number of threads:
+    *
+    *   iter.par.withThreads(threads=8)
+    *
+    * We can use a [ForkJoinPool]:
+    *
+    *   iter.par.withForkJoinPool(forkJoinPool=forkJoinPool)
+    *
+    * We can provide a [TaskSupport] directly:
+    *
+    *   iter.par.withTaskSupport(taskSupport=taskSupport)
+    *
+    * @param parIterable the parallel iterable to customize.
+    * @tparam T the type of the iterable
+    */
+  implicit class ParIterableSupport[T](parIterable: ParIterable[T]) {
+    def withTaskSupport(taskSupport: TaskSupport): ParIterable[T] = {
+      parIterable.tasksupport = taskSupport
+      parIterable
+    }
+    def withForkJoinPool(forkJoinPool: ForkJoinPool) = {
+      this.withTaskSupport(taskSupport=new ForkJoinTaskSupport(forkJoinPool))
+    }
+    def withThreads(threads: Int): ParIterable[T] = {
+      this.withForkJoinPool(forkJoinPool=new ForkJoinPool(threads))
     }
   }
 }
