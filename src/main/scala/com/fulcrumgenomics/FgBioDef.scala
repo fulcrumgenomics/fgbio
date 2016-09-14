@@ -27,6 +27,10 @@ package com.fulcrumgenomics
 import com.fulcrumgenomics.util.BetterBufferedIterator
 import dagr.commons.CommonsDef
 
+import scala.collection.Parallelizable
+import scala.collection.parallel.{ExecutionContextTaskSupport, ForkJoinTaskSupport, ParIterable, ParIterableLike, TaskSupport, ThreadPoolTaskSupport}
+import scala.concurrent.forkjoin.ForkJoinPool
+
 /**
   * Place to put common function, type and implicit definitions that can be
   * imported into other classes easily.
@@ -80,6 +84,32 @@ class FgBioDef extends CommonsDef {
     while (check(t)) {
       f(t)
       t = next(t)
+    }
+  }
+
+  /**
+    * Implicit that provides additional methods to any collection that is Parallelizable.
+    * Introduces [[parWith()]] methods that create parallel versions of the collection
+    * with various configuration options.
+    *
+    * @param parallelizable any parallelizable collection
+    * @tparam A the type of the elements in the collection
+    * @tparam B the type of the parallel representation of the collection
+    */
+  implicit class ParSupport[A, B <: ParIterableLike[_, _, _]](private val parallelizable: Parallelizable[A,B]) {
+    /** Creates a parallel collection with the provided TaskSupport. */
+    def parWith(taskSupport: TaskSupport): B = {
+      val par = parallelizable.par
+      par.tasksupport = taskSupport
+      par
+    }
+
+    /** Creates a parallel collection with the provided ForkJoinPool. */
+    def parWith(pool: ForkJoinPool): B = parWith(taskSupport=new ForkJoinTaskSupport(pool))
+
+    /** Creates a parallel collection with the desired level of parallelism and FIFO semantics. */
+    def parWith(parallelism: Int, fifo: Boolean = true): B = {
+      parWith(new ForkJoinPool(parallelism, ForkJoinPool.defaultForkJoinWorkerThreadFactory, null, fifo))
     }
   }
 }
