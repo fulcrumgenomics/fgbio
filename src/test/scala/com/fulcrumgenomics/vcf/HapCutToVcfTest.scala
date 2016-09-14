@@ -48,6 +48,15 @@ class HapCutToVcfTest extends UnitSpec {
   private val hapCut2Vcf     = dir.resolve("NA12878.GIABPedigreev0.2.17.41100000.41300000.hapcut2.vcf")
   private val hapCut2GatkVcf = dir.resolve("NA12878.GIABPedigreev0.2.17.41100000.41300000.hapcut2.gatk.vcf")
 
+  // For testing HapCut2 producing phased blocks overlapping other phased blocks.
+  private val outOfOrderIn     = dir.resolve("blocks_out_of_order.vcf")
+  private val outOfOrderOut    = dir.resolve("blocks_out_of_order.hapcut2")
+  private val outOfOrderOutVcf = dir.resolve("blocks_out_of_order.hapcut2.vcf")
+
+  // For testing HapCut2 with missing variants in the input VCF
+  private val missingVariantsIn  = dir.resolve("missing_leading_variants.vcf")
+  private val missingVariantsOut = dir.resolve("missing_leading_variants.hapcut2")
+
   private def countVcfRecords(vcf: PathToVcf): Int = {
     val vcfReader = new VCFFileReader(vcf.toFile, false)
     yieldAndThen(vcfReader.iterator().length)(vcfReader.close())
@@ -91,7 +100,8 @@ class HapCutToVcfTest extends UnitSpec {
   "HapCutReader" should "read in a HAPCUT1 file" in {
     val reader = HapCutReader(hapCut1Out)
     val allCalls = reader.toSeq
-    val calls = allCalls.flatten
+    println(allCalls.map(_.offset).zipWithIndex.filter { case (offset, idx) => offset != idx + 1 }.toList)
+    val calls = allCalls.flatMap(_.call)
     allCalls.length shouldBe 342 // 342 total variants
     calls.length shouldBe 237 // 237 phased variants
     calls.map(_.phaseSet).distinct.length shouldBe 8 // eight phased blocks
@@ -101,7 +111,7 @@ class HapCutToVcfTest extends UnitSpec {
   it should "read in a HAPCUT2 file" in {
     val reader = HapCutReader(hapCut2Out)
     val allCalls = reader.toSeq
-    val calls = allCalls.flatten
+    val calls = allCalls.flatMap(_.call)
     allCalls.length shouldBe 342 // 342 total variants
     calls.length shouldBe 237 // 237 phased variants
     calls.map(_.phaseSet).distinct.length shouldBe 8 // eight phased blocks
@@ -131,7 +141,7 @@ class HapCutToVcfTest extends UnitSpec {
 
       // check that the # of variants phased in the output agrees with the # of phased calls produced by HapCut
       val hapCutReader = HapCutReader(hapCut1Out)
-      val numPhasedFromHapCut = hapCutReader.flatten.length
+      val numPhasedFromHapCut = hapCutReader.flatMap(_.call).length
       numPhasedFromOut shouldBe numPhasedFromHapCut
       hapCutReader.close()
 
@@ -166,7 +176,7 @@ class HapCutToVcfTest extends UnitSpec {
 
       // check that the # of variants phased in the output agrees with the # of phased calls produced by HapCut
       val hapCutReader = HapCutReader(hapCut2Out)
-      val numPhasedFromHapCut = hapCutReader.flatten.length
+      val numPhasedFromHapCut = hapCutReader.flatMap(_.call).length
       numPhasedFromOut shouldBe numPhasedFromHapCut
       hapCutReader.close()
 
@@ -176,6 +186,38 @@ class HapCutToVcfTest extends UnitSpec {
       // check that if a variant is not phased it does not have a PS tag
       hasPhasingSetFormatTagButUnphased(out, gatkPhasingFormat) shouldBe false
     }
+  }
+
+  it should "convert an HAPCUT2 file to VCF when there are overlapping phase blocks" in {
+    val out       = makeTempFile("hap_cut_to_vcf.hapcut2", ".vcf")
+
+    new HapCutToVcf(
+      vcf               = outOfOrderIn,
+      input             = outOfOrderOut,
+      output            = out,
+      gatkPhasingFormat = false
+    ).execute()
+
+    // check that we have the same # of records in the output as the input
+    countVcfRecords(out) shouldBe countVcfRecords(outOfOrderIn)
+
+    // check that all records in the output are found in the input
+    compareVcfs(out, outOfOrderIn)
+
+    // get the # of phased variants from the output
+    val numPhasedFromOut = getNumPhasedFromVcf(out, false)
+
+    // check that the # of variants phased in the output agrees with the # of phased calls produced by HapCut
+    val hapCutReader = HapCutReader(outOfOrderOut)
+    val numPhasedFromHapCut = hapCutReader.flatMap(_.call).length
+    numPhasedFromOut shouldBe numPhasedFromHapCut
+    hapCutReader.close()
+
+    // check that the # of variants phased in the output agrees with the # of phased calls in the expected output
+    numPhasedFromOut shouldBe getNumPhasedFromVcf(outOfOrderOutVcf, false)
+
+    // check that if a variant is not phased it does not have a PS tag
+    hasPhasingSetFormatTagButUnphased(out, false) shouldBe false
   }
 
   it should "convert an empty HAPCUT1/HAPCUT2 file to VCF in both GATK and VCF-spec phasing format" in {
@@ -204,5 +246,16 @@ class HapCutToVcfTest extends UnitSpec {
       // check that if a variant is not phased it does not have a PS tag
       hasPhasingSetFormatTagButUnphased(out, gatkPhasingFormat) shouldBe false
     }
+  }
+
+  it should "fail when there are missing variants in the input VCF" in {
+    val out       = makeTempFile("hap_cut_to_vcf.hapcut2", ".vcf")
+
+    an[Exception] should be thrownBy new HapCutToVcf(
+      vcf               = missingVariantsIn,
+      input             = missingVariantsOut,
+      output            = out,
+      gatkPhasingFormat = false
+    ).execute()
   }
 }

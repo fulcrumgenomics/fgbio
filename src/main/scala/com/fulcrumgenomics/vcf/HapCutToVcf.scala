@@ -104,9 +104,9 @@ class HapCutToVcf
   Io.assertCanWriteFile(output)
 
   override def execute(): Unit = {
-    val vcfReader      = new VCFFileReader(vcf.toFile, false)
-    val iterator       = new HapCutAndVcfMergingIterator(input, vcfReader, gatkPhasingFormat)
-    val vcfWriter      = makeWriter(output, vcfReader, iterator.hapCutType)
+    val vcfReader = new VCFFileReader(vcf.toFile, false)
+    val iterator  = new HapCutAndVcfMergingIterator(input, vcfReader, gatkPhasingFormat)
+    val vcfWriter = makeWriter(output, vcfReader, iterator.hapCutType)
 
     iterator.foreach(vcfWriter.add)
 
@@ -243,11 +243,14 @@ private class HapCutAndVcfMergingIterator(hapCutPath: FilePath,
   extends Iterator[VariantContext] with Closeable {
   import HapCutType.HapCutType
 
-  private val sourceIterator = vcfReader.toStream.zipWithIndex.iterator
+  private val sourceIterator = vcfReader.toStream.zipWithIndex.iterator.buffered
   private val hapCutReader   = HapCutReader(path=hapCutPath)
   private val sampleName     = vcfReader.getFileHeader.getSampleNamesInOrder.head
 
-  def hasNext(): Boolean = sourceIterator.hasNext
+  def hasNext(): Boolean = {
+    if (sourceIterator.isEmpty && hapCutReader.hasNext()) throw new IllegalStateException("HapCut has more phased variants but no more variants in the input")
+    sourceIterator.hasNext
+  }
 
   /** Returns either the phased variant with added HapCut-specific genotype information (Left), or the original variant (Right). */
   def next(): VariantContext = {
@@ -255,10 +258,14 @@ private class HapCutAndVcfMergingIterator(hapCutPath: FilePath,
     val (sourceContext, sourceOffset) = sourceIterator.next()
     if (!hapCutReader.hasNext()) formatSourceContext(sourceContext)
     else {
-      hapCutReader.next() match {
-        case None => formatSourceContext(sourceContext)
+      val HapCutOffsetAndCall(offset, callOption) = hapCutReader.next()
+      if (offset != sourceOffset+1) throw new IllegalStateException("BUG: calls are out of order")
+      callOption match {
+        case None =>
+          formatSourceContext(sourceContext)
         case Some(hapCutCall) =>
-          if (hapCutCall.offset != sourceOffset+1) throw new IllegalStateException("BUG: calls are out of order")
+          require(hapCutCall.pos == sourceContext.getStart)
+          require(offset == hapCutCall.offset)
           val hapCutContext = hapCutCall.toVariantContext(sampleName)
           replaceGenotypes(source=sourceContext, genotype=hapCutContext.getGenotype(0), isPhased = !gatkPhasingFormat || !hapCutCall.firstInBlock)
       }
@@ -378,10 +385,10 @@ private case class HapCut2BlockInfo (protected val phaseSetOption: Option[Int] =
 
 private object GenotypeInfo {
   import HapCutType._
-  def apply(info: String, hapCutType: HapCutType): GenotypeInfo = {
+  def apply(info: String, hapCutType: HapCutType, thresholdPruning: Boolean = false): GenotypeInfo = {
     hapCutType match {
       case HapCut1 => HapCut1GenotypeInfo(info=info)
-      case HapCut2 => HapCut2GenotypeInfo(info=info)
+      case HapCut2 => HapCut2GenotypeInfo(info=info, thresholdPruning=thresholdPruning)
       case _       => unreachable("Unknown HapCut type when building a GenotypeInfo.")
     }
   }
@@ -445,10 +452,10 @@ private class HapCut2GenotypeInfo private(val pruned: Boolean, val log10SwitchEr
 /** Values and methods for HapCut2-specific genotype information. */
 private object HapCut2GenotypeInfo {
   /** Parses the genotype information produced by HapCut2. */
-  def apply(info: String): GenotypeInfo = {
+  def apply(info: String, thresholdPruning: Boolean): GenotypeInfo = {
     val tokens = info.split("\t")
     new HapCut2GenotypeInfo(
-      pruned           = "1" == tokens(0),
+      pruned           = "1" == tokens(0) || thresholdPruning,
       log10SwitchError = tokens(1).toDouble,
       log10NoError     = tokens(2).toDouble
     )
@@ -457,6 +464,7 @@ private object HapCut2GenotypeInfo {
 
 /** Information about a variant phased by HapCut.
   *
+  * @param block the haplotype block to which this variant is associated.
   * @param offset the 1-based offset of the variant relative to the variants given to HapCut.
   * @param hap1Allele the first allele.
   * @param hap2Allele the second allele.
@@ -468,7 +476,8 @@ private object HapCut2GenotypeInfo {
   * @param info the HapCut-specific genotype information.
   * @param phaseSet the phase set identifier for the phase block to which this call belongs
   */
-private case class HapCutCall private(offset: Int,
+private case class HapCutCall private(block: BlockInfo,
+                                      offset: Int,
                                       hap1Allele: Int, hap2Allele: Int,
                                       contig: String, pos: Int,
                                       ref: String, alts: String,
@@ -518,23 +527,27 @@ private object HapCutCall {
     * @param firstVariantPosition the position of the first variant in the block to which this variant belongs, or None
     *                             if this variant is the first variant in the block.
     **/
-  def apply(callLine: String, firstVariantPosition: Option[Int], hapCutType: HapCutType): HapCutCall = {
+  def toHapCutCall(callLine: String, block: BlockInfo, firstVariantPosition: Option[Int], hapCutType: HapCutType): HapCutCall = {
     val tokens = callLine.split('\t')
     if (9 != tokens.length && 11 != tokens.length) {
       throw new IllegalStateException(s"Did not parse 9 or 12 fields (parsed ${tokens.length}) in the HapCut/HapCut2 line: " + callLine.trim)
     }
     val offset = tokens(0).toInt
     val pos    = tokens(4).toInt
+    val hap1Allele = if ("-" == tokens(1)) -1 else tokens(1).toInt
+    val hap2Allele = if ("-" == tokens(2)) -1 else tokens(2).toInt
+    val thresholdPruning = hapCutType == HapCut2 && (hap1Allele < 0 || hap2Allele < 0)
     new HapCutCall(
+      block        = block,
       offset       = offset,
-      hap1Allele   = if ("-" == tokens(1)) -1 else tokens(1).toInt,
-      hap2Allele   = if ("-" == tokens(2)) -1 else tokens(2).toInt,
+      hap1Allele   = hap1Allele,
+      hap2Allele   = hap2Allele,
       contig       = tokens(3),
       pos          = pos,
       ref          = tokens(5),
       alts         = tokens(6),
       genotype     = tokens(7),
-      info         = GenotypeInfo(tokens.drop(8).mkString("\t"), hapCutType=hapCutType),
+      info         = GenotypeInfo(tokens.drop(8).mkString("\t"), hapCutType=hapCutType, thresholdPruning=thresholdPruning),
       phaseSet     = firstVariantPosition.getOrElse(pos)
     )
   }
@@ -544,6 +557,8 @@ object HapCutType extends Enumeration {
   type HapCutType = Value
   val HapCut1, HapCut2, Unknown = Value
 }
+
+private[vcf] case class HapCutOffsetAndCall(offset: Int, call: Option[HapCutCall] = None)
 
 object HapCutReader {
   val HapCut1BlockLinePattern = """^BLOCK: offset: (\d+) len: (\d+) phased: (\d+) SPAN: (\d+) MECscore (\d+.\d+) fragments (\d+)$""".r
@@ -565,13 +580,11 @@ object HapCutReader {
   */
 private[vcf] class HapCutReader(iterator: Iterator[String],
                                 private[this] val source: Option[{ def close(): Unit }] = None)
-  extends Iterator[Option[HapCutCall]] with Closeable {
+  extends Iterator[HapCutOffsetAndCall] with Closeable {
   import HapCutType._
+  import scala.collection.mutable.ListBuffer
 
   private val lineIterator = iterator.buffered
-  private var blockInfo: Option[BlockInfo] = None
-  private var calls: Iterator[Option[HapCutCall]] = Iterator.empty
-
   val hapCutType: HapCutType = {
     if (lineIterator.isEmpty) Unknown // Default to true if the file is empty
     else {
@@ -582,64 +595,116 @@ private[vcf] class HapCutReader(iterator: Iterator[String],
       }
     }
   }
+  private var nextBlockInfo: Option[BlockInfo] = this.forNextBlockInfo()
+  private val calls = new CallBuffer
 
-  // initialize
-  this.advance()
 
-  def hasNext(): Boolean = {
-    this.blockInfo match {
-      case Some(b) if calls.hasNext => true
-      case _ =>
-        if (this.lineIterator.hasNext) this.advance()
-        else false
+  /** Simple class to store calls within a range of offsets. */
+  private class CallBuffer {
+    private val callBuffer = new ListBuffer[HapCutOffsetAndCall]()
+    private var firstOffset = 1
+
+    /** Add a call to the buffer.  This may add empty calls with less than offset of this call relative to the call
+      * with the greatest offset ever present in this buffer. */
+    def add(call: HapCutCall): Unit = {
+      require(firstOffset <= call.offset)
+      val offsetAndCall = new HapCutOffsetAndCall(offset=call.offset, call=Some(call))
+      // add empty values *prior* to this call
+      while (firstOffset + this.callBuffer.length < call.offset) {
+        this.callBuffer.append(new HapCutOffsetAndCall(offset=firstOffset+this.callBuffer.length, call=None))
+      }
+      // add the call
+      if (this.callBuffer.nonEmpty && call.offset <= firstOffset + this.callBuffer.length - 1) {
+        this.callBuffer(call.offset-firstOffset) = offsetAndCall
+      }
+      else {
+        this.callBuffer.append(offsetAndCall)
+      }
     }
+
+    /** Removes the next call. */
+    def removeFirst(): HapCutOffsetAndCall = {
+      val call = this.callBuffer.remove(0)
+      this.firstOffset = call.offset + 1
+      call
+    }
+
+    def isEmpty: Boolean = this.callBuffer.isEmpty
+
+    def nonEmpty: Boolean = this.callBuffer.nonEmpty
   }
 
-  def next(): Option[HapCutCall] = {
+  def hasNext(): Boolean = {
+    if (calls.nonEmpty) true
+    else this.advance()
+  }
+
+  def next(): HapCutOffsetAndCall = {
     if (!hasNext()) throw new NoSuchElementException("Calling next() when hasNext() is false")
-    calls.next()
+    calls.removeFirst()
   }
 
   /** Closes the underlying reader; only necessary if EOF hasn't been reached. */
   def close(): Unit = this.source.foreach(_.close())
 
-  private def nextBlock(): Unit = {
-    // Read the block information
-    val blockLine    = this.lineIterator.next().trim
-    val currentBlock: BlockInfo = blockLine match {
-      case HapCutReader.HapCut1BlockLinePattern(offset, len, phased, span, mecScore, fragments) =>
-        if (hapCutType != HapCut1) throw new IllegalStateException(s"Found a HapCut1 block line but the file type was $hapCutType")
-        new HapCut1BlockInfo(None, offset.toInt, len.toInt, phased.toInt, span.toInt, mecScore.toFloat, fragments.toInt)
-      case HapCutReader.HapCut2BlockLinePattern(offset, len, phased, span, fragments) =>
-        if (hapCutType != HapCut2) throw new IllegalStateException(s"Found a HapCut2 block line but the file type was $hapCutType")
-        new HapCut2BlockInfo(None, offset.toInt, len.toInt, phased.toInt, span.toInt, fragments.toInt)
-      case _ => throw new IllegalStateException("Could not parse block line: " + blockLine)
-    }
-
-    // Read in the phased variants, storing a map of their offset (1-based) in the original file to the HapCutCall.
-    var firstVariantInBlock: Option[Int] = None
-    val callMap = (for (i <- 1 to currentBlock.phased) yield {
-      if (!lineIterator.hasNext) throw new IllegalStateException("Reached the end of file when searching for a call")
-      val call = HapCutCall(lineIterator.next(), firstVariantInBlock, hapCutType)
-      if (firstVariantInBlock.isEmpty) firstVariantInBlock = Some(call.pos)
-      (call.offset, call)
-    }).toMap
-
-    // add in any empty calls
-    val nextVariantOffset = this.blockInfo.map(_.offsetOfLastVariant).getOrElse(0) + 1
-    this.calls = Stream.range(nextVariantOffset, currentBlock.len+currentBlock.offset).map(callMap.get).toIterator.buffered
-
-    // update the current block
-    this.blockInfo = Some(currentBlock.withPhaseSet(phaseSet=firstVariantInBlock))
-  }
-
-  /** Reads in the next block of data */
-  private def advance(): Boolean = {
+  /** Reads in the next block info. */
+  private def forNextBlockInfo(): Option[BlockInfo] = {
     // find the next block
     while (this.lineIterator.hasNext && !this.lineIterator.head.startsWith("BLOCK:")) {
       this.lineIterator.next()
     }
-    if (this.lineIterator.hasNext) { nextBlock(); true }
-    else false
+    if (this.lineIterator.hasNext) {
+      // Read the block information
+      val blockLine = this.lineIterator.next().trim
+      val currentBlock: BlockInfo = blockLine match {
+        case HapCutReader.HapCut1BlockLinePattern(offset, len, phased, span, mecScore, fragments) =>
+          if (hapCutType != HapCut1) throw new IllegalStateException(s"Found a HapCut1 block line but the file type was $hapCutType")
+          new HapCut1BlockInfo(None, offset.toInt, len.toInt, phased.toInt, span.toInt, mecScore.toFloat, fragments.toInt)
+        case HapCutReader.HapCut2BlockLinePattern(offset, len, phased, span, fragments) =>
+          if (hapCutType != HapCut2) throw new IllegalStateException(s"Found a HapCut2 block line but the file type was $hapCutType")
+          new HapCut2BlockInfo(None, offset.toInt, len.toInt, phased.toInt, span.toInt, fragments.toInt)
+        case _ => throw new IllegalStateException("Could not parse block line: " + blockLine)
+      }
+      Some(currentBlock)
+    }
+    else None
+  }
+
+  /** Reads in the next set of variants for the given block. */
+  private def forNextBlockCalls(block: BlockInfo): Unit = {
+    // Read in the phased variants and add them to hte set of calls
+    var firstVariantPosition: Option[Int] = None
+    var i = 0
+    while (i < block.phased) {
+      if (!lineIterator.hasNext) throw new IllegalStateException("Reached the end of file when searching for a call")
+      val call = HapCutCall.toHapCutCall(callLine=lineIterator.next(), block=this.nextBlockInfo.get, firstVariantPosition=firstVariantPosition, hapCutType=hapCutType)
+      if (firstVariantPosition.isEmpty) firstVariantPosition = Some(call.pos)
+      this.calls.add(call=call)
+      i += 1
+    }
+  }
+
+  /** Gets the variants for the next block, and any subsequent block that overlaps this block or others subsequently
+    * read in.  Returns true if any block was read, false otherwise. */
+  private def advance(): Boolean = {
+    // Read in the variants for the next block
+    val firstBlock = this.nextBlockInfo match {
+      case None => return false
+      case Some(block) =>
+        forNextBlockCalls(block=block)
+        block
+    }
+    require(this.calls.nonEmpty)
+
+    // read in blocks until the start offset of the next block is greater than the maximum offset seen so far
+    var maxOffset = firstBlock.offsetOfLastVariant
+    this.nextBlockInfo = forNextBlockInfo()
+    while (this.nextBlockInfo.exists(_.offset <= maxOffset)) {
+      forNextBlockCalls(block=this.nextBlockInfo.get)
+      maxOffset = Math.max(maxOffset, this.nextBlockInfo.get.offsetOfLastVariant)
+      this.nextBlockInfo = forNextBlockInfo()
+    }
+
+    true
   }
 }
