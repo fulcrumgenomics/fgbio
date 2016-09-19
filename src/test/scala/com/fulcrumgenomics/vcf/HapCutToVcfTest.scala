@@ -100,7 +100,6 @@ class HapCutToVcfTest extends UnitSpec {
   "HapCutReader" should "read in a HAPCUT1 file" in {
     val reader = HapCutReader(hapCut1Out)
     val allCalls = reader.toSeq
-    println(allCalls.map(_.offset).zipWithIndex.filter { case (offset, idx) => offset != idx + 1 }.toList)
     val calls = allCalls.flatMap(_.call)
     allCalls.length shouldBe 342 // 342 total variants
     calls.length shouldBe 237 // 237 phased variants
@@ -117,6 +116,16 @@ class HapCutToVcfTest extends UnitSpec {
     calls.map(_.phaseSet).distinct.length shouldBe 8 // eight phased blocks
     reader.close()
   }
+
+  it should "read in a HAPCUT1 file that has phased genotypes" in {
+    val input = dir.resolve("block_has_phased_genotypes.hapcut")
+    val reader = HapCutReader(input)
+    val allCalls = reader.toSeq
+    val calls = allCalls.flatMap(_.call)
+    allCalls.length shouldBe 8 // 8 total variants
+    calls.length shouldBe 3 // 3 phased variants
+    calls.map(_.phaseSet).distinct.length shouldBe 1 // a single phased block
+    reader.close()  }
 
   "HapCutToVcf" should "convert a HAPCUT1 file to VCF in both GATK and VCF-spec phasing format" in {
     Stream(true, false).foreach { gatkPhasingFormat =>

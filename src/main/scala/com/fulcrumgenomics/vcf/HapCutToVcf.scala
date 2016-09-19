@@ -500,7 +500,7 @@ private case class HapCutCall private(block: BlockInfo,
     val allelesCollection = alleles.asJavaCollection
 
     // Assumes the genotype is before the first ":" token
-    val genotypeAlleles = this.genotype.split(":").head.split("/").map(_.toInt).map(i => alleles(i))
+    val genotypeAlleles = this.genotype.split(":").head.split("[/|]").map(_.toInt).map(i => alleles(i))
     val genotype = this.info.addTo(new GenotypeBuilder(sampleName, genotypeAlleles.toList))
       .attribute(PhaseSetFormatTag, phaseSet)
       .make()
