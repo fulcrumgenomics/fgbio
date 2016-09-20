@@ -221,12 +221,12 @@ object HapCut2VcfHeaderLines extends HeaderLines {
 
   /** The VCF header FORMAT keys that will be added for HapCut2 specific-genotype information. */
   val formatHeaderKeys: Seq[String] = {
-    Seq(Log10SwitchErrorFormatTag, Log10NoErrorFormatTag, PhaseSetFormatTag)
+    Seq(PrunedFormatTag, Log10SwitchErrorFormatTag, Log10NoErrorFormatTag, PhaseSetFormatTag)
   }
 
   /** The VCF header FORMAT lines that will be added for HapCut2 specific-genotype information. */
   val formatHeaderLines: Seq[VCFHeaderLine] = {
-    Seq(Log10SwitchErrorFormatHeaderLine, Log10NoErrorFormatHeaderLine, PhaseSetFormatHeaderLine)
+    Seq(PrunedFormatHeaderLine, Log10SwitchErrorFormatHeaderLine, Log10NoErrorFormatHeaderLine, PhaseSetFormatHeaderLine)
   }
 }
 
