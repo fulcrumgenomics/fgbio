@@ -451,13 +451,21 @@ private class HapCut2GenotypeInfo private(val pruned: Boolean, val log10SwitchEr
 
 /** Values and methods for HapCut2-specific genotype information. */
 private object HapCut2GenotypeInfo {
+
+  private def toDouble(str: String): Double = {
+    str match {
+      case "-inf" => Double.MinValue
+      case s      => s.toDouble
+    }
+  }
+
   /** Parses the genotype information produced by HapCut2. */
   def apply(info: String, thresholdPruning: Boolean): GenotypeInfo = {
     val tokens = info.split("\t")
     new HapCut2GenotypeInfo(
       pruned           = "1" == tokens(0) || thresholdPruning,
-      log10SwitchError = tokens(1).toDouble,
-      log10NoError     = tokens(2).toDouble
+      log10SwitchError = toDouble(tokens(1)),
+      log10NoError     = toDouble(tokens(2))
     )
   }
 }
