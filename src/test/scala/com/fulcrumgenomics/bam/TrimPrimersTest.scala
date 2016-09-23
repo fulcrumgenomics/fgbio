@@ -140,6 +140,7 @@ class TrimPrimersTest extends UnitSpec {
   }
 
   it should "recalculate NM/UQ/MD if a reference is given" in {
+    import SortOrder._
     val zeroErrors   = "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
     val oneErrors    = "AAAAAGAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
     val twoErrors    = "AAAAAGAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAGAAAAA"
@@ -147,35 +148,37 @@ class TrimPrimersTest extends UnitSpec {
     def rc(s: String) = SequenceUtil.reverseComplement(s)
     def isRev(rec: SAMRecord) = rec.getReadNegativeStrandFlag
 
-    val builder = new SamRecordSetBuilder(readLength=readLength, sortOrder=SortOrder.coordinate)
-    builder.addPair("q1", start1=100, start2=CoordMath.getStart(219, readLength)).foreach(r => r.setReadString(if (isRev(r)) zeroErrors.reverse  else zeroErrors))
-    builder.addPair("q2", start1=200, start2=CoordMath.getStart(320, readLength)).foreach(r => r.setReadString(if (isRev(r)) oneErrors.reverse   else oneErrors))
-    builder.addPair("q3", start1=300, start2=CoordMath.getStart(421, readLength)).foreach(r => r.setReadString(if (isRev(r)) twoErrors.reverse   else twoErrors))
-    builder.addPair("q4", start1=400, start2=CoordMath.getStart(522, readLength)).foreach(r => r.setReadString(if (isRev(r)) threeErrors.reverse else threeErrors))
+    for (inOrder <- Seq(queryname, coordinate, unsorted); outOrder <- Seq(queryname, coordinate, unsorted)) {
+      val builder = new SamRecordSetBuilder(readLength=readLength, sortOrder=inOrder)
+      builder.addPair("q1", start1=100, start2=CoordMath.getStart(219, readLength)).foreach(r => r.setReadString(if (isRev(r)) zeroErrors.reverse  else zeroErrors))
+      builder.addPair("q2", start1=200, start2=CoordMath.getStart(320, readLength)).foreach(r => r.setReadString(if (isRev(r)) oneErrors.reverse   else oneErrors))
+      builder.addPair("q3", start1=300, start2=CoordMath.getStart(421, readLength)).foreach(r => r.setReadString(if (isRev(r)) twoErrors.reverse   else twoErrors))
+      builder.addPair("q4", start1=400, start2=CoordMath.getStart(522, readLength)).foreach(r => r.setReadString(if (isRev(r)) threeErrors.reverse else threeErrors))
 
-    val bam = builder.toTempFile()
-    val newBam = makeTempFile("trimmed.", ".bam")
-    new TrimPrimers(input=bam, output=newBam, primers=primers, hardClip=false, ref=Some(refFasta)).execute()
+      val bam = builder.toTempFile()
+      val newBam = makeTempFile("trimmed.", ".bam")
+      new TrimPrimers(input=bam, output=newBam, primers=primers, hardClip=false, ref=Some(refFasta), sortOrder=Some(outOrder)).execute()
 
-    val reads = readBamRecs(newBam)
-    reads should have size 8
-    reads.foreach { rec =>
-      rec.getAttribute("NM") should not be null
-      rec.getAttribute("MD") should not be null
-      rec.getAttribute("UQ") should not be null
+      val reads = readBamRecs(newBam)
+      reads should have size 8
+      reads.foreach { rec =>
+        rec.getAttribute("NM") should not be null
+        rec.getAttribute("MD") should not be null
+        rec.getAttribute("UQ") should not be null
 
-      val expectedNm = (rec.getReadNegativeStrandFlag, rec.getReadName) match {
-        case (false, "q1") => 0
-        case (true , "q1") => 0
-        case (false, "q2") => 0
-        case (true , "q2") => 0
-        case (false, "q3") => 1
-        case (true , "q3") => 1
-        case (false, "q4") => 2
-        case (true , "q4") => 2
+        val expectedNm = (rec.getReadNegativeStrandFlag, rec.getReadName) match {
+          case (false, "q1") => 0
+          case (true , "q1") => 0
+          case (false, "q2") => 0
+          case (true , "q2") => 0
+          case (false, "q3") => 1
+          case (true , "q3") => 1
+          case (false, "q4") => 2
+          case (true , "q4") => 2
+        }
+
+        rec.getIntegerAttribute("NM") shouldBe expectedNm
       }
-
-      rec.getIntegerAttribute("NM") shouldBe expectedNm
     }
   }
 }

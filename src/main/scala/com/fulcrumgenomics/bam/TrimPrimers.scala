@@ -92,8 +92,16 @@ class TrimPrimers
     val outHeader = in.getFileHeader.clone()
     outHeader.setSortOrder(outSortOrder)
 
-    // Setup the outputs depending on whether or not we have a reference file
-    val (sorter: Option[SortingCollection[SAMRecord]], write: (SAMRecord => Unit), out: SAMFileWriter) = ref match {
+    // Setup the outputs depending on whether or not we have a reference file or not
+    // In order to minimize (ha!) the amount of sorting going on, things are a little complex.
+    // The logic is more or less as follows:
+    //   a) For trimming we need things in queryname order, so if input isn't queryname sorted, sort it
+    //   b) Then, if we were given a reference, we need to coordinate sort to reset the MD, NM, UQ tags
+    //   c) Then finally for output, the SAMFileWriter will see things as pre-sorted if:
+    //         i) No reference was given (so no coordinate sort) and the output sort order is queryname, or
+    //        ii) A reference was given (so the last sort is coordinate) and the output sort order is coordinate
+    //      else, we'll have to sort for potentially a third time in the SAMFileWriter
+    val (sortingCollection: Option[SortingCollection[SAMRecord]], write: (SAMRecord => Unit), out: SAMFileWriter) = ref match {
       case Some(path) =>
         val sorter = buildSorter(SortOrder.coordinate, outHeader)
         val out = new SAMFileWriterFactory().setCreateIndex(true).makeWriter(outHeader, outSortOrder == SortOrder.coordinate, output.toFile, null)
@@ -117,23 +125,25 @@ class TrimPrimers
     }
 
     // If we had a reference and re-sorted above, reset the NM/UQ/MD tags as we push to the final output
-    (sorter, ref) match {
-      case (Some(recs: SortingCollection[SAMRecord]), Some(path)) =>
+    (sortingCollection, ref) match {
+      case (Some(sorter: SortingCollection[SAMRecord]), Some(path)) =>
         val walker = new ReferenceSequenceFileWalker(path.toFile)
         val progress = new ProgressLogger(this.logger, "Written")
 
-        recs.foreach { rec =>
+        sorter.foreach { rec =>
           recalculateTags(rec, walker)
           out.addAlignment(rec)
           progress.record(rec)
         }
+
+        sorter.cleanup()
       case _ => Unit
     }
 
     out.close()
   }
 
-  /** Recalculates the NM, UQ and MD tags on aligned records. */
+  /** Recalculates the MD, NM, and UQ tags on aligned records. */
   def recalculateTags(rec: SAMRecord, walker: ReferenceSequenceFileWalker): Unit = {
     if (!rec.getReadUnmappedFlag) {
       val refBases = walker.get(rec.getReferenceIndex).getBases
