@@ -1,0 +1,3 @@
+@HD	VN:1.5	SO:unsorted
+@SQ	SN:chr1	LN:1000	M5:7644672d049290f0390d9c993c7d343d	UR:file:src/test/resources/com/fulcrumgenomics/bam/trim_primers_test.fa
+@SQ	SN:chr2	LN:1000	M5:d106043b6fe9a623355e0098f5de7e1f	UR:file:src/test/resources/com/fulcrumgenomics/bam/trim_primers_test.fa

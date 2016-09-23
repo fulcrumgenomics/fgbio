@@ -24,6 +24,8 @@
 
 package com.fulcrumgenomics.bam
 
+import java.lang.Math.abs
+
 import com.fulcrumgenomics.FgBioDef._
 import com.fulcrumgenomics.bam.SamRecordClipper.ClippingMode
 import com.fulcrumgenomics.cmdline.{ClpGroups, FgBioTool}
@@ -32,9 +34,10 @@ import dagr.commons.util.LazyLogging
 import dagr.sopt.{arg, clp}
 import htsjdk.samtools.SAMFileHeader.SortOrder
 import htsjdk.samtools.SamPairUtil.PairOrientation
+import htsjdk.samtools.reference.ReferenceSequenceFileWalker
+import com.fulcrumgenomics.util.ProgressLogger
 import htsjdk.samtools._
 import htsjdk.samtools.util._
-import Math.abs
 
 import scala.collection.JavaConversions.iterableAsScalaIterable
 
@@ -49,8 +52,9 @@ import scala.collection.JavaConversions.iterableAsScalaIterable
     |alignment no-longer includes the primer sequences. All other aligned reads have the
     |maximum primer length trimmed!
     |
-    |Reads that are clipped will have the NM, UQ and MD tags cleared as they are no longer
-    |guaranteed to be accurate.
+    |Reads that are trimmed will have the NM, UQ and MD tags cleared as they are no longer
+    |guaranteed to be accurate.  If a reference is provided the reads will be re-sorted
+    |by coordinate after trimming and the NM, UQ and MD tags recalculated.
     |
     |If the input BAM is not queryname sorted it will be sorted internally so that mate
     |information between paired-end reads can be corrected before writing the output file.
@@ -61,7 +65,9 @@ class TrimPrimers
   @arg(flag="p", doc="File with primer locations.") val primers: FilePath,
   @arg(flag="H", doc="If true, hard clip reads, else soft clip.") val hardClip: Boolean = false,
   @arg(flag="S", doc="Match to primer locations +/- this many bases.") val slop: Int = 5,
-  @arg(flag="s", doc="Sort order of output BAM file (defaults to input sort order).") val sortOrder: Option[SortOrder] = None
+  @arg(flag="s", doc="Sort order of output BAM file (defaults to input sort order).") val sortOrder: Option[SortOrder] = None,
+  @arg(flag="r", doc="Optional reference fasta for recalculating NM, MD and UQ tags.") val ref: Option[PathToFasta] = None,
+  @arg(flag="t", doc="Temporary directory to use when sorting.") val tmp: Option[DirPath] = None
 )extends FgBioTool with LazyLogging {
   private val mode = if (hardClip) ClippingMode.Hard else ClippingMode.Soft
 
@@ -85,60 +91,102 @@ class TrimPrimers
     val outSortOrder = sortOrder.getOrElse(in.getFileHeader.getSortOrder)
     val outHeader = in.getFileHeader.clone()
     outHeader.setSortOrder(outSortOrder)
-    val out = new SAMFileWriterFactory().setCreateIndex(true).makeWriter(outHeader, outSortOrder == SortOrder.queryname, output.toFile, null)
+
+    // Setup the outputs depending on whether or not we have a reference file
+    val (sorter: Option[SortingCollection[SAMRecord]], write: (SAMRecord => Unit), out: SAMFileWriter) = ref match {
+      case Some(path) =>
+        val sorter = buildSorter(SortOrder.coordinate, outHeader)
+        val out = new SAMFileWriterFactory().setCreateIndex(true).makeWriter(outHeader, outSortOrder == SortOrder.coordinate, output.toFile, null)
+        (Some(sorter), sorter.add _, out)
+      case None =>
+        val out = new SAMFileWriterFactory().setCreateIndex(true).makeWriter(outHeader, outSortOrder == SortOrder.queryname, output.toFile, null)
+        (None, out.addAlignment _, out)
+    }
 
     val detector = loadPrimerFile(primers)
     val maxPrimerLength = detector.getAll.map(_.longestPrimerLength).max
 
+    // Main processing loop
     val iterator = queryNameOrderIterator(in)
+    val trimProgress = new ProgressLogger(this.logger, "Trimmed")
     while (iterator.hasNext) {
       val reads = nextTemplate(iterator)
-      val rec1 = reads.find(r => r.getReadPairedFlag && r.getFirstOfPairFlag  && !r.isSecondaryOrSupplementary)
-      val rec2 = reads.find(r => r.getReadPairedFlag && r.getSecondOfPairFlag && !r.isSecondaryOrSupplementary)
+      trimReadsForTemplate(detector, maxPrimerLength, reads)
+      reads.foreach(write)
+      reads.foreach(trimProgress.record)
+    }
 
-      (rec1, rec2) match {
-        case (Some(r1), Some(r2)) =>
-          // FR mapped pairs get the full treatment
-          if (!r1.getReadUnmappedFlag && !r2.getReadUnmappedFlag &&
-            r1.getReferenceName == r2.getReferenceName &&
-            SamPairUtil.getPairOrientation(r1) == PairOrientation.FR) {
+    // If we had a reference and re-sorted above, reset the NM/UQ/MD tags as we push to the final output
+    (sorter, ref) match {
+      case (Some(recs: SortingCollection[SAMRecord]), Some(path)) =>
+        val walker = new ReferenceSequenceFileWalker(path.toFile)
+        val progress = new ProgressLogger(this.logger, "Written")
 
-            val (left, right) = if (r1.getReadNegativeStrandFlag) (r2, r1) else (r1, r2)
-            val (start, end ) = (left.getUnclippedStart, right.getUnclippedEnd)
-            val insert = new Interval(left.getContig, start, end)
-            detector.getOverlaps(insert).find(amp => abs(amp.leftStart - start) <= slop && abs(amp.rightEnd - end) <= slop) match {
-              case Some(amplicon) =>
-                val leftClip  = amplicon.leftPrimerLength
-                val rightClip = amplicon.rightPrimerLength
-                reads.foreach { rec =>
-                  val toClip = if (rec.getFirstOfPairFlag == left.getFirstOfPairFlag) leftClip else rightClip
-                  SamRecordClipper.clip5PrimeEndOfRead(rec, toClip, mode)
-                }
-              case None =>
-                reads.foreach(r => SamRecordClipper.clip5PrimeEndOfRead(r, maxPrimerLength, mode))
-            }
-
-            clipFullyOverlappedFrReads(r1, r2)
-          }
-          // Pairs without both reads mapped in FR orientation are just maximally clipped
-          else {
-            reads.foreach(r => SamRecordClipper.clip5PrimeEndOfRead(r, maxPrimerLength, mode))
-          }
-
-          SamPairUtil.setMateInfo(r1, r2, true)
-          reads.filter(_.getSupplementaryAlignmentFlag).foreach { rec =>
-            val mate = if (rec.getFirstOfPairFlag) r2 else r1
-            SamPairUtil.setMateInformationOnSupplementalAlignment(rec, mate, true);
-          }
-        case _ =>
-          // Just trim each read independently
-          reads.foreach(r => SamRecordClipper.clip5PrimeEndOfRead(r, maxPrimerLength, mode))
-      }
-
-      reads.foreach(out.addAlignment)
+        recs.foreach { rec =>
+          recalculateTags(rec, walker)
+          out.addAlignment(rec)
+          progress.record(rec)
+        }
+      case _ => Unit
     }
 
     out.close()
+  }
+
+  /** Recalculates the NM, UQ and MD tags on aligned records. */
+  def recalculateTags(rec: SAMRecord, walker: ReferenceSequenceFileWalker): Unit = {
+    if (!rec.getReadUnmappedFlag) {
+      val refBases = walker.get(rec.getReferenceIndex).getBases
+      SequenceUtil.calculateMdAndNmTags(rec, refBases, true, true)
+      if (rec.getBaseQualities != null && rec.getBaseQualities.length != 0) {
+        rec.setAttribute(SAMTag.UQ.name, SequenceUtil.sumQualitiesOfMismatches(rec, refBases, 0))
+      }
+    }
+  }
+
+  /** Trims all the reads for a given template. */
+  def trimReadsForTemplate(detector: OverlapDetector[Amplicon], maxPrimerLength: Int, reads: Seq[SAMRecord]): Unit = {
+    val rec1 = reads.find(r => r.getReadPairedFlag && r.getFirstOfPairFlag && !r.isSecondaryOrSupplementary)
+    val rec2 = reads.find(r => r.getReadPairedFlag && r.getSecondOfPairFlag && !r.isSecondaryOrSupplementary)
+
+    (rec1, rec2) match {
+      case (Some(r1), Some(r2)) =>
+        // FR mapped pairs get the full treatment
+        if (!r1.getReadUnmappedFlag && !r2.getReadUnmappedFlag &&
+          r1.getReferenceName == r2.getReferenceName &&
+          SamPairUtil.getPairOrientation(r1) == PairOrientation.FR) {
+
+          val (left, right) = if (r1.getReadNegativeStrandFlag) (r2, r1) else (r1, r2)
+          val (start, end) = (left.getUnclippedStart, right.getUnclippedEnd)
+          val insert = new Interval(left.getContig, start, end)
+          detector.getOverlaps(insert).find(amp => abs(amp.leftStart - start) <= slop && abs(amp.rightEnd - end) <= slop) match {
+            case Some(amplicon) =>
+              val leftClip = amplicon.leftPrimerLength
+              val rightClip = amplicon.rightPrimerLength
+              reads.foreach { rec =>
+                val toClip = if (rec.getFirstOfPairFlag == left.getFirstOfPairFlag) leftClip else rightClip
+                SamRecordClipper.clip5PrimeEndOfRead(rec, toClip, mode)
+              }
+            case None =>
+              reads.foreach(r => SamRecordClipper.clip5PrimeEndOfRead(r, maxPrimerLength, mode))
+          }
+
+          clipFullyOverlappedFrReads(r1, r2)
+        }
+        // Pairs without both reads mapped in FR orientation are just maximally clipped
+        else {
+          reads.foreach(r => SamRecordClipper.clip5PrimeEndOfRead(r, maxPrimerLength, mode))
+        }
+
+        SamPairUtil.setMateInfo(r1, r2, true)
+        reads.filter(_.getSupplementaryAlignmentFlag).foreach { rec =>
+          val mate = if (rec.getFirstOfPairFlag) r2 else r1
+          SamPairUtil.setMateInformationOnSupplementalAlignment(rec, mate, true);
+        }
+      case _ =>
+        // Just trim each read independently
+        reads.foreach(r => SamRecordClipper.clip5PrimeEndOfRead(r, maxPrimerLength, mode))
+    }
   }
 
   /** Gets an iterator in query name order over the records. */
@@ -148,8 +196,12 @@ class TrimPrimers
     }
     else {
       logger.info("Sorting into queryname order.")
-      val sorter = SortingCollection.newInstance[SAMRecord](classOf[SAMRecord], new BAMRecordCodec(in.getFileHeader), new SAMRecordQueryNameComparator(), 1e6.toInt);
-      in.foreach(sorter.add)
+      val progress = new ProgressLogger(this.logger, "Queryname sorted")
+      val sorter = buildSorter(SortOrder.queryname, in.getFileHeader)
+      in.foreach { rec =>
+        sorter.add(rec)
+        progress.record(rec)
+      }
       sorter.iterator().bufferBetter
     }
   }
@@ -195,5 +247,16 @@ class TrimPrimers
       if (plusTrim  > 0) SamRecordClipper.clip3PrimeEndOfAlignment(plus, plusTrim, mode)
       if (minusTrim > 0) SamRecordClipper.clip3PrimeEndOfAlignment(minus, minusTrim, mode)
     }
+  }
+
+  /** Builds a sorting collection for use above. */
+  private def buildSorter(order: SortOrder, header: SAMFileHeader): SortingCollection[SAMRecord] = {
+    SortingCollection.newInstance(
+      classOf[SAMRecord],
+      new BAMRecordCodec(header),
+      if (order == SortOrder.queryname) new SAMRecordQueryNameComparator else new SAMRecordCoordinateComparator,
+      1e6.toInt,
+      this.tmp.map(_.toFile).orNull
+    )
   }
 }
