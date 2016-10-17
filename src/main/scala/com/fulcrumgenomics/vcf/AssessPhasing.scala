@@ -58,6 +58,12 @@ import scala.collection.JavaConverters._
       |The input VCFs are assumed to be single sample: the genotype from the first sample is used.
       |
       |Only bi-allelic heterozygous SNPs are considered.
+      |
+      |The input known phased variants can be subsetted using the known interval list, for example to keep only variants
+      |from high-confidence regions.
+      |
+      |If the intervals argument is supplied, only the set of chromosomes specified will be analyzed.  Note that the full
+      |chromosome will be analyzed and start/stop positions will be ignored.
     """,
   group=ClpGroups.VcfOrBcf
 )
@@ -65,10 +71,10 @@ class AssessPhasing
 ( @arg(flag="c", doc="The VCF with called phased variants.") val calledVcf: PathToVcf,
   @arg(flag="t", doc="The VCF with known phased variants.") val truthVcf: PathToVcf,
   @arg(flag="o", doc="The output prefix for all output files.") val output: PathPrefix,
-  @arg(flag="l", doc="The interval list over which known phased variants should be kept.") val knownIntervals: Option[PathToIntervals] = None,
+  @arg(flag="k", doc="The interval list over which known phased variants should be kept.") val knownIntervals: Option[PathToIntervals] = None,
   @arg(flag="m", doc="Allow missing fields in the VCF header.") val allowMissingFieldsInVcfHeader: Boolean = true,
   @arg(flag="s", doc="Skip sites where the truth and call are both called but do not share the same alleles.") val skipMismatchingAlleles: Boolean = true,
-  @arg(flag="C", doc="Analyze only the given chromosome.") val chromosome: Option[String] = None,
+  @arg(flag="l", doc="Analyze only the given chromosomes in the interval list.  The entire chromosome will be analyzed (start and end ignored).") val intervals: Option[PathToIntervals] = None,
   @arg(flag="b", doc="Remove enclosed phased blocks and truncate overlapping blocks.") val modifyBlocks: Boolean = true,
   @arg(flag="d", doc="Output a VCF with the called variants annotated by if their phase matches the truth") val debugVcf: Boolean = false
 ) extends FgBioTool with LazyLogging {
@@ -93,7 +99,7 @@ class AssessPhasing
       calledReader.getFileHeader.getSequenceDictionary
     }
 
-    val intervalList             = knownIntervals.map { intv => IntervalList.fromFile(intv.toFile).uniqued() }
+    val knownIntervalList        = knownIntervals.map { intv => IntervalList.fromFile(intv.toFile).uniqued() }
     val calledBlockLengthCounter = new NumericCounter[Long]()
     val truthBlockLengthCounter  = new NumericCounter[Long]()
     val metric                   = new AssessPhasingMetric
@@ -114,25 +120,37 @@ class AssessPhasing
       reader.safelyClose()
       Some(writer)
     }
+    val chromosomes = intervals.map { intv =>
+      import scala.collection.JavaConversions.asScalaBuffer
+      val intervalList = IntervalList.fromFile(intv.toFile)
+      // Developer Note: warn the user if the supplied intervals do not span entire chromosomes.
+      intervalList.getIntervals.find { interval =>
+        interval.getStart != 1 || interval.getEnd != dict.getSequence(interval.getContig).getSequenceLength
+      }.foreach { interval =>
+        logger.warning(s"Interval list (--intervals) given with intervals that do not span entire chromosomes (ex. '$interval').  Start/end will be ignored and entire chromosome analyzed.")
+      }
+
+      intervalList.getIntervals.map { i => i.getContig }.toSet
+    }
 
     // NB: could parallelize!
     dict.getSequences
       .iterator
-      .filter { sequence => chromosome match {
-          case Some(chr) => chr == sequence.getSequenceName
+      .filter { sequence => chromosomes match {
+          case Some(set) => set.contains(sequence.getSequenceName)
           case None      => true
         }
       }
       .foreach { sequence =>
       executeContig(
-        dict                    = dict,
-        contig                  = sequence.getSequenceName,
-        contigLength            = sequence.getSequenceLength,
-        intervalList            = intervalList,
-        metric                  = metric,
-        calledBlockLengthCounter  = calledBlockLengthCounter,
-        truthBlockLengthCounter = truthBlockLengthCounter,
-        writer                  = writer
+        dict                     = dict,
+        contig                   = sequence.getSequenceName,
+        contigLength             = sequence.getSequenceLength,
+        knownIntervalList        = knownIntervalList,
+        metric                   = metric,
+        calledBlockLengthCounter = calledBlockLengthCounter,
+        truthBlockLengthCounter  = truthBlockLengthCounter,
+        writer                   = writer
       )
     }
 
@@ -172,7 +190,7 @@ class AssessPhasing
   private def executeContig(dict: SAMSequenceDictionary,
                             contig: String,
                             contigLength: Int,
-                            intervalList: Option[IntervalList],
+                            knownIntervalList: Option[IntervalList],
                             metric: AssessPhasingMetric,
                             calledBlockLengthCounter: NumericCounter[Long],
                             truthBlockLengthCounter: NumericCounter[Long],
@@ -180,7 +198,7 @@ class AssessPhasing
                            ): Unit = {
     logger.info(s"Assessing $contig")
 
-    val intervalListForContig = intervalList.map { oldList =>
+    val intervalListForContig = knownIntervalList.map { oldList =>
       val newList = new IntervalList(oldList.getHeader)
       newList.addall(oldList.getIntervals.filter { _.getContig == contig }.toJavaList)
       newList
