@@ -361,8 +361,9 @@ object GroupReadsByUmi {
     |   4. Read Name
     |
     |Reads are aggressively filtered out so that only high quality read pairs with both ends
-    |mapped are taken forward.  This is done with the expectation that the next step is building
-    |consensus reads, where it is undesirable to either:
+    |mapped are taken forward.  (Note: the MQ tag is required on reads with mapped mates).
+    |This is done with the expectation that the next step is building consensus reads, where
+    |it is undesirable to either:
     |   1. Assign reads together that are really from different source molecules
     |   2. Build two groups from reads that are really from the same molecule
     |Errors in mapping reads could lead to both and therefore are minimized.
