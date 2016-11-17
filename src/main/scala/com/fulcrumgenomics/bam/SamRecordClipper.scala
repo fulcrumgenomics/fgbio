@@ -256,7 +256,7 @@ trait SamRecordClipper {
     //   a) Empty
     //   b) Contains a single element which is the remainder of an element that had to be split
     while (readBasesClipped < numberOfBasesToClip ||
-      (readBasesClipped == numberOfBasesToClip && postClipElems.hasNext && postClipElems.head.getOperator == Op.DELETION)) {
+      (readBasesClipped == numberOfBasesToClip && newElems.isEmpty && postClipElems.hasNext && postClipElems.head.getOperator == Op.DELETION)) {
       val elem = postClipElems.next()
       val op   = elem.getOperator
       val len  = elem.getLength

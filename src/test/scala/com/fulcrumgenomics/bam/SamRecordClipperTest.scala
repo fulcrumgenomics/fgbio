@@ -101,6 +101,13 @@ class SamRecordClipperTest extends UnitSpec {
     rec.getCigarString shouldBe "10S40M"
   }
 
+  it should "preseve deletions that are not close to the clipped region" in {
+    val rec = r(10, "25M4D25M")
+    SamRecordClipper.clipStartOfAlignment(rec, 10, ClippingMode.Soft)
+    rec.getAlignmentStart shouldBe 20
+    rec.getCigarString shouldBe "10S15M4D25M"
+  }
+
   it should "NOT throw an exception, but do nothing, with an unmapped read" in {
     val rec = r(10, "50M")
     rec.setReadUnmappedFlag(true)
@@ -213,11 +220,18 @@ class SamRecordClipperTest extends UnitSpec {
     rec.getCigarString shouldBe "36M4I10S"
   }
 
-  it should "remove deletions that immediately follow the clipping" in {
+  it should "remove deletions that immediately precede the clipping" in {
     val rec = r(10, "40M4D10M")
     SamRecordClipper.clipEndOfAlignment(rec, 10, ClippingMode.Soft)
     rec.getAlignmentStart shouldBe 10
     rec.getCigarString shouldBe "40M10S"
+  }
+
+  it should "preserve deletions that are not near the clipped region" in {
+    val rec = r(10, "25M4D25M")
+    SamRecordClipper.clipEndOfAlignment(rec, 10, ClippingMode.Soft)
+    rec.getAlignmentStart shouldBe 10
+    rec.getCigarString shouldBe "25M4D15M10S"
   }
 
   it should "NOT throw an exception, but do nothing, with an unmapped read" in {
