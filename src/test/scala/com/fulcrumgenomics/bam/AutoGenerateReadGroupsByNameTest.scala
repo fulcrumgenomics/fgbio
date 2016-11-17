@@ -27,11 +27,12 @@ package com.fulcrumgenomics.bam
 
 import com.fulcrumgenomics.FgBioDef.PathToBam
 import com.fulcrumgenomics.testing.{SamRecordSetBuilder, UnitSpec}
+import htsjdk.samtools.util.Iso8601Date
 import htsjdk.samtools.{SAMFileHeader, SamReaderFactory}
 
-class AddReadGroupsByNameTest extends UnitSpec {
+class AutoGenerateReadGroupsByNameTest extends UnitSpec {
 
-  "RecordInfo" should "throw an exception if a read name is malformed" in {
+  "RunInfo" should "throw an exception if a read name is malformed" in {
     // Fail
     an[Exception] should be thrownBy RunInfo("")
     an[Exception] should be thrownBy RunInfo("field")
@@ -41,6 +42,7 @@ class AddReadGroupsByNameTest extends UnitSpec {
 
     // Ok
     RunInfo("1:2:3:4:5:6:7")
+    RunInfo("EAS139:136:FC706VJ:2:5:1000:12850")
   }
 
   private def getHeader(bam: PathToBam): SAMFileHeader = {
@@ -50,19 +52,19 @@ class AddReadGroupsByNameTest extends UnitSpec {
     header
   }
 
-  private def getAddReadGroupsByNameOutput(name: String*): PathToBam = {
+  private def runAddReadGroups(name: String*): PathToBam = {
     val builder = new SamRecordSetBuilder()
     name.foreach { n => builder.addFrag(name=n, unmapped=true) }
     val in = builder.toTempFile()
     val out = makeTempFile("AddReadGroupsByNameTest", ".bam")
-    new AddReadGroupsByName(input=in, output=out, sample="sample", library="library").execute()
+    new AutoGenerateReadGroupsByName(input=in, output=out, sample="sample", library="library").execute()
     out
   }
 
   import scala.collection.JavaConversions.asScalaBuffer
 
-  "AddReadGroupsByName" should "add a single read group for reads from one lane of a flowcell" in {
-    val out = getAddReadGroupsByNameOutput(
+  "AutoGenerateReadGroupsByName" should "add a single read group for reads from one lane of a flowcell" in {
+    val out = runAddReadGroups(
       "instrument:run-number:flowcell-id:1:2:3:4",
       "instrument:run-number:flowcell-id:1:2:3:4",
       "instrument:run-number:flowcell-id:1:3:3:4",
@@ -73,10 +75,12 @@ class AddReadGroupsByNameTest extends UnitSpec {
     readGroups should have size 1
     readGroups.map(_.getId) should contain theSameElementsAs Seq("1")
     readGroups.map(_.getPlatformUnit) should contain theSameElementsAs Seq("flowcell-id.1")
+    readGroups.foreach { rg => rg.getSample shouldBe "sample" }
+    readGroups.foreach { rg => rg.getLibrary shouldBe "library" }
   }
 
   it should "add a two read groups for reads from two lanes in one flowcell" in {
-    val out = getAddReadGroupsByNameOutput(
+    val out = runAddReadGroups(
       "instrument:run-number:flowcell-id:1:2:3:4",
       "instrument:run-number:flowcell-id:2:2:3:4"
     )
@@ -84,10 +88,12 @@ class AddReadGroupsByNameTest extends UnitSpec {
     readGroups should have size 2
     readGroups.map(_.getId) should contain theSameElementsAs Seq("1", "2")
     readGroups.map(_.getPlatformUnit) should contain theSameElementsAs Seq("flowcell-id.1", "flowcell-id.2")
+    readGroups.foreach { rg => rg.getSample shouldBe "sample" }
+    readGroups.foreach { rg => rg.getLibrary shouldBe "library" }
   }
 
   it should "add two read groups for reads from the first lane for two flowcells" in {
-    val out = getAddReadGroupsByNameOutput(
+    val out = runAddReadGroups(
       "instrument:run-number:flowcell-id-1:1:2:3:4",
       "instrument:run-number:flowcell-id-2:1:2:3:4"
     )
@@ -95,10 +101,12 @@ class AddReadGroupsByNameTest extends UnitSpec {
     readGroups should have size 2
     readGroups.map(_.getId) should contain theSameElementsAs Seq("1", "2")
     readGroups.map(_.getPlatformUnit) should contain theSameElementsAs Seq("flowcell-id-1.1", "flowcell-id-2.1")
+    readGroups.foreach { rg => rg.getSample shouldBe "sample" }
+    readGroups.foreach { rg => rg.getLibrary shouldBe "library" }
   }
 
   it should "add two read groups for reads from two different instruments" in {
-    val out = getAddReadGroupsByNameOutput(
+    val out = runAddReadGroups(
       "instrument-1:run-number:flowcell-id:1:2:3:4",
       "instrument-2:run-number:flowcell-id:1:2:3:4"
     )
@@ -106,11 +114,12 @@ class AddReadGroupsByNameTest extends UnitSpec {
     readGroups should have size 2
     readGroups.map(_.getId) should contain theSameElementsAs Seq("1", "2")
     readGroups.map(_.getPlatformUnit) should contain theSameElementsAs Seq("flowcell-id.1", "flowcell-id.1")
-    readGroups.map(_.getPlatformModel) should contain theSameElementsAs Seq("instrument-1.run-number", "instrument-2.run-number")
+    readGroups.foreach { rg => rg.getSample shouldBe "sample" }
+    readGroups.foreach { rg => rg.getLibrary shouldBe "library" }
   }
 
   it should "add two read groups for reads from two different run numbers" in {
-    val out = getAddReadGroupsByNameOutput(
+    val out = runAddReadGroups(
       "instrument:run-number-1:flowcell-id:1:2:3:4",
       "instrument:run-number-2:flowcell-id:1:2:3:4"
     )
@@ -118,6 +127,51 @@ class AddReadGroupsByNameTest extends UnitSpec {
     readGroups should have size 2
     readGroups.map(_.getId) should contain theSameElementsAs Seq("1", "2")
     readGroups.map(_.getPlatformUnit) should contain theSameElementsAs Seq("flowcell-id.1", "flowcell-id.1")
-    readGroups.map(_.getPlatformModel) should contain theSameElementsAs Seq("instrument.run-number-1", "instrument.run-number-2")
+    readGroups.foreach { rg => rg.getSample shouldBe "sample" }
+    readGroups.foreach { rg => rg.getLibrary shouldBe "library" }
+  }
+
+  it should "accept all optional parameters" in {
+    val names = Seq(
+      "instrument:run-number:flowcell-id:1:2:3:4",
+      "instrument:run-number:flowcell-id:1:2:3:4",
+      "instrument:run-number:flowcell-id:1:3:3:4",
+      "instrument:run-number:flowcell-id:1:2:4:4",
+      "instrument:run-number:flowcell-id:1:2:3:5"
+    )
+    val builder = new SamRecordSetBuilder()
+    names.foreach { name => builder.addFrag(name=name, unmapped=true) }
+    val in = builder.toTempFile()
+    val out = makeTempFile("AddReadGroupsByNameTest", ".bam")
+    new AutoGenerateReadGroupsByName(
+      input=in,
+      output=out,
+      sample="sample",
+      library="library",
+      sequencingCenter = Some("sequencingCenter"),
+      predictedInsertSize = Some(255),
+      programGroup = Some("programGroup"),
+      platformModel = Some("platformModel"),
+      description = Some("description"),
+      runDate = Some(new Iso8601Date("2001-01-01")),
+      comments = List("comment-1", "comment-2")
+    ).execute()
+
+    val header     = getHeader(out)
+    val readGroups = header.getReadGroups
+    readGroups should have size 1
+    readGroups.foreach { rg => rg.getId shouldBe "1" }
+    readGroups.foreach { rg => rg.getPlatformUnit shouldBe "flowcell-id.1" }
+    readGroups.foreach { rg => rg.getSample shouldBe "sample" }
+    readGroups.foreach { rg => rg.getLibrary shouldBe "library" }
+    readGroups.foreach { rg => rg.getSequencingCenter shouldBe "sequencingCenter" }
+    readGroups.foreach { rg => rg.getPredictedMedianInsertSize shouldBe 255 }
+    readGroups.foreach { rg => rg.getProgramGroup shouldBe "programGroup" }
+    readGroups.foreach { rg => rg.getPlatformModel shouldBe "platformModel" }
+    readGroups.foreach { rg => rg.getDescription shouldBe "description" }
+    readGroups.foreach { rg => rg.getRunDate shouldBe new Iso8601Date("2001-01-01") }
+    readGroups.foreach { rg => rg.getPlatform shouldBe "ILLUMINA" }
+
+    header.getComments should contain theSameElementsAs Seq("comment-1", "comment-2").map(co => "@CO\t" + co)
   }
 }
