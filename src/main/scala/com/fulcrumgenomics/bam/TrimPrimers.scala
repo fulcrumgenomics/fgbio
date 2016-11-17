@@ -44,8 +44,8 @@ import scala.collection.JavaConversions.iterableAsScalaIterable
 @clp(group=ClpGroups.SamOrBam, description=
   """
     |Trims primers from reads post-alignment.  Takes in a BAM file of aligned reads
-    |and a tab-delimited file with five columns (chrom, left_start, left_stop, right_start,
-    |and right_stop) which provide the 1-based inclusive start and end positions of the
+    |and a tab-delimited file with five columns (chrom, left_start, left_end, right_start,
+    |and right_end) which provide the 1-based inclusive start and end positions of the
     |primers for each amplicon.
     |
     |Paired end reads that map to a given amplicon position are trimmed so that the
