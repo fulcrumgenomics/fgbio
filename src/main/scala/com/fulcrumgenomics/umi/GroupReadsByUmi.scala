@@ -475,13 +475,18 @@ class GroupReadsByUmi
     * sub-grouping into UMI groups by original molecule.
     */
   def assignUmiGroups(pairs: Seq[ReadPair]): Unit = {
-    val rawUmis = pairs.map(_._1).map(_.getStringAttribute(this.rawTag).toUpperCase)
+    val rawUmis = pairs.map(_._1).map(getRawUmi)
     val rawToId = this.assigner.assign(rawUmis)
 
     pairs.foreach(pair => Seq(pair._1, pair._2).foreach(rec => {
-      val raw = rec.getStringAttribute(this.rawTag).toUpperCase
+      val raw = getRawUmi(rec)
       val id  = rawToId(raw)
       rec.setAttribute(this.assignTag, id)
     }))
+  }
+
+  private def getRawUmi(rec: SAMRecord): String = rec.getStringAttribute(this.rawTag) match {
+    case null | "" => fail(s"Record '$rec' was missing the raw UMI tag '${this.rawTag}'")
+    case value => value.toUpperCase
   }
 }
