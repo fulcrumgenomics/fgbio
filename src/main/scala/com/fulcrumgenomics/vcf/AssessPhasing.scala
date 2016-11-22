@@ -26,6 +26,7 @@ package com.fulcrumgenomics.vcf
 
 import java.nio.file.Paths
 import java.util
+import java.util.Comparator
 
 import com.fulcrumgenomics.cmdline.{ClpGroups, FgBioTool}
 import com.fulcrumgenomics.util.{GenomicSpan, Metric, NumericCounter, ProgressLogger}
@@ -404,54 +405,71 @@ object PhaseBlock extends LazyLogging {
       progress.record(ctx.getContig, ctx.getStart)
     }
 
+    val blocksIn = new util.TreeSet[PhaseBlock](new Comparator[PhaseBlock] {
+      /** Compares the two blocks based on start position, then returns the shorter block. */
+      def compare(a: PhaseBlock, b: PhaseBlock): Int = {
+        if (a.start < b.start) -1
+        else if (a.start == b.start) b.length - a.length
+        else 1
+      }
+    })
+
+    {
+      import scala.collection.JavaConversions.asJavaCollection
+      blocksIn.addAll(phaseBlocks.values)
+    }
+    logger.info(s"Found ${phaseBlocks.size} phase block")
+
+
     // Make sure we do not have any overlapping phase blocks
     // - if block #1 is enclosed in block #2, keep only block #2
     // - otherwise, if block #1 and #2 overlap, truncate the smaller one
-    val blocks = ListBuffer[PhaseBlock]()
-    logger.info(s"Found ${phaseBlocks.size} phase block")
-    phaseBlocks.values.toList.sortBy { b => (b.start, -b.length) } match {
-      case Nil                    => Unit
-      case block :: Nil           => blocks.append(block)
-      case block :: currentBlocks =>
-        var left = block
-        currentBlocks.foreach { right =>
-          require(left.getStart <= right.getStart)
-          if (left.overlaps(right)) {
-            if (!modifyBlocks) {
-              throw new IllegalStateException(s"Block $left overlaps $right")
-            }
-            if (left.encloses(right)) { // keep the left block only
-              logger.info(s"Removing $right enclosed in $left")
-              // do nothing
-            }
-            else if (right.encloses(left)) { // keep the right block
-              logger.info(s"Removing $left enclosed in $right")
-              left = right
-            }
-            else if (left.length < right.length) { // truncate left
-              logger.info(s"Truncating $left which overlaps $right");
-              blocks.append(left.copy(end=right.getStart-1))
-              left = right
-            }
-            else { // truncate right
-              logger.info(s"Truncating $right which overlaps $left");
-              blocks.append(left)
-              left = right.copy(start=left.getEnd+1)
-            }
-          }
-          else {
-            blocks.append(left)
-            left = right
-          }
+    // The loop below will compare two blocks at a time: the two blocks with the smallest start positions.  If the do
+    // not overlap, the first block (smaller position) is kept.  If one is fully-contained in the other, then the
+    // enclosed block is discarded.  If they overlap, the smaller block is truncated such that they do not overlap.  In
+    // the case the start position is changed due to truncation, then that block must be re-inserted into the list of
+    // input blocks to guarantee we compare the two blocks with the smallest start positions.
+    val blocksOut = ListBuffer[PhaseBlock]()
+    var left = blocksIn.pollFirst()
+    while (!blocksIn.isEmpty) {
+      val right = blocksIn.pollFirst()
+      require(left.getStart <= right.getStart, s"left: $left right: $right")
+      // At this point, left has the smallest start position, and right as the next smallest start position.
+      if (left.overlaps(right)) { // do they have any overlap?
+        require(modifyBlocks, s"Block $left overlaps $right")
+        if (left.encloses(right)) { // the right is enclosed in the left, so keep the left block only
+          logger.info(s"Removing $right enclosed in $left")
+          // do nothing (keep left == left) because left may overlap subsequent blocks too!
         }
-        // don't forget the last one
-        blocks.append(left)
+        else if (right.encloses(left)) { // the left is enclosed in the right, so keep the right block only
+          logger.info(s"Removing $left enclosed in $right")
+          left = right
+        }
+        else if (left.length < right.length) { // the left is smaller, so truncate left
+          logger.info(s"Truncating $left which overlaps $right");
+          blocksOut.append(left.copy(end=right.getStart-1))
+          left = right
+        }
+        else { // the right is smaller, so truncate right
+          logger.info(s"Truncating $right which overlaps $left");
+          blocksOut.append(left)
+          // Since the start position of the right block is changed, and we are going to use it in the next iteration,
+          // then re-insert it into the set and poll.
+          blocksIn.add(right.copy(start=left.getEnd+1))
+          left = blocksIn.pollFirst()
+        }
+      }
+      else {
+        blocksOut.append(left)
+        left = right
+      }
     }
-    blocks.foreach { block => logger.info(s"Keeping $block") }
+    if (left != null) blocksOut.append(left)
+    blocksOut.foreach { block => logger.info(s"Keeping $block") }
 
     // add any remaining
     import scala.collection.JavaConversions.seqAsJavaList
-    detector.addAll(blocks, blocks)
+    detector.addAll(blocksOut, blocksOut)
     phaseBlocks.clear()
 
     detector

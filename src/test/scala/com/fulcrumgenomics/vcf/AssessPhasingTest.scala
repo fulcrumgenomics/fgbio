@@ -465,6 +465,82 @@ class PhaseBlockTest extends ErrorLogLevel {
       last.getEnd shouldBe 6
     }
   }
+
+  it should "resolve three overlapping blocks, such that when the middle one is truncated and now starts after the third, it is resolved" in {
+    val builderBlockOne = new VariantContextSetBuilder()
+    builderBlockOne.addVariant(start=2, variantAlleles=List("A", "C"), genotypeAlleles=List("A", "C"), phased=true)
+    builderBlockOne.addVariant(start=10, variantAlleles=List("A", "C"), genotypeAlleles=List("A", "C"), phased=true)
+    val oneIter = builderBlockOne.iterator.map { ctx => withPhasingSetId(ctx, 2) }
+
+    val builderBlockTwo = new VariantContextSetBuilder()
+    builderBlockTwo.addVariant(start = 8, variantAlleles = List("A", "C"), genotypeAlleles = List("A", "C"), phased = true)
+    builderBlockTwo.addVariant(start = 14, variantAlleles = List("A", "C"), genotypeAlleles = List("A", "C"), phased = true)
+    val twoIter = builderBlockTwo.iterator.map { ctx => withPhasingSetId(ctx, 3) }
+
+    val builderBlockThree = new VariantContextSetBuilder()
+    builderBlockThree.addVariant(start = 9, variantAlleles = List("A", "C"), genotypeAlleles = List("A", "C"), phased = true)
+    builderBlockThree.addVariant(start = 13, variantAlleles = List("A", "C"), genotypeAlleles = List("A", "C"), phased = true)
+    val threeIter = builderBlockThree.iterator.map { ctx => withPhasingSetId(ctx, 4) }
+
+    val contexts = (oneIter ++ twoIter ++ threeIter).toSeq
+
+    // Check that if we do not want to modify the blocks we get an exception
+    an[Exception] should be thrownBy PhaseBlock.buildOverlapDetector(iterator = contexts.iterator, dict = builderBlockOne.header.getSequenceDictionary, modifyBlocks = false)
+
+    val detector = PhaseBlock.buildOverlapDetector(iterator = contexts.iterator, dict = builderBlockOne.header.getSequenceDictionary)
+    detector.getAll should have size 3
+    val intervals = detector.getAll.toSeq.sortBy(_.getStart)
+
+    intervals.length shouldBe 3
+
+    val firstInterval = intervals.head
+    firstInterval.getStart shouldBe 2
+    firstInterval.getEnd shouldBe 10
+
+    val secondInterval = intervals(1)
+    secondInterval.getStart shouldBe 9
+    secondInterval.getEnd shouldBe 13
+
+    val thirdInterval = intervals(2)
+    thirdInterval.getStart shouldBe 14
+    thirdInterval.getEnd shouldBe 14
+  }
+
+  it should "resolve three overlapping blocks, such that when the middle one is truncated and now is enclosed in the third, we get two blocks" in {
+    val builderBlockOne = new VariantContextSetBuilder()
+    builderBlockOne.addVariant(start=2, variantAlleles=List("A", "C"), genotypeAlleles=List("A", "C"), phased=true)
+    builderBlockOne.addVariant(start=10, variantAlleles=List("A", "C"), genotypeAlleles=List("A", "C"), phased=true)
+    val oneIter = builderBlockOne.iterator.map { ctx => withPhasingSetId(ctx, 2) }
+
+    val builderBlockTwo = new VariantContextSetBuilder()
+    builderBlockTwo.addVariant(start = 8, variantAlleles = List("A", "C"), genotypeAlleles = List("A", "C"), phased = true)
+    builderBlockTwo.addVariant(start = 13, variantAlleles = List("A", "C"), genotypeAlleles = List("A", "C"), phased = true)
+    val twoIter = builderBlockTwo.iterator.map { ctx => withPhasingSetId(ctx, 3) }
+
+    val builderBlockThree = new VariantContextSetBuilder()
+    builderBlockThree.addVariant(start = 9, variantAlleles = List("A", "C"), genotypeAlleles = List("A", "C"), phased = true)
+    builderBlockThree.addVariant(start = 13, variantAlleles = List("A", "C"), genotypeAlleles = List("A", "C"), phased = true)
+    val threeIter = builderBlockThree.iterator.map { ctx => withPhasingSetId(ctx, 4) }
+
+    val contexts = (oneIter ++ twoIter ++ threeIter).toSeq
+
+    // Check that if we do not want to modify the blocks we get an exception
+    an[Exception] should be thrownBy PhaseBlock.buildOverlapDetector(iterator = contexts.iterator, dict = builderBlockOne.header.getSequenceDictionary, modifyBlocks = false)
+
+    val detector = PhaseBlock.buildOverlapDetector(iterator = contexts.iterator, dict = builderBlockOne.header.getSequenceDictionary)
+    detector.getAll should have size 2
+    val intervals = detector.getAll.toSeq.sortBy(_.getStart)
+
+    intervals.length shouldBe 2
+
+    val firstInterval = intervals.head
+    firstInterval.getStart shouldBe 2
+    firstInterval.getEnd shouldBe 10
+
+    val secondInterval = intervals(1)
+    secondInterval.getStart shouldBe 9
+    secondInterval.getEnd shouldBe 13
+  }
 }
 
 class PhaseCigarTest extends ErrorLogLevel {
