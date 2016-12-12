@@ -47,4 +47,26 @@ class SequencesTest extends UnitSpec {
     Sequences.countMismatches("ACGACTATATGCAT", "acgactataGTcat") shouldBe 2
     Sequences.countMismatches("ACGACTATATGCAT", "NNNNNNNNNNNNNN") shouldBe 14
   }
+
+  "Sequences.longestHomopolymer" should "fail when passed a null String" in {
+    an[Throwable] shouldBe thrownBy { Sequences.longestHomopolymer(null) }
+  }
+
+  it should "fail when passed a zero length string" in {
+    an[Throwable] shouldBe thrownBy { Sequences.longestHomopolymer("") }
+  }
+
+  it should "correctly find the single longest homopolymer" in {
+    Sequences.longestHomopolymer("A") shouldBe (0,1)
+    Sequences.longestHomopolymer("AAAA") shouldBe (0,4)
+    Sequences.longestHomopolymer("ATTTGCGAT") shouldBe (1,3)
+    Sequences.longestHomopolymer("GGGGCGTGC") shouldBe (0,4)
+    Sequences.longestHomopolymer("ACGTACGTCCCCC") shouldBe (8,5)
+    Sequences.longestHomopolymer("AAAACCCGGGGAAAAA") shouldBe (11,5)
+  }
+
+  it should "report the earliest homopolymer of the longest length when there are multiple" in {
+    Sequences.longestHomopolymer("AAAAACCCCCGGGGGTTTTT") shouldBe (0,5)
+    Sequences.longestHomopolymer("ACGTAACCGGTTAAACCCGGGTTT") shouldBe (12,3)
+  }
 }

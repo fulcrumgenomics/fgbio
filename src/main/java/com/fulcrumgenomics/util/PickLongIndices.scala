@@ -24,7 +24,6 @@
 
 package com.fulcrumgenomics.util
 
-import java.text.DecimalFormat
 import java.util.Random
 import java.util.regex.Pattern
 
@@ -70,7 +69,10 @@ case class IndexMetric(index: String,
                        min_mismatches: Int,
                        indices_at_min_mismatches: Int,
                        gc: Double,
-                       min_delta_g: Option[Double]) extends Metric {
+                       longest_homopolymer: Int,
+                       worst_structure_seq: Option[String],
+                       worst_structure: Option[String],
+                       worst_structure_delta_g: Option[Double]) extends Metric {
   
   override protected def formatValues(value: Any): String = value match {
     case None    => ""
@@ -220,7 +222,7 @@ class PickLongIndices
            (allowReverses || !picks.contains(string.reverse)) &&
            (allowReverseComplements || !picks.contains(SequenceUtil.reverseComplement(string))) &&
            picks.forall(p => mismatches(index, p) >= minEdits) &&
-           worstDeltaG(index).forall(_ >= minDeltaG)) {
+           worstStructure(index).forall(_.deltaG >= minDeltaG)) {
         pick = Some(index)
       }
     }
@@ -260,9 +262,13 @@ class PickLongIndices
   }
 
   /** If we have structure prediction parameters, returns Some(min deltaG) else None. */
-  private[util] def worstDeltaG(index: Index): Option[Double] = {
+  private[util] def worstStructure(index: Index): Option[DnaFoldPrediction] = {
     val sIndex = new String(index)
-    dnaFoldPredictor.map(folder => adapters.map(a => folder.predict(a.replaceAll("N+", sIndex)).deltaG()).min)
+    (this.dnaFoldPredictor, adapters) match {
+      case (None, _)     => None
+      case (_, Seq())    => None
+      case (Some(f), as) => adapters.map(a => f.predict(a.replaceAll("N+", sIndex))).sortBy(_.deltaG()).headOption
+    }
   }
 
   /** Generates a random index sequence of the desired length. */
@@ -303,7 +309,7 @@ class PickLongIndices
     // Go through and compute pair-wise distance between all the indices
     case class AnnotatedIndex(index: Index, existing: Boolean, distances: NumericCounter[Int] = new NumericCounter[Int])
     val annotated = indices.map(index => AnnotatedIndex(index, existing=existingIndices.contains(index)))
-      .toList.sortBy(a => (!a.existing, new String(a.index)))
+      .toList.sortBy((a: AnnotatedIndex) => (!a.existing, new String(a.index)))
 
     annotated.tails.foreach {
       case x :: ys => ys.foreach { y =>
@@ -314,14 +320,21 @@ class PickLongIndices
       case _ => Unit
     }
 
-    val metrics = annotated.map(ann => IndexMetric(
-      index                     = new String(ann.index),
-      source                    = if (ann.existing) "existing" else "novel",
-      min_mismatches            = ann.distances.headOption.map { case (distance, count) => distance }.getOrElse(ann.index.length),
-      indices_at_min_mismatches = ann.distances.headOption.map { case (distance, count) => count.toInt }.getOrElse(0),
-      gc                        = SequenceUtil.calculateGc(ann.index),
-      min_delta_g               = worstDeltaG(ann.index)
-    ))
+    val metrics = annotated.map { ann =>
+      val structure = worstStructure(ann.index)
+
+      IndexMetric(
+        index                     = new String(ann.index),
+        source                    = if (ann.existing) "existing" else "novel",
+        min_mismatches            = ann.distances.headOption.map { case (distance, count) => distance }.getOrElse(ann.index.length),
+        indices_at_min_mismatches = ann.distances.headOption.map { case (distance, count) => count.toInt }.getOrElse(0),
+        gc                        = SequenceUtil.calculateGc(ann.index),
+        longest_homopolymer       = Sequences.longestHomopolymer(new String(ann.index))._2,
+        worst_structure_seq       = structure.map(_.sequence()),
+        worst_structure           = structure.map(_.structure()),
+        worst_structure_delta_g   = structure.map(_.deltaG)
+      )
+    }
 
     Metric.write(metrics, output)
   }

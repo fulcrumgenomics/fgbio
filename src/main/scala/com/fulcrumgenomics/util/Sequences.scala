@@ -26,6 +26,7 @@
  */
 package com.fulcrumgenomics.util
 
+import com.fulcrumgenomics.FgBioDef._
 /**
   * Utility methods for working with DNA or RNA sequences
   */
@@ -36,5 +37,34 @@ object Sequences {
       throw new IllegalArgumentException(s"Cannot count mismatches in strings of differing lengths: $s1 $s2")
 
     s1.zip(s2).count(pair => pair._1.toUpper != pair._2.toUpper)
+  }
+
+  /**
+    * Returns the 0-based index of and the length of the longest homopolymer in a string. If there are
+    * multiple homopolymers of the same length the _first_ one is returned.
+    *
+    * @param s a sequence
+    * @return a tuple of (0-based index, length) of the longest homopolymer in the string
+    */
+  def longestHomopolymer(s: String): (Int, Int) = {
+    val xs = s.toUpperCase
+    val len = xs.length
+    assert(len > 0, "Cannot compute longest homopolymer of a zero length string")
+
+    var foundIndex = 0
+    var foundLength = 1
+
+    forloop (from=0, until=len) { i =>
+      val x = xs.charAt(i)
+      var j = i+1
+      while (j < len && xs.charAt(j) == x) j += 1
+      val newLength = j - i
+      if (newLength > foundLength) {
+        foundIndex = i
+        foundLength = newLength
+      }
+    }
+
+    (foundIndex, foundLength)
   }
 }
