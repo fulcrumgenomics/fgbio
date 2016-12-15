@@ -29,10 +29,10 @@ package com.fulcrumgenomics.umi
 import java.nio.file.Paths
 import java.util.concurrent.atomic.AtomicLong
 
+import com.fulcrumgenomics.FgBioDef._
 import com.fulcrumgenomics.cmdline.{ClpGroups, FgBioTool}
 import com.fulcrumgenomics.util.Sequences.countMismatches
-import com.fulcrumgenomics.util.{Io, ProgressLogger, Sequences, SimpleCounter}
-import dagr.commons.CommonsDef.{DirPath, PathToBam}
+import com.fulcrumgenomics.util._
 import dagr.commons.util.LazyLogging
 import dagr.sopt.cmdline.ValidationException
 import dagr.sopt.{arg, clp}
@@ -347,6 +347,12 @@ object GroupReadsByUmi {
   }
 }
 
+/** Trivial metrics class for representing a tag family size histogram entry. */
+case class TagFamilySizeMetric(family_size: Int,
+                               count: Long,
+                               var fraction: Double = 0,
+                               var fraction_gt_or_eq_family_size: Double = 0) extends Metric
+
 @clp(group=ClpGroups.Umi, description =
   """
     |Groups reads together that appear to have come from the same original molecule. Reads
@@ -390,15 +396,16 @@ object GroupReadsByUmi {
   """
 )
 class GroupReadsByUmi
-( @arg(flag="i", doc="The input BAM file.")              input: PathToBam  = Io.StdIn,
-  @arg(flag="o", doc="The output BAM file.")             output: PathToBam = Io.StdOut,
-  @arg(flag="t", doc="The tag containing the raw UMI.")  rawTag: String    = "RX",
-  @arg(flag="T", doc="The output tag for UMI grouping.") assignTag: String = "MI",
-  @arg(flag="m", doc="Minimum mapping quality.")         minMapQ: Int      = 30,
-  @arg(flag="n", doc="Include non-PF reads.")            includeNonPfReads: Boolean = false,
-  @arg(flag="s", doc="The UMI assignment strategy; one of 'identity', 'edit', 'adjacency' or 'paired'.") strategy: String,
-  @arg(flag="e", doc="The allowable number of edits between UMIs.") edits: Int = 1,
-  @arg(          doc="Temporary directory for sorting.") tmpDir: DirPath = Paths.get(System.getProperty("java.io.tmpdir"))
+( @arg(flag="i", doc="The input BAM file.")              val input: PathToBam  = Io.StdIn,
+  @arg(flag="o", doc="The output BAM file.")             val output: PathToBam = Io.StdOut,
+  @arg(flag="f", doc="File to write family size histogram to.") val familySizeHistogram: Option[FilePath] = None,
+  @arg(flag="t", doc="The tag containing the raw UMI.")  val rawTag: String    = "RX",
+  @arg(flag="T", doc="The output tag for UMI grouping.") val assignTag: String = "MI",
+  @arg(flag="m", doc="Minimum mapping quality.")         val minMapQ: Int      = 30,
+  @arg(flag="n", doc="Include non-PF reads.")            val includeNonPfReads: Boolean = false,
+  @arg(flag="s", doc="The UMI assignment strategy; one of 'identity', 'edit', 'adjacency' or 'paired'.") val strategy: String,
+  @arg(flag="e", doc="The allowable number of edits between UMIs.") val edits: Int = 1,
+  @arg(          doc="Temporary directory for sorting.") val tmpDir: DirPath = Paths.get(System.getProperty("java.io.tmpdir"))
 )extends FgBioTool with LazyLogging {
   import GroupReadsByUmi._
 
@@ -416,6 +423,7 @@ class GroupReadsByUmi
     import scala.collection.JavaConversions.asScalaIterator
     Io.assertReadable(input)
     Io.assertCanWriteFile(output)
+    this.familySizeHistogram.foreach(f => Io.assertCanWriteFile(f))
 
     val in = SamReaderFactory.make().open(input.toFile)
     val header = in.getFileHeader
@@ -442,6 +450,8 @@ class GroupReadsByUmi
     val outProgress = new ProgressLogger(logger, verb="Output")
 
     val iterator = sorter.iterator().grouped(2).map(i => (i(0), i(1))).buffered // consume in pairs
+    val tagFamilySizeCounter  = new NumericCounter[Int]()
+
     while (iterator.hasNext) {
       // Take the next set of pairs by position and assign UMIs
       val pairs = takeNextGroup(iterator)
@@ -450,15 +460,30 @@ class GroupReadsByUmi
 
       // Then output the records in the right order (assigned tag, read name, r1, r2)
       val pairsByAssignedTag = pairs.groupBy(pair => pair._1.getStringAttribute(this.assignTag))
+
       pairsByAssignedTag.keys.toSeq.sorted.foreach(tag => {
         pairsByAssignedTag(tag).sortBy(pair => pair._1.getReadName).flatMap(pair => Seq(pair._1, pair._2)).foreach(rec => {
           out.addAlignment(rec)
           outProgress.record(rec)
         })
       })
+
+      // Count up the family sizes
+      pairsByAssignedTag.values.foreach(ps => tagFamilySizeCounter.count(ps.size))
     }
 
     out.close()
+
+    // Write out the family size histogram
+    this.familySizeHistogram match {
+      case None    => Unit
+      case Some(p) =>
+        val ms = tagFamilySizeCounter.toSeq.map { case (size, count) => TagFamilySizeMetric(size, count)}
+        val total = ms.map(_.count.toDouble).sum
+        ms.foreach(m => m.fraction = m.count / total)
+        ms.tails.foreach { tail => tail.headOption.foreach(m => m.fraction_gt_or_eq_family_size = tail.map(_.fraction).sum) }
+        Metric.write(ms, p)
+    }
   }
 
   /** Consumes the next group of pairs with all matching end positions and returns them. */
