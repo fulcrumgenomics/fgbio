@@ -122,7 +122,7 @@ lazy val root = Project(id="fgbio", base=file("."))
       "org.scala-lang"            %  "scala-reflect" %  scalaVersion.value,
       "com.fulcrumgenomics"       %% "dagr-commons"  % "0.1.1-SNAPSHOT",
       "com.fulcrumgenomics"       %% "dagr-sopt"     % "0.1.1-SNAPSHOT",
-      "com.github.samtools"       %  "htsjdk"        % "2.5.0" excludeAll(htsjdkExcludes: _*),
+      "com.github.samtools"       %  "htsjdk"        % "2.8.1" excludeAll(htsjdkExcludes: _*),
       "net.jafama"                %  "jafama"        % "2.1.0",
       //---------- Test libraries -------------------//
       "org.scalatest"             %% "scalatest"     % "2.2.4"  % "test->*" excludeAll ExclusionRule(organization="org.junit", name="junit"),
