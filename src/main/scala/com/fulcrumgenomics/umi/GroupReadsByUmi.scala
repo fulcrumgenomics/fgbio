@@ -398,7 +398,7 @@ case class TagFamilySizeMetric(family_size: Int,
 class GroupReadsByUmi
 ( @arg(flag="i", doc="The input BAM file.")              val input: PathToBam  = Io.StdIn,
   @arg(flag="o", doc="The output BAM file.")             val output: PathToBam = Io.StdOut,
-  @arg(flag="f", doc="File to write family size histogram to.") val familySizeHistogram: Option[FilePath] = None,
+  @arg(flag="f", doc="Optional output of tag family size counts.") val familySizeHistogram: Option[FilePath] = None,
   @arg(flag="t", doc="The tag containing the raw UMI.")  val rawTag: String    = "RX",
   @arg(flag="T", doc="The output tag for UMI grouping.") val assignTag: String = "MI",
   @arg(flag="m", doc="Minimum mapping quality.")         val minMapQ: Int      = 30,
@@ -450,7 +450,7 @@ class GroupReadsByUmi
     val outProgress = new ProgressLogger(logger, verb="Output")
 
     val iterator = sorter.iterator().grouped(2).map(i => (i(0), i(1))).buffered // consume in pairs
-    val tagFamilySizeCounter  = new NumericCounter[Int]()
+    val tagFamilySizeCounter = new NumericCounter[Int]()
 
     while (iterator.hasNext) {
       // Take the next set of pairs by position and assign UMIs

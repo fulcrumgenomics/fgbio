@@ -247,7 +247,8 @@ class GroupReadsByUmiTest extends UnitSpec {
 
     val in  = builder.toTempFile()
     val out = Files.createTempFile("umi_grouped.", ".sam")
-    new GroupReadsByUmi(input=in, output=out, rawTag="RX", assignTag="MI", strategy="edit", edits=1).execute()
+    val hist = Files.createTempFile("umi_grouped.", ".histogram.txt")
+    new GroupReadsByUmi(input=in, output=out, familySizeHistogram=Some(hist), rawTag="RX", assignTag="MI", strategy="edit", edits=1).execute()
 
     val reader = SamReaderFactory.make().open(out.toFile)
     val groups = reader.iterator().toSeq.groupBy(_.getReadName.charAt(0))
@@ -256,6 +257,8 @@ class GroupReadsByUmiTest extends UnitSpec {
     groups('a') should have size 4*2
     groups('a').map(_.getReadName).toSet shouldEqual Set("a01", "a02", "a03", "a04")
     groups('a').map(_.getAttribute("MI")).toSet should have size 1
+
+    hist.toFile.exists() shouldBe true
 
     reader.close()
   }
