@@ -31,7 +31,7 @@ import dagr.commons.CommonsDef._
 import htsjdk.samtools.SAMSequenceDictionary
 import htsjdk.variant.variantcontext._
 import htsjdk.variant.variantcontext.writer.{Options, VariantContextWriterBuilder}
-import htsjdk.variant.vcf.{VCFFileReader, VCFHeader, VCFHeaderLine}
+import htsjdk.variant.vcf.{VCFFileReader, VCFHeader, VCFHeaderLine, VCFStandardHeaderLines}
 
 import scala.collection.JavaConversions._
 import scala.collection.mutable.ListBuffer
@@ -96,7 +96,7 @@ class VariantContextSetBuilder(sampleNames: Seq[String] = List("Sample")) extend
     if (variantAlleles.isEmpty) {
       throw new IllegalArgumentException("No alleles given")
     }
-    if (!genotypeAlleles.forall(variantAlleles.contains)) {
+    if (!genotypeAlleles.forall(a => a == Allele.NO_CALL_STRING || variantAlleles.contains(a))) {
       throw new IllegalArgumentException("A genotype allele not found in variant alleles")
     }
     val contig          = this.dict.getSequence(refIdx).getSequenceName
