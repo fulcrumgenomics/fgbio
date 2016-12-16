@@ -67,7 +67,8 @@ class ReviewConsensusVariants
   @arg(flag="g", doc="BAM file of grouped raw reads used to build consensuses.") val groupedBam : PathToBam,
   @arg(flag="r", doc="Reference fasta file.") val ref: PathToFasta,
   @arg(flag="o", doc="Basename of output files to create.") val output : PathPrefix,
-  @arg(flag="t", doc="The SAM/BAM tag used to uniquely identify source molecules.") val tag: String = "MI"
+  @arg(flag="t", doc="The SAM/BAM tag used to uniquely identify source molecules.") val tag: String = "MI",
+  @arg(flag="N", doc="Ignore N bases in the consensus reads.") val ignoreNsInConsensusReads: Boolean = false
 )extends FgBioTool with LazyLogging {
   Io.assertReadable(Seq(input, consensusBam, groupedBam, ref))
   Io.assertCanWriteFile(output)
@@ -140,7 +141,11 @@ class ReviewConsensusVariants
     !rec.getReadUnmappedFlag && variantsByChromAndPos(rec.getContig).exists { v =>
       if (v.start >= rec.getAlignmentStart && v.start <= rec.getAlignmentEnd) {
         val readPos = rec.getReadPositionAtReferencePosition(v.start)
-        readPos == 0 || !SequenceUtil.basesEqual(rec.getReadBases()(readPos-1), v.refBase.toByte)
+        if (readPos == 0) true
+        else {
+          val base = rec.getReadBases()(readPos - 1)
+          !SequenceUtil.basesEqual(base, v.refBase.toByte) && (!this.ignoreNsInConsensusReads || !SequenceUtil.isNoCall(base))
+        }
       }
       else {
         false
