@@ -25,7 +25,7 @@
 
 package com.fulcrumgenomics.umi
 
-import com.fulcrumgenomics.testing.UnitSpec
+import com.fulcrumgenomics.testing.{SamRecordSetBuilder, UnitSpec}
 import com.fulcrumgenomics.umi.VanillaUmiConsensusCallerOptions._
 import com.fulcrumgenomics.util.NumericTypes._
 import htsjdk.samtools.util.CloserUtil
@@ -375,5 +375,48 @@ class VanillaUmiConsensusCallerTest extends UnitSpec {
     calls(2).getReadName shouldBe calls(3).getReadName
     calls(0).getReadName should not be calls(2).getReadName
     CloserUtil.close(reader)
+  }
+
+  "VanillaUmiConsensusCaller.filterToMostCommonAlignment" should "return all reads when all cigars are 50M" in {
+    val builder = new SamRecordSetBuilder(readLength=50)
+    (1 to 10).foreach { i => builder.addFrag(start=100, cigar="50M") }
+    val recs = VanillaUmiConsensusCaller.filterToMostCommonAlignment(builder.toSeq)
+    recs should have size 10
+  }
+
+  it should "return all reads when all cigars are complicated but the same" in {
+    val builder = new SamRecordSetBuilder(readLength=50)
+    (1 to 10).foreach { i => builder.addFrag(start=100, cigar="10M5D10M5I20M5S") }
+    val recs = VanillaUmiConsensusCaller.filterToMostCommonAlignment(builder.toSeq)
+    recs should have size 10
+  }
+
+  it should "return only the 50M reads (i.e. the most common alignment)" in {
+    val builder = new SamRecordSetBuilder(readLength=50)
+    (1 to  3).foreach { i => builder.addFrag(start=100, cigar="25M1D25M") }
+    (1 to 10).foreach { i => builder.addFrag(start=100, cigar="50M") }
+    (1 to  3).foreach { i => builder.addFrag(start=100, cigar="25M2I23M") }
+
+    val recs = VanillaUmiConsensusCaller.filterToMostCommonAlignment(builder.toSeq)
+    recs should have size 10
+    recs.map(_.getCigarString).distinct shouldBe Seq("50M")
+  }
+
+  it should "return only the reads with a single base deletion at base 25" in {
+    val builder = new SamRecordSetBuilder(readLength=50)
+    // These should all be returned
+    (1 to  5).foreach { i => builder.addFrag(start=100, cigar="25M1D25M") }
+    (1 to  2).foreach { i => builder.addFrag(start=100, cigar="5S20M1D25M") }
+    (1 to  2).foreach { i => builder.addFrag(start=100, cigar="5S20M1D20M5H") }
+    (1 to  2).foreach { i => builder.addFrag(start=100, cigar="25M1D20M5S") }
+
+    // These should not be!
+    (1 to  2).foreach { i => builder.addFrag(start=100, cigar="25M2D25M") }
+    (1 to  2).foreach { i => builder.addFrag(start=100, cigar="25M1I24M") }
+    (1 to  2).foreach { i => builder.addFrag(start=100, cigar="20M1D5M1D25M") }
+
+    val recs = VanillaUmiConsensusCaller.filterToMostCommonAlignment(builder.toSeq)
+    recs should have size 11
+    recs.map(_.getCigarString).distinct.sorted shouldBe Seq("25M1D25M", "5S20M1D25M", "5S20M1D20M5H", "25M1D20M5S").sorted
   }
 }

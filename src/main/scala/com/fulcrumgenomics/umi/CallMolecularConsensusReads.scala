@@ -30,7 +30,7 @@ import com.fulcrumgenomics.cmdline.{ClpGroups, FgBioTool}
 import com.fulcrumgenomics.umi.VanillaUmiConsensusCallerOptions._
 import com.fulcrumgenomics.util.ProgressLogger
 import dagr.commons.io.Io
-import dagr.commons.util.LazyLogging
+import dagr.commons.util.{LazyLogging, LogLevel, Logger}
 import dagr.sopt._
 import dagr.sopt.cmdline.ValidationException
 import htsjdk.samtools.SAMFileHeader.{GroupOrder, SortOrder}
@@ -89,8 +89,11 @@ class CallMolecularConsensusReads
   @arg(flag="M", doc="The minimum number of reads to produce a consensus base.") val minReads: Int = DefaultMinReads,
   @arg(flag="Q", doc="The minimum mean base quality across a consensus base to output.") val minMeanConsensusBaseQuality: PhredScore = DefaultMinMeanConsensusBaseQuality,
   @arg(flag="P", doc="Require a consensus call for both ends of a pair if true.") val requireConsensusForBothPairs: Boolean = DefaultRequireConsensusForBothPairs,
-  @arg(flag="S", doc="The sort order of the output, if None then the same as the input.") val sortOrder: Option[SortOrder] = Some(SortOrder.queryname)
+  @arg(flag="S", doc="The sort order of the output, if None then the same as the input.") val sortOrder: Option[SortOrder] = Some(SortOrder.queryname),
+  @arg(flag="D", doc="Turn on debug logging.") val debug: Boolean = false
 ) extends FgBioTool with LazyLogging {
+
+  if (debug) Logger.level = LogLevel.Debug
 
   Io.assertReadable(input)
   Io.assertCanWriteFile(output)
@@ -121,7 +124,7 @@ class CallMolecularConsensusReads
       requireConsensusForBothPairs = requireConsensusForBothPairs
     )
 
-    val progress = new ProgressLogger(logger, unit=1e5.toInt)
+    val progress = new ProgressLogger(logger, unit=5e5.toInt)
     val consensusCaller = new VanillaUmiConsensusCaller(
       input          = in.iterator().asScala,
       header         = in.getFileHeader,
@@ -137,7 +140,10 @@ class CallMolecularConsensusReads
     in.safelyClose()
     out.close()
     rej.foreach(_.close())
-    logger.info(s"Processed ${progress.getCount} records.")
+
+    logger.info(f"Total Raw Reads Considered: ${consensusCaller.totalReads}%,d.")
+    logger.info(f"Raw Reads Filtered Due Tag Family Min Size: ${consensusCaller.readsFilteredForMinReads}%,d.")
+    logger.info(f"Raw Reads Filtered Due to Mismatching Alignments: ${consensusCaller.readsFilteredMinorityAlignment}%,d.")
   }
 
   /** Constructs an output header with a single read group for the consensus BAM. */

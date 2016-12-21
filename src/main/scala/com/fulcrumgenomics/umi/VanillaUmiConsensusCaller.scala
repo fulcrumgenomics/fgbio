@@ -30,6 +30,7 @@ import com.fulcrumgenomics.umi.ConsensusCaller.Base
 import com.fulcrumgenomics.umi.VanillaUmiConsensusCallerOptions._
 import com.fulcrumgenomics.util.NumericTypes._
 import com.fulcrumgenomics.util.{MathUtil, ProgressLogger}
+import dagr.commons.util.LazyLogging
 import htsjdk.samtools._
 import htsjdk.samtools.util.{Murmur3, SequenceUtil}
 
@@ -79,6 +80,53 @@ case class ConsensusRead(bases: Array[Byte], quals: Array[Byte]) {
   def baseString = new String(bases)
 }
 
+object VanillaUmiConsensusCaller {
+  /**
+    * Takes in a seq of SAMRecords and filters them such that the returned seq only contains
+    * those reads that share the most common alignment of the read sequence to the reference.
+    * If two or more different alignments share equal numbers of reads, the 'most common' will
+    * be an arbitrary pick amongst those alignments, and the group of reads with that alignment will
+    * be returned.
+    *
+    * For the purposes of this method all that is implied by "same alignment" is that any
+    * insertions or deletions are at the same position and of the same length.  This is done
+    * to allow for differential read length (either due to sequencing or untracked hard-clipping
+    * of adapters) and for differential soft-clipping at the starts and ends of reads.
+    */
+  def filterToMostCommonAlignment(recs: Seq[SAMRecord]): Seq[SAMRecord] = {
+    val groups = recs.groupBy { r =>
+      val builder = new mutable.StringBuilder
+      val elems = r.getCigar.getCigarElements.iterator().bufferBetter
+
+      // This loop constructs a pseudo-cigar for each read.  The result is a string that contains, for each indel
+      // operator in the reads's cigar, the number of non-indel bases in the read since the start/last indel, then
+      // the length of the indel.  E.g.:
+      //     50M         => <empty> because there are no indels!
+      //     10M2D10M    => 10M2D   because we don't care about anything after the last indel
+      //     5H5S5M1I40M => 15M1I   because all the leading stuff gets collapsed
+      while (elems.nonEmpty) {
+        // Consume and merge all non-indel operators (clip, match/mismatch) at the head of the
+        // iterator since we only care where the indels occur relative to the read
+        val len = elems.takeWhile(e => !e.getOperator.isIndelOrSkippedRegion).map(_.getLength).sum
+
+        // Now the iterator is either at the end of the read, in which case we don't need to do anything,
+        // or it is before an I or D cigar entry, so we should output how much read it took to get here
+        // followed by the I or D element
+        if (elems.nonEmpty) {
+          val indel = elems.next()
+          if (len > 0) builder.append(len).append("M")
+          builder.append(indel.toString)
+        }
+      }
+
+      builder.toString()
+    }
+
+    val max = groups.values.map(_.size).max
+    groups.values.find(_.size == max).getOrElse(unreachable("At least one group must have the max size!"))
+  }
+}
+
 
 /** Calls consensus reads by grouping consecutive reads with the same SAM tag.
   *
@@ -95,7 +143,7 @@ class VanillaUmiConsensusCaller
  val options: VanillaUmiConsensusCallerOptions  = new VanillaUmiConsensusCallerOptions(),
  val rejects: Option[SAMFileWriter]   = None,
  val progress: Option[ProgressLogger] = None
-) extends Iterator[SAMRecord] {
+) extends Iterator[SAMRecord] with LazyLogging {
   /** The type of consensus read to output. */
   private object ReadType extends Enumeration {
     val Fragment, FirstOfPair, SecondOfPair = Value
@@ -117,6 +165,11 @@ class VanillaUmiConsensusCaller
   private val NotEnoughReadsQual: PhredScore = 0.toByte // Score output when masking to N due to insufficient input reads
   private val TooLowQualityQual: PhredScore = 2.toByte  // Score output when masking to N due to too low consensus quality
 
+  // var to track how many reads meet various fates
+  private var _totalReads: Long = 0
+  private var _filteredForMinReads: Long = 0
+  private var _filteredForMinorityAlignment: Long = 0
+
   // Initializes the prefix that will be used to make sure read names are (hopefully) unique
   private val actualReadNamePrefix = readNamePrefix.getOrElse {
     val ids = header.getReadGroups.map(rg => Option(rg.getLibrary).getOrElse(rg.getReadGroupId)).toList.sorted.distinct
@@ -125,22 +178,52 @@ class VanillaUmiConsensusCaller
     else Integer.toHexString(new Murmur3(1).hashUnencodedChars(ids.mkString("|")))
   }
 
+  /** Returns the total number of input reads examined by the consensus caller so far. */
+  def totalReads: Long = _totalReads
+
+  /** Returns the number of raw reads filtered out due to the minReads threshold not being met. */
+  def readsFilteredForMinReads: Long = _filteredForMinReads
+
+  /** Returns the number of raw reads filtered out because their alignment disagreed with the majority alignment of
+    * all raw reads for the same source molecule
+    */
+  def readsFilteredMinorityAlignment: Long = _filteredForMinorityAlignment
+
   /** Creates a consensus read from the given records.  If no consensus read was created, None is returned. */
   def consensusFromSamRecords(records: Seq[SAMRecord]): Option[ConsensusRead] = {
-    val sourceReads = records.map { rec =>
-      if (rec.getReadNegativeStrandFlag) {
-        val newBases = rec.getReadBases.clone()
-        val newQuals = rec.getBaseQualities.clone()
-        SequenceUtil.reverseComplement(newBases)
-        SequenceUtil.reverse(newQuals, 0, newQuals.length)
-        SourceRead(newBases, newQuals)
-      }
-      else {
-        SourceRead(rec.getReadBases.array, rec.getBaseQualities.array)
-      }
-    }
+    this._totalReads += records.size
 
-    consensusCall(sourceReads)
+    if (records.size < this.options.minReads) {
+      this._filteredForMinReads += records.size
+      None
+    }
+    else {
+      val filteredRecords = VanillaUmiConsensusCaller.filterToMostCommonAlignment(records)
+      this._filteredForMinorityAlignment += (records.size - filteredRecords.size)
+
+      if (filteredRecords.size < records.size) {
+        val r = records.head
+        val n = if (r.getReadPairedFlag && r.getSecondOfPairFlag) "/2" else "/1"
+        val m = r.getAttribute(this.options.tag)
+        val discards = records.size - filteredRecords.size
+        logger.debug("Discarded ", discards, "/", records.size, " records due to mismatched alignments for ", m, n)
+      }
+
+      val sourceReads = filteredRecords.map { rec =>
+        if (rec.getReadNegativeStrandFlag) {
+          val newBases = rec.getReadBases.clone()
+          val newQuals = rec.getBaseQualities.clone()
+          SequenceUtil.reverseComplement(newBases)
+          SequenceUtil.reverse(newQuals, 0, newQuals.length)
+          SourceRead(newBases, newQuals)
+        }
+        else {
+          SourceRead(rec.getReadBases.array, rec.getBaseQualities.array)
+        }
+      }
+
+      consensusCall(sourceReads)
+    }
   }
 
   /** Creates a consensus read from the given read and qualities sequences.  If no consensus read was created, None
