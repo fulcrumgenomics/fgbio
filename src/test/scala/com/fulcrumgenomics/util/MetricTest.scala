@@ -31,6 +31,11 @@ import com.fulcrumgenomics.testing.UnitSpec
 
 private case class TestMetric(foo: String, bar: Int, car: String = "default") extends Metric
 
+private case class TestMetricWithOption(foo: String, bar: Int, option: Option[String]) extends Metric
+
+private case class TestMetricWithIntOption(foo: String, bar: Int, option: Option[Int]) extends Metric
+
+
 /**
   * Tests for Metric.
   */
@@ -112,6 +117,31 @@ class MetricTest extends UnitSpec {
     val output      = makeTempFile("MetricTest", ".txt")
     Metric.write[TestMetric](metrics, output)
     val readMetrics = Metric.read[TestMetric](output)
+    readMetrics.length shouldBe 2
     readMetrics.zip(metrics).foreach { case (in, out) => in.toString shouldBe out.toString }
+  }
+
+  it should "write and read metrics with an option" in {
+    val metricWithSome = new TestMetricWithOption(foo="fooValue1", bar=1, option=Some("option1"))
+    val metricWithNone = new TestMetricWithOption(foo="fooValue2", bar=2, option=None)
+    val metrics = Seq(metricWithSome, metricWithNone)
+    val output      = makeTempFile("MetricTest", ".txt")
+    Metric.write(metrics=metrics, path=output)
+    val readMetrics = Metric.read[TestMetricWithOption](path=output)
+    readMetrics.length shouldBe 2
+    readMetrics.head shouldBe metricWithSome
+    readMetrics.last shouldBe metricWithNone
+  }
+
+  it should "write and read metrics with an interger option" in {
+    val metricWithSome = new TestMetricWithIntOption(foo="fooValue1", bar=1, option=Some(1))
+    val metricWithNone = new TestMetricWithIntOption(foo="fooValue2", bar=2, option=None)
+    val metrics = Seq(metricWithSome, metricWithNone)
+    val output      = makeTempFile("MetricTest", ".txt")
+    Metric.write(metrics=metrics, path=output)
+    val readMetrics = Metric.read[TestMetricWithIntOption](path=output)
+    readMetrics.length shouldBe 2
+    readMetrics.head shouldBe metricWithSome
+    readMetrics.last shouldBe metricWithNone
   }
 }
