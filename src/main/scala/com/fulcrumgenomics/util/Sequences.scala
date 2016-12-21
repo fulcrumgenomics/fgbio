@@ -40,8 +40,8 @@ object Sequences {
   }
 
   /**
-    * Returns the 0-based index of and the length of the longest homopolymer in a string. If there are
-    * multiple homopolymers of the same length the _first_ one is returned.
+    * Returns the 0-based index of, and the length of, the longest homopolymer in a non-empty string.
+    * If there are multiple homopolymers of the same length the _first_ one is returned.
     *
     * @param s a sequence
     * @return a tuple of (0-based index, length) of the longest homopolymer in the string

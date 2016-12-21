@@ -71,9 +71,9 @@ case class IndexMetric(index: String,
                        gc: Double,
                        longest_homopolymer: Int,
                        worst_structure_seq: Option[String],
-                       worst_structure: Option[String],
+                       worst_structure_dbn: Option[String],
                        worst_structure_delta_g: Option[Double]) extends Metric {
-  
+
   override protected def formatValues(value: Any): String = value match {
     case None    => ""
     case Some(x) => super.formatValues(x)
@@ -331,7 +331,7 @@ class PickLongIndices
         gc                        = SequenceUtil.calculateGc(ann.index),
         longest_homopolymer       = Sequences.longestHomopolymer(new String(ann.index))._2,
         worst_structure_seq       = structure.map(_.sequence()),
-        worst_structure           = structure.map(_.structure()),
+        worst_structure_dbn           = structure.map(_.structure()),
         worst_structure_delta_g   = structure.map(_.deltaG)
       )
     }
