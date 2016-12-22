@@ -25,7 +25,7 @@
 
 package com.fulcrumgenomics.util
 
-import java.io.Writer
+import java.io.{BufferedWriter, Closeable, Writer}
 import java.nio.file.Path
 
 import dagr.commons.CommonsDef.unreachable
@@ -38,6 +38,21 @@ import scala.util.{Failure, Success}
 object Metric {
   val Delimiter: Char = '\t'
   val DelimiterAsString: String = s"$Delimiter"
+
+  /** A class that provides streaming writing capability for metrics. */
+  class MetricWriter[T <: Metric] private[Metric](val writer: Writer)(implicit tt: ru.TypeTag[T]) extends Closeable {
+    this.writer.write(names[T].mkString(DelimiterAsString))
+    this.writer.write("\n")
+
+    /** Writes one or more metric values to the output. */
+    def write(metrics: T*): Unit = metrics.foreach { metric =>
+      writer.write(metric.values.mkString(DelimiterAsString))
+      writer.write("\n")
+    }
+
+    def flush(): Unit = this.writer.flush()
+    override def close(): Unit = this.writer.close()
+  }
 
   /** Get the names of the arguments in the order they were defined for the type [T]. */
   def names[T <: Metric](implicit tt: ru.TypeTag[T]): Seq[String] = {
@@ -92,22 +107,18 @@ object Metric {
     * line is a single metric.
     */
   def write[T <: Metric](metrics: Seq[T], writer: Writer)(implicit tt: ru.TypeTag[T]): Unit = {
-    writer.write(names[T].mkString(DelimiterAsString))
-    writer.write("\n")
-    metrics.foreach { metric =>
-      writer.write(metric.values.mkString(DelimiterAsString))
-      writer.write("\n")
-    }
+    val out = new MetricWriter[T](writer)
+    out.write(metrics:_*)
+    out.close()
   }
 
   /** Writes a metric to the given path.  The first line will be a header with the field names.  Each subsequent
     * line is a single metric.
     */
-  def write[T <: Metric](metrics: Seq[T], path: Path)(implicit tt: ru.TypeTag[T]): Unit = {
-    val writer = Io.toWriter(path)
-    write(metrics, writer)
-    writer.close()
-  }
+  def write[T <: Metric](metrics: Seq[T], path: Path)(implicit tt: ru.TypeTag[T]): Unit = write(metrics, Io.toWriter(path))
+
+  /** Returns a MetricWriter that can be used to stream metrics out to a file. */
+  def writer[T <: Metric](path: Path)(implicit tt: ru.TypeTag[T]): MetricWriter[T] = new MetricWriter[T](Io.toWriter(path))
 }
 
 /**

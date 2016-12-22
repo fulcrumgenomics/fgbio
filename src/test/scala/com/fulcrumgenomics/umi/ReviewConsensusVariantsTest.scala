@@ -25,8 +25,10 @@
 package com.fulcrumgenomics.umi
 
 import com.fulcrumgenomics.FgBioDef._
+import com.fulcrumgenomics.testing.SamRecordSetBuilder.{Minus, Plus}
 import com.fulcrumgenomics.testing.{SamRecordSetBuilder, UnitSpec, VariantContextSetBuilder}
-import com.fulcrumgenomics.util.Io
+import com.fulcrumgenomics.umi.ReviewConsensusVariants.ConsensusVariantReviewInfo
+import com.fulcrumgenomics.util.{Io, Metric}
 import dagr.commons.io.PathUtil
 import htsjdk.samtools.SAMFileHeader.SortOrder
 import htsjdk.samtools.reference.{ReferenceSequenceFile, ReferenceSequenceFileFactory}
@@ -137,25 +139,67 @@ class ReviewConsensusVariantsTest extends UnitSpec {
   /** Returns queryname + /1 or /2 */
   private def nameAndNumber(rec: SAMRecord): String = rec.getReadName + "/" + (if (rec.getFirstOfPairFlag) "1" else "2")
 
+  "ReviewConsensusVariants.toMi" should "retrieve the MI tag from reads" in {
+    import ReviewConsensusVariants.toMi
+    val builder = new SamRecordSetBuilder()
+    builder.addPair(start1=1,start2=2,attrs=Map("MI" -> "123")).foreach(toMi(_) shouldBe "123")
+    builder.addPair(start1=1,start2=2,attrs=Map("MI" -> "A")).foreach(toMi(_) shouldBe "A")
+  }
+
+  it should "strip the suffix from duplex read MIs" in {
+    import ReviewConsensusVariants.toMi
+    val builder = new SamRecordSetBuilder()
+    builder.addPair(start1=1,start2=2,attrs=Map("MI" -> "123/A")).foreach(toMi(_) shouldBe "123")
+    builder.addPair(start1=1,start2=2,attrs=Map("MI" -> "123/B")).foreach(toMi(_) shouldBe "123")
+    builder.addPair(start1=1,start2=2,attrs=Map("MI" -> "123/ReallyLongSuffix")).foreach(toMi(_) shouldBe "123")
+    builder.addPair(start1=1,start2=2,attrs=Map("MI" -> "123/456/A")).foreach(toMi(_) shouldBe "123/456")
+  }
+
+  it should "fail if a read without an MI tag is provided" in {
+    import ReviewConsensusVariants.toMi
+    val builder = new SamRecordSetBuilder()
+    an[Exception] shouldBe thrownBy { builder.addPair(start1=1,start2=2,attrs=Map()).map(toMi) }
+  }
+
+  "ReviewConsensusVariants.toInsertString" should "return NA for anything that's not an FR pair" in {
+    import ReviewConsensusVariants.toInsertString
+    val builder = new SamRecordSetBuilder(readLength=10)
+    builder.addFrag(start=100).foreach(r => toInsertString(r) shouldBe "NA")
+    builder.addFrag(unmapped=true).foreach(r => toInsertString(r) shouldBe "NA")
+    builder.addPair(start1=100, start2=200, strand1=Plus, strand2=Plus).foreach(r => toInsertString(r) shouldBe "NA")
+    builder.addPair(start1=100, start2=100, record2Unmapped=true).foreach(r => toInsertString(r) shouldBe "NA")
+  }
+
+  it should "return generate sensible strings for FR pairs" in {
+    import ReviewConsensusVariants.toInsertString
+    val builder = new SamRecordSetBuilder(readLength=10)
+    builder.addPair(start1=100, start2=191).foreach(r => toInsertString(r) shouldBe "chr1:100-200 | F1R2")
+    builder.addPair(start1=191, start2=100, strand1=Minus, strand2=Plus).foreach(r => toInsertString(r) shouldBe "chr1:100-200 | F2R1")
+  }
+
   "ReviewConsensusVariants" should "create empty BAMs when given an empty interval list as input" in {
     val outBase = makeTempFile("review_consensus.", ".out")
     val conOut  = outBase.getParent.resolve(outBase.getFileName + ".consensus.bam")
     val rawOut  = outBase.getParent.resolve(outBase.getFileName + ".grouped.bam")
+    val txtOut  = outBase.getParent.resolve(outBase.getFileName + ".txt")
     val intervals = makeTempFile("empty.", ".interval_list")
     new IntervalList(header).write(intervals.toFile)
     new ReviewConsensusVariants(input=intervals, consensusBam=consensusBam, groupedBam=rawBam, ref=refFasta, output=outBase).execute()
 
     conOut.toFile.exists() shouldBe true
     rawOut.toFile.exists() shouldBe true
+    txtOut.toFile.exists() shouldBe true
 
-    readBamRecs(rawOut) shouldBe 'empty
-    readBamRecs(conOut) shouldBe 'empty
+    readBamRecs(rawOut) shouldBe empty
+    readBamRecs(conOut) shouldBe empty
+    Metric.read[ConsensusVariantReviewInfo](txtOut) shouldBe empty
   }
 
-  "ReviewConsensusVariants" should "create empty BAMs when given an empty VCF as input" in {
+  it should "create empty BAMs when given an empty VCF as input" in {
     val outBase = makeTempFile("review_consensus.", ".out")
     val conOut  = outBase.getParent.resolve(outBase.getFileName + ".consensus.bam")
     val rawOut  = outBase.getParent.resolve(outBase.getFileName + ".grouped.bam")
+    val txtOut  = outBase.getParent.resolve(outBase.getFileName + ".txt")
     val intervals = makeTempFile("empty.", ".vcf")
 
     val vcfBuilder = VariantContextSetBuilder("s1")
@@ -165,15 +209,18 @@ class ReviewConsensusVariantsTest extends UnitSpec {
 
     conOut.toFile.exists() shouldBe true
     rawOut.toFile.exists() shouldBe true
+    txtOut.toFile.exists() shouldBe true
 
-    readBamRecs(rawOut) shouldBe 'empty
-    readBamRecs(conOut) shouldBe 'empty
+    readBamRecs(rawOut) shouldBe empty
+    readBamRecs(conOut) shouldBe empty
+    Metric.read[ConsensusVariantReviewInfo](txtOut) shouldBe empty
   }
 
-  "ReviewConsensusVariants" should "create extract the right reads given a set of loci" in {
+  it should "create extract the right reads given a set of loci" in {
     val outBase = makeTempFile("review_consensus.", ".out")
     val conOut  = outBase.getParent.resolve(outBase.getFileName + ".consensus.bam")
     val rawOut  = outBase.getParent.resolve(outBase.getFileName + ".grouped.bam")
+    val txtOut  = outBase.getParent.resolve(outBase.getFileName + ".txt")
     val intervals = makeTempFile("empty.", ".interval_list")
     val ilist = new IntervalList(header)
     ilist.add(new Interval("chr1", 10, 10))
@@ -185,8 +232,13 @@ class ReviewConsensusVariantsTest extends UnitSpec {
 
     conOut.toFile.exists() shouldBe true
     rawOut.toFile.exists() shouldBe true
+    txtOut.toFile.exists() shouldBe true
 
     readBamRecs(rawOut).map(nameAndNumber) should contain theSameElementsAs Seq("A1/1", "A2/1", "B1/1", "D1/1", "E1/1", "F1/1", "H1/1", "H1/2")
     readBamRecs(conOut).map(nameAndNumber) should contain theSameElementsAs Seq("A/1", "B/1", "D/1", "E/1", "F/1", "H/1", "H/2")
+
+    val metrics = Metric.read[ConsensusVariantReviewInfo](txtOut)
+    // The metrics don't currently contain reads with spanning deletions, so D/1 is present above and absent below
+    metrics.toIndexedSeq.map(_.consensus_read) should contain theSameElementsAs Seq("A/1", "B/1", "E/1", "F/1", "H/1", "H/2")
   }
 }
