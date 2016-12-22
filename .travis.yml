@@ -1,4 +1,4 @@
-sudo: false
+sudo: required
 language: scala
 scala:
 - 2.11.7
@@ -14,6 +14,7 @@ cache:
   - $HOME/.sbt/boot/
 before_install:
 - pip install --user codecov
+- sudo bash .travis.install-git-lfs.sh
 after_success:
 - codecov
 - test "$TRAVIS_REPO_SLUG" == 'fulcrumgenomics/fgbio' && test "$TRAVIS_PULL_REQUEST" == 'false' && test "$TRAVIS_BRANCH" == 'master' && sbt publish #&& sbt 'set version := version.value + "." + System.getenv("TRAVIS_BUILD_NUMBER")' publish

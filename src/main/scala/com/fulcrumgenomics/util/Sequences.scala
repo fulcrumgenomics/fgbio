@@ -31,6 +31,9 @@ import com.fulcrumgenomics.FgBioDef._
   * Utility methods for working with DNA or RNA sequences
   */
 object Sequences {
+  /** Common contig/chrom names for non-autosomal sequences in mammals. */
+  val CommonNonAutosomalContigNames = Seq("M", "chrM", "MT", "X", "chrX", "Y", "chrY")
+
   /** Counts the number of mismatches between two sequences of the same length. */
   def countMismatches(s1: String, s2: String): Int = {
     if (s1.length != s2.length)

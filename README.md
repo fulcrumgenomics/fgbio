@@ -36,6 +36,19 @@ There are many toolkits available for analyzing genomic data; fgbio does not aim
 * Open source development for the benefit of the community and our clients.
 
 ## Building 
+### Cloning the Repository
+
+[Git LFS](https://git-lfs.github.com/) is used to store large files used in testing fgbio.  In order to compile and run tests it is necessary to [install git lfs](https://git-lfs.github.com/).  To retrieve the large files either:
+
+1. Clone the repository _after_ installing git lfs, or
+2. In a previously cloned repository run `git lfs pull` once
+
+After initial setup regular git commands (e.g. `pull`, `fetch`, `push`) will also operate on large files and no special handling is needed.
+
+To clone the repository: `git clone https://github.com/fulcrumgenomics/fgbio.git`
+
+### Running the build
+fgbio is built using [sbt](http://www.scala-sbt.org/).
 
 Use ```sbt assembly``` to build an executable jar in ```target/scala-2.11/```.  
 Tests may be run with ```sbt test```.
@@ -44,14 +57,14 @@ Java SE 8 is required.
 
 ## Command line
 
-`java -jar target/scala-2.11/fgbio-0.1.2-SNAPSHOT.jar` to see the commands supported.  Use `java -jar target/scala-2.11/fgbio-0.1.2-SNAPSHOT.jar <command>` to see the help message for a particular command.
+`java -jar target/scala-2.11/fgbio-0.1.3-SNAPSHOT.jar` to see the commands supported.  Use `java -jar target/scala-2.11/fgbio-0.1.3-SNAPSHOT.jar <command>` to see the help message for a particular command.
 
 ## Include fgbio in your project
 
 You can include `fgbio` in your project:
 
 ```
-"com.fulcrumgenomics" %% "fgbio" % "0.1.1"
+"com.fulcrumgenomics" %% "fgbio" % "0.1.3-SNAPSHOT"
 ```
 
 ## Overview
