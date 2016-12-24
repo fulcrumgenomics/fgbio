@@ -46,25 +46,28 @@ object VanillaUmiConsensusCallerOptions {
   val DefaultErrorRatePreUmi: PhredScore             = 45.toByte
   val DefaultErrorRatePostUmi: PhredScore            = 40.toByte
   val DefaultMinInputBaseQuality: PhredScore         = 2.toByte
-  val DefaultMaxBaseQuality: PhredScore              = 40.toByte
-  val DefaultBaseQualityShift: PhredScore            = 10.toByte
+  @deprecated("Too redundant with DefaultErrorRatePostUmi.", since="0.1.2") val DefaultMaxBaseQuality: PhredScore = 40.toByte
+  @deprecated("Too redundant with DefaultErrorRatePostUmi.", since="0.1.2") val DefaultBaseQualityShift: PhredScore = 10.toByte
   val DefaultMinConsensusBaseQuality: PhredScore     = 13.toByte
   val DefaultMinReads: Int                           = 1
-  val DefaultMinMeanConsensusBaseQuality: PhredScore = 13.toByte
+  @deprecated("Too redundant with DefaultMinConsensusBaseQuality.", since="0.1.2") val DefaultMinMeanConsensusBaseQuality: PhredScore = 13.toByte
   val DefaultRequireConsensusForBothPairs: Boolean   = true
 }
 
 /** Holds the parameters/options for consensus calling. */
-case class VanillaUmiConsensusCallerOptions(tag: String                             = DefaultTag,
-                                            errorRatePreUmi: PhredScore             = DefaultErrorRatePreUmi,
-                                            errorRatePostUmi: PhredScore            = DefaultErrorRatePostUmi,
-                                            minInputBaseQuality: PhredScore         = DefaultMinInputBaseQuality,
-                                            maxRawBaseQuality: PhredScore           = DefaultMaxBaseQuality,
-                                            rawBaseQualityShift: PhredScore         = DefaultBaseQualityShift,
-                                            minConsensusBaseQuality: PhredScore     = DefaultMinConsensusBaseQuality,
-                                            minReads: Int                           = DefaultMinReads,
-                                            minMeanConsensusBaseQuality: PhredScore = DefaultMinMeanConsensusBaseQuality,
-                                            requireConsensusForBothPairs: Boolean   = DefaultRequireConsensusForBothPairs)
+case class VanillaUmiConsensusCallerOptions
+(
+  tag: String                             = DefaultTag,
+  errorRatePreUmi: PhredScore             = DefaultErrorRatePreUmi,
+  errorRatePostUmi: PhredScore            = DefaultErrorRatePostUmi,
+  minInputBaseQuality: PhredScore         = DefaultMinInputBaseQuality,
+  @deprecated("Use errorRatePostUmi instead.", since="0.1.2") maxRawBaseQuality: PhredScore           = DefaultMaxBaseQuality,
+  @deprecated("Use errorRatePostUmi instead.", since="0.1.2") rawBaseQualityShift: PhredScore         = DefaultBaseQualityShift,
+  minConsensusBaseQuality: PhredScore     = DefaultMinConsensusBaseQuality,
+  minReads: Int                           = DefaultMinReads,
+  @deprecated("Use minConsensusBaseQuality instead.", since="0.1.2") minMeanConsensusBaseQuality: PhredScore = DefaultMinMeanConsensusBaseQuality,
+  requireConsensusForBothPairs: Boolean   = DefaultRequireConsensusForBothPairs
+)
 
 /** Stores information about a read to be fed into a consensus. */
 case class SourceRead(bases: Array[Byte], quals: Array[Byte]) {
