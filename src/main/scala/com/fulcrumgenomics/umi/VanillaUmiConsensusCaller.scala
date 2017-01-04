@@ -25,6 +25,8 @@
 
 package com.fulcrumgenomics.umi
 
+import java.util
+
 import com.fulcrumgenomics.FgBioDef._
 import com.fulcrumgenomics.umi.ConsensusCaller.Base
 import com.fulcrumgenomics.umi.VanillaUmiConsensusCallerOptions._
@@ -38,6 +40,9 @@ import scala.collection.JavaConversions.collectionAsScalaIterable
 import scala.collection.mutable
 import scala.collection.mutable.ListBuffer
 
+/**
+  * Holds the defaults for consensus caller options.
+  */
 object VanillaUmiConsensusCallerOptions {
   type PhredScore = Byte
 
@@ -49,9 +54,12 @@ object VanillaUmiConsensusCallerOptions {
   val DefaultMinConsensusBaseQuality: PhredScore     = 13.toByte
   val DefaultMinReads: Int                           = 1
   val DefaultRequireConsensusForBothPairs: Boolean   = true
+  val DefaultProducePerBaseTags: Boolean             = true
 }
 
-/** Holds the parameters/options for consensus calling. */
+/**
+  * Holds the parameters/options for consensus calling.
+  */
 case class VanillaUmiConsensusCallerOptions
 (
   tag: String                             = DefaultTag,
@@ -60,18 +68,75 @@ case class VanillaUmiConsensusCallerOptions
   minInputBaseQuality: PhredScore         = DefaultMinInputBaseQuality,
   minConsensusBaseQuality: PhredScore     = DefaultMinConsensusBaseQuality,
   minReads: Int                           = DefaultMinReads,
-  requireConsensusForBothPairs: Boolean   = DefaultRequireConsensusForBothPairs
+  requireConsensusForBothPairs: Boolean   = DefaultRequireConsensusForBothPairs,
+  producePerBaseTags: Boolean             = DefaultProducePerBaseTags
 )
 
-/** Stores information about a read to be fed into a consensus. */
-case class SourceRead(bases: Array[Byte], quals: Array[Byte]) {
-  assert(bases.length == quals.length,   "Bases and qualities not the same length.")
-  def length = bases.length
+/**
+  * Object that encapsulates the various consensus related tags that are added to consensus reads
+  * at both the per-read and per-base level.
+  *
+  * Currently only contains tags for single-strand consensus reads, but with a view to using the following
+  * names for consistency if/when we add duplex calling:
+  *     Value                 AB  BA  Final
+  *     ===================== ==  ==  =====
+  *     bases                 ac  bc  bases
+  *     quals                 aq  bq  quals
+  *     per-read-depth        aD  bD  cD
+  *     per-read-min-depth    aM  bM  cM
+  *     per-read-error-count  aE  bE  cE
+  *     per-base-depth        ad  bd  cd
+  *     per-base-error-count  ae  be  ce
+  */
+object ConsensusTags {
+  object PerBase {
+    /** The per-base number of raw-reads contributing to the consensus (stored as a short[]). */
+    val RawReadCount    = "cd" // consensus depth
+    /** The number of bases at each position that disagreed with the final consensus call (stored as a short[]). */
+    val RawReadErrors   = "ce" // consensus errors
+  }
+
+  object PerRead {
+    /** The number of raw reads that contributed to the consensus. I.e. the maximum of the per-base raw-read counts. */
+    val RawReadCount    = "cD" // consensus Depth
+    /** The minimum number of raw reads contributing to a consensus call anywhere in the read. */
+    val MinRawReadCount = "cM" // consensus Min-depth
+    /** The number of bases in the raw reads that contributed to the consensus but disagreed with the consensus call. */
+    val RawReadErrorRate   = "cE" // consensus Error rate
+  }
 }
 
-/** Stores information about a consensus read. */
-case class ConsensusRead(bases: Array[Byte], quals: Array[Byte]) {
+/**
+  * Stores information about a read to be fed into a consensus.
+  */
+case class SourceRead(bases: Array[Byte], quals: Array[Byte]) {
+  require(bases.length == quals.length, "Bases and qualities are not the same length.")
+  def length: Int = bases.length
+}
+
+/**
+  * Stores information about a consensus read.  All four arrays are of equal length.
+  *
+  * Depths and errors that have values exceeding Short.MaxValue (32767) will be called
+  * to Short.MaxValue.
+  *
+  * @param bases the base calls of the consensus read
+  * @param quals the calculated phred-scaled quality scores of the bases
+  * @param depths the number of raw reads that contributed to the consensus call at each position
+  * @param errors the number of contributing raw reads that disagree with the final consensus base at each position
+  */
+case class ConsensusRead(bases: Array[Byte],
+                         quals: Array[Byte],
+                         depths: Array[Short],
+                         errors: Array[Short]
+                        ) {
+  require(bases.length == quals.length,  "Bases and qualities are not the same length.")
+  require(bases.length == depths.length, "Bases and depths are not the same length.")
+  require(bases.length == errors.length, "Bases and errors are not the same length.")
+
   val meanQuality: Byte = MathUtil.mean(quals)
+
+  def length: Int = bases.length
 
   /** Returns the consensus read a String - mostly useful for testing. */
   def baseString = new String(bases)
@@ -236,6 +301,8 @@ class VanillaUmiConsensusCaller
       val consensusLength = consensusReadLength(reads)
       val consensusBases  = new Array[Base](consensusLength)
       val consensusQuals  = new Array[PhredScore](consensusLength)
+      val consensusDepths = new Array[Short](consensusLength)
+      val consensusErrors = new Array[Short](consensusLength)
 
       var positionInRead = 0
       val builder = this.caller.builder()
@@ -262,15 +329,22 @@ class VanillaUmiConsensusCaller
 
           }
         }
+
         consensusBases(positionInRead) = base
         consensusQuals(positionInRead) = qual
+
+        // Generate the values for depth and count of errors
+        val depth  = builder.contributions
+        val errors = if (base == NoCall) depth else depth - builder.observations(base)
+        consensusDepths(positionInRead) = if (depth  > Short.MaxValue) Short.MaxValue else depth.toShort
+        consensusErrors(positionInRead) = if (errors > Short.MaxValue) Short.MaxValue else errors.toShort
 
         // Get ready for the next pass
         builder.reset()
         positionInRead += 1
       }
 
-      Some(ConsensusRead(consensusBases, consensusQuals))
+      Some(ConsensusRead(bases=consensusBases, quals=consensusQuals, depths=consensusDepths, errors=consensusErrors))
     }
   }
 
@@ -315,7 +389,7 @@ class VanillaUmiConsensusCaller
       case None       => // reject
         rejectRecords(records=fragments);
       case Some(frag) => // output
-        this.createAndEnqueueSamRecord(records=fragments, read=frag, readName=nextReadName(fragments), readType=Fragment)
+        createAndEnqueueSamRecord(records=fragments, read=frag, readName=nextReadName(fragments), readType=Fragment)
         success = true
     }
 
@@ -329,7 +403,7 @@ class VanillaUmiConsensusCaller
       case (Some(_), None) | (None, Some(_)) if needBothPairs => // reject
         rejectRecords(records=firstOfPair ++ secondOfPair)
       case (firstRead, secondRead)                            => // output
-        this.createAndEnqueueSamRecordPair(firstRecords=firstOfPair, firstRead=firstRead, secondRecords=secondOfPair, secondRead=secondRead)
+        createAndEnqueueSamRecordPair(firstRecords=firstOfPair, firstRead=firstRead, secondRecords=secondOfPair, secondRead=secondRead)
         success = true
     }
 
@@ -384,7 +458,7 @@ class VanillaUmiConsensusCaller
                                             firstRead: Option[ConsensusRead],
                                             secondRecords: Seq[SAMRecord],
                                             secondRead: Option[ConsensusRead]): Unit = {
-    if (firstRead.isEmpty && secondRead.isEmpty) throw new IllegalArgumentException("Both consenus reads were empty.")
+    if (firstRead.isEmpty && secondRead.isEmpty) throw new IllegalArgumentException("Both consensus reads were empty.")
     val readName = nextReadName(firstRecords++secondRecords)
     // first end
     createAndEnqueueSamRecord(
@@ -426,8 +500,15 @@ class VanillaUmiConsensusCaller
     rec.setBaseQualities(read.quals)
     rec.setAttribute(SAMTag.RG.name(), readGroupId)
     rec.setAttribute(options.tag, records.head.getStringAttribute(options.tag))
-    // TODO: set custom SAM tags:
-    // - # of reads contributing to this consensus
+
+    // Set some additional information tags on the read
+    rec.setAttribute(ConsensusTags.PerRead.RawReadCount,     read.depths.max.toInt)
+    rec.setAttribute(ConsensusTags.PerRead.MinRawReadCount,  read.depths.min.toInt)
+    rec.setAttribute(ConsensusTags.PerRead.RawReadErrorRate, read.errors.sum / read.depths.sum.toFloat)
+    if (this.options.producePerBaseTags) {
+      rec.setAttribute(ConsensusTags.PerBase.RawReadCount,  read.depths)
+      rec.setAttribute(ConsensusTags.PerBase.RawReadErrors, read.errors)
+    }
 
     // enqueue the record
     this.nextConsensusRecords.enqueue(rec)
@@ -436,6 +517,13 @@ class VanillaUmiConsensusCaller
   /** Creates a dummy consensus read.  The read and quality strings will have the same length as the source, with
     * the read string being all Ns, and the quality string having zero base qualities. */
   private def dummyConsensusRead(source: ConsensusRead): ConsensusRead = {
-    ConsensusRead(bases=source.bases.map(_ => 'N'.toByte), quals=source.quals.map(_ => PhredScore.MinValue))
+    val len    = source.bases.length
+    val bases  = new Array[Byte](len)
+    val quals  = new Array[Byte](len)
+    val zeros  = new Array[Short](len)
+    util.Arrays.fill(bases, NoCall)
+    util.Arrays.fill(quals, PhredScore.MinValue)
+    util.Arrays.fill(zeros, 0.toShort)
+    ConsensusRead(bases=bases, quals=quals, depths=zeros, errors=zeros)
   }
 }

@@ -70,23 +70,34 @@ import scala.collection.JavaConverters._
     |This tool assumes that reads with the same tag are grouped together (consecutive in the file). Also, this tool
     |calls each end of a pair independently, and does not jointly call bases that overlap within a pair.  Insertion or
     |deletion errors in the reads are not considered in the consensus model.
+    |
+    |Consensus reads have a number of additional optional tags set in the resulting BAM file.  The tags break down into
+    |those that are single-valued per read:
+    |    * consensus depth     [cD] (int): the maximum depth of raw reads at any point in the consensus read
+    |    * consensus min depth [cM] (int): the minimum depth of raw reads at any point in the consensus read
+    |    * consensus errors    [cE] (int): the count of bases in raw reads disagreeing with the final consensus calls
+    |and those that have a value per base:
+    |    * consensus depth  [cd] (short[]): the count of bases contributing to the consensus read at each position
+    |    * consensus errors [ce] (short[]): the number of bases from raw reads disagreeing with the final consensus base
+    |The per base depths and errors are capped at 32,767.
   """,
   group = ClpGroups.Umi)
 class CallMolecularConsensusReads
-( @arg(flag="i", doc="The input SAM or BAM file.") val input: PathToBam,
-  @arg(flag="o", doc="Output SAM or BAM file to write consensus reads.") val output: PathToBam,
-  @arg(flag="r", doc="Optional output SAM or BAM file to write reads not used.") val rejects: Option[PathToBam] = None,
-  @arg(flag="t", doc="The SAM attribute with the unique molecule tag.") val tag: String = DefaultTag,
-  @arg(flag="p", doc="The Prefix all consensus read names") val readNamePrefix: Option[String] = None,
-  @arg(flag="R", doc="The new read group ID for all the consensus reads.") val readGroupId: String = "A",
-  @arg(flag="1", doc="The Phred-scaled error rate for an error prior to the UMIs being integrated.") val errorRatePreUmi: PhredScore = DefaultErrorRatePreUmi,
-  @arg(flag="2", doc="The Phred-scaled error rate for an error post the UMIs have been integrated.") val errorRatePostUmi: PhredScore = DefaultErrorRatePostUmi,
-  @arg(flag="m", doc="Ignore bases in raw reads that have Q below this value.") val minInputBaseQuality: PhredScore = DefaultMinInputBaseQuality,
-  @arg(flag="N", doc="Mask (make 'N') consensus bases with quality less than this threshold.") val minConsensusBaseQuality: PhredScore = DefaultMinConsensusBaseQuality,
-  @arg(flag="M", doc="The minimum number of reads to produce a consensus base.") val minReads: Int = DefaultMinReads,
-  @arg(flag="P", doc="Require a consensus call for both ends of a pair if true.") val requireConsensusForBothPairs: Boolean = DefaultRequireConsensusForBothPairs,
-  @arg(flag="S", doc="The sort order of the output, if None then the same as the input.") val sortOrder: Option[SortOrder] = Some(SortOrder.queryname),
-  @arg(flag="D", doc="Turn on debug logging.") val debug: Boolean = false
+(@arg(flag="i", doc="The input SAM or BAM file.") val input: PathToBam,
+ @arg(flag="o", doc="Output SAM or BAM file to write consensus reads.") val output: PathToBam,
+ @arg(flag="r", doc="Optional output SAM or BAM file to write reads not used.") val rejects: Option[PathToBam] = None,
+ @arg(flag="t", doc="The SAM attribute with the unique molecule tag.") val tag: String = DefaultTag,
+ @arg(flag="p", doc="The Prefix all consensus read names") val readNamePrefix: Option[String] = None,
+ @arg(flag="R", doc="The new read group ID for all the consensus reads.") val readGroupId: String = "A",
+ @arg(flag="1", doc="The Phred-scaled error rate for an error prior to the UMIs being integrated.") val errorRatePreUmi: PhredScore = DefaultErrorRatePreUmi,
+ @arg(flag="2", doc="The Phred-scaled error rate for an error post the UMIs have been integrated.") val errorRatePostUmi: PhredScore = DefaultErrorRatePostUmi,
+ @arg(flag="m", doc="Ignore bases in raw reads that have Q below this value.") val minInputBaseQuality: PhredScore = DefaultMinInputBaseQuality,
+ @arg(flag="N", doc="Mask (make 'N') consensus bases with quality less than this threshold.") val minConsensusBaseQuality: PhredScore = DefaultMinConsensusBaseQuality,
+ @arg(flag="M", doc="The minimum number of reads to produce a consensus base.") val minReads: Int = DefaultMinReads,
+ @arg(flag="B", doc="If true produce tags on consensus reads that contain per-base information.") val outputPerBaseTags: Boolean = DefaultProducePerBaseTags,
+ @arg(flag="P", doc="Require a consensus call for both ends of a pair if true.") val requireConsensusForBothPairs: Boolean = DefaultRequireConsensusForBothPairs,
+ @arg(flag="S", doc="The sort order of the output, if None then the same as the input.") val sortOrder: Option[SortOrder] = Some(SortOrder.queryname),
+ @arg(flag="D", doc="Turn on debug logging.") val debug: Boolean = false
 ) extends FgBioTool with LazyLogging {
 
   if (debug) Logger.level = LogLevel.Debug
@@ -114,6 +125,7 @@ class CallMolecularConsensusReads
       minInputBaseQuality          = minInputBaseQuality,
       minConsensusBaseQuality      = minConsensusBaseQuality,
       minReads                     = minReads,
+      producePerBaseTags           = outputPerBaseTags,
       requireConsensusForBothPairs = requireConsensusForBothPairs
     )
 

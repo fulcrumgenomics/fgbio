@@ -171,8 +171,8 @@ class VanillaUmiConsensusCallerTest extends UnitSpec {
   }
 
   it should "throw an exception if the bases and qualities are of a different length" in {
-    an[AssertionError] should be thrownBy cc().consensusCall(Seq(src("GATTACA", Array(20))))
-    an[AssertionError] should be thrownBy cc().consensusCall(Seq(src("G", Array(20,20,20,20,20))))
+    an[IllegalArgumentException] should be thrownBy cc().consensusCall(Seq(src("GATTACA", Array(20))))
+    an[IllegalArgumentException] should be thrownBy cc().consensusCall(Seq(src("G", Array(20,20,20,20,20))))
   }
 
   it should "apply the pre-umi-error-rate when it has probability zero" in {
@@ -373,6 +373,55 @@ class VanillaUmiConsensusCallerTest extends UnitSpec {
     val r2 = recs.find(_.getSecondOfPairFlag).getOrElse(fail("There should be an R2 in the consensus reads."))
     r1.getReadString shouldBe ("A" * 10)
     r2.getReadString shouldBe ("N" * 10)
+  }
+
+  it should "generate accurate per-read and per-base tags on the consensus reads" in {
+    val builder = new SamRecordSetBuilder(readLength=10)
+    builder.addFrag("READ1", 0, 1, false).foreach(_.setAttribute(DefaultTag, "AAA"))
+    builder.addFrag("READ2", 0, 1, false).foreach(_.setAttribute(DefaultTag, "AAA"))
+    builder.addFrag("READ3", 0, 1, false).foreach(_.setAttribute(DefaultTag, "AAA"))
+    builder.addFrag("READ4", 0, 1, false).foreach(_.setAttribute(DefaultTag, "AAA"))
+    builder.foreach { rec => rec.setReadString("A" * rec.getReadLength) }
+
+    // Monkey with one of the four reads
+    builder.find(_.getReadName == "READ2").foreach { r =>
+      r.getReadBases()(5) = 'C'.toByte
+      r.getBaseQualities()(7) = 5.toByte
+    }
+
+    val consensusCaller = new VanillaUmiConsensusCaller(
+      input = builder.toIterator,
+      header = builder.header,
+      options = cco(minReads = 2, minInputBaseQuality = 20.toByte)
+    )
+
+    consensusCaller.hasNext shouldBe true
+    val consensus = consensusCaller.next()
+    consensusCaller.hasNext shouldBe false
+    consensus.getReadBases.foreach(_ shouldBe 'A'.toByte)
+    consensus.getSignedShortArrayAttribute(ConsensusTags.PerBase.RawReadCount)  shouldBe Array[Short](4,4,4,4,4,4,4,3,4,4)
+    consensus.getSignedShortArrayAttribute(ConsensusTags.PerBase.RawReadErrors) shouldBe Array[Short](0,0,0,0,0,1,0,0,0,0)
+    consensus.getIntegerAttribute(ConsensusTags.PerRead.RawReadCount)     shouldBe 4
+    consensus.getIntegerAttribute(ConsensusTags.PerRead.MinRawReadCount)  shouldBe 3
+    consensus.getFloatAttribute(ConsensusTags.PerRead.RawReadErrorRate) shouldBe (1 / 39.toFloat)
+  }
+
+  it should "not generate per-base tags when turned off" in {
+    val builder = new SamRecordSetBuilder(readLength=10)
+    builder.addFrag("READ1", 0, 1, false).foreach(_.setAttribute(DefaultTag, "AAA"))
+    builder.addFrag("READ2", 0, 1, false).foreach(_.setAttribute(DefaultTag, "AAA"))
+    builder.foreach { rec => rec.setReadString("A" * rec.getReadLength) }
+
+    val caller = new VanillaUmiConsensusCaller(input=builder.toIterator, header=builder.header, options=cco(producePerBaseTags=false))
+
+    caller.hasNext shouldBe true
+    val consensus = caller.next()
+    caller.hasNext shouldBe false
+    consensus.getSignedShortArrayAttribute(ConsensusTags.PerBase.RawReadCount)  shouldBe null
+    consensus.getSignedShortArrayAttribute(ConsensusTags.PerBase.RawReadErrors) shouldBe null
+    consensus.getIntegerAttribute(ConsensusTags.PerRead.RawReadCount)     shouldBe 2
+    consensus.getIntegerAttribute(ConsensusTags.PerRead.MinRawReadCount)  shouldBe 2
+    consensus.getFloatAttribute(ConsensusTags.PerRead.RawReadErrorRate) shouldBe 0.toFloat
   }
 
   "VanillaUmiConsensusCaller.filterToMostCommonAlignment" should "return all reads when all cigars are 50M" in {
