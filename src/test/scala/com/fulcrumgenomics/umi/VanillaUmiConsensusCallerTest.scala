@@ -158,7 +158,7 @@ class VanillaUmiConsensusCallerTest extends UnitSpec {
     val bases = "GATTACA"
     val quals         = Array(10, 10, 10, 10, 10, 10, 5)
     val expectedQuals = Array(10, 10, 10, 10, 10, 10, 2).map(_.toByte)
-    val caller    = cc(cco(errorRatePreUmi=PhredScore.MaxValue, minReads=1, minConsensusBaseQuality=10.toByte))
+    val caller    = cc(cco(errorRatePreUmi=PhredScore.MaxValue, minReads=1, minInputBaseQuality=2, minConsensusBaseQuality=10.toByte))
     val consensus = caller.consensusCall(Seq(src(bases, quals)))
     consensus shouldBe 'defined
     consensus.get.baseString shouldBe "GATTACN"

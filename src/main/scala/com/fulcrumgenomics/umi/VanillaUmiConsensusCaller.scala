@@ -50,9 +50,9 @@ object VanillaUmiConsensusCallerOptions {
   val DefaultTag: String                             = "MI"
   val DefaultErrorRatePreUmi: PhredScore             = 45.toByte
   val DefaultErrorRatePostUmi: PhredScore            = 40.toByte
-  val DefaultMinInputBaseQuality: PhredScore         = 2.toByte
-  val DefaultMinConsensusBaseQuality: PhredScore     = 13.toByte
-  val DefaultMinReads: Int                           = 1
+  val DefaultMinInputBaseQuality: PhredScore         = 10.toByte
+  val DefaultMinConsensusBaseQuality: PhredScore     = 40.toByte
+  val DefaultMinReads: Int                           = 2
   val DefaultRequireConsensusForBothPairs: Boolean   = true
   val DefaultProducePerBaseTags: Boolean             = true
 }
