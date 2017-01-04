@@ -46,11 +46,8 @@ object VanillaUmiConsensusCallerOptions {
   val DefaultErrorRatePreUmi: PhredScore             = 45.toByte
   val DefaultErrorRatePostUmi: PhredScore            = 40.toByte
   val DefaultMinInputBaseQuality: PhredScore         = 2.toByte
-  @deprecated("Too redundant with DefaultErrorRatePostUmi.", since="0.1.2") val DefaultMaxBaseQuality: PhredScore = 40.toByte
-  @deprecated("Too redundant with DefaultErrorRatePostUmi.", since="0.1.2") val DefaultBaseQualityShift: PhredScore = 10.toByte
   val DefaultMinConsensusBaseQuality: PhredScore     = 13.toByte
   val DefaultMinReads: Int                           = 1
-  @deprecated("Too redundant with DefaultMinConsensusBaseQuality.", since="0.1.2") val DefaultMinMeanConsensusBaseQuality: PhredScore = 13.toByte
   val DefaultRequireConsensusForBothPairs: Boolean   = true
 }
 
@@ -61,11 +58,8 @@ case class VanillaUmiConsensusCallerOptions
   errorRatePreUmi: PhredScore             = DefaultErrorRatePreUmi,
   errorRatePostUmi: PhredScore            = DefaultErrorRatePostUmi,
   minInputBaseQuality: PhredScore         = DefaultMinInputBaseQuality,
-  @deprecated("Use errorRatePostUmi instead.", since="0.1.2") maxRawBaseQuality: PhredScore           = DefaultMaxBaseQuality,
-  @deprecated("Use errorRatePostUmi instead.", since="0.1.2") rawBaseQualityShift: PhredScore         = DefaultBaseQualityShift,
   minConsensusBaseQuality: PhredScore     = DefaultMinConsensusBaseQuality,
   minReads: Int                           = DefaultMinReads,
-  @deprecated("Use minConsensusBaseQuality instead.", since="0.1.2") minMeanConsensusBaseQuality: PhredScore = DefaultMinMeanConsensusBaseQuality,
   requireConsensusForBothPairs: Boolean   = DefaultRequireConsensusForBothPairs
 )
 
@@ -156,9 +150,7 @@ class VanillaUmiConsensusCaller
   private val DnaBasesUpperCase: Array[Byte] = Array('A', 'C', 'G', 'T').map(_.toByte)
   private val LogThree = LogProbability.toLogProbability(3.0)
   private val caller = new ConsensusCaller(errorRatePreLabeling  = options.errorRatePreUmi,
-                                           errorRatePostLabeling = options.errorRatePostUmi,
-                                           maxRawBaseQuality     = options.maxRawBaseQuality,
-                                           rawBaseQualityShift   = options.rawBaseQualityShift)
+                                           errorRatePostLabeling = options.errorRatePostUmi)
 
   private val iter = input.buffered
   private val nextConsensusRecords: mutable.Queue[SAMRecord] = mutable.Queue[SAMRecord]() // one per UMI group
@@ -278,11 +270,7 @@ class VanillaUmiConsensusCaller
         positionInRead += 1
       }
 
-      // check that the mean base quality is high enough
-      if (MathUtil.mean(consensusQuals) >= options.minMeanConsensusBaseQuality)
-        Some(ConsensusRead(consensusBases, consensusQuals))
-      else
-        None
+      Some(ConsensusRead(consensusBases, consensusQuals))
     }
   }
 

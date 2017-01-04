@@ -46,12 +46,11 @@ import scala.collection.JavaConverters._
     |Reads with the same unique molecular tag are examined base-by-base to assess the likelihood of each base in the
     |source molecule.  The likelihood model is as follows:
     |   1. First, the base qualities are adjusted. The base qualities are assumed to represent the probability of a
-    |      sequencing error (i.e. the sequencer observed the wrong base present on the cluster/flowcell/well).  A fixed
-    |      value is subtracted from the phred-scaled base qualities (ex. Q30 with a shift of 10 becomes Q20).  Next, the
-    |      base qualities are capped to a maximum phred-scaled value.  Finally the base quality are converted to a
-    |      probability to incorporate a probability representing the chance of an error from the time the unique
-    |      molecular tags were integrated to just prior to sequencing.  The resulting probability is the error rate of
-    |      all processes from right after integrating the molecular tag through to the end of sequencing.
+    |      sequencing error (i.e. the sequencer observed the wrong base present on the cluster/flowcell/well). The base
+    |      quality scores are converted to probabilities incorporating a probability representing the chance of an error
+    |      from the time the unique molecular tags were integrated to just prior to sequencing.  The resulting probability
+    |      is the error rate of all processes from right after integrating the molecular tag through to the end of
+    |      sequencing.
     |   2. Next, a consensus sequence is called for all reads with the same unique molecular tag base-by-base.  For a
     |      given base position in the reads, the likelihoods that an A, C, G, or T is the base for the underlying
     |      source molecule respectively are computed by multiplying the likelihood of each read observing the base
@@ -83,11 +82,8 @@ class CallMolecularConsensusReads
   @arg(flag="1", doc="The Phred-scaled error rate for an error prior to the UMIs being integrated.") val errorRatePreUmi: PhredScore = DefaultErrorRatePreUmi,
   @arg(flag="2", doc="The Phred-scaled error rate for an error post the UMIs have been integrated.") val errorRatePostUmi: PhredScore = DefaultErrorRatePostUmi,
   @arg(flag="m", doc="Ignore bases in raw reads that have Q below this value.") val minInputBaseQuality: PhredScore = DefaultMinInputBaseQuality,
-  @deprecated(message="", since="0.1.2") @arg(flag="q", doc="Cap the maximum base quality in the input (after shifting).") val maxBaseQuality: PhredScore = DefaultMaxBaseQuality,
-  @deprecated(message="", since="0.1.2") @arg(flag="s", doc="Subtract this base quality from the input base qualities (prior to capping).") val baseQualityShift: PhredScore = DefaultBaseQualityShift,
   @arg(flag="N", doc="Mask (make 'N') consensus bases with quality less than this threshold.") val minConsensusBaseQuality: PhredScore = DefaultMinConsensusBaseQuality,
   @arg(flag="M", doc="The minimum number of reads to produce a consensus base.") val minReads: Int = DefaultMinReads,
-  @deprecated(message="", since="0.1.2") @arg(flag="Q", doc="The minimum mean base quality across a consensus base to output.") val minMeanConsensusBaseQuality: PhredScore = DefaultMinMeanConsensusBaseQuality,
   @arg(flag="P", doc="Require a consensus call for both ends of a pair if true.") val requireConsensusForBothPairs: Boolean = DefaultRequireConsensusForBothPairs,
   @arg(flag="S", doc="The sort order of the output, if None then the same as the input.") val sortOrder: Option[SortOrder] = Some(SortOrder.queryname),
   @arg(flag="D", doc="Turn on debug logging.") val debug: Boolean = false
@@ -116,11 +112,8 @@ class CallMolecularConsensusReads
       errorRatePreUmi              = errorRatePreUmi,
       errorRatePostUmi             = errorRatePostUmi,
       minInputBaseQuality          = minInputBaseQuality,
-      maxRawBaseQuality            = maxBaseQuality,
-      rawBaseQualityShift          = baseQualityShift,
       minConsensusBaseQuality      = minConsensusBaseQuality,
       minReads                     = minReads,
-      minMeanConsensusBaseQuality  = minMeanConsensusBaseQuality,
       requireConsensusForBothPairs = requireConsensusForBothPairs
     )
 

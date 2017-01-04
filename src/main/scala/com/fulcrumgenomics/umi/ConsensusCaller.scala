@@ -30,8 +30,6 @@ import com.fulcrumgenomics.util.MathUtil
 import com.fulcrumgenomics.util.NumericTypes._
 import htsjdk.samtools.util.SequenceUtil
 
-import scala.math.{max, min}
-
 object ConsensusCaller {
   type Base = Byte
 
@@ -69,21 +67,11 @@ object ConsensusCaller {
   * @param errorRatePostLabeling an estimate of the error rate (i.e. rate of base substitutions) caused by DNA damage
   *                              post-labeling. Estimates the errors from Phase 2 which would be non-uniform across
   *                              replicates of the same source molecule.
-  * @param rawBaseQualityShift shift the incoming raw base quality by this amount before use. Useful if the
-  *                            raw base qualities are believed to be uniformly over-estimated. E.g. a value of 5
-  *                            would cause an incoming base quality of 30 to be shifted to 25.
-  * @param maxRawBaseQuality the maximum raw base quality to allow after any shift has been applied. Base qualities
-  *                          higher than this value are capped at this value.
   */
 class ConsensusCaller(errorRatePreLabeling:  PhredScore,
-                      errorRatePostLabeling: PhredScore,
-                      rawBaseQualityShift:   PhredScore = 0.toByte,
-                      maxRawBaseQuality:     PhredScore = PhredScore.MaxValue
+                      errorRatePostLabeling: PhredScore
                       ) {
   import ConsensusCaller._
-
-  assert(maxRawBaseQuality >= PhredScore.MinValue, s"maxBaseQuality must be >= ${PhredScore.MinValue}")
-  assert(maxRawBaseQuality <= PhredScore.MaxValue, s"maxBaseQuality must be <= ${PhredScore.MaxValue}")
 
   private val LnErrorRatePreLabeling  = LogProbability.fromPhredScore(errorRatePreLabeling)
   private val LnErrorRatePostLabeling = LogProbability.fromPhredScore(errorRatePostLabeling)
@@ -185,9 +173,8 @@ class ConsensusCaller(errorRatePreLabeling:  PhredScore,
 
   /** Pre-computes the the log-scale probabilities of an error for each a phred-scaled base quality from 0-127. */
   private val phredToAdjustedLogProbError: Array[LogProbability] = Range(0, Byte.MaxValue).toArray.map(q => {
-    val aq = min(this.maxRawBaseQuality, max(PhredScore.MinValue, q - this.rawBaseQualityShift)).toByte
     val e1 = LogProbability.fromPhredScore(this.errorRatePostLabeling)
-    val e2 = LogProbability.fromPhredScore(aq)
+    val e2 = LogProbability.fromPhredScore(q.toByte)
     LogProbability.probabilityOfErrorTwoTrials(e1, e2)
   })
 

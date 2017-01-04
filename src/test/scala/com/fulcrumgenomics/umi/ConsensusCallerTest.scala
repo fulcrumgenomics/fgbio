@@ -28,28 +28,11 @@ import com.fulcrumgenomics.testing.UnitSpec
 import com.fulcrumgenomics.util.NumericTypes.PhredScore
 
 class ConsensusCallerTest extends UnitSpec {
-  "ConsensusCaller.adjustBaseQualities" should "cap base qualities" in {
-    val caller   = new ConsensusCaller(maxRawBaseQuality=10.toByte, rawBaseQualityShift=0.toByte, errorRatePostLabeling=PhredScore.MaxValue, errorRatePreLabeling=PhredScore.MaxValue)
-    val adjusted = Array[Byte](20, 15, 10, 5).map(caller.adjustedErrorProbability).map(PhredScore.fromLogProbability).toSeq
-    adjusted shouldBe Seq(10, 10, 10, 5)
-  }
 
-  it should "shift base qualities" in {
-    val caller   = new ConsensusCaller(maxRawBaseQuality=PhredScore.MaxValue, rawBaseQualityShift=10.toByte, errorRatePostLabeling=PhredScore.MaxValue, errorRatePreLabeling=PhredScore.MaxValue)
-    val adjusted = Array[Byte](20, 15, 10, 5).map(caller.adjustedErrorProbability).map(PhredScore.fromLogProbability).toSeq
-    adjusted shouldBe Seq(10, 5, 2, 2)
-  }
-
-  it should "scale base qualities using the post-umi error rate" in {
-    val caller   = new ConsensusCaller(maxRawBaseQuality=PhredScore.MaxValue, rawBaseQualityShift=0.toByte, errorRatePostLabeling=10.toByte, errorRatePreLabeling=PhredScore.MaxValue)
+  "ConsensusCaller.adjustBaseQualities" should "scale base qualities using the post-umi error rate" in {
+    val caller   = new ConsensusCaller(errorRatePostLabeling=10.toByte, errorRatePreLabeling=PhredScore.MaxValue)
     val adjusted = Array[Byte](20, 15, 10, 5).map(caller.adjustedErrorProbability).map(PhredScore.fromLogProbability).toSeq
     adjusted shouldBe Seq(9, 8, 7, 4)
-  }
-
-  it should "cap, shift, and scale base qualities" in {
-    val caller   = new ConsensusCaller(maxRawBaseQuality=10.toByte, rawBaseQualityShift=5.toByte, errorRatePostLabeling=10.toByte, errorRatePreLabeling=PhredScore.MaxValue)
-    val adjusted = Array[Byte](20, 15, 10, 5).map(caller.adjustedErrorProbability).map(PhredScore.fromLogProbability).toSeq
-    adjusted shouldBe Seq(7, 7, 4, 1)
   }
 
   it should "calculate consensus base and quality given a single base pileup" in {

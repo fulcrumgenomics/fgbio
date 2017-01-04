@@ -75,7 +75,7 @@ class VanillaUmiConsensusCallerTest extends UnitSpec {
 
   "VanillaUmiConsensusCaller.consensusCalls" should "produce a consensus from one read" in {
     val source = src("GATTACA", Seq(10, 10, 10, 10, 10, 10, 10))
-    val caller = cc(cco(errorRatePreUmi=PhredScore.MaxValue, minReads=1, rawBaseQualityShift=0.toByte, minConsensusBaseQuality=0.toByte, minMeanConsensusBaseQuality=0.toByte))
+    val caller = cc(cco(errorRatePreUmi=PhredScore.MaxValue, minReads=1, minConsensusBaseQuality=0.toByte))
     val consensus = caller.consensusCall(Seq(source))
     consensus shouldBe 'defined
     consensus.get.bases shouldBe source.bases
@@ -89,7 +89,7 @@ class VanillaUmiConsensusCallerTest extends UnitSpec {
     val expectedQual = expectedConsensusQuality(10, 2)
     val expectedQuals = source.quals.map(q => expectedQual)
 
-    val consensus = cc(cco(minReads=1, minConsensusBaseQuality=0.toByte, rawBaseQualityShift=0.toByte)).consensusCall(sources)
+    val consensus = cc(cco(minReads=1, minConsensusBaseQuality=0.toByte)).consensusCall(sources)
     consensus shouldBe 'defined
     consensus.get.bases shouldBe source.bases
     consensus.get.quals should contain theSameElementsInOrderAs expectedQuals
@@ -119,7 +119,7 @@ class VanillaUmiConsensusCallerTest extends UnitSpec {
         else disagreementQual
     }.map(PhredScore.fromLogProbability)
 
-    val caller = cc(cco(errorRatePreUmi=PhredScore.MaxValue, rawBaseQualityShift=0.toByte, minReads=1, minConsensusBaseQuality=0.toByte))
+    val caller = cc(cco(errorRatePreUmi=PhredScore.MaxValue, minReads=1, minConsensusBaseQuality=0.toByte))
     val consensus = caller.consensusCall(Seq(source1, source1, source2))
     consensus shouldBe 'defined
     consensus.get.bases shouldBe source1.bases
@@ -128,7 +128,7 @@ class VanillaUmiConsensusCallerTest extends UnitSpec {
 
   it should "produce a shortened consensus from two reads of differing lengths" in {
     val quals = Array(10, 10, 10, 10, 10, 10, 10)
-    val caller = cc(cco(minReads=2, minConsensusBaseQuality=0.toByte, rawBaseQualityShift=0.toByte))
+    val caller = cc(cco(minReads=2, minConsensusBaseQuality=0.toByte))
     val consensus = caller.consensusCall(Seq(src("GATTACA", quals), src("GATTAC", quals.slice(0, quals.length-1))))
 
     val newQual = expectedConsensusQuality(10, 2)
@@ -139,14 +139,14 @@ class VanillaUmiConsensusCallerTest extends UnitSpec {
     consensus.get.quals shouldBe newQuals
   }
 
-  /** This is to test that we don't generate a ton of Q0 or Q2 Ns at the end when we drop below minReads, deflate
-    * the average consensus base quality and then discard the consensus read.
+  /** This is to test that we don't generate a ton of Q0 or Q2 Ns at the end when we drop below minReads, but
+    * instead produce a shortened read.
     */
   it should "produce a consensus even when most of the bases have < minReads" in {
     val src1 = src("A" * 10, (1 to 10).map(q => 30))
     val src2 = src("A" * 20, (1 to 20).map(q => 30))
 
-    val caller = cc(cco(minReads=2, minConsensusBaseQuality=10.toByte, rawBaseQualityShift=0.toByte, minMeanConsensusBaseQuality=25.toByte))
+    val caller = cc(cco(minReads=2, minConsensusBaseQuality=10.toByte))
     val consensus = caller.consensusCall(Seq(src1, src2))
 
     consensus shouldBe 'defined
@@ -158,8 +158,7 @@ class VanillaUmiConsensusCallerTest extends UnitSpec {
     val bases = "GATTACA"
     val quals         = Array(10, 10, 10, 10, 10, 10, 5)
     val expectedQuals = Array(10, 10, 10, 10, 10, 10, 2).map(_.toByte)
-    val caller    = cc(cco(errorRatePreUmi=PhredScore.MaxValue, minReads=1, minConsensusBaseQuality=10.toByte,
-                           minMeanConsensusBaseQuality=PhredScore.MinValue, rawBaseQualityShift=0.toByte))
+    val caller    = cc(cco(errorRatePreUmi=PhredScore.MaxValue, minReads=1, minConsensusBaseQuality=10.toByte))
     val consensus = caller.consensusCall(Seq(src(bases, quals)))
     consensus shouldBe 'defined
     consensus.get.baseString shouldBe "GATTACN"
@@ -176,27 +175,14 @@ class VanillaUmiConsensusCallerTest extends UnitSpec {
     an[AssertionError] should be thrownBy cc().consensusCall(Seq(src("G", Array(20,20,20,20,20))))
   }
 
-  it should "not return a consensus read if the mean consensus quality is too low" in {
-    val call1 = cc(cco(errorRatePreUmi=PhredScore.MaxValue, minReads=1, minMeanConsensusBaseQuality=PhredScore.MaxValue))
-                  .consensusCall(Seq(src("GATTACA", "AAAAAAA")))
-    call1 shouldBe None
-
-    val call2 = cc(cco(errorRatePreUmi=PhredScore.MaxValue, minReads=1, minMeanConsensusBaseQuality=PhredScore.MinValue))
-                  .consensusCall(Seq(src("GATTACA", "AAAAAAA")))
-    call2 shouldBe 'defined
-  }
-
   it should "apply the pre-umi-error-rate when it has probability zero" in {
     val inputQuals = Seq(10, 10, 10, 10, 10, 10, 10)
     val source = src("GATTACA", inputQuals)
     val opts = cco(
       errorRatePreUmi             = PhredScore.MaxValue,
       errorRatePostUmi            = PhredScore.MaxValue,
-      maxRawBaseQuality           = PhredScore.MaxValue,
-      rawBaseQualityShift         = 0.toByte,
       minConsensusBaseQuality     = PhredScore.MinValue,
-      minReads                    = 1,
-      minMeanConsensusBaseQuality = PhredScore.MinValue
+      minReads                    = 1
     )
 
     cc(opts).consensusCall(Seq(source)) match {
@@ -211,11 +197,8 @@ class VanillaUmiConsensusCallerTest extends UnitSpec {
     val caller = cc(cco(
       errorRatePreUmi             = 10.toByte,
       errorRatePostUmi            = PhredScore.MaxValue,
-      maxRawBaseQuality           = PhredScore.MaxValue,
-      rawBaseQualityShift         = 0.toByte,
       minConsensusBaseQuality     = PhredScore.MinValue,
-      minReads                    = 1,
-      minMeanConsensusBaseQuality = PhredScore.MinValue
+      minReads                    = 1
     ))
 
     val inputQuals = Seq(10, 10, 10, 10, 10, 10, 10)
@@ -234,11 +217,8 @@ class VanillaUmiConsensusCallerTest extends UnitSpec {
     val caller = cc(cco(
       errorRatePreUmi             = PhredScore.MaxValue,
       errorRatePostUmi            = 10.toByte,
-      maxRawBaseQuality           = PhredScore.MaxValue,
-      rawBaseQualityShift         = 0.toByte,
       minConsensusBaseQuality     = PhredScore.MinValue,
-      minReads                    = 1,
-      minMeanConsensusBaseQuality = PhredScore.MinValue
+      minReads                    = 1
     ))
 
     val inputQuals = Seq(10, 10, 10, 10, 10, 10, 10)
@@ -260,11 +240,8 @@ class VanillaUmiConsensusCallerTest extends UnitSpec {
       errorRatePreUmi             = PhredScore.MaxValue,
       errorRatePostUmi            = PhredScore.MaxValue,
       minInputBaseQuality         = 30.toByte,
-      maxRawBaseQuality           = PhredScore.MaxValue,
-      rawBaseQualityShift         = 0.toByte,
       minConsensusBaseQuality     = PhredScore.MinValue,
-      minReads                    = 1,
-      minMeanConsensusBaseQuality = PhredScore.MinValue
+      minReads                    = 1
     )
 
     cc(opts).consensusCall(sources) match {
@@ -375,6 +352,27 @@ class VanillaUmiConsensusCallerTest extends UnitSpec {
     calls(2).getReadName shouldBe calls(3).getReadName
     calls(0).getReadName should not be calls(2).getReadName
     CloserUtil.close(reader)
+  }
+
+  it should "create a dummy read when not requiring pairs and one side has fewer reads for some reason" in {
+    val builder = new SamRecordSetBuilder(readLength=10, baseQuality=30)
+    builder.addPair("q1", start1=100, start2=200)
+    builder.addPair("q2", start1=100, start2=200)
+    builder.addPair("q3", start1=100, start2=200)
+    builder.foreach { rec =>
+      rec.setReadString("A" * rec.getReadLength)
+      rec.setAttribute("MI", "OneAndOnly")
+    }
+
+    // Create an iterator that will return all the R1s but only one of the R2s
+    val iterator = builder.iterator.filterNot(r => r.getSecondOfPairFlag && r.getReadName > "q1")
+    val caller = new VanillaUmiConsensusCaller(input=iterator, header=builder.header, options=cco(minReads=3, minInputBaseQuality=30.toByte, requireConsensusForBothPairs=false))
+    val recs = caller.toSeq
+    recs.size shouldBe 2
+    val r1 = recs.find(_.getFirstOfPairFlag).getOrElse(fail("There should be an R1 in the consensus reads."))
+    val r2 = recs.find(_.getSecondOfPairFlag).getOrElse(fail("There should be an R2 in the consensus reads."))
+    r1.getReadString shouldBe ("A" * 10)
+    r2.getReadString shouldBe ("N" * 10)
   }
 
   "VanillaUmiConsensusCaller.filterToMostCommonAlignment" should "return all reads when all cigars are 50M" in {
