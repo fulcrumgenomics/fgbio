@@ -167,4 +167,10 @@ class SamRecordSetBuilder(val readLength: Int=100,
     write(path)
     path
   }
+
+  /** Creates a SamReader over the records stored in a temporary file. */
+  def toReader: SamReader = {
+    val bam = toTempFile(deleteOnExit = true)
+    SamReaderFactory.make().open(bam)
+  }
 }
