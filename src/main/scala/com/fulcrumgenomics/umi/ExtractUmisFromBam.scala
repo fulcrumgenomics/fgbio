@@ -238,7 +238,10 @@ object ExtractUmisFromBam {
     val readStructureBases = readStructure.structureReadWithQualities(bases, qualities, strict = false)
     // get the molecular index segments
     val molecularIndexBases = readStructureBases.collect { case SubRead(b: String, _, m: MolecularBarcode) => b }
+
     // set the index tags
+    // TODO: when we remove the deprecated molecularBarcodeTags option, consider whether or not we still
+    //       need to have support for specifying a single tag via molecularIndexTags.
     molecularIndexTags match {
       case Seq(tag) => record.setAttribute(tag, molecularIndexBases.mkString(UmiDelimiter))
       case _ =>

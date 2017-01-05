@@ -299,7 +299,6 @@ class ExtractUmisFromBamTest extends UnitSpec with OptionValues {
     }
   }
 
-
   it should "should annotate a single molecular index and update clipping information" in {
     val output  = newBam
     val builder = new SamRecordSetBuilder(readLength=100)
@@ -339,7 +338,6 @@ class ExtractUmisFromBamTest extends UnitSpec with OptionValues {
       rec.getIntegerAttribute("XT") shouldBe 10
     }
   }
-
 
   it should "should annotate a single molecular index and update clipping information on only the first of pair" in {
     val output  = newBam
