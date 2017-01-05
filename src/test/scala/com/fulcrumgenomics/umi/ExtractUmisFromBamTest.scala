@@ -42,25 +42,25 @@ class ExtractUmisFromBamTest extends UnitSpec with OptionValues {
     new SamRecordSetBuilder(readLength=100).addFrag(name="Frag", start=1).map {rec => rec.setReadString("A" * 100); rec }.get
   }
 
-  "ExtractUmisFromBam.annotateRecord" should "should not annotate with no molecular barcodes" in {
+  "ExtractUmisFromBam.annotateRecord" should "should not annotate with no molecular indices" in {
     val frag = annotateRecordFragment
     ExtractUmisFromBam.annotateRecord(record=frag, ReadStructure("100T"), Seq.empty) shouldBe 'empty
     frag.getReadLength shouldBe 100
   }
 
-  it should "throw an exception when fewer molecular barcodes in the read structure than molecular SAM tags are given then " in {
+  it should "throw an exception when fewer molecular indices in the read structure than molecular SAM tags are given then " in {
     val tags = Seq("AB", "CD")
     val frag = annotateRecordFragment
     an[Exception] should be thrownBy ExtractUmisFromBam.annotateRecord(record=frag, ReadStructure("10M80T"), tags)
   }
 
-  it should "throw an exception when fewer molecular SAM tags are given than molecular barcodes in the read structure" in {
+  it should "throw an exception when fewer molecular SAM tags are given than molecular indices in the read structure" in {
     val tags = Seq("AB", "CD")
     val frag = annotateRecordFragment
     an[Exception] should be thrownBy ExtractUmisFromBam.annotateRecord(record=frag, ReadStructure("10M10M10M70T"), tags)
   }
 
-  "ExtractUmisFromBam" should "should annotate a single molecular barcode for a read pair" in {
+  "ExtractUmisFromBam" should "should annotate a single molecular index for a read pair" in {
     val output  = newBam
     val builder = new SamRecordSetBuilder(readLength=100)
     val records = builder.addPair(name="Pair", start1=1, start2=1, record1Unmapped=true, record2Unmapped=true)
@@ -78,7 +78,7 @@ class ExtractUmisFromBamTest extends UnitSpec with OptionValues {
     }
   }
 
-  it should "should annotate a single molecular barcode for a fragment read" in {
+  it should "should annotate a single molecular index for a fragment read" in {
     val output  = newBam
     val builder = new SamRecordSetBuilder(readLength=100)
     builder.addFrag(name="Frag1", start=1, unmapped=true).map { rec => rec.setReadString("A" * 100); rec }
@@ -95,13 +95,13 @@ class ExtractUmisFromBamTest extends UnitSpec with OptionValues {
     recs.last.getReadString shouldBe "C" * 90
   }
 
-  it should "accept a single molecular barcode SAM tag" in {
+  it should "accept a single molecular index SAM tag" in {
     val output  = newBam
     val builder = new SamRecordSetBuilder(readLength=100)
     new ExtractUmisFromBam(input=builder.toTempFile(), output=output, readStructure=Seq("10M90T", "10M90T"), molecularIndexTags=Seq("R1")).execute()
   }
 
-  it should "should annotate a two molecular barcode" in {
+  it should "should annotate a two molecular index" in {
     val builder = new SamRecordSetBuilder(readLength=100)
     val frag = annotateRecordFragment
     ExtractUmisFromBam.annotateRecord(record=frag, ReadStructure("90T5M5M"), Seq("R1", "R2")) shouldBe "A" * 10
@@ -160,13 +160,13 @@ class ExtractUmisFromBamTest extends UnitSpec with OptionValues {
     an[Exception] should be thrownBy new ExtractUmisFromBam(input=builder.toTempFile(), output=output, readStructure=Seq("10M90T", "10M90T")).execute()
   }
 
-  it should "not accept multiple molecular barcode SAM tags and have a different number of molecular barcodes in the read structure" in {
+  it should "not accept multiple molecular index SAM tags and have a different number of molecular indices in the read structure" in {
     val output  = newBam
     val builder = new SamRecordSetBuilder(readLength=100)
     an[ValidationException] should be thrownBy new ExtractUmisFromBam(input=builder.toTempFile(), output=output, readStructure=Seq("10M90T", "10M90T"), molecularIndexTags=Seq("A1", "B1", "C1")).execute()
   }
 
-  it should "accept duplicate molecular barcode SAM tags and concatenate the values" in {
+  it should "accept duplicate molecular index SAM tags and concatenate the values" in {
     val output  = newBam
     val builder = new SamRecordSetBuilder(readLength=100)
     val records = builder.addPair(name="Pair", start1=1, start2=1, record1Unmapped=true, record2Unmapped=true)
@@ -184,7 +184,7 @@ class ExtractUmisFromBamTest extends UnitSpec with OptionValues {
     }
   }
 
-  it should "accept duplicate molecular barcode SAM tags and concatenate the values for fragment reads" in {
+  it should "accept duplicate molecular index SAM tags and concatenate the values for fragment reads" in {
     val output  = newBam
     val builder = new SamRecordSetBuilder(readLength=100)
     builder.addFrag(name="Frag1", start=1, unmapped=true).map { rec => rec.setReadString("A" * 100); rec }
@@ -202,7 +202,7 @@ class ExtractUmisFromBamTest extends UnitSpec with OptionValues {
     recs.last.getReadString shouldBe "C" * 80
   }
 
-  it should "extract the molecular barcodes and annotate them for a read pair in tags" in {
+  it should "extract the molecular indices and annotate them for a read pair in tags" in {
     val output  = newBam
     val builder = new SamRecordSetBuilder(readLength=100)
     val records = builder.addPair(name="Pair", start1=1, start2=1, record1Unmapped=true, record2Unmapped=true)
@@ -223,7 +223,7 @@ class ExtractUmisFromBamTest extends UnitSpec with OptionValues {
     }
   }
 
-  it should "extract the molecular barcodes and annotate them for a read pair in tags and in the names" in {
+  it should "extract the molecular indices and annotate them for a read pair in tags and in the names" in {
     val output  = newBam
     val builder = new SamRecordSetBuilder(readLength=100)
     val records = builder.addPair(name="Pair", start1=1, start2=1, record1Unmapped=true, record2Unmapped=true)
@@ -246,7 +246,7 @@ class ExtractUmisFromBamTest extends UnitSpec with OptionValues {
     }
   }
 
-  it should "extract the molecular barcodes and annotate them for a fragment reads in tags and in the names" in {
+  it should "extract the molecular indices and annotate them for a fragment reads in tags and in the names" in {
     val output  = newBam
     val builder = new SamRecordSetBuilder(readLength=100)
     builder.addFrag(name="Frag1", start=1, unmapped=true).map { rec => rec.setReadString("A" * 100); rec }
@@ -266,7 +266,7 @@ class ExtractUmisFromBamTest extends UnitSpec with OptionValues {
     recs.last.getReadName shouldBe "Frag2+C"
   }
 
-  it should "extract the molecular barcodes and annotate them for a read pair in tags and in a single tag" in {
+  it should "extract the molecular indices and annotate them for a read pair in tags and in a single tag" in {
     val output  = newBam
     val builder = new SamRecordSetBuilder(readLength=100)
     builder.addPair(name="q", start1=1, start2=1, record1Unmapped=true, record2Unmapped=true).foreach(r => r.setReadString("A" * 100))
@@ -300,7 +300,7 @@ class ExtractUmisFromBamTest extends UnitSpec with OptionValues {
   }
 
 
-  it should "should annotate a single molecular barcode and update clipping information" in {
+  it should "should annotate a single molecular index and update clipping information" in {
     val output  = newBam
     val builder = new SamRecordSetBuilder(readLength=100)
     val records = builder.addPair(name="Pair", start1=1, start2=1, record1Unmapped=true, record2Unmapped=true)
@@ -320,7 +320,7 @@ class ExtractUmisFromBamTest extends UnitSpec with OptionValues {
     }
   }
 
-  it should "should annotate a single molecular barcode and update clipping information, even with skips" in {
+  it should "should annotate a single molecular index and update clipping information, even with skips" in {
     val output  = newBam
     val builder = new SamRecordSetBuilder(readLength=100)
     val records = builder.addPair(name="Pair", start1=1, start2=1, record1Unmapped=true, record2Unmapped=true)
@@ -341,7 +341,7 @@ class ExtractUmisFromBamTest extends UnitSpec with OptionValues {
   }
 
 
-  it should "should annotate a single molecular barcode and update clipping information on only the first of pair" in {
+  it should "should annotate a single molecular index and update clipping information on only the first of pair" in {
     val output  = newBam
     val builder = new SamRecordSetBuilder(readLength=100)
     val records = builder.addPair(name="Pair", start1=1, start2=1, record1Unmapped=true, record2Unmapped=true)
