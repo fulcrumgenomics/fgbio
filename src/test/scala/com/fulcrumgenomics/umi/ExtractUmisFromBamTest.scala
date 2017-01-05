@@ -68,7 +68,7 @@ class ExtractUmisFromBamTest extends UnitSpec with OptionValues {
       val base = if (rec.getFirstOfPairFlag) "A" else "C"
       rec.setReadString(base * 100)
     }
-    new ExtractUmisFromBam(input=builder.toTempFile(), output=output, readStructure=Seq("10M90T", "10M90T"), molecularBarcodeTags=Seq("A1")).execute()
+    new ExtractUmisFromBam(input=builder.toTempFile(), output=output, readStructure=Seq("10M90T", "10M90T"), molecularIndexTags=Seq("A1")).execute()
     val recs = readBamRecs(output)
     recs.foreach { rec =>
       val base = if (rec.getFirstOfPairFlag) "A" else "C"
@@ -83,7 +83,7 @@ class ExtractUmisFromBamTest extends UnitSpec with OptionValues {
     val builder = new SamRecordSetBuilder(readLength=100)
     builder.addFrag(name="Frag1", start=1, unmapped=true).map { rec => rec.setReadString("A" * 100); rec }
     builder.addFrag(name="Frag2", start=1, unmapped=true).map { rec => rec.setReadString("C" * 100); rec }
-    new ExtractUmisFromBam(input=builder.toTempFile(), output=output, readStructure=Seq("10M90T"), molecularBarcodeTags=Seq("A1")).execute()
+    new ExtractUmisFromBam(input=builder.toTempFile(), output=output, readStructure=Seq("10M90T"), molecularIndexTags=Seq("A1")).execute()
     val recs = readBamRecs(output)
 
     recs.head.getStringAttribute("A1") shouldBe "AAAAAAAAAA"
@@ -98,7 +98,7 @@ class ExtractUmisFromBamTest extends UnitSpec with OptionValues {
   it should "accept a single molecular barcode SAM tag" in {
     val output  = newBam
     val builder = new SamRecordSetBuilder(readLength=100)
-    new ExtractUmisFromBam(input=builder.toTempFile(), output=output, readStructure=Seq("10M90T", "10M90T"), molecularBarcodeTags=Seq("R1")).execute()
+    new ExtractUmisFromBam(input=builder.toTempFile(), output=output, readStructure=Seq("10M90T", "10M90T"), molecularIndexTags=Seq("R1")).execute()
   }
 
   it should "should annotate a two molecular barcode" in {
@@ -163,7 +163,7 @@ class ExtractUmisFromBamTest extends UnitSpec with OptionValues {
   it should "not accept multiple molecular barcode SAM tags and have a different number of molecular barcodes in the read structure" in {
     val output  = newBam
     val builder = new SamRecordSetBuilder(readLength=100)
-    an[ValidationException] should be thrownBy new ExtractUmisFromBam(input=builder.toTempFile(), output=output, readStructure=Seq("10M90T", "10M90T"), molecularBarcodeTags=Seq("A1", "B1", "C1")).execute()
+    an[ValidationException] should be thrownBy new ExtractUmisFromBam(input=builder.toTempFile(), output=output, readStructure=Seq("10M90T", "10M90T"), molecularIndexTags=Seq("A1", "B1", "C1")).execute()
   }
 
   it should "accept duplicate molecular barcode SAM tags and concatenate the values" in {
@@ -174,7 +174,7 @@ class ExtractUmisFromBamTest extends UnitSpec with OptionValues {
       val base = if (rec.getFirstOfPairFlag) "A" else "C"
       rec.setReadString(base * 100)
     }
-    new ExtractUmisFromBam(input=builder.toTempFile(), output=output, readStructure=Seq("10M90T", "10M90T"), molecularBarcodeTags=Seq("A1", "A1")).execute()
+    new ExtractUmisFromBam(input=builder.toTempFile(), output=output, readStructure=Seq("10M90T", "10M90T"), molecularIndexTags=Seq("A1", "A1")).execute()
     val recs = readBamRecs(output)
     recs.foreach { rec =>
       val base = if (rec.getFirstOfPairFlag) "A" else "C"
@@ -190,7 +190,7 @@ class ExtractUmisFromBamTest extends UnitSpec with OptionValues {
     builder.addFrag(name="Frag1", start=1, unmapped=true).map { rec => rec.setReadString("A" * 100); rec }
     builder.addFrag(name="Frag2", start=1, unmapped=true).map { rec => rec.setReadString("C" * 100); rec }
 
-    new ExtractUmisFromBam(input=builder.toTempFile(), output=output, readStructure=Seq("10M80T10M"), molecularBarcodeTags=Seq("A1", "A1")).execute()
+    new ExtractUmisFromBam(input=builder.toTempFile(), output=output, readStructure=Seq("10M80T10M"), molecularIndexTags=Seq("A1", "A1")).execute()
     val recs = readBamRecs(output)
 
     recs.head.getStringAttribute("A1") shouldBe "AAAAAAAAAA-AAAAAAAAAA"
@@ -207,7 +207,7 @@ class ExtractUmisFromBamTest extends UnitSpec with OptionValues {
     val builder = new SamRecordSetBuilder(readLength=100)
     val records = builder.addPair(name="Pair", start1=1, start2=1, record1Unmapped=true, record2Unmapped=true)
     records.foreach { rec => rec.setReadString("A" * 100) }
-    new ExtractUmisFromBam(input=builder.toTempFile(), output=output, readStructure=Seq("10M90T", "1M99T"), molecularBarcodeTags=Seq("P1", "P2")).execute()
+    new ExtractUmisFromBam(input=builder.toTempFile(), output=output, readStructure=Seq("10M90T", "1M99T"), molecularIndexTags=Seq("P1", "P2")).execute()
     val recs = readBamRecs(output)
     recs.foreach { rec =>
       if (rec.getFirstOfPairFlag) {
@@ -228,7 +228,7 @@ class ExtractUmisFromBamTest extends UnitSpec with OptionValues {
     val builder = new SamRecordSetBuilder(readLength=100)
     val records = builder.addPair(name="Pair", start1=1, start2=1, record1Unmapped=true, record2Unmapped=true)
     records.foreach { rec => rec.setReadString("A" * 100) }
-    new ExtractUmisFromBam(input=builder.toTempFile(), output=output, readStructure=Seq("10M90T", "1M99T"), molecularBarcodeTags=Seq("P1", "P2"), annotateReadNames=true).execute()
+    new ExtractUmisFromBam(input=builder.toTempFile(), output=output, readStructure=Seq("10M90T", "1M99T"), molecularIndexTags=Seq("P1", "P2"), annotateReadNames=true).execute()
     val recs = readBamRecs(output)
     recs.foreach { rec =>
       if (rec.getFirstOfPairFlag) {
@@ -252,7 +252,7 @@ class ExtractUmisFromBamTest extends UnitSpec with OptionValues {
     builder.addFrag(name="Frag1", start=1, unmapped=true).map { rec => rec.setReadString("A" * 100); rec }
     builder.addFrag(name="Frag2", start=1, unmapped=true).map { rec => rec.setReadString("C" * 100); rec }
 
-    new ExtractUmisFromBam(input=builder.toTempFile(), output=output, readStructure=Seq("1M99T"), molecularBarcodeTags=Seq("P1"), annotateReadNames=true).execute()
+    new ExtractUmisFromBam(input=builder.toTempFile(), output=output, readStructure=Seq("1M99T"), molecularIndexTags=Seq("P1"), annotateReadNames=true).execute()
     val recs = readBamRecs(output)
 
     recs.head.getStringAttribute("P1") shouldBe "A"
@@ -266,6 +266,40 @@ class ExtractUmisFromBamTest extends UnitSpec with OptionValues {
     recs.last.getReadName shouldBe "Frag2+C"
   }
 
+  it should "extract the molecular barcodes and annotate them for a read pair in tags and in a single tag" in {
+    val output  = newBam
+    val builder = new SamRecordSetBuilder(readLength=100)
+    builder.addPair(name="q", start1=1, start2=1, record1Unmapped=true, record2Unmapped=true).foreach(r => r.setReadString("A" * 100))
+    new ExtractUmisFromBam(input=builder.toTempFile(), output=output, readStructure=Seq("4M96T", "6M94T"), molecularIndexTags=Seq("ZA", "ZB"), singleTag=Some("RX")).execute()
+    val recs = readBamRecs(output)
+    recs.foreach { rec =>
+      rec.getStringAttribute("ZA") shouldBe "AAAA"
+      rec.getStringAttribute("ZB") shouldBe "AAAAAA"
+      rec.getStringAttribute("RX") shouldBe "AAAA-AAAAAA"
+    }
+  }
+
+  it should "not allow invalid usages of the single-tag option" in {
+    val (in, out) = (newBam, newBam)
+
+    an[ValidationException] shouldBe thrownBy {
+      new ExtractUmisFromBam(input=in, output=out, molecularIndexTags=Seq("RX"), singleTag=Some("RX"), readStructure=Seq("5M5T", "10T"))
+    }
+
+    an[ValidationException] shouldBe thrownBy {
+      new ExtractUmisFromBam(input=in, output=out, molecularIndexTags=Seq("RX"), singleTag=Some("RX"), readStructure=Seq("5M5T", "5M5T"))
+    }
+
+    an[ValidationException] shouldBe thrownBy {
+      new ExtractUmisFromBam(input=in, output=out, molecularIndexTags=Seq("RX", "RZ"), singleTag=Some("RX"), readStructure=Seq("5M5T", "5M5T"))
+    }
+
+    an[ValidationException] shouldBe thrownBy {
+      new ExtractUmisFromBam(input=in, output=out, molecularIndexTags=Seq("RX", "RZ"), singleTag=Some("RXX"), readStructure=Seq("5M5T", "5M5T"))
+    }
+  }
+
+
   it should "should annotate a single molecular barcode and update clipping information" in {
     val output  = newBam
     val builder = new SamRecordSetBuilder(readLength=100)
@@ -275,7 +309,7 @@ class ExtractUmisFromBamTest extends UnitSpec with OptionValues {
       rec.setReadString(base * 100)
       rec.setAttribute("XT", 20)
     }
-    new ExtractUmisFromBam(input=builder.toTempFile(), output=output, readStructure=Seq("10M90T", "10M90T"), molecularBarcodeTags=Seq("A1"), clippingAttribute=Some("XT")).execute()
+    new ExtractUmisFromBam(input=builder.toTempFile(), output=output, readStructure=Seq("10M90T", "10M90T"), molecularIndexTags=Seq("A1"), clippingAttribute=Some("XT")).execute()
     val recs = readBamRecs(output)
     recs.foreach { rec =>
       val base = if (rec.getFirstOfPairFlag) "A" else "C"
@@ -295,7 +329,7 @@ class ExtractUmisFromBamTest extends UnitSpec with OptionValues {
       rec.setReadString(base * 100)
       rec.setAttribute("XT", 30)
     }
-    new ExtractUmisFromBam(input=builder.toTempFile(), output=output, readStructure=Seq("10M10S80T", "10M10S80T"), molecularBarcodeTags=Seq("A1"), clippingAttribute=Some("XT")).execute()
+    new ExtractUmisFromBam(input=builder.toTempFile(), output=output, readStructure=Seq("10M10S80T", "10M10S80T"), molecularIndexTags=Seq("A1"), clippingAttribute=Some("XT")).execute()
     val recs = readBamRecs(output)
     recs.foreach { rec =>
       val base = if (rec.getFirstOfPairFlag) "A" else "C"
@@ -316,7 +350,7 @@ class ExtractUmisFromBamTest extends UnitSpec with OptionValues {
       rec.setReadString(base * 100)
       if (rec.getFirstOfPairFlag) rec.setAttribute("XT", 20)
     }
-    new ExtractUmisFromBam(input=builder.toTempFile(), output=output, readStructure=Seq("10M90T", "10M90T"), molecularBarcodeTags=Seq("A1"), clippingAttribute=Some("XT")).execute()
+    new ExtractUmisFromBam(input=builder.toTempFile(), output=output, readStructure=Seq("10M90T", "10M90T"), molecularIndexTags=Seq("A1"), clippingAttribute=Some("XT")).execute()
     val recs = readBamRecs(output)
     recs.foreach { rec =>
       val base = if (rec.getFirstOfPairFlag) "A" else "C"
