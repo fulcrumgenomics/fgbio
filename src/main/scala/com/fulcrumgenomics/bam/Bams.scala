@@ -185,9 +185,7 @@ object Bams extends LazyLogging {
 
   /**
     * Ensures that any NM/UQ/MD tags on the read are accurate.  If the read is unmapped, any existing
-    * values are removed.  If the read is mapped, only tags that are present on the read are
-    * regenerated - e.g. if the read has NM and MD but not UQ, then post-call it will have updated
-    * NM and MD values and still no UQ value.
+    * values are removed.  If the read is mapped all three tags will have values regenerated.
     *
     * @param rec the SAMRecord to update
     * @param ref a reference sequence file walker to pull the reference information from
@@ -201,8 +199,8 @@ object Bams extends LazyLogging {
     }
     else {
       val refBases = ref.get(rec.getReferenceIndex).getBases
-      SequenceUtil.calculateMdAndNmTags(rec, refBases, rec.getAttribute(MD.name()) != null, rec.getAttribute(NM.name()) != null)
-      if (rec.getAttribute(SAMTag.UQ.name) != null && rec.getBaseQualities != null && rec.getBaseQualities.length != 0) {
+      SequenceUtil.calculateMdAndNmTags(rec, refBases, true, true)
+      if (rec.getBaseQualities != null && rec.getBaseQualities.length != 0) {
         rec.setAttribute(SAMTag.UQ.name, SequenceUtil.sumQualitiesOfMismatches(rec, refBases, 0))
       }
     }

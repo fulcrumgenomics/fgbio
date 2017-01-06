@@ -146,30 +146,4 @@ class BamsTest extends UnitSpec {
     rec.getAttribute("MD") shouldBe "3A4A1"
     rec.getAttribute("UQ") shouldBe 40
   }
-
-  it should "only regenerate tags that are already present on mapped reads" in {
-    val builder = new SamRecordSetBuilder(sortOrder=SortOrder.coordinate, readLength=10, baseQuality=20)
-    val rec = builder.addFrag(start=100).get
-    rec.setReadString("AAACAAAATA")
-
-    rec.setAttribute("NM", 7)
-    Bams.regenerateNmUqMdTags(rec, DummyRefWalker)
-    rec.getAttribute("NM") shouldBe 2
-    rec.getAttribute("MD") shouldBe null
-    rec.getAttribute("UQ") shouldBe null
-
-    rec.setAttribute("NM", null)
-    rec.setAttribute("MD", "6A7C8T9G")
-    Bams.regenerateNmUqMdTags(rec, DummyRefWalker)
-    rec.getAttribute("NM") shouldBe null
-    rec.getAttribute("MD") shouldBe "3A4A1"
-    rec.getAttribute("UQ") shouldBe null
-
-    rec.setAttribute("MD", null)
-    rec.setAttribute("UQ", 237)
-    Bams.regenerateNmUqMdTags(rec, DummyRefWalker)
-    rec.getAttribute("NM") shouldBe null
-    rec.getAttribute("MD") shouldBe null
-    rec.getAttribute("UQ") shouldBe 40
-  }
 }
