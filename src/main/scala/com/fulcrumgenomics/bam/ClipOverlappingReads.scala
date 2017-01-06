@@ -85,14 +85,14 @@ class ClipOverlappingReads
       }
 
       // TODO: add an allReads iterator to Template
-      (template.r1.iterator ++ template.r2.iterator ++ template.allSupplementaryAndSecondary) foreach { r =>
+      (template.r1.iterator ++ template.r2.iterator ++ template.allSupplementaryAndSecondary).foreach { r =>
         sorter.add(r)
         progress.record(r)
       }
     }
 
     // Then go through the coordinate sorted reads and fix up tags
-    logger.info("Resorting into coordinate order and writing output.")
+    logger.info("Re-sorting into coordinate order and writing output.")
     val header = in.getFileHeader.clone()
     header.setSortOrder(SortOrder.coordinate)
     val walker = new ReferenceSequenceFileWalker(ref.toFile)

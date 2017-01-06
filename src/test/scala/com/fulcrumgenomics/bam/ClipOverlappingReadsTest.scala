@@ -181,6 +181,5 @@ class ClipOverlappingReadsTest extends UnitSpec {
       uq shouldBe expUq
       md shouldBe expMd
     }
-
   }
 }
