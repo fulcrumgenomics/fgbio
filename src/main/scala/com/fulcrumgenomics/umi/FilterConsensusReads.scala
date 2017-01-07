@@ -147,6 +147,7 @@ class FilterConsensusReads
     sorter.foreach { rec =>
       Bams.regenerateNmUqMdTags(rec, walker)
       out.addAlignment(rec)
+      progress2.record(rec)
     }
 
     in.safelyClose()
