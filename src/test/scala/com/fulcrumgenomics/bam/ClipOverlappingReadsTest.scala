@@ -27,11 +27,9 @@ package com.fulcrumgenomics.bam
 import com.fulcrumgenomics.fasta.ReferenceSetBuilder
 import com.fulcrumgenomics.testing.SamRecordSetBuilder._
 import com.fulcrumgenomics.testing.{SamRecordSetBuilder, UnitSpec}
-import htsjdk.samtools.{SAMTag, SamReaderFactory}
-import htsjdk.samtools.SAMTag.{MD, NM}
 import htsjdk.samtools.reference.ReferenceSequenceFileFactory
-
 import htsjdk.samtools.util.SequenceUtil
+import htsjdk.samtools.{SAMTag, SamReaderFactory}
 
 import scala.collection.JavaConversions.iterableAsScalaIterable
 import scala.util.Random
@@ -127,6 +125,21 @@ class ClipOverlappingReadsTest extends UnitSpec {
     r1.getAlignmentEnd >= r2.getAlignmentStart shouldBe true
     clipper.clip(r1, r2)
     r1.getAlignmentEnd >= r2.getAlignmentStart shouldBe false
+  }
+
+  // This is a weird test that ensures that things terminate correctly when due to highly clipped
+  // input reads, one of the reads becomes unmapped during clipping
+  it should "handle reads that get unmapped because they are fully overlapped" in {
+    val builder = new SamRecordSetBuilder(readLength=50)
+    val clipper = new ClipOverlappingReads(input=dummyBam, output=dummyBam, ref=ref)
+    val Seq(r1a, r2a) = builder.addPair(name="q1", start1=100, start2=100, cigar1="3M47S", cigar2="48S2M")
+    val Seq(r1b, r2b) = builder.addPair(name="q2", start1=100, start2=100, cigar1="2M48S", cigar2="47S3M")
+
+    for ((r1, r2) <- Seq((r1a, r2a), (r1b, r2b))) {
+      clipper.clip(r1, r2)
+      val ok = r1.getReadUnmappedFlag || r2.getReadUnmappedFlag || r1.getAlignmentEnd < r2.getAlignmentStart
+      ok shouldBe true
+    }
   }
 
   "ClipOverlappingReads" should "clip overlapping reads, update mate info, and reset NM, UQ & MD" in {

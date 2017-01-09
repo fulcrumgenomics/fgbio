@@ -122,7 +122,7 @@ class ClipOverlappingReads
       // What we really want is to trim by the number of _reference_ bases not read bases,
       // in order to eliminate overlap.  We could do something very complicated here, or
       // we could just trim read bases in a loop until the overlap is eliminated!
-      while (f.getAlignmentEnd >= r.getAlignmentStart) {
+      while (f.getAlignmentEnd >= r.getAlignmentStart && !f.getReadUnmappedFlag && !r.getReadUnmappedFlag) {
         val lengthToClip = f.getAlignmentEnd - r.getAlignmentStart + 1
         val firstHalf    = lengthToClip / 2
         val secondHalf   = lengthToClip - firstHalf // safe guard against rounding on odd lengths
