@@ -79,8 +79,8 @@ class ExtractUmisFromBam
   @arg(flag = "o", doc = "Output BAM file.")                                     val output: PathToBam,
   @arg(flag = "r", doc = "The read structure, one per read in a template.")      val readStructure: Seq[String],
   @deprecated @arg(flag = "b", doc = "[DEPRECATED] SAM tags in which to store the molecular barcodes (one-per segment).",
-    mutex=Array("molecularIndexTags")) val molecularBarcodeTags: Seq[String] = Seq.empty,
-  @arg(flag = "t", doc = "SAM tag(s) in which to store the molecular indices.", mutex=Array("molecularBarcodeTags"))
+    mutex=Array("molecularIndexTags"), minElements=0) val molecularBarcodeTags: Seq[String] = Seq.empty,
+  @arg(flag = "t", doc = "SAM tag(s) in which to store the molecular indices.", mutex=Array("molecularBarcodeTags"), minElements=0)
                                                                                  val molecularIndexTags: Seq[String] = Seq.empty,
   @arg(flag = "s", doc = "Single tag into which to concatenate all molecular indices.") val singleTag: Option[String] = None,
   @arg(flag = "a", doc = "Annotate the read names with the molecular indices. See usage for more details.") val annotateReadNames: Boolean = false,
@@ -100,6 +100,7 @@ class ExtractUmisFromBam
 
   // This can be removed once the @deprecated molecularBarcodeTags is removed
   private val perIndexTags = if (molecularIndexTags.nonEmpty) molecularIndexTags else molecularBarcodeTags
+  if (perIndexTags.isEmpty) invalid("At least one molecular-index-tag must be specified.")
 
   // validate the read structure versus the molecular index tags
   {
