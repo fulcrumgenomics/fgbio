@@ -143,6 +143,7 @@ class MakeTwoSampleMixtureVcf
 
         val gts = Seq(Some(newTumorGt), newNormalGt).flatten
         val builder = new VariantContextBuilder(ctx.getSource, ctx.getContig, ctx.getStart(), ctx.getEnd(), ctx.getAlleles)
+        builder.id(ctx.getID)
         builder.genotypes(gts)
 
         val filters = ListBuffer[String]()
@@ -201,7 +202,7 @@ class MakeTwoSampleMixtureVcf
     import scala.collection.JavaConversions.asScalaIterator
     intervals match {
       case None       => in.iterator()
-      case Some(path) => ByIntervalListVariantContextIterator(in, IntervalList.fromFile(path.toFile))
+      case Some(path) => ByIntervalListVariantContextIterator(in, IntervalList.fromFile(path.toFile).uniqued(false))
     }
   }
 }
