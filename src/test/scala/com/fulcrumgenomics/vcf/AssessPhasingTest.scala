@@ -33,7 +33,7 @@ import com.fulcrumgenomics.vcf.PhaseCigar.IlluminaSwitchErrors
 import dagr.commons.io.PathUtil
 import htsjdk.samtools.SAMFileHeader
 import htsjdk.samtools.util.{Interval, IntervalList}
-import htsjdk.variant.variantcontext.writer.{Options, VariantContextWriter, VariantContextWriterBuilder}
+import htsjdk.variant.variantcontext.writer.{Options, VariantContextWriterBuilder}
 import htsjdk.variant.variantcontext.{GenotypeBuilder, VariantContext, VariantContextBuilder}
 import htsjdk.variant.vcf.{VCFFileReader, VCFHeader}
 

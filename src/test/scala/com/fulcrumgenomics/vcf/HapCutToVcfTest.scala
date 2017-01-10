@@ -32,13 +32,14 @@ import dagr.commons.CommonsDef._
 import dagr.commons.io.PathUtil
 import htsjdk.variant.variantcontext.VariantContext
 import htsjdk.variant.vcf.VCFFileReader
+import org.scalatest.ParallelTestExecution
 
 import scala.collection.JavaConversions._
 
 /**
   * Tests for HapCutToVcf.
   */
-class HapCutToVcfTest extends UnitSpec {
+class HapCutToVcfTest extends UnitSpec with ParallelTestExecution {
 
   private val dir            = PathUtil.pathTo("src/test/resources/com/fulcrumgenomics/vcf")
   private val originalVcf    = dir.resolve("NA12878.GIABPedigreev0.2.17.41100000.41300000.vcf")

@@ -32,11 +32,12 @@ import com.fulcrumgenomics.testing.{SamRecordSetBuilder, UnitSpec}
 import com.fulcrumgenomics.util.Metric
 import dagr.commons.io.PathUtil
 import htsjdk.samtools.SAMFileHeader.SortOrder
+import org.scalatest.ParallelTestExecution
 
 /**
   * Tests for ErrorRateByReadPosition.
   */
-class ErrorRateByReadPositionTest extends UnitSpec {
+class ErrorRateByReadPositionTest extends UnitSpec with ParallelTestExecution {
   val dir = Paths.get("src/test/resources/com/fulcrumgenomics/bam")
   private val referenceFasta = dir.resolve("error_rate_by_read_position.fasta")
 
