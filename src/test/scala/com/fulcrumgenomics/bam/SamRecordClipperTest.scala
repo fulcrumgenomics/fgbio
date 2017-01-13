@@ -25,6 +25,7 @@
 package com.fulcrumgenomics.bam
 
 import com.fulcrumgenomics.bam.SamRecordClipper.ClippingMode
+import com.fulcrumgenomics.bam.SamRecordClipper.ClippingMode._
 import com.fulcrumgenomics.testing.SamRecordSetBuilder._
 import com.fulcrumgenomics.testing.{SamRecordSetBuilder, UnitSpec}
 import com.fulcrumgenomics.util.NumericTypes.PhredScore
@@ -38,72 +39,74 @@ class SamRecordClipperTest extends UnitSpec {
     new SamRecordSetBuilder(readLength=len).addFrag(start=start, cigar = cigar, strand=strand).get
   }
 
+  def clipper(mode: ClippingMode, autoClip: Boolean=false) = new SamRecordClipper(mode, autoClip)
+
   "SamRecordClipper.clipStartOfAlignment" should "soft-clip 10 matched bases" in {
     val rec = r(10, "50M")
-    SamRecordClipper.clipStartOfAlignment(rec, 10, ClippingMode.Soft)
+    clipper(Soft).clipStartOfAlignment(rec, 10)
     rec.getAlignmentStart shouldBe 20
     rec.getCigarString shouldBe "10S40M"
   }
 
   it should "soft-clip 10 matched/inserted bases" in {
     val rec = r(10, "4M2I44M")
-    SamRecordClipper.clipStartOfAlignment(rec, 10, ClippingMode.Soft)
+    clipper(Soft).clipStartOfAlignment(rec, 10)
     rec.getAlignmentStart shouldBe 18
     rec.getCigarString shouldBe "10S40M"
   }
 
   it should "soft-clip 10 matched/deleted bases" in {
     val rec = r(10, "6M2D44M")
-    SamRecordClipper.clipStartOfAlignment(rec, 10, ClippingMode.Soft)
+    clipper(Soft).clipStartOfAlignment(rec, 10)
     rec.getAlignmentStart shouldBe 22
     rec.getCigarString shouldBe "10S40M"
   }
 
   it should "soft-clip 10 additional bases" in {
     val rec = r(10, "10S40M")
-    SamRecordClipper.clipStartOfAlignment(rec, 10, ClippingMode.Soft)
+    clipper(Soft).clipStartOfAlignment(rec, 10)
     rec.getAlignmentStart shouldBe 20
     rec.getCigarString shouldBe "20S30M"
   }
 
   it should "preserve hard-clipping while soft-clipping" in {
     val rec = r(10, "10H40M")
-    SamRecordClipper.clipStartOfAlignment(rec, 10, ClippingMode.Soft)
+    clipper(Soft).clipStartOfAlignment(rec, 10)
     rec.getAlignmentStart shouldBe 20
     rec.getCigarString shouldBe "10H10S30M"
   }
 
   it should "handle a cigar with a ton of elements in it while soft-clipping" in {
     val rec = r(10, "2H4S16M10I5M5I10M")
-    SamRecordClipper.clipStartOfAlignment(rec, 10, ClippingMode.Soft)
+    clipper(Soft).clipStartOfAlignment(rec, 10)
     rec.getAlignmentStart shouldBe 20
     rec.getCigarString shouldBe "2H14S6M10I5M5I10M"
   }
 
   it should "also consume any extra bases if it ends in an insertion when soft-clipping" in {
     val rec = r(10, "8M4I38M")
-    SamRecordClipper.clipStartOfAlignment(rec, 10, ClippingMode.Soft)
+    clipper(Soft).clipStartOfAlignment(rec, 10)
     rec.getAlignmentStart shouldBe 18
     rec.getCigarString shouldBe "12S38M"
   }
 
   it should "preserve an insertion that starts immediately after the soft-clipping" in {
     val rec = r(10, "10M4I36M")
-    SamRecordClipper.clipStartOfAlignment(rec, 10, ClippingMode.Soft)
+    clipper(Soft).clipStartOfAlignment(rec, 10)
     rec.getAlignmentStart shouldBe 20
     rec.getCigarString shouldBe "10S4I36M"
   }
 
   it should "remove deletions that immediately follow the clipping" in {
     val rec = r(10, "10M4D40M")
-    SamRecordClipper.clipStartOfAlignment(rec, 10, ClippingMode.Soft)
+    clipper(Soft).clipStartOfAlignment(rec, 10)
     rec.getAlignmentStart shouldBe 24
     rec.getCigarString shouldBe "10S40M"
   }
 
   it should "preseve deletions that are not close to the clipped region" in {
     val rec = r(10, "25M4D25M")
-    SamRecordClipper.clipStartOfAlignment(rec, 10, ClippingMode.Soft)
+    clipper(Soft).clipStartOfAlignment(rec, 10)
     rec.getAlignmentStart shouldBe 20
     rec.getCigarString shouldBe "10S15M4D25M"
   }
@@ -111,13 +114,13 @@ class SamRecordClipperTest extends UnitSpec {
   it should "NOT throw an exception, but do nothing, with an unmapped read" in {
     val rec = r(10, "50M")
     rec.setReadUnmappedFlag(true)
-    SamRecordClipper.clipStartOfAlignment(rec, 10, ClippingMode.Soft)
+    clipper(Soft).clipStartOfAlignment(rec, 10)
     rec.getAlignmentStart shouldBe 10
   }
 
   it should "mask bases and qualities when the clipping mode is SoftWithMask" in {
     val rec = r(10, "50M")
-    SamRecordClipper.clipStartOfAlignment(rec, 10, ClippingMode.SoftWithMask)
+    clipper(SoftWithMask).clipStartOfAlignment(rec, 10)
     rec.getAlignmentStart shouldBe 20
     rec.getCigarString shouldBe "10S40M"
     rec.getReadBases.take(10).forall(_ == 'N'.toByte) shouldBe true
@@ -126,7 +129,7 @@ class SamRecordClipperTest extends UnitSpec {
 
   it should "mask bases and qualities when the clipping mode is SoftWithMask, including existing soft-clips" in {
     val rec = r(10, "10S40M")
-    SamRecordClipper.clipStartOfAlignment(rec, 10, ClippingMode.SoftWithMask)
+    clipper(SoftWithMask).clipStartOfAlignment(rec, 10)
     rec.getAlignmentStart shouldBe 20
     rec.getCigarString shouldBe "20S30M"
     rec.getReadBases.take(20).forall(_ == 'N'.toByte) shouldBe true
@@ -137,7 +140,7 @@ class SamRecordClipperTest extends UnitSpec {
     val rec = r(10, "50M")
     val bases = rec.getReadBases.clone()
     val quals = rec.getBaseQualities.clone()
-    SamRecordClipper.clipStartOfAlignment(rec, 10, ClippingMode.Hard)
+    clipper(Hard).clipStartOfAlignment(rec, 10)
     rec.getAlignmentStart shouldBe 20
     rec.getCigarString shouldBe "10H40M"
     rec.getReadBases shouldBe bases.drop(10)
@@ -148,7 +151,7 @@ class SamRecordClipperTest extends UnitSpec {
     val rec = r(10, "10S40M")
     val bases = rec.getReadBases.clone()
     val quals = rec.getBaseQualities.clone()
-    SamRecordClipper.clipStartOfAlignment(rec, 10, ClippingMode.Hard)
+    clipper(Hard).clipStartOfAlignment(rec, 10)
     rec.getAlignmentStart shouldBe 20
     rec.getCigarString shouldBe "20H30M"
     rec.getReadBases shouldBe bases.drop(20)
@@ -157,79 +160,99 @@ class SamRecordClipperTest extends UnitSpec {
 
   it should "unmap a read when more clipping is requested than there is alignment to clip" in {
     val rec = r(10, "10S40M")
-    SamRecordClipper.clipStartOfAlignment(rec, 50, ClippingMode.Soft)
+    clipper(Soft).clipStartOfAlignment(rec, 50)
     rec.getReadUnmappedFlag shouldBe true
     rec.getCigar shouldBe 'empty
+  }
+
+  for (mode <- ClippingMode.values; auto <- Seq(true, false)) {
+    it should s"correctly handle auto-trimming of attribute with auto=$auto and mode=$mode" in {
+      val rec = r(10, "20M")
+      rec.setAttribute("A1", "AB" * 10)
+      rec.setAttribute("A2", Range.inclusive(1, 20).toArray)
+      rec.setAttribute("B1", "A" * 10)
+      rec.setAttribute("B2", Range.inclusive(1, 10).toArray)
+
+      val cut = (mode == ClippingMode.Hard && auto == true)
+      if (cut) {
+        println("Hello")
+      }
+      clipper(mode=mode, autoClip=auto).clipStartOfAlignment(rec, 5)
+      rec.getAttribute("A1") shouldBe { if (cut) "BABABABABABABAB" else "AB"*10 }
+      rec.getAttribute("A2") shouldBe Range.inclusive(if (cut) 6 else 1, 20).toArray
+      rec.getAttribute("B1") shouldBe  "A" * 10
+      rec.getAttribute("B2") shouldBe Range.inclusive(1, 10).toArray
+    }
   }
 
   //////////////////////////////////////////////////////////////////////////////
 
   "SamRecordClipper.clipEndOfAlignment" should "soft-clip 10 matched bases" in {
     val rec = r(10, "50M")
-    SamRecordClipper.clipEndOfAlignment(rec, 10, ClippingMode.Soft)
+    clipper(Soft).clipEndOfAlignment(rec, 10)
     rec.getAlignmentStart shouldBe 10
     rec.getCigarString shouldBe "40M10S"
   }
 
   it should "soft-clip 10 matched/inserted bases" in {
     val rec = r(10, "44M2I4M")
-    SamRecordClipper.clipEndOfAlignment(rec, 10, ClippingMode.Soft)
+    clipper(Soft).clipEndOfAlignment(rec, 10)
     rec.getAlignmentStart shouldBe 10
     rec.getCigarString shouldBe "40M10S"
   }
 
   it should "soft-clip 10 matched/deleted bases" in {
     val rec = r(10, "44M2D6M")
-    SamRecordClipper.clipEndOfAlignment(rec, 10, ClippingMode.Soft)
+    clipper(Soft).clipEndOfAlignment(rec, 10)
     rec.getAlignmentStart shouldBe 10
     rec.getCigarString shouldBe "40M10S"
   }
 
   it should "soft-clip 10 additional bases" in {
     val rec = r(10, "40M10S")
-    SamRecordClipper.clipEndOfAlignment(rec, 10, ClippingMode.Soft)
+    clipper(Soft).clipEndOfAlignment(rec, 10)
     rec.getAlignmentStart shouldBe 10
     rec.getCigarString shouldBe "30M20S"
   }
 
   it should "preserve hard-clipping while soft-clipping" in {
     val rec = r(10, "40M10H")
-    SamRecordClipper.clipEndOfAlignment(rec, 10, ClippingMode.Soft)
+    clipper(Soft).clipEndOfAlignment(rec, 10)
     rec.getAlignmentStart shouldBe 10
     rec.getCigarString shouldBe "30M10S10H"
   }
 
   it should "handle a cigar with a ton of elements in it while soft-clipping" in {
     val rec = r(10, "10M5I5M10I16M4S2H")
-    SamRecordClipper.clipEndOfAlignment(rec, 10, ClippingMode.Soft)
+    clipper(Soft).clipEndOfAlignment(rec, 10)
     rec.getAlignmentStart shouldBe 10
     rec.getCigarString shouldBe "10M5I5M10I6M14S2H"
   }
 
   it should "also consume any extra bases if it ends in an insertion when soft-clipping" in {
     val rec = r(10, "38M4I8M")
-    SamRecordClipper.clipEndOfAlignment(rec, 10, ClippingMode.Soft)
+    clipper(Soft).clipEndOfAlignment(rec, 10)
     rec.getAlignmentStart shouldBe 10
     rec.getCigarString shouldBe "38M12S"
   }
 
   it should "preserve an insertion that starts immediately after the soft-clipping" in {
     val rec = r(10, "36M4I10M")
-    SamRecordClipper.clipEndOfAlignment(rec, 10, ClippingMode.Soft)
+    clipper(Soft).clipEndOfAlignment(rec, 10)
     rec.getAlignmentStart shouldBe 10
     rec.getCigarString shouldBe "36M4I10S"
   }
 
   it should "remove deletions that immediately precede the clipping" in {
     val rec = r(10, "40M4D10M")
-    SamRecordClipper.clipEndOfAlignment(rec, 10, ClippingMode.Soft)
+    clipper(Soft).clipEndOfAlignment(rec, 10)
     rec.getAlignmentStart shouldBe 10
     rec.getCigarString shouldBe "40M10S"
   }
 
   it should "preserve deletions that are not near the clipped region" in {
     val rec = r(10, "25M4D25M")
-    SamRecordClipper.clipEndOfAlignment(rec, 10, ClippingMode.Soft)
+    clipper(Soft).clipEndOfAlignment(rec, 10)
     rec.getAlignmentStart shouldBe 10
     rec.getCigarString shouldBe "25M4D15M10S"
   }
@@ -237,13 +260,13 @@ class SamRecordClipperTest extends UnitSpec {
   it should "NOT throw an exception, but do nothing, with an unmapped read" in {
     val rec = r(10, "50M")
     rec.setReadUnmappedFlag(true)
-    SamRecordClipper.clipEndOfAlignment(rec, 10, ClippingMode.Soft)
+    clipper(Soft).clipEndOfAlignment(rec, 10)
     rec.getAlignmentStart shouldBe 10
   }
 
   it should "mask bases and qualities when the clipping mode is SoftWithMask" in {
     val rec = r(10, "50M")
-    SamRecordClipper.clipEndOfAlignment(rec, 10, ClippingMode.SoftWithMask)
+    clipper(SoftWithMask).clipEndOfAlignment(rec, 10)
     rec.getAlignmentStart shouldBe 10
     rec.getCigarString shouldBe "40M10S"
     rec.getReadBases.drop(40).forall(_ == 'N'.toByte) shouldBe true
@@ -252,7 +275,7 @@ class SamRecordClipperTest extends UnitSpec {
 
   it should "mask bases and qualities when the clipping mode is SoftWithMask, including existing soft-clips" in {
     val rec = r(10, "40M10S")
-    SamRecordClipper.clipEndOfAlignment(rec, 10, ClippingMode.SoftWithMask)
+    clipper(SoftWithMask).clipEndOfAlignment(rec, 10)
     rec.getAlignmentStart shouldBe 10
     rec.getCigarString shouldBe "30M20S"
     rec.getReadBases.drop(30).forall(_ == 'N'.toByte) shouldBe true
@@ -263,7 +286,7 @@ class SamRecordClipperTest extends UnitSpec {
     val rec = r(10, "50M")
     val bases = rec.getReadBases.clone()
     val quals = rec.getBaseQualities.clone()
-    SamRecordClipper.clipEndOfAlignment(rec, 10, ClippingMode.Hard)
+    clipper(Hard).clipEndOfAlignment(rec, 10)
     rec.getAlignmentStart shouldBe 10
     rec.getCigarString shouldBe "40M10H"
     rec.getReadBases shouldBe bases.take(40)
@@ -274,18 +297,38 @@ class SamRecordClipperTest extends UnitSpec {
     val rec = r(10, "40M10S")
     val bases = rec.getReadBases.clone()
     val quals = rec.getBaseQualities.clone()
-    SamRecordClipper.clipEndOfAlignment(rec, 10, ClippingMode.Hard)
+    clipper(Hard).clipEndOfAlignment(rec, 10)
     rec.getAlignmentStart shouldBe 10
     rec.getCigarString shouldBe "30M20H"
     rec.getReadBases shouldBe bases.take(30)
     rec.getBaseQualities shouldBe quals.take(30)
   }
 
-    it should "unmap a read when more clipping is requested than there is alignment to clip" in {
+  it should "unmap a read when more clipping is requested than there is alignment to clip" in {
     val rec = r(10, "40M10S")
-    SamRecordClipper.clipEndOfAlignment(rec, 50, ClippingMode.Soft)
+    clipper(Soft).clipEndOfAlignment(rec, 50)
     rec.getReadUnmappedFlag shouldBe true
     rec.getCigar shouldBe 'empty
+  }
+
+  for (mode <- ClippingMode.values; auto <- Seq(true, false)) {
+    it should s"correctly handle auto-trimming of attribute with auto=$auto and mode=$mode" in {
+      val rec = r(10, "20M")
+      rec.setAttribute("A1", "AB" * 10)
+      rec.setAttribute("A2", Range.inclusive(1, 20).toArray)
+      rec.setAttribute("B1", "A" * 10)
+      rec.setAttribute("B2", Range.inclusive(1, 10).toArray)
+
+      val cut = (mode == ClippingMode.Hard && auto == true)
+      if (cut) {
+        println("Hello")
+      }
+      clipper(mode=mode, autoClip=auto).clipEndOfAlignment(rec, 5)
+      rec.getAttribute("A1") shouldBe { if (cut) "ABABABABABABABA" else "AB"*10 }
+      rec.getAttribute("A2") shouldBe Range.inclusive(1, if (cut) 15 else 20).toArray
+      rec.getAttribute("B1") shouldBe  "A" * 10
+      rec.getAttribute("B2") shouldBe Range.inclusive(1, 10).toArray
+    }
   }
 
 
@@ -295,109 +338,109 @@ class SamRecordClipperTest extends UnitSpec {
 
   "SamRecordClipper.clipStartOfRead" should "expand existing clipping" in {
     val rec1 = r(10, "50M")
-    SamRecordClipper.clipStartOfRead(rec1, 10, ClippingMode.Soft)
+    clipper(Soft).clipStartOfRead(rec1, 10)
     rec1.getCigarString shouldBe "10S40M"
 
     val rec2 = r(10, "5S45M")
-    SamRecordClipper.clipStartOfRead(rec2, 10, ClippingMode.Soft)
+    clipper(Soft).clipStartOfRead(rec2, 10)
     rec2.getCigarString shouldBe "10S40M"
 
     val rec3 = r(10, "20S30M")
-    SamRecordClipper.clipStartOfRead(rec3, 10, ClippingMode.Soft)
+    clipper(Soft).clipStartOfRead(rec3, 10)
     rec3.getCigarString shouldBe "20S30M"
 
     val rec4 = r(10, "20H30M")
-    SamRecordClipper.clipStartOfRead(rec4, 10, ClippingMode.Soft)
+    clipper(Soft).clipStartOfRead(rec4, 10)
     rec4.getCigarString shouldBe "20H30M"
   }
 
   "SamRecordClipper.clipEndOfRead" should "expand existing clipping" in {
     val rec1 = r(10, "50M")
-    SamRecordClipper.clipEndOfRead(rec1, 10, ClippingMode.Soft)
+    clipper(Soft).clipEndOfRead(rec1, 10)
     rec1.getCigarString shouldBe "40M10S"
 
     val rec2 = r(10, "45M5S")
-    SamRecordClipper.clipEndOfRead(rec2, 10, ClippingMode.Soft)
+    clipper(Soft).clipEndOfRead(rec2, 10)
     rec2.getCigarString shouldBe "40M10S"
 
     val rec3 = r(10, "30M20S")
-    SamRecordClipper.clipEndOfRead(rec3, 10, ClippingMode.Soft)
+    clipper(Soft).clipEndOfRead(rec3, 10)
     rec3.getCigarString shouldBe "30M20S"
 
     val rec4 = r(10, "30M20H")
-    SamRecordClipper.clipEndOfRead(rec4, 10, ClippingMode.Soft)
+    clipper(Soft).clipEndOfRead(rec4, 10)
     rec4.getCigarString shouldBe "30M20H"
   }
 
   "SamRecordClipper.clip5PrimeEndOfAlignment" should "add more clipping to the 5' end" in {
     val rec1 = r(10, "50M", strand=Plus)
-    SamRecordClipper.clip5PrimeEndOfAlignment(rec1, 10, ClippingMode.Soft)
+    clipper(Soft).clip5PrimeEndOfAlignment(rec1, 10)
     rec1.getCigarString shouldBe "10S40M"
 
     val rec2 = r(10, "10S40M", strand=Plus)
-    SamRecordClipper.clip5PrimeEndOfAlignment(rec2, 10, ClippingMode.Soft)
+    clipper(Soft).clip5PrimeEndOfAlignment(rec2, 10)
     rec2.getCigarString shouldBe "20S30M"
 
     val rec3 = r(10, "50M", strand=Minus)
-    SamRecordClipper.clip5PrimeEndOfAlignment(rec3, 10, ClippingMode.Soft)
+    clipper(Soft).clip5PrimeEndOfAlignment(rec3, 10)
     rec3.getCigarString shouldBe "40M10S"
 
     val rec4 = r(10, "40M10S", strand=Minus)
-    SamRecordClipper.clip5PrimeEndOfAlignment(rec4, 10, ClippingMode.Soft)
+    clipper(Soft).clip5PrimeEndOfAlignment(rec4, 10)
     rec4.getCigarString shouldBe "30M20S"
   }
 
   "SamRecordClipper.clip3PrimeEndOfAlignment" should "add more clipping to the 3' end" in {
     val rec1 = r(10, "50M", strand=Minus)
-    SamRecordClipper.clip3PrimeEndOfAlignment(rec1, 10, ClippingMode.Soft)
+    clipper(Soft).clip3PrimeEndOfAlignment(rec1, 10)
     rec1.getCigarString shouldBe "10S40M"
 
     val rec2 = r(10, "10S40M", strand=Minus)
-    SamRecordClipper.clip3PrimeEndOfAlignment(rec2, 10, ClippingMode.Soft)
+    clipper(Soft).clip3PrimeEndOfAlignment(rec2, 10)
     rec2.getCigarString shouldBe "20S30M"
 
     val rec3 = r(10, "50M", strand=Plus)
-    SamRecordClipper.clip3PrimeEndOfAlignment(rec3, 10, ClippingMode.Soft)
+    clipper(Soft).clip3PrimeEndOfAlignment(rec3, 10)
     rec3.getCigarString shouldBe "40M10S"
 
     val rec4 = r(10, "40M10S", strand=Plus)
-    SamRecordClipper.clip3PrimeEndOfAlignment(rec4, 10, ClippingMode.Soft)
+    clipper(Soft).clip3PrimeEndOfAlignment(rec4, 10)
     rec4.getCigarString shouldBe "30M20S"
   }
 
   "SamRecordClipper.clip5PrimeEndOfRead" should "expand existing clipping at the 5' end" in {
     val rec1 = r(10, "50M", strand=Plus)
-    SamRecordClipper.clip5PrimeEndOfRead(rec1, 10, ClippingMode.Soft)
+    clipper(Soft).clip5PrimeEndOfRead(rec1, 10)
     rec1.getCigarString shouldBe "10S40M"
 
     val rec2 = r(10, "10S40M", strand=Plus)
-    SamRecordClipper.clip5PrimeEndOfRead(rec2, 10, ClippingMode.Soft)
+    clipper(Soft).clip5PrimeEndOfRead(rec2, 10)
     rec2.getCigarString shouldBe "10S40M"
 
     val rec3 = r(10, "50M", strand=Minus)
-    SamRecordClipper.clip5PrimeEndOfRead(rec3, 10, ClippingMode.Soft)
+    clipper(Soft).clip5PrimeEndOfRead(rec3, 10)
     rec3.getCigarString shouldBe "40M10S"
 
     val rec4 = r(10, "40M10S", strand=Minus)
-    SamRecordClipper.clip5PrimeEndOfRead(rec4, 10, ClippingMode.Soft)
+    clipper(Soft).clip5PrimeEndOfRead(rec4, 10)
     rec4.getCigarString shouldBe "40M10S"
   }
 
   "SamRecordClipper.clip3PrimeEndOfRead" should "expand existing clipping at the 3' end" in {
     val rec1 = r(10, "50M", strand=Minus)
-    SamRecordClipper.clip3PrimeEndOfRead(rec1, 10, ClippingMode.Soft)
+    clipper(Soft).clip3PrimeEndOfRead(rec1, 10)
     rec1.getCigarString shouldBe "10S40M"
 
     val rec2 = r(10, "10S40M", strand=Minus)
-    SamRecordClipper.clip3PrimeEndOfRead(rec2, 10, ClippingMode.Soft)
+    clipper(Soft).clip3PrimeEndOfRead(rec2, 10)
     rec2.getCigarString shouldBe "10S40M"
 
     val rec3 = r(10, "50M", strand=Plus)
-    SamRecordClipper.clip3PrimeEndOfRead(rec3, 10, ClippingMode.Soft)
+    clipper(Soft).clip3PrimeEndOfRead(rec3, 10)
     rec3.getCigarString shouldBe "40M10S"
 
     val rec4 = r(10, "40M10S", strand=Plus)
-    SamRecordClipper.clip3PrimeEndOfRead(rec4, 10, ClippingMode.Soft)
+    clipper(Soft).clip3PrimeEndOfRead(rec4, 10)
     rec4.getCigarString shouldBe "40M10S"
   }
 }

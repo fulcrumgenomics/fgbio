@@ -60,13 +60,14 @@ class ClipOverlappingReads
 ( @arg(flag="i", doc="Input SAM or BAM file of aligned reads in coordinate order.") val input: PathToBam,
   @arg(flag="o", doc="Output SAM or BAM file.") val output: PathToBam,
   @arg(flag="s", doc="Soft clip reads instead of hard clipping.") val softClip: Boolean = false,
-  @arg(flag="r", doc="Reference sequence fasta file.") val ref: PathToFasta
+  @arg(flag="r", doc="Reference sequence fasta file.") val ref: PathToFasta,
+  @arg(flag="a", doc="Automatically clip extended attributes that are the same length as bases.") val autoClipAttributes: Boolean = false
 ) extends FgBioTool with LazyLogging {
   Io.assertReadable(input)
   Io.assertReadable(ref)
   Io.assertCanWriteFile(output)
 
-  private val clippingMode = if (softClip) ClippingMode.Soft else ClippingMode.Hard
+  private val clipper = new SamRecordClipper(mode=if (softClip) ClippingMode.Soft else ClippingMode.Hard, autoClipAttributes=autoClipAttributes)
 
   override def execute(): Unit = {
     val in       = SamReaderFactory.make().open(input)
@@ -84,7 +85,6 @@ class ClipOverlappingReads
         case _ => Unit
       }
 
-      // TODO: add an allReads iterator to Template
       (template.r1.iterator ++ template.r2.iterator ++ template.allSupplementaryAndSecondary).foreach { r =>
         sorter.add(r)
         progress.record(r)
@@ -126,8 +126,8 @@ class ClipOverlappingReads
         val lengthToClip = f.getAlignmentEnd - r.getAlignmentStart + 1
         val firstHalf    = lengthToClip / 2
         val secondHalf   = lengthToClip - firstHalf // safe guard against rounding on odd lengths
-        SamRecordClipper.clip3PrimeEndOfAlignment(r1, firstHalf,  mode=this.clippingMode)
-        SamRecordClipper.clip3PrimeEndOfAlignment(r2, secondHalf, mode=this.clippingMode)
+        this.clipper.clip3PrimeEndOfAlignment(r1, firstHalf)
+        this.clipper.clip3PrimeEndOfAlignment(r2, secondHalf)
       }
     }
   }

@@ -67,9 +67,10 @@ class TrimPrimers
   @arg(flag="S", doc="Match to primer locations +/- this many bases.") val slop: Int = 5,
   @arg(flag="s", doc="Sort order of output BAM file (defaults to input sort order).") val sortOrder: Option[SortOrder] = None,
   @arg(flag="r", doc="Optional reference fasta for recalculating NM, MD and UQ tags.") val ref: Option[PathToFasta] = None,
-  @arg(flag="t", doc="Temporary directory to use when sorting.") val tmp: Option[DirPath] = None
+  @arg(flag="t", doc="Temporary directory to use when sorting.") val tmp: Option[DirPath] = None,
+  @arg(flag="a", doc="Automatically trim extended attributes that are the same length as bases.") val autoTrimAttributes: Boolean = false
 )extends FgBioTool with LazyLogging {
-  private val mode = if (hardClip) ClippingMode.Hard else ClippingMode.Soft
+  private val clipper = new SamRecordClipper(mode=if (hardClip) ClippingMode.Hard else ClippingMode.Soft, autoClipAttributes=autoTrimAttributes)
 
   Io.assertReadable(input)
   Io.assertReadable(primers)
@@ -175,17 +176,17 @@ class TrimPrimers
               val rightClip = amplicon.rightPrimerLength
               reads.foreach { rec =>
                 val toClip = if (rec.getFirstOfPairFlag == left.getFirstOfPairFlag) leftClip else rightClip
-                SamRecordClipper.clip5PrimeEndOfRead(rec, toClip, mode)
+                this.clipper.clip5PrimeEndOfRead(rec, toClip)
               }
             case None =>
-              reads.foreach(r => SamRecordClipper.clip5PrimeEndOfRead(r, maxPrimerLength, mode))
+              reads.foreach(r => this.clipper.clip5PrimeEndOfRead(r, maxPrimerLength))
           }
 
           clipFullyOverlappedFrReads(r1, r2)
         }
         // Pairs without both reads mapped in FR orientation are just maximally clipped
         else {
-          reads.foreach(r => SamRecordClipper.clip5PrimeEndOfRead(r, maxPrimerLength, mode))
+          reads.foreach(r => this.clipper.clip5PrimeEndOfRead(r, maxPrimerLength))
         }
 
         SamPairUtil.setMateInfo(r1, r2, true)
@@ -195,7 +196,7 @@ class TrimPrimers
         }
       case _ =>
         // Just trim each read independently
-        reads.foreach(r => SamRecordClipper.clip5PrimeEndOfRead(r, maxPrimerLength, mode))
+        reads.foreach(r => this.clipper.clip5PrimeEndOfRead(r, maxPrimerLength))
     }
   }
 
@@ -254,8 +255,8 @@ class TrimPrimers
       val plusTrim  = plus.getAlignmentEnd   - minus.getAlignmentEnd
       val minusTrim = plus.getAlignmentStart - minus.getAlignmentStart
 
-      if (plusTrim  > 0) SamRecordClipper.clip3PrimeEndOfAlignment(plus, plusTrim, mode)
-      if (minusTrim > 0) SamRecordClipper.clip3PrimeEndOfAlignment(minus, minusTrim, mode)
+      if (plusTrim  > 0) this.clipper.clip3PrimeEndOfAlignment(plus, plusTrim)
+      if (minusTrim > 0) this.clipper.clip3PrimeEndOfAlignment(minus, minusTrim)
     }
   }
 
