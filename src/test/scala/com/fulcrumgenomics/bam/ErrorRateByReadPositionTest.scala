@@ -59,7 +59,6 @@ class ErrorRateByReadPositionTest extends UnitSpec with ParallelTestExecution {
     }
   }
 
-
   it should "compute the error rate for paired reads" in {
     Seq(None, Some(referenceFasta)).foreach { case maybeRef =>
       val builder = new SamRecordSetBuilder(sortOrder=SortOrder.coordinate)

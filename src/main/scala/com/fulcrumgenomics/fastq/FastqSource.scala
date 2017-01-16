@@ -43,7 +43,7 @@ object FastqSource {
   /** Creates a new fastq source from an input stream. */
   def apply(stream: InputStream): FastqSource = new FastqSource(Source.fromInputStream(stream).getLines(), Some(stream))
 
-  /** Creates a new fastq source from an input stream. */
+  /** Creates a new fastq source from a source. */
   def apply(source: Source): FastqSource = new FastqSource(source.getLines(), Some(source))
 
   /** Creates a new fastq source from a File. */

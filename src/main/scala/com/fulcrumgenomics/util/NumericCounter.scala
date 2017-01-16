@@ -35,6 +35,13 @@ object NumericCounter {
     ts.foreach(counter.count)
     counter
   }
+
+  /** Generates a counter that has counted all the numerics provided. */
+  def from[T](ts: TraversableOnce[(T, Long)])(implicit numeric: Numeric[T]) : NumericCounter[T] = {
+    val counter = new NumericCounter[T]
+    ts.foreach { case (value, count) => counter.count(value, count) }
+    counter
+  }
 }
 
 /**
@@ -58,19 +65,25 @@ class NumericCounter[T](implicit numeric: Numeric[T]) extends SimpleCounter[T] {
     super.count(t, n)
   }
 
-  /** Returns the mean as a [Double], or zero there are no counts. */
+  /** Returns the mean as a [Double], or zero if there are no counts. */
   def mean(): Double = {
     if (0 == size) return 0.0
     this._totalMass.toDouble() / total
   }
 
-  /** Returns the standard deviation as a [Double], or zero there are no counts.  */
+  /** Returns the standard deviation as a [Double], or zero if there are no counts.  */
   def stddev(m: Double = mean()): Double = {
     if (0 == size) return 0.0
     val sum = iterator.map { case (k, v) => v * Math.pow(k.toDouble() - m, 2) }.sum
     if (0 == total) 0
     else if (1== total) Math.sqrt(sum / this._totalMass.toDouble())
     else Math.sqrt(sum / (total - 1.0))
+  }
+
+  /** Returns the mean and standar deviation as a [(Double, Double)], or zero for each if there are no counts. */
+  def meanAndStddev(): (Double, Double) = {
+    val m = mean()
+    (m, stddev(m=m))
   }
 
   /** Returns the key with the greatest count (mode of the distribution), or zero there are no counts.  */
@@ -115,6 +128,16 @@ class NumericCounter[T](implicit numeric: Numeric[T]) extends SimpleCounter[T] {
         case _ => unreachable()
       }
     }
+  }
+
+  /** Gets the median absolute deviation. */
+  def mad(m: Double = median()): Double = {
+    val deviations = new NumericCounter[Double]()
+    this.iterator.foreach { case (value, count) =>
+      val deviation = Math.abs(value.toDouble() - m)
+      deviations.count(deviation, count)
+    }
+    deviations.median()
   }
 
   /** Gets sum of values stored in this counter (sum over all (count * value)). */

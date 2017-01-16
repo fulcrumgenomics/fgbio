@@ -41,6 +41,7 @@ class NumericCounterTest extends UnitSpec {
     counter.stddev() shouldBe  2.875181 +- 0.0001
     counter.mode() shouldBe 1
     counter.median() shouldBe 4.5
+    counter.mad() shouldBe 2.5
     counter.totalMass shouldBe 46
   }
 
@@ -53,6 +54,7 @@ class NumericCounterTest extends UnitSpec {
     counter.stddev() shouldBe  0.2875181 +- 0.0001
     counter.mode() shouldBe 0.1
     counter.median() shouldBe 0.45
+    counter.mad() shouldBe 0.25 +- 0.0001
     counter.totalMass shouldBe 4.6
   }
 
@@ -62,6 +64,7 @@ class NumericCounterTest extends UnitSpec {
     counter.stddev() shouldBe 0.0
     counter.mode() shouldBe 0.0
     counter.median() shouldBe 0.0
+    counter.mad() shouldBe 0.0
     counter.totalMass shouldBe 0
   }
 
@@ -72,6 +75,7 @@ class NumericCounterTest extends UnitSpec {
     counter.stddev() shouldBe 0.0
     counter.mode() shouldBe 10.0
     counter.median() shouldBe 10.0
+    counter.mad() shouldBe 0.0
     counter.totalMass shouldBe 10.0
   }
 
@@ -83,6 +87,7 @@ class NumericCounterTest extends UnitSpec {
     counter.stddev() shouldBe 7.071 +- 0.0001
     counter.mode() shouldBe 10.0
     counter.median() shouldBe 15.0
+    counter.mad() shouldBe 5.0
     counter.totalMass shouldBe 30.0
   }
 
@@ -98,6 +103,15 @@ class NumericCounterTest extends UnitSpec {
     counter.stddev() shouldBe 5.656854 +- 0.00001
     counter.mode() shouldBe 1
     counter.median() shouldBe 5.0
+    counter.mad() shouldBe 4.0
     counter.totalMass shouldBe 10
+  }
+
+  it should "compute mean and standard deviation together and separately" in {
+    val counter = new NumericCounter[Int]()
+    Range(0, 100).foreach(counter.count)
+    val (mean, stddev) = counter.meanAndStddev()
+    mean shouldBe counter.mean()
+    stddev shouldBe counter.stddev(m=mean)
   }
 }
