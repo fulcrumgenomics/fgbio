@@ -26,14 +26,14 @@
 package com.fulcrumgenomics.umi
 
 import com.fulcrumgenomics.testing.{SamRecordSetBuilder, UnitSpec}
+import com.fulcrumgenomics.umi.UmiConsensusCaller.SourceRead
 import com.fulcrumgenomics.umi.VanillaUmiConsensusCallerOptions._
 import com.fulcrumgenomics.util.NumericTypes._
 import htsjdk.samtools.util.CloserUtil
-import htsjdk.samtools.{SAMFileHeader, SAMRecordSetBuilder, SAMUtils}
+import htsjdk.samtools.{SAMRecordSetBuilder, SAMUtils}
 import net.jafama.FastMath._
 
 import scala.collection.JavaConversions._
-import scala.collection.JavaConverters._
 
 /**
   * Tests for ConsensusCaller.
@@ -44,14 +44,14 @@ class VanillaUmiConsensusCallerTest extends UnitSpec {
 
   /** Helper function to make a consensus caller. */
   def cc(options: VanillaUmiConsensusCallerOptions = new VanillaUmiConsensusCallerOptions()) = {
-    new VanillaUmiConsensusCaller(Iterator.empty, new SAMFileHeader, options=options)
+    new VanillaUmiConsensusCaller(options=options, readNamePrefix="testconsensus")
   }
 
   /** Helper function to make a SourceRead. */
-  def src(bases: String, quals: TraversableOnce[Int]) = SourceRead(bases.getBytes(), quals.toArray.map(_.toByte))
+  def src(bases: String, quals: TraversableOnce[Int]) = SourceRead(id="x", bases.getBytes(), quals.toArray.map(_.toByte))
 
   /** Helper function to make a SourceRead from bases and Phred-33 ascii quals. */
-  def src(bases: String, quals: String) = SourceRead(bases.getBytes(), SAMUtils.fastqToPhred(quals))
+  def src(bases: String, quals: String) = SourceRead(id="x", bases.getBytes(), SAMUtils.fastqToPhred(quals))
 
   /**
     * Function to calculated the expected quality of a consensus base in non-log math, that should work for
@@ -158,7 +158,7 @@ class VanillaUmiConsensusCallerTest extends UnitSpec {
     val bases = "GATTACA"
     val quals         = Array(10, 10, 10, 10, 10, 10, 5)
     val expectedQuals = Array(10, 10, 10, 10, 10, 10, 2).map(_.toByte)
-    val caller    = cc(cco(errorRatePreUmi=PhredScore.MaxValue, minReads=1, minInputBaseQuality=2, minConsensusBaseQuality=10.toByte))
+    val caller    = cc(cco(errorRatePreUmi=PhredScore.MaxValue, minReads=1, minInputBaseQuality=2.toByte, minConsensusBaseQuality=10.toByte))
     val consensus = caller.consensusCall(Seq(src(bases, quals)))
     consensus shouldBe 'defined
     consensus.get.baseString shouldBe "GATTACN"
@@ -235,7 +235,9 @@ class VanillaUmiConsensusCallerTest extends UnitSpec {
   }
 
   it should "apply the minInputBaseQuality appropriately" in {
-    val sources    = Seq(src("GATTACA", Array.tabulate(7)(_ => 20)), src("GATTACA", Array.tabulate(7)(_ => 30)))
+    val builder = new SamRecordSetBuilder(readLength=7)
+    builder.addFrag(start=100, baseQuality=20).foreach(_.setReadString("GATTACA"))
+    builder.addFrag(start=100, baseQuality=30).foreach(_.setReadString("GATTACA"))
     val opts = cco(
       errorRatePreUmi             = PhredScore.MaxValue,
       errorRatePostUmi            = PhredScore.MaxValue,
@@ -244,14 +246,13 @@ class VanillaUmiConsensusCallerTest extends UnitSpec {
       minReads                    = 1
     )
 
-    cc(opts).consensusCall(sources) match {
+    cc(opts).consensusFromSamRecords(builder.toSeq) match {
       case None => fail
       case Some(consensus) =>
         consensus.baseString shouldBe "GATTACA"
         consensus.quals.foreach(q => q shouldBe 30.toByte)
     }
   }
-
 
   it should "should create two consensus for two UMI groups" in {
     val builder = new SAMRecordSetBuilder()
@@ -264,18 +265,12 @@ class VanillaUmiConsensusCallerTest extends UnitSpec {
       rec.setBaseQualityString(SAMUtils.phredToFastq(40).toString * rec.getReadLength)
     }
     val reader = builder.getSamReader
-    val consensusCaller = new VanillaUmiConsensusCaller(
-      input = reader.iterator().asScala,
-      header = reader.getFileHeader,
-      options = new VanillaUmiConsensusCallerOptions(
-        minReads         = 1,
-        errorRatePreUmi  = PhredScore.MaxValue,
-        errorRatePostUmi = PhredScore.MaxValue
-      )
-    )
-    consensusCaller.hasNext shouldBe true
-    val calls = consensusCaller.toList
-    consensusCaller.hasNext shouldBe false
+    val consensusCaller = cc(cco(minReads=1, errorRatePreUmi = PhredScore.MaxValue, errorRatePostUmi = PhredScore.MaxValue))
+    val iterator = new ConsensusCallingIterator(reader.toIterator, consensusCaller)
+
+    iterator.hasNext shouldBe true
+    val calls = iterator.toList
+    iterator.hasNext shouldBe false
     calls should have size 2
     CloserUtil.close(reader)
   }
@@ -290,18 +285,12 @@ class VanillaUmiConsensusCallerTest extends UnitSpec {
         rec.setBaseQualityString(SAMUtils.phredToFastq(40).toString * rec.getReadLength)
     }
     val reader = builder.getSamReader
-    val consensusCaller = new VanillaUmiConsensusCaller(
-      input = reader.iterator().asScala,
-      header = reader.getFileHeader,
-      options = new VanillaUmiConsensusCallerOptions(
-        minReads         = 1,
-        errorRatePreUmi  = PhredScore.MaxValue,
-        errorRatePostUmi = PhredScore.MaxValue
-      )
-    )
-    consensusCaller.hasNext shouldBe true
-    val calls = consensusCaller.toList
-    consensusCaller.hasNext shouldBe false
+    val consensusCaller = cc(cco(minReads = 1, errorRatePreUmi  = PhredScore.MaxValue, errorRatePostUmi = PhredScore.MaxValue))
+    val iterator = new ConsensusCallingIterator(reader.toIterator, consensusCaller)
+
+    iterator.hasNext shouldBe true
+    val calls = iterator.toList
+    iterator.hasNext shouldBe false
     calls should have size 2
     calls.foreach { rec =>
       rec.getReadPairedFlag shouldBe true
@@ -330,18 +319,12 @@ class VanillaUmiConsensusCallerTest extends UnitSpec {
         rec.setBaseQualityString(SAMUtils.phredToFastq(40).toString * rec.getReadLength)
     }
     val reader = builder.getSamReader
-    val consensusCaller = new VanillaUmiConsensusCaller(
-      input = reader.iterator().asScala,
-      header = reader.getFileHeader,
-      options = new VanillaUmiConsensusCallerOptions(
-        minReads         = 1,
-        errorRatePreUmi  = PhredScore.MaxValue,
-        errorRatePostUmi = PhredScore.MaxValue
-      )
-    )
-    consensusCaller.hasNext shouldBe true
-    val calls = consensusCaller.toList
-    consensusCaller.hasNext shouldBe false
+    val consensusCaller = cc(cco(minReads=1, errorRatePreUmi  = PhredScore.MaxValue, errorRatePostUmi = PhredScore.MaxValue))
+    val iterator = new ConsensusCallingIterator(reader.toIterator, consensusCaller)
+
+    iterator.hasNext shouldBe true
+    val calls = iterator.toList
+    iterator.hasNext shouldBe false
     calls should have size 4
     calls.foreach { rec =>
       rec.getReadPairedFlag shouldBe true
@@ -352,27 +335,6 @@ class VanillaUmiConsensusCallerTest extends UnitSpec {
     calls(2).getReadName shouldBe calls(3).getReadName
     calls(0).getReadName should not be calls(2).getReadName
     CloserUtil.close(reader)
-  }
-
-  it should "create a dummy read when not requiring pairs and one side has fewer reads for some reason" in {
-    val builder = new SamRecordSetBuilder(readLength=10, baseQuality=30)
-    builder.addPair("q1", start1=100, start2=200)
-    builder.addPair("q2", start1=100, start2=200)
-    builder.addPair("q3", start1=100, start2=200)
-    builder.foreach { rec =>
-      rec.setReadString("A" * rec.getReadLength)
-      rec.setAttribute("MI", "OneAndOnly")
-    }
-
-    // Create an iterator that will return all the R1s but only one of the R2s
-    val iterator = builder.iterator.filterNot(r => r.getSecondOfPairFlag && r.getReadName > "q1")
-    val caller = new VanillaUmiConsensusCaller(input=iterator, header=builder.header, options=cco(minReads=3, minInputBaseQuality=30.toByte, requireConsensusForBothPairs=false))
-    val recs = caller.toSeq
-    recs.size shouldBe 2
-    val r1 = recs.find(_.getFirstOfPairFlag).getOrElse(fail("There should be an R1 in the consensus reads."))
-    val r2 = recs.find(_.getSecondOfPairFlag).getOrElse(fail("There should be an R2 in the consensus reads."))
-    r1.getReadString shouldBe ("A" * 10)
-    r2.getReadString shouldBe ("N" * 10)
   }
 
   it should "generate accurate per-read and per-base tags on the consensus reads" in {
@@ -389,15 +351,11 @@ class VanillaUmiConsensusCallerTest extends UnitSpec {
       r.getBaseQualities()(7) = 5.toByte
     }
 
-    val consensusCaller = new VanillaUmiConsensusCaller(
-      input = builder.toIterator,
-      header = builder.header,
-      options = cco(minReads = 2, minInputBaseQuality = 20.toByte)
-    )
+    val consensusCaller = cc(cco(minReads = 2, minInputBaseQuality = 20.toByte))
+    val consensuses = consensusCaller.consensusReadsFromSamRecords(builder.toSeq)
+    consensuses.size shouldBe 1
 
-    consensusCaller.hasNext shouldBe true
-    val consensus = consensusCaller.next()
-    consensusCaller.hasNext shouldBe false
+    val consensus = consensuses.head
     consensus.getReadBases.foreach(_ shouldBe 'A'.toByte)
     consensus.getSignedShortArrayAttribute(ConsensusTags.PerBase.RawReadCount)  shouldBe Array[Short](4,4,4,4,4,4,4,3,4,4)
     consensus.getSignedShortArrayAttribute(ConsensusTags.PerBase.RawReadErrors) shouldBe Array[Short](0,0,0,0,0,1,0,0,0,0)
@@ -412,11 +370,11 @@ class VanillaUmiConsensusCallerTest extends UnitSpec {
     builder.addFrag("READ2", 0, 1, false).foreach(_.setAttribute(DefaultTag, "AAA"))
     builder.foreach { rec => rec.setReadString("A" * rec.getReadLength) }
 
-    val caller = new VanillaUmiConsensusCaller(input=builder.toIterator, header=builder.header, options=cco(producePerBaseTags=false))
+    val caller = cc(options=cco(producePerBaseTags=false))
+    val consensuses = caller.consensusReadsFromSamRecords(builder.toSeq)
+    consensuses.size shouldBe 1
 
-    caller.hasNext shouldBe true
-    val consensus = caller.next()
-    caller.hasNext shouldBe false
+    val consensus = consensuses.head
     consensus.getSignedShortArrayAttribute(ConsensusTags.PerBase.RawReadCount)  shouldBe null
     consensus.getSignedShortArrayAttribute(ConsensusTags.PerBase.RawReadErrors) shouldBe null
     consensus.getIntegerAttribute(ConsensusTags.PerRead.RawReadCount)     shouldBe 2
@@ -427,14 +385,14 @@ class VanillaUmiConsensusCallerTest extends UnitSpec {
   "VanillaUmiConsensusCaller.filterToMostCommonAlignment" should "return all reads when all cigars are 50M" in {
     val builder = new SamRecordSetBuilder(readLength=50)
     (1 to 10).foreach { i => builder.addFrag(start=100, cigar="50M") }
-    val recs = VanillaUmiConsensusCaller.filterToMostCommonAlignment(builder.toSeq)
+    val recs = cc().filterToMostCommonAlignment(builder.toSeq)
     recs should have size 10
   }
 
   it should "return all reads when all cigars are complicated but the same" in {
     val builder = new SamRecordSetBuilder(readLength=50)
     (1 to 10).foreach { i => builder.addFrag(start=100, cigar="10M5D10M5I20M5S") }
-    val recs = VanillaUmiConsensusCaller.filterToMostCommonAlignment(builder.toSeq)
+    val recs = cc().filterToMostCommonAlignment(builder.toSeq)
     recs should have size 10
   }
 
@@ -444,7 +402,7 @@ class VanillaUmiConsensusCallerTest extends UnitSpec {
     (1 to 10).foreach { i => builder.addFrag(start=100, cigar="50M") }
     (1 to  3).foreach { i => builder.addFrag(start=100, cigar="25M2I23M") }
 
-    val recs = VanillaUmiConsensusCaller.filterToMostCommonAlignment(builder.toSeq)
+    val recs = cc().filterToMostCommonAlignment(builder.toSeq)
     recs should have size 10
     recs.map(_.getCigarString).distinct shouldBe Seq("50M")
   }
@@ -462,7 +420,7 @@ class VanillaUmiConsensusCallerTest extends UnitSpec {
     (1 to  2).foreach { i => builder.addFrag(start=100, cigar="25M1I24M") }
     (1 to  2).foreach { i => builder.addFrag(start=100, cigar="20M1D5M1D25M") }
 
-    val recs = VanillaUmiConsensusCaller.filterToMostCommonAlignment(builder.toSeq)
+    val recs = cc().filterToMostCommonAlignment(builder.toSeq)
     recs should have size 11
     recs.map(_.getCigarString).distinct.sorted shouldBe Seq("25M1D25M", "5S20M1D25M", "5S20M1D20M5H", "25M1D20M5S").sorted
   }

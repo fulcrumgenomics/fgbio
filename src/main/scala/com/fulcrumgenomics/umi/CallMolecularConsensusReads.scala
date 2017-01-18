@@ -28,15 +28,16 @@ package com.fulcrumgenomics.umi
 import com.fulcrumgenomics.FgBioDef._
 import com.fulcrumgenomics.cmdline.{ClpGroups, FgBioTool}
 import com.fulcrumgenomics.umi.VanillaUmiConsensusCallerOptions._
+import com.fulcrumgenomics.util.NumericTypes.PhredScore
 import com.fulcrumgenomics.util.ProgressLogger
 import dagr.commons.io.Io
 import dagr.commons.util.{LazyLogging, LogLevel, Logger}
 import dagr.sopt._
 import dagr.sopt.cmdline.ValidationException
-import htsjdk.samtools.SAMFileHeader.{GroupOrder, SortOrder}
+import htsjdk.samtools.SAMFileHeader.SortOrder
 import htsjdk.samtools._
 
-import scala.collection.JavaConverters._
+import scala.collection.JavaConversions.iterableAsScalaIterable
 
 
 @clp(description =
@@ -73,13 +74,16 @@ import scala.collection.JavaConverters._
     |
     |Consensus reads have a number of additional optional tags set in the resulting BAM file.  The tags break down into
     |those that are single-valued per read:
-    |    * consensus depth     [cD] (int): the maximum depth of raw reads at any point in the consensus read
-    |    * consensus min depth [cM] (int): the minimum depth of raw reads at any point in the consensus read
-    |    * consensus errors    [cE] (int): the count of bases in raw reads disagreeing with the final consensus calls
-    |and those that have a value per base:
+    |    * consensus depth      [cD] (int): the maximum depth of raw reads at any point in the consensus read
+    |    * consensus min depth  [cM] (int): the minimum depth of raw reads at any point in the consensus read
+    |    * consensus error rate [cE] (float): the fraction of bases in raw reads disagreeing with the final consensus calls
+    |
+    |And those that have a value per base:
     |    * consensus depth  [cd] (short[]): the count of bases contributing to the consensus read at each position
     |    * consensus errors [ce] (short[]): the number of bases from raw reads disagreeing with the final consensus base
-    |The per base depths and errors are capped at 32,767.
+    |
+    |The per base depths and errors are both capped at 32,767. In all cases no-calls (Ns) and bases below the
+    |min-input-base-quality are not counted in tag value calculations.
   """,
   group = ClpGroups.Umi)
 class CallMolecularConsensusReads
@@ -95,7 +99,6 @@ class CallMolecularConsensusReads
  @arg(flag="N", doc="Mask (make 'N') consensus bases with quality less than this threshold.") val minConsensusBaseQuality: PhredScore = DefaultMinConsensusBaseQuality,
  @arg(flag="M", doc="The minimum number of reads to produce a consensus base.") val minReads: Int = DefaultMinReads,
  @arg(flag="B", doc="If true produce tags on consensus reads that contain per-base information.") val outputPerBaseTags: Boolean = DefaultProducePerBaseTags,
- @arg(flag="P", doc="Require a consensus call for both ends of a pair if true.") val requireConsensusForBothPairs: Boolean = DefaultRequireConsensusForBothPairs,
  @arg(flag="S", doc="The sort order of the output, if None then the same as the input.") val sortOrder: Option[SortOrder] = Some(SortOrder.queryname),
  @arg(flag="D", doc="Turn on debug logging.") val debug: Boolean = false
 ) extends FgBioTool with LazyLogging {
@@ -116,7 +119,8 @@ class CallMolecularConsensusReads
     val rej = rejects.map(r => new SAMFileWriterFactory().makeWriter(in.getFileHeader, true, r.toFile, null))
 
     // The output file is unmapped, so for now let's clear out the sequence dictionary & PGs
-    val out = new SAMFileWriterFactory().makeWriter(outputHeader(in.getFileHeader, sortOrder), sortOrder.forall(_ == in.getFileHeader.getSortOrder), output.toFile, null)
+    val outHeader = UmiConsensusCaller.outputHeader(in.getFileHeader, readGroupId, sortOrder)
+    val out = new SAMFileWriterFactory().makeWriter(outHeader, sortOrder.forall(_ == in.getFileHeader.getSortOrder), output.toFile, null)
 
     val options = new VanillaUmiConsensusCallerOptions(
       tag                          = tag,
@@ -125,53 +129,22 @@ class CallMolecularConsensusReads
       minInputBaseQuality          = minInputBaseQuality,
       minConsensusBaseQuality      = minConsensusBaseQuality,
       minReads                     = minReads,
-      producePerBaseTags           = outputPerBaseTags,
-      requireConsensusForBothPairs = requireConsensusForBothPairs
+      producePerBaseTags           = outputPerBaseTags
     )
 
-    val progress = new ProgressLogger(logger, unit=5e5.toInt)
-    val consensusCaller = new VanillaUmiConsensusCaller(
-      input          = in.iterator().asScala,
-      header         = in.getFileHeader,
-      readNamePrefix = readNamePrefix,
+    val caller = new VanillaUmiConsensusCaller(
+      readNamePrefix = readNamePrefix.getOrElse(UmiConsensusCaller.makePrefixFromSamHeader(in.getFileHeader)),
       readGroupId    = readGroupId,
       options        = options,
-      rejects        = rej,
-      progress       = Some(progress)
+      rejects        = rej
     )
 
-    consensusCaller.foreach { rec => out.addAlignment(rec) }
+    val iterator = new ConsensusCallingIterator(in.toIterator, caller, Some(new ProgressLogger(logger, unit=5e5.toInt)))
+    iterator.foreach { rec => out.addAlignment(rec) }
 
     in.safelyClose()
     out.close()
     rej.foreach(_.close())
-
-    logger.info(f"Total Raw Reads Considered: ${consensusCaller.totalReads}%,d.")
-    logger.info(f"Raw Reads Filtered Due Tag Family Min Size: ${consensusCaller.readsFilteredForMinReads}%,d.")
-    logger.info(f"Raw Reads Filtered Due to Mismatching Alignments: ${consensusCaller.readsFilteredMinorityAlignment}%,d.")
-  }
-
-  /** Constructs an output header with a single read group for the consensus BAM. */
-  private def outputHeader(in: SAMFileHeader, sortOrder: Option[SortOrder] = None): SAMFileHeader = {
-    val oldRgs = in.getReadGroups.asScala
-    def collapse(f: SAMReadGroupRecord => String): String = oldRgs.map(f).filter(_ != null).toSet.toList match {
-      case Nil      => null
-      case x :: Nil => x
-      case xs       => xs.mkString(",")
-    }
-
-    val rg = new SAMReadGroupRecord(readGroupId)
-    rg.setDescription(s"Consensus reads generated from ${oldRgs.size} input read groups.")
-    rg.setLibrary         (collapse(_.getLibrary))
-    rg.setSample          (collapse(_.getSample))
-    rg.setPlatform        (collapse(_.getPlatform))
-    rg.setPlatformUnit    (collapse(_.getPlatformUnit))
-    rg.setSequencingCenter(collapse(_.getSequencingCenter))
-
-    val outHeader = new SAMFileHeader
-    outHeader.addReadGroup(rg)
-    outHeader.setSortOrder(sortOrder.getOrElse(SortOrder.unsorted))
-    outHeader.setGroupOrder(GroupOrder.query)
-    outHeader
+    caller.logStatistics(logger)
   }
 }

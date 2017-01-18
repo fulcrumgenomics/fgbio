@@ -62,7 +62,7 @@ class SamRecordSetBuilder(val readLength: Int=100,
 
   private val counter = new AtomicLong(0)
   private val format  = new DecimalFormat("0000")
-  private def nextName = format.format(counter.getAndIncrement())
+  protected def nextName = format.format(counter.getAndIncrement())
 
   /** Adds a pair of reads to the file. */
   def addPair(name: String = nextName,

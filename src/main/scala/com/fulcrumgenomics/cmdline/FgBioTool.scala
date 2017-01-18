@@ -41,4 +41,7 @@ trait FgBioTool {
 
   /** Generates a new validation exception with the given message. */
   def invalid(message: String) = throw new ValidationException(message)
+
+  /** Generates a validation exception if the test value is false. */
+  def validate(test: Boolean, message: => String) = if (!test) throw new ValidationException(message)
 }

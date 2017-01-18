@@ -57,6 +57,9 @@ case class Template(r1: Option[SAMRecord],
   def allSupplementaryAndSecondary: Iterator[SAMRecord] =
     r1Supplementals.iterator ++ r2Supplementals.iterator ++ r1Secondaries.iterator ++ r2Secondaries.iterator
 
+  /** Returns an iterator of all reads for the template. */
+  def allReads: Iterator[SAMRecord] = r1.iterator ++ r2.iterator ++ allSupplementaryAndSecondary
+
   /** The total count of records for the template. */
   lazy val readCount: Int = r1.size + r2.size + r1Supplementals.size + r2Supplementals.size + r1Secondaries.size + r2Secondaries.size
 }

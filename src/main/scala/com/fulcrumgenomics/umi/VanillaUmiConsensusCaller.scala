@@ -25,36 +25,28 @@
 
 package com.fulcrumgenomics.umi
 
-import java.util
-
-import com.fulcrumgenomics.FgBioDef._
 import com.fulcrumgenomics.umi.ConsensusCaller.Base
+import com.fulcrumgenomics.umi.UmiConsensusCaller.ReadType._
+import com.fulcrumgenomics.umi.UmiConsensusCaller._
 import com.fulcrumgenomics.umi.VanillaUmiConsensusCallerOptions._
 import com.fulcrumgenomics.util.NumericTypes._
-import com.fulcrumgenomics.util.{MathUtil, ProgressLogger}
 import dagr.commons.util.LazyLogging
 import htsjdk.samtools._
-import htsjdk.samtools.util.{Murmur3, SequenceUtil}
 
-import scala.collection.JavaConversions.collectionAsScalaIterable
-import scala.collection.mutable
 import scala.collection.mutable.ListBuffer
 
 /**
   * Holds the defaults for consensus caller options.
   */
 object VanillaUmiConsensusCallerOptions {
-  type PhredScore = Byte
-
   /** Various default values for the consensus caller. */
-  val DefaultTag: String                             = "MI"
-  val DefaultErrorRatePreUmi: PhredScore             = 45.toByte
-  val DefaultErrorRatePostUmi: PhredScore            = 40.toByte
-  val DefaultMinInputBaseQuality: PhredScore         = 10.toByte
-  val DefaultMinConsensusBaseQuality: PhredScore     = 40.toByte
-  val DefaultMinReads: Int                           = 2
-  val DefaultRequireConsensusForBothPairs: Boolean   = true
-  val DefaultProducePerBaseTags: Boolean             = true
+  val DefaultTag: String                         = ConsensusTags.MolecularId
+  val DefaultErrorRatePreUmi: PhredScore         = 45.toByte
+  val DefaultErrorRatePostUmi: PhredScore        = 40.toByte
+  val DefaultMinInputBaseQuality: PhredScore     = 10.toByte
+  val DefaultMinConsensusBaseQuality: PhredScore = 40.toByte
+  val DefaultMinReads: Int                       = 2
+  val DefaultProducePerBaseTags: Boolean         = true
 }
 
 /**
@@ -62,57 +54,15 @@ object VanillaUmiConsensusCallerOptions {
   */
 case class VanillaUmiConsensusCallerOptions
 (
-  tag: String                             = DefaultTag,
-  errorRatePreUmi: PhredScore             = DefaultErrorRatePreUmi,
-  errorRatePostUmi: PhredScore            = DefaultErrorRatePostUmi,
-  minInputBaseQuality: PhredScore         = DefaultMinInputBaseQuality,
-  minConsensusBaseQuality: PhredScore     = DefaultMinConsensusBaseQuality,
-  minReads: Int                           = DefaultMinReads,
-  requireConsensusForBothPairs: Boolean   = DefaultRequireConsensusForBothPairs,
-  producePerBaseTags: Boolean             = DefaultProducePerBaseTags
+  tag: String                         = DefaultTag,
+  errorRatePreUmi: PhredScore         = DefaultErrorRatePreUmi,
+  errorRatePostUmi: PhredScore        = DefaultErrorRatePostUmi,
+  minInputBaseQuality: PhredScore     = DefaultMinInputBaseQuality,
+  minConsensusBaseQuality: PhredScore = DefaultMinConsensusBaseQuality,
+  minReads: Int                       = DefaultMinReads,
+  producePerBaseTags: Boolean         = DefaultProducePerBaseTags
 )
 
-/**
-  * Object that encapsulates the various consensus related tags that are added to consensus reads
-  * at both the per-read and per-base level.
-  *
-  * Currently only contains tags for single-strand consensus reads, but with a view to using the following
-  * names for consistency if/when we add duplex calling:
-  *     Value                 AB  BA  Final
-  *     ===================== ==  ==  =====
-  *     bases                 ac  bc  bases
-  *     quals                 aq  bq  quals
-  *     per-read-depth        aD  bD  cD
-  *     per-read-min-depth    aM  bM  cM
-  *     per-read-error-count  aE  bE  cE
-  *     per-base-depth        ad  bd  cd
-  *     per-base-error-count  ae  be  ce
-  */
-object ConsensusTags {
-  object PerBase {
-    /** The per-base number of raw-reads contributing to the consensus (stored as a short[]). */
-    val RawReadCount    = "cd" // consensus depth
-    /** The number of bases at each position that disagreed with the final consensus call (stored as a short[]). */
-    val RawReadErrors   = "ce" // consensus errors
-  }
-
-  object PerRead {
-    /** The number of raw reads that contributed to the consensus. I.e. the maximum of the per-base raw-read counts. */
-    val RawReadCount    = "cD" // consensus Depth
-    /** The minimum number of raw reads contributing to a consensus call anywhere in the read. */
-    val MinRawReadCount = "cM" // consensus Min-depth
-    /** The number of bases in the raw reads that contributed to the consensus but disagreed with the consensus call. */
-    val RawReadErrorRate   = "cE" // consensus Error rate
-  }
-}
-
-/**
-  * Stores information about a read to be fed into a consensus.
-  */
-case class SourceRead(bases: Array[Byte], quals: Array[Byte]) {
-  require(bases.length == quals.length, "Bases and qualities are not the same length.")
-  def length: Int = bases.length
-}
 
 /**
   * Stores information about a consensus read.  All four arrays are of equal length.
@@ -125,70 +75,17 @@ case class SourceRead(bases: Array[Byte], quals: Array[Byte]) {
   * @param depths the number of raw reads that contributed to the consensus call at each position
   * @param errors the number of contributing raw reads that disagree with the final consensus base at each position
   */
-case class ConsensusRead(bases: Array[Byte],
-                         quals: Array[Byte],
-                         depths: Array[Short],
-                         errors: Array[Short]
-                        ) {
+case class VanillaConsensusRead(id: String, bases: Array[Byte], quals: Array[Byte], depths: Array[Short], errors: Array[Short]) extends SimpleRead {
   require(bases.length == quals.length,  "Bases and qualities are not the same length.")
   require(bases.length == depths.length, "Bases and depths are not the same length.")
   require(bases.length == errors.length, "Bases and errors are not the same length.")
 
-  val meanQuality: Byte = MathUtil.mean(quals)
-
-  def length: Int = bases.length
-
-  /** Returns the consensus read a String - mostly useful for testing. */
-  def baseString = new String(bases)
-}
-
-object VanillaUmiConsensusCaller {
-  /**
-    * Takes in a seq of SAMRecords and filters them such that the returned seq only contains
-    * those reads that share the most common alignment of the read sequence to the reference.
-    * If two or more different alignments share equal numbers of reads, the 'most common' will
-    * be an arbitrary pick amongst those alignments, and the group of reads with that alignment will
-    * be returned.
-    *
-    * For the purposes of this method all that is implied by "same alignment" is that any
-    * insertions or deletions are at the same position and of the same length.  This is done
-    * to allow for differential read length (either due to sequencing or untracked hard-clipping
-    * of adapters) and for differential soft-clipping at the starts and ends of reads.
-    */
-  def filterToMostCommonAlignment(recs: Seq[SAMRecord]): Seq[SAMRecord] = {
-    val groups = recs.groupBy { r =>
-      val builder = new mutable.StringBuilder
-      val elems = r.getCigar.getCigarElements.iterator().bufferBetter
-
-      // This loop constructs a pseudo-cigar for each read.  The result is a string that contains, for each indel
-      // operator in the reads's cigar, the number of non-indel bases in the read since the start/last indel, then
-      // the length of the indel.  E.g.:
-      //     50M         => <empty> because there are no indels!
-      //     10M2D10M    => 10M2D   because we don't care about anything after the last indel
-      //     5H5S5M1I40M => 15M1I   because all the leading stuff gets collapsed
-      while (elems.nonEmpty) {
-        // Consume and merge all non-indel operators (clip, match/mismatch) at the head of the
-        // iterator since we only care where the indels occur relative to the read
-        val len = elems.takeWhile(e => !e.getOperator.isIndelOrSkippedRegion).map(_.getLength).sum
-
-        // Now the iterator is either at the end of the read, in which case we don't need to do anything,
-        // or it is before an I or D cigar entry, so we should output how much read it took to get here
-        // followed by the I or D element
-        if (elems.nonEmpty) {
-          val indel = elems.next()
-          if (len > 0) builder.append(len).append("M")
-          builder.append(indel.toString)
-        }
-      }
-
-      builder.toString()
-    }
-
-    val max = groups.values.map(_.size).max
-    groups.values.find(_.size == max).getOrElse(unreachable("At least one group must have the max size!"))
+  /** Truncates the read to the given length. If len > current length, the read is returned at current length. */
+  def truncate(len: Int): VanillaConsensusRead = {
+    if (len >= this.length) this
+    else this.copy(bases=bases.take(len), quals=quals.take(len), depths=depths.take(len), errors=errors.take(len))
   }
 }
-
 
 /** Calls consensus reads by grouping consecutive reads with the same SAM tag.
   *
@@ -197,69 +94,54 @@ object VanillaUmiConsensusCaller {
   * for a given partition may not be returned if any of the conditions are not met (ex. minimum
   * number of reads, minimum mean consensus base quality, ...).
   * */
-class VanillaUmiConsensusCaller
-(input: Iterator[SAMRecord],
- val header: SAMFileHeader,
- val readNamePrefix: Option[String]   = None,
- val readGroupId: String              = "A",
- val options: VanillaUmiConsensusCallerOptions  = new VanillaUmiConsensusCallerOptions(),
- val rejects: Option[SAMFileWriter]   = None,
- val progress: Option[ProgressLogger] = None
-) extends Iterator[SAMRecord] with LazyLogging {
-  /** The type of consensus read to output. */
-  private object ReadType extends Enumeration {
-    val Fragment, FirstOfPair, SecondOfPair = Value
-  }
-  import ReadType._
+class VanillaUmiConsensusCaller(override val readNamePrefix: String,
+                                override val readGroupId: String = "A",
+                                val options: VanillaUmiConsensusCallerOptions = new VanillaUmiConsensusCallerOptions(),
+                                val rejects: Option[SAMFileWriter] = None
+                               ) extends UmiConsensusCaller[VanillaConsensusRead] with LazyLogging {
 
   private val DnaBasesUpperCase: Array[Byte] = Array('A', 'C', 'G', 'T').map(_.toByte)
   private val LogThree = LogProbability.toLogProbability(3.0)
   private val caller = new ConsensusCaller(errorRatePreLabeling  = options.errorRatePreUmi,
                                            errorRatePostLabeling = options.errorRatePostUmi)
 
-  private val iter = input.buffered
-  private val nextConsensusRecords: mutable.Queue[SAMRecord] = mutable.Queue[SAMRecord]() // one per UMI group
-  private var readIdx = 1
-
-  private val NoCall: Base = 'N'.toByte
   private val NotEnoughReadsQual: PhredScore = 0.toByte // Score output when masking to N due to insufficient input reads
   private val TooLowQualityQual: PhredScore = 2.toByte  // Score output when masking to N due to too low consensus quality
 
-  // var to track how many reads meet various fates
-  private var _totalReads: Long = 0
-  private var _filteredForMinReads: Long = 0
-  private var _filteredForMinorityAlignment: Long = 0
+  /** Returns the value of the SAM tag directly. */
+  override def sourceMoleculeId(rec: SAMRecord): String = rec.getStringAttribute(this.options.tag)
 
-  // Initializes the prefix that will be used to make sure read names are (hopefully) unique
-  private val actualReadNamePrefix = readNamePrefix.getOrElse {
-    val ids = header.getReadGroups.map(rg => Option(rg.getLibrary).getOrElse(rg.getReadGroupId)).toList.sorted.distinct
-    // Read names have to fit into 255 bytes, and this is just the prefix
-    if (ids.map(_.length+1).sum <= 200) ids.mkString("|")
-    else Integer.toHexString(new Murmur3(1).hashUnencodedChars(ids.mkString("|")))
+  /** Takes in all the SAMRecords for a single source molecule and produces consensus records. */
+  override protected def consensusSamRecordsFromSamRecords(recs: Seq[SAMRecord]): Seq[SAMRecord] = {
+    // partition the records to which end of a pair it belongs, or if it is a fragment read.
+    val (fragments, firstOfPair, secondOfPair) = subGroupRecords(recs)
+    val buffer = new ListBuffer[SAMRecord]()
+
+    // fragment
+    consensusFromSamRecords(records=fragments) match {
+      case None       =>  rejectRecords(fragments);
+      case Some(frag) =>  buffer += createSamRecord(read=frag, readType=Fragment)
+    }
+
+    // pairs
+    (consensusFromSamRecords(firstOfPair), consensusFromSamRecords(secondOfPair)) match {
+      case (Some(r1), Some(r2)) =>
+        buffer += createSamRecord(r1, FirstOfPair)
+        buffer += createSamRecord(r2, SecondOfPair)
+      case _ =>
+        rejectRecords(firstOfPair ++ secondOfPair)
+    }
+
+    buffer
   }
 
-  /** Returns the total number of input reads examined by the consensus caller so far. */
-  def totalReads: Long = _totalReads
-
-  /** Returns the number of raw reads filtered out due to the minReads threshold not being met. */
-  def readsFilteredForMinReads: Long = _filteredForMinReads
-
-  /** Returns the number of raw reads filtered out because their alignment disagreed with the majority alignment of
-    * all raw reads for the same source molecule
-    */
-  def readsFilteredMinorityAlignment: Long = _filteredForMinorityAlignment
-
   /** Creates a consensus read from the given records.  If no consensus read was created, None is returned. */
-  def consensusFromSamRecords(records: Seq[SAMRecord]): Option[ConsensusRead] = {
-    this._totalReads += records.size
-
+  protected[umi] def consensusFromSamRecords(records: Seq[SAMRecord]): Option[VanillaConsensusRead] = {
     if (records.size < this.options.minReads) {
-      this._filteredForMinReads += records.size
       None
     }
     else {
-      val filteredRecords = VanillaUmiConsensusCaller.filterToMostCommonAlignment(records)
-      this._filteredForMinorityAlignment += (records.size - filteredRecords.size)
+      val filteredRecords = filterToMostCommonAlignment(records)
 
       if (filteredRecords.size < records.size) {
         val r = records.head
@@ -269,36 +151,24 @@ class VanillaUmiConsensusCaller
         logger.debug("Discarded ", discards, "/", records.size, " records due to mismatched alignments for ", m, n)
       }
 
-      val sourceReads = filteredRecords.map { rec =>
-        if (rec.getReadNegativeStrandFlag) {
-          val newBases = rec.getReadBases.clone()
-          val newQuals = rec.getBaseQualities.clone()
-          SequenceUtil.reverseComplement(newBases)
-          SequenceUtil.reverse(newQuals, 0, newQuals.length)
-          SourceRead(newBases, newQuals)
-        }
-        else {
-          SourceRead(rec.getReadBases.array, rec.getBaseQualities.array)
-        }
-      }
-
-      consensusCall(sourceReads)
+      if (filteredRecords.size < this.options.minReads) None
+      else consensusCall(filteredRecords.map(r => toSourceRead(r, this.options.minInputBaseQuality)))
     }
   }
 
-  /** Creates a consensus read from the given read and qualities sequences.  If no consensus read was created, None
-    * is returned.
+  /** Creates a consensus read from the given read and qualities sequences.
+    * If no consensus read was created, None is returned.
     *
     * The same number of base sequences and quality sequences should be given.
     * */
-  private[umi] def consensusCall(reads: Seq[SourceRead]): Option[ConsensusRead] = {
+  private[umi] def consensusCall(reads: Seq[SourceRead]): Option[VanillaConsensusRead] = {
     // check to see if we have enough reads.
     if (reads.size < this.options.minReads) {
       None
     }
     else {
       // get the most likely consensus bases and qualities
-      val consensusLength = consensusReadLength(reads)
+      val consensusLength = consensusReadLength(reads, this.options.minReads)
       val consensusBases  = new Array[Base](consensusLength)
       val consensusQuals  = new Array[PhredScore](consensusLength)
       val consensusDepths = new Array[Short](consensusLength)
@@ -312,9 +182,7 @@ class VanillaUmiConsensusCaller
           if (read.length > positionInRead) {
             val base = read.bases(positionInRead)
             val qual = read.quals(positionInRead)
-            if (qual >= this.options.minInputBaseQuality) {
-              builder.add(base=base, qual=qual)
-            }
+            if (base != NoCall) builder.add(base=base, qual=qual)
           }
         }
 
@@ -344,186 +212,41 @@ class VanillaUmiConsensusCaller
         positionInRead += 1
       }
 
-      Some(ConsensusRead(bases=consensusBases, quals=consensusQuals, depths=consensusDepths, errors=consensusErrors))
+      Some(VanillaConsensusRead(id=reads.head.id, bases=consensusBases, quals=consensusQuals, depths=consensusDepths, errors=consensusErrors))
     }
   }
 
   /**
     * Calculates the length of the consensus read that should be produced. The length is calculated
-    * as the maximum length at which #options.minReads reads still have bases.
+    * as the maximum length at which minReads reads still have bases.
     *
     * @param reads the set of reads being fed into the consensus
+    * @param minReads the minimum number of reads required
     * @return the length of consensus read that should be created
     */
-  private def consensusReadLength(reads: Seq[SourceRead]): Int = {
-    val n = this.options.minReads
-    if (reads.length < n) throw new IllegalArgumentException("Too few reads to create a consensus.")
-
-    reads.map(_.length).sortBy(len => -len).drop(n-1).head
+  protected def consensusReadLength(reads: Seq[SourceRead], minReads: Int): Int = {
+    require(reads.size >= minReads, "Too few reads to create a consensus.")
+    reads.map(_.length).sortBy(len => -len).drop(minReads-1).head
   }
 
-  /** True if there are more consensus reads, false otherwise. */
-  def hasNext(): Boolean = this.nextConsensusRecords.nonEmpty || (this.iter.nonEmpty && advance())
-
-  /** Returns the next consensus read. */
-  def next(): SAMRecord = {
-    if (!this.hasNext()) throw new NoSuchElementException("Calling next() when hasNext() is false.")
-    this.nextConsensusRecords.dequeue()
-  }
-
-  /** Consumes records until a consensus read can be created, or no more input records are available. Returns
-    * true if a consensus read was created, false otherwise. */
-  @annotation.tailrec
-  private def advance(): Boolean = {
-    // get the records to create the consensus read
-    val buffer = nextGroupOfRecords()
-
-    // partition the records to which end of a pair it belongs, or if it is a fragment read.
-    val (fragments, firstOfPair, secondOfPair) = subGroupRecords(records = buffer)
-
-    // track if we are successful creating any consensus reads
-    var success = false
-
-    // fragment
-    consensusFromSamRecords(records=fragments) match {
-      case None       => // reject
-        rejectRecords(records=fragments);
-      case Some(frag) => // output
-        createAndEnqueueSamRecord(records=fragments, read=frag, readName=nextReadName(fragments), readType=Fragment)
-        success = true
-    }
-
-    // pairs
-    val needBothPairs = options.requireConsensusForBothPairs // for readability later
-    val firstOfPairConsensus  = consensusFromSamRecords(records=firstOfPair)
-    val secondOfPairConsensus = consensusFromSamRecords(records=secondOfPair)
-    (firstOfPairConsensus, secondOfPairConsensus) match {
-      case (None, None)                                       => // reject
-        rejectRecords(records=firstOfPair ++ secondOfPair)
-      case (Some(_), None) | (None, Some(_)) if needBothPairs => // reject
-        rejectRecords(records=firstOfPair ++ secondOfPair)
-      case (firstRead, secondRead)                            => // output
-        createAndEnqueueSamRecordPair(firstRecords=firstOfPair, firstRead=firstRead, secondRecords=secondOfPair, secondRead=secondRead)
-        success = true
-    }
-
-    if (success) true // consensus created
-    else if (this.iter.isEmpty) false // no more records, don't try again
-    else this.advance() // no consensus, but more records, try again
-  }
-
-  private def rejectRecords(records: Seq[SAMRecord]): Unit = this.rejects.foreach(rej => records.foreach(rej.addAlignment))
-
-  /** Adds a SAM record from the underlying iterator to the buffer if either the buffer is empty or the SAM tag is
-    * the same for the records in the buffer as the next record in the input iterator.  Returns true if a record was
-    * added, false otherwise.
-    */
-  private def nextGroupOfRecords(): List[SAMRecord] = {
-    if (this.iter.isEmpty) Nil
-    else {
-      val tagToMatch = this.iter.head.getStringAttribute(options.tag)
-      val buffer = ListBuffer[SAMRecord]()
-      while (this.iter.hasNext && this.iter.head.getStringAttribute(options.tag) == tagToMatch) {
-        val rec = this.iter.next()
-        buffer += rec
-      }
-      progress.map(_.record(buffer:_*))
-      buffer.toList
-    }
-  }
-
-  /** Split records into those that should make a single-end consensus read, first of pair consensus read,
-    * and second of pair consensus read, respectively.  The default method is to use the SAM flag to find
-    * unpaired reads, first of pair reads, and second of pair reads.
-    */
-  protected def subGroupRecords(records: Seq[SAMRecord]): (Seq[SAMRecord], Seq[SAMRecord],Seq[SAMRecord]) = {
-    val fragments    = records.filter { rec => !rec.getReadPairedFlag }
-    val firstOfPair  = records.filter { rec => rec.getReadPairedFlag && rec.getFirstOfPairFlag }
-    val secondOfPair = records.filter { rec => rec.getReadPairedFlag && rec.getSecondOfPairFlag }
-    (fragments, firstOfPair, secondOfPair)
-  }
-
-  /** Returns the next read name with format "<prefix>:<idx>", where "<prefix>" is either the supplied prefix or a
-    * prefix composed by concatenating information from the input read groups.
-    */
-  private def nextReadName(records: Seq[SAMRecord]): String = {
-    if (records.isEmpty) unreachable("Can't generate a consensus read name for zero input reads.")
-    else this.actualReadNamePrefix + ":" + records.head.getStringAttribute(this.options.tag)
-  }
-
-  /** Creates a `SAMRecord` for both ends of a pair.  If a consensus read is not given for one end of a pair, a dummy
-    * record is created.  At least one consensus read must be given.
-    */
-  private def createAndEnqueueSamRecordPair(firstRecords: Seq[SAMRecord],
-                                            firstRead: Option[ConsensusRead],
-                                            secondRecords: Seq[SAMRecord],
-                                            secondRead: Option[ConsensusRead]): Unit = {
-    if (firstRead.isEmpty && secondRead.isEmpty) throw new IllegalArgumentException("Both consensus reads were empty.")
-    val readName = nextReadName(firstRecords++secondRecords)
-    // first end
-    createAndEnqueueSamRecord(
-      records  = firstRecords,
-      read     = firstRead.getOrElse(dummyConsensusRead(secondRead.get)),
-      readName = readName,
-      readType = FirstOfPair
-    )
-    // second end
-    createAndEnqueueSamRecord(
-      records  = secondRecords,
-      read     = secondRead.getOrElse(dummyConsensusRead(firstRead.get)),
-      readName = readName,
-      readType = SecondOfPair
-    )
+  /** If a reject writer was provided, emit the reads to that writer. */
+  override protected def rejectRecords(recs: Traversable[SAMRecord]): Unit = {
+    super.rejectRecords(recs)
+    this.rejects.foreach(rej => recs.foreach(rej.addAlignment))
   }
 
   /** Creates a `SAMRecord` from the called consensus base and qualities. */
-  private def createAndEnqueueSamRecord(records: Seq[SAMRecord],
-                                        read: ConsensusRead,
-                                        readName: String,
-                                        readType: ReadType.Value): Unit = {
-    if (records.isEmpty) return
-    val rec = new SAMRecord(header)
-    rec.setReadName(readName)
-    rec.setReadUnmappedFlag(true)
-    readType match {
-      case Fragment     => // do nothing
-      case FirstOfPair  =>
-        rec.setReadPairedFlag(true)
-        rec.setFirstOfPairFlag(true)
-        rec.setMateUnmappedFlag(true)
-      case SecondOfPair =>
-        rec.setReadPairedFlag(true)
-        rec.setSecondOfPairFlag(true)
-        rec.setMateUnmappedFlag(true)
-    }
-    rec.setReadBases(read.bases)
-    rec.setBaseQualities(read.quals)
-    rec.setAttribute(SAMTag.RG.name(), readGroupId)
-    rec.setAttribute(options.tag, records.head.getStringAttribute(options.tag))
-
+  override protected def createSamRecord(read: VanillaConsensusRead, readType: ReadType): SAMRecord = {
+    val rec = super.createSamRecord(read, readType)
     // Set some additional information tags on the read
     rec.setAttribute(ConsensusTags.PerRead.RawReadCount,     read.depths.max.toInt)
     rec.setAttribute(ConsensusTags.PerRead.MinRawReadCount,  read.depths.min.toInt)
-    rec.setAttribute(ConsensusTags.PerRead.RawReadErrorRate, read.errors.sum / read.depths.sum.toFloat)
+    rec.setAttribute(ConsensusTags.PerRead.RawReadErrorRate, sum(read.errors) / sum(read.depths).toFloat)
     if (this.options.producePerBaseTags) {
       rec.setAttribute(ConsensusTags.PerBase.RawReadCount,  read.depths)
       rec.setAttribute(ConsensusTags.PerBase.RawReadErrors, read.errors)
     }
 
-    // enqueue the record
-    this.nextConsensusRecords.enqueue(rec)
-  }
-
-  /** Creates a dummy consensus read.  The read and quality strings will have the same length as the source, with
-    * the read string being all Ns, and the quality string having zero base qualities. */
-  private def dummyConsensusRead(source: ConsensusRead): ConsensusRead = {
-    val len    = source.bases.length
-    val bases  = new Array[Byte](len)
-    val quals  = new Array[Byte](len)
-    val zeros  = new Array[Short](len)
-    util.Arrays.fill(bases, NoCall)
-    util.Arrays.fill(quals, PhredScore.MinValue)
-    util.Arrays.fill(zeros, 0.toShort)
-    ConsensusRead(bases=bases, quals=quals, depths=zeros, errors=zeros)
+    rec
   }
 }

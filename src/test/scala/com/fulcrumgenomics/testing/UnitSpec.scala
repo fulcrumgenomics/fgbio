@@ -26,11 +26,17 @@ package com.fulcrumgenomics.testing
 import java.nio.file.{Files, Path}
 
 import com.fulcrumgenomics.FgBioDef._
+import com.fulcrumgenomics.cmdline.FgBioTool
+import dagr.commons.reflect.ReflectionUtil
 import dagr.commons.util.{LogLevel, Logger}
+import dagr.sopt.cmdline.CommandLineProgramParser
+import dagr.sopt.util.ParsingUtil
 import htsjdk.samtools.{SAMRecord, SamReaderFactory}
 import org.scalatest.{BeforeAndAfterAll, FlatSpec, Matchers}
 
 import scala.collection.JavaConversions.asScalaIterator
+import scala.reflect.ClassTag
+import scala.reflect.runtime.universe._
 
 /** Base class for unit and integration testing */
 trait UnitSpec extends FlatSpec with Matchers {
@@ -48,6 +54,15 @@ trait UnitSpec extends FlatSpec with Matchers {
   protected def readBamRecs(bam: PathToBam): IndexedSeq[SAMRecord] = {
     val in = SamReaderFactory.make().open(bam.toFile)
     yieldAndThen(in.iterator().toIndexedSeq) { in.safelyClose() }
+  }
+
+  /** Generates a command line parser for a class to check that the argument annotations are valid. */
+  protected def checkClpAnnotations[T <: FgBioTool](implicit ct: ClassTag[T], tt: TypeTag[T]): Unit = {
+    val cl   = ReflectionUtil.typeTagToClass[T]
+    val name = cl.getName
+
+    ParsingUtil.findClpAnnotation(cl).getOrElse(fail(s"${name} is missing the clp annotation."))
+    new CommandLineProgramParser(cl)
   }
 }
 
