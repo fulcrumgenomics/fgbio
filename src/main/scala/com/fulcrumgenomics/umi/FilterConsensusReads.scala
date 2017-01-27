@@ -114,6 +114,7 @@ class FilterConsensusReads
 
   private val NoCall     = 'N'.toByte
   private val NoCallQual = PhredScore.MinValue
+  private val MaxRecordsInMemoryWhenSorting = 250e3.toInt
 
   // Filtering objects that are used for the main read values, and if it's a duplex, for the two
   // single strand consensus reads.  Rules are as follows:
@@ -160,12 +161,12 @@ class FilterConsensusReads
     val in        = SamReaderFactory.make().open(input)
     val header    = in.getFileHeader.clone()
     header.setSortOrder(SortOrder.coordinate)
-    val sorter    = Bams.sortingCollection(SortOrder.coordinate, header)
+    val sorter    = Bams.sortingCollection(SortOrder.coordinate, header, maxInMemory=MaxRecordsInMemoryWhenSorting)
     val out       = new SAMFileWriterFactory().setCreateIndex(true).makeWriter(header, true, output.toFile, null)
     val progress1 = new ProgressLogger(logger, verb="Filtered and masked")
 
     // Go through the reads by template and do the filtering
-    val templateIterator = Bams.templateIterator(in)
+    val templateIterator = Bams.templateIterator(in, maxInMemory=MaxRecordsInMemoryWhenSorting)
     logger.info("Filtering reads.")
     templateIterator.foreach { template =>
       val r1 = template.r1.getOrElse(throw new IllegalStateException(s"${template.name} had no R1."))
