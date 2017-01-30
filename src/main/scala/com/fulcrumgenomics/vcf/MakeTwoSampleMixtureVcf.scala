@@ -25,21 +25,17 @@
 package com.fulcrumgenomics.vcf
 
 import java.util
-import java.util.Collections
 
 import com.fulcrumgenomics.FgBioDef._
 import com.fulcrumgenomics.cmdline.{ClpGroups, FgBioTool}
 import com.fulcrumgenomics.util.Io
 import com.fulcrumgenomics.vcf.MakeTwoSampleMixtureVcf._
-import dagr.sopt
-import dagr.sopt.{arg, clp}
+import dagr.sopt._
 import htsjdk.samtools.util.IntervalList
 import htsjdk.variant.variantcontext._
-import htsjdk.variant.variantcontext.writer.{Options, VariantContextWriter, VariantContextWriterBuilder}
-import htsjdk.variant.vcf._
+import htsjdk.variant.vcf.{VCFFilterHeaderLine, _}
 
-import scala.collection.JavaConversions.asJavaCollection
-import scala.collection.JavaConversions.iterableAsScalaIterable
+import scala.collection.JavaConversions.{asJavaCollection, iterableAsScalaIterable}
 import scala.collection.mutable.ListBuffer
 
 object MakeTwoSampleMixtureVcf {
@@ -50,6 +46,11 @@ object MakeTwoSampleMixtureVcf {
 
   val TumorSampleName  = "tumor"
   val NormalSampleName = "normal"
+
+  val HeaderLines = MakeMixtureVcf.HeaderLines ++ Seq(
+    new VCFFilterHeaderLine(GermlineFilter,  "Evidence seen in the normal sample"),
+    new VCFFilterHeaderLine(MultiAllelicFilter, "Locus is multi-allelic in chosen samples.")
+  )
 }
 
 /**
@@ -103,10 +104,11 @@ class MakeTwoSampleMixtureVcf
     if (!in.getFileHeader.getSampleNamesInOrder.contains(tumor))  fail(s"VCF does not contain tumor sample ${tumor}")
     if (!in.getFileHeader.getSampleNamesInOrder.contains(normal)) fail(s"VCF does not contain normal sample ${normal}")
 
-    val out = if (tumorOnly) makeWriter(in.getFileHeader, "tumor") else makeWriter(in.getFileHeader, "tumor", "normal")
+    val outputSamples = if (tumorOnly) Seq("tumor") else Seq("tumor", "normal")
+    val out = MakeMixtureVcf.makeWriter(output, in.getFileHeader, MakeTwoSampleMixtureVcf.HeaderLines, outputSamples:_*)
     iterator(in, this.intervals).foreach { ctx =>
-      val oldTumorGt = genotypeOf(tumor, ctx)
-      val oldNormalGt = genotypeOf(normal, ctx)
+      val oldTumorGt = MakeMixtureVcf.genotypeOf(tumor, ctx, this.noCallIsHomRef)
+      val oldNormalGt = MakeMixtureVcf.genotypeOf(normal, ctx, this.noCallIsHomRef)
       val oldGts = Seq(oldTumorGt, oldNormalGt)
 
       val alleles = (oldTumorGt.getAlleles ++ oldNormalGt.getAlleles ++ Some(ctx.getReference)).filterNot(_ == Allele.NO_CALL).toSet
@@ -115,7 +117,7 @@ class MakeTwoSampleMixtureVcf
 
       if (!isMonomorphic) {
         val (newTumorGt, newNormalGt) = if (isMultiAllelic) {
-          (noCall(TumorSampleName), if (tumorOnly) None else Some(noCall(NormalSampleName)))
+          (MakeMixtureVcf.noCall(TumorSampleName), if (tumorOnly) None else Some(MakeMixtureVcf.noCall(NormalSampleName)))
         }
         else {
           val refAllele = ctx.getReference
@@ -157,44 +159,6 @@ class MakeTwoSampleMixtureVcf
 
     out.close()
     in.safelyClose()
-  }
-
-  /** Gets the genotype of the sample, substituting in a HomRef genotype for no-calls if required. */
-  private def genotypeOf(sample: String, ctx: VariantContext): Genotype = {
-    val actual = ctx.getGenotype(sample)
-    if (actual.isNoCall && this.noCallIsHomRef) new GenotypeBuilder(sample, util.Arrays.asList(ctx.getReference)).make()
-    else actual
-  }
-
-  /** Makes a no-call genotype object with the provided sample name. */
-  private def noCall(sampleName: String): Genotype = {
-    new GenotypeBuilder(sampleName).alleles(util.Arrays.asList(Allele.NO_CALL, Allele.NO_CALL)).make()
-  }
-
-  /** Builds a header that can be used to write the mixture VCF. */
-  def makeWriter(in: VCFHeader, samples: String*): VariantContextWriter = {
-    val header = new VCFHeader(Collections.emptySet[VCFHeaderLine](), util.Arrays.asList(samples:_*))
-
-    in.getFilterLines.foreach(header.addMetaDataLine)
-    header.addMetaDataLine(new VCFFilterHeaderLine(GermlineFilter,  "Evidence seen in the normal sample"))
-    header.addMetaDataLine(new VCFFilterHeaderLine(UnknownGtFilter, "GT and AF not known due to one or more input samples being no-called."))
-    header.addMetaDataLine(new VCFFilterHeaderLine(MultiAllelicFilter, "Locus is multi-allelic in chosen samples."))
-
-    in.getFormatHeaderLines.foreach(header.addMetaDataLine)
-    header.addMetaDataLine(new VCFFormatHeaderLine("AF", 1, VCFHeaderLineType.Float, "Alt allele fraction in the tumor"))
-
-    in.getInfoHeaderLines.foreach(header.addMetaDataLine)
-    header.setSequenceDictionary(in.getSequenceDictionary)
-
-    val writer = new VariantContextWriterBuilder()
-      .setOutputFile(output.toFile)
-      .setOption(Options.INDEX_ON_THE_FLY)
-      .setReferenceDictionary(in.getSequenceDictionary)
-      .setOption(Options.ALLOW_MISSING_FIELDS_IN_HEADER)
-      .build()
-
-    writer.writeHeader(header)
-    writer
   }
 
   /** Generates an iterator over the whole file, or over the intervals if provided. */

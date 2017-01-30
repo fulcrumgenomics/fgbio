@@ -88,6 +88,7 @@ class VariantContextSetBuilder(sampleNames: Seq[String] = List("Sample")) extend
                  start: Long,
                  variantAlleles: List[String],
                  genotypeAlleles: List[String] = List.empty,
+                 genotypeAttributes: Map[String,Any] = Map.empty,
                  sampleName: Option[String] = None,
                  phased: Boolean = false): this.type = {
     if (!sampleName.forall { sn => this.header.getGenotypeSamples.contains(sn)}) {
@@ -126,6 +127,7 @@ class VariantContextSetBuilder(sampleNames: Seq[String] = List("Sample")) extend
       case gAlleles => new GenotypeBuilder(name, toAlleles(gAlleles, referenceAllele=referenceAllele))
     }
     genotypeBuilder.phased(phased)
+    genotypeAttributes.foreach { case (k,v) => genotypeBuilder.attribute(k, v) }
     val genotype = genotypeBuilder.make()
     // check the sample doesn't already exists.
     prevGenotypes.find { g => g.getSampleName == genotype.getSampleName } match {
