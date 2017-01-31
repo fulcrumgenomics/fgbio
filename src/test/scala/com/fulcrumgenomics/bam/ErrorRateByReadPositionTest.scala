@@ -25,229 +25,170 @@
 
 package com.fulcrumgenomics.bam
 
-import java.nio.file.{Path, Paths}
+import java.nio.file.{Files, Path}
 
-import com.fulcrumgenomics.testing.SamRecordSetBuilder.{Minus, Plus, Strand}
-import com.fulcrumgenomics.testing.{SamRecordSetBuilder, UnitSpec}
-import com.fulcrumgenomics.util.Metric
+import com.fulcrumgenomics.fasta.ReferenceSetBuilder
+import com.fulcrumgenomics.testing.{SamRecordSetBuilder, UnitSpec, VariantContextSetBuilder}
+import com.fulcrumgenomics.util.{Metric, Rscript}
 import dagr.commons.io.PathUtil
 import htsjdk.samtools.SAMFileHeader.SortOrder
-import org.scalatest.ParallelTestExecution
+import htsjdk.samtools.util.{Interval, IntervalList}
+import htsjdk.variant.utils.SAMSequenceDictionaryExtractor
 
 /**
   * Tests for ErrorRateByReadPosition.
   */
-class ErrorRateByReadPositionTest extends UnitSpec with ParallelTestExecution {
-  val dir = Paths.get("src/test/resources/com/fulcrumgenomics/bam")
-  private val referenceFasta = dir.resolve("error_rate_by_read_position.fasta")
+class ErrorRateByReadPositionTest extends UnitSpec {
+  /////////////////////////////////////////////////////////////////////////////
+  // Make a reference and a set of variants for use in the tests
+  /////////////////////////////////////////////////////////////////////////////
+  private val ref = {
+    val builder = new ReferenceSetBuilder()
+    builder.add("chr0").add("RYSWKMBDHV", 50).add("N", 500) // Sooo ambiguous
+    builder.add("chr1").add("A", 1000)
+    builder.add("chr2").add("C", 1000)
+    builder.add("chr3").add("G", 1000)
+    builder.add("chr4").add("T", 1000)
+    builder.toTempFile()
+  }
 
-  def outputAndPrefix: (Path, Path) = {
-    val out = makeTempFile("ErrorRateByReadPositionTest", ErrorRateByReadPositionMetric.FileExtension)
-    val pre = PathUtil.removeExtension(PathUtil.removeExtension(out))
+  private val dict = SAMSequenceDictionaryExtractor.extractDictionary(ref.toFile)
+
+  private val vcf = {
+    val builder = new VariantContextSetBuilder().setSequenceDictionary(dict)
+    builder.addVariant(1, 500, variantAlleles=List("A", "C"), genotypeAlleles=List("A", "C"))
+    builder.addVariant(2, 500, variantAlleles=List("C", "T"), genotypeAlleles=List("C", "T"))
+    builder.addVariant(3, 500, variantAlleles=List("G", "A"), genotypeAlleles=List("G", "A"))
+    builder.addVariant(4, 500, variantAlleles=List("T", "C"), genotypeAlleles=List("T", "C"))
+    builder.toTempFile()
+  }
+
+  private def outputAndPrefix: (Path, Path) = {
+    val out = makeTempFile("ErrorRateByReadPositionTest.", ErrorRateByReadPositionMetric.FileExtension)
+    val pre = PathUtil.pathTo(out.toString.replace(ErrorRateByReadPositionMetric.FileExtension, ""))
     (out, pre)
   }
 
-  "ErrorRateByReadPosition" should "compute the error rate for all unmapped reads" in {
-    Seq(None, Some(referenceFasta)).foreach { case maybeRef =>
-      val builder = new SamRecordSetBuilder(sortOrder=SortOrder.coordinate)
-      builder.addFrag(unmapped = true)
-      val input = builder.toTempFile()
-      val (out, pre) = outputAndPrefix
-      new ErrorRateByReadPosition(input = input, output = Some(pre), ref=maybeRef).execute()
-      val metrics = Metric.read[ErrorRateByReadPositionMetric](out)
-      metrics.length shouldBe 0
-    }
+  private def newSamBuilder = {
+    val builder = new SamRecordSetBuilder(readLength=20, sortOrder=SortOrder.coordinate)
+    builder.header.setSequenceDictionary(dict)
+    builder
   }
 
-  it should "compute the error rate for paired reads" in {
-    Seq(None, Some(referenceFasta)).foreach { case maybeRef =>
-      val builder = new SamRecordSetBuilder(sortOrder=SortOrder.coordinate)
-      builder.addPair(start1=1, start2=1).foreach { rec =>
-        if (rec.getFirstOfPairFlag) {
-          rec.setAttribute("MD", "100")
-          rec.setReadString("A" * 100)
+  "ErrorRateByReadPosition" should "work on an empty BAM" in {
+    val builder = newSamBuilder
+    val (out, pre) = outputAndPrefix
+    val metrics = new ErrorRateByReadPosition(input=builder.toTempFile(), output=Some(pre), ref=ref).computeMetrics
+    metrics.size shouldBe 0
+  }
+
+  it should "work on a file with all unmapped reads" in {
+    val builder = newSamBuilder
+    Range.inclusive(1, 20).foreach { i => builder.addFrag(unmapped=true) }
+    val (out, pre) = outputAndPrefix
+    val metrics = new ErrorRateByReadPosition(input=builder.toTempFile(), output=Some(pre), ref=ref).computeMetrics
+    metrics.size shouldBe 0
+  }
+
+  it should "compute the error rate for some simple paired end reads" in {
+    val builder = newSamBuilder
+    1 to 9 foreach {i => builder.addPair(name="$i", contig=1, start1=100, start2=200).foreach {_.setReadString("A"*20) } }
+    builder.addPair("err", contig=1, start1=300, start2=400).foreach { rec =>
+      if (rec.getFirstOfPairFlag) rec.setReadString("AAAAAAAAAAAAAAAAACGT")
+      else rec.setReadString("AAAAAAAAAAAAAAAAACGT")
+    }
+
+    val (out, pre) = outputAndPrefix
+    val metrics = new ErrorRateByReadPosition(input=builder.toTempFile(), output=Some(pre), ref=ref).computeMetrics
+    metrics.size shouldBe 40
+    metrics.foreach { m =>
+      m.bases_total shouldBe 10
+      if (m.read_number == 1 && m.position >= 18) {
+        m.error_rate shouldBe 0.1
+        m.position match {
+          case 18 => m.a_to_c_error_rate shouldBe 0.1
+          case 19 => m.a_to_g_error_rate shouldBe 0.1
+          case 20 => m.a_to_t_error_rate shouldBe 0.1
         }
-        else {
-          rec.setAttribute("MD", "A" * 100)
-          rec.setReadString("C" * 100)
+      }
+      else if (m.read_number == 2 && m.position <= 3) {
+        m.position match {
+          case 1 => m.a_to_t_error_rate shouldBe 0.1
+          case 2 => m.a_to_g_error_rate shouldBe 0.1
+          case 3 => m.a_to_c_error_rate shouldBe 0.1
         }
       }
-      builder.addPair(start1=1, start2=1).foreach { rec => rec.setAttribute("MD", "100"); rec.setReadString("A" * 100) }
-      val input = builder.toTempFile()
-      val (out, pre) = outputAndPrefix
-      new ErrorRateByReadPosition(input=input, output=Some(pre), ref=maybeRef).execute()
-      val metrics = Metric.read[ErrorRateByReadPositionMetric](out)
-      metrics.length shouldBe 200
-      metrics.foreach { case metric =>
-        (metric.read_number == 1 || metric.read_number == 2) shouldBe true
-        metric.read_number match {
-          case 1 => metric shouldBe new ErrorRateByReadPositionMetric(1, metric.position, 0.0d, 2l)
-          case 2 => metric shouldBe new ErrorRateByReadPositionMetric(2, metric.position, 0.5d, 2l)
-        }
-      }
-    }
-  }
-
-  def runTwoFragments(cigar: String,
-                      md: String,
-                      readString: String,
-                      strand: Strand,
-                      includeInsertions: Boolean = false): Seq[Seq[ErrorRateByReadPositionMetric]] = {
-    Seq(None, Some(referenceFasta)).map { case maybeRef =>
-      val builder = new SamRecordSetBuilder(sortOrder=SortOrder.coordinate)
-      builder.addFrag(start = 100, strand=strand).foreach { rec => rec.setAttribute("MD", "100"); rec.setReadString("A" * 100) }
-      builder.addFrag(start = 100, cigar=cigar, strand=strand).foreach { rec => rec.setAttribute("MD", md); rec.setReadString(readString) }
-      val input = builder.toTempFile()
-      val (out, pre) = outputAndPrefix
-      new ErrorRateByReadPosition(input = input, output = Some(pre), ref=maybeRef, includeInsertions=includeInsertions).execute()
-      val metrics = Metric.read[ErrorRateByReadPositionMetric](out)
-      metrics.length shouldBe 100
-      metrics
-    }
-  }
-
-  it should "compute the error rate for fragment reads with no mismatches" in {
-    val metrics = runTwoFragments(cigar="100M", md="100", readString="A"*100, strand=Plus) ++
-      runTwoFragments(cigar="100M", md="100", readString="A"*100, strand=Minus)
-    metrics.flatten.foreach { metric =>
-      metric shouldBe new ErrorRateByReadPositionMetric(0, metric.position, 0.0d, 2l)
-    }
-  }
-
-  it should "compute the error rate for fragment reads with a mismatch at the end" in {
-    val metrics = runTwoFragments(cigar="100M", md="99A", readString=("A"*99)+"C", strand=Plus) ++
-      runTwoFragments(cigar="100M", md="A99", readString="C"+("A"*99), strand=Minus)
-    metrics.flatten.foreach { metric =>
-      if (metric.position == 100) {
-        metric shouldBe new ErrorRateByReadPositionMetric(0, metric.position, 0.5d, 2l)
-      }
       else {
-        metric shouldBe new ErrorRateByReadPositionMetric(0, metric.position, 0.0d, 2l)
+        m.error_rate shouldBe 0
       }
     }
   }
 
-  it should "compute the error rate for fragment reads with a mismatch at the start" in {
-    val metrics = runTwoFragments(cigar="100M", md="A99", readString="C"+("A"*99), strand=Plus) ++
-      runTwoFragments(cigar="100M", md="99A", readString=("A"*99)+"C", strand=Minus)
-    metrics.flatten.foreach { metric =>
-      if (metric.position == 1) {
-        metric shouldBe new ErrorRateByReadPositionMetric(0, metric.position, 0.5d, 2l)
-      }
-      else {
-        metric shouldBe new ErrorRateByReadPositionMetric(0, metric.position, 0.0d, 2l)
-      }
+  it should "not count as errors either Ns in reads or ambiguous bases in the reference" in {
+    val builder = newSamBuilder
+    builder.addPair(contig=0, start1=100, start2=100).foreach(_.setReadString("A"*20))
+    builder.addPair(contig=1, start1=100, start2=200).foreach(_.setReadString("AANA"*5))
+    val (out, pre) = outputAndPrefix
+    val metrics = new ErrorRateByReadPosition(input=builder.toTempFile(), output=Some(pre), ref=ref).computeMetrics
+    metrics.size shouldBe 40
+    metrics.map(_.bases_total).sum shouldBe 30 // nothing on contig 0, and 3/4 on contig 1
+    metrics.forall(_.error_rate == 0.0) shouldBe true
+  }
+
+  it should "restrict to a set of intervals if provided" in {
+    val builder = newSamBuilder
+    builder.addPair(contig=1, start1=100, start2=150).foreach(_.setReadString("AAAA"*5))
+    builder.addPair(contig=1, start1=200, start2=250).foreach(_.setReadString("AAAA"*5))
+    builder.addPair(contig=1, start1=300, start2=350).foreach(_.setReadString("ACGA"*5))
+    builder.addPair(contig=1, start1=400, start2=450).foreach(_.setReadString("AAAA"*5))
+
+    val intervals = new IntervalList(dict)
+    intervals.add(new Interval("chr1", 100, 275))
+    intervals.add(new Interval("chr1", 400, 500))
+    val intervalPath = makeTempFile("regions.", ".interval_list")
+    intervals.write(intervalPath.toFile)
+
+    val (out, pre) = outputAndPrefix
+    val metrics = new ErrorRateByReadPosition(input=builder.toTempFile(), output=Some(pre), ref=ref, intervals=Some(intervalPath)).computeMetrics
+    metrics.forall(_.error_rate == 0.0) shouldBe true
+    metrics.map(_.bases_total).sum shouldBe (3 * 2 * 20)
+  }
+
+  it should "not count errors that occur at sites with variants" in {
+    val builder = newSamBuilder
+    builder.addFrag(contig=1, start=490).foreach(_.setReadString("GAAAAAAAAAGAAAAAAAAA"))
+    builder.addFrag(contig=2, start=490).foreach(_.setReadString("TCCCCCCCCCTCCCCCCCCC"))
+    builder.addFrag(contig=3, start=490).foreach(_.setReadString("AGGGGGGGGGAGGGGGGGGG"))
+    builder.addFrag(contig=4, start=490).foreach(_.setReadString("CTTTTTTTTTTTTTTTTTTT"))
+
+    val (out, pre) = outputAndPrefix
+    val metrics = new ErrorRateByReadPosition(input=builder.toTempFile(), output=Some(pre), ref=ref, variants=Some(vcf)).computeMetrics
+    metrics.find(_.position == 1).get.error_rate shouldBe 1.0
+    metrics.find(_.position == 11).get.error_rate shouldBe 0.0
+    metrics.filter(m => m.position != 1 && m.position != 11).foreach { m =>
+      m.bases_total shouldBe 4
+      m.error_rate  shouldBe 0.0
     }
   }
 
-  it should "compute the error rate for fragment reads with a mismatch in the middle" in {
-    val metrics = runTwoFragments(cigar="100M", md="50A49", readString=("A"*50)+"C"+("A"*49), strand=Plus) ++
-      runTwoFragments(cigar="100M", md="49A50", readString=("A"*49)+"C"+("A"*50), strand=Minus)
-    metrics.flatten.foreach { metric =>
-      if (metric.position == 51) {
-        metric shouldBe new ErrorRateByReadPositionMetric(0, metric.position, 0.5d, 2l)
-      }
-      else {
-        metric shouldBe new ErrorRateByReadPositionMetric(0, metric.position, 0.0d, 2l)
-      }
-    }
-  }
+  it should "run end to end and maybe generate a PDF" in {
+    val builder = newSamBuilder
+    1 to 99 foreach {i => builder.addPair(contig=1, start1=i, start2=i+50).foreach(_.setReadString("A"*20)) }
+    builder.addPair(contig=1, start1=100, start2=200).foreach(_.setReadString("AAAAAAAAATTAAAAAAAAA"))
 
-  it should "compute the error rate for fragment reads with all mismatches" in {
-    val metrics = runTwoFragments(cigar="100M", md="A"*100, readString="C"*100, strand=Plus) ++
-      runTwoFragments(cigar="100M", md="A"*100, readString="C"*100, strand=Minus)
-    metrics.flatten.foreach { metric =>
-       metric shouldBe new ErrorRateByReadPositionMetric(0, metric.position, 0.5d, 2l)
+    val (out, pre) = outputAndPrefix
+    new ErrorRateByReadPosition(input=builder.toTempFile(), output=Some(pre), ref=ref).execute()
+    val metrics = Metric.read[ErrorRateByReadPositionMetric](out)
+    metrics.size shouldBe 40
+    metrics.map(_.bases_total).sum shouldBe 4000
+    metrics.foreach { m =>
+      if (m.position == 10 || m.position == 11) m.error_rate shouldBe 0.01
+      else m.error_rate shouldBe 0.0
     }
-  }
 
-  it should "compute the error rate for fragment reads with a leading insertion" in {
-    val metrics = runTwoFragments(cigar="1I99M", md="99", readString="A"*100, strand=Plus, includeInsertions=true)
-      runTwoFragments(cigar="99M1I", md="99", readString="A"*100, strand=Minus, includeInsertions=true)
-    metrics.flatten.foreach { metric =>
-      if (metric.position == 1) {
-        metric shouldBe new ErrorRateByReadPositionMetric(0, metric.position, 0.5d, 2l)
-      }
-      else {
-        metric shouldBe new ErrorRateByReadPositionMetric(0, metric.position, 0.0d, 2l)
-      }
-    }
-  }
-
-  it should "compute the error rate for fragment reads with a trailing insertion" in {
-    val metrics = runTwoFragments(cigar="99M1I", md="99", readString="A"*100, strand=Plus, includeInsertions=true) ++
-      runTwoFragments(cigar="1I99M", md="99", readString="A"*100, strand=Minus, includeInsertions=true)
-    metrics.flatten.foreach { metric =>
-      if (metric.position == 100) {
-        metric shouldBe new ErrorRateByReadPositionMetric(0, metric.position, 0.5d, 2l)
-      }
-      else {
-        metric shouldBe new ErrorRateByReadPositionMetric(0, metric.position, 0.0d, 2l)
-      }
-    }
-  }
-
-  it should "not count insertions as errors if --include-insertions is false" in {
-    val metrics = runTwoFragments(cigar="99M1I", md="99", readString="A"*100, strand=Plus, includeInsertions=false) ++
-      runTwoFragments(cigar="1I99M", md="99", readString="A"*100, strand=Minus, includeInsertions=false)
-    metrics.flatten.foreach { metric =>
-      val numReads = if (metric.position == 100) 1 else 2
-      metric shouldBe new ErrorRateByReadPositionMetric(0, metric.position, 0.0d, numReads)
-    }
-  }
-
-  it should "ignore soft-clipped bases at the start of the read" in {
-    val metrics = runTwoFragments(cigar="10S90M", md="90", readString="A"*100, strand=Plus) ++
-      runTwoFragments(cigar="90M10S", md="90", readString="A"*100, strand=Minus)
-    metrics.flatten.foreach { metric =>
-      if (metric.position <= 10) {
-        metric shouldBe new ErrorRateByReadPositionMetric(0, metric.position, 0.0d, 1l)
-      }
-      else {
-        metric shouldBe new ErrorRateByReadPositionMetric(0, metric.position, 0.0d, 2l)
-      }
-    }
-  }
-
-  it should "ignore soft-clipped bases at the end of the read" in {
-    val metrics = runTwoFragments(cigar="90M10S", md="90", readString="A"*100, strand=Plus) ++
-      runTwoFragments(cigar="10S90M", md="90", readString="A"*100, strand=Minus)
-    metrics.flatten.foreach { metric =>
-      if (90 < metric.position) {
-        metric shouldBe new ErrorRateByReadPositionMetric(0, metric.position, 0.0d, 1l)
-      }
-      else {
-        metric shouldBe new ErrorRateByReadPositionMetric(0, metric.position, 0.0d, 2l)
-      }
-    }
-  }
-
-  it should "ignore soft-clipped bases and not count insertions at the start if --include-insertions is false" in {
-    val metrics = runTwoFragments(cigar="10S10I80M", md="80", readString="A"*100, strand=Plus) ++
-      runTwoFragments(cigar="80M10I10S", md="80", readString="A"*100, strand=Minus)
-     metrics.flatten.foreach { metric =>
-      if (metric.position <= 20) {
-        metric shouldBe new ErrorRateByReadPositionMetric(0, metric.position, 0.0d, 1l)
-      }
-      else {
-        metric shouldBe new ErrorRateByReadPositionMetric(0, metric.position, 0.0d, 2l)
-      }
-    }
-  }
-
-  it should "ignore soft-clipped bases and count insertions at the start if --include-insertions is true" in {
-    val metrics = runTwoFragments(cigar="10S10I80M", md="80", readString="A"*100, strand=Plus, includeInsertions=true) ++
-      runTwoFragments(cigar="80M10I10S", md="80", readString="A"*100, strand=Minus, includeInsertions=true)
-    metrics.flatten.foreach { metric =>
-      if (metric.position <= 10) {
-        metric shouldBe new ErrorRateByReadPositionMetric(0, metric.position, 0.0d, 1l)
-      }
-      else if (metric.position <= 20) {
-        metric shouldBe new ErrorRateByReadPositionMetric(0, metric.position, 0.5d, 2l)
-      }
-      else {
-        metric shouldBe new ErrorRateByReadPositionMetric(0, metric.position, 0.0d, 2l)
-      }
+    if (Rscript.Available) {
+      val plot = PathUtil.pathTo(pre + ErrorRateByReadPositionMetric.PlotExtension)
+      Files.exists(plot) shouldBe true
     }
   }
 }
