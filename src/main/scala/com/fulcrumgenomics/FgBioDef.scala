@@ -28,7 +28,7 @@ import com.fulcrumgenomics.util.BetterBufferedIterator
 import dagr.commons.CommonsDef
 
 import scala.collection.Parallelizable
-import scala.collection.parallel.{ExecutionContextTaskSupport, ForkJoinTaskSupport, ParIterable, ParIterableLike, TaskSupport, ThreadPoolTaskSupport}
+import scala.collection.parallel.{ForkJoinTaskSupport, ParIterableLike, TaskSupport}
 import scala.concurrent.forkjoin.ForkJoinPool
 
 /**
@@ -44,6 +44,17 @@ class FgBioDef extends CommonsDef {
   /** Implicit class that provides a method to wrap a Java iterator into a BetterBufferedIterator. */
   implicit class BetterBufferedIteratorJavaWrapper[A](val iterator: java.util.Iterator[A]) {
     def bufferBetter = new BetterBufferedIterator(scala.collection.JavaConversions.asScalaIterator(iterator))
+  }
+
+  /** Implicit that wraps a Java iterator into a Scala iterator. */
+  implicit class JavaIteratorAdapter[A](private val underlying: java.util.Iterator[A]) extends Iterator[A] {
+    override def hasNext: Boolean = underlying.hasNext
+    override def next(): A = underlying.next()
+  }
+
+  /** Implicit that adds a toIterator method to all Java Iterables. */
+  implicit class JavaIterableToIterator[A](private val iterable: java.lang.Iterable[A]) {
+    def toIterator: Iterator[A] = new JavaIteratorAdapter[A](iterable.iterator())
   }
 
   /**
