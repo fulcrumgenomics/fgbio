@@ -70,8 +70,6 @@ class AutoGenerateReadGroupsByName
  @arg(doc="The sort order for the output sam/bam file.") val sortOrder: Option[SortOrder] = None
 ) extends FgBioTool with LazyLogging {
 
-  import scala.collection.JavaConversions.asScalaIterator
-
   Io.assertReadable(input)
   Io.assertCanWriteFile(output)
 
@@ -85,7 +83,7 @@ class AutoGenerateReadGroupsByName
       val progress = new ProgressLogger(logger, verb = "read", unit = 5e6.toInt)
       val in = SamReaderFactory.make().open(input.toFile)
 
-      in.iterator().foreach { record =>
+      in.toIterator.foreach { record =>
         val runInfo       = RunInfo(name=record.getReadName)
 
         if (!readGroups.contains(runInfo)) {

@@ -37,7 +37,6 @@ import htsjdk.variant.variantcontext.VariantContext
 import htsjdk.variant.vcf.VCFFileReader
 import org.apache.commons.math3.stat.regression.OLSMultipleLinearRegression
 
-import scala.collection.JavaConversions.iterableAsScalaIterable
 import Math.{min, max}
 
 @clp(group=ClpGroups.SamOrBam, description=
@@ -137,13 +136,13 @@ class EstimatePoolingFractions
   /** Verify a provided sample list, or if none provided retrieve the set of samples from the VCF. */
   private def pickSamplesToUse(vcfReader: VCFFileReader): Array[String] = {
     if (samples.nonEmpty) {
-      val samplesInVcf = vcfReader.getFileHeader.getSampleNamesInOrder.toSet
+      val samplesInVcf = vcfReader.getFileHeader.getSampleNamesInOrder.toIterator.toSet
       val missingSamples = samples.filterNot(samplesInVcf.contains)
       if (missingSamples.nonEmpty) fail(s"Samples not present in VCF: ${missingSamples.mkString(", ")}")
       else samples.toArray.sorted
     }
     else {
-      vcfReader.getFileHeader.getSampleNamesInOrder.toSeq.toArray.sorted // toSeq.toArray is necessary cos util.ArrayList.toArray() exists
+      vcfReader.getFileHeader.getSampleNamesInOrder.toIterator.toSeq.toArray.sorted // toSeq.toArray is necessary cos util.ArrayList.toArray() exists
     }
   }
 
@@ -165,7 +164,7 @@ class EstimatePoolingFractions
 
   /** Generates an iterator over non-filtered bi-allelic SNPs where all the required samples are genotyped. */
   def constructVcfIterator(in: VCFFileReader, intervals: Option[IntervalList], samples: Array[String]): Iterator[VariantContext] = {
-    val vcfIterator = intervals match {
+    val vcfIterator: Iterator[VariantContext] = intervals match {
       case None     => in.toIterator
       case Some(is) => ByIntervalListVariantContextIterator(in, is)
     }
@@ -177,7 +176,7 @@ class EstimatePoolingFractions
       .map(_.subContextFromSamples(samplesAsUtilSet, true))
       .filter(v => v.isSNP && v.isBiallelic && !v.isMonomorphicInSamples)
       .filter(_.getNoCallCount == 0)
-      .filter(v => v.getGenotypesOrderedByName.forall(gt => gt.getGQ >= this.minGenotypeQuality))
+      .filter(v => v.getGenotypesOrderedByName.toIterator.forall(gt => gt.getGQ >= this.minGenotypeQuality))
   }
 
   /** Constructs a SamLocusIterator that will visit every locus in the input. */
@@ -190,7 +189,7 @@ class EstimatePoolingFractions
     iterator.setIncludeNonPfReads(false)
     iterator.setMappingQualityScoreCutoff(this.minMappingQuality)
     iterator.setQualityScoreCutoff(this.minBaseQuality)
-    iterator.toIterator
+    iterator
   }
 
   /**

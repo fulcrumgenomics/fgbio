@@ -35,8 +35,6 @@ import htsjdk.samtools.SamPairUtil.PairOrientation
 import htsjdk.samtools._
 import htsjdk.samtools.reference.ReferenceSequenceFileWalker
 
-import scala.collection.JavaConversions.iterableAsScalaIterable
-
 @clp(group = ClpGroups.SamOrBam, description=
   """
     |Clips reads from the same template to eliminate overlap between the reads. Ensures that downstream
@@ -99,7 +97,7 @@ class ClipOverlappingReads
     val out    = new SAMFileWriterFactory().setCreateIndex(true).makeWriter(header, true, output.toFile, ref.toFile)
     val writeProgress = new ProgressLogger(logger, verb="wrote")
 
-    sorter.foreach { rec =>
+    sorter.toIterator.foreach { rec =>
       Bams.regenerateNmUqMdTags(rec, walker)
       out.addAlignment(rec)
       writeProgress.record(rec)

@@ -32,7 +32,6 @@ import htsjdk.samtools.util.{SequenceUtil, SortingCollection}
 import htsjdk.samtools._
 import htsjdk.samtools.reference.ReferenceSequenceFileWalker
 
-import scala.collection.JavaConversions.iterableAsScalaIterable
 import scala.collection.mutable.ListBuffer
 
 /**
@@ -155,7 +154,7 @@ object Bams extends LazyLogging {
       logger.info("Sorting into queryname order.")
       val progress = new ProgressLogger(this.logger, "Queryname sorted")
       val sorter = sortingCollection(SortOrder.queryname, in.getFileHeader, maxInMemory, tmpDir)
-      in.foreach { rec =>
+      in.toIterator.foreach { rec =>
         sorter.add(rec)
         progress.record(rec)
       }

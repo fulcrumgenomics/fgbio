@@ -25,9 +25,9 @@
 
 package com.fulcrumgenomics.bam
 
+import com.fulcrumgenomics.FgBioDef._
 import com.fulcrumgenomics.cmdline.{ClpGroups, FgBioTool}
 import com.fulcrumgenomics.util.{Metric, NumericCounter, ProgressLogger}
-import dagr.commons.CommonsDef._
 import dagr.commons.io.{Io, PathUtil}
 import dagr.commons.util.LazyLogging
 import dagr.sopt._
@@ -63,8 +63,6 @@ class ErrorRateByReadPosition
   @arg(flag="m", doc="The minimum mapping quality for a read to be included.") val minMappingQuality: Int = 20,
   @arg(flag="q", doc="The minimum base quality for a base to be included.") val minBaseQuality: Int = 0
 ) extends FgBioTool with LazyLogging {
-  import scala.collection.JavaConversions.asScalaIterator
-
   Io.assertReadable(input)
   ref.foreach(Io.assertReadable)
   output.foreach(out => Io.assertCanWriteFile(out))
@@ -72,7 +70,7 @@ class ErrorRateByReadPosition
   def execute(): Unit = {
     val progress = new ProgressLogger(logger, verb="read", unit=1e6.toInt)
     val in       = SamReaderFactory.make.open(input)
-    val iterator = in.iterator()
+    val iterator = in.toIterator
     val counter  = ErrorRateByReadPositionCounter(ref=ref, includeInsertions=includeInsertions, minBaseQuality=minBaseQuality)
 
     if (ref.exists(r => in.getFileHeader.getSortOrder != SortOrder.coordinate)) {
