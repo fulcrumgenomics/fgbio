@@ -28,28 +28,34 @@ import htsjdk.samtools.util.SequenceUtil
 
 /** An object providing access to various Illumina adapter sequences. */
 object IlluminaAdapters {
-  sealed abstract class AdapterPair(fivePrime: String, threePrime: String) {
+  sealed abstract class AdapterPair(val name: String, fivePrime: String, threePrime: String) {
     val      both = Seq(fivePrime, threePrime)
     val      threePrimeReadOrder = threePrime
     lazy val fivePrimeReadOrder  = SequenceUtil.reverseComplement(fivePrime)
   }
 
-  case object PairedEnd extends AdapterPair("AATGATACGGCGACCACCGAGATCTACACTCTTTCCCTACACGACGCTCTTCCGATCT",
+  case object PairedEnd extends AdapterPair("PairedEndAdapter",
+                                            "AATGATACGGCGACCACCGAGATCTACACTCTTTCCCTACACGACGCTCTTCCGATCT",
                                             "AGATCGGAAGAGCGGTTCAGCAGGAATGCCGAGACCGATCTCGTATGCCGTCTTCTGCTTG")
 
-  case object Indexed extends AdapterPair("AATGATACGGCGACCACCGAGATCTACACTCTTTCCCTACACGACGCTCTTCCGATCT",
+  case object Indexed extends AdapterPair("IndexedAdapter",
+                                          "AATGATACGGCGACCACCGAGATCTACACTCTTTCCCTACACGACGCTCTTCCGATCT",
                                           "AGATCGGAAGAGCACACGTCTGAACTCCAGTCACNNNNNNNNATCTCGTATGCCGTCTTCTGCTTG")
 
-  case object SingleEnd extends AdapterPair("AATGATACGGCGACCACCGAGATCTACACTCTTTCCCTACACGACGCTCTTCCGATCT",
+  case object SingleEnd extends AdapterPair("SingleEndAdapter",
+                                            "AATGATACGGCGACCACCGAGATCTACACTCTTTCCCTACACGACGCTCTTCCGATCT",
                                             "AGATCGGAAGAGCTCGTATGCCGTCTTCTGCTTG")
 
-  case object NexteraV1 extends AdapterPair("AATGATACGGCGACCACCGAGATCTACACGCCTCCCTCGCGCCATCAGAGATGTGTATAAGAGACAG",
+  case object NexteraV1 extends AdapterPair("NexteraV1Adapter",
+                                            "AATGATACGGCGACCACCGAGATCTACACGCCTCCCTCGCGCCATCAGAGATGTGTATAAGAGACAG",
                                             "CTGTCTCTTATACACATCTCTGAGCGGGCTGGCAAGGCAGACCGNNNNNNNNATCTCGTATGCCGTCTTCTGCTTG")
 
-  case object NexteraV2 extends AdapterPair("AATGATACGGCGACCACCGAGATCTACACNNNNNNNNTCGTCGGCAGCGTCAGATGTGTATAAGAGACAG",
+  case object NexteraV2 extends AdapterPair("NexteraV2Adapter",
+                                            "AATGATACGGCGACCACCGAGATCTACACNNNNNNNNTCGTCGGCAGCGTCAGATGTGTATAAGAGACAG",
                                             "CTGTCTCTTATACACATCTCCGAGCCCACGAGACNNNNNNNNATCTCGTATGCCGTCTTCTGCTTG")
 
-  case object DualIndexed extends AdapterPair("AATGATACGGCGACCACCGAGATCTACACNNNNNNNNACACTCTTTCCCTACACGACGCTCTTCCGATCT",
+  case object DualIndexed extends AdapterPair("DualIndexedAdapter",
+                                              "AATGATACGGCGACCACCGAGATCTACACNNNNNNNNACACTCTTTCCCTACACGACGCTCTTCCGATCT",
                                               "AGATCGGAAGAGCACACGTCTGAACTCCAGTCACNNNNNNNNATCTCGTATGCCGTCTTCTGCTTG")
 
   val all = Seq(PairedEnd, Indexed, SingleEnd, NexteraV1, NexteraV2, DualIndexed)

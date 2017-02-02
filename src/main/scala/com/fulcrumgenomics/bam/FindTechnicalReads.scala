@@ -34,7 +34,6 @@ import htsjdk.samtools.{SAMFileWriterFactory, SAMRecord, SamReaderFactory}
 
 import scala.annotation.tailrec
 import scala.collection.JavaConversions.asScalaIterator
-import scala.collection.mutable
 
 @clp(group = ClpGroups.SamOrBam, description =
   """
@@ -42,6 +41,12 @@ import scala.collection.mutable
      |a BAM file, extracts the read pairs and fragment reads that are unmapped, and tests
      |them to see if they are likely generated from a technical sequence (e.g. adapter
      |dimer).
+     |
+     |The technical sequences, supplied using the --sequences parameter, can be supplied
+     |one of two ways:
+     |  --sequences name1:bases1 name2:bases2 ...
+     |  --sequences bases1 bases2
+     |If the latter style is used the sequence itself is re-used as the name of the sequence.
      |
      |The identification of reads is done by testing the first N bases (controlled by the
      |match-length parameter) of each read against all sub-sequences of length N from the
@@ -51,7 +56,7 @@ import scala.collection.mutable
      |By default the output BAM file will contain all reads that matched to a sub-sequence of the
      |technical sequences and, if the read is paired, the read's mate pair.  An option is
      |available to apply a tag to matched reads (--tag/-t), and if specified each matching
-     |read will be tagged with the 0-based index of the sequence to which it matched. In
+     |read will be tagged with the names of the sequences to which it matched. In
      |combination with tagging it is possible to output all reads (-a/--all-reads) which will
      |re-create the input BAM with the addition of tags on matching reads.
      |
@@ -63,17 +68,16 @@ class FindTechnicalReads
 ( @arg(flag="i", doc="Input SAM or BAM file") val input: PathToBam,
   @arg(flag="o", doc="Output SAM or BAM file") val output: PathToBam,
   @arg(flag="m", doc="The number of bases at the start of the read to match against.") val matchLength: Int = 15,
-  @arg(flag="e", doc="The maximum number of errors in the matched region.") val maxErrors: Int = 1,
-  @arg(flag="s", doc="The set of technical sequences to look for.") val sequences: Seq[String] = IlluminaAdapters.all.flatMap(_.both),
+  @arg(flag="e", doc="The maximum number of errors allowed in the matched region.") val maxErrors: Int = 1,
+  @arg(flag="s", doc="The set of technical sequences to look for.") val sequences: Seq[String] =
+    IlluminaAdapters.all.flatMap(a => a.both.map(bases => a.name + ":" + bases)),
   @arg(flag="a", doc="Output all reads.") val allReads: Boolean = false,
   @arg(flag="t", doc="Tag to set to indicate a read is a technical sequence.") val tag: Option[String] = None
 ) extends FgBioTool with LazyLogging {
 
   Io.assertReadable(input)
   Io.assertCanWriteFile(output)
-  if (allReads && tag.isEmpty) fail("Tag option must be used when outputting all reads.")
-
-  private val sequenceToIndex = sequences.zipWithIndex.toMap
+  if (allReads && tag.isEmpty) invalid("Tag option must be used when outputting all reads.")
 
   override def execute(): Unit = {
     // Built the appropriate input iterator
@@ -85,7 +89,7 @@ class FindTechnicalReads
     }
 
     val out      = new SAMFileWriterFactory().makeWriter(in.getFileHeader, true, output.toFile, null)
-    val matcher  = new Matcher(sequences=sequences, matchLength=matchLength, maxErrors=maxErrors)
+    val matcher  = new Matcher(sequences=sequences.map(NamedSequence(_)), matchLength=matchLength, maxErrors=maxErrors)
     val progress = new ProgressLogger(logger, unit=250000)
     var n: Long  = 0
 
@@ -94,19 +98,15 @@ class FindTechnicalReads
       val r2 = if (iter.hasNext && iter.head.getReadName == r1.getReadName) Some(iter.next()) else None
       val recs = Seq(Some(r1), r2).flatten
 
-      val isTechnical = if (isUnmappedTemplate(r1)) {
-        recs.toStream.flatMap(r => matcher.findMatch(r.getReadBases)).headOption match {
-          case None =>
+      val isTechnical = isUnmappedTemplate(r1) && {
+        recs.flatMap(r => matcher.findMatches(r.getReadBases)) match {
+          case Nil  =>
             false
-          case Some(hit) =>
-            val hitIndex = sequenceToIndex(hit)
-            for (t <- tag; r <- recs) r.setAttribute(t, hitIndex)
+          case hits =>
+            for (t <- tag; r <- recs) r.setAttribute(t, hits.map(_.name).distinct.mkString(","))
             n += recs.size
             true
         }
-      }
-      else {
-        false
       }
 
       if (isTechnical || allReads) recs.foreach(out.addAlignment)
@@ -122,15 +122,26 @@ class FindTechnicalReads
   private def isUnmappedTemplate(rec: SAMRecord) : Boolean = rec.getReadUnmappedFlag && (!rec.getReadPairedFlag || rec.getMateUnmappedFlag)
 }
 
+private[bam] case class NamedSequence(name: String, bases: String)
+private[bam] object NamedSequence {
+  def apply(s: String): NamedSequence = s.indexOf(':') match {
+    case -1 => NamedSequence(name=s, bases=s)
+    case  n => NamedSequence(name=s.substring(0, n), bases=s.substring(n+1))
+  }
+}
+
 /** Little utility class to match reads to technical sequences. */
-private[bam] class Matcher(val matchLength: Int, val maxErrors: Int, sequences: Seq[String]) {
-  // Map of kmer to first sequence in which it is found
-  private val kmerToSequence: mutable.LinkedHashMap[String,String] = mutable.LinkedHashMap[String,String]()
+private[bam] class Matcher(val matchLength: Int, val maxErrors: Int, sequences: Seq[NamedSequence]) {
+  // Import the mutable version of a few collections that we need
+  import scala.collection.mutable.{MultiMap, Set, LinkedHashMap => LinkedMap}
+
+  // Map of kmer to the set of sequences in which it is found
+  private val kmerToSequence = new LinkedMap[String,Set[NamedSequence]]() with MultiMap[String,NamedSequence]
   sequences.foreach(s => {
-    Seq(s.toUpperCase).flatMap(a => Seq(a, SequenceUtil.reverseComplement(a)))
+    Seq(s.bases.toUpperCase).flatMap(a => Seq(a, SequenceUtil.reverseComplement(a)))
       .flatMap(a => a.sliding(matchLength))
       .filterNot(_.contains('N'))
-      .foreach(k => if (!kmerToSequence.contains(k)) kmerToSequence(k) = s)
+      .foreach(k => kmerToSequence.addBinding(k, s))
   })
 
   private val kmers: Array[Array[Byte]] = kmerToSequence.keySet.map(_.getBytes).toArray
@@ -141,15 +152,13 @@ private[bam] class Matcher(val matchLength: Int, val maxErrors: Int, sequences: 
   }
 
   /** Identifies the first sequence with a matching kmer. */
-  def findMatch(read: Array[Byte]): Option[String] = {
+  def findMatches(read: Array[Byte]): Seq[NamedSequence] = {
     if (read.length < matchLength) {
-      None
+      Nil
     }
     else {
-      kmers.find(kmer => matches(read=read, kmer=kmer, len=matchLength)) match {
-        case None      => None
-        case Some(arr) => kmerToSequence.get(new String(arr))
-      }
+      kmers.filter(kmer => matches(read=read, kmer=kmer, len=matchLength))
+        .flatMap(kmer => kmerToSequence(new String(kmer))).toSeq.distinct
     }
   }
 

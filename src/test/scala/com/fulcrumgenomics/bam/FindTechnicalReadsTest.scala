@@ -55,11 +55,13 @@ class FindTechnicalReadsTest extends UnitSpec {
   }
 
   "FindTechnicalReads" should "output all reads, tagging only those that are technical" in {
-    val tseqs = IlluminaAdapters.DualIndexed.both ++ IlluminaAdapters.NexteraV2.both
+    val tseqs = Seq(IlluminaAdapters.DualIndexed, IlluminaAdapters.NexteraV2)
+      .flatMap(a => a.both.map(s => a.name + ":" + s))
+
     val builder  = new SamRecordSetBuilder(readLength=30)
     builder.addFrag(name="ok1", start=100)    .foreach(_.setReadString("AACCGGTTAACCGGTTAACCGGTTAACCGG"))
     builder.addFrag(name="di1", unmapped=true).foreach(_.setReadString("CTCTTTCCCTACACGACGCTCTTCCGATCT"))
-    builder.addFrag(name="di2", unmapped=true).foreach(_.setReadString("AATGATACGGCGACCACCGAGATCTNNNNN"))
+    builder.addFrag(name="di2", unmapped=true).foreach(_.setReadString("ATCGGAAGAGCACACGTCTGAACTCCAGTC"))
     builder.addFrag(name="nx1", unmapped=true).foreach(_.setReadString("TCGTCGGCAGCGTCAGATGTGTATAAGAGA"))
 
     val in  = builder.toTempFile()
@@ -67,15 +69,15 @@ class FindTechnicalReadsTest extends UnitSpec {
     new FindTechnicalReads(input=in, output=out, sequences=tseqs, allReads=true, tag=Some("XS")).execute()
     val actual = SamReaderFactory.make().open(out.toFile).iterator().map(r => (r.getReadName, r)).toMap
 
-    actual("di1").getIntegerAttribute("XS") shouldBe 0
-    actual("di2").getIntegerAttribute("XS") shouldBe 0
-    actual("nx1").getIntegerAttribute("XS") shouldBe 2
+    actual("di1").getStringAttribute("XS") shouldBe "DualIndexedAdapter"
+    actual("di2").getStringAttribute("XS") shouldBe "DualIndexedAdapter"
+    actual("nx1").getStringAttribute("XS") shouldBe "NexteraV2Adapter"
     actual should contain key "ok1"
-    actual("ok1").getIntegerAttribute("XS") shouldBe null
+    actual("ok1").getStringAttribute("XS") shouldBe null
   }
 
   "Matcher" should "match reads that come from the adapters and don't contain Ns" in {
-    val matcher = new Matcher(matchLength=20, maxErrors=1, sequences=IlluminaAdapters.DualIndexed.both)
+    val matcher = new Matcher(matchLength=20, maxErrors=1, sequences=IlluminaAdapters.DualIndexed.both.map(NamedSequence(_)))
     IlluminaAdapters.DualIndexed.both.flatMap(_.sliding(36)).foreach(s => {
       val matched = matcher.matches(s.getBytes)
       if (s.substring(0, 20).contains('N'))
@@ -86,7 +88,7 @@ class FindTechnicalReadsTest extends UnitSpec {
   }
 
   it should "match reads with errors in them" in {
-    val matcher = new Matcher(matchLength=20, maxErrors=2, sequences=IlluminaAdapters.PairedEnd.both)
+    val matcher = new Matcher(matchLength=20, maxErrors=2, sequences=IlluminaAdapters.PairedEnd.both.map(NamedSequence(_)))
     IlluminaAdapters.PairedEnd.both.flatMap(_.sliding(36)).foreach(s => {
       val bs = s.getBytes
       assert(matcher.matches(bs), s"Should have matched unedited sequence ${s}")
@@ -99,13 +101,14 @@ class FindTechnicalReadsTest extends UnitSpec {
     })
   }
 
-  it should "find the earliest sequence in the set that matches" in {
-    val matcher = new Matcher(matchLength=4, maxErrors=0, sequences=Seq("ACGTACGT", "ACACGTAC", "ACACTGAT", "ACGTAAAA"))
-    matcher.findMatch("ACGT".getBytes()) shouldBe Some("ACGTACGT")
-    matcher.findMatch("ACAC".getBytes()) shouldBe Some("ACACGTAC")
-    matcher.findMatch("AAAA".getBytes()) shouldBe Some("ACGTAAAA")
-    matcher.findMatch("ACTG".getBytes()) shouldBe Some("ACACTGAT")
-    matcher.findMatch("GGGG".getBytes()) shouldBe None
+  it should "find the all sequences that match" in {
+    val matcher = new Matcher(matchLength=4, maxErrors=0,
+      sequences=Seq("1:AAAACCCCACACAGAG", "2:AAAACCCCACAC", "3:AAAACCCC", "4:AAAA").map(NamedSequence(_)))
+    matcher.findMatches("AAAA".getBytes()).map(_.name) shouldBe Seq("1", "2", "3", "4")
+    matcher.findMatches("CCCC".getBytes()).map(_.name) shouldBe Seq("1", "2", "3")
+    matcher.findMatches("ACAC".getBytes()).map(_.name) shouldBe Seq("1", "2")
+    matcher.findMatches("AGAG".getBytes()).map(_.name) shouldBe Seq("1")
+    matcher.findMatches("ACGT".getBytes()).map(_.name) shouldBe Seq()
   }
 
 }
