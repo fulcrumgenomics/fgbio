@@ -50,7 +50,8 @@ object ConsensusTags {
   object PerBase {
     /** The per-base number of raw-reads contributing to the consensus (stored as a short[]). */
     val RawReadCount    = "cd" // consensus depth
-    /** The number of bases at each position that disagreed with the final consensus call (stored as a short[]). */
+    /** The number of bases at each position that disagreed with the final consensus call (stored as a short[]). If the
+      * final consensus call is a no call (N), then we use the most likely consensus base instead of the final call.  */
     val RawReadErrors   = "ce" // consensus errors
 
     // Duplex versions of the above tags for the two single strand consensus reads
