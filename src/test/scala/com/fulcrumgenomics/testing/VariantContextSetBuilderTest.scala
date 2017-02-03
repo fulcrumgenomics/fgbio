@@ -25,18 +25,19 @@
 
 package com.fulcrumgenomics.testing
 
+import com.fulcrumgenomics.FgBioDef._
+
 /**
   * Tests for VariantContextSetBuilder.
   */
 class VariantContextSetBuilderTest extends  UnitSpec {
-  import scala.collection.JavaConversions._
   "VariantContextSetBuilder" should "add genotypes for two samples" in {
     val sampleNames = Seq("Sample1", "Sample2")
     val builder     = new VariantContextSetBuilder(sampleNames=sampleNames)
       .addVariant(refIdx=0, start=1, variantAlleles=List("A", "C"), genotypeAlleles=List("A"), sampleName=Some(sampleNames.head))
       .addVariant(refIdx=0, start=1, variantAlleles=List("A", "C"), genotypeAlleles=List("C"), sampleName=Some(sampleNames.last))
     builder.iterator.next().getGenotypes.size shouldBe 2
-    builder.iterator.next().getGenotypesOrderedByName.toSeq //should contain theSameElementsInOrderAs sampleNames
+    builder.iterator.next().getGenotypesOrderedByName.map(_.getSampleName).toSeq should contain theSameElementsInOrderAs sampleNames
     builder.size shouldBe 1
   }
 }

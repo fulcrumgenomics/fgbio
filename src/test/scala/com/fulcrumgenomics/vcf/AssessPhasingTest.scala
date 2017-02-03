@@ -26,7 +26,7 @@ package com.fulcrumgenomics.vcf
 
 import java.nio.file.{Files, Paths}
 
-import com.fulcrumgenomics.FgBioDef.{PathPrefix, PathToIntervals, PathToVcf, unreachable}
+import com.fulcrumgenomics.FgBioDef._
 import com.fulcrumgenomics.testing.{ErrorLogLevel, UnitSpec, VariantContextSetBuilder}
 import com.fulcrumgenomics.util.{Metric, NumericCounter}
 import com.fulcrumgenomics.vcf.PhaseCigar.IlluminaSwitchErrors
@@ -186,8 +186,6 @@ class AssessPhasingTest extends ErrorLogLevel {
     blockLengthMetrics should contain theSameElementsInOrderAs expectedBlockLengthMetrics
 
     if (debugVcf) {
-      import scala.collection.JavaConversions.asScalaIterator
-
       val annotatedVcf         = Paths.get(output.toString + AssessPhasing.AnnotatedVcfExtension)
       val expectedAnnotatedVcf = PathUtil.pathTo(expectedPrefix + AssessPhasing.AnnotatedVcfExtension)
       val actualContexts = new VCFFileReader(annotatedVcf.toFile, false).iterator().toIterator.toList
@@ -296,8 +294,6 @@ class AssemblyStatisticsTest extends UnitSpec {
 
 class PhaseBlockTest extends ErrorLogLevel {
   import AssessPhasingTest.withPhasingSetId
-
-  import scala.collection.JavaConversions._
 
   "PhaseBlock.toOverlapDetector" should "create an empty detector if no variants are given" in {
     val builder = new VariantContextSetBuilder()

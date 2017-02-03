@@ -26,12 +26,11 @@ package com.fulcrumgenomics.bam
 
 import java.nio.file.Paths
 
+import com.fulcrumgenomics.FgBioDef._
 import com.fulcrumgenomics.testing.UnitSpec
-import htsjdk.samtools.{SAMRecord, SamReaderFactory}
-import dagr.commons.CommonsDef._
+import htsjdk.samtools.SamReaderFactory
 import org.apache.commons.math3.stat.regression.SimpleRegression
 
-import scala.collection.JavaConversions.asScalaIterator
 import scala.util.Random
 
 /**

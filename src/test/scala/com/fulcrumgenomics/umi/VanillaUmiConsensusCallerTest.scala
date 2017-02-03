@@ -25,6 +25,7 @@
 
 package com.fulcrumgenomics.umi
 
+import com.fulcrumgenomics.FgBioDef._
 import com.fulcrumgenomics.testing.{SamRecordSetBuilder, UnitSpec}
 import com.fulcrumgenomics.umi.UmiConsensusCaller.SourceRead
 import com.fulcrumgenomics.umi.VanillaUmiConsensusCallerOptions._
@@ -32,8 +33,6 @@ import com.fulcrumgenomics.util.NumericTypes._
 import htsjdk.samtools.util.CloserUtil
 import htsjdk.samtools.{SAMRecordSetBuilder, SAMUtils}
 import net.jafama.FastMath._
-
-import scala.collection.JavaConversions._
 
 /**
   * Tests for ConsensusCaller.

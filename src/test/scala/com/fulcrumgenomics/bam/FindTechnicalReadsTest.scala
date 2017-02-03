@@ -28,7 +28,7 @@ import com.fulcrumgenomics.testing.{SamRecordSetBuilder, UnitSpec}
 import com.fulcrumgenomics.util.IlluminaAdapters
 import htsjdk.samtools.SamReaderFactory
 import htsjdk.samtools.util.SequenceUtil
-import scala.collection.JavaConversions.asScalaIterator
+import com.fulcrumgenomics.FgBioDef._
 
 class FindTechnicalReadsTest extends UnitSpec {
   "FindTechnicalReads" should "run and output the expected reads to a file." in {

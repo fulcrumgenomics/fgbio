@@ -32,6 +32,7 @@ import com.fulcrumgenomics.util.Metric
 import htsjdk.samtools.SAMFileHeader.SortOrder
 import htsjdk.samtools.{MergingSamRecordIterator, SAMFileWriterFactory, SamFileHeaderMerger, SamReaderFactory}
 import org.scalatest.ParallelTestExecution
+import scala.collection.JavaConverters._
 
 class EstimatePoolingFractionsTest extends UnitSpec with ParallelTestExecution {
   private val Samples = Seq("HG01879", "HG01112", "HG01583", "HG01500", "HG03742", "HG03052")
@@ -42,7 +43,6 @@ class EstimatePoolingFractionsTest extends UnitSpec with ParallelTestExecution {
 
   /** Merges one or more BAMs and returns the path to the merged BAM. */
   def merge(bams: Seq[PathToBam]): PathToBam = {
-    import scala.collection.JavaConversions.seqAsJavaList
     val factory = SamReaderFactory.make()
     val readers = bams.map(factory.open)
 
@@ -50,8 +50,8 @@ class EstimatePoolingFractionsTest extends UnitSpec with ParallelTestExecution {
     readers.zipWithIndex.foreach { case (reader, index) =>
         reader.getFileHeader.getReadGroups.foreach(rg => rg.setLibrary(rg.getLibrary + ":" + index))
     }
-    val headerMerger = new SamFileHeaderMerger(SortOrder.coordinate, readers.map(_.getFileHeader), false)
-    val iterator     = new MergingSamRecordIterator(headerMerger, readers, true)
+    val headerMerger = new SamFileHeaderMerger(SortOrder.coordinate, readers.map(_.getFileHeader).asJava, false)
+    val iterator     = new MergingSamRecordIterator(headerMerger, readers.asJava, true)
 
     val output = makeTempFile("merged.", ".bam")
     val out    = new SAMFileWriterFactory().setCompressionLevel(0).setCreateIndex(true)

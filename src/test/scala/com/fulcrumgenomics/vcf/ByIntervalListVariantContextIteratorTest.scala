@@ -29,6 +29,7 @@ import htsjdk.samtools.SAMFileHeader
 import htsjdk.samtools.util.{Interval, IntervalList}
 import htsjdk.variant.variantcontext.VariantContext
 import htsjdk.variant.vcf.VCFFileReader
+import com.fulcrumgenomics.FgBioDef._
 
 /**
   * Tests for ByIntervalListVariantContextIterator.
@@ -50,8 +51,7 @@ class ByIntervalListVariantContextIteratorTest extends UnitSpec {
       ByIntervalListVariantContextIterator(reader=reader, intervalList=intervalList)
     }
     else {
-      import scala.collection.JavaConversions.asScalaIterator
-      ByIntervalListVariantContextIterator(iterator=reader.iterator().toIterator, intervalList=intervalList, dict=reader.getFileHeader.getSequenceDictionary)
+      ByIntervalListVariantContextIterator(iterator=reader.iterator(), intervalList=intervalList, dict=reader.getFileHeader.getSequenceDictionary)
     }
   }
 
