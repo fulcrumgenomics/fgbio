@@ -37,8 +37,7 @@ import htsjdk.samtools.SamPairUtil.PairOrientation
 import htsjdk.samtools._
 import htsjdk.samtools.filter._
 import htsjdk.samtools.util.{CoordMath, Interval, OverlapDetector}
-
-import scala.collection.JavaConversions.iterableAsScalaIterable
+import scala.collection.JavaConverters._
 
 @clp(description =
   """Computes the insert size for RNA-Seq experiments.
@@ -72,7 +71,6 @@ class EstimateRnaSeqInsertSize
  @arg(flag="q", doc="Ignore reads with mapping quality less than this value.") val minimumMappingQuality: Int = 30,
  @arg(flag="m", doc="The minimum fraction of read bases that must overlap exonic sequence in a transcript") val minimumOverlap: Double = 0.95
 ) extends FgBioTool with LazyLogging {
-  import scala.collection.JavaConversions.{asJavaIterator, asScalaIterator, seqAsJavaList}
   import EstimateRnaSeqInsertSize._
 
   Io.assertReadable(input)
@@ -87,7 +85,7 @@ class EstimateRnaSeqInsertSize
     val in                  = SamReaderFactory.make.open(input)
     val refFlatSource       = RefFlatSource(refFlat, Some(in.getFileHeader.getSequenceDictionary))
     val counters            = pairOrientations.map { pairOrientation => (pairOrientation, new NumericCounter[Long]()) }.toMap
-    val filter              = new AggregateFilter(EstimateRnaSeqInsertSize.filters(minimumMappingQuality=minimumMappingQuality, includeDuplicates=includeDuplicates))
+    val filter              = new AggregateFilter(EstimateRnaSeqInsertSize.filters(minimumMappingQuality=minimumMappingQuality, includeDuplicates=includeDuplicates).asJava)
     var numReadPairs        = 0L
     val recordIterator      = new FilteringSamIterator(
       in.iterator().map { rec => progress.record(rec); if (rec.getReadPairedFlag && rec.getFirstOfPairFlag) numReadPairs += 1; rec },
@@ -159,7 +157,7 @@ class EstimateRnaSeqInsertSize
     if (overlappingGenes.size() == 1) {
       insertSizeFromGene(
         rec              = rec,
-        gene             = overlappingGenes.head,
+        gene             = overlappingGenes.iterator().next(),
         minimumOverlap   = minimumOverlap,
         recInterval      = recInterval,
         recBlocks        = rec.getAlignmentBlocks.toList,

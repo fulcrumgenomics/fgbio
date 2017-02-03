@@ -83,7 +83,7 @@ class AutoGenerateReadGroupsByName
       val progress = new ProgressLogger(logger, verb = "read", unit = 5e6.toInt)
       val in = SamReaderFactory.make().open(input.toFile)
 
-      in.toIterator.foreach { record =>
+      in.foreach { record =>
         val runInfo       = RunInfo(name=record.getReadName)
 
         if (!readGroups.contains(runInfo)) {

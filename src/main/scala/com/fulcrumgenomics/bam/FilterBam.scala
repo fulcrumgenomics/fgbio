@@ -27,6 +27,7 @@ package com.fulcrumgenomics.bam
 import java.nio.file.Path
 import java.text.DecimalFormat
 
+import com.fulcrumgenomics.FgBioDef._
 import com.fulcrumgenomics.cmdline.{ClpGroups, FgBioTool}
 import com.fulcrumgenomics.util.ProgressLogger
 import dagr.commons.CommonsDef.{PathToBam, PathToIntervals}
@@ -35,8 +36,6 @@ import dagr.commons.util.LazyLogging
 import dagr.sopt._
 import htsjdk.samtools._
 import htsjdk.samtools.util.{CloserUtil, IntervalList}
-
-import scala.collection.JavaConversions._
 
 /**
   * Program which takes in a BAM file and filters out all reads for templates that match one or more
@@ -93,6 +92,7 @@ class FilterBam
     }
     logger.info("Kept " + new DecimalFormat("#,##0").format(kept) + " records.")
     out.close()
+    iterator.safelyClose()
     CloserUtil.close(iterator)
   }
   /**

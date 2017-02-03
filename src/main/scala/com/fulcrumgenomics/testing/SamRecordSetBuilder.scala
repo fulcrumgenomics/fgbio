@@ -31,11 +31,9 @@ import java.text.DecimalFormat
 import java.util.concurrent.atomic.AtomicLong
 
 import com.fulcrumgenomics.testing.SamRecordSetBuilder._
-import dagr.commons.CommonsDef.{PathToBam, unreachable}
+import com.fulcrumgenomics.FgBioDef._
 import htsjdk.samtools.SAMFileHeader.SortOrder
 import htsjdk.samtools._
-
-import scala.collection.JavaConversions._
 
 object SamRecordSetBuilder {
   sealed trait Strand { val isNegative: Boolean }
@@ -62,7 +60,7 @@ class SamRecordSetBuilder(val readLength: Int=100,
 
   private val counter = new AtomicLong(0)
   private val format  = new DecimalFormat("0000")
-  protected def nextName = format.format(counter.getAndIncrement())
+  protected def nextName: String = format.format(counter.getAndIncrement())
 
   /** Adds a pair of reads to the file. */
   def addPair(name: String = nextName,
@@ -135,16 +133,16 @@ class SamRecordSetBuilder(val readLength: Int=100,
   private def quals(length: Int, qual: Int) = new String(Array.fill(length)(SAMUtils.phredToFastq(qual)))
 
   /** Gets the SAMFileHeader that will be written. */
-  def header = this.builder.getHeader
+  def header: SAMFileHeader = this.builder.getHeader
 
   /** Gets the SAMSequenceDictionary that will be written. */
-  def dict   = this.builder.getHeader.getSequenceDictionary
+  def dict: SAMSequenceDictionary = this.builder.getHeader.getSequenceDictionary
 
   /** Returns an iterator over the records that have been built. */
-  override def iterator = this.builder.iterator()
+  override def iterator: Iterator[SAMRecord] = this.builder.iterator()
 
   /** Returns the number of records that have been built. */
-  override def size = this.builder.size()
+  override def size: Int = this.builder.size()
 
   /** Adds all the records from another builder to this one. */
   def += (other: SamRecordSetBuilder) : Unit = {
@@ -170,7 +168,7 @@ class SamRecordSetBuilder(val readLength: Int=100,
 
   /** Creates a SamReader over the records stored in a temporary file. */
   def toReader: SamReader = {
-    val bam = toTempFile(deleteOnExit = true)
+    val bam = toTempFile()
     SamReaderFactory.make().open(bam)
   }
 }

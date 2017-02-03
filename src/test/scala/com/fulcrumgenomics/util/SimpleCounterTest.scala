@@ -38,7 +38,7 @@ class SimpleCounterTest extends UnitSpec {
     counter.count(9, 4)
     counter.countOf(10) shouldBe 5
     counter.countOf(9) shouldBe 4
-    counter.iterator.toList shouldBe List((9, 4), (10, 5))
+    counter.iterator.toList should contain theSameElementsAs List((9, 4), (10, 5))
     counter.total shouldBe 9
   }
 
@@ -48,7 +48,7 @@ class SimpleCounterTest extends UnitSpec {
     counter.count("10.5", 4)
     counter.countOf(10) shouldBe 5
     counter.countOf("10.5") shouldBe 4
-    counter.iterator.toList shouldBe List(("10.5", 4), (10, 5))
+    counter.iterator.toList should contain theSameElementsAs List(("10.5", 4), (10, 5))
     counter.total shouldBe 9
   }
 }

@@ -33,7 +33,6 @@ import htsjdk.samtools.util.SequenceUtil
 import htsjdk.samtools.{SAMFileWriterFactory, SAMRecord, SamReaderFactory}
 
 import scala.annotation.tailrec
-import scala.collection.JavaConversions.asScalaIterator
 import scala.collection.mutable
 
 @clp(group = ClpGroups.SamOrBam, description =

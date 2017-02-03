@@ -33,7 +33,6 @@ import dagr.commons.io.PathUtil
 import htsjdk.samtools.SAMFileHeader.SortOrder
 import htsjdk.samtools.{SAMFileHeader, SAMFileWriterFactory, SAMRecord, SAMSequenceDictionary, SAMSequenceRecord, SamReaderFactory}
 
-import scala.collection.JavaConversions.iterableAsScalaIterable
 import scala.collection.mutable.ListBuffer
 
 class FilterConsensusReadsTest extends UnitSpec {

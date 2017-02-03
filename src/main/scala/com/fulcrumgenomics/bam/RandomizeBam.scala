@@ -33,14 +33,12 @@ package com.fulcrumgenomics.bam
 
 import com.fulcrumgenomics.cmdline.{ClpGroups, FgBioTool}
 import com.fulcrumgenomics.util.{Io, ProgressLogger}
-import dagr.commons.CommonsDef._
+import com.fulcrumgenomics.FgBioDef._
 import dagr.commons.util.LazyLogging
 import dagr.sopt.{arg, clp}
 import htsjdk.samtools.SAMFileHeader.{GroupOrder, SortOrder}
 import htsjdk.samtools._
 import htsjdk.samtools.util.{Murmur3, SortingCollection}
-
-import scala.collection.JavaConversions.iterableAsScalaIterable
 
 @clp(group=ClpGroups.SamOrBam, description=
 """

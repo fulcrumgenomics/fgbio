@@ -34,7 +34,6 @@ import dagr.sopt.util.ParsingUtil
 import htsjdk.samtools.{SAMRecord, SamReaderFactory}
 import org.scalatest.{BeforeAndAfterAll, FlatSpec, Matchers}
 
-import scala.collection.JavaConversions.asScalaIterator
 import scala.reflect.ClassTag
 import scala.reflect.runtime.universe._
 
@@ -53,7 +52,7 @@ trait UnitSpec extends FlatSpec with Matchers {
   /** Reads all the records from a SAM or BAM file into an indexed seq. */
   protected def readBamRecs(bam: PathToBam): IndexedSeq[SAMRecord] = {
     val in = SamReaderFactory.make().open(bam.toFile)
-    yieldAndThen(in.iterator().toIndexedSeq) { in.safelyClose() }
+    yieldAndThen(in.toIndexedSeq) { in.safelyClose() }
   }
 
   /** Generates a command line parser for a class to check that the argument annotations are valid. */

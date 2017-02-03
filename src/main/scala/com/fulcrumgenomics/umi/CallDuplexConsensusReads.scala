@@ -35,9 +35,6 @@ import dagr.sopt._
 import htsjdk.samtools.SAMFileHeader.SortOrder
 import htsjdk.samtools._
 
-import scala.collection.JavaConversions.iterableAsScalaIterable
-
-
 @clp(description =
   """
     |Calls duplex consensus sequences from reads generated from the same double-stranded source molecule. Prior

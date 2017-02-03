@@ -33,9 +33,6 @@ import htsjdk.samtools.SAMFileHeader.SortOrder
 import htsjdk.samtools.{MergingSamRecordIterator, SAMFileWriterFactory, SamFileHeaderMerger, SamReaderFactory}
 import org.scalatest.ParallelTestExecution
 
-import scala.collection.JavaConversions.iterableAsScalaIterable
-import scala.collection.JavaConversions.asScalaIterator
-
 class EstimatePoolingFractionsTest extends UnitSpec with ParallelTestExecution {
   private val Samples = Seq("HG01879", "HG01112", "HG01583", "HG01500", "HG03742", "HG03052")
   private val DataDir = Paths.get("src/test/resources/com/fulcrumgenomics/bam/estimate_pooling_fractions")

@@ -38,8 +38,6 @@ import htsjdk.samtools.SAMFileHeader.SortOrder
 import htsjdk.samtools._
 import htsjdk.samtools.reference.ReferenceSequenceFileWalker
 
-import scala.collection.JavaConversions.iterableAsScalaIterable
-
 @clp(
   group = ClpGroups.Umi, description =
     """

@@ -116,7 +116,7 @@ object GroupReadsByUmi {
     *   - Read and mate _must_ be mapped to the same chromosome
     * If any of these conditions are violated it will go badly!
     */
-  private[umi] class EarlierReadComparator extends SAMRecordComparator {
+  private[umi] class EarlierReadComparator extends SAMRecordComparator with Ordering[SAMRecord] {
     override def fileOrderCompare(lhs: SAMRecord, rhs: SAMRecord): Int = compare(lhs, rhs)
 
     /** Compares two reads for sort order. */
@@ -133,7 +133,7 @@ object GroupReadsByUmi {
     }
 
     /** Asserts that we didn't get reads we are unable to sort. */
-    final def assertValidRead(rec: SAMRecord) = {
+    final def assertValidRead(rec: SAMRecord): Unit = {
       assert(rec.getReadPairedFlag,    "Unpaired read: " + rec.getReadName)
       assert(!rec.getReadUnmappedFlag, "Unmapped read: " + rec.getReadName)
       assert(!rec.getMateUnmappedFlag, "Read w/unmapped mate: " + rec.getReadName)
@@ -420,7 +420,6 @@ class GroupReadsByUmi
   type ReadPair = (SAMRecord, SAMRecord)
 
   override def execute(): Unit = {
-    import scala.collection.JavaConversions.asScalaIterator
     Io.assertReadable(input)
     Io.assertCanWriteFile(output)
     this.familySizeHistogram.foreach(f => Io.assertCanWriteFile(f))

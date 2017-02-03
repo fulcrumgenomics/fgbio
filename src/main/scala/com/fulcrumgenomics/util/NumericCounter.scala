@@ -50,11 +50,11 @@ object NumericCounter {
   * to compute statistics when the objects being counted are numeric types.
   */
 class NumericCounter[T](implicit numeric: Numeric[T]) extends SimpleCounter[T] {
-  import scala.collection.JavaConversions.mapAsScalaMap
+  import scala.collection.JavaConverters._
   import numeric._
 
   /** Create counts such that they are ordered. */
-  override protected def makeMap(): mutable.Map[T, Long] = new java.util.TreeMap[T,Long]()
+  override protected def makeMap(): mutable.Map[T, Long] = new java.util.TreeMap[T,Long]().asScala
 
   /** The sum of the products of each numeric and count tuple. */
   private var _totalMass: T = fromInt(0)

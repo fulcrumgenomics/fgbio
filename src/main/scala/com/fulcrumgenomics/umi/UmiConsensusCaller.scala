@@ -32,7 +32,6 @@ import htsjdk.samtools.SAMFileHeader.{GroupOrder, SortOrder}
 import htsjdk.samtools.util.{Murmur3, SequenceUtil}
 import htsjdk.samtools.{SAMFileHeader, SAMReadGroupRecord, SAMRecord, SAMTag}
 
-import scala.collection.JavaConversions.iterableAsScalaIterable
 import scala.collection.mutable
 
 /**

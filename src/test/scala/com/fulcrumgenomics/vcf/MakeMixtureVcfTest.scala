@@ -31,7 +31,6 @@ import htsjdk.variant.variantcontext.Allele
 import htsjdk.variant.vcf.VCFFileReader
 
 import scala.collection.mutable
-import scala.collection.JavaConversions.iterableAsScalaIterable
 
 class MakeMixtureVcfTest extends UnitSpec {
   private val dummyVcf = makeTempFile("dummy.", ".vcf")

@@ -26,13 +26,12 @@ package com.fulcrumgenomics.bam
 
 import com.fulcrumgenomics.cmdline.{ClpGroups, FgBioTool}
 import com.fulcrumgenomics.util.ProgressLogger
-import dagr.commons.CommonsDef._
+import com.fulcrumgenomics.FgBioDef._
 import dagr.commons.io.Io
 import dagr.commons.util.LazyLogging
 import dagr.sopt._
 import htsjdk.samtools._
-
-import scala.collection.JavaConversions._
+import scala.collection.JavaConverters._
 
 /**
   * Updates one or more read groups.
@@ -78,7 +77,7 @@ class UpdateReadGroups
     val in: SamReader = SamReaderFactory.make.open(input.toFile)
     val toReadGroupsMap = getReadGroupMap(readGroupsFile, in.getFileHeader)
     val outHeader = in.getFileHeader.clone()
-    outHeader.setReadGroups(toReadGroupsMap.values.toList.sortBy(_.getId))
+    outHeader.setReadGroups(toReadGroupsMap.values.toList.sortBy(_.getId).asJava)
     val out: SAMFileWriter = new SAMFileWriterFactory().makeSAMOrBAMWriter(outHeader, true, output.toFile)
 
     // main loop

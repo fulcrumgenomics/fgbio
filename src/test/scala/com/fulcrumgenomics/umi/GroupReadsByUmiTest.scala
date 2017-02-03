@@ -35,10 +35,8 @@ import htsjdk.samtools.{SAMRecord, SamPairUtil, SamReaderFactory}
 import com.fulcrumgenomics.FgBioDef._
 import SamRecordSetBuilder._
 
-import scala.collection.JavaConversions._
 import scala.collection.mutable
 import scala.collection.mutable.ListBuffer
-
 
 /**
   * Tests for the tool that groups reads by position and UMI to attempt to identify
@@ -180,26 +178,26 @@ class GroupReadsByUmiTest extends UnitSpec {
 
     "EarlierReadComparator" should "reject unmapped reads" in {
       val recs = new SamRecordSetBuilder(readLength=100).addPair("q1", start1=100, start2=100, record1Unmapped = true)
-      an[AssertionError] should be thrownBy recs.sort(comparator)
+      an[AssertionError] should be thrownBy recs.sortWith(comparator.lt)
     }
 
     it should "reject unpaired reads" in {
       val builder = new SamRecordSetBuilder(readLength=100)
       builder.addFrag("q1", start=100)
       builder.addFrag("q2", start=200)
-      an[AssertionError] should be thrownBy builder.toList.sort(comparator)
+      an[AssertionError] should be thrownBy builder.toList.sortWith(comparator.lt)
     }
 
     it should "reject secondary reads" in {
       val recs = new SamRecordSetBuilder(readLength=100).addPair("q1", start1=100, start2=300)
       recs.foreach(rec => rec.setNotPrimaryAlignmentFlag(true))
-      an[AssertionError] should be thrownBy recs.sort(comparator)
+      an[AssertionError] should be thrownBy recs.sortWith(comparator.lt)
     }
 
     it should "reject supplementary reads" in {
       val recs = new SamRecordSetBuilder(readLength=100).addPair("q1", start1=100, start2=300)
       recs.foreach(rec => rec.setSupplementaryAlignmentFlag(true))
-      an[AssertionError] should be thrownBy recs.sort(comparator)
+      an[AssertionError] should be thrownBy recs.sortWith(comparator.lt)
     }
 
     it should "reject pairs with reads mapped to different chromosomes" in {
@@ -211,7 +209,7 @@ class GroupReadsByUmiTest extends UnitSpec {
         case _           => unreachable("This should never happen!!")
       }
 
-      an[AssertionError] should be thrownBy recs.sort(comparator)
+      an[AssertionError] should be thrownBy recs.sortWith(comparator.lt)
     }
 
     it should "sort pairs by the 'lower' 5' position of the pair" in {

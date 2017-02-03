@@ -26,9 +26,8 @@ package com.fulcrumgenomics.vcf
 
 import com.fulcrumgenomics.testing.{UnitSpec, VariantContextSetBuilder}
 import htsjdk.variant.variantcontext.Allele
+import com.fulcrumgenomics.FgBioDef._
 import htsjdk.variant.vcf.VCFFileReader
-
-import scala.collection.JavaConversions.iterableAsScalaIterable
 
 class MakeTwoSampleMixtureVcfTest extends UnitSpec {
   private val builder = new VariantContextSetBuilder(sampleNames = List("s1", "s2"))

@@ -33,8 +33,6 @@ import htsjdk.samtools.SAMFileHeader.{GroupOrder, SortOrder}
 import htsjdk.samtools.SamPairUtil.SetMateInfoIterator
 import htsjdk.samtools.{SAMFileWriterFactory, SamReaderFactory}
 
-import scala.collection.JavaConversions.asScalaIterator
-
 @clp(group=ClpGroups.SamOrBam, description=
 """
   |Adds and/or fixes mate information on paired-end reads. Sets the MQ (mate mapping quality),

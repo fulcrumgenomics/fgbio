@@ -27,14 +27,14 @@ package com.fulcrumgenomics.bam
 import com.fulcrumgenomics.FgBioDef._
 import htsjdk.samtools.util.SamLocusIterator
 import htsjdk.samtools.util.SamLocusIterator.LocusInfo
-import scala.collection.JavaConversions.iterableAsScalaIterable
+import scala.collection.JavaConverters._
 
 object BaseCounts {
   /**
     * Generates a BaseCounts object from a collection of LocusInfo object
     * representing a pileup.  Ensures that each template is only counted once.
     */
-  def apply(locus: LocusInfo): BaseCounts = apply(locus.getRecordAndOffsets)
+  def apply(locus: LocusInfo): BaseCounts = apply(locus.getRecordAndOffsets.asScala)
 
   /**
     * Generates a BaseCounts object from a collection of RecordAndOffest objects

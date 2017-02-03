@@ -37,7 +37,6 @@ import htsjdk.samtools.util.{IntervalList, SequenceUtil}
 import htsjdk.samtools.{QueryInterval, SAMFileWriterFactory, SAMRecord, SamReaderFactory}
 import htsjdk.variant.vcf.VCFFileReader
 
-import scala.collection.JavaConversions.{asScalaIterator, iterableAsScalaIterable}
 import scala.collection.mutable
 import scala.collection.mutable.ListBuffer
 

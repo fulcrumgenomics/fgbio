@@ -25,19 +25,15 @@
 
 package com.fulcrumgenomics.umi
 
+import com.fulcrumgenomics.FgBioDef._
 import com.fulcrumgenomics.cmdline.{ClpGroups, FgBioTool}
 import com.fulcrumgenomics.util.ReadStructure.SubRead
 import com.fulcrumgenomics.util.{ProgressLogger, _}
-import com.fulcrumgenomics.FgBioDef.unreachable
-import dagr.commons.CommonsDef.PathToBam
 import dagr.commons.io.Io
 import dagr.commons.util.LazyLogging
 import dagr.sopt._
-import dagr.sopt.cmdline.ValidationException
 import htsjdk.samtools._
 import htsjdk.samtools.util._
-
-import scala.collection.JavaConversions._
 
 @clp(description =
   """
@@ -119,7 +115,7 @@ class ExtractUmisFromBam
     case Seq(tag) => (Seq[String](tag), Seq[String](tag))
     case tags =>
       val numMolecularIndicesRead1 = rs1.molecularBarcode.length
-      (tags.subList(0, numMolecularIndicesRead1).toSeq, tags.subList(numMolecularIndicesRead1, tags.length).toSeq)
+      (tags.slice(0, numMolecularIndicesRead1), tags.slice(numMolecularIndicesRead1, tags.length))
   }
 
   // Verify that if a single tag was specified that it is valid and not also contained in the per-index tags

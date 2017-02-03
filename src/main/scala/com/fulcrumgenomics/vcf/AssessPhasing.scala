@@ -43,6 +43,7 @@ import htsjdk.variant.vcf._
 
 import scala.annotation.tailrec
 import scala.collection.mutable.ListBuffer
+import scala.collection.JavaConverters._
 
 @clp(
   description =
@@ -109,13 +110,11 @@ class AssessPhasing
       val headerLines: util.Set[VCFHeaderLine] = new util.HashSet[VCFHeaderLine](header.getMetaDataInSortedOrder)
       headerLines.add(AssessPhasing.PhaseConcordanceFormatHeaderLine) // add the new format header lines
       VCFStandardHeaderLines.addStandardFormatLines(headerLines, false, Genotype.PRIMARY_KEYS) // add standard header lines
-      import scala.collection.JavaConversions.seqAsJavaList
-      writer.writeHeader(new VCFHeader(headerLines, Seq("call", "truth")))
+      writer.writeHeader(new VCFHeader(headerLines, List("call", "truth").asJava))
       reader.safelyClose()
       Some(writer)
     }
 
-    import scala.collection.JavaConversions.asScalaIterator
     // NB: could parallelize!
     dict.getSequences
       .iterator
@@ -183,8 +182,7 @@ class AssessPhasing
 
     val intervalListForContig = intervalList.map { oldList =>
       val newList = new IntervalList(oldList.getHeader)
-      import scala.collection.JavaConversions._
-      newList.addall(oldList.getIntervals.filter { _.getContig == contig })
+      newList.addall(oldList.getIntervals.filter { _.getContig == contig }.toList.asJava)
       newList
     }
 
@@ -257,7 +255,6 @@ class AssessPhasing
     /////////////////////////////////////////////////////////////////////////////////////////////////////////
     logger.info("Computing block metrics")
 
-    import scala.collection.JavaConversions._
     calledPhaseBlockDetector.getAll.toIterator.foreach { block => calledBlockLengthCounter.count(block.length) }
     truthPhaseBlockDetector.getAll.toIterator.foreach { block => truthBlockLengthCounter.count(block.length) }
 
@@ -271,14 +268,11 @@ class AssessPhasing
                                        contig: String,
                                        contigLength: Int,
                                        intervalList: Option[IntervalList] = None): Iterator[VariantContext] = {
-    import scala.collection.JavaConversions.asScalaBuffer
-    val sampleName = reader.getFileHeader.getSampleNamesInOrder.head
+    val sampleName = reader.getFileHeader.getSampleNamesInOrder.iterator().next()
     (intervalList match {
       case Some(intv) =>
-        import scala.collection.JavaConversions.asScalaIterator
         ByIntervalListVariantContextIterator(reader.iterator().toIterator, intv, dict=reader.getFileHeader.getSequenceDictionary)
       case None =>
-        import scala.collection.JavaConversions.asScalaIterator
         reader.query(contig, 1, contigLength).toIterator
     })
     .map(_.subContextFromSample(sampleName))
@@ -414,10 +408,7 @@ object PhaseBlock extends LazyLogging {
       }
     })
 
-    {
-      import scala.collection.JavaConversions.asJavaCollection
-      blocksIn.addAll(phaseBlocks.values)
-    }
+    phaseBlocks.values.foreach(blocksIn.add)
     logger.info(s"Found ${phaseBlocks.size} phase block")
 
 
@@ -468,8 +459,7 @@ object PhaseBlock extends LazyLogging {
     blocksOut.foreach { block => logger.info(s"Keeping $block") }
 
     // add any remaining
-    import scala.collection.JavaConversions.seqAsJavaList
-    detector.addAll(blocksOut, blocksOut)
+    detector.addAll(blocksOut.toList.asJava, blocksOut.toList.asJava)
     phaseBlocks.clear()
 
     detector
@@ -616,7 +606,6 @@ private[vcf] object PhaseCigar {
     val iter = pairedIterator.filter {
       // ensure the alleles are the same when both truth and call are called
       case ((Some(t: VCtx), Some(c: VCtx))) =>
-        import scala.collection.JavaConversions.iterableAsScalaIterable
         !skipMismatchingAlleles || t.getAlleles.toSet == c.getAlleles.toSet
       case _ => true
     }.flatMap { case (t, c) => // collect metrics but only keep sites where either variant context (i.e. truth or call) is phased.
@@ -765,7 +754,6 @@ private[vcf] object PhaseCigar {
     * [[Mismatch]] otherwise.
     */
   private[vcf] def cigarTypeForVariantContexts(truth: VariantContext, call: VariantContext): PhaseCigarOp = {
-    import scala.collection.JavaConversions.iterableAsScalaIterable
     val truthAlleles  = truth.getGenotype(0).getAlleles.toSeq
     val calledAlleles = call.getGenotype(0).getAlleles.toSeq
     require(truthAlleles.length == calledAlleles.length)

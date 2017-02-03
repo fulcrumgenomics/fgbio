@@ -25,14 +25,12 @@
 package com.fulcrumgenomics.personal.nhomer
 
 import com.fulcrumgenomics.cmdline.{ClpGroups, FgBioTool}
-import dagr.commons.CommonsDef.PathToBam
+import com.fulcrumgenomics.FgBioDef._
 import dagr.commons.io.Io
 import dagr.sopt._
 import dagr.sopt.cmdline.ValidationException
 import htsjdk.samtools.util.CloserUtil
 import htsjdk.samtools.{SAMFileWriter, SAMFileWriterFactory, SamReader, SamReaderFactory}
-
-import scala.collection.JavaConversions._
 
 @clp(
   description = "Splits an optional tag in a SAM or BAM into multiple optional tags.",

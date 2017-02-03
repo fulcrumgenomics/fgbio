@@ -97,7 +97,7 @@ class ClipOverlappingReads
     val out    = new SAMFileWriterFactory().setCreateIndex(true).makeWriter(header, true, output.toFile, ref.toFile)
     val writeProgress = new ProgressLogger(logger, verb="wrote")
 
-    sorter.toIterator.foreach { rec =>
+    sorter.foreach { rec =>
       Bams.regenerateNmUqMdTags(rec, walker)
       out.addAlignment(rec)
       writeProgress.record(rec)

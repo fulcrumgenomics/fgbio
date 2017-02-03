@@ -39,8 +39,6 @@ import com.fulcrumgenomics.util.ProgressLogger
 import htsjdk.samtools._
 import htsjdk.samtools.util._
 
-import scala.collection.JavaConversions.iterableAsScalaIterable
-
 @clp(group=ClpGroups.SamOrBam, description=
   """
     |Trims primers from reads post-alignment.  Takes in a BAM file of aligned reads

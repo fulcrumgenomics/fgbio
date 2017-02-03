@@ -39,8 +39,8 @@ import htsjdk.variant.variantcontext._
 import htsjdk.variant.variantcontext.writer.{Options, VariantContextWriter, VariantContextWriterBuilder}
 import htsjdk.variant.vcf._
 
-import scala.collection.JavaConversions.iterableAsScalaIterable
 import scala.collection.mutable
+import scala.collection.JavaConverters._
 
 
 object MakeMixtureVcf {
@@ -252,7 +252,7 @@ class MakeMixtureVcf
               s"Variant at ${ctx.getContig}:${ctx.getStart} had ${ctx.getNAlleles-1} alt alleles but sample " +
                 s"${sample.name} had an ${afField} with ${ds.length} entries.")
 
-            ds.zip(ctx.getAlternateAlleles).foreach { case (af, allele) =>
+            ds.zip(ctx.getAlternateAlleles.asScala).foreach { case (af, allele) =>
               alleleFractions(allele) += sample.proportion * af
             }
 

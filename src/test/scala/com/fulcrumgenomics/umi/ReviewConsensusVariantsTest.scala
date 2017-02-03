@@ -27,14 +27,11 @@ package com.fulcrumgenomics.umi
 import com.fulcrumgenomics.FgBioDef._
 import com.fulcrumgenomics.testing.{SamRecordSetBuilder, UnitSpec, VariantContextSetBuilder}
 import com.fulcrumgenomics.util.Io
-import com.fulcrumgenomics.util.NumericTypes.PhredScore
 import dagr.commons.io.PathUtil
 import htsjdk.samtools.SAMFileHeader.SortOrder
 import htsjdk.samtools.reference.{ReferenceSequenceFile, ReferenceSequenceFileFactory}
 import htsjdk.samtools.util.{Interval, IntervalList}
-import htsjdk.samtools.{SAMFileHeader, SAMFileWriterFactory, SAMRecord, SamReaderFactory}
-
-import scala.collection.JavaConversions.{asScalaIterator, iterableAsScalaIterable}
+import htsjdk.samtools.{SAMFileHeader, SAMRecord}
 
 object ReviewConsensusVariantsTest {
   val Fasta : Seq[String] =

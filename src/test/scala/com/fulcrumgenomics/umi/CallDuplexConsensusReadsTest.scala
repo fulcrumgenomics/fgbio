@@ -29,7 +29,6 @@ import java.nio.file.Paths
 import com.fulcrumgenomics.FgBioDef._
 import com.fulcrumgenomics.testing.{SamRecordSetBuilder, UnitSpec}
 import htsjdk.samtools.SamReaderFactory
-import scala.collection.JavaConversions.iterableAsScalaIterable
 
 class CallDuplexConsensusReadsTest extends UnitSpec {
   private val MI = ConsensusTags.MolecularId
@@ -75,7 +74,7 @@ class CallDuplexConsensusReadsTest extends UnitSpec {
     val recs = reader.toSeq
 
     reader.getFileHeader.getReadGroups should have size 1
-    reader.getFileHeader.getReadGroups.head.getId shouldBe "ZZ"
+    reader.getFileHeader.getReadGroups.iterator().next().getId shouldBe "ZZ"
     recs should have size 2
   }
 }

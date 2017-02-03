@@ -1,9 +1,8 @@
 package com.fulcrumgenomics.util
 
-import scala.collection.JavaConversions._
-
 import com.fulcrumgenomics.cmdline.{ClpGroups, FgBioTool}
-import dagr.commons.CommonsDef.{DirPath, FilePath}
+import com.fulcrumgenomics.FgBioDef._
+import scala.collection.JavaConverters._
 import dagr.sopt.{arg, clp}
 
 /**
@@ -54,8 +53,8 @@ class PickIlluminaIndices
     cmd.NUM_THREADS               = threads
     cmd.VIENNA_RNA_DIR            = viennaRnaDir.map(_.toFile).orNull
     cmd.MIN_DELTAG                = minDeltaG
-    cmd.INDEX_ADAPTER             = adapters
-    cmd.AVOID_SEQUENCE            = avoidSequence
+    cmd.INDEX_ADAPTER             = adapters.asJava
+    cmd.AVOID_SEQUENCE            = avoidSequence.asJava
     cmd.execute()
   }
 }

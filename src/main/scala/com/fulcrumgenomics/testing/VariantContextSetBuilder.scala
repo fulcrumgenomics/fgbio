@@ -26,15 +26,16 @@
 package com.fulcrumgenomics.testing
 
 import java.nio.file.Files
+import java.util.Collections
 
-import dagr.commons.CommonsDef._
+import com.fulcrumgenomics.FgBioDef._
 import htsjdk.samtools.SAMSequenceDictionary
 import htsjdk.variant.variantcontext._
 import htsjdk.variant.variantcontext.writer.{Options, VariantContextWriterBuilder}
 import htsjdk.variant.vcf.{VCFFileReader, VCFHeader, VCFHeaderLine, VCFStandardHeaderLines}
 
-import scala.collection.JavaConversions._
 import scala.collection.mutable.ListBuffer
+import scala.collection.JavaConverters._
 
 object VariantContextSetBuilder {
   def apply(sampleName: String): VariantContextSetBuilder = {
@@ -52,7 +53,7 @@ class VariantContextSetBuilder(sampleNames: Seq[String] = List("Sample")) extend
   if (sampleNames.isEmpty) throw new IllegalArgumentException("At least one sample name must be given")
 
   private var _header = {
-    val h = new VCFHeader(Set.empty[VCFHeaderLine], sampleNames.toList)
+    val h = new VCFHeader(Collections.emptySet[VCFHeaderLine](), sampleNames.toList.asJava)
     h.setSequenceDictionary(new SamRecordSetBuilder().header.getSequenceDictionary)
     h
   }
@@ -102,13 +103,13 @@ class VariantContextSetBuilder(sampleNames: Seq[String] = List("Sample")) extend
     }
     val contig          = this.dict.getSequence(refIdx).getSequenceName
     val alleles         = toAlleles(variantAlleles)
-    val stop            = VariantContextUtils.computeEndFromAlleles(alleles, start.toInt, -1)
+    val stop            = VariantContextUtils.computeEndFromAlleles(alleles.asJava, start.toInt, -1)
     // check to see if there are already genotypes for this variant
     val (ctxBuilder, prevGenotypes) = this.variants.find { ctx =>
       ctx.getContig == contig &&
         ctx.getStart == start &&
         ctx.getEnd == stop &&
-        ctx.getAlleles.map(_.getBaseString).sorted.mkString == variantAlleles.sorted.mkString // only an approximation
+        ctx.getAlleles.asScala.map(_.getBaseString).sorted.mkString == variantAlleles.sorted.mkString // only an approximation
     } match {
       case Some(ctx) =>
         // remove this variant context, and create a builder based off of it, and get the current genotypes.
@@ -116,15 +117,15 @@ class VariantContextSetBuilder(sampleNames: Seq[String] = List("Sample")) extend
         (new VariantContextBuilder(ctx), ctx.getGenotypesOrderedByName.toList)
       case None      =>
         // create a new variant context builder and an empty set of genotypes
-        (new VariantContextBuilder("source", contig, start, stop, alleles), List.empty[Genotype])
+        (new VariantContextBuilder("source", contig, start, stop, alleles.asJava), List.empty[Genotype])
     }
     // get the reference allele
     val referenceAllele = ctxBuilder.getAlleles.find(_.isReference)
     // create a genotype builder.
-    val name = sampleName.getOrElse(header.getSampleNamesInOrder.head)
+    val name = sampleName.getOrElse(header.getSampleNamesInOrder.iterator().next())
     val genotypeBuilder = genotypeAlleles match {
-      case Nil      => new GenotypeBuilder(name, List.empty[Allele])
-      case gAlleles => new GenotypeBuilder(name, toAlleles(gAlleles, referenceAllele=referenceAllele))
+      case Nil      => new GenotypeBuilder(name, Collections.emptyList[Allele]())
+      case gAlleles => new GenotypeBuilder(name, toAlleles(gAlleles, referenceAllele=referenceAllele).asJava)
     }
     genotypeBuilder.phased(phased)
     genotypeAttributes.foreach { case (k,v) => genotypeBuilder.attribute(k, v) }

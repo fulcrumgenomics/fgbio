@@ -35,7 +35,7 @@ import htsjdk.samtools.util.IntervalList
 import htsjdk.variant.variantcontext._
 import htsjdk.variant.vcf.{VCFFilterHeaderLine, _}
 
-import scala.collection.JavaConversions.{asJavaCollection, iterableAsScalaIterable}
+import scala.collection.JavaConverters._
 import scala.collection.mutable.ListBuffer
 
 object MakeTwoSampleMixtureVcf {
@@ -146,7 +146,7 @@ class MakeTwoSampleMixtureVcf
         val gts = Seq(Some(newTumorGt), newNormalGt).flatten
         val builder = new VariantContextBuilder(ctx.getSource, ctx.getContig, ctx.getStart(), ctx.getEnd(), ctx.getAlleles)
         builder.id(ctx.getID)
-        builder.genotypes(gts)
+        builder.genotypes(gts.asJavaCollection)
 
         val filters = ListBuffer[String]()
         if (isMultiAllelic) filters += MultiAllelicFilter
@@ -163,7 +163,6 @@ class MakeTwoSampleMixtureVcf
 
   /** Generates an iterator over the whole file, or over the intervals if provided. */
   def iterator(in: VCFFileReader, intervals: Option[PathToIntervals]): Iterator[VariantContext] = {
-    import scala.collection.JavaConversions.asScalaIterator
     intervals match {
       case None       => in.iterator()
       case Some(path) => ByIntervalListVariantContextIterator(in, IntervalList.fromFile(path.toFile).uniqued(false))

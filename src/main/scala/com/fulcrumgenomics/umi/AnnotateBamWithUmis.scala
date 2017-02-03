@@ -27,13 +27,11 @@ package com.fulcrumgenomics.umi
 import com.fulcrumgenomics.cmdline.{ClpGroups, FgBioTool}
 import com.fulcrumgenomics.fastq.FastqSource
 import com.fulcrumgenomics.util.ProgressLogger
-import dagr.commons.CommonsDef.{PathToBam, PathToFastq}
+import com.fulcrumgenomics.FgBioDef._
 import dagr.commons.io.Io
 import dagr.commons.util.LazyLogging
 import dagr.sopt._
 import htsjdk.samtools.{SAMFileWriterFactory, SamReaderFactory}
-
-import scala.collection.JavaConversions._
 
 @clp(description =
   """

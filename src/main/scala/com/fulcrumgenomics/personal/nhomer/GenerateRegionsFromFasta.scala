@@ -26,6 +26,7 @@ package com.fulcrumgenomics.personal.nhomer
 
 import java.nio.file.Path
 
+import com.fulcrumgenomics.FgBioDef._
 import com.fulcrumgenomics.cmdline.ClpGroups.Personal
 import com.fulcrumgenomics.cmdline.FgBioTool
 import dagr.commons.CommonsDef.PathToFasta
@@ -33,8 +34,6 @@ import dagr.commons.io.Io
 import dagr.commons.util.LazyLogging
 import dagr.sopt._
 import htsjdk.samtools.reference.ReferenceSequenceFileFactory
-
-import scala.collection.JavaConversions._
 
 @clp(
   description="Generates a list of freebayes/bamtools region specifiers.",

@@ -189,7 +189,7 @@ class EstimatePoolingFractions
     iterator.setIncludeNonPfReads(false)
     iterator.setMappingQualityScoreCutoff(this.minMappingQuality)
     iterator.setQualityScoreCutoff(this.minBaseQuality)
-    iterator
+    javaIteratorAsScalaIterator(iterator)
   }
 
   /**

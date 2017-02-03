@@ -24,22 +24,18 @@
  */
 
 package com.fulcrumgenomics.bam
-import com.fulcrumgenomics.util.{Io, Metric, RefFlatSource}
-import com.fulcrumgenomics.testing.{SamRecordSetBuilder, UnitSpec}
-import com.fulcrumgenomics.testing.SamRecordSetBuilder._
-import com.fulcrumgenomics.util.GeneAnnotations.{Exon, Gene, Transcript}
-import dagr.commons.io.PathUtil
-import htsjdk.samtools.{AlignmentBlock, SAMRecord}
-import htsjdk.samtools.SamPairUtil.PairOrientation
-import htsjdk.samtools.util.{CoordMath, Interval}
-import org.scalatest.OptionValues
+import com.fulcrumgenomics.FgBioDef._
 import com.fulcrumgenomics.bam.EstimateRnaSeqInsertSize._
+import com.fulcrumgenomics.testing.SamRecordSetBuilder._
+import com.fulcrumgenomics.testing.{SamRecordSetBuilder, UnitSpec}
+import com.fulcrumgenomics.util.GeneAnnotations.{Exon, Gene, Transcript}
+import com.fulcrumgenomics.util.{Io, Metric}
+import dagr.commons.io.PathUtil
+import htsjdk.samtools.SAMRecord
+import htsjdk.samtools.SamPairUtil.PairOrientation
+import org.scalatest.OptionValues
 
 class EstimateRnaSeqInsertSizeTest extends UnitSpec with OptionValues {
-  import scala.collection.JavaConversions.collectionAsScalaIterable
-
-  import scala.collection.JavaConversions.iterableAsScalaIterable
-
   /** Calculates the insert size from a gene.  Returns None if the record's span is not enclosed in the gene or if
     * the insert size disagree across transcripts. */
   def testInsertSizeFromGene(rec: SAMRecord,

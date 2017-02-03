@@ -31,14 +31,13 @@ import java.util.NoSuchElementException
 
 import com.fulcrumgenomics.cmdline.{ClpGroups, FgBioTool}
 import com.fulcrumgenomics.util.Io
-import dagr.commons.CommonsDef._
+import com.fulcrumgenomics.FgBioDef._
 import dagr.commons.util.LazyLogging
 import dagr.sopt._
 import htsjdk.variant.variantcontext._
 import htsjdk.variant.variantcontext.writer.{Options, VariantContextWriter, VariantContextWriterBuilder}
 import htsjdk.variant.vcf._
 
-import scala.collection.JavaConversions._
 import scala.collection.JavaConverters._
 import scala.io.Source
 
@@ -128,14 +127,14 @@ class HapCutToVcf
     // get the header lines in the input header that we wish to skip/replace with our own definitions
     val headerLinesToSkip = HeaderLines.formatHeaderKeys(hapCutType).flatMap(key => Option(inputHeader.getFormatHeaderLine(key)))
     val headerLines: util.Set[VCFHeaderLine] = new util.HashSet[VCFHeaderLine](
-      inputHeader.getMetaDataInSortedOrder.filterNot(headerLinesToSkip.contains).toSet
+      inputHeader.getMetaDataInSortedOrder.filterNot(headerLinesToSkip.contains).toSet.asJava
     )
 
     // add standard header lines
     VCFStandardHeaderLines.addStandardFormatLines(headerLines, false, Genotype.PRIMARY_KEYS)
 
     // add the new format header lines
-    headerLines.addAll(HeaderLines.formatHeaderLines(hapCutType))
+    headerLines.addAll(HeaderLines.formatHeaderLines(hapCutType).asJava)
 
     // add the new filter header line if we are to set a filter (not phased) on the unphased variants
     if (gatkPhasingFormat) headerLines.add(HapCut1VcfHeaderLines.NotPhasedFilterHeaderLine)
@@ -245,7 +244,7 @@ private class HapCutAndVcfMergingIterator(hapCutPath: FilePath,
 
   private val sourceIterator = vcfReader.toStream.zipWithIndex.iterator.buffered
   private val hapCutReader   = HapCutReader(path=hapCutPath)
-  private val sampleName     = vcfReader.getFileHeader.getSampleNamesInOrder.head
+  private val sampleName     = vcfReader.getFileHeader.getSampleNamesInOrder.iterator().next()
 
   def hasNext(): Boolean = {
     if (sourceIterator.isEmpty && hapCutReader.hasNext()) throw new IllegalStateException("HapCut has more phased variants but no more variants in the input")
@@ -291,11 +290,11 @@ private class HapCutAndVcfMergingIterator(hapCutPath: FilePath,
         // unset the phase and remove the phasing set ID if the input has phase set
         builder.genotypes(sourceContext.getGenotypes().map { g =>
           val builder = new GenotypeBuilder(g).phased(false)
-          val attrs = g.getExtendedAttributes.filterNot { case (tag, value) =>  tag == HapCut1VcfHeaderLines.PhaseSetFormatTag }
+          val attrs = g.getExtendedAttributes.asScala.filterNot { case (tag, value) =>  tag == HapCut1VcfHeaderLines.PhaseSetFormatTag }
           builder.noAttributes()
-          builder.attributes(attrs)
+          builder.attributes(attrs.asJava)
           builder.make()
-        })
+        }.toList.asJava)
       }
       if (gatkPhasingFormat) {
         // set the variant as filtered due to not being phased
@@ -309,7 +308,7 @@ private class HapCutAndVcfMergingIterator(hapCutPath: FilePath,
   private def replaceGenotypes(source: VariantContext, genotype: Genotype, isPhased: Boolean): VariantContext = {
     val builder = new VariantContextBuilder(source)
     val sourceAlleles = source.getAlleles.toSeq
-    val genotypeAlleles = genotype.getAlleles.map {
+    val genotypeAlleles = genotype.getAlleles.toList.map {
       allele => sourceAlleles.find(a => a.toString == allele.toString) match {
         case None =>
           throw new IllegalStateException(s"Could not find allele '$allele' in source alleles: " + sourceAlleles.map{_.toString}.mkString(", "))
@@ -317,7 +316,7 @@ private class HapCutAndVcfMergingIterator(hapCutPath: FilePath,
       }
     }
     val sourceGenotype = source.getGenotype(0)
-    val genotypeBuilder = new GenotypeBuilder(sourceGenotype).alleles(genotypeAlleles).phased(isPhased)
+    val genotypeBuilder = new GenotypeBuilder(sourceGenotype).alleles(genotypeAlleles.asJava).phased(isPhased)
     genotypeBuilder.attributes(genotype.getExtendedAttributes)
     builder.genotypes(genotypeBuilder.make()).make()
   }
@@ -518,7 +517,7 @@ private case class HapCutCall private(block: BlockInfo,
       List(alleles(hap1Allele), alleles(hap2Allele))
     }
 
-    val genotype = this.info.addTo(new GenotypeBuilder(sampleName, genotypeAlleles))
+    val genotype = this.info.addTo(new GenotypeBuilder(sampleName, genotypeAlleles.asJava))
       .phased(true)
       .attribute(PhaseSetFormatTag, phaseSet)
       .make()
@@ -531,7 +530,7 @@ private case class HapCutCall private(block: BlockInfo,
       this.pos.toLong,
       allelesCollection
     )
-    .computeEndFromAlleles(seqAsJavaList(alleles), this.pos)
+    .computeEndFromAlleles(alleles.toList.asJava, this.pos)
     .genotypes(genotype).make()
   }
 }

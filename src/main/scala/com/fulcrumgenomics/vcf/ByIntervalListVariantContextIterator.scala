@@ -66,7 +66,6 @@ private class OverlapDetectionVariantContextIterator(val iterator: Iterator[Vari
                                                      val intervalList: IntervalList,
                                                      val dict: SAMSequenceDictionary)
   extends Iterator[VariantContext] {
-  import scala.collection.JavaConversions.asScalaIterator
 
   require(dict != null)
   private val intervals = intervalList.iterator().buffered
@@ -167,7 +166,6 @@ private class IndexQueryVariantContextIterator(private val reader: VCFFileReader
 
       val lastInterval = previousInterval
       previousInterval = Some(interval)
-      import scala.collection.JavaConversions.asScalaIterator
 
       // NB: for variants that span an indel, make sure it was not output in the previous interval
       val iter = this.reader.query(interval.getContig, interval.getStart, interval.getEnd)

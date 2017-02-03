@@ -197,7 +197,6 @@ private class ErrorRateByReadPositionWithReferenceCounter
   includeInsertions: Boolean,
   minBaseQuality:Int
 ) extends ErrorRateByReadPositionCounter(includeInsertions=includeInsertions, minBaseQuality=minBaseQuality) {
-  import scala.collection.JavaConversions.iterableAsScalaIterable
 
   val referenceFile     = ReferenceSequenceFileFactory.getReferenceSequenceFile(ref)
   var referenceSequence = referenceFile.getSequence(referenceFile.getSequenceDictionary.getSequence(0).getSequenceName)

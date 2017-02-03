@@ -42,10 +42,8 @@ object SimpleCounter {
   * zero for any item that has not been counted yet.  
   */
 class SimpleCounter[T]extends Iterable[(T, Long)] {
-  import scala.collection.JavaConversions.mapAsScalaMap
-
   /** Creates the map in which we store the counts. */
-  protected def makeMap(): mutable.Map[T, Long] = new util.HashMap[T,Long]()
+  protected def makeMap(): mutable.Map[T, Long] = new mutable.HashMap()
 
   private val counts: mutable.Map[T, Long] = makeMap().withDefaultValue(0L)
 

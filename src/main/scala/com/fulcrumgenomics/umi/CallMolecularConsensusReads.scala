@@ -37,9 +37,6 @@ import dagr.sopt.cmdline.ValidationException
 import htsjdk.samtools.SAMFileHeader.SortOrder
 import htsjdk.samtools._
 
-import scala.collection.JavaConversions.iterableAsScalaIterable
-
-
 @clp(description =
   """
     |Calls consensus sequences from reads with the same unique molecular tag.

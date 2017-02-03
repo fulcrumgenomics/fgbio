@@ -24,6 +24,7 @@
 
 package com.fulcrumgenomics.bam
 
+import com.fulcrumgenomics.FgBioDef._
 import com.fulcrumgenomics.fasta.ReferenceSetBuilder
 import com.fulcrumgenomics.testing.SamRecordSetBuilder._
 import com.fulcrumgenomics.testing.{SamRecordSetBuilder, UnitSpec}
@@ -31,7 +32,6 @@ import htsjdk.samtools.reference.ReferenceSequenceFileFactory
 import htsjdk.samtools.util.SequenceUtil
 import htsjdk.samtools.{SAMTag, SamReaderFactory}
 
-import scala.collection.JavaConversions.iterableAsScalaIterable
 import scala.util.Random
 
 class ClipOverlappingReadsTest extends UnitSpec {
