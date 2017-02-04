@@ -63,12 +63,18 @@ object ClpGroups {
     override val description: String = "Tools for manipulating VCF, BCF, or related data."
   }
 
-  final val Personal  = classOf[_PersonalGroup]
-  final val SamOrBam  = classOf[_SamOrBamGroup]
-  final val Fasta     = classOf[_FastaGroup]
-  final val Fastq     = classOf[_FastqGroup]
-  final val Umi       = classOf[_Umi]
-  final val Utilities = classOf[_UtilitiesGroup]
-  final val VcfOrBcf  = classOf[_VcfOrBcfGroup]
+  class _Basecalling extends ClpGroup {
+    override val name: String = "Basecalling"
+    override val description: String = "Tools for manipulating basecalling data."
+  }
+
+  final val Personal    = classOf[_PersonalGroup]
+  final val SamOrBam    = classOf[_SamOrBamGroup]
+  final val Fasta       = classOf[_FastaGroup]
+  final val Fastq       = classOf[_FastqGroup]
+  final val Umi         = classOf[_Umi]
+  final val Utilities   = classOf[_UtilitiesGroup]
+  final val VcfOrBcf    = classOf[_VcfOrBcfGroup]
+  final val Basecalling = classOf[_Basecalling]
 }
 
