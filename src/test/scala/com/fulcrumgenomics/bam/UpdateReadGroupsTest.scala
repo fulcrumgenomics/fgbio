@@ -111,7 +111,7 @@ class UpdateReadGroupsTest extends UnitSpec {
     val builder = new SamRecordSetBuilder(sortOrder=SortOrder.coordinate, readGroupId=Some("IDA"))
     builder.addPair("ok_1" + builder.readGroupId.get, 0, 100, 300)
     builder.addPair("ok_2" + builder.readGroupId.get, 0, 200, 400)
-    builder.header.setReadGroups(builder.header.getReadGroups.filter { rg => rg.getId == "IDA" }.toList.asJava)
+    builder.header.setReadGroups(builder.header.getReadGroups.filter { rg => rg.getId == "IDA" }.toJavaList)
     val out = newBam
     new UpdateReadGroups(input=builder.toTempFile(), output=out, readGroupsFile=headerToTempFile(headerAtoB), ignoreMissingReadGroups=false).execute()
     val reader = SamReaderFactory.make.open(out.toFile)

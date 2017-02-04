@@ -46,33 +46,48 @@ class FgBioDef extends CommonsDef {
     def bufferBetter = new BetterBufferedIterator(new JavaIteratorAdapter(iterator))
   }
 
+  /** A trait that combine's scala's Iterator with Java's Iterator. */
+  trait DualIterator[A] extends java.util.Iterator[A] with Iterator[A]
+
   /** Class that wraps a Java iterator into a Scala iterator. */
-  private final class JavaIteratorAdapter[A](private[FgBioDef] val underlying: java.util.Iterator[A]) extends Iterator[A] {
+  private final class JavaIteratorAdapter[A](private[FgBioDef] val underlying: java.util.Iterator[A]) extends DualIterator[A] {
     override def hasNext: Boolean = underlying.hasNext
     override def next(): A = underlying.next()
   }
 
   /** Class that wraps a Scala iterator into a Java iterator. */
-  private final class ScalaIteratorAdapter[A](private[FgBioDef] val underlying: Iterator[A]) extends java.util.Iterator[A] {
+  private final class ScalaIteratorAdapter[A](private[FgBioDef] val underlying: Iterator[A]) extends DualIterator[A] {
     override def hasNext: Boolean = underlying.hasNext
     override def next(): A = underlying.next()
   }
 
-  /** Implicit that wraps a scala iterator as a Java iterator. */
-  implicit def javaIteratorAsScalaIterator[A](iterator: java.util.Iterator[A]): Iterator[A] = iterator match {
-    case iter: ScalaIteratorAdapter[A] => iter.underlying
-    case iter: java.util.Iterator[A]   => new JavaIteratorAdapter[A](iter)
+  /** Implicit that wraps a Java iterator as a Scala iterator. */
+  implicit def javaIteratorAsScalaIterator[A](iterator: java.util.Iterator[A]): DualIterator[A] = iterator match {
+    case iter: DualIterator[A]       => iter
+    case iter: java.util.Iterator[A] => new JavaIteratorAdapter[A](iter)
   }
 
-  /** Implicit that wraps a scala iterator as a Java iterator. */
-  implicit def scalaIteratorAsJavaIterator[A](iterator: Iterator[A]): java.util.Iterator[A] = iterator match {
-    case iter: JavaIteratorAdapter[A] => iter.underlying
-    case iter: Iterator[A] => new ScalaIteratorAdapter[A](iter)
+  /** Implicit that wraps a Scala iterator as a Java iterator. */
+  implicit def scalaIteratorAsJavaIterator[A](iterator: Iterator[A]): DualIterator[A] = iterator match {
+    case iter: DualIterator[A] => iter
+    case iter: Iterator[A]     => new ScalaIteratorAdapter[A](iter)
   }
 
   /** Implicit that converts a Java Iterable into a scala Iterator. */
   implicit def javaIterableToIterator[A](iterable: java.lang.Iterable[A]): Iterator[A] = {
     new JavaIteratorAdapter(iterable.iterator())
+  }
+
+  /** Implicit class that provides methods for creating Java collections from an Iterator. */
+  implicit class IteratorToJavaCollectionsAdapter[A](private val iterator: Iterator[A]) {
+    def toJavaList: java.util.List[A]           = fill(new java.util.ArrayList[A]())
+    def toJavaSet : java.util.Set[A]            = fill(new java.util.HashSet[A]())
+    def toJavaSortedSet: java.util.SortedSet[A] = fill(new java.util.TreeSet[A]())
+
+    private def fill[C <: java.util.Collection[A]](coll: C): C = {
+      iterator.foreach(coll.add)
+      coll
+    }
   }
 
   /**

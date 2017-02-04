@@ -182,7 +182,7 @@ class AssessPhasing
 
     val intervalListForContig = intervalList.map { oldList =>
       val newList = new IntervalList(oldList.getHeader)
-      newList.addall(oldList.getIntervals.filter { _.getContig == contig }.toList.asJava)
+      newList.addall(oldList.getIntervals.filter { _.getContig == contig }.toJavaList)
       newList
     }
 

@@ -127,7 +127,7 @@ class HapCutToVcf
     // get the header lines in the input header that we wish to skip/replace with our own definitions
     val headerLinesToSkip = HeaderLines.formatHeaderKeys(hapCutType).flatMap(key => Option(inputHeader.getFormatHeaderLine(key)))
     val headerLines: util.Set[VCFHeaderLine] = new util.HashSet[VCFHeaderLine](
-      inputHeader.getMetaDataInSortedOrder.filterNot(headerLinesToSkip.contains).toSet.asJava
+      inputHeader.getMetaDataInSortedOrder.filterNot(headerLinesToSkip.contains).toJavaSet
     )
 
     // add standard header lines
@@ -294,7 +294,7 @@ private class HapCutAndVcfMergingIterator(hapCutPath: FilePath,
           builder.noAttributes()
           builder.attributes(attrs.asJava)
           builder.make()
-        }.toList.asJava)
+        }.toJavaList)
       }
       if (gatkPhasingFormat) {
         // set the variant as filtered due to not being phased

@@ -93,7 +93,6 @@ class FilterBam
     logger.info("Kept " + new DecimalFormat("#,##0").format(kept) + " records.")
     out.close()
     iterator.safelyClose()
-    CloserUtil.close(iterator)
   }
   /**
     * If intervalListFile is null return an interator over all the input, otherwise returns an
