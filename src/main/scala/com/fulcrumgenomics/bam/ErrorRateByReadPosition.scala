@@ -67,8 +67,10 @@ import scala.util.Failure
     |  - Bases with base quality < --min-base-quality (default: 0)
     |  - Bases where either the read base or the reference base is non-ACGT
     |
+    |An output text file is generated with the extension .error_rate_by_read_position.txt
+    |
     |If R's Rscript utility is on the path and ggplot2 is installed in the R distribution then a PDF
-    |of error rate plots will also be generated.
+    |of error rate plots will also be generated with extension .error_rate_by_read_position.pdf.
   """
   )
 class ErrorRateByReadPosition
@@ -98,7 +100,10 @@ class ErrorRateByReadPosition
     Metric.write(metrics, metricsPath)
 
     // And try plotting
-    if (metrics.nonEmpty) {
+    if (metrics.isEmpty) {
+      logger.warning("No metrics generated (is your BAM empty?). Plots will not be generated.")
+    }
+    else {
       val name = PathUtil.basename(input, trimExt=true).toString
       Rscript.execIfAvailable(ScriptPath, metricsPath.toString, plotPath.toString, name) match {
         case Failure(e) => logger.warning(s"Generation of PDF plots failed: ${e.getMessage}")
@@ -109,13 +114,13 @@ class ErrorRateByReadPosition
 
   /** Computes the metrics from the BAM file. */
   private[bam] def computeMetrics: Seq[ErrorRateByReadPositionMetric] = {
-        val progress = new ProgressLogger(logger, verb="Processed", noun="loci", unit=50000)
-    val in = SamReaderFactory.make.open(input)
+    val progress = new ProgressLogger(logger, verb="Processed", noun="loci", unit=50000)
+    val in = SamReaderFactory.make().referenceSequence(ref.toFile).open(input)
     val ilist = this.intervals.map(p => IntervalList.fromFile(p.toFile))
 
-    val refWalker = new ReferenceSequenceFileWalker(this.ref.toFile)
+    val refWalker     = new ReferenceSequenceFileWalker(this.ref.toFile)
     val locusIterator = buildSamLocusIterator(in, ilist)
-    val variantMask = buildVariantMask(variants, ilist, refWalker.getSequenceDictionary)
+    val variantMask   = buildVariantMask(variants, ilist, refWalker.getSequenceDictionary)
 
     val counters = List.tabulate(3)(_ => mutable.Map[Int, ObsCounter]())
 
@@ -125,25 +130,12 @@ class ErrorRateByReadPosition
         locus.getRecordAndOffsets.iterator().filter(r => SequenceUtil.isValidBase(r.getReadBase)).foreach { rec =>
 
           val readBase = SequenceUtil.upperCase(rec.getReadBase)
-          val readNum = readNumber(rec.getRecord)
-          val cycle = if (rec.getRecord.getReadNegativeStrandFlag) rec.getRecord.getReadLength - rec.getOffset else rec.getOffset + 1
-          val counter = counters(readNum).getOrElseUpdate(cycle, new ObsCounter(readNum, cycle))
+          val readNum  = readNumber(rec.getRecord)
+          val cycle    = if (rec.getRecord.getReadNegativeStrandFlag) rec.getRecord.getReadLength - rec.getOffset else rec.getOffset + 1
+          val counter  = counters(readNum).getOrElseUpdate(cycle, new ObsCounter(readNum, cycle))
 
-          val (ref, read) = {
-            if (refBase == 'A' || refBase == 'C') (refBase.toChar, readBase.toChar)
-            else (SequenceUtil.complement(refBase).toChar, SequenceUtil.complement(readBase).toChar)
-          }
-
-          (ref, read) match {
-            case ('A', 'A') => counter.a_ref_obs  += 1
-            case ('A', 'C') => counter.a_to_c_obs += 1
-            case ('A', 'G') => counter.a_to_g_obs += 1
-            case ('A', 'T') => counter.a_to_t_obs += 1
-            case ('C', 'A') => counter.c_to_a_obs += 1
-            case ('C', 'C') => counter.c_ref_obs  += 1
-            case ('C', 'G') => counter.a_to_g_obs += 1
-            case ('C', 'T') => counter.c_to_t_obs += 1
-          }
+          if (refBase == 'A' || refBase == 'C') counter.count(refBase.toChar, readBase.toChar)
+          else counter.count(SequenceUtil.complement(refBase).toChar, SequenceUtil.complement(readBase).toChar)
         }
       }
 
@@ -152,8 +144,9 @@ class ErrorRateByReadPosition
     in.safelyClose()
 
     // Ensure that all the maps have values up to the max
-    for ((counter, readNum) <- counters.filter(_.nonEmpty).zipWithIndex; cycle <- 1 to counter.keys.max)
+    for ((counter, readNum) <- counters.filter(_.nonEmpty).zipWithIndex; cycle <- 1 to counter.keys.max) {
       counter.getOrElseUpdate(cycle, new ObsCounter(readNum, cycle))
+    }
 
     counters.flatMap(c => c.values.map(_.toMetric)).sortBy(m => (m.read_number, m.position))
   }
@@ -205,6 +198,20 @@ private class ObsCounter(readNumber: Int, position: Int) {
   var c_to_a_obs: Long = 0
   var c_to_g_obs: Long = 0
   var c_to_t_obs: Long = 0
+
+  /** Increments the appropriate counter. */
+  def count(ref: Char, read: Char): Unit = (ref, read) match {
+    case ('A', 'A') => a_ref_obs  += 1
+    case ('A', 'C') => a_to_c_obs += 1
+    case ('A', 'G') => a_to_g_obs += 1
+    case ('A', 'T') => a_to_t_obs += 1
+    case ('C', 'A') => c_to_a_obs += 1
+    case ('C', 'C') => c_ref_obs  += 1
+    case ('C', 'G') => a_to_g_obs += 1
+    case ('C', 'T') => c_to_t_obs += 1
+    case _          => unreachable("Should never be invoked with a case other than the above.")
+  }
+
 
   def toMetric: ErrorRateByReadPositionMetric = {
     val totalA = a_ref_obs + a_to_c_obs + a_to_g_obs + a_to_t_obs

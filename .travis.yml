@@ -15,6 +15,8 @@ cache:
 before_install:
 - pip install --user codecov
 - sudo bash .travis.install-git-lfs.sh
+- sudo apt-get install r-base
+- sudo Rscript -e 'install.packages("ggplot2", repos="http://cran.us.r-project.org")'
 after_success:
 - codecov
 - test "$TRAVIS_REPO_SLUG" == 'fulcrumgenomics/fgbio' && test "$TRAVIS_PULL_REQUEST" == 'false' && test "$TRAVIS_BRANCH" == 'master' && sbt publish #&& sbt 'set version := version.value + "." + System.getenv("TRAVIS_BUILD_NUMBER")' publish
