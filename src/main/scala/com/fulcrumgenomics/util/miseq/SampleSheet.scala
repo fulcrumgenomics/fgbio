@@ -64,11 +64,22 @@ object SampleSheet {
     * If the lane number is given, returns only the samples that have that lane specified.
     *
     * NB: the lookup in the columns in the Sample Sheet is case insensitive.
-    *
-    * @author Nils Homer
     */
   def apply(sampleSheet: Path, lane: Option[Int] = None): SampleSheet = {
-    val samples = parseSampleData(sampleSheet=sampleSheet, lane=lane).zipWithIndex.map {
+    apply(lines=Source.fromFile(sampleSheet.toFile).getLines(), lane=lane)
+  }
+
+  /**
+    * Parses an Illumina Experiment Manager Sample Sheet (typically a MiSeq).
+    *
+    * If library id is not found, it will be set to the sample name.
+    *
+    * If the lane number is given, returns only the samples that have that lane specified.
+    *
+    * NB: the lookup in the columns in the Sample Sheet is case insensitive.
+    */
+  def apply(lines: Iterator[String], lane: Option[Int]): SampleSheet = {
+    val samples = parseSampleData(lines=lines, lane=lane).zipWithIndex.map {
       case (sampleDatum, sampleOrdinal) => makeSample(sampleOrdinal+1, sampleDatum)
     }
     new SampleSheet(samples=samples)
@@ -76,9 +87,9 @@ object SampleSheet {
 
   /** Reads in the sample data from an Illumina Experiment Manager sample sheet.  For each sample, a map of column name
     * to value is returned. If the lane number is given, returns only the samples that have that lane specified. */
-  protected def parseSampleData(sampleSheet: Path, lane: Option[Int] = None): List[Map[String, String]] = {
+  protected def parseSampleData(lines: Iterator[String], lane: Option[Int] = None): List[Map[String, String]] = {
     // ignore data pre-"[Data]"
-    val (preData, postData) = Source.fromFile(sampleSheet.toFile).getLines().toList.span(!_.startsWith("[Data]"))
+    val (preData, postData) = lines.toList.span(!_.startsWith("[Data]"))
 
     // get the header (keys) (skip "[Data]")
     val header = (postData.drop(1).headOption match {
