@@ -31,7 +31,6 @@ import com.fulcrumgenomics.FgBioDef._
 import com.fulcrumgenomics.cmdline.{ClpGroups, FgBioTool}
 import com.fulcrumgenomics.util.{Metric, ProgressLogger, Rscript}
 import com.fulcrumgenomics.vcf.{ByIntervalListVariantContextIterator, VariantMask}
-import com.fulcrumgenomics.util.{Metric, NumericCounter, ProgressLogger}
 import dagr.commons.io.{Io, PathUtil}
 import dagr.commons.util.LazyLogging
 import dagr.sopt._
@@ -41,7 +40,6 @@ import htsjdk.samtools.util.{IntervalList, SamLocusIterator, SequenceUtil}
 import htsjdk.samtools.{SAMRecord, SAMSequenceDictionary, SamReader, SamReaderFactory}
 import htsjdk.variant.vcf.VCFFileReader
 
-import scala.collection.JavaConversions.asScalaIterator
 import scala.collection.mutable
 import scala.util.Failure
 
@@ -115,11 +113,11 @@ class ErrorRateByReadPosition
   /** Computes the metrics from the BAM file. */
   private[bam] def computeMetrics: Seq[ErrorRateByReadPositionMetric] = {
     val progress = new ProgressLogger(logger, verb="Processed", noun="loci", unit=50000)
-    val in = SamReaderFactory.make().referenceSequence(ref.toFile).open(input)
-    val ilist = this.intervals.map(p => IntervalList.fromFile(p.toFile))
+    val in       = SamReaderFactory.make().referenceSequence(ref.toFile).open(input)
+    val ilist    = this.intervals.map(p => IntervalList.fromFile(p.toFile))
 
     val refWalker     = new ReferenceSequenceFileWalker(this.ref.toFile)
-    val locusIterator = buildSamLocusIterator(in, ilist)
+    val locusIterator = buildSamLocusIterator(in, ilist).iterator()
     val variantMask   = buildVariantMask(variants, ilist, refWalker.getSequenceDictionary)
 
     val counters = List.tabulate(3)(_ => mutable.Map[Int, ObsCounter]())

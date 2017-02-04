@@ -30,7 +30,6 @@ import htsjdk.variant.variantcontext.VariantContext
 import htsjdk.variant.vcf.VCFFileReader
 
 import scala.collection.mutable
-import scala.collection.JavaConversions.asScalaIterator
 
 object VariantMask {
   /** Generate a variant mask from the provided VCF. */
