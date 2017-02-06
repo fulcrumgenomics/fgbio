@@ -116,4 +116,16 @@ class NumericTypesTest extends UnitSpec {
       exp(actual) shouldBe expected +- 0.0001
     }
   }
+
+  "LogProbability.expProb" should "exponentiate probabilities between 0 and 1" in {
+    import Math.log
+    LogProbability.expProb(log(0.0)) shouldBe 0.0
+    LogProbability.expProb(log(0.5)) shouldBe 0.5
+    LogProbability.expProb(log(1.0)) shouldBe 1.0
+
+    LogProbability.expProb(Double.NegativeInfinity) shouldBe 0.0
+
+    LogProbability.expProb(log(1.000001)) shouldBe 1.0
+    LogProbability.expProb(log(1.1))      shouldBe 1.0
+  }
 }

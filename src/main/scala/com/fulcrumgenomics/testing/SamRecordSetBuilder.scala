@@ -47,7 +47,8 @@ object SamRecordSetBuilder {
 class SamRecordSetBuilder(val readLength: Int=100,
                           val baseQuality: Int=30,
                           val sortOrder: SortOrder = SortOrder.unsorted,
-                          val readGroupId: Option[String] = None
+                          val readGroupId: Option[String] = None,
+                          sd: Option[SAMSequenceDictionary] = None
                          ) extends Iterable[SAMRecord] {
   private val builder = new SAMRecordSetBuilder(sortOrder != SortOrder.unsorted, sortOrder)
   readGroupId.foreach { id =>
@@ -57,6 +58,7 @@ class SamRecordSetBuilder(val readLength: Int=100,
   }
   builder.setReadLength(readLength)
   builder.setUseNmFlag(false)
+  sd.foreach(d => builder.getHeader.setSequenceDictionary(d))
 
   private val counter = new AtomicLong(0)
   private val format  = new DecimalFormat("0000")

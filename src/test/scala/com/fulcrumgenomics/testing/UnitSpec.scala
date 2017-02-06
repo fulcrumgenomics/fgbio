@@ -32,6 +32,8 @@ import dagr.commons.util.{LogLevel, Logger}
 import dagr.sopt.cmdline.CommandLineProgramParser
 import dagr.sopt.util.ParsingUtil
 import htsjdk.samtools.{SAMRecord, SamReaderFactory}
+import htsjdk.variant.variantcontext.VariantContext
+import htsjdk.variant.vcf.VCFFileReader
 import org.scalatest.{BeforeAndAfterAll, FlatSpec, Matchers}
 
 import scala.reflect.ClassTag
@@ -52,6 +54,12 @@ trait UnitSpec extends FlatSpec with Matchers {
   /** Reads all the records from a SAM or BAM file into an indexed seq. */
   protected def readBamRecs(bam: PathToBam): IndexedSeq[SAMRecord] = {
     val in = SamReaderFactory.make().open(bam.toFile)
+    yieldAndThen(in.toIndexedSeq) { in.safelyClose() }
+  }
+
+  /** Reads all the records from a VCF file into an indexed seq. */
+  protected def readVcfRecs(vcf: PathToVcf): IndexedSeq[VariantContext] = {
+    val in = new VCFFileReader(vcf.toFile, false)
     yieldAndThen(in.toIndexedSeq) { in.safelyClose() }
   }
 

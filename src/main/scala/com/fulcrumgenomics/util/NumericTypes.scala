@@ -24,6 +24,8 @@
 
 package com.fulcrumgenomics.util
 
+import java.lang.Math.exp
+
 import htsjdk.samtools.SAMUtils
 import net.jafama.FastMath._
 
@@ -111,6 +113,17 @@ object NumericTypes {
     def toLogProbability(value: Double): LogProbability = {
       if (value < 0) throw new IllegalArgumentException("Cannot use LogDouble to store values less than zero: " + value)
       log(value)
+    }
+
+    /**
+      * Exponentiates a [[LogProbability]] and limits the return to the range 0-1 to gracefully handle probabilities
+      * with minor numerical imprecisions. If the LogProbability does not represent a probability between 0 and 1
+      * [[Math.exp]] should be used instead.
+      */
+    def expProb(p: LogProbability): Double = {
+      if (p.isNegInfinity) 0
+      else if (p > LnOne)  1
+      else                 exp(p)
     }
 
     /** Takes a phred score and converts it into the natural log of the probability of error. */
