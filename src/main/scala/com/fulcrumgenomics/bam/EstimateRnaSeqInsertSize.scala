@@ -61,12 +61,14 @@ class EstimateRnaSeqInsertSize
 (@arg(flag="i", doc="Input BAM file.") val input: PathToBam,
  @arg(flag="r", doc="Input gene annotations in refFlat form.  Format described here: http://genome.ucsc.edu/goldenPath/gbdDescriptionsOld.html#RefFlat")
  val refFlat: FilePath,
- @arg(flag="p", doc="""Output prefix file.  The file will have the extension ".rna_seq_insert_size.txt"""")
+ @arg(flag="p", doc="Output prefix file.  The file will have the extension '.rna_seq_insert_size.txt'")
  val prefix: Option[PathPrefix] = None,
  @arg(flag="d", doc="Include duplicates") val includeDuplicates: Boolean = false,
- @arg(flag="D", doc= """Generate mean and standard deviation by filtering to "median + deviations*median_absolute_deviation". """
-   + "This is done because insert size data typically includes enough anomalous values from chimeras "
-   + "and other artifacts to make the mean and sd grossly misleading regarding the real distribution."
+ @arg(flag="D", doc=
+   """Generate mean and standard deviation by filtering to 'median + deviations*median_absolute_deviation'.
+      |This is done because insert size data typically includes enough anomalous values from chimeras
+      |and other artifacts to make the mean and sd grossly misleading regarding the real distribution.
+  """"
  ) val deviations: Double = 10.0,
  @arg(flag="q", doc="Ignore reads with mapping quality less than this value.") val minimumMappingQuality: Int = 30,
  @arg(flag="m", doc="The minimum fraction of read bases that must overlap exonic sequence in a transcript") val minimumOverlap: Double = 0.95
