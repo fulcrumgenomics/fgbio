@@ -64,7 +64,4 @@ case class BaseCounts(a:Int , c: Int, g: Int, t: Int, n: Int) {
         case 'N' => n
         case x   => throw new IllegalArgumentException(s"'$x' is not a valid base.")
   }
-
-  /** Returns the total count of bases including Ns. */
-  def total: Int = a + c + g + t + n
 }

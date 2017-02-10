@@ -96,7 +96,7 @@ object ReviewConsensusVariants {
     */
   private[umi] def toInsertString(r: SAMRecord): String = {
     if (!r.getReadPairedFlag || r.getReadUnmappedFlag || r.getMateUnmappedFlag ||
-      r.getReferenceIndex.toInt != r.getMateReferenceIndex.toInt ||
+      r.getReferenceIndex != r.getMateReferenceIndex ||
       SamPairUtil.getPairOrientation(r) != PairOrientation.FR) {
       "NA"
     }
@@ -236,7 +236,6 @@ class ReviewConsensusVariants
 
       // Setup ready to iterate through the consensus reads
       val consensusCounts  = BaseCounts(consensusPileup.getRecordAndOffsets.asScala)
-
       val rawByMiAndReadNum = groupedPileup.getRecordAndOffsets.asScala.groupBy(r => toMi(r.getRecord) + readNumberSuffix(r.getRecord))
 
       consensusPileup.getRecordAndOffsets
@@ -245,7 +244,7 @@ class ReviewConsensusVariants
         .toSeq.sortBy(r => toMi(r.getRecord) + readNumberSuffix(r.getRecord))
         .foreach { c =>
           val mi = toMi(c.getRecord)
-          val consensusReadName = c.getRecord.getReadName + ( if (c.getRecord.getReadPairedFlag && c.getRecord.getSecondOfPairFlag) "/2" else "/1" )
+          val consensusReadName = c.getRecord.getReadName + readNumberSuffix(c.getRecord)
           val rawCounts = BaseCounts(rawByMiAndReadNum(mi + readNumberSuffix(c.getRecord)))
 
           val m =  ConsensusVariantReviewInfo(
@@ -271,6 +270,7 @@ class ReviewConsensusVariants
           )
 
           writer.write(m)
+          writer.flush()
         }
     }
 

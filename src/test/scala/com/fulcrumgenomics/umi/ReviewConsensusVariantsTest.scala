@@ -125,8 +125,8 @@ class ReviewConsensusVariantsTest extends UnitSpec {
 
 
     // A case where both ends of a pair overlap the variant position at chr2:20
-    raw.addPair(name="H1", contig=1, start1=15, start2=19, attrs=Map("MI" -> "H")).foreach(r => r.setReadString(if (r.getFirstOfPairFlag) "AAAAATAAAA" else "ATAAAAAAAA"))
-    con.addPair(name="H" , contig=1, start1=15, start2=19, attrs=Map("MI" -> "H")).foreach(r => r.setReadString(if (r.getFirstOfPairFlag) "AAAAATAAAA" else "ATAAAAAAAA"))
+    raw.addPair(name="H1", contig=1, start1=15, start2=19, attrs=Map("MI" -> "H")).foreach(r => r.setReadString(if (r.getFirstOfPairFlag) "CCCCCTCCCC" else "CTCCCCCCCC"))
+    con.addPair(name="H" , contig=1, start1=15, start2=19, attrs=Map("MI" -> "H")).foreach(r => r.setReadString(if (r.getFirstOfPairFlag) "CCCCCTCCCC" else "CTCCCCCCCC"))
 
 
     // Some unmapped reads at the end of the file
@@ -216,19 +216,20 @@ class ReviewConsensusVariantsTest extends UnitSpec {
     Metric.read[ConsensusVariantReviewInfo](txtOut) shouldBe empty
   }
 
-  it should "create extract the right reads given a set of loci" in {
+  it should "extract the right reads given a set of loci" in {
     val outBase = makeTempFile("review_consensus.", ".out")
     val conOut  = outBase.getParent.resolve(outBase.getFileName + ".consensus.bam")
     val rawOut  = outBase.getParent.resolve(outBase.getFileName + ".grouped.bam")
     val txtOut  = outBase.getParent.resolve(outBase.getFileName + ".txt")
-    val intervals = makeTempFile("empty.", ".interval_list")
-    val ilist = new IntervalList(header)
-    ilist.add(new Interval("chr1", 10, 10))
-    ilist.add(new Interval("chr1", 20, 20))
-    ilist.add(new Interval("chr1", 30, 30))
-    ilist.add(new Interval("chr2", 20, 20))
-    ilist.sorted().write(intervals.toFile)
-    new ReviewConsensusVariants(input=intervals, consensusBam=consensusBam, groupedBam=rawBam, ref=refFasta, output=outBase).execute()
+
+    val vcfBuilder = new VariantContextSetBuilder(sampleNames=List("tumor"))
+    vcfBuilder.header.setSequenceDictionary(this.header.getSequenceDictionary)
+    vcfBuilder.addVariant(refIdx=0, start=10, variantAlleles=List("A","T"), genotypeAlleles=List("A","T"), genotypeAttributes=Map("AF" -> 0.01))
+    vcfBuilder.addVariant(refIdx=0, start=20, variantAlleles=List("A","C"), genotypeAlleles=List("A","C"), genotypeAttributes=Map("AF" -> 0.01))
+    vcfBuilder.addVariant(refIdx=0, start=30, variantAlleles=List("A","G"), genotypeAlleles=List("A","G"), genotypeAttributes=Map("AF" -> 0.01))
+    vcfBuilder.addVariant(refIdx=1, start=20, variantAlleles=List("C","T"), genotypeAlleles=List("C","T"), genotypeAttributes=Map("AD" -> Array(100,2)))
+
+    new ReviewConsensusVariants(input=vcfBuilder.toTempFile(), consensusBam=consensusBam, groupedBam=rawBam, ref=refFasta, output=outBase).execute()
 
     conOut.toFile.exists() shouldBe true
     rawOut.toFile.exists() shouldBe true
