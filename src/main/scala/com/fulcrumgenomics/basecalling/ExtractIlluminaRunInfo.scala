@@ -27,7 +27,7 @@ package com.fulcrumgenomics.basecalling
 
 import com.fulcrumgenomics.FgBioDef.{DirPath, FilePath}
 import com.fulcrumgenomics.cmdline.{ClpGroups, FgBioTool}
-import com.fulcrumgenomics.util.{Io, ReadStructure, SampleBarcode, Template}
+import com.fulcrumgenomics.util._
 import htsjdk.samtools.util.Iso8601Date
 import dagr.sopt.{arg, clp}
 
@@ -35,58 +35,51 @@ import dagr.sopt.{arg, clp}
   """
     |Extracts information about an Illumina sequencing run from the RunInfo.xml.
     |
-    |The output file will contain a header line and a single line containing the following columns:
-    |1. Run Barcode: the unique identifier for the sequencing run and flowcell, stored as "<instrument-name>_<flowcell-barcode>".
-    |2. Flowcell Barcode: the flowcell barcode.
-    |3. Run Date: the date of the sequencing run.
-    |4. Read Structure: the description of the logical structure of cycles within the sequencing run, including which cycles
+    |The output file will contain a header column and a single column containing the following rows:
+    |1. run_barcode: the unique identifier for the sequencing run and flowcell, stored as "<instrument-name>_<flowcell-barcode>".
+    |2. flowcell_barcode: the flowcell barcode.
+    |3. instrument_name: the instrument name.
+    |4. run_date: the date of the sequencing run.
+    |5. read_structure: the description of the logical structure of cycles within the sequencing run, including which cycles
     |   correspond to sample barcodes, molecular barcodes, template bases, and bases that should be skipped.
-    |5. Number of Lanes: the number of lanes in the flowcell.
+    |6. number_of_lanes: the number of lanes in the flowcell.
   """)
 class ExtractIlluminaRunInfo
 (
   @arg(flag="i", doc="The input RunInfo.xml typically found in the run folder.") val input: FilePath,
-  @arg(flag="o", doc="The output file.") val output: FilePath,
-  @arg(flag="d", doc="The delimiter to use") val delim: String = "\t"
+  @arg(flag="o", doc="The output file.") val output: FilePath
 ) extends FgBioTool {
 
   Io.assertReadable(input)
   Io.assertCanWriteFile(output)
 
   override def execute(): Unit = {
-    val info = RunInfo(runInfo=input)
-    val lines = Seq(
-      ExtractIlluminaRunInfo.HeaderColumns,
-      Seq(info.runBarcode, info.flowcellBarcode, info.runDate, info.readStructure, info.numLanes).map(_.toString)
-    ).map(_.mkString(delim))
-    Io.writeLines(output, lines)
+    Metric.write(output, RunInfo(runInfo=input))
   }
-}
-
-object ExtractIlluminaRunInfo {
-  val HeaderColumns: Seq[String] = Seq("run_barcode", "flowcell_barcode", "run_date", "read_structure", "num_lanes")
 }
 
 /** Stores the result of parsing the run info file.
   *
-  * @param runBarcode the unique identifier for the sequencing run and flowcell, stored as
+  * @param run_barcode the unique identifier for the sequencing run and flowcell, stored as
   *                   "<instrument-name>_<flowcell-barcode>".
-  * @param flowcellBarcode the flowcell barcode.
-  * @param runDate the date of the sequencing run.
-  * @param readStructure the description of the logical structure of cycles within the sequencing run, including which cycles
+  * @param flowcell_barcode the flowcell barcode.
+  * @param instrument_name the instrument name.
+  * @param run_date the date of the sequencing run.
+  * @param read_structure the description of the logical structure of cycles within the sequencing run, including which cycles
   *                      correspond to sample barcodes, molecular barcodes, template bases, and bases that should be skipped.
-  * @param numLanes the number of lanes in the flowcell.
+  * @param num_lanes the number of lanes in the flowcell.
   */
 case class RunInfo
-( runBarcode: String,
-  flowcellBarcode: String,
-  runDate: Iso8601Date,
-  readStructure: ReadStructure,
-  numLanes: Int
-)
+( run_barcode: String,
+  flowcell_barcode: String,
+  instrument_name: String,
+  run_date: Iso8601Date,
+  read_structure: String, // NB: would like this to be ReadStructure
+  num_lanes: Int
+) extends Metric
 
 private object RunInfo {
-  /** Parses the run info file for the flowcell barcode, instrument, run date, and read structure.
+  /** Parses the run info file for the flowcell barcode, instrument name, run date, and read structure.
     *
     * @param runInfo the path to the RunInfo.xml file, typically in the run folder.
     */
@@ -94,7 +87,7 @@ private object RunInfo {
     import scala.xml.XML
     val xml = XML.loadFile(runInfo.toFile)
     val flowcellBarcode = (xml \\ "RunInfo" \\ "Run" \\ "Flowcell").text
-    val instrument      = (xml \\ "RunInfo" \\ "Run" \\ "Instrument").text
+    val instrumentName  = (xml \\ "RunInfo" \\ "Run" \\ "Instrument").text
     val runDate         = (xml \\ "RunInfo" \\ "Run" \\ "Date").text
     val segments        = (xml \\ "RunInfo" \\ "Run" \\ "Reads" \\ "Read").map { read =>
       val isIndexedRead = (read \ "@IsIndexedRead").text.equals("Y")
@@ -105,11 +98,12 @@ private object RunInfo {
     val numLanes = (xml \\ "RunInfo" \\ "Run" \\ "FlowcellLayout" \ "@LaneCount").text.toInt
 
     RunInfo(
-      runBarcode      = s"${instrument}_$flowcellBarcode",
-      flowcellBarcode = flowcellBarcode,
-      runDate         = formatDate(runDate),
-      readStructure   = readStructure,
-      numLanes        = numLanes
+      run_barcode      = s"${instrumentName}_$flowcellBarcode",
+      flowcell_barcode = flowcellBarcode,
+      instrument_name  = instrumentName,
+      run_date         = formatDate(runDate),
+      read_structure   = readStructure.toString,
+      num_lanes        = numLanes
     )
   }
 

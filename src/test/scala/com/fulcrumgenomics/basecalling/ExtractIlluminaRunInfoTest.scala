@@ -26,7 +26,7 @@
 package com.fulcrumgenomics.basecalling
 
 import com.fulcrumgenomics.testing.UnitSpec
-import com.fulcrumgenomics.util.{DelimitedDataParser, Io, ReadStructure}
+import com.fulcrumgenomics.util.{DelimitedDataParser, Io, Metric, ReadStructure}
 import com.fulcrumgenomics.FgBioDef.FilePath
 import htsjdk.samtools.util.Iso8601Date
 
@@ -65,50 +65,52 @@ class ExtractIlluminaRunInfoTest extends UnitSpec {
 
   "RunInfo" should "parse a RunInfo.xml with a six character date" in {
     val info = RunInfo(runInfo(date="170204", readStructure=ReadStructure("8B150T")))
-    info.runDate shouldBe new Iso8601Date("2017-02-04")
+    info.run_date shouldBe new Iso8601Date("2017-02-04")
   }
 
   it should "parse a RunInfo.xml with a eight character date" in {
     val info = RunInfo(runInfo(date="20170204", readStructure=ReadStructure("8B150T")))
-    info.runDate shouldBe new Iso8601Date("2017-02-04")
+    info.run_date shouldBe new Iso8601Date("2017-02-04")
   }
 
   it should "handle a non-indexed run" in {
     val info = RunInfo(runInfo(date="170204", readStructure=ReadStructure("150T")))
-    info.readStructure.toString shouldBe "150T"
+    info.read_structure.toString shouldBe "150T"
   }
 
   it should "handle a single index run" in {
     val info = RunInfo(runInfo(date="170204", readStructure=ReadStructure("8B150T")))
-    info.readStructure.toString shouldBe "8B150T"
+    info.read_structure.toString shouldBe "8B150T"
   }
 
   it should "handle a dual indexed run" in {
     val info = RunInfo(runInfo(date="170204", readStructure=ReadStructure("8B150T150T8B")))
-    info.readStructure.toString shouldBe "8B150T150T8B"
+    info.read_structure.toString shouldBe "8B150T150T8B"
   }
 
   it should "handle a complicated read structure" in {
     val info = RunInfo(runInfo(date="170204", readStructure=ReadStructure("8B10T8B10T10T8B")))
-    info.runBarcode             shouldBe "BCDEFGHIJ_NS123456"
-    info.flowcellBarcode        shouldBe "NS123456"
-    info.runDate                shouldBe  new Iso8601Date("2017-02-04")
-    info.readStructure.toString shouldBe "8B10T8B10T10T8B"
-    info.numLanes               shouldBe 4
+    info.run_barcode             shouldBe "BCDEFGHIJ_NS123456"
+    info.flowcell_barcode        shouldBe "NS123456"
+    info.instrument_name         shouldBe "BCDEFGHIJ"
+    info.run_date                shouldBe  new Iso8601Date("2017-02-04")
+    info.read_structure.toString shouldBe "8B10T8B10T10T8B"
+    info.num_lanes               shouldBe 4
   }
 
   "ExtractRunInfo" should "run end-to-end" in {
     val in = runInfo(date="20170204", readStructure=ReadStructure("8B150T"))
-    val out = makeTempFile("out", ".csv")
+    val out = makeTempFile("out", ".txt")
     new ExtractIlluminaRunInfo(input=in, output=out).execute()
-    val parser = DelimitedDataParser(out, '\t')
-    parser.headers should contain theSameElementsInOrderAs ExtractIlluminaRunInfo.HeaderColumns
-    parser.hasNext shouldBe true
-    val row = parser.next()
-    row[String]("run_barcode")      shouldBe "BCDEFGHIJ_NS123456"
-    row[String]("flowcell_barcode") shouldBe "NS123456"
-    row[String]("run_date")         shouldBe new Iso8601Date("2017-02-04").toString
-    row[String]("read_structure")   shouldBe "8B150T"
-    row[String]("num_lanes")        shouldBe "4"
+    val metrics = Metric.read[RunInfo](out)
+    metrics should have size 1
+    val metric  = metrics.head
+
+    metric.run_barcode      shouldBe "BCDEFGHIJ_NS123456"
+    metric.flowcell_barcode shouldBe "NS123456"
+    metric.instrument_name  shouldBe "BCDEFGHIJ"
+    metric.run_date         shouldBe new Iso8601Date("2017-02-04")
+    metric.read_structure   shouldBe "8B150T"
+    metric.num_lanes        shouldBe 4
   }
 }
