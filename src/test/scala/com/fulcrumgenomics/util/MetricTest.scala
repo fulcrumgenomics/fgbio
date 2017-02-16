@@ -26,6 +26,7 @@
 package com.fulcrumgenomics.util
 
 import java.io.StringWriter
+import java.nio.file.Path
 
 import com.fulcrumgenomics.testing.UnitSpec
 
@@ -104,29 +105,55 @@ class MetricTest extends UnitSpec {
     an[Exception] should be thrownBy Metric.read[TestMetric](lines.iterator).toList
   }
 
-  "Metrics.write" should "write metrics in a sequence of lines" in {
-    val metrics = Seq(TestMetric(foo="fooValue1", bar=1), TestMetric(foo="fooValue2", bar=2))
-    val writer  = new StringWriter()
-    Metric.write[TestMetric](metrics, writer)
-    val lines   = writer.toString
-    lines shouldBe "foo\tbar\tcar\nfooValue1\t1\tdefault\nfooValue2\t2\tdefault\n"
+  // Various write methods to test with a writer
+  private val writeWithWriters = Seq(
+    ((writer: StringWriter, metrics: Seq[TestMetric]) => Metric.write[TestMetric](writer, metrics:_*), "write[T <: Metric](writer: Writer, metric: T*)"),
+    ((writer: StringWriter, metrics: Seq[TestMetric]) => Metric.write[TestMetric](writer, metrics), "write[T <: Metric](writer: Writer, metrics: TraversableOnce[T])"),
+    ((writer: StringWriter, metrics: Seq[TestMetric]) => Metric.write[TestMetric](metrics, writer), "write[T <: Metric](metrics: Seq[T], writer: Writer)") // NB: deprecated
+  )
+
+  writeWithWriters.foreach { case (writeMethod, desc) =>
+    "Metrics.write" should s"write metrics in a sequence of lines [$desc]" in {
+      val metrics = Seq(TestMetric(foo = "fooValue1", bar = 1), TestMetric(foo = "fooValue2", bar = 2))
+      val writer  = new StringWriter()
+      writeMethod(writer, metrics)
+      val lines   = writer.toString
+      lines shouldBe "foo\tbar\tcar\nfooValue1\t1\tdefault\nfooValue2\t2\tdefault\n"
+    }
+  }
+
+  // Various write methods to test with a path
+  private val writeWithPaths = Seq(
+    ((path: Path, metrics: Seq[TestMetric]) => Metric.write[TestMetric](path, metrics:_*), "write[T <: Metric](path: Path, metric: T*)"),
+    ((path: Path, metrics: Seq[TestMetric]) => Metric.write[TestMetric](path, metrics), "write[T <: Metric](path: Path, metric: TraversableOnce[T])"),
+    ((path: Path, metrics: Seq[TestMetric]) => Metric.write[TestMetric](metrics, path), "write[T <: Metric](metrics: Seq[T], path: Path)") // NB: deprecated
+  )
+
+  writeWithPaths.foreach { case (writeMethod, desc) =>
+    "Metrics.write" should s"write metrics in a sequence of lines [$desc]" in {
+      val output      = makeTempFile("MetricTest", ".txt")
+      val metrics = Seq(TestMetric(foo="fooValue1", bar=1), TestMetric(foo="fooValue2", bar=2))
+      writeMethod(output, metrics)
+      val lines   = Io.readLines(output).mkString("\n")
+      lines shouldBe "foo\tbar\tcar\nfooValue1\t1\tdefault\nfooValue2\t2\tdefault"
+    }
   }
 
   "Metrics" should "write to and read from a file" in {
     val metrics     = Seq(TestMetric(foo="fooValue1", bar=1), TestMetric(foo="fooValue2", bar=2))
     val output      = makeTempFile("MetricTest", ".txt")
-    Metric.write[TestMetric](metrics, output)
+    Metric.write[TestMetric](output, metrics:_*)
     val readMetrics = Metric.read[TestMetric](output)
     readMetrics.length shouldBe 2
     readMetrics.zip(metrics).foreach { case (in, out) => in.toString shouldBe out.toString }
   }
 
   it should "write and read metrics with an option" in {
-    val metricWithSome = new TestMetricWithOption(foo="fooValue1", bar=1, option=Some("option1"))
-    val metricWithNone = new TestMetricWithOption(foo="fooValue2", bar=2, option=None)
+    val metricWithSome = TestMetricWithOption(foo="fooValue1", bar=1, option=Some("option1"))
+    val metricWithNone = TestMetricWithOption(foo="fooValue2", bar=2, option=None)
     val metrics = Seq(metricWithSome, metricWithNone)
     val output      = makeTempFile("MetricTest", ".txt")
-    Metric.write(metrics=metrics, path=output)
+    Metric.write(path=output, metrics:_*)
     val readMetrics = Metric.read[TestMetricWithOption](path=output)
     readMetrics.length shouldBe 2
     readMetrics.head shouldBe metricWithSome
@@ -134,11 +161,11 @@ class MetricTest extends UnitSpec {
   }
 
   it should "write and read metrics with an interger option" in {
-    val metricWithSome = new TestMetricWithIntOption(foo="fooValue1", bar=1, option=Some(1))
-    val metricWithNone = new TestMetricWithIntOption(foo="fooValue2", bar=2, option=None)
+    val metricWithSome = TestMetricWithIntOption(foo="fooValue1", bar=1, option=Some(1))
+    val metricWithNone = TestMetricWithIntOption(foo="fooValue2", bar=2, option=None)
     val metrics = Seq(metricWithSome, metricWithNone)
     val output      = makeTempFile("MetricTest", ".txt")
-    Metric.write(metrics=metrics, path=output)
+    Metric.write(path=output, metrics:_*)
     val readMetrics = Metric.read[TestMetricWithIntOption](path=output)
     readMetrics.length shouldBe 2
     readMetrics.head shouldBe metricWithSome

@@ -25,7 +25,7 @@
 
 package com.fulcrumgenomics.util
 
-import java.io.{BufferedWriter, Closeable, Writer}
+import java.io.{Closeable, Writer}
 import java.nio.file.Path
 
 import dagr.commons.CommonsDef.unreachable
@@ -103,19 +103,49 @@ object Metric {
     * line should be a single metric. */
   def read[T <: Metric](path: Path)(implicit tt: ru.TypeTag[T]): Seq[T] = read[T](Io.readLines(path), Some(path.toString))
 
+  /** Writes one or more metrics to the given writer.  The first line will be a header with the field names.  Each subsequent
+    * line is a single metric.
+    */
+  def write[T <: Metric](writer: Writer, metric: T*)(implicit tt: ru.TypeTag[T]): Unit = {
+    val out = new MetricWriter[T](writer)
+    out.write(metric:_*)
+    out.close()
+  }
+
+  /** Writes one or more metrics to the given path.  The first line will be a header with the field names.  Each subsequent
+    * line is a single metric.
+    */
+  def write[T <: Metric](path: Path, metric: T*)(implicit tt: ru.TypeTag[T]): Unit = write(Io.toWriter(path), metric:_*)
+
   /** Writes a metric to the given writer.  The first line will be a header with the field names.  Each subsequent
     * line is a single metric.
     */
+  def write[T <: Metric](writer: Writer, metrics: TraversableOnce[T])(implicit tt: ru.TypeTag[T]): Unit = {
+    val out = new MetricWriter[T](writer)
+    metrics.foreach(out.write(_))
+    out.close()
+  }
+
+  /** Writes metrics to the given path.  The first line will be a header with the field names.  Each subsequent
+    * line is a single metric.
+    */
+  def write[T <: Metric](path: Path, metrics: TraversableOnce[T])(implicit tt: ru.TypeTag[T]): Unit = write(Io.toWriter(path), metrics)
+
+  /** Writes a metric to the given writer.  The first line will be a header with the field names.  Each subsequent
+    * line is a single metric.
+    */
+  @deprecated(message="Use `write[T <: Metric](writer: Writer, metric: T*): Unit` instead.", since="2017-01-16")
   def write[T <: Metric](metrics: Seq[T], writer: Writer)(implicit tt: ru.TypeTag[T]): Unit = {
     val out = new MetricWriter[T](writer)
     out.write(metrics:_*)
     out.close()
   }
 
-  /** Writes a metric to the given path.  The first line will be a header with the field names.  Each subsequent
+  /** Writes metrics to the given path.  The first line will be a header with the field names.  Each subsequent
     * line is a single metric.
     */
-  def write[T <: Metric](metrics: Seq[T], path: Path)(implicit tt: ru.TypeTag[T]): Unit = write(metrics, Io.toWriter(path))
+  @deprecated(message="Use `write[T <: Metric](path: Path, metric: T*): Unit` instead.", since="2017-01-16")
+  def write[T <: Metric](metrics: Seq[T], path: Path)(implicit tt: ru.TypeTag[T]): Unit = write(Io.toWriter(path), metrics:_*)
 
   /** Returns a MetricWriter that can be used to stream metrics out to a file. */
   def writer[T <: Metric](path: Path)(implicit tt: ru.TypeTag[T]): MetricWriter[T] = new MetricWriter[T](Io.toWriter(path))

@@ -136,7 +136,7 @@ class EstimateRnaSeqInsertSize
 
     // Write the metrics
     val metricPath = PathUtil.pathTo(prefix.getOrElse(PathUtil.removeExtension(input)) + RnaSeqInsertSizeMetricExtension)
-    Metric.write(metrics=metrics, path=metricPath)
+    Metric.write(metricPath, metrics)
 
     // Write the histogram
     val histogramPath   = PathUtil.pathTo(prefix.getOrElse(PathUtil.removeExtension(input)) + RnaSeqInsertSizeMetricHistogramExtension)

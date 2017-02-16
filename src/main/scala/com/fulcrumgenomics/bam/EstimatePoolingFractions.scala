@@ -122,7 +122,7 @@ class EstimatePoolingFractions
         ci99_high          = min(1, fractions(index) + stderrs(index)*Ci99Width))
     }
 
-    Metric.write(metrics, path=output)
+    Metric.write(output, metrics)
 
     if (regression.estimateRegressionParameters().exists(_ < 0)) {
       logger.error("#################################################################################")

@@ -336,6 +336,6 @@ class PickLongIndices
       )
     }
 
-    Metric.write(metrics, output)
+    Metric.write(output, metrics)
   }
 }

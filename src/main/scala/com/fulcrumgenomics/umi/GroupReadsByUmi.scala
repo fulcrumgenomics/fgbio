@@ -481,7 +481,7 @@ class GroupReadsByUmi
         val total = ms.map(_.count.toDouble).sum
         ms.foreach(m => m.fraction = m.count / total)
         ms.tails.foreach { tail => tail.headOption.foreach(m => m.fraction_gt_or_eq_family_size = tail.map(_.fraction).sum) }
-        Metric.write(ms, p)
+        Metric.write(p, ms)
     }
   }
 

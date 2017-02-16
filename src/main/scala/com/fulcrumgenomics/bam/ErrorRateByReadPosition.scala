@@ -95,7 +95,7 @@ class ErrorRateByReadPosition
     val prefix      = output.getOrElse(PathUtil.removeExtension(input))
     val metricsPath = PathUtil.pathTo(prefix + ErrorRateByReadPositionMetric.FileExtension)
     val plotPath    = PathUtil.pathTo(prefix + ErrorRateByReadPositionMetric.PlotExtension)
-    Metric.write(metrics, metricsPath)
+    Metric.write(metricsPath, metrics=metrics)
 
     // And try plotting
     if (metrics.isEmpty) {

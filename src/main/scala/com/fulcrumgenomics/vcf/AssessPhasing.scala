@@ -163,8 +163,8 @@ class AssessPhasing
     /////////////////////////////////////////////////////////////////////////////////////////////////////////
     logger.info("Outputting")
 
-    Metric.write(metrics=Seq(metric), path=PathUtil.pathTo(output + AssessPhasingMetric.MetricExtension))
-    Metric.write(metrics=blockLengthMetrics, path=PathUtil.pathTo(output + PhaseBlockLengthMetric.MetricExtension))
+    Metric.write(path=PathUtil.pathTo(output + AssessPhasingMetric.MetricExtension), metric=metric)
+    Metric.write(PathUtil.pathTo(output + PhaseBlockLengthMetric.MetricExtension), blockLengthMetrics)
 
     writer.foreach(_.close())
   }
