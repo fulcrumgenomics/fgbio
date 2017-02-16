@@ -74,7 +74,7 @@ case class RunInfo
   flowcell_barcode: String,
   instrument_name: String,
   run_date: Iso8601Date,
-  read_structure: String, // NB: would like this to be ReadStructure
+  read_structure: ReadStructure,
   num_lanes: Int
 ) extends Metric
 
@@ -102,7 +102,7 @@ private object RunInfo {
       flowcell_barcode = flowcellBarcode,
       instrument_name  = instrumentName,
       run_date         = formatDate(runDate),
-      read_structure   = readStructure.toString,
+      read_structure   = readStructure,
       num_lanes        = numLanes
     )
   }

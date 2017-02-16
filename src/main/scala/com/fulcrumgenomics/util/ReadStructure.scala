@@ -31,13 +31,16 @@ import scala.reflect.ClassTag
 // would be good to have support for * and + to indicate zero or more and one or more bases.
 object ReadStructure {
   /** Creates a read structure from a string */
-  def apply(readStructure: String): ReadStructure = {
+  def apply(readStructure: String): ReadStructure = new ReadStructure(segs=segments(readStructure=readStructure))
+
+  /** Creates a sequence of read segments from a string. */
+  private def segments(readStructure: String): Seq[ReadSegment] = {
     var segmentOffset = 0 // for each segment we keep track of the offset (# of bases) from the start of the read
     var startIndexOfDigits = 0 // the index into the `readStructure` string where the first digit character starts for the current segment (inclusive)
     // Parse each character and build up segments.
-    val rs = new ReadStructure(readStructure.zipWithIndex.flatMap { case (c, idx) =>
+    val segments = readStructure.zipWithIndex.flatMap { case (c, idx) =>
       if (!c.isDigit) { // no more digits, so we are now at the start of the segment type
-        val endIndexOfDigits  = idx // the index into the `readStructure` string where the first digit character ends for the current segment (exclusive)
+      val endIndexOfDigits  = idx // the index into the `readStructure` string where the first digit character ends for the current segment (exclusive)
         if (endIndexOfDigits <= startIndexOfDigits) { // if we had no digit characters, then throw an exception
           throw new IllegalArgumentException("Read structure missing a segment length: " + formatReadStructureError(readStructure, idx, idx+1))
         }
@@ -58,10 +61,10 @@ object ReadStructure {
       else { // not ready yet
         None
       }
-    })
+    }
     // make sure we do not have any trailing characters
     if (startIndexOfDigits < readStructure.length) throw new IllegalArgumentException("Read structure had trailing digits: " + formatReadStructureError(readStructure, startIndexOfDigits, readStructure.length))
-    rs
+    segments
   }
 
   /** Contains the bases and optionally base qualities that correspond to the given read segment. */
@@ -94,6 +97,10 @@ object ReadStructure {
   */
 class ReadStructure(segs: Seq[ReadSegment], resetOffsets: Boolean = false) extends immutable.Seq[ReadSegment] {
   import ReadStructure.SubRead
+
+  /** Creates a read structure from a string representation (ex. 8M150T8B). */
+  def this(readStructure: String) = this(ReadStructure.segments(readStructure=readStructure))
+
   private val segments: Seq[ReadSegment] = if (resetOffsets) {
     var idx = 0
     var off = 0

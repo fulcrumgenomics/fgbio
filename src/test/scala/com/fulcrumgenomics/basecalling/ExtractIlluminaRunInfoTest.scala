@@ -106,11 +106,11 @@ class ExtractIlluminaRunInfoTest extends UnitSpec {
     metrics should have size 1
     val metric  = metrics.head
 
-    metric.run_barcode      shouldBe "BCDEFGHIJ_NS123456"
-    metric.flowcell_barcode shouldBe "NS123456"
-    metric.instrument_name  shouldBe "BCDEFGHIJ"
-    metric.run_date         shouldBe new Iso8601Date("2017-02-04")
-    metric.read_structure   shouldBe "8B150T"
-    metric.num_lanes        shouldBe 4
+    metric.run_barcode             shouldBe "BCDEFGHIJ_NS123456"
+    metric.flowcell_barcode        shouldBe "NS123456"
+    metric.instrument_name         shouldBe "BCDEFGHIJ"
+    metric.run_date                shouldBe new Iso8601Date("2017-02-04")
+    metric.read_structure.toString shouldBe "8B150T"
+    metric.num_lanes               shouldBe 4
   }
 }
