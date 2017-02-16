@@ -24,7 +24,7 @@
 
 package com.fulcrumgenomics.vcf.filtration
 
-import java.lang.Math.{exp, min, pow}
+import java.lang.Math.{min, pow}
 
 import com.fulcrumgenomics.FgBioDef._
 import com.fulcrumgenomics.bam.{BaseEntry, Pileup, PileupEntry}
@@ -39,8 +39,8 @@ import htsjdk.variant.vcf.{VCFFilterHeaderLine, VCFInfoHeaderLine}
   * Filter that examines SNVs with the alt allele being A or T to see if they are likely the result
   * of aberrant end-repair and A-base addition.
   *
-  * Occurs when end-repair is performed with an exonuclease to chew back single-stranded 3' overhangs
-  * and create a blunt end, but over-digests and ends up creating a recessed 3' end which subsequently
+  * Occurs when end-repair is performed in a way that chews back single-stranded 3' overhangs
+  * to create a blunt end, but over-digests and ends up creating a recessed 3' end which subsequently
   * (and incorrectly) gets filled in with one or more As during the A-base addition step. The result
   * is one or more base substitutions to A at the 3' end of molecules, which after PCR also shows up
   * as substitutions to T at the 5' end.
@@ -135,8 +135,14 @@ class EndRepairArtifactLikelihoodFilter(val distance: Int = 2,
     * skewed towards the artifact at very low MAFs, and towards mutations as the MAF increases towards 0.5.
     */
   private[filtration] def priors(pileup: Pileup[PileupEntry], maf: Double) : (Double, Double) = {
-    require(maf > 0 && maf <= 1, "maf must be greater than 0 and no more than 1.")
-    val priorMutation = min(pow(maf * 2, 2), 0.9999)
+    require(maf >= 0 && maf <= 1, s"Maf must be between 0 and 1. Observed maf ${maf} at ${pileup.refName}:${pileup.pos}.")
+
+    val m = if (maf != 0) maf else {
+      logger.warning(s"No alt allele observations found with selected cutoffs at: ${pileup.refName}:${pileup.pos}")
+      1.0 / pileup.depth
+    }
+
+    val priorMutation = min(pow(m * 2, 2), 0.9999)
     val priorArtifact = 1 - priorMutation
     (priorMutation, priorArtifact)
   }
@@ -235,7 +241,7 @@ class EndRepairArtifactLikelihoodFilter(val distance: Int = 2,
       }
       else {
         val otherEnd = thisEnd + isize - 1
-        require(genomicPosition >= thisEnd && genomicPosition <= otherEnd, "genomicPosition is outside of template!")
+        require(genomicPosition >= thisEnd && genomicPosition <= otherEnd, s"genomicPosition is outside of template for $rec")
         Some(CoordMath.getLength(genomicPosition, otherEnd))
       }
     }

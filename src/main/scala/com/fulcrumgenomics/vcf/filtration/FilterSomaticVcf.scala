@@ -56,10 +56,10 @@ import htsjdk.variant.vcf._
     |--------------------------
     |The end repair artifact filter attempts to measure the probability that a variant is caused by
     |errors in the template generated during the end-repair and A-base addition steps that are common
-    |to many Illumina library preparation protocols.  The artifacts occur if/when the endo-nuclease
-    |based end repair creates a recessed 3' end which is subsequently and incorrectly filled in with
-    |As during A-base addition.  This presents specifically as errors to T at the beginning of reads
-    |(and in very short templates, as matching errors to A at the ends of reads).
+    |to many Illumina library preparation protocols.  The artifacts occur if/when the end repair creates
+    |a recessed 3' end which is subsequently and incorrectly filled in with As during A-base addition.
+    |This presents specifically as errors to T at the beginning of reads (and in very short templates,
+    |as matching errors to A at the ends of reads).
     |
     |The filter creates the 'ERAP' info attribute on SNVs with an A or T alternate allele, to record
     |the p-value for rejecting the possibility that the variant is due to an end repair artifact.
