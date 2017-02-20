@@ -112,6 +112,10 @@ object Template {
   * Utility methods for working with BAMs.
   */
 object Bams extends LazyLogging {
+
+  /** The default maximum # of records to keep and sort in memory. */
+  val MaxInMemory: Int = 1e6.toInt
+
   /**
     * Builds a sorting collection for sorting SAMRecords.
     *
@@ -123,7 +127,7 @@ object Bams extends LazyLogging {
     */
   def sortingCollection(order: SortOrder,
                         header: SAMFileHeader,
-                        maxInMemory: Int = 1e6.toInt,
+                        maxInMemory: Int = MaxInMemory,
                         tmpDir: Option[DirPath] = None): SortingCollection[SAMRecord] = {
     SortingCollection.newInstance(
       classOf[SAMRecord],
@@ -145,16 +149,34 @@ object Bams extends LazyLogging {
     * @return an Iterator with reads from the same query grouped together
     */
   def queryGroupedIterator(in: SamReader,
-                           maxInMemory: Int = 1e6.toInt,
+                           maxInMemory: Int = MaxInMemory,
                            tmpDir: Option[DirPath] = None): BetterBufferedIterator[SAMRecord] = {
-    if (in.getFileHeader.getSortOrder == SortOrder.queryname || in.getFileHeader.getGroupOrder == GroupOrder.query) {
-      in.iterator().bufferBetter
+    queryGroupedIterator(in.iterator(), in.getFileHeader, maxInMemory, tmpDir)
+  }
+
+  /**
+    * Returns an iterator over the records in the given reader in such a way that all
+    * reads with the same query name are adjacent in the iterator. Does NOT guarantee
+    * a queryname sort, merely a query grouping.
+    *
+    * @param iterator an iterator from which to consume records
+    * @param header the header associated with the records.
+    * @param maxInMemory the maximum number of records to keep and sort in memory if sorting is needed
+    * @param tmpDir an optional temp directory to use for temporary sorting files if needed
+    * @return an Iterator with reads from the same query grouped together
+    */
+  def queryGroupedIterator(iterator: Iterator[SAMRecord],
+                           header: SAMFileHeader,
+                           maxInMemory: Int,
+                           tmpDir: Option[DirPath]): BetterBufferedIterator[SAMRecord] = {
+    if (header.getSortOrder == SortOrder.queryname || header.getGroupOrder == GroupOrder.query) {
+      iterator.bufferBetter
     }
     else {
       logger.info("Sorting into queryname order.")
       val progress = new ProgressLogger(this.logger, "Queryname sorted")
-      val sorter = sortingCollection(SortOrder.queryname, in.getFileHeader, maxInMemory, tmpDir)
-      in.foreach { rec =>
+      val sorter = sortingCollection(SortOrder.queryname, header, maxInMemory, tmpDir)
+      iterator.foreach { rec =>
         sorter.add(rec)
         progress.record(rec)
       }
@@ -172,9 +194,26 @@ object Bams extends LazyLogging {
     * @return an Iterator of Template objects
     */
   def templateIterator(in: SamReader,
-                       maxInMemory: Int = 1e6.toInt,
+                       maxInMemory: Int = MaxInMemory,
                        tmpDir: Option[DirPath] = None): Iterator[Template] = {
-    val queryIterator: BetterBufferedIterator[SAMRecord] = queryGroupedIterator(in, maxInMemory, tmpDir)
+    templateIterator(in.iterator(), in.getFileHeader, maxInMemory, tmpDir)
+  }
+
+  /**
+    * Returns an iterator of Template objects generated from all the reads in the SamReader.
+    * If the SamReader is not query sorted or grouped, a sort to queryname will be performed.
+    *
+    * @param iterator an iterator from which to consume records
+    * @param header the header associated with the records.
+    * @param maxInMemory the maximum number of records to keep and sort in memory if sorting is needed
+    * @param tmpDir an optional temp directory to use for temporary sorting files if needed
+    * @return an Iterator of Template objects
+    */
+  def templateIterator(iterator: Iterator[SAMRecord],
+                       header: SAMFileHeader,
+                       maxInMemory: Int,
+                       tmpDir: Option[DirPath]): Iterator[Template] = {
+    val queryIterator: BetterBufferedIterator[SAMRecord] = queryGroupedIterator(iterator, header, maxInMemory, tmpDir)
 
     new Iterator[Template] {
       override def hasNext: Boolean = queryIterator.hasNext
