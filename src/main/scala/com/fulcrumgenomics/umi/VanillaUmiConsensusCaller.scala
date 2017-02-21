@@ -199,7 +199,7 @@ class VanillaUmiConsensusCaller(override val readNamePrefix: String,
 
         // Generate the values for depth and count of errors
         val depth  = builder.contributions
-        val errors = depth - builder.observations(rawBase)
+        val errors = if (rawBase == NoCall) depth else depth - builder.observations(rawBase)
         consensusDepths(positionInRead) = if (depth  > Short.MaxValue) Short.MaxValue else depth.toShort
         consensusErrors(positionInRead) = if (errors > Short.MaxValue) Short.MaxValue else errors.toShort
 
