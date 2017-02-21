@@ -33,11 +33,12 @@ import com.fulcrumgenomics.util.NumericTypes._
 import htsjdk.samtools.util.CloserUtil
 import htsjdk.samtools.{SAMRecordSetBuilder, SAMUtils}
 import net.jafama.FastMath._
+import org.scalatest.OptionValues
 
 /**
   * Tests for ConsensusCaller.
   */
-class VanillaUmiConsensusCallerTest extends UnitSpec {
+class VanillaUmiConsensusCallerTest extends UnitSpec with OptionValues {
   /** Helper function to make a set of consensus caller options. */
   def cco = VanillaUmiConsensusCallerOptions
 
@@ -422,5 +423,19 @@ class VanillaUmiConsensusCallerTest extends UnitSpec {
     val recs = cc().filterToMostCommonAlignment(builder.toSeq)
     recs should have size 11
     recs.map(_.getCigarString).distinct.sorted shouldBe Seq("25M1D25M", "5S20M1D25M", "5S20M1D20M5H", "25M1D20M5S").sorted
+  }
+
+  it should "calculate the # of errors relative to the most likely consensus call, even when the final call is an N" in {
+    // NB: missing last base on the first read, which causes an N no-call, but errors should still be 1/3
+    val call = cc(cco(minReads=4)).consensusCall(Seq(
+      src("GATTACAN", Array(20,20,20,20,20,20,20,20)),
+      src("GATTACAG", Array(20,20,20,20,20,20,20,20)),
+      src("GATTACAG", Array(20,20,20,20,20,20,20,20)),
+      src("GATTACAT", Array(20,20,20,20,20,20,20,20))
+    )).value
+
+    call.baseString shouldBe "GATTACAN"
+    call.depths should contain theSameElementsInOrderAs Seq(4,4,4,4,4,4,4,3)
+    call.errors should contain theSameElementsInOrderAs Seq(0,0,0,0,0,0,0,1)
   }
 }

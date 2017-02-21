@@ -188,14 +188,10 @@ class VanillaUmiConsensusCaller(override val readNamePrefix: String,
 
         // Call the consensus and do any additional filtering
         val (rawBase, rawQual) = builder.call()
-        val (base, qual)       = {
-          if (builder.contributions < this.options.minReads) {
-            (NoCall, NotEnoughReadsQual)
-          }
-          else {
-            if (rawQual < this.options.minConsensusBaseQuality) (NoCall, TooLowQualityQual) else (rawBase, rawQual)
-
-          }
+        val (base, qual) = {
+          if (builder.contributions < this.options.minReads)       (NoCall, NotEnoughReadsQual)
+          else if (rawQual < this.options.minConsensusBaseQuality) (NoCall, TooLowQualityQual)
+          else (rawBase, rawQual)
         }
 
         consensusBases(positionInRead) = base
