@@ -3,7 +3,7 @@ import sbt._
 import sbtassembly.AssemblyKeys.assembly
 import sbtassembly.MergeStrategy
 import sbtrelease.ReleasePlugin.autoImport.ReleaseTransformations._
-import scoverage.ScoverageSbtPlugin.ScoverageKeys._
+import scoverage.ScoverageKeys._
 
 ////////////////////////////////////////////////////////////////////////////////////////////////
 // We have the following "settings" in this build.sbt:
@@ -84,6 +84,7 @@ lazy val commonSettings = Seq(
   homepage             := Some(url("http://github.com/fulcrumgenomics/fgbio")),
   startYear            := Some(2015),
   scalaVersion         := "2.11.8",
+  crossScalaVersions   :=  Seq("2.11.8", "2.12.1"),
   scalacOptions        += "-target:jvm-1.8",
   scalacOptions in (Compile, doc) ++= docScalacOptions,
   scalacOptions in (Test, doc) ++= docScalacOptions,
@@ -119,9 +120,9 @@ lazy val root = Project(id="fgbio", base=file("."))
   .settings(
     libraryDependencies ++= Seq(
       "org.scala-lang"            %  "scala-reflect"  %  scalaVersion.value,
-      "org.scala-lang.modules"    %  "scala-xml_2.11" % "1.0.6",
-      "com.fulcrumgenomics"       %% "dagr-commons"   % "0.1.2",
-      "com.fulcrumgenomics"       %% "dagr-sopt"      % "0.1.2",
+      "org.scala-lang.modules"    %% "scala-xml"      % "1.0.6",
+      "com.fulcrumgenomics"       %% "dagr-commons"   % "0.1.3-SNAPSHOT",
+      "com.fulcrumgenomics"       %% "dagr-sopt"      % "0.1.3-SNAPSHOT",
       "com.github.samtools"       %  "htsjdk"         % "2.8.1" excludeAll(htsjdkExcludes: _*),
       "net.jafama"                %  "jafama"         % "2.1.0",
       "org.apache.commons"        %  "commons-math3"  % "3.6.1",
