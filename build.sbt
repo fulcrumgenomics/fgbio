@@ -118,13 +118,13 @@ lazy val root = Project(id="fgbio", base=file("."))
   .settings(description := "fgbio")
   .settings(
     libraryDependencies ++= Seq(
-      "org.scala-lang"            %  "scala-reflect" %  scalaVersion.value,
-      "org.scala-lang.modules"    % "scala-xml_2.11" % "1.0.6",
-      "com.fulcrumgenomics"       %% "dagr-commons"  % "0.1.2-SNAPSHOT",
-      "com.fulcrumgenomics"       %% "dagr-sopt"     % "0.1.2-SNAPSHOT",
-      "com.github.samtools"       %  "htsjdk"        % "2.8.1" excludeAll(htsjdkExcludes: _*),
-      "net.jafama"                %  "jafama"        % "2.1.0",
-      "org.apache.commons"        %  "commons-math3" % "3.6.1",
+      "org.scala-lang"            %  "scala-reflect"  %  scalaVersion.value,
+      "org.scala-lang.modules"    %  "scala-xml_2.11" % "1.0.6",
+      "com.fulcrumgenomics"       %% "dagr-commons"   % "0.1.2",
+      "com.fulcrumgenomics"       %% "dagr-sopt"      % "0.1.2",
+      "com.github.samtools"       %  "htsjdk"         % "2.8.1" excludeAll(htsjdkExcludes: _*),
+      "net.jafama"                %  "jafama"         % "2.1.0",
+      "org.apache.commons"        %  "commons-math3"  % "3.6.1",
 
       //---------- Test libraries -------------------//
       "org.scalatest"             %% "scalatest"     % "3.0.1"  % "test->*" excludeAll ExclusionRule(organization="org.junit", name="junit")
