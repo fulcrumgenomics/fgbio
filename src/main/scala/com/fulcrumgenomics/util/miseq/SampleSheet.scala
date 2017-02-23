@@ -28,6 +28,9 @@ package com.fulcrumgenomics.util.miseq
 
 import java.nio.file.Path
 
+import com.fulcrumgenomics.util.ReadStructure
+import dagr.commons.CommonsDef._
+
 import scala.collection.mutable.ListBuffer
 import scala.io.Source
 
@@ -170,4 +173,21 @@ class SampleSheet(samples: Seq[Sample]) extends Iterable[Sample] {
   override def size: Int = this.samples.size
 
   def get(index: Int): Sample = this.samples(index)
+
+  /** Sets the sample barcode for the samples using the given read structures and bases from the sample sheet.
+    *
+    * The sample barcode for each read segment (ex. i7, and i5) are matched against the read structures for each read
+    * that contains a sample barcode (ex. i7, and i5).  There should be the same # of read structures as reads with
+    * sample barcodes.
+    */
+  def sampleBarcodes(readStructure: ReadStructure*): this.type = {
+    // keep only the sample barcode segments
+    val sampleBarcodeReadStructures: Seq[ReadStructure] = readStructure.flatMap { rs =>
+      val sampleBarcodeReadStructure = rs.sampleBarcodeStructure(resetOffsets=true)
+      if (sampleBarcodeReadStructure.isEmpty) None
+      else Some(sampleBarcodeReadStructure)
+    }
+    this.foreach { sample => sample.setSampleBarcode(sampleBarcodeReadStructures) }
+    this
+  }
 }

@@ -29,7 +29,8 @@ package com.fulcrumgenomics.util.miseq
 
 import java.nio.file.Paths
 
-import org.scalatest.{OptionValues, FlatSpec, Matchers}
+import com.fulcrumgenomics.util.ReadStructure
+import org.scalatest.{FlatSpec, Matchers, OptionValues}
 
 class SampleSheetTest extends FlatSpec with Matchers with OptionValues {
   private val testDir = Paths.get("src/test/resources/com/fulcrumgenomics/util/miseq/")
@@ -90,6 +91,14 @@ class SampleSheetTest extends FlatSpec with Matchers with OptionValues {
     samples.zipWithIndex.foreach { case (sample, i) =>
         sampleSheet.get(i) shouldBe samples(i)
     }
+  }
+
+  "SampleSheet.sampleBarcodes" should "set the sample barcodes" in {
+    SampleSheet(testDir.resolve("SampleSheet.csv"))
+      .sampleBarcodes(ReadStructure("11B"), ReadStructure("7B"))
+      .foreach { sample =>
+        sample.sampleBarcode.value.concatenatedBarcode shouldBe "GATTACAACGT-GATTACA"
+      }
   }
 
   "SampleSheet.cleanMiseqSampleId" should "clean [#] to ' ' and [_+ ] to '-'" in {

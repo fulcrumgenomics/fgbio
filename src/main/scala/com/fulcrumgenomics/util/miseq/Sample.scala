@@ -26,13 +26,15 @@
   */
 package com.fulcrumgenomics.util.miseq
 
+import com.fulcrumgenomics.util.ReadStructure
+import dagr.commons.CommonsDef._
+
 /**
   * Represents information about a sample within an Illumina Experiment Manager sample sheet.
   *
   * Optionally contains information about dual indexes: i7 and i5.
   *
   * @author Nils Homer
-  *
   * @param sampleOrdinal the sample ordinal if this sample belongs to a sample set.
   * @param sampleId the unique sample identifier.
   * @param sampleName the sample name.
@@ -70,6 +72,27 @@ class Sample(val sampleOrdinal: Int,
       case Some(str) if str.isEmpty => None
       case Some(str) => Some(str.trim)
     }
+  }
+
+  /** Sets the sample barcode based on the read structure.
+    *
+    * @param sampleBarcodeReadStructures a read structure per read (ex. i7 and i5) that contains only sample barcode segments.
+    */
+  def setSampleBarcode(sampleBarcodeReadStructures: Seq[ReadStructure]): this.type = {
+    import com.fulcrumgenomics.util.{SampleBarcode => ReadSegmentSampleBarcode}
+    if (sampleBarcodeReadStructures.exists(rs => !rs.forall { case s: ReadSegmentSampleBarcode => true; case _ => false } )) {
+      throw new IllegalArgumentException("Read structures contained segments that were not sample barcodes.")
+    }
+    val sampleBarcodeBases = this.sampleBarcodeBases.flatten
+    if (sampleBarcodeReadStructures.length != sampleBarcodeBases.length) unreachable("Different # of read structures than sample barcode reads.")
+    val sampleBarcodes = sampleBarcodeBases.zip(sampleBarcodeReadStructures).map { case (bases, rs) =>
+      if (rs.map(_.length).sum != bases.length) {
+        throw new IllegalArgumentException(s"Different number of sample barcode bases than in the read structure")
+      }
+      rs.structureRead(bases).map(_.bases).mkString
+    }
+    if (sampleBarcodes.nonEmpty) this.sampleBarcode = Some(new SampleBarcode(sampleBarcodes))
+    this
   }
 }
 
