@@ -170,4 +170,12 @@ class SampleSheet(samples: Seq[Sample]) extends Iterable[Sample] {
   override def size: Int = this.samples.size
 
   def get(index: Int): Sample = this.samples(index)
+
+  /** Sets each sample's `sampleBarcode` member ot the `samplBarcodeBases` for fast access. */
+  def setSampleBarcodes(): this.type = {
+    samples.foreach { sample =>
+      sample.sampleBarcode = Some(new SampleBarcode(sample.sampleBarcodeBases.flatten))
+    }
+    this
+  }
 }
