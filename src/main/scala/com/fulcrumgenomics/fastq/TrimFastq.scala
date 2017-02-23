@@ -45,7 +45,7 @@ class TrimFastq
     @arg(flag="x", doc="Exclude reads below the trim length.") val exclude: Boolean = false
 ) extends FgBioTool with LazyLogging {
 
-  assert(input.size == output.size, "Number of input and output files must match.")
+  validate(input.size == output.size, "Number of input and output files must match.")
 
   override def execute(): Unit = {
     var discarded: Long = 0

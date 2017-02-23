@@ -24,7 +24,12 @@
   * ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
   * POSSIBILITY OF SUCH DAMAGE.
   */
-package com.fulcrumgenomics.util.miseq
+
+package com.fulcrumgenomics.illumina
+
+object Sample {
+  val SampleBarcodeDelimiter: String = "-"
+}
 
 /**
   * Represents information about a sample within an Illumina Experiment Manager sample sheet.
@@ -32,7 +37,6 @@ package com.fulcrumgenomics.util.miseq
   * Optionally contains information about dual indexes: i7 and i5.
   *
   * @author Nils Homer
-  *
   * @param sampleOrdinal the sample ordinal if this sample belongs to a sample set.
   * @param sampleId the unique sample identifier.
   * @param sampleName the sample name.
@@ -42,21 +46,26 @@ package com.fulcrumgenomics.util.miseq
   * @param lane the lane number for the sample.
   * @param i7IndexBases the sample barcode bases in the i7 read.
   * @param i5IndexBases the sample barcode bases in the i5 read.
-  * @param sampleBarcode the full sample barcode for optimized access.
   * @param extendedAttributes a map of non-standard or site-specific extended attributes. Keys should be upper-case.
   */
-class Sample(val sampleOrdinal: Int,
-             val sampleId: String,
-             val sampleName: String,
-             val libraryId: Option[String] = None,
-             val project: Option[String] = None,
-             val description: Option[String] = None,
-             val lane: Option[Int] = None,
-             val i7IndexBases: Option[String] = None,
-             val i5IndexBases: Option[String] = None,
-             var sampleBarcode: Option[SampleBarcode] = None,
-             val extendedAttributes: Map[String, String] = Map.empty) {
+case class Sample(sampleOrdinal: Int,
+                  sampleId: String,
+                  sampleName: String,
+                  libraryId: String,
+                  project: Option[String] = None,
+                  description: Option[String] = None,
+                  lane: Option[Int] = None,
+                  i7IndexBases: Option[String] = None,
+                  i5IndexBases: Option[String] = None,
+                  extendedAttributes: Map[String, String] = Map.empty) {
   extendedAttributes.keysIterator.foreach { key => require(key == key.toUpperCase) }
+
+  import Sample.SampleBarcodeDelimiter
+
+  def sampleBarcodes: Seq[Option[String]] = Seq(i7IndexBases, i5IndexBases)
+
+  lazy val sampleBarcodeBytes: Array[Byte]  = sampleBarcodes.flatten.filter(_.nonEmpty).flatMap(_.getBytes).toArray
+  lazy val sampleBarcodeString: String      = sampleBarcodes.flatten.filter(_.nonEmpty).mkString(SampleBarcodeDelimiter)
 
   /** Returns the sample barcodes in order of sequencing. */
   def sampleBarcodeBases: Seq[Option[String]] = {

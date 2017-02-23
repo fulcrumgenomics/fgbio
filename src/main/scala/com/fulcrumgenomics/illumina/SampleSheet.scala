@@ -24,11 +24,11 @@
   * ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
   * POSSIBILITY OF SUCH DAMAGE.
   */
-package com.fulcrumgenomics.util.miseq
+
+package com.fulcrumgenomics.illumina
 
 import java.nio.file.Path
 
-import scala.collection.mutable.ListBuffer
 import scala.io.Source
 
 object SampleSheet {
@@ -37,9 +37,9 @@ object SampleSheet {
   val SampleId: String       = "Sample_ID"
   val SampleName: String     = "Sample_Name"
   val LibraryId: String      = "Library_ID"
+  /** Optional header names for standard fields in the Illumina Experiment Manager Sample Sheet. */
   val SampleProject: String  = "Sample_Project"
   val Description: String    = "Description"
-  /** Optional header names for standard fields in the Illumina Experiment Manager Sample Sheet. */
   val Lane: String           = "Lane"
   val I7Bases: String        = "Index"
   val I5Bases: String        = "Index2"
@@ -117,7 +117,7 @@ object SampleSheet {
   protected def makeSample(sampleOrdinal: Int, sampleDatum: Map[String, String]): Sample = {
     val sampleName: String          = SampleSheet.getStringField(sampleDatum, SampleName)    getOrElse (throw new IllegalArgumentException(s"Missing: $SampleName"))
     val sampleId: String            = SampleSheet.getStringField(sampleDatum, SampleId)      getOrElse (throw new IllegalArgumentException(s"Missing: $SampleId"))
-    val libraryId: Option[String]   = SampleSheet.getStringField(sampleDatum, LibraryId) orElse Some(sampleName)
+    val libraryId: String           = SampleSheet.getStringField(sampleDatum, LibraryId)     getOrElse sampleName
     val project: Option[String]     = SampleSheet.getStringField(sampleDatum, SampleProject)
     val description: Option[String] = SampleSheet.getStringField(sampleDatum, Description)
     val extendedAttributes          = sampleDatum.filterNot { case (columnName, value) =>  HeaderNames.contains(columnName) }
@@ -148,7 +148,7 @@ object SampleSheet {
     getStringField(sampleDatum, name).map(_.toInt)
   }
 
-  protected[miseq] val SplitRegex = ",(?=(?:[^\"]*\"[^\"]*\")*[^\"]*$)"
+  protected[illumina] val SplitRegex = ",(?=(?:[^\"]*\"[^\"]*\")*[^\"]*$)"
 }
 
 /**
@@ -161,9 +161,19 @@ object SampleSheet {
   * correct read structure elsewhere to infer which bases are sample barcode and which bases are not (ex. molecular
   * identifiers).
   *
+  * The sample identifier should be unique across samples within the sample sheet, and the combination of sample name
+  * and library identifier should also be unique across samples within the sample sheet.
+  *
   * @author Nils Homer
   */
 class SampleSheet(samples: Seq[Sample]) extends Iterable[Sample] {
+
+  // Validate some properties for a sample sheet
+  require(samples.map(_.sampleId).toSet.size == samples.length,
+    "Sample identifiers were not unique: " + samples.groupBy(_.sampleId).filter(_._2.length > 2).keys.mkString(", "))
+  require(samples.map(s => s"${s.sampleId} ${s.libraryId}").toSet.size == samples.length,
+    "Sample name and libarary identifier combinations were not unique: " +
+      samples.groupBy(s => s"${s.sampleId} ${s.libraryId}").filter(_._2.length > 2).keys.mkString(", "))
 
   def iterator: Iterator[Sample] = this.samples.iterator
 

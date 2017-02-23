@@ -27,8 +27,8 @@ package com.fulcrumgenomics.basecalling
 
 import com.fulcrumgenomics.FgBioDef.{DirPath, FilePath, PathToBam, unreachable}
 import com.fulcrumgenomics.cmdline.{ClpGroups, FgBioTool}
+import com.fulcrumgenomics.illumina.{Sample, SampleSheet}
 import com.fulcrumgenomics.util.Io
-import com.fulcrumgenomics.util.miseq.{Sample, SampleSheet}
 import dagr.commons.io.PathUtil
 import dagr.commons.util.LazyLogging
 import dagr.sopt.{arg, clp}
@@ -121,7 +121,7 @@ object BasecallingParams {
     val bams = ListBuffer[PathToBam]()
     samples.foreach { sample =>
       // Get the library id
-      val libraryId = sample.libraryId.getOrElse(unreachable(s"No library found for sample: ${sample.sampleName}"))
+      val libraryId = sample.libraryId
 
       // Get the barcodes
       val barcodes = Seq(sample.i7IndexBases, sample.i5IndexBases).flatten

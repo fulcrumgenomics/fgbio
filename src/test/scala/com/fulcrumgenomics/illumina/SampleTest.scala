@@ -23,7 +23,7 @@
  *
  */
 
-package com.fulcrumgenomics.util.miseq
+package com.fulcrumgenomics.illumina
 
 import com.fulcrumgenomics.testing.UnitSpec
 import org.scalatest.OptionValues
@@ -34,14 +34,14 @@ import org.scalatest.OptionValues
 class SampleTest extends UnitSpec with OptionValues{
 
   "Sample.sampleBarcodeBases" should "return the sample barcodes if present" in {
-    new Sample(0, "ID", "NAME").sampleBarcodeBases.flatten shouldBe 'empty
-    new Sample(0, "ID", "NAME", i7IndexBases=Some("GATTACA")).sampleBarcodeBases.flatten should contain theSameElementsInOrderAs Seq("GATTACA")
-    new Sample(0, "ID", "NAME", i5IndexBases=Some("GATTACA")).sampleBarcodeBases.flatten should contain theSameElementsInOrderAs Seq("GATTACA")
-    new Sample(0, "ID", "NAME", i7IndexBases=Some("GATTACA"), i5IndexBases=Some("TGTAATC")).sampleBarcodeBases.flatten should contain theSameElementsInOrderAs Seq("GATTACA", "TGTAATC")
+    new Sample(0, "ID", "NAME", "LIBRARY").sampleBarcodeBases.flatten shouldBe 'empty
+    new Sample(0, "ID", "NAME", "LIBRARY", i7IndexBases=Some("GATTACA")).sampleBarcodeBases.flatten should contain theSameElementsInOrderAs Seq("GATTACA")
+    new Sample(0, "ID", "NAME", "LIBRARY", i5IndexBases=Some("GATTACA")).sampleBarcodeBases.flatten should contain theSameElementsInOrderAs Seq("GATTACA")
+    new Sample(0, "ID", "NAME", "LIBRARY", i7IndexBases=Some("GATTACA"), i5IndexBases=Some("TGTAATC")).sampleBarcodeBases.flatten should contain theSameElementsInOrderAs Seq("GATTACA", "TGTAATC")
   }
 
   it should "support extended attributes" in {
-    val sample = new Sample(0, "ID", "NAME", extendedAttributes=Seq(("FOO", "1"), ("BAR", "2  ")).toMap)
+    val sample = new Sample(0, "ID", "NAME", "LIBRARY", extendedAttributes=Seq(("FOO", "1"), ("BAR", "2  ")).toMap)
     sample.extendedAttribute("foo").value shouldBe "1"
     sample.extendedAttribute("Foo").value shouldBe "1"
     sample.extendedAttribute("FOO").value shouldBe "1"
@@ -54,6 +54,6 @@ class SampleTest extends UnitSpec with OptionValues{
   }
 
   it should "support throw an exception if extended attribute keys are not all uppercase" in {
-    an[Exception] should be thrownBy new Sample(0, "ID", "NAME", extendedAttributes=Seq(("foo", "1"), ("bar", "2  ")).toMap)
+    an[Exception] should be thrownBy new Sample(0, "ID", "NAME", "LIBRARY", extendedAttributes=Seq(("foo", "1"), ("bar", "2  ")).toMap)
   }
 }

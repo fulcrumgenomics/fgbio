@@ -42,4 +42,6 @@ case class FastqRecord(name: String, bases: String, quals: String, comment: Opti
     if (len > this.length) this
     else copy(bases=this.bases.substring(0, len), quals=this.quals.substring(0, len))
   }
+
+  override def toString: String = s"@$header\n$bases\n+\n$quals"
 }

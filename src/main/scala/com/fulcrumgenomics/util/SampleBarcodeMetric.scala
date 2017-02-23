@@ -54,8 +54,8 @@ object SampleBarcodeMetric {
     if (totalReads > 0) {
       noMatchMetric.pct_matches = noMatchMetric.reads / totalReads.toDouble
       var bestPctOfAllBarcodeMatches: Double = 0
-      barcodeToMetrics.foreach { case (barcode, metric) =>
-        val pctMatches = metric.reads / totalReads.toDouble
+      barcodeToMetrics.foreach { case (_, metric) =>
+        val pctMatches =  metric.reads / totalReads.toDouble
         if (pctMatches > bestPctOfAllBarcodeMatches) {
           bestPctOfAllBarcodeMatches = pctMatches
         }
@@ -63,14 +63,14 @@ object SampleBarcodeMetric {
       }
       if (bestPctOfAllBarcodeMatches > 0) {
         noMatchMetric.ratio_this_barcode_to_best_barcode_pct = noMatchMetric.pct_matches / bestPctOfAllBarcodeMatches
-        barcodeToMetrics.foreach { case (barcode, metric) =>
+        barcodeToMetrics.foreach { case (_, metric) =>
           metric.ratio_this_barcode_to_best_barcode_pct = metric.pct_matches / bestPctOfAllBarcodeMatches
         }
       }
     }
     if (totalPfReads > 0) {
       var bestPfPctOfAllBarcodeMatches: Double = 0
-      barcodeToMetrics.foreach { case (barcode, metric) =>
+      barcodeToMetrics.foreach { case (_, metric) =>
         val pctPfMatches = metric.pf_reads / totalPfReads.toDouble
         if (pctPfMatches > bestPfPctOfAllBarcodeMatches) {
           bestPfPctOfAllBarcodeMatches = pctPfMatches
@@ -79,7 +79,7 @@ object SampleBarcodeMetric {
       }
       if (bestPfPctOfAllBarcodeMatches > 0) {
         noMatchMetric.pf_ratio_this_barcode_to_best_barcode_pct = noMatchMetric.pf_pct_matches / bestPfPctOfAllBarcodeMatches
-        barcodeToMetrics.foreach { case (barcode, metric) =>
+        barcodeToMetrics.foreach { case (_, metric) =>
           metric.pf_ratio_this_barcode_to_best_barcode_pct = metric.pf_pct_matches / bestPfPctOfAllBarcodeMatches
         }
       }
@@ -112,4 +112,19 @@ case class SampleBarcodeMetric(
   var pf_pct_matches: Double                            = 0d,
   var pf_ratio_this_barcode_to_best_barcode_pct: Double = 0d,
   var pf_normalized_matches: Double                     = 0d
-) extends Metric
+) extends Metric {
+
+  /** Increments the counts for the metric. */
+  def increment(numMismatches: Int, isPf: Boolean = true): Unit = {
+    this.reads += 1
+    if (isPf) this.pf_reads += 1
+    if (numMismatches == 0) {
+      this.perfect_matches += 1
+      if (isPf) this.pf_perfect_matches += 1
+    }
+    else if (numMismatches == 1) {
+      this.one_mismatch_matches += 1
+      if (isPf) this.pf_one_mismatch_matches += 1
+    }
+  }
+}

@@ -27,9 +27,9 @@ package com.fulcrumgenomics.basecalling
 
 import java.nio.file.Files
 
+import com.fulcrumgenomics.illumina.{Sample, SampleSheet}
 import com.fulcrumgenomics.testing.{ErrorLogLevel, UnitSpec}
 import com.fulcrumgenomics.util.Io
-import com.fulcrumgenomics.util.miseq.{Sample, SampleSheet}
 
 class ExtractBasecallingParamsForPicardTest extends UnitSpec with ErrorLogLevel {
 
@@ -38,7 +38,7 @@ class ExtractBasecallingParamsForPicardTest extends UnitSpec with ErrorLogLevel 
   "BasecallingParams.bamFileFrom" should "create a path to a BAM file with a single-indexed sample" in {
     val bam = BasecallingParams.bamFileFrom(
       output = outputDir,
-      sample = new Sample(sampleOrdinal=0, sampleId="sampleId", sampleName="sampleName", i7IndexBases=Some("GATTACA")),
+      sample = new Sample(sampleOrdinal=0, sampleId="sampleId", sampleName="sampleName", libraryId="libraryId", i7IndexBases=Some("GATTACA")),
       lane   = 1
     )
     bam.toString shouldBe outputDir.resolve("sampleName.GATTACA.1.bam").toString
@@ -47,7 +47,7 @@ class ExtractBasecallingParamsForPicardTest extends UnitSpec with ErrorLogLevel 
   it should "create a path to a BAM file without a library identifier" in {
     val bam = BasecallingParams.bamFileFrom(
       output = outputDir,
-      sample = new Sample(sampleOrdinal=0, sampleId="sampleId", sampleName="sampleName", i7IndexBases=Some("GATTACA"), i5IndexBases=Some("ACATTAG")),
+      sample = new Sample(sampleOrdinal=0, sampleId="sampleId", sampleName="sampleName", libraryId="libraryId", i7IndexBases=Some("GATTACA"), i5IndexBases=Some("ACATTAG")),
       lane   = 2
     )
     bam.toString shouldBe outputDir.resolve("sampleName.GATTACAACATTAG.2.bam").toString
