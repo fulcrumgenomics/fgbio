@@ -83,6 +83,30 @@ object ReadStructure {
     val suffix = if (end == s.length) "" else s.substring(end, s.length)
     s"$prefix[$error]$suffix"
   }
+
+  /** Splits the given bases into tuples with its associated read segment.  If strict is false then only return
+    * tuples for which we have bases in `bases`, otherwise throw an exception.
+    **/
+  def structureRead(bases: String, segments: Seq[ReadSegment], strict: Boolean = true): Seq[SubRead] = {
+    // TODO: TF: strict == false allows us to skip segments (in the filter)
+    segments.filter(s => strict || s.offset < bases.length).map {
+      segment =>
+        val (start, end) = segment.range(bases.length, strict=strict)
+        SubRead(bases=bases.substring(start, end), segment=ReadSegment(segment, end - start))
+    }
+  }
+
+  /** Splits the given bases and qualities into triples with its associated read segment.  If strict is false then only
+    * return tuples for which we have bases in `bases`, otherwise throw an exception.
+    **/
+  def structureReadWithQualities(bases: String, qualities: String, segments: Seq[ReadSegment], strict: Boolean = true): Seq[SubRead] = {
+    assert(bases.length == qualities.length)
+    segments.filter(s => strict || s.offset < bases.length).map {
+      segment =>
+        val (start, end) = segment.range(Math.min(bases.length, qualities.length), strict=strict)
+        SubRead(bases=bases.substring(start, end), quals=Some(qualities.substring(start,end)), segment=ReadSegment(segment, end - start))
+    }
+  }
 }
 
 /**
@@ -124,26 +148,14 @@ class ReadStructure(segs: Seq[ReadSegment], resetOffsets: Boolean = false) exten
   /** Splits the given bases into tuples with its associated read segment.  If strict is false then only return
     * tuples for which we have bases in `bases`, otherwise throw an exception.
     **/
-  def structureRead(bases: String, strict: Boolean = true): Seq[SubRead] = {
-    // TODO: TF: strict == false allows us to skip segments (in the filter)
-    this.filter(s => strict || s.offset < bases.length).map {
-      segment =>
-        val (start, end) = segment.range(bases.length, strict=strict)
-        SubRead(bases=bases.substring(start, end), segment=ReadSegment(segment, end - start))
-    }
-  }
+  def structureRead(bases: String, strict: Boolean = true): Seq[SubRead] =
+    ReadStructure.structureRead(bases=bases, segments=this, strict=strict)
 
   /** Splits the given bases and qualities into triples with its associated read segment.  If strict is false then only
     * return tuples for which we have bases in `bases`, otherwise throw an exception.
     **/
-  def structureReadWithQualities(bases: String, qualities: String, strict: Boolean = true): Seq[SubRead] = {
-    assert(bases.length == qualities.length)
-    this.filter(s => strict || s.offset < bases.length).map {
-      segment =>
-        val (start, end) = segment.range(Math.min(bases.length, qualities.length), strict=strict)
-        SubRead(bases=bases.substring(start, end), quals=Some(qualities.substring(start,end)), segment=ReadSegment(segment, end - start))
-    }
-  }
+  def structureReadWithQualities(bases: String, qualities: String, strict: Boolean = true): Seq[SubRead] =
+    ReadStructure.structureReadWithQualities(bases=bases, qualities=qualities, segments=this, strict=strict)
 
   private def collectSegments[T <: ReadSegment: ClassTag]: Seq[T] = this.collect { case t: T => t }
   def template: Seq[Template] = this.collectSegments[Template]
