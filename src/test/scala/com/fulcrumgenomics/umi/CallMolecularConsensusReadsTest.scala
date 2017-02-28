@@ -57,7 +57,7 @@ class CallMolecularConsensusReadsTest extends UnitSpec {
     }
 
     // Run the tool
-    new CallMolecularConsensusReads(input=builder.toTempFile(), output=output, rejects=Some(rejects), readGroupId="ABC").execute()
+    new CallMolecularConsensusReads(input=builder.toTempFile(), output=output, minReads=1, rejects=Some(rejects), readGroupId="ABC").execute()
 
     // check we have no rejected records
     readBamRecs(rejects) shouldBe 'empty

@@ -69,6 +69,13 @@ import htsjdk.samtools._
     |calls each end of a pair independently, and does not jointly call bases that overlap within a pair.  Insertion or
     |deletion errors in the reads are not considered in the consensus model.
     |
+    |Particular attention should be paid to setting the --min-reads parameter as this can have a dramatic effect on
+    |both results and runtime.  For libraries with low duplication rates (e.g. 100-300X exomes libraries) in which it
+    |is desirable to retain singleton reads while making consensus reads from sets of duplicates, --min-reads=1 is
+    |appropriate.  For libraries with high duplication rates where it is desirable to only produce consensus reads
+    |supported by 2+ reads to allow error correction, --min-reads=2 or higher is appropriate.  After generation,
+    |consensus reads can be further filtered using the FilterConsensusReads tool.
+    |
     |Consensus reads have a number of additional optional tags set in the resulting BAM file.  The tags break down into
     |those that are single-valued per read:
     |    * consensus depth      [cD] (int): the maximum depth of raw reads at any point in the consensus read
@@ -93,8 +100,13 @@ class CallMolecularConsensusReads
  @arg(flag="1", doc="The Phred-scaled error rate for an error prior to the UMIs being integrated.") val errorRatePreUmi: PhredScore = DefaultErrorRatePreUmi,
  @arg(flag="2", doc="The Phred-scaled error rate for an error post the UMIs have been integrated.") val errorRatePostUmi: PhredScore = DefaultErrorRatePostUmi,
  @arg(flag="m", doc="Ignore bases in raw reads that have Q below this value.") val minInputBaseQuality: PhredScore = DefaultMinInputBaseQuality,
- @arg(flag="N", doc="Mask (make 'N') consensus bases with quality less than this threshold.") val minConsensusBaseQuality: PhredScore = DefaultMinConsensusBaseQuality,
- @arg(flag="M", doc="The minimum number of reads to produce a consensus base.") val minReads: Int = DefaultMinReads,
+ @arg(flag="N", doc=
+   """
+     |Deprecated: will be removed in future versions; use FilterConsensusReads to filter consensus bases on
+     |quality instead. Mask (make 'N') consensus bases with quality less than this threshold.
+   """)
+ val minConsensusBaseQuality: PhredScore = 2.toByte,
+ @arg(flag="M", doc="The minimum number of reads to produce a consensus base.") val minReads: Int,
  @arg(flag="B", doc="If true produce tags on consensus reads that contain per-base information.") val outputPerBaseTags: Boolean = DefaultProducePerBaseTags,
  @arg(flag="S", doc="The sort order of the output, if None then the same as the input.") val sortOrder: Option[SortOrder] = Some(SortOrder.queryname),
  @arg(flag="D", doc="Turn on debug logging.") val debug: Boolean = false

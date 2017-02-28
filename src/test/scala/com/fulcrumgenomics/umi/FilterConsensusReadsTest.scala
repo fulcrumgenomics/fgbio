@@ -29,6 +29,7 @@ import java.util
 import com.fulcrumgenomics.FgBioDef._
 import com.fulcrumgenomics.testing.{SamRecordSetBuilder, UnitSpec}
 import com.fulcrumgenomics.util.Io
+import com.fulcrumgenomics.util.NumericTypes.PhredScore
 import dagr.commons.io.PathUtil
 import htsjdk.samtools.SAMFileHeader.SortOrder
 import htsjdk.samtools.{SAMFileHeader, SAMFileWriterFactory, SAMRecord, SAMSequenceDictionary, SAMSequenceRecord, SamReaderFactory}
@@ -37,6 +38,7 @@ import scala.collection.mutable.ListBuffer
 
 class FilterConsensusReadsTest extends UnitSpec {
   private val temp = makeTempFile("meh.", ".bam")
+  private val Q2 = PhredScore.MinValue
 
   /** Make a reference file that is 100 lines of 100 As. */
   private val ref = {
@@ -298,10 +300,10 @@ class FilterConsensusReadsTest extends UnitSpec {
 
   it should "throw validation exceptions if you provide options in increasing stringency order" in {
     val Seq(in, out) = Seq("in.", "out.").map(makeTempFile(_, ".bam"))
-    an[Exception] shouldBe thrownBy { new FilterConsensusReads(input=in, output=out, ref=ref, minReads=Seq(1,2,3)) }
-    an[Exception] shouldBe thrownBy { new FilterConsensusReads(input=in, output=out, ref=ref, minReads=Seq(9,4,6)) }
-    an[Exception] shouldBe thrownBy { new FilterConsensusReads(input=in, output=out, ref=ref, maxReadErrorRate=Seq(0.1f, 0.2f, 0.01f)) }
-    an[Exception] shouldBe thrownBy { new FilterConsensusReads(input=in, output=out, ref=ref, maxBaseErrorRate=Seq(0.1f, 0.2f, 0.01f)) }
+    an[Exception] shouldBe thrownBy { new FilterConsensusReads(input=in, output=out, ref=ref, minBaseQuality=Q2, minReads=Seq(1,2,3)) }
+    an[Exception] shouldBe thrownBy { new FilterConsensusReads(input=in, output=out, ref=ref, minBaseQuality=Q2, minReads=Seq(9,4,6)) }
+    an[Exception] shouldBe thrownBy { new FilterConsensusReads(input=in, output=out, ref=ref, minBaseQuality=Q2, maxReadErrorRate=Seq(0.1f, 0.2f, 0.01f)) }
+    an[Exception] shouldBe thrownBy { new FilterConsensusReads(input=in, output=out, ref=ref, minBaseQuality=Q2, maxBaseErrorRate=Seq(0.1f, 0.2f, 0.01f)) }
   }
 
   it should "set filter values correctly when only one value is provided" in {
