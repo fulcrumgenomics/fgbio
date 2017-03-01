@@ -67,10 +67,12 @@ object Rscript extends LazyLogging {
   /** Executes an Rscript from a script stored at a Path. */
   def exec(script: Path, args: String*): Try[Unit] = Try {
     val command = Rscript.Executable +: script.toAbsolutePath.toString +: args
-    val process = new ProcessBuilder(command:_*).redirectErrorStream(true).start()
-    val pipe    = Io.pipeStream(process.getInputStream, logger.info)
+    val process = new ProcessBuilder(command:_*).redirectErrorStream(false).start()
+    val pipe1   = Io.pipeStream(process.getErrorStream, logger.info)
+    val pipe2   = Io.pipeStream(process.getInputStream, logger.debug)
     val retval  = process.waitFor()
-    pipe.close()
+    pipe1.close()
+    pipe2.close()
 
     if (retval != 0) throw RscriptException(retval)
   }

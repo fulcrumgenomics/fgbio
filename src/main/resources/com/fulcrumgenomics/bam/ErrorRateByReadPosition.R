@@ -20,7 +20,8 @@
 
 # R script to generate QC plots from the ErrorRateByReadPosition tool
 
-require(ggplot2)
+options(warn = -1) # Don't emit warnings, only errors
+library(ggplot2)
 
 args    = commandArgs(trailingOnly=T)
 metrics = args[1]
