@@ -18,6 +18,7 @@ addons:
       - r-packages-precise
     packages:
       - r-base
+      - r-recommended
 before_install:
 - pip install --user codecov
 - sudo bash .travis.install-git-lfs.sh
