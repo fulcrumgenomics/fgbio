@@ -12,6 +12,7 @@ cache:
   directories:
   - $HOME/.ivy2/cache
   - $HOME/.sbt/boot/
+  - /usr/local/lib/R/site-library’
 addons:
   apt:
     sources:
