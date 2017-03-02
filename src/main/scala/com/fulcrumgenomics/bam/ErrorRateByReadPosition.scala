@@ -114,7 +114,7 @@ class ErrorRateByReadPosition
   private[bam] def computeMetrics: Seq[ErrorRateByReadPositionMetric] = {
     val progress = new ProgressLogger(logger, verb="Processed", noun="loci", unit=50000)
     val in       = SamReaderFactory.make().referenceSequence(ref.toFile).open(input)
-    val ilist    = this.intervals.map(p => IntervalList.fromFile(p.toFile))
+    val ilist    = this.intervals.map(p => IntervalList.fromFile(p.toFile).uniqued(false))
 
     val refWalker     = new ReferenceSequenceFileWalker(this.ref.toFile)
     val locusIterator = buildSamLocusIterator(in, ilist).iterator()

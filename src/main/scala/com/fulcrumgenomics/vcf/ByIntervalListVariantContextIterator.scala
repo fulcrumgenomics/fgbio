@@ -68,7 +68,7 @@ private class OverlapDetectionVariantContextIterator(val iterator: Iterator[Vari
   extends Iterator[VariantContext] {
 
   require(dict != null)
-  private val intervals = intervalList.iterator().buffered
+  private val intervals = intervalList.uniqued(false).iterator().buffered
   private var nextVariantContext: Option[VariantContext] = None
 
   this.advance()

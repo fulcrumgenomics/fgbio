@@ -191,4 +191,26 @@ class ErrorRateByReadPositionTest extends UnitSpec {
       Files.exists(plot) shouldBe true
     }
   }
+
+  it should "handle interval lists that are unsorted and/or contain duplicate entries" in {
+    val builder = newSamBuilder
+    1 to 99 foreach {i => builder.addPair(contig=1, start1=i, start2=i+50).foreach(_.setReadString("A"*20)) }
+    builder.addPair(contig=1, start1=100, start2=200).foreach(_.setReadString("AAAAAAAAATTAAAAAAAAA"))
+
+    val dict = builder.dict
+    val intervals = new IntervalList(dict)
+    intervals.add(new Interval(dict.getSequence(1).getSequenceName, 200, 300))
+    intervals.add(new Interval(dict.getSequence(1).getSequenceName, 100, 150))
+    intervals.add(new Interval(dict.getSequence(1).getSequenceName, 100, 200))
+    intervals.add(new Interval(dict.getSequence(1).getSequenceName, 1,  1000))
+
+    val intervalsPath = makeTempFile("regions.", ".interval_list")
+    intervals.write(intervalsPath.toFile)
+
+    val (out, pre) = outputAndPrefix
+    new ErrorRateByReadPosition(input=builder.toTempFile(), intervals=Some(intervalsPath), output=Some(pre), ref=ref, variants=Some(vcf)).execute()
+    val metrics = Metric.read[ErrorRateByReadPositionMetric](out)
+    metrics.size shouldBe 40
+    metrics.map(_.bases_total).sum shouldBe 4000
+  }
 }

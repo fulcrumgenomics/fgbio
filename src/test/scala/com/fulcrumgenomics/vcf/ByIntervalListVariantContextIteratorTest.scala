@@ -67,7 +67,7 @@ class ByIntervalListVariantContextIteratorTest extends UnitSpec {
     Stream(true, false).foreach { useIndex =>
       val builder = new VariantContextSetBuilder()
       val intervalList = emtpyIntervalList()
-      intervalList.add(new Interval(dict.getSequence(0).getSequenceName, 1, 1000))
+      intervalList.add(new Interval(dict.getSequence(0).getSequenceName, 1, 1000, false, "foo"))
       val iterator = toIterator(reader=builder.toVcfFileReader(), intervalList=emtpyIntervalList(), useIndex=useIndex)
       iterator shouldBe 'empty
     }
@@ -77,7 +77,7 @@ class ByIntervalListVariantContextIteratorTest extends UnitSpec {
     Stream(true, false).foreach { useIndex =>
       val builder = new VariantContextSetBuilder().addVariant(refIdx=0, start=500, variantAlleles=List("A"), genotypeAlleles=List("A"))
       val intervalList = emtpyIntervalList()
-      intervalList.add(new Interval(dict.getSequence(0).getSequenceName, 1, 1000))
+      intervalList.add(new Interval(dict.getSequence(0).getSequenceName, 1, 1000, false, "foo"))
       val iterator = toIterator(reader=builder.toVcfFileReader(), intervalList=intervalList, useIndex=useIndex)
       iterator shouldBe 'nonEmpty
       val actual = iterator.next()
@@ -93,7 +93,7 @@ class ByIntervalListVariantContextIteratorTest extends UnitSpec {
     Stream(true, false).foreach { useIndex =>
       val builder = new VariantContextSetBuilder().addVariant(refIdx=0, start=500, variantAlleles=List("A"), genotypeAlleles=List("A"))
       val intervalList = emtpyIntervalList()
-      intervalList.add(new Interval(dict.getSequence(0).getSequenceName, 750, 1000))
+      intervalList.add(new Interval(dict.getSequence(0).getSequenceName, 750, 1000, false, "foo"))
       val iterator = toIterator(reader=builder.toVcfFileReader(), intervalList=intervalList, useIndex=useIndex)
       iterator shouldBe 'empty
     }
@@ -103,7 +103,7 @@ class ByIntervalListVariantContextIteratorTest extends UnitSpec {
     Stream(true, false).foreach { useIndex =>
       val builder = new VariantContextSetBuilder().addVariant(refIdx=0, start=500, variantAlleles=List("A"), genotypeAlleles=List("A"))
       val intervalList = emtpyIntervalList()
-      intervalList.add(new Interval(dict.getSequence(1).getSequenceName, 1, 1000))
+      intervalList.add(new Interval(dict.getSequence(1).getSequenceName, 1, 1000, false, "foo"))
       val iterator = toIterator(reader=builder.toVcfFileReader(), intervalList=intervalList, useIndex=useIndex)
       iterator shouldBe 'empty
     }
@@ -122,7 +122,7 @@ class ByIntervalListVariantContextIteratorTest extends UnitSpec {
     Stream(true, false).foreach { useIndex =>
       val builder = new VariantContextSetBuilder().addVariant(refIdx=0, start=495, variantAlleles=List("AAAAA", "A"), genotypeAlleles=List("A"))
       val intervalList = emtpyIntervalList()
-      intervalList.add(new Interval(dict.getSequence(0).getSequenceName, 496, 496))
+      intervalList.add(new Interval(dict.getSequence(0).getSequenceName, 496, 496, false, "foo"))
       val iterator = toIterator(reader=builder.toVcfFileReader(), intervalList=intervalList, useIndex=useIndex)
       iterator shouldBe 'nonEmpty
       val actual = iterator.next()
@@ -138,8 +138,8 @@ class ByIntervalListVariantContextIteratorTest extends UnitSpec {
     Stream(true, false).foreach { useIndex =>
       val builder = new VariantContextSetBuilder().addVariant(refIdx=0, start=495, variantAlleles=List("AAAAA", "A"), genotypeAlleles=List("A"))
       val intervalList = emtpyIntervalList()
-      intervalList.add(new Interval(dict.getSequence(0).getSequenceName, 496, 496))
-      intervalList.add(new Interval(dict.getSequence(0).getSequenceName, 500, 500))
+      intervalList.add(new Interval(dict.getSequence(0).getSequenceName, 496, 496, false, "foo"))
+      intervalList.add(new Interval(dict.getSequence(0).getSequenceName, 500, 500, false, "foo"))
       val iterator = toIterator(reader=builder.toVcfFileReader(), intervalList=intervalList, useIndex=useIndex)
       iterator shouldBe 'nonEmpty
       val actual = iterator.next()
@@ -156,8 +156,8 @@ class ByIntervalListVariantContextIteratorTest extends UnitSpec {
       .addVariant(refIdx=0, start=495, variantAlleles=List("AAAAA", "A"), genotypeAlleles=List("A"))
       .addVariant(refIdx=0, start=595, variantAlleles=List("AAAAA", "A"), genotypeAlleles=List("A"))
     val intervalList = emtpyIntervalList()
-    intervalList.add(new Interval(dict.getSequence(0).getSequenceName, 494, 500))
-    intervalList.add(new Interval(dict.getSequence(0).getSequenceName, 500, 500))
+    intervalList.add(new Interval(dict.getSequence(0).getSequenceName, 494, 500, false, "foo"))
+    intervalList.add(new Interval(dict.getSequence(0).getSequenceName, 500, 500, false, "foo"))
     val iterator = toIterator(reader=builder.toVcfFileReader(), intervalList=intervalList, useIndex=true)
     // OK, since we are overlapping the first interval
     iterator shouldBe 'nonEmpty
@@ -169,7 +169,7 @@ class ByIntervalListVariantContextIteratorTest extends UnitSpec {
     Stream(true, false).foreach { useIndex =>
       val builder = new VariantContextSetBuilder().addVariant(refIdx=0, start=495, variantAlleles=List("A", "C"), genotypeAlleles=List("C"))
       val intervalList = emtpyIntervalList()
-      intervalList.add(new Interval(dict.getSequence(0).getSequenceName, 500, 500))
+      intervalList.add(new Interval(dict.getSequence(0).getSequenceName, 500, 500, false, "foo"))
       val iterator = toIterator(reader=builder.toVcfFileReader(), intervalList=intervalList, useIndex=useIndex)
       iterator shouldBe 'empty
     }
