@@ -91,7 +91,7 @@ class FilterConsensusReads
   @arg(flag="r", doc="Reference fasta file.") val ref: PathToFasta,
   @arg(flag="R", doc="Reverse [complement] per base tags on reverse strand reads.") val reversePerBaseTags: Boolean = false,
   @arg(flag="M", minElements=1, maxElements=3, doc="The minimum number of reads supporting a consensus base/read.")
-  val minReads: Seq[Int] = Seq(DefaultMinReads),
+  val minReads: Seq[Int],
   @arg(flag="E", minElements=1, maxElements=3, doc="The maximum raw-read error rate across the entire consensus read.")
   val maxReadErrorRate: Seq[Double] = Seq(0.025),
   @arg(flag="e", minElements=1, maxElements=3, doc="The maximum error rate for a single consensus base.")

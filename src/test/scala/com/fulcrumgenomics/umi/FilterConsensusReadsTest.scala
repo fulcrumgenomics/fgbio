@@ -302,8 +302,8 @@ class FilterConsensusReadsTest extends UnitSpec {
     val Seq(in, out) = Seq("in.", "out.").map(makeTempFile(_, ".bam"))
     an[Exception] shouldBe thrownBy { new FilterConsensusReads(input=in, output=out, ref=ref, minBaseQuality=Q2, minReads=Seq(1,2,3)) }
     an[Exception] shouldBe thrownBy { new FilterConsensusReads(input=in, output=out, ref=ref, minBaseQuality=Q2, minReads=Seq(9,4,6)) }
-    an[Exception] shouldBe thrownBy { new FilterConsensusReads(input=in, output=out, ref=ref, minBaseQuality=Q2, maxReadErrorRate=Seq(0.1f, 0.2f, 0.01f)) }
-    an[Exception] shouldBe thrownBy { new FilterConsensusReads(input=in, output=out, ref=ref, minBaseQuality=Q2, maxBaseErrorRate=Seq(0.1f, 0.2f, 0.01f)) }
+    an[Exception] shouldBe thrownBy { new FilterConsensusReads(input=in, output=out, ref=ref, minBaseQuality=Q2, minReads=Seq(1), maxReadErrorRate=Seq(0.1f, 0.2f, 0.01f)) }
+    an[Exception] shouldBe thrownBy { new FilterConsensusReads(input=in, output=out, ref=ref, minBaseQuality=Q2, minReads=Seq(1), maxBaseErrorRate=Seq(0.1f, 0.2f, 0.01f)) }
   }
 
   it should "set filter values correctly when only one value is provided" in {
