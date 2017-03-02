@@ -15,7 +15,7 @@ cache:
 before_install:
 - pip install --user codecov
 - sudo bash .travis.install-git-lfs.sh
-- sudo apt-get install r-base
+- sudo apt-get install r-base=3.3
 - sudo Rscript -e 'install.packages("ggplot2", repos="http://cran.us.r-project.org")'
 after_success:
 - codecov
