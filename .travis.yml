@@ -17,7 +17,7 @@ addons:
     sources:
       - r-packages-precise
     packages:
-      - r-core
+      - r-base
       - r-cran-ggplot2      
 before_install:
 - pip install --user codecov
