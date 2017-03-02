@@ -229,10 +229,10 @@ class EndRepairArtifactLikelihoodFilter(val distance: Int = 2,
       rec.getReferenceIndex == rec.getMateReferenceIndex && rec.getInferredInsertSize != 0 &&
       SamPairUtil.getPairOrientation(rec) == PairOrientation.FR) {
       
-      val isize      = rec.getInferredInsertSize
-      val thisEnd    = if (rec.getReadNegativeStrandFlag) rec.getAlignmentEnd else rec.getAlignmentStart
-      val adjustment = if (rec.getInferredInsertSize < 0) 1 else -1
-      val otherEnd   = thisEnd + rec.getInferredInsertSize + adjustment
+      val isize        = rec.getInferredInsertSize
+      val thisEnd      = if (rec.getReadNegativeStrandFlag) rec.getAlignmentEnd else rec.getAlignmentStart
+      val adjustment   = if (rec.getInferredInsertSize < 0) 1 else -1
+      val otherEnd     = thisEnd + rec.getInferredInsertSize + adjustment
       val (start, end) = (min(thisEnd, otherEnd), max(thisEnd,otherEnd))
       require(genomicPosition >= start && genomicPosition <= end, s"genomicPosition is outside of template for $rec")
 

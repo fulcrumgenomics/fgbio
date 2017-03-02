@@ -250,16 +250,17 @@ object Bams extends LazyLogging {
   }
 
   /** Returns true if the read is mapped in an FR pair, false otherwise. */
-  def isFrPair(rec: SAMRecord): Boolean =
+  def isFrPair(rec: SAMRecord): Boolean = {
     rec.getReadPairedFlag &&
       !rec.getReadUnmappedFlag &&
       !rec.getMateUnmappedFlag &&
       rec.getReferenceIndex == rec.getMateReferenceIndex &&
       SamPairUtil.getPairOrientation(rec) == PairOrientation.FR
+  }
 
   /**
     * Calculates the coordinates of the insert represented by this record and returns them
-    * as a pair of 1-based closed ended coordinated.
+    * as a pair of 1-based closed ended coordinates.
     *
     * Invalid to call on a read that is not mapped in a pair to the same chromosome as it's mate.
     *
@@ -272,10 +273,10 @@ object Bams extends LazyLogging {
     require(rec.getReferenceIndex == rec.getMateReferenceIndex, s"Read ${rec.getReadName} must be mapped to same chrom as it's mate.")
 
     val isize      = rec.getInferredInsertSize
-    val thisEnd    = if (rec.getReadNegativeStrandFlag) rec.getAlignmentEnd else rec.getAlignmentStart
+    val firstEnd   = if (rec.getReadNegativeStrandFlag) rec.getAlignmentEnd else rec.getAlignmentStart
     val adjustment = if (rec.getInferredInsertSize < 0) 1 else -1
-    val otherEnd   = thisEnd + rec.getInferredInsertSize + adjustment
+    val secondEnd  = firstEnd + rec.getInferredInsertSize + adjustment
 
-    (min(thisEnd,otherEnd), max(thisEnd,otherEnd))
+    (min(firstEnd,secondEnd), max(firstEnd,secondEnd))
   }
 }
