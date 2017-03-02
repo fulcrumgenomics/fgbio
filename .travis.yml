@@ -12,12 +12,16 @@ cache:
   directories:
   - $HOME/.ivy2/cache
   - $HOME/.sbt/boot/
+addons:
+  apt:
+    sources:
+      - r-packages-precise
+    packages:
+      - r-core
+      - r-cran-ggplot2      
 before_install:
 - pip install --user codecov
 - sudo bash .travis.install-git-lfs.sh
-- sudo apt-get update
-- sudo apt-get install r-base
-- sudo Rscript -e 'install.packages("ggplot2", repos="http://cran.us.r-project.org")'
 after_success:
 - codecov
 - test "$TRAVIS_REPO_SLUG" == 'fulcrumgenomics/fgbio' && test "$TRAVIS_PULL_REQUEST" == 'false' && test "$TRAVIS_BRANCH" == 'master' && sbt publish #&& sbt 'set version := version.value + "." + System.getenv("TRAVIS_BUILD_NUMBER")' publish
