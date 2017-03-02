@@ -74,7 +74,8 @@ import htsjdk.samtools._
     |is desirable to retain singleton reads while making consensus reads from sets of duplicates, --min-reads=1 is
     |appropriate.  For libraries with high duplication rates where it is desirable to only produce consensus reads
     |supported by 2+ reads to allow error correction, --min-reads=2 or higher is appropriate.  After generation,
-    |consensus reads can be further filtered using the FilterConsensusReads tool.
+    |consensus reads can be further filtered using the FilterConsensusReads tool.  As such it is always safe to run
+    |with --min-reads=1 and filter later, but filtering at this step can improve performance significantly.
     |
     |Consensus reads have a number of additional optional tags set in the resulting BAM file.  The tags break down into
     |those that are single-valued per read:
