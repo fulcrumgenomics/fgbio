@@ -26,6 +26,7 @@ package com.fulcrumgenomics.bam
 
 import java.util
 
+import com.fulcrumgenomics.testing.SamRecordSetBuilder.{Minus, Plus}
 import com.fulcrumgenomics.testing.{SamRecordSetBuilder, UnitSpec}
 import htsjdk.samtools.SAMFileHeader.{GroupOrder, SortOrder}
 import htsjdk.samtools.reference.{ReferenceSequence, ReferenceSequenceFile, ReferenceSequenceFileWalker}
@@ -145,5 +146,46 @@ class BamsTest extends UnitSpec {
     rec.getAttribute("NM") shouldBe 2
     rec.getAttribute("MD") shouldBe "3A4A1"
     rec.getAttribute("UQ") shouldBe 40
+  }
+
+  "Bams.isFrPair" should "return false for reads that are not part of a mapped pair" in {
+    val builder = new SamRecordSetBuilder(sortOrder=SortOrder.coordinate, readLength=10, baseQuality=20)
+    builder.addFrag(start=100).exists(Bams.isFrPair) shouldBe false
+    builder.addPair(start1=100, start2=100, record2Unmapped=true).exists(Bams.isFrPair) shouldBe false
+  }
+
+  it should "return false for pairs that are mapped to different chromosomes" in {
+    val builder = new SamRecordSetBuilder(sortOrder=SortOrder.coordinate, readLength=10, baseQuality=20)
+    builder.addPair(start1=100, start2=200).foreach { rec =>
+      rec.setMateReferenceIndex(rec.getReferenceIndex + 1)
+      Bams.isFrPair(rec) shouldBe false
+    }
+  }
+
+  it should "return false for mapped FF, RR and RF pairs" in {
+    val builder = new SamRecordSetBuilder(sortOrder=SortOrder.coordinate, readLength=10, baseQuality=20)
+    builder.addPair(start1=100, start2=200, strand1=Plus,  strand2=Plus).exists(Bams.isFrPair)  shouldBe false
+    builder.addPair(start1=100, start2=200, strand1=Minus, strand2=Minus).exists(Bams.isFrPair) shouldBe false
+    builder.addPair(start1=100, start2=200, strand1=Minus, strand2=Plus).exists(Bams.isFrPair)  shouldBe false
+  }
+
+  it should "return true on an actual FR pair" in {
+    val builder = new SamRecordSetBuilder(sortOrder=SortOrder.coordinate, readLength=10, baseQuality=20)
+    builder.addPair(start1=100, start2=200, strand1=Plus, strand2=Minus).forall(Bams.isFrPair)  shouldBe true
+  }
+
+  "Bams.insertCoordinates" should "fail on fragments and inappropriate pairs" in {
+    val builder = new SamRecordSetBuilder(sortOrder=SortOrder.coordinate, readLength=10, baseQuality=20)
+    builder.addFrag(start=100).foreach(r => an[Exception] shouldBe thrownBy { Bams.insertCoordinates(r) })
+    builder.addPair(start1=100, start2=100, record2Unmapped=true).foreach(r => an[Exception] shouldBe thrownBy { Bams.insertCoordinates(r) })
+    builder.addPair(start1=100, start2=200).foreach { rec =>
+      rec.setMateReferenceIndex(rec.getReferenceIndex + 1)
+      an[Exception] shouldBe thrownBy { Bams.insertCoordinates(rec) }
+    }
+  }
+
+  it should "calculate insert coordinates correctly" in {
+    val builder = new SamRecordSetBuilder(sortOrder=SortOrder.coordinate, readLength=10, baseQuality=20)
+    val recs = builder.addPair(start1=100, start2=191).foreach { r => Bams.insertCoordinates(r) shouldBe (100, 200) }
   }
 }

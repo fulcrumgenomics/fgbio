@@ -24,7 +24,7 @@
 
 package com.fulcrumgenomics.vcf.filtration
 
-import java.lang.Math.{min, pow}
+import java.lang.Math.{min, max, pow}
 
 import com.fulcrumgenomics.FgBioDef._
 import com.fulcrumgenomics.bam.{BaseEntry, Pileup, PileupEntry}
@@ -228,22 +228,16 @@ class EndRepairArtifactLikelihoodFilter(val distance: Int = 2,
     if (rec.getReadPairedFlag && !rec.getReadUnmappedFlag && !rec.getMateUnmappedFlag &&
       rec.getReferenceIndex == rec.getMateReferenceIndex && rec.getInferredInsertSize != 0 &&
       SamPairUtil.getPairOrientation(rec) == PairOrientation.FR) {
-
+      
       val isize      = rec.getInferredInsertSize
       val thisEnd    = if (rec.getReadNegativeStrandFlag) rec.getAlignmentEnd else rec.getAlignmentStart
       val adjustment = if (rec.getInferredInsertSize < 0) 1 else -1
       val otherEnd   = thisEnd + rec.getInferredInsertSize + adjustment
+      val (start, end) = (min(thisEnd, otherEnd), max(thisEnd,otherEnd))
+      require(genomicPosition >= start && genomicPosition <= end, s"genomicPosition is outside of template for $rec")
 
-      if (isize < 0) {
-        val otherEnd = thisEnd + isize + 1
-        require(genomicPosition >= otherEnd && genomicPosition <= thisEnd, "genomicPosition is outside of template!")
-        Some(CoordMath.getLength(otherEnd, genomicPosition))
-      }
-      else {
-        val otherEnd = thisEnd + isize - 1
-        require(genomicPosition >= thisEnd && genomicPosition <= otherEnd, s"genomicPosition is outside of template for $rec")
-        Some(CoordMath.getLength(genomicPosition, otherEnd))
-      }
+      if (isize < 0) Some(CoordMath.getLength(otherEnd, genomicPosition))
+      else           Some(CoordMath.getLength(genomicPosition, otherEnd))
     }
     else {
       None

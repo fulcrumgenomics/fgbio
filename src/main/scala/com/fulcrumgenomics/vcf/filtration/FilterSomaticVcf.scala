@@ -27,12 +27,12 @@ package com.fulcrumgenomics.vcf.filtration
 import java.util.Collections
 
 import com.fulcrumgenomics.FgBioDef._
-import com.fulcrumgenomics.bam.PileupBuilder
+import com.fulcrumgenomics.bam._
 import com.fulcrumgenomics.cmdline.{ClpGroups, FgBioTool}
 import com.fulcrumgenomics.util.Io
 import dagr.commons.util.LazyLogging
 import dagr.sopt.{arg, clp}
-import htsjdk.samtools.SamReaderFactory
+import htsjdk.samtools.{SAMRecord, SamReaderFactory}
 import htsjdk.variant.variantcontext.VariantContextBuilder
 import htsjdk.variant.variantcontext.writer.{Options, VariantContextWriter, VariantContextWriterBuilder}
 import htsjdk.variant.vcf._
@@ -116,7 +116,7 @@ class FilterSomaticVcf
       if (applicableFilters.nonEmpty) {
         val ctxBuilder = new VariantContextBuilder(ctx)
         val iterator   = bamIn.queryOverlapping(chrom, pos, pos)
-        val pileup     = builder.build(iterator, chrom, pos).withoutOverlaps
+        val pileup     = filterPileup(builder.build(iterator, chrom, pos).withoutOverlaps)
         iterator.close()
 
         applicableFilters.foreach { f =>
@@ -136,6 +136,34 @@ class FilterSomaticVcf
     out.close()
     vcfIn.safelyClose()
     bamIn.safelyClose()
+  }
+
+  /**
+    * Filters the pileup to remove entries that are from PE reads who's insert size indicates that the
+    * aligned base we're looking at is _outside_ the insert!
+    */
+  private def filterPileup[A <: PileupEntry](pileup: Pileup[A]): Pileup[A] = {
+    val filtered = pileup.pile.filter { e =>
+      if (Bams.isFrPair(e.rec)) {
+        val (start, end) = Bams.insertCoordinates(e.rec)
+        if (pileup.pos < start || pileup.pos > end) {
+          logger.warning(
+            s"""
+              |Ignoring read ${e.rec.getReadName} mapped over variant site ${pileup.refName}:${pileup.pos} that has
+              |incompatible insert size yielding insert coordinates of ${pileup.refName}:$start-$end which do not overlap the variant.
+            """.stripMargin.trim.lines.mkString(" "))
+          false
+        }
+        else {
+          true
+        }
+      }
+      else {
+        true
+      }
+    }
+
+    pileup.copy(pile=filtered)
   }
 
   /** Builds a VCF writer that had all the necessary headers. */

@@ -28,11 +28,13 @@ import com.fulcrumgenomics.FgBioDef._
 import com.fulcrumgenomics.util.{BetterBufferedIterator, ProgressLogger}
 import dagr.commons.util.LazyLogging
 import htsjdk.samtools.SAMFileHeader.{GroupOrder, SortOrder}
-import htsjdk.samtools.util.{SequenceUtil, SortingCollection}
+import htsjdk.samtools.SamPairUtil.PairOrientation
 import htsjdk.samtools._
 import htsjdk.samtools.reference.ReferenceSequenceFileWalker
+import htsjdk.samtools.util.{SequenceUtil, SortingCollection}
 
 import scala.collection.mutable.ListBuffer
+import scala.math.{min, max}
 
 /**
   * Class that represents all reads from a template within a BAM file.
@@ -245,5 +247,35 @@ object Bams extends LazyLogging {
         rec.setAttribute(SAMTag.UQ.name, SequenceUtil.sumQualitiesOfMismatches(rec, refBases, 0))
       }
     }
+  }
+
+  /** Returns true if the read is mapped in an FR pair, false otherwise. */
+  def isFrPair(rec: SAMRecord): Boolean =
+    rec.getReadPairedFlag &&
+      !rec.getReadUnmappedFlag &&
+      !rec.getMateUnmappedFlag &&
+      rec.getReferenceIndex == rec.getMateReferenceIndex &&
+      SamPairUtil.getPairOrientation(rec) == PairOrientation.FR
+
+  /**
+    * Calculates the coordinates of the insert represented by this record and returns them
+    * as a pair of 1-based closed ended coordinated.
+    *
+    * Invalid to call on a read that is not mapped in a pair to the same chromosome as it's mate.
+    *
+    * @return the start and end position of the insert as a tuple, always with start <= end
+    */
+  def insertCoordinates(rec: SAMRecord): (Int, Int) = {
+    require(rec.getReadPairedFlag, s"Read ${rec.getReadName} is not paired, cannot calculate insert coordinates.")
+    require(!rec.getReadUnmappedFlag, s"Read ${rec.getReadName} must be mapped to calculate insert coordinates.")
+    require(!rec.getMateUnmappedFlag, s"Read ${rec.getReadName} must have mapped mate to calculate insert coordinates.")
+    require(rec.getReferenceIndex == rec.getMateReferenceIndex, s"Read ${rec.getReadName} must be mapped to same chrom as it's mate.")
+
+    val isize      = rec.getInferredInsertSize
+    val thisEnd    = if (rec.getReadNegativeStrandFlag) rec.getAlignmentEnd else rec.getAlignmentStart
+    val adjustment = if (rec.getInferredInsertSize < 0) 1 else -1
+    val otherEnd   = thisEnd + rec.getInferredInsertSize + adjustment
+
+    (min(thisEnd,otherEnd), max(thisEnd,otherEnd))
   }
 }
