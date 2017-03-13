@@ -154,6 +154,22 @@ class VanillaUmiConsensusCallerTest extends UnitSpec with OptionValues {
     consensus.get.baseString shouldBe "AAAAAAAAAA"
   }
 
+  it should "downsample input reads so that each consensus is made from <= max reads" in {
+    val r = src("AAAAAAAAAA", "##########")
+
+    for (max <- Seq(3, 1000); n <- Range.inclusive(1, 10)) {
+      val srcs      = Seq.tabulate(n)(_ => r)
+      val caller    = cc(cco(minReads=1, maxReads=max))
+      val consensus = caller.consensusCall(srcs)
+
+      consensus match {
+        case None    => fail("Consensus should have been generated")
+        case Some(c) =>
+          if (n < max) c.depths.forall(_ <= n)   shouldBe true
+          else         c.depths.forall(_ <= max) shouldBe true
+      }
+    }
+  }
 
   it should "mask bases with too low of a consensus quality" in {
     val bases = "GATTACA"

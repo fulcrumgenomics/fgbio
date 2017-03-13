@@ -34,6 +34,7 @@ import dagr.commons.util.LazyLogging
 import htsjdk.samtools._
 
 import scala.collection.mutable.ListBuffer
+import scala.util.Random
 
 /**
   * Holds the defaults for consensus caller options.
@@ -46,6 +47,7 @@ object VanillaUmiConsensusCallerOptions {
   val DefaultMinInputBaseQuality: PhredScore     = 10.toByte
   val DefaultMinConsensusBaseQuality: PhredScore = 40.toByte
   val DefaultMinReads: Int                       = 2
+  val DefaultMaxReads: Int                       = Int.MaxValue
   val DefaultProducePerBaseTags: Boolean         = true
 }
 
@@ -60,6 +62,7 @@ case class VanillaUmiConsensusCallerOptions
   minInputBaseQuality: PhredScore     = DefaultMinInputBaseQuality,
   minConsensusBaseQuality: PhredScore = DefaultMinConsensusBaseQuality,
   minReads: Int                       = DefaultMinReads,
+  maxReads: Int                       = DefaultMaxReads,
   producePerBaseTags: Boolean         = DefaultProducePerBaseTags
 )
 
@@ -100,13 +103,15 @@ class VanillaUmiConsensusCaller(override val readNamePrefix: String,
                                 val rejects: Option[SAMFileWriter] = None
                                ) extends UmiConsensusCaller[VanillaConsensusRead] with LazyLogging {
 
+  private val NotEnoughReadsQual: PhredScore = 0.toByte // Score output when masking to N due to insufficient input reads
+  private val TooLowQualityQual: PhredScore = 2.toByte  // Score output when masking to N due to too low consensus quality
   private val DnaBasesUpperCase: Array[Byte] = Array('A', 'C', 'G', 'T').map(_.toByte)
   private val LogThree = LogProbability.toLogProbability(3.0)
+
   private val caller = new ConsensusCaller(errorRatePreLabeling  = options.errorRatePreUmi,
                                            errorRatePostLabeling = options.errorRatePostUmi)
 
-  private val NotEnoughReadsQual: PhredScore = 0.toByte // Score output when masking to N due to insufficient input reads
-  private val TooLowQualityQual: PhredScore = 2.toByte  // Score output when masking to N due to too low consensus quality
+  private val random = new Random(42)
 
   /** Returns the value of the SAM tag directly. */
   override def sourceMoleculeId(rec: SAMRecord): String = rec.getStringAttribute(this.options.tag)
@@ -167,8 +172,11 @@ class VanillaUmiConsensusCaller(override val readNamePrefix: String,
       None
     }
     else {
+      // First limit to max reads if necessary
+      val capped  = if (reads.size < this.options.maxReads) reads else this.random.shuffle(reads).take(this.options.maxReads)
+
       // get the most likely consensus bases and qualities
-      val consensusLength = consensusReadLength(reads, this.options.minReads)
+      val consensusLength = consensusReadLength(capped, this.options.minReads)
       val consensusBases  = new Array[Base](consensusLength)
       val consensusQuals  = new Array[PhredScore](consensusLength)
       val consensusDepths = new Array[Short](consensusLength)
@@ -178,7 +186,7 @@ class VanillaUmiConsensusCaller(override val readNamePrefix: String,
       val builder = this.caller.builder()
       while (positionInRead < consensusLength) {
         // Add the evidence from all reads that are long enough to cover this base
-        reads.foreach { read =>
+        capped.foreach { read =>
           if (read.length > positionInRead) {
             val base = read.bases(positionInRead)
             val qual = read.quals(positionInRead)
@@ -208,7 +216,7 @@ class VanillaUmiConsensusCaller(override val readNamePrefix: String,
         positionInRead += 1
       }
 
-      Some(VanillaConsensusRead(id=reads.head.id, bases=consensusBases, quals=consensusQuals, depths=consensusDepths, errors=consensusErrors))
+      Some(VanillaConsensusRead(id=capped.head.id, bases=consensusBases, quals=consensusQuals, depths=consensusDepths, errors=consensusErrors))
     }
   }
 
