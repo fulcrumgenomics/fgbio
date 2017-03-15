@@ -24,10 +24,10 @@
 
 package com.fulcrumgenomics.vcf.filtration
 
-import java.lang.Math.{min, max, pow}
+import java.lang.Math.{max, min, pow}
 
 import com.fulcrumgenomics.FgBioDef._
-import com.fulcrumgenomics.bam.{BaseEntry, Pileup, PileupEntry}
+import com.fulcrumgenomics.bam.{Bams, BaseEntry, Pileup, PileupEntry}
 import com.fulcrumgenomics.util.NumericTypes.{LogProbability => LnProb}
 import dagr.commons.util.LazyLogging
 import htsjdk.samtools.SamPairUtil.PairOrientation
@@ -190,7 +190,7 @@ class EndRepairArtifactLikelihoodFilter(val distance: Int = 2,
     require(entry.base == refAllele || entry.base == altAllele, "Pileup base is neither ref or alt.")
     val isRef                = entry.base == refAllele
     val positionInRead       = entry.positionInReadInReadOrder
-    val positionFromOtherEnd = positionFromOtherEndOfTemplate(entry.rec, pileupPosition)
+    val positionFromOtherEnd = Bams.positionFromOtherEndOfTemplate(entry.rec, pileupPosition)
 
     // Pick the position that's closest to an end, and define the congruent base by that end
     val (pos, congruentAlt) = {
@@ -215,32 +215,6 @@ class EndRepairArtifactLikelihoodFilter(val distance: Int = 2,
     (this.pValueThreshold, annotations.get(InfoKey).map(_.asInstanceOf[Double])) match {
       case (Some(threshold), Some(pvalue)) if pvalue <= threshold => List(FilterKey)
       case _ => Nil
-    }
-  }
-
-  /** If the read is mapped in an FR pair, returns the distance of the position from the other end
-    * of the template, other wise returns None.
-    *
-    * @param rec the SAMRecord whose insert to calculate the position within
-    * @param genomicPosition the genomic position of interest (NOT the position within the read)
-    */
-  private[filtration] def positionFromOtherEndOfTemplate(rec: SAMRecord, genomicPosition: Int): Option[Int] = {
-    if (rec.getReadPairedFlag && !rec.getReadUnmappedFlag && !rec.getMateUnmappedFlag &&
-      rec.getReferenceIndex == rec.getMateReferenceIndex && rec.getInferredInsertSize != 0 &&
-      SamPairUtil.getPairOrientation(rec) == PairOrientation.FR) {
-      
-      val isize        = rec.getInferredInsertSize
-      val thisEnd      = if (rec.getReadNegativeStrandFlag) rec.getAlignmentEnd else rec.getAlignmentStart
-      val adjustment   = if (rec.getInferredInsertSize < 0) 1 else -1
-      val otherEnd     = thisEnd + rec.getInferredInsertSize + adjustment
-      val (start, end) = (min(thisEnd, otherEnd), max(thisEnd,otherEnd))
-      require(genomicPosition >= start && genomicPosition <= end, s"genomicPosition is outside of template for $rec")
-
-      if (isize < 0) Some(CoordMath.getLength(otherEnd, genomicPosition))
-      else           Some(CoordMath.getLength(genomicPosition, otherEnd))
-    }
-    else {
-      None
     }
   }
 }

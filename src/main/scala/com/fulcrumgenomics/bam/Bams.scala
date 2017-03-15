@@ -31,10 +31,10 @@ import htsjdk.samtools.SAMFileHeader.{GroupOrder, SortOrder}
 import htsjdk.samtools.SamPairUtil.PairOrientation
 import htsjdk.samtools._
 import htsjdk.samtools.reference.ReferenceSequenceFileWalker
-import htsjdk.samtools.util.{SequenceUtil, SortingCollection}
+import htsjdk.samtools.util.{CoordMath, SequenceUtil, SortingCollection}
 
 import scala.collection.mutable.ListBuffer
-import scala.math.{min, max}
+import scala.math.{max, min}
 
 /**
   * Class that represents all reads from a template within a BAM file.
@@ -278,5 +278,29 @@ object Bams extends LazyLogging {
     val secondEnd  = firstEnd + rec.getInferredInsertSize + adjustment
 
     (min(firstEnd,secondEnd), max(firstEnd,secondEnd))
+  }
+
+
+  /** If the read is mapped in an FR pair, returns the distance of the position from the other end
+    * of the template, other wise returns None.
+    *
+    * @param rec the SAMRecord whose insert to calculate the position within
+    * @param genomicPosition the genomic position of interest (NOT the position within the read)
+    */
+  def positionFromOtherEndOfTemplate(rec: SAMRecord, genomicPosition: Int): Option[Int] = {
+    if (isFrPair(rec) && rec.getInferredInsertSize != 0) {
+      val isize        = rec.getInferredInsertSize
+      val thisEnd      = if (rec.getReadNegativeStrandFlag) rec.getAlignmentEnd else rec.getAlignmentStart
+      val adjustment   = if (rec.getInferredInsertSize < 0) 1 else -1
+      val otherEnd     = thisEnd + rec.getInferredInsertSize + adjustment
+      val (start, end) = (min(thisEnd, otherEnd), max(thisEnd,otherEnd))
+      require(genomicPosition >= start && genomicPosition <= end, s"genomicPosition is outside of template for $rec")
+
+      if (isize < 0) Some(CoordMath.getLength(otherEnd, genomicPosition))
+      else           Some(CoordMath.getLength(genomicPosition, otherEnd))
+    }
+    else {
+      None
+    }
   }
 }

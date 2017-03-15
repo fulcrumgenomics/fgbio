@@ -188,4 +188,30 @@ class BamsTest extends UnitSpec {
     val builder = new SamRecordSetBuilder(sortOrder=SortOrder.coordinate, readLength=10, baseQuality=20)
     val recs = builder.addPair(start1=100, start2=191).foreach { r => Bams.insertCoordinates(r) shouldBe (100, 200) }
   }
+
+
+  "Bams.positionFromOtherEndOfTemplate" should "return None for anything that's not an FR mapped pair" in {
+    val builder = new SamRecordSetBuilder()
+    builder.addFrag(start=100).foreach(r => Bams.positionFromOtherEndOfTemplate(r, 10) shouldBe None)
+    builder.addPair(start1=100, start2=200, record2Unmapped=true).foreach(r => Bams.positionFromOtherEndOfTemplate(r, 10) shouldBe None)
+    builder.addPair(start1=100, start2=200, strand1=Plus,  strand2=Plus).foreach (r => Bams.positionFromOtherEndOfTemplate(r, 10) shouldBe None)
+    builder.addPair(start1=100, start2=200, strand1=Minus, strand2=Minus).foreach(r => Bams.positionFromOtherEndOfTemplate(r, 10) shouldBe None)
+    builder.addPair(start1=100, start2=200, strand1=Plus,  strand2=Plus).foreach (r => Bams.positionFromOtherEndOfTemplate(r, 10) shouldBe None)
+    builder.addPair(start1=100, start2=200, strand1=Minus, strand2=Plus).foreach (r => Bams.positionFromOtherEndOfTemplate(r, 10) shouldBe None)
+  }
+
+  it should "correctly calculate the position from the other end of the template for FR pairs" in {
+    val builder = new SamRecordSetBuilder(readLength=50)
+    val Seq(r1, r2) = builder.addPair(start1=101, start2=151) // Insert = (101..200), Length = 100
+
+    Bams.positionFromOtherEndOfTemplate(r1, 101) shouldBe Some(100)
+    Bams.positionFromOtherEndOfTemplate(r1, 111) shouldBe Some( 90)
+    Bams.positionFromOtherEndOfTemplate(r1, 151) shouldBe Some( 50)
+    Bams.positionFromOtherEndOfTemplate(r1, 200) shouldBe Some(  1)
+
+    Bams.positionFromOtherEndOfTemplate(r2, 200) shouldBe Some(100)
+    Bams.positionFromOtherEndOfTemplate(r2, 190) shouldBe Some( 90)
+    Bams.positionFromOtherEndOfTemplate(r2, 150) shouldBe Some( 50)
+    Bams.positionFromOtherEndOfTemplate(r2, 101) shouldBe Some(  1)
+  }
 }

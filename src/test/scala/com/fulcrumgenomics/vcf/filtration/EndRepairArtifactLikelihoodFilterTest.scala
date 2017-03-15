@@ -65,34 +65,6 @@ class EndRepairArtifactLikelihoodFilterTest extends UnitSpec {
     filter.appliesTo(singleGenotype("T",  "G")) shouldBe false
   }
 
-
-  "positionFromOtherEndOfTemplate" should "return None for anything that's not an FR mapped pair" in {
-    val builder = new SamRecordSetBuilder()
-    val filter  = new EndRepairArtifactLikelihoodFilter()
-    builder.addFrag(start=100).foreach(r => filter.positionFromOtherEndOfTemplate(r, 10) shouldBe None)
-    builder.addPair(start1=100, start2=200, record2Unmapped=true).foreach(r => filter.positionFromOtherEndOfTemplate(r, 10) shouldBe None)
-    builder.addPair(start1=100, start2=200, strand1=Plus,  strand2=Plus).foreach (r => filter.positionFromOtherEndOfTemplate(r, 10) shouldBe None)
-    builder.addPair(start1=100, start2=200, strand1=Minus, strand2=Minus).foreach(r => filter.positionFromOtherEndOfTemplate(r, 10) shouldBe None)
-    builder.addPair(start1=100, start2=200, strand1=Plus,  strand2=Plus).foreach (r => filter.positionFromOtherEndOfTemplate(r, 10) shouldBe None)
-    builder.addPair(start1=100, start2=200, strand1=Minus, strand2=Plus).foreach (r => filter.positionFromOtherEndOfTemplate(r, 10) shouldBe None)
-  }
-
-  it should "correctly calculate the position from the other end of the template for FR pairs" in {
-    val builder = new SamRecordSetBuilder(readLength=50)
-    val filter  = new EndRepairArtifactLikelihoodFilter()
-    val Seq(r1, r2) = builder.addPair(start1=101, start2=151) // Insert = (101..200), Length = 100
-
-    filter.positionFromOtherEndOfTemplate(r1, 101) shouldBe Some(100)
-    filter.positionFromOtherEndOfTemplate(r1, 111) shouldBe Some( 90)
-    filter.positionFromOtherEndOfTemplate(r1, 151) shouldBe Some( 50)
-    filter.positionFromOtherEndOfTemplate(r1, 200) shouldBe Some(  1)
-
-    filter.positionFromOtherEndOfTemplate(r2, 200) shouldBe Some(100)
-    filter.positionFromOtherEndOfTemplate(r2, 190) shouldBe Some( 90)
-    filter.positionFromOtherEndOfTemplate(r2, 150) shouldBe Some( 50)
-    filter.positionFromOtherEndOfTemplate(r2, 101) shouldBe Some(  1)
-  }
-
   "isArtifactCongruent" should "return false for any base in a read that is not near the ends" in {
     val filter  = new EndRepairArtifactLikelihoodFilter(distance=5)
     val recs    = new SamRecordSetBuilder(readLength=50).addPair(start1=101, start2=101)
