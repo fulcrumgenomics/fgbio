@@ -145,7 +145,7 @@ class EndRepairArtifactLikelihoodFilterTest extends UnitSpec {
     annotations(filter.InfoKey).asInstanceOf[Double] should be > 0.5
   }
 
-  "it" should "compute a significant p-value when data is heavily biased" in {
+  it should "compute a significant p-value when data is heavily biased" in {
     // Simulate a G>T non-artifact at bp 25
     val filter  = new EndRepairArtifactLikelihoodFilter(distance=5)
     val builder = new SamRecordSetBuilder(readLength=50, baseQuality=40)
@@ -167,7 +167,7 @@ class EndRepairArtifactLikelihoodFilterTest extends UnitSpec {
     annotations(filter.InfoKey).asInstanceOf[Double] should be < 1e-6
   }
 
-  "it" should "compute an intermediate p-value when data is heavily biased for both ref and alt" in {
+  it should "compute an intermediate p-value when data is heavily biased for both ref and alt" in {
     // Simulate a G>T non-artifact at bp 25
     val filter  = new EndRepairArtifactLikelihoodFilter(distance=5)
     val builder = new SamRecordSetBuilder(readLength=50, baseQuality=40)
@@ -187,6 +187,27 @@ class EndRepairArtifactLikelihoodFilterTest extends UnitSpec {
     val annotations = filter.annotations(pile, singleGenotype("G", "T"))
     annotations.contains(filter.InfoKey) shouldBe true
     annotations(filter.InfoKey).asInstanceOf[Double] should be < 1e-4
+  }
+
+  it should "not throw an exception if there is no alt allele coverage or the pileup is empty" in {
+    val filter  = new EndRepairArtifactLikelihoodFilter(distance=10)
+    val builder = new SamRecordSetBuilder(readLength=50, baseQuality=40)
+    val refName = builder.dict.getSequence(0).getSequenceName
+
+    { // Test with just an empty pileup
+      val pile        = new PileupBuilder(dict = builder.dict, mappedPairsOnly = false).build(builder.iterator, refName, 25)
+      val annotations = filter.annotations(pile, singleGenotype("G", "T"))
+      annotations.contains(filter.InfoKey) shouldBe true
+    }
+
+    { // And again with just a bunch of ref allele
+      for (start <- Range.inclusive(1, 20); i <- Range.inclusive(1, 10); strand <- Seq(Plus, Minus)) {
+        builder.addFrag(start = start, strand = strand).foreach(r => r.setReadString("G" * 50))
+      }
+      val pile        = new PileupBuilder(dict = builder.dict, mappedPairsOnly = false).build(builder.iterator, refName, 25)
+      val annotations = filter.annotations(pile, singleGenotype("G", "T"))
+      annotations.contains(filter.InfoKey) shouldBe true
+    }
   }
 
   "filters" should "only set the filter if a threshold was provide and the pvalue is <= threshold" in {
