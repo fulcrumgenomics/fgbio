@@ -114,7 +114,8 @@ class EndRepairArtifactLikelihoodFilter(val distance: Int = 2,
     }
 
     // Apply a prior based on the MAF
-    val maf = (altGood + altBad) / (altGood + altBad + refGood + refBad).toDouble
+    val totalObs = altGood + altBad + refGood + refBad
+    val maf      = if (totalObs > 0) (altGood + altBad) / totalObs.toDouble else 0
     val (priorMutation, priorArtifact) = priors(pileup, maf)
     llMutation += LnProb.toLogProbability(priorMutation)
     llArtifact += LnProb.toLogProbability(priorArtifact)
