@@ -63,8 +63,10 @@ class Row private[util] (private val headerIndices: Map[String,Int], private val
     }
   }
 
-  /** Gets a value from the specified column. If the value is null or empty returns None. */
-  def get[A](column: String)(implicit tag: ru.TypeTag[A]): Option[A] = get(headerIndices(column))
+  /** Gets a value from the specified column. If the value is null or empty returns None.  If
+    * `allowMissingColumn` is true, then None is returned if the given column name is not present. */
+  def get[A](column: String, allowMissingColumn: Boolean = false)(implicit tag: ru.TypeTag[A]): Option[A] =
+    if (allowMissingColumn) headerIndices.get(column).map(apply[A]) else get(headerIndices(column))
 }
 
 

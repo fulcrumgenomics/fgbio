@@ -147,4 +147,11 @@ class DelimitedDataParserTest extends UnitSpec {
     row3.get[Int]("b") shouldBe None
     row3.get[Int]("c") shouldBe Some(3)
   }
+
+  "DelimitedDataParser.getOrNone" should "return None if the column header does not exist" in {
+    val parser = csv(Seq("a,b,c", "1,2,3"))
+    val row = parser.next()
+    row.get[Int]("d", allowMissingColumn=true) shouldBe None
+    an[Exception] shouldBe thrownBy { row.get[Int]("d", allowMissingColumn=false) }
+  }
 }
