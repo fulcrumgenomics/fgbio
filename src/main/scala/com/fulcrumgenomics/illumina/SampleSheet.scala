@@ -103,7 +103,7 @@ object SampleSheet {
         val values = line.split(SplitRegex, -1)
         // check we have the correct # of columns
         if (values.size != header.length) {
-          throw new IllegalArgumentException(s"Found a line with a mismatching number of columns: " + line)
+          throw new IllegalArgumentException(s"Found a line with a mismatching number of columns on line #$lineNumber: " + line)
         }
         header.zip(values.map(_.trim)).toMap
       }

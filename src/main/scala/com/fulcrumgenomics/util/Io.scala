@@ -23,7 +23,7 @@
  */
 package com.fulcrumgenomics.util
 
-import java.io.{InputStream, OutputStream}
+import java.io.{BufferedWriter, InputStream, OutputStream, OutputStreamWriter}
 import java.nio.file.{Files, Path, Paths}
 import java.util.zip.{GZIPInputStream, GZIPOutputStream}
 

@@ -28,7 +28,7 @@ package com.fulcrumgenomics.fastq
 import java.nio.file.Files
 
 import com.fulcrumgenomics.FgBioDef.{DirPath, FilePath}
-import com.fulcrumgenomics.fastq.FastqDemultiplexer.DemuxRecord
+import com.fulcrumgenomics.fastq.FastqDemultiplexer.DemuxResult
 import com.fulcrumgenomics.illumina.{Sample, SampleSheet}
 import com.fulcrumgenomics.testing.{ErrorLogLevel, UnitSpec}
 import com.fulcrumgenomics.util.{Io, Metric, ReadStructure, SampleBarcodeMetric}
@@ -81,19 +81,26 @@ class DemuxFastqsTest extends UnitSpec with OptionValues with ErrorLogLevel {
     path
   }
 
+  private val metadataPath: FilePath = {
+    val path = makeTempFile("metadata", ".csv")
+    val lines = s"""
+                   |Sample_ID,Sample_Name,Sample_Plate,Sample_Well,index,index2,Sample_Barcode,Sample_Project,Description
+                   |20000101-EXPID-1,Sample_Name_1,,,,,$sampleBarcode1,Sample_Project_1,Description_1
+                   |20000101-EXPID-2,Sample_Name_2,,,,,$sampleBarcode2,Sample_Project_2,Description_2
+                   |20000101-EXPID-3,Sample_Name_3,,,,,$sampleBarcode3,Sample_Project_3,Description_3
+                   |20000101-EXPID-4,Sample_Name_4,,,,,$sampleBarcode4,Sample_Project_4,Description_4
+    """.stripMargin.trim
+    Io.writeLines(path=path, lines=lines.split("\n"))
+    path
+  }
+
   /** Helper method to create a the sample infos from the sample sheet. */
   private def toSampleInfos(structures: Seq[ReadStructure]): Seq[SampleInfo] = {
     val samples: Seq[Sample] = {
       val sampleSheet = SampleSheet(this.sampleSheetPath).map(s => withCustomSampleBarcode(s, "Sample_Barcode"))
       sampleSheet.toSeq :+ DemuxFastqs.unmatchedSample(sampleSheet.size, structures)
     }
-    samples.map { sample =>
-      val hdr = new SAMFileHeader()
-      hdr.addReadGroup(new SAMReadGroupRecord(sample.sampleId))
-      new SampleInfo(sample=sample, writer=null, isUnmatched=sample.sampleName==UnmatchedSampleId) {
-        override val header: SAMFileHeader = hdr
-      }
-    }
+    samples.map { sample => SampleInfo(sample=sample, isUnmatched=sample.sampleName==UnmatchedSampleId) }
   }
 
   /** Helper method to create a [[FastqDemultiplexer]] */
@@ -104,17 +111,22 @@ class DemuxFastqsTest extends UnitSpec with OptionValues with ErrorLogLevel {
 
   private def fq(name: String, bases: String, readNumber: Option[Int]=None): FastqRecord = FastqRecord(name=name, bases=bases, quals="I"*bases.length, comment=None, readNumber=readNumber)
 
-  private def verifyFragUnmatchedSample(demuxRecord: DemuxRecord): Unit = {
+  private def verifyFragUnmatchedSample(demuxRecord: DemuxResult): Unit = {
     demuxRecord.records.length shouldBe 1
     val record = demuxRecord.records.headOption.value
 
-    record.getReadName shouldBe "frag"
-    record.getReadString shouldBe "A"*100
-    record.getBaseQualityString shouldBe "I"*100
-    record.getReadPairedFlag shouldBe false
-    record.getReadUnmappedFlag shouldBe true
-    record.getReadGroup.getId shouldBe UnmatchedSampleId
-    record.getAttribute("RX") shouldBe null
+    record.name shouldBe "frag"
+    record.bases shouldBe "A"*100
+    record.quals shouldBe "I"*100
+    record.pairedEnd shouldBe false
+    demuxRecord.sampleInfo.isUnmatched shouldBe true
+    record.molecularBarcode shouldBe 'empty
+  }
+
+  private def outputDir(): DirPath = {
+    val dir = Files.createTempDirectory("DemuxFromInlineSampleBarcodeTest")
+    dir.toFile.deleteOnExit()
+    dir
   }
 
   "FastqDemultiplexer" should "demux fragment reads" in {
@@ -125,13 +137,11 @@ class DemuxFastqsTest extends UnitSpec with OptionValues with ErrorLogLevel {
     demuxRecord.records.length shouldBe 1
     val record = demuxRecord.records.headOption.value
 
-    record.getReadName shouldBe "frag"
-    record.getReadString shouldBe "A"*100
-    record.getBaseQualityString shouldBe "I"*100
-    record.getReadPairedFlag shouldBe false
-    record.getReadUnmappedFlag shouldBe true
-    record.getReadGroup.getId shouldBe "20000101-EXPID-1"
-    record.getAttribute("RX") shouldBe null
+    record.name shouldBe "frag"
+    record.bases shouldBe "A"*100
+    record.quals shouldBe "I"*100
+    record.pairedEnd shouldBe false
+    record.molecularBarcode shouldBe 'empty
   }
 
   it should "demux paired reads with in-line sample barcodes" in {
@@ -144,27 +154,19 @@ class DemuxFastqsTest extends UnitSpec with OptionValues with ErrorLogLevel {
     val r1 = demuxRecord.records.headOption.value
     val r2 = demuxRecord.records.lastOption.value
 
-    r1.getReadName shouldBe "pair"
-    r1.getReadString shouldBe "A"*100
-    r1.getBaseQualityString shouldBe "I"*100
-    r1.getReadPairedFlag shouldBe true
-    r1.getFirstOfPairFlag shouldBe true
-    r1.getSecondOfPairFlag shouldBe false
-    r1.getReadUnmappedFlag shouldBe true
-    r1.getMateUnmappedFlag shouldBe true
-    r1.getReadGroup.getId shouldBe "20000101-EXPID-1"
-    r1.getAttribute("RX") shouldBe null
+    r1.name shouldBe "pair"
+    r1.bases shouldBe "A"*100
+    r1.quals shouldBe "I"*100
+    r1.pairedEnd shouldBe true
+    r1.readNumber shouldBe 1
+    r1.molecularBarcode shouldBe 'empty
 
-    r2.getReadName shouldBe "pair"
-    r2.getReadString shouldBe "T"*100
-    r2.getBaseQualityString shouldBe "I"*100
-    r2.getReadPairedFlag shouldBe true
-    r2.getFirstOfPairFlag shouldBe false
-    r2.getSecondOfPairFlag shouldBe true
-    r2.getReadUnmappedFlag shouldBe true
-    r2.getMateUnmappedFlag shouldBe true
-    r2.getReadGroup.getId shouldBe "20000101-EXPID-1"
-    r2.getAttribute("RX") shouldBe null
+    r2.name shouldBe "pair"
+    r2.bases shouldBe "T"*100
+    r2.quals shouldBe "I"*100
+    r2.pairedEnd shouldBe true
+    r2.readNumber shouldBe 2
+    r2.molecularBarcode shouldBe 'empty
   }
 
   it should "demux dual-indexed paired end reads" in {
@@ -179,27 +181,20 @@ class DemuxFastqsTest extends UnitSpec with OptionValues with ErrorLogLevel {
     val r1 = demuxRecord.records.headOption.value
     val r2 = demuxRecord.records.lastOption.value
 
-    r1.getReadName shouldBe "pair"
-    r1.getReadString shouldBe "A"*100
-    r1.getBaseQualityString shouldBe "I"*100
-    r1.getReadPairedFlag shouldBe true
-    r1.getFirstOfPairFlag shouldBe true
-    r1.getReadUnmappedFlag shouldBe true
-    r1.getMateUnmappedFlag shouldBe true
-    r1.getReadGroup.getId shouldBe "20000101-EXPID-1"
-    r1.getAttribute("RX") shouldBe null
-    r1.getStringAttribute("BC") shouldBe "AAAAAAAA-GATTACAGA"
+    r1.name shouldBe "pair"
+    r1.bases shouldBe "A"*100
+    r1.quals shouldBe "I"*100
+    r1.pairedEnd shouldBe true
+    r1.pairedEnd shouldBe true
+    r1.readNumber shouldBe 1
+    r1.molecularBarcode shouldBe 'empty
 
-    r2.getReadName shouldBe "pair"
-    r2.getReadString shouldBe "T"*100
-    r2.getBaseQualityString shouldBe "I"*100
-    r2.getReadPairedFlag shouldBe true
-    r2.getSecondOfPairFlag shouldBe true
-    r2.getReadUnmappedFlag shouldBe true
-    r2.getMateUnmappedFlag shouldBe true
-    r2.getReadGroup.getId shouldBe "20000101-EXPID-1"
-    r2.getAttribute("RX") shouldBe null
-    r1.getStringAttribute("BC") shouldBe "AAAAAAAA-GATTACAGA"
+    r2.name shouldBe "pair"
+    r2.bases shouldBe "T"*100
+    r2.quals shouldBe "I"*100
+    r2.pairedEnd shouldBe true
+    r2.readNumber shouldBe 2
+    r2.molecularBarcode shouldBe 'empty
   }
 
   it should "demux a very weird set of reads" in {
@@ -214,27 +209,21 @@ class DemuxFastqsTest extends UnitSpec with OptionValues with ErrorLogLevel {
     val r1 = demuxRecord.records.headOption.value
     val r2 = demuxRecord.records.lastOption.value
 
-    r1.getReadName shouldBe "pair"
-    r1.getReadString shouldBe "A"*100
-    r1.getBaseQualityString shouldBe "I"*100
-    r1.getReadPairedFlag shouldBe true
-    r1.getFirstOfPairFlag shouldBe true
-    r1.getReadUnmappedFlag shouldBe true
-    r1.getMateUnmappedFlag shouldBe true
-    r1.getReadGroup.getId shouldBe "20000101-EXPID-1"
-    r1.getStringAttribute("RX") shouldBe "CCCC-A"
-    r1.getStringAttribute("BC") shouldBe "AAAA-AAAA-GAT-TACAGA"
+    r1.name shouldBe "pair"
+    r1.bases shouldBe "A"*100
+    r1.quals shouldBe "I"*100
+    r1.pairedEnd shouldBe true
+    r1.readNumber shouldBe 1
+    r1.molecularBarcode.value shouldBe "CCCC-A"
+    r1.sampleBarcode.value shouldBe "AAAA-AAAA-GAT-TACAGA"
 
-    r2.getReadName shouldBe "pair"
-    r2.getReadString shouldBe "T"
-    r2.getBaseQualityString shouldBe "I"
-    r2.getReadPairedFlag shouldBe true
-    r2.getSecondOfPairFlag shouldBe true
-    r2.getReadUnmappedFlag shouldBe true
-    r2.getMateUnmappedFlag shouldBe true
-    r2.getReadGroup.getId shouldBe "20000101-EXPID-1"
-    r1.getStringAttribute("RX") shouldBe "CCCC-A"
-    r1.getStringAttribute("BC") shouldBe "AAAA-AAAA-GAT-TACAGA"
+    r2.name shouldBe "pair"
+    r2.bases shouldBe "T"
+    r2.quals shouldBe "I"
+    r2.pairedEnd shouldBe true
+    r2.readNumber shouldBe 2
+    r2.molecularBarcode.value shouldBe  "CCCC-A"
+    r2.sampleBarcode.value shouldBe "AAAA-AAAA-GAT-TACAGA"
   }
 
   it should "fail if zero or more than two read structures have template bases" in {
@@ -273,13 +262,11 @@ class DemuxFastqsTest extends UnitSpec with OptionValues with ErrorLogLevel {
     demuxRecord.records.length shouldBe 1
     val record = demuxRecord.records.headOption.value
 
-    record.getReadName shouldBe "frag"
-    record.getReadString shouldBe "A"*100
-    record.getBaseQualityString shouldBe "I"*100
-    record.getReadPairedFlag shouldBe false
-    record.getReadUnmappedFlag shouldBe true
-    record.getReadGroup.getId shouldBe "20000101-EXPID-1"
-    record.getAttribute("RX") shouldBe "NNNNN"
+    record.name shouldBe "frag"
+    record.bases shouldBe "A"*100
+    record.quals shouldBe "I"*100
+    record.pairedEnd shouldBe false
+    record.molecularBarcode.value shouldBe "NNNNN"
   }
 
   it should "assign to the 'unmatched' sample if there are too many mismatches" in {
@@ -344,76 +331,90 @@ class DemuxFastqsTest extends UnitSpec with OptionValues with ErrorLogLevel {
   }
 
   Seq(1, 2).foreach { threads =>
-    "DemuxFastqs" should s"run end-to-end with $threads threads" in {
+    Seq(true, false).foreach { useSampleSheet =>
+      Seq(true, false).foreach { outputFastqs =>
+        "DemuxFastqs" should s"run end-to-end with $threads threads using a ${if (useSampleSheet) "sample sheet" else "metadata CSV"} ${if (outputFastqs) "with" else "without"} FASTQ output" in {
 
-      val output: DirPath = {
-        val dir = Files.createTempDirectory("DemuxFromInlineSampleBarcodeTest")
-        dir.toFile.deleteOnExit()
-        dir
-      }
+          val output: DirPath = outputDir()
 
-      val metrics = makeTempFile("metrics", ".txt")
-      val structures = Seq(ReadStructure("17B100T"))
+          val metrics = makeTempFile("metrics", ".txt")
+          val structures = Seq(ReadStructure("17B100T"))
 
-      new DemuxFastqs(inputs=Seq(fastqPath), output=output, sampleSheet=sampleSheetPath,
-        readStructures=structures, metrics=metrics, maxMismatches=2, minMismatchDelta=3,
-        threads=threads).execute()
+          val metadata = if (useSampleSheet) sampleSheetPath else metadataPath
 
-      val sampleInfos = toSampleInfos(structures)
-      val samples: Seq[Sample] = sampleInfos.map(_.sample)
+          new DemuxFastqs(inputs=Seq(fastqPath), output=output, metadata=metadata,
+            readStructures=structures, metrics=Some(metrics), maxMismatches=2, minMismatchDelta=3,
+            threads=threads, outputFastqs=outputFastqs).execute()
 
-      // Check the BAMs
+          val sampleInfos = toSampleInfos(structures)
+          val samples: Seq[Sample] = sampleInfos.map(_.sample)
 
-      sampleInfos.foreach { sampleInfo =>
-        val sample = sampleInfo.sample
-        val bam = if (sampleInfo.isUnmatched) output.resolve(UnmatchedSampleId + ".bam") else sampleOutputBam(output, sample)
-        val records = readBamRecs(bam)
+          // Check the BAMs
+          sampleInfos.foreach { sampleInfo =>
+            val sample = sampleInfo.sample
+            val prefix = toSampleOutputPrefix(sample, sampleInfo.isUnmatched, output, UnmatchedSampleId)
 
-        if (sample.sampleOrdinal == 1) {
-          records.length shouldBe 2
-          records.map(_.getReadName) should contain theSameElementsInOrderAs Seq("frag1", "frag2")
-        }
-        else if (sample.sampleId == UnmatchedSampleId) {
-          records.length shouldBe 3
-          records.map(_.getReadName) should contain theSameElementsInOrderAs Seq("frag3", "frag4", "frag5")
-        }
-        else {
-          records shouldBe 'empty
-        }
-      }
+            val (names, sampleBarcodes) = if (outputFastqs) {
+              val fastq = PathUtil.pathTo(prefix + ".fastq.gz")
+              val records = FastqSource(fastq).toSeq
+              (records.map(_.name.replaceAll(":.*", "")), records.map(_.name.replaceAll(".*:", "")))
+            }
+            else {
+              val bam = PathUtil.pathTo(prefix + ".bam")
+              val records = readBamRecs(bam)
+              (records.map(_.getReadName), records.map(_.getStringAttribute("BC")))
+            }
 
-      // Check the metrics
-      val sampleBarcodMetrics = Metric.read[SampleBarcodeMetric](metrics)
+            if (sample.sampleOrdinal == 1) {
+              names.length shouldBe 2
+              names should contain theSameElementsInOrderAs Seq("frag1", "frag2")
+              sampleBarcodes should contain theSameElementsInOrderAs Seq("AAAAAAAAGATTACAGA", "AAAAAAAAGATTACAGT")
+            }
+            else if (sample.sampleId == UnmatchedSampleId) {
+              names.length shouldBe 3
+              names should contain theSameElementsInOrderAs Seq("frag3", "frag4", "frag5")
+              sampleBarcodes should contain theSameElementsInOrderAs Seq("AAAAAAAAGATTACTTT", "GGGGGGTTGATTACAGA", "AAAAAAAAGANNNNNNN") // NB: raw not assigned
+            }
+            else {
+              names shouldBe 'empty
+              sampleBarcodes.isEmpty shouldBe true
+            }
+          }
 
-      sampleBarcodMetrics.length shouldBe samples.length
+          // Check the metrics
+          val sampleBarcodMetrics = Metric.read[SampleBarcodeMetric](metrics)
 
-      sampleBarcodMetrics.zip(samples).foreach { case (metric, sample) =>
-        metric.barcode_name shouldBe sample.sampleName
-        metric.barcode      shouldBe sample.sampleBarcodeString
-        metric.library_name shouldBe sample.libraryId
-        if (sample.sampleOrdinal == 1) {
-          metric.reads                   shouldBe 2
-          metric.pf_reads                shouldBe 2
-          metric.perfect_matches         shouldBe 1
-          metric.one_mismatch_matches    shouldBe 1
-          metric.pf_perfect_matches      shouldBe 1
-          metric.pf_one_mismatch_matches shouldBe 1
-        }
-        else if (sample.sampleId == UnmatchedSampleId) {
-          metric.reads                   shouldBe 3
-          metric.pf_reads                shouldBe 3
-          metric.perfect_matches         shouldBe 0
-          metric.one_mismatch_matches    shouldBe 0
-          metric.pf_perfect_matches      shouldBe 0
-          metric.pf_one_mismatch_matches shouldBe 0
-        }
-        else {
-          metric.reads                   shouldBe 0
-          metric.pf_reads                shouldBe 0
-          metric.perfect_matches         shouldBe 0
-          metric.one_mismatch_matches    shouldBe 0
-          metric.pf_perfect_matches      shouldBe 0
-          metric.pf_one_mismatch_matches shouldBe 0
+          sampleBarcodMetrics.length shouldBe samples.length
+
+          sampleBarcodMetrics.zip(samples).foreach { case (metric, sample) =>
+            metric.barcode_name shouldBe sample.sampleName
+            metric.barcode      shouldBe sample.sampleBarcodeString
+            metric.library_name shouldBe sample.libraryId
+            if (sample.sampleOrdinal == 1) {
+              metric.reads                   shouldBe 2
+              metric.pf_reads                shouldBe 2
+              metric.perfect_matches         shouldBe 1
+              metric.one_mismatch_matches    shouldBe 1
+              metric.pf_perfect_matches      shouldBe 1
+              metric.pf_one_mismatch_matches shouldBe 1
+            }
+            else if (sample.sampleId == UnmatchedSampleId) {
+              metric.reads                   shouldBe 3
+              metric.pf_reads                shouldBe 3
+              metric.perfect_matches         shouldBe 0
+              metric.one_mismatch_matches    shouldBe 0
+              metric.pf_perfect_matches      shouldBe 0
+              metric.pf_one_mismatch_matches shouldBe 0
+            }
+            else {
+              metric.reads                   shouldBe 0
+              metric.pf_reads                shouldBe 0
+              metric.perfect_matches         shouldBe 0
+              metric.one_mismatch_matches    shouldBe 0
+              metric.pf_perfect_matches      shouldBe 0
+              metric.pf_one_mismatch_matches shouldBe 0
+            }
+          }
         }
       }
     }
@@ -428,17 +429,13 @@ class DemuxFastqsTest extends UnitSpec with OptionValues with ErrorLogLevel {
     Io.writeLines(fastq1, Seq(1,2).map(toFq(_).toString))
     Io.writeLines(fastq2, Seq(1).map(toFq(_).toString))
 
-    val output = {
-      val dir = Files.createTempDirectory("DemuxFromInlineSampleBarcodeTest")
-      dir.toFile.deleteOnExit()
-      dir
-    }
+    val output = outputDir()
 
     val metrics = makeTempFile("metrics", ".txt")
 
     throwableMessageShouldInclude("out of sync") {
-      new DemuxFastqs(inputs=Seq(fastq1, fastq2), output=output, sampleSheet=sampleSheetPath,
-        readStructures=Seq(ReadStructure("17B100T"), ReadStructure("100T")), metrics=metrics, maxMismatches=2, minMismatchDelta=3
+      new DemuxFastqs(inputs=Seq(fastq1, fastq2), output=output, metadata=sampleSheetPath,
+        readStructures=Seq(ReadStructure("17B100T"), ReadStructure("100T")), metrics=Some(metrics), maxMismatches=2, minMismatchDelta=3
       ).execute()
     }
   }
@@ -449,8 +446,8 @@ class DemuxFastqsTest extends UnitSpec with OptionValues with ErrorLogLevel {
     val output     = PathUtil.pathTo("/path/to/nowhere", "output")
     val metrics    = PathUtil.pathTo("/path/to/nowhere", "metrics")
     throwableMessageShouldInclude("same number of read structures should be given as FASTQs") {
-      new DemuxFastqs(inputs=Seq(fastq), output=output, sampleSheet=sampleSheetPath,
-      readStructures=structures, metrics=metrics, maxMismatches=2, minMismatchDelta=3)
+      new DemuxFastqs(inputs=Seq(fastq), output=output, metadata=sampleSheetPath,
+      readStructures=structures, metrics=Some(metrics), maxMismatches=2, minMismatchDelta=3)
     }
   }
 
@@ -460,8 +457,8 @@ class DemuxFastqsTest extends UnitSpec with OptionValues with ErrorLogLevel {
     val output     = PathUtil.pathTo("/path/to/nowhere", "output")
     val metrics    = PathUtil.pathTo("/path/to/nowhere", "metrics")
     throwableMessageShouldInclude("No sample barcodes found in read structures") {
-      new DemuxFastqs(inputs=Seq(fastq), output=output, sampleSheet=sampleSheetPath,
-        readStructures=structures, metrics=metrics, maxMismatches=2, minMismatchDelta=3)
+      new DemuxFastqs(inputs=Seq(fastq), output=output, metadata=sampleSheetPath,
+        readStructures=structures, metrics=Some(metrics), maxMismatches=2, minMismatchDelta=3)
     }
   }
 
@@ -473,8 +470,8 @@ class DemuxFastqsTest extends UnitSpec with OptionValues with ErrorLogLevel {
       val output     = PathUtil.pathTo("/path/to/nowhere", "output")
       val metrics    = PathUtil.pathTo("/path/to/nowhere", "metrics")
       throwableMessageShouldInclude("with template bases but expected 1 or 2.") {
-        new DemuxFastqs(inputs=Seq(fastq), output=output, sampleSheet=sampleSheetPath,
-          readStructures=structures, metrics=metrics, maxMismatches=2, minMismatchDelta=3)
+        new DemuxFastqs(inputs=Seq(fastq), output=output, metadata=sampleSheetPath,
+          readStructures=structures, metrics=Some(metrics), maxMismatches=2, minMismatchDelta=3)
       }
     }
 
@@ -485,34 +482,26 @@ class DemuxFastqsTest extends UnitSpec with OptionValues with ErrorLogLevel {
       val output     = PathUtil.pathTo("/path/to/nowhere", "output")
       val metrics    = PathUtil.pathTo("/path/to/nowhere", "metrics")
       throwableMessageShouldInclude("with template bases but expected 1 or 2.") {
-        new DemuxFastqs(inputs=Seq(fastq, fastq, fastq), output=output, sampleSheet=sampleSheetPath,
-          readStructures=structures, metrics=metrics, maxMismatches=2, minMismatchDelta=3)
+        new DemuxFastqs(inputs=Seq(fastq, fastq, fastq), output=output, metadata=sampleSheetPath,
+          readStructures=structures, metrics=Some(metrics), maxMismatches=2, minMismatchDelta=3)
       }
     }
   }
 
   it should "fail if there are a different number of sample barcode bases in the read structure compare to the sample sheet" in {
-    val output: DirPath = {
-      val dir = Files.createTempDirectory("DemuxFromInlineSampleBarcodeTest")
-      dir.toFile.deleteOnExit()
-      dir
-    }
+    val output: DirPath = outputDir()
     val metrics = makeTempFile("metrics", ".txt")
     val structures = Seq(ReadStructure("18B100T"))
 
-    val demuxFastqs = new DemuxFastqs(inputs=Seq(fastqPath), output=output, sampleSheet=sampleSheetPath,
-      readStructures=structures, metrics=metrics, maxMismatches=2, minMismatchDelta=3)
+    val demuxFastqs = new DemuxFastqs(inputs=Seq(fastqPath), output=output, metadata=sampleSheetPath,
+      readStructures=structures, metrics=Some(metrics), maxMismatches=2, minMismatchDelta=3)
     throwableMessageShouldInclude("The number of sample barcodes bases did not match") {
       demuxFastqs.execute()
     }
   }
 
   it should "fail if there are missing sample barcodes in the sample sheet" in {
-    val output: DirPath = {
-      val dir = Files.createTempDirectory("DemuxFromInlineSampleBarcodeTest")
-      dir.toFile.deleteOnExit()
-      dir
-    }
+    val output: DirPath = outputDir()
     val metrics = makeTempFile("metrics", ".txt")
     val structures = Seq(ReadStructure("17B100T"))
 
@@ -521,8 +510,8 @@ class DemuxFastqsTest extends UnitSpec with OptionValues with ErrorLogLevel {
     val buggySampleSheet = makeTempFile("SampleSheet", ".csv")
     Io.writeLines(buggySampleSheet, sampleSheetLines ++ Seq("20000101-EXPID-5,Sample_Name_5,,,,,,Sample_Project_5,Description_5"))
 
-    val demuxFastqs = new DemuxFastqs(inputs=Seq(fastqPath), output=output, sampleSheet=buggySampleSheet,
-      readStructures=structures, metrics=metrics, maxMismatches=2, minMismatchDelta=3)
+    val demuxFastqs = new DemuxFastqs(inputs=Seq(fastqPath), output=output, metadata=buggySampleSheet,
+      readStructures=structures, metrics=Some(metrics), maxMismatches=2, minMismatchDelta=3)
     throwableMessageShouldInclude("Sample barcode not found in column") {
       demuxFastqs.execute()
     }
