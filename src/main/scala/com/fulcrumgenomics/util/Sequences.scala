@@ -36,10 +36,16 @@ object Sequences {
 
   /** Counts the number of mismatches between two sequences of the same length. */
   def countMismatches(s1: String, s2: String): Int = {
-    if (s1.length != s2.length)
-      throw new IllegalArgumentException(s"Cannot count mismatches in strings of differing lengths: $s1 $s2")
+    require(s1.length == s2.length, s"Cannot count mismatches in strings of differing lengths: $s1 $s2")
 
-    s1.zip(s2).count(pair => pair._1.toUpper != pair._2.toUpper)
+    var count = 0
+    forloop (from=0, until=s1.length) { i =>
+      val a = Character.toUpperCase(s1.charAt(i))
+      val b = Character.toUpperCase(s2.charAt(i))
+      if (a != b) count += 1
+    }
+
+    count
   }
 
   /**
