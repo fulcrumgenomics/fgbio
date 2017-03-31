@@ -25,12 +25,14 @@
 package com.fulcrumgenomics.umi
 
 import com.fulcrumgenomics.FgBioDef._
+import com.fulcrumgenomics.bam.Bams
 import com.fulcrumgenomics.umi.UmiConsensusCaller._
 import com.fulcrumgenomics.util.NumericTypes.PhredScore
 import dagr.commons.util.Logger
 import htsjdk.samtools.SAMFileHeader.{GroupOrder, SortOrder}
 import htsjdk.samtools.util.{Murmur3, SequenceUtil}
 import htsjdk.samtools.{SAMFileHeader, SAMReadGroupRecord, SAMRecord, SAMTag}
+import math.{min,abs}
 
 import scala.collection.mutable
 
@@ -160,17 +162,22 @@ trait UmiConsensusCaller[C <: SimpleRead] {
   protected[umi] def sourceMoleculeId(rec: SAMRecord): String
 
   /**
-    * Converts from a SAMRecord into a SourceRead.
+    * Converts from a SAMRecord into a SourceRead.  During conversion the record is end-trimmed
+    * to remove Ns and bases below the `minBaseQuality`.  Remaining bases that are below
+    * `minBaseQuality` are then masked to Ns.
+    *
+    * @return Some(SourceRead) if there are any called bases with quality > minBaseQuality, else None
     */
-  protected def toSourceRead(rec: SAMRecord, minBaseQuality: PhredScore): SourceRead = {
+  protected[umi] def toSourceRead(rec: SAMRecord, minBaseQuality: PhredScore): Option[SourceRead] = {
+    // Extract and possibly RC the source bases and quals from the SAMRecord
     val bases = rec.getReadBases.clone()
     val quals = rec.getBaseQualities.clone()
-
     if (rec.getReadNegativeStrandFlag) {
       SequenceUtil.reverseComplement(bases)
       SequenceUtil.reverse(quals, 0, quals.length)
     }
 
+    // Mask low quality bases to Ns
     forloop (from=0, until=bases.length) { i =>
       if (quals(i) < minBaseQuality) {
         bases(i) = NoCall
@@ -178,7 +185,24 @@ trait UmiConsensusCaller[C <: SimpleRead] {
       }
     }
 
-    SourceRead(sourceMoleculeId(rec), bases, quals)
+    // Find the last non-N base of sufficient quality in the record, starting from either the
+    // end of the read, or the end of the insert, whichever is shorter!
+    val len = {
+      var index = if (Bams.isFrPair(rec)) min(abs(rec.getInferredInsertSize), bases.length) - 1 else bases.length - 1
+      while (index >= 0 && (bases(index) == NoCall)) index -= 1
+      index + 1
+    }
+
+    len match {
+      case 0                         => None
+      case n if n == bases.length    => Some(SourceRead(sourceMoleculeId(rec), bases, quals))
+      case n                         =>
+        val trimmedBases = new Array[Byte](len)
+        val trimmedQuals = new Array[Byte](len)
+        System.arraycopy(bases, 0, trimmedBases, 0, len)
+        System.arraycopy(quals, 0, trimmedQuals, 0, len)
+        Some(SourceRead(sourceMoleculeId(rec), trimmedBases, trimmedQuals))
+    }
   }
 
   /**

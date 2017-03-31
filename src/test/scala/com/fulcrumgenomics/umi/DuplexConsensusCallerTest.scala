@@ -26,6 +26,7 @@ package com.fulcrumgenomics.umi
 
 import com.fulcrumgenomics.testing.SamRecordSetBuilder.{Minus, Plus}
 import com.fulcrumgenomics.testing.{SamRecordSetBuilder, UnitSpec}
+import com.fulcrumgenomics.umi.ConsensusTags.PerRead.{AbRawReadErrorRate, BaRawReadErrorRate, RawReadErrorRate}
 import com.fulcrumgenomics.util.NumericTypes.PhredScore
 
 class DuplexConsensusCallerTest extends UnitSpec {
@@ -213,6 +214,27 @@ class DuplexConsensusCallerTest extends UnitSpec {
     val r1 = recs.find(_.getFirstOfPairFlag).getOrElse(fail("Missing R1"))
     r1.getReadString shouldBe "AAAAAAAAAA"
     r1.getBaseQualities()(0).toInt shouldBe 15 +- 5
+  }
+
+  it should "count errors against the actual consensus base, before it is masked to N" in {
+    val builder = new SamRecordSetBuilder(readLength=10, baseQuality=30)
+    builder.addPair(name="q1", start1=100, start2=200, strand1=Plus, strand2=Minus, attrs=Map(MI -> "foo/A")).foreach { r =>
+      r.setReadString(if (r.getFirstOfPairFlag) "ANAAAAAAAA" else "CCNCCCCCCC")
+    }
+    builder.addPair(name="q2", start1=200, start2=100, strand1=Minus, strand2=Plus, attrs=Map(MI -> "foo/B")).foreach { r =>
+      r.setReadString(if (r.getFirstOfPairFlag) "CCCCCCCCCC" else "AAAAAAAAAA")
+      if (r.getSecondOfPairFlag) r.getBaseQualities()(0) = 15
+    }
+
+    val recs = c.consensusReadsFromSamRecords(builder.toSeq)
+    recs should have size 2
+    val Seq(r1, r2) = recs
+    r1.getFloatAttribute(RawReadErrorRate)    shouldBe 0f
+    r1.getFloatAttribute(AbRawReadErrorRate)  shouldBe 0f
+    r1.getFloatAttribute(BaRawReadErrorRate)  shouldBe 0f
+    r2.getFloatAttribute(RawReadErrorRate)    shouldBe 0f
+    r2.getFloatAttribute(AbRawReadErrorRate)  shouldBe 0f
+    r2.getFloatAttribute(BaRawReadErrorRate)  shouldBe 0f
   }
 
   it should "generate correct summary and detail tags on consensus reads" in {

@@ -26,6 +26,7 @@
 package com.fulcrumgenomics.umi
 
 import com.fulcrumgenomics.FgBioDef._
+import com.fulcrumgenomics.testing.SamRecordSetBuilder.Minus
 import com.fulcrumgenomics.testing.{SamRecordSetBuilder, UnitSpec}
 import com.fulcrumgenomics.umi.UmiConsensusCaller.SourceRead
 import com.fulcrumgenomics.umi.VanillaUmiConsensusCallerOptions._
@@ -437,5 +438,48 @@ class VanillaUmiConsensusCallerTest extends UnitSpec with OptionValues {
     call.baseString shouldBe "GATTACAN"
     call.depths should contain theSameElementsInOrderAs Seq(4,4,4,4,4,4,4,3)
     call.errors should contain theSameElementsInOrderAs Seq(0,0,0,0,0,0,0,1)
+  }
+
+  "VanillaConsensusCaller.toSourceRead" should "mask bases that are below the quality threshold" in {
+    val builder = new SamRecordSetBuilder(readLength=10)
+    val rec     = builder.addFrag(start=1).map { r => r.setReadString("AAAAAAAAAA"); r.setBaseQualities(Array[Byte](2,30,19,21,18,20,0,30,2,30)); r}.get
+    val source  = cc().toSourceRead(rec, minBaseQuality=20.toByte).get
+
+    source.baseString shouldBe "NANANANANA"
+    source.quals      shouldBe Array[Byte](2,30,2,21,2,20,2,30,2,30)
+  }
+
+  it should "trim the source read when the end is low-quality so that there are no trailing no-calls" in {
+    val builder = new SamRecordSetBuilder(readLength=10)
+    val rec     = builder.addFrag(start=1).map { r => r.setReadString("AAAAAAAAAA"); r.setBaseQualities(Array[Byte](30,30,30,30,30,30,2,2,2,2)); r}.get
+    val source  = cc().toSourceRead(rec, minBaseQuality=20.toByte).get
+
+    source.baseString shouldBe "AAAAAA"
+    source.quals      shouldBe Array[Byte](30,30,30,30,30,30)
+  }
+
+  it should "trim the source read when the end of the raw read is all Ns so that there are no trailing no-calls" in {
+    val builder = new SamRecordSetBuilder(readLength=10)
+    val rec     = builder.addFrag(start=1).map { r => r.setReadString("AAAAAANNNN"); r.setBaseQualities(Array[Byte](30,30,30,30,30,30,30,30,30,30)); r}.get
+    val source  = cc().toSourceRead(rec, minBaseQuality=20.toByte).get
+
+    source.baseString shouldBe "AAAAAA"
+    source.quals      shouldBe Array[Byte](30,30,30,30,30,30)
+  }
+
+  it should "trim the source read when the end of the raw read is all Ns and the read is mapped to the negative strand" in {
+    val builder = new SamRecordSetBuilder(readLength=10)
+    val rec     = builder.addFrag(start=1, strand=Minus).map { r => r.setReadString("NNNNAAAAAA"); r.setBaseQualities(Array[Byte](30,30,30,30,30,30,30,30,30,30)); r}.get
+    val source  = cc().toSourceRead(rec, minBaseQuality=20.toByte).get
+
+    source.baseString shouldBe "TTTTTT" // cos revcomp'd
+    source.quals      shouldBe Array[Byte](30,30,30,30,30,30)
+  }
+
+  it should "return None if the read is all low-quality or Ns" in {
+    val builder = new SamRecordSetBuilder(readLength=10)
+    val rec     = builder.addFrag(start=1).map { r => r.setReadString("NANANANANA"); r.setBaseQualities(Array[Byte](30,2,30,2,30,2,30,2,30,2)); r}.get
+    val source  = cc().toSourceRead(rec, minBaseQuality=20.toByte)
+    source shouldBe None
   }
 }

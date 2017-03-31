@@ -42,6 +42,7 @@ object DuplexConsensusCaller {
   val ErrorRatePostUmi: PhredScore        = 40.toByte
   val MinInputBaseQuality: PhredScore     = 15.toByte
   val NoCall: Byte = 'N'.toByte
+  val NoCallQual   = PhredScore.MinValue
 
   /**
     * Stores information about a consensus read.  Bases, arrays, and the two single
@@ -143,10 +144,10 @@ class DuplexConsensusCaller(override val readNamePrefix: String,
         val filteredYs = filterToMostCommonAlignment(abR2s ++ baR1s)
 
         // Then split then back apart for SS calling and turn them into SourceReads
-        val filteredAbR1s = filteredXs.filter(_.getFirstOfPairFlag).map(toSourceRead(_, this.minInputBaseQuality))
-        val filteredAbR2s = filteredYs.filter(_.getSecondOfPairFlag).map(toSourceRead(_, this.minInputBaseQuality))
-        val filteredBaR1s = filteredYs.filter(_.getFirstOfPairFlag).map(toSourceRead(_, this.minInputBaseQuality))
-        val filteredBaR2s = filteredXs.filter(_.getSecondOfPairFlag).map(toSourceRead(_, this.minInputBaseQuality))
+        val filteredAbR1s = filteredXs.filter(_.getFirstOfPairFlag).flatMap(toSourceRead(_, this.minInputBaseQuality))
+        val filteredAbR2s = filteredYs.filter(_.getSecondOfPairFlag).flatMap(toSourceRead(_, this.minInputBaseQuality))
+        val filteredBaR1s = filteredYs.filter(_.getFirstOfPairFlag).flatMap(toSourceRead(_, this.minInputBaseQuality))
+        val filteredBaR2s = filteredXs.filter(_.getSecondOfPairFlag).flatMap(toSourceRead(_, this.minInputBaseQuality))
 
         // Call the single-stranded consensus reads
         val abR1Consensus = ssCaller.consensusCall(filteredAbR1s)
@@ -196,17 +197,22 @@ class DuplexConsensusCaller(override val readNamePrefix: String,
           val aQual = a.quals(i)
           val bQual = b.quals(i)
 
-          val (base, qual) = {
-            if      (aBase == NoCall || bBase == NoCall) (NoCall, PhredScore.MinValue)
-            else if (aBase == bBase) (aBase, (aQual + bQual).toByte)
+          // Capture the raw consensus base prior to masking it to N, so that we can compute
+          // errors vs. the actually called base.
+          val (rawBase, rawQual) = {
+            if      (aBase == bBase) (aBase, (aQual + bQual).toByte)
             else if (aQual > bQual)  (aBase, (aQual - bQual).toByte)
             else if (bQual > aQual)  (bBase, (bQual - aQual).toByte)
-            else (NoCall, PhredScore.MinValue)
+            else                     (aBase, PhredScore.MinValue)
           }
+
+          // Then mask it if appropriate
+          val (base, qual) = if (aBase == NoCall || bBase == NoCall || rawQual == PhredScore.MinValue) (NoCall, NoCallQual) else (rawBase, rawQual)
 
           bases(i)  = base
           quals(i)  = qual
-          errors(i) = min(sourceReads.count(s => s.bases(i) != NoCall && s.bases(i) != base), Short.MaxValue).toShort
+
+          errors(i) = min(sourceReads.count(s => s.length > i && isError(s.bases(i), rawBase)), Short.MaxValue).toShort
         }
 
         Some(DuplexConsensusRead(id=id, bases, quals, errors, a.truncate(bases.length), b.truncate(bases.length)))
@@ -214,6 +220,9 @@ class DuplexConsensusCaller(override val readNamePrefix: String,
         None
     }
   }
+
+  /** Function that returns true if the pair of bases are both valid/called bases and do not match each other. */
+  @inline private def isError(lhs: Byte, rhs: Byte): Boolean = lhs != NoCall && rhs != NoCall && lhs != rhs
 
   /**
     * Creates a SAMRecord with a ton of additional tags annotating the duplex read.

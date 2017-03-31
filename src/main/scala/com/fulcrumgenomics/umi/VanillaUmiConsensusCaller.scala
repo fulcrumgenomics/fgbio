@@ -152,7 +152,7 @@ class VanillaUmiConsensusCaller(override val readNamePrefix: String,
       }
 
       if (filteredRecords.size < this.options.minReads) None
-      else consensusCall(filteredRecords.map(r => toSourceRead(r, this.options.minInputBaseQuality)))
+      else consensusCall(filteredRecords.flatMap(r => toSourceRead(r, this.options.minInputBaseQuality)))
     }
   }
 
