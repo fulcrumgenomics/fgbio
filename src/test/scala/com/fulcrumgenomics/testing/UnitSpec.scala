@@ -23,10 +23,12 @@
  */
 package com.fulcrumgenomics.testing
 
+import java.io.PrintStream
 import java.nio.file.{Files, Path}
 
 import com.fulcrumgenomics.FgBioDef._
 import com.fulcrumgenomics.cmdline.FgBioTool
+import com.fulcrumgenomics.util.Io
 import dagr.commons.reflect.ReflectionUtil
 import dagr.commons.util.{LogLevel, Logger}
 import dagr.sopt.cmdline.CommandLineProgramParser
@@ -70,6 +72,25 @@ trait UnitSpec extends FlatSpec with Matchers {
 
     ParsingUtil.findClpAnnotation(cl).getOrElse(fail(s"${name} is missing the clp annotation."))
     new CommandLineProgramParser(cl)
+  }
+
+  /**
+    * Executes the provided tool and returns the tools logging output as a list of String.
+    */
+  protected def executeFgbioTool(tool: FgBioTool): Seq[String] = {
+    val log = makeTempFile(tool.getClass.getSimpleName + ".", ".log")
+    val stream = new PrintStream(log.toFile)
+    val previousStream = Logger.out
+    Logger.out = stream
+    try {
+      tool.execute()
+    }
+    finally {
+      stream.close()
+      Logger.out = previousStream
+    }
+
+    Io.readLines(log).toSeq
   }
 }
 

@@ -68,7 +68,31 @@ object CorrectUmis {
 
 @clp(group=ClpGroups.Umi, description=
   """
-    |Corrects UMIs stored in BAM files when a set of fixed UMIs is in use.
+    |Corrects UMIs stored in BAM files when a set of fixed UMIs is in use.  If the set of UMIs used in
+    |an experiment is known and is a subset of the possible randomers of the same length, it is possible
+    |to error-correct UMIs prior to grouping reads by UMI.  This tool takes an input BAM with UMIs in a
+    |tag (RX by default) and set of known UMIs (either on the command line or in a file) and produces:
+    |  1. A new BAM with corrected UMIs in the same tag the UMIs were found in
+    |  2. Optionally a set of metrics about the representation of each UMI in the set
+    |  3. Optionally a second BAM file of reads whose UMIs could not be corrected within the specific parameters
+    |
+    |All of the fixed UMIs must be of he same length, and all UMIs in the BAM file must also have the same
+    |length.  Multiple UMIs that are concatenated with hyphens (e.g. AACCAGT-AGGTAGA) are split apart,
+    |corrected individually and then re-assembled.  A read is accepted only if all the UMIs can be corrected.
+    |
+    |Correction is controlled by two parameters:
+    |  1. --max-mismatches controls how many mismatches (no-calls are counted as mismatches) are tolerated
+    |         between a UMI as read and a fixed UMI.
+    |  2. --min-distance controls how many more mismatches the next best hit must have
+    |
+    |For example, with two fixed UMIs AAAAA and CCCCC and max-mismatches=3 and min-distance=2 the
+    |following would happen:
+    |  - AAAAA would match to AAAAA
+    |  - AAGTG would match to AAAAA with three mismatches because CCCCCC has six mismatches and 6 >= 3 + 2
+    |  - AACCA would be rejected because it is 2 mismatches to AAAAA and 3 to CCCCCC and 3 <= 2 + 2
+    |
+    |The set of fixed UMIs may be specified on the command line using --umis umi1 umi2 ... or via one or
+    |more files of UMIs with a single sequence per line using --umi-files umis.txt more_umis.txt
   """)
 class CorrectUmis
 ( @arg(flag="i", doc="Input SAM or BAM file.")  val input: PathToBam,
@@ -137,7 +161,7 @@ class CorrectUmis
               val metric = umiMetrics(m.umi)
               metric.total_matches += 1
               m.mismatches match {
-                case 0 => metric.perfect_matches += 1
+                case 0 => metric.perfect_matches      += 1
                 case 1 => metric.one_mismatch_matches += 1
                 case 2 => metric.two_mismatch_matches += 1
                 case _ => metric.other_matches        += 1
@@ -169,12 +193,12 @@ class CorrectUmis
     rejectOut.foreach(_.close())
 
     // Finalize the metrics
-    val sortedMetrics = umiMetrics.values.toSeq.sortBy(_.umi)
-    val total = sortedMetrics.map(_.total_matches).sum.toDouble
-    val mean  = total / sortedMetrics.size.toDouble
+    val sortedMetrics        = umiMetrics.values.toSeq.sortBy(_.umi)
+    val totalWithUnmatched   = sortedMetrics.map(_.total_matches).sum.toDouble
+    val meanWithoutUnmatched = sortedMetrics.filter(_.umi != unmatchedUmi).map(_.total_matches).sum / (sortedMetrics.size - 1d)
     sortedMetrics.foreach { m =>
-      m.fraction_of_matches = m.total_matches / total
-      m.representation      = m.total_matches / mean
+      m.fraction_of_matches = m.total_matches / totalWithUnmatched
+      m.representation      = m.total_matches / meanWithoutUnmatched
     }
 
     this.metrics.foreach(path => Metric.write(path, sortedMetrics))
