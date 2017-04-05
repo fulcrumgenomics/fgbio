@@ -12,7 +12,7 @@ cache:
   directories:
   - $HOME/.ivy2/cache
   - $HOME/.sbt/boot/
-  - /usr/local/lib/R/site-library
+  - $R_LIBS_USER
 addons:
   apt:
     sources:
@@ -23,11 +23,12 @@ addons:
 before_install:
 - pip install --user codecov
 - sudo bash .travis.install-git-lfs.sh
-- sudo Rscript -e 'install.packages("ggplot2", repos="http://cran.us.r-project.org")'
+- Rscript -e 'if (!require("ggplot2", quietly=T)) install.packages("ggplot2", lib=Sys.getenv("R_LIBS_USER"), repos="http://cran.us.r-project.org")'
 after_success:
 - codecov
 - test "$TRAVIS_REPO_SLUG" == 'fulcrumgenomics/fgbio' && test "$TRAVIS_PULL_REQUEST" == 'false' && test "$TRAVIS_BRANCH" == 'master' && sbt publish #&& sbt 'set version := version.value + "." + System.getenv("TRAVIS_BUILD_NUMBER")' publish
 env:
   global:
+  - R_LIBS_USER=$HOME/Rlib
   - secure: K87b3FHR9nEJQzVwFmPtyyfnu5f/h9luWIlIe37It9erBHJpNQh8knPCqfZgcIOrxIinE7xOJQyHDBTqkhKDtWKVG69B8w5km0XSm3s/WObuN+XZegmpGlvL5kdwQwgTMn4gyQb5aG4pSzWk5pzz691pM0ecJ+olTE6K+Eqlri7tnLf99pUhqND4JUHEgs6AMlazPnnT4FXbZ22tlvNwpIajawj1dvRTS7mUyyYvHtKs6hJB+poLyJs/pBe07jVp8BCZ35rJ72kObUQ68azyLh0IRj+owHz8hyjWgO0n7YspoJI1i7gDt2PP7fzUzG5OLdBOZOt8QVm1S7ZbLrjBdnY9jJad72PUADC0a3Q0WJRBat/T8nIBDtCXm6iPyewfgCkpHcZJnOpixBJpR/jGOGj+gY7eYJwZ9FXizbk8PnM+uRhCP6dghrkhD5mFVRPHXVPcrzJON5kCXpmqPdvZ9IVbYuDbFbp66K6EbYlzKBCL0SigK3d/7xkTnPNsawlf9Xya9lZ9BwUijdN0Iyji1vxGXAj4PHbJGDZw9CQMNW6F3qe8+mk2eahTw+wE1XZcToTEFba00S1yOBGVc/dNvewITQxBVOigFj06UsPAMfq/00xMsw6YlWn5qGcLmD8Zq4mGh6kLoTDrps9Z5fBcjYAMBXE9mvYADhznh6X0QSE=
   - secure: Jb81spFcX4D8YeeVPM2lZBhPL41FGP/ULSHl1FDyLBCQjgk54gb52m0sHFy9hJ9IGe3FDSpN4SQlpZf/SodnNKSdaj51QSUYakMEdRLarlZw3OIi4ugwWE1DeRtcqtEZqT4qiy9YjcD8Ty8MH8sLNvpPUmozVJj4nY6qa3NRnrBkI7Ovui3SmharHIoNBERWukkWF97LEFgwxp9mBjVeZbP7ekm7U3nupUJADkVbQTffpFwJB5staZCzBubVqqQUOSzLrkqA2n60Pdm/Ci+cJ7obJXx1i2Bm4+0Q1QrWhXjNkBOGXZw6sltOBJqtQ51eFx9QVh22kEfwkR/lKErKZBhXXsLLTFWoGS4IdICLr9mns3IPgmqqXSr7WxPJ/daP1/aXRdALPZcLWpXr3glKJB7Ab2+1EKnKAZ9anC1KtK1d9+lp6LVoTR0zQsIhTghfs90h9rkX2BItF37fEuANMJqHFEYMFCwDgsQTTmiKwNd016xGp8pfPKTw/mFZBkb8ZG64FfWSwNCidyu199dqfuPwdGw3JAM+8C3q/c4eYfzIQ06iqmEFXNHrCput5ffdpP62NE0mvwNbJs+qtpMXXSpW/NhvF2WvGE/4eVkbANVdoufZ9eaOUQG8GNPYBByxaKzSkT+cm5K2vxHVoC0Li/VT+lqQbtKwg3H/ntYl8y8=
