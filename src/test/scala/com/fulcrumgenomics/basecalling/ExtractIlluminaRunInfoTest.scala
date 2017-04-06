@@ -25,78 +25,13 @@
 
 package com.fulcrumgenomics.basecalling
 
+import com.fulcrumgenomics.illumina.RunInfo
 import com.fulcrumgenomics.testing.UnitSpec
-import com.fulcrumgenomics.util.{DelimitedDataParser, Io, Metric, ReadStructure}
-import com.fulcrumgenomics.FgBioDef.FilePath
+import com.fulcrumgenomics.util.{Metric, ReadStructure}
 import htsjdk.samtools.util.Iso8601Date
 
 class ExtractIlluminaRunInfoTest extends UnitSpec {
-
-  /** Creates the RunInfo.xml text and writes it to a file.
-    * Ignores the ImageDimensions and ImageChannels elements under Run, as well as TileSet in FlowcellLayout. */
-  private def runInfo(date: String, readStructure: ReadStructure): FilePath = {
-    val pre = s"""<?xml version="1.0"?>
-      |<RunInfo xmlns:xsd="http://www.w3.org/2001/XMLSchema" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" Version="4">
-      |  <Run Id="${date}_NS123456_0011_ABCDEFGHIJ" Number="11">
-      |    <Flowcell>NS123456</Flowcell>
-      |    <Instrument>BCDEFGHIJ</Instrument>
-      |    <Date>${date}</Date>
-      |    <Reads>
-      |""".stripMargin
-
-    val reads = readStructure.zipWithIndex.map { case (segment, idx) =>
-      val isIndexedRead = if (segment.symbol == 'B') "Y" else "N"
-      s"""      <Read Number="${idx+1}" NumCycles="${segment.length}" IsIndexedRead="${isIndexedRead}" />"""
-    }.mkString("\n")
-
-    val post =
-      s"""
-         |    </Reads>
-         |    <FlowcellLayout LaneCount="4" SurfaceCount="2" SwathCount="1" TileCount="12" SectionPerLane="3" LanePerSection="2">
-         |    </FlowcellLayout>
-         |  </Run>
-         |</RunInfo>""".stripMargin
-
-    val text = Seq(pre, reads, post).mkString("").split("\n")
-    val out  = makeTempFile(prefix="RunInfo", suffix=".xml")
-    Io.writeLines(out, text)
-    out
-  }
-
-  "RunInfo" should "parse a RunInfo.xml with a six character date" in {
-    val info = RunInfo(runInfo(date="170204", readStructure=ReadStructure("8B150T")))
-    info.run_date shouldBe new Iso8601Date("2017-02-04")
-  }
-
-  it should "parse a RunInfo.xml with a eight character date" in {
-    val info = RunInfo(runInfo(date="20170204", readStructure=ReadStructure("8B150T")))
-    info.run_date shouldBe new Iso8601Date("2017-02-04")
-  }
-
-  it should "handle a non-indexed run" in {
-    val info = RunInfo(runInfo(date="170204", readStructure=ReadStructure("150T")))
-    info.read_structure.toString shouldBe "150T"
-  }
-
-  it should "handle a single index run" in {
-    val info = RunInfo(runInfo(date="170204", readStructure=ReadStructure("8B150T")))
-    info.read_structure.toString shouldBe "8B150T"
-  }
-
-  it should "handle a dual indexed run" in {
-    val info = RunInfo(runInfo(date="170204", readStructure=ReadStructure("8B150T150T8B")))
-    info.read_structure.toString shouldBe "8B150T150T8B"
-  }
-
-  it should "handle a complicated read structure" in {
-    val info = RunInfo(runInfo(date="170204", readStructure=ReadStructure("8B10T8B10T10T8B")))
-    info.run_barcode             shouldBe "BCDEFGHIJ_NS123456"
-    info.flowcell_barcode        shouldBe "NS123456"
-    info.instrument_name         shouldBe "BCDEFGHIJ"
-    info.run_date                shouldBe  new Iso8601Date("2017-02-04")
-    info.read_structure.toString shouldBe "8B10T8B10T10T8B"
-    info.num_lanes               shouldBe 4
-  }
+  import com.fulcrumgenomics.illumina.RunInfoTest.runInfo
 
   "ExtractRunInfo" should "run end-to-end" in {
     val in = runInfo(date="20170204", readStructure=ReadStructure("8B150T"))
