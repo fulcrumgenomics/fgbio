@@ -80,7 +80,7 @@ object CorrectUmis {
     |length.  Multiple UMIs that are concatenated with hyphens (e.g. AACCAGT-AGGTAGA) are split apart,
     |corrected individually and then re-assembled.  A read is accepted only if all the UMIs can be corrected.
     |
-    |Correction is controlled by two parameters:
+    |Correction is controlled by two parameters that are applied per-UMI:
     |  1. --max-mismatches controls how many mismatches (no-calls are counted as mismatches) are tolerated
     |         between a UMI as read and a fixed UMI.
     |  2. --min-distance controls how many more mismatches the next best hit must have
@@ -92,7 +92,9 @@ object CorrectUmis {
     |  - AACCA would be rejected because it is 2 mismatches to AAAAA and 3 to CCCCCC and 3 <= 2 + 2
     |
     |The set of fixed UMIs may be specified on the command line using --umis umi1 umi2 ... or via one or
-    |more files of UMIs with a single sequence per line using --umi-files umis.txt more_umis.txt
+    |more files of UMIs with a single sequence per line using --umi-files umis.txt more_umis.txt.  If there
+    |are multiple UMIs per template, leading to hyphenated UMI tags, the values for the fixed UMIs should
+    |be single, non-hyphenated UMIs (e.g. if a record has RX:Z:ACGT-GGCA, you would use --umis ACGT GGCA).
   """)
 class CorrectUmis
 ( @arg(flag="i", doc="Input SAM or BAM file.")  val input: PathToBam,
