@@ -64,6 +64,20 @@ object CorrectUmis {
                                   var fraction_of_matches: Double = 0,
                                   var representation: Double = 0
                                  ) extends Metric
+
+  /**
+    * Finds pairs of UMIs within the given set that are within some edit distance of each other.
+    *
+    * @param umis the set of umis to check
+    * @param distance the maximum edit distance at which to report pairs of UMIs
+    * @return a Seq of three-tuples containing (umi1, umi2, edit_distance)
+    */
+  def findUmiPairsWithinDistance(umis: Seq[String], distance: Int): Seq[(String,String,Int)] = {
+    umis.tails.flatMap {
+      case x +: ys => ys.map(y => (x, y, Sequences.countMismatches(x, y))).filter(_._3 <= distance)
+      case _      => Seq.empty
+    }.toList
+  }
 }
 
 @clp(group=ClpGroups.Umi, description=
@@ -124,6 +138,11 @@ class CorrectUmis
       val lengths = set.map(_.length)
       validate(lengths.size == 1, s"UMIs of multiple lengths found. Lengths: ${lengths.mkString(", ")}")
       (set.toArray, lengths.head)
+    }
+
+    // Warn if any of the UMIs are too close together
+    CorrectUmis.findUmiPairsWithinDistance(umiSequences, minDistance-1).foreach { case (umi1, umi2, distance) =>
+        logger.warning(s"Umis $umi1 and $umi2 are $distance edits apart which is less than the min distance: $minDistance")
     }
 
     // Construct the UMI metrics objects

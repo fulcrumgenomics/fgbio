@@ -80,6 +80,16 @@ class CorrectUmisTest extends UnitSpec {
     corrector.findBestMatch("AAACCT", FixedUmisArray) shouldBe UmiMatch(matched = false, "AAAAAA", 3) // still too close - three to AAAAAA, and four to CCCCCC
   }
 
+  "CorrectUmis.findUmiPairsWithinDistance" should "find no pairs within the edit distance" in {
+    CorrectUmis.findUmiPairsWithinDistance(Seq("AAAA", "TTTT", "CCCC", "GGGG"), 2) shouldBe Seq.empty
+  }
+
+  it should "find the right set of pairs" in {
+    val umis     = Seq("ACACAC", "CTCTCT", "GAGAGA", "TGTGTG", "ACAGAC", "AGAGAG")
+    val expected = Seq(("ACACAC", "ACAGAC", 1),("ACAGAC", "AGAGAG", 2))
+    CorrectUmis.findUmiPairsWithinDistance(umis, 2) shouldBe expected
+  }
+
   "CorrectUmis" should "rejects reads that do not have umis, and emit an error" in {
     val builder = new SamRecordSetBuilder(readLength = 10)
     builder.addFrag(name = "q1", start = 1)
