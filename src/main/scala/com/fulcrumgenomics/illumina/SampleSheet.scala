@@ -172,7 +172,7 @@ class SampleSheet(samples: Seq[Sample]) extends Iterable[Sample] {
   require(samples.map(_.sampleId).toSet.size == samples.length,
     "Sample identifiers were not unique: " + samples.groupBy(_.sampleId).filter(_._2.length > 2).keys.mkString(", "))
   require(samples.map(s => s"${s.sampleId} ${s.libraryId}").toSet.size == samples.length,
-    "Sample name and libarary identifier combinations were not unique: " +
+    "Sample name and library identifier combinations were not unique: " +
       samples.groupBy(s => s"${s.sampleId} ${s.libraryId}").filter(_._2.length > 2).keys.mkString(", "))
 
   def iterator: Iterator[Sample] = this.samples.iterator
