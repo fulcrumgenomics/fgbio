@@ -127,6 +127,9 @@ trait UmiConsensusCaller[C <: SimpleRead] {
   /** Returns the total number of input reads examined by the consensus caller so far. */
   def totalReads: Long = _totalReads
 
+  /** Returns the total number of reads filtered for any reason. */
+  def totalFiltered: Long = _totalFiltered
+
   /**
     * Returns the number of raw reads filtered out due to there being insufficient reads present
     * to build the necessary set of consensus reads.
