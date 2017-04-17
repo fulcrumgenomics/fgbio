@@ -24,13 +24,16 @@
 
 package com.fulcrumgenomics.umi
 
+import java.io.BufferedWriter
 import java.lang.Math.min
 
 import com.fulcrumgenomics.FgBioDef._
 import com.fulcrumgenomics.umi.DuplexConsensusCaller._
 import com.fulcrumgenomics.umi.UmiConsensusCaller.{SimpleRead, SourceRead}
 import com.fulcrumgenomics.umi.UmiConsensusCaller.ReadType.{ReadType, _}
+import com.fulcrumgenomics.util.Io
 import com.fulcrumgenomics.util.NumericTypes.PhredScore
+import dagr.commons.io.PathUtil
 import dagr.commons.util.Logger
 import htsjdk.samtools.SAMRecord
 
@@ -99,6 +102,8 @@ class DuplexConsensusCaller(override val readNamePrefix: String,
   private var _filteredFragments: Long = 0
   private var _filteredAb: Long = 0
   private var _filteredSingleStrandConsensusOnly: Long = 0
+  private var _readsPreCigarFilter = 0
+  private var _readsPostCigarFilter = 0
 
   private val ssCaller = new VanillaUmiConsensusCaller(readNamePrefix="x", options=new VanillaUmiConsensusCallerOptions(
       errorRatePreUmi         = this.errorRatePreUmi,
@@ -196,6 +201,8 @@ class DuplexConsensusCaller(override val readNamePrefix: String,
         // Convert to SAMRecords and return
         (duplexR1, duplexR2) match {
           case (Some(r1), Some(r2)) =>
+            _readsPreCigarFilter += (abR1s ++ baR2s ++ abR2s ++ baR1s).length
+            _readsPostCigarFilter += (filteredXs ++ filteredYs).length
             Seq(createSamRecord(r1, FirstOfPair), createSamRecord(r2, SecondOfPair))
           case _                    =>
             // NB: some reads may have been rejected already in filterToMostCommonAlignment, so use the records
@@ -307,6 +314,7 @@ class DuplexConsensusCaller(override val readNamePrefix: String,
     logger.info(f"Raw Reads Filtered Due to Observing AB/BA Reads Only: ${readsFilteredAb}%,d.")
     logger.info(f"Raw Reads Filtered Due to Mismatching Alignments: ${readsFilteredMinorityAlignment}%,d.")
     logger.info(f"Raw Reads Filtered Due to Creating an Orphan Consensus: ${readsFilteredSingleStrandConsensusOnly}%,d.")
+    logger.info(f"Fraction of Raw Reads in Consensus Filtered due to Mismatching Alignments: ${(_readsPreCigarFilter - _readsPostCigarFilter) / _readsPreCigarFilter.toDouble}%.4f")
     logger.info(f"Consensus reads emitted: ${consensusReadsConstructed}%,d.")
   }
 }
