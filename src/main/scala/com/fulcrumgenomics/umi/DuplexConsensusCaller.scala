@@ -139,6 +139,29 @@ class DuplexConsensusCaller(override val readNamePrefix: String,
         val (_, abR1s, abR2s) = subGroupRecords(ab)
         val (_, baR1s, baR2s) = subGroupRecords(ba)
 
+        // Get all the alignments to one end of the source molecule
+        val singleStrand1 = abR1s ++ baR2s
+        val singleStrand2 = abR2s ++ baR1s
+
+        // The orientation of AB and BA reads should be:
+        // AB R1: +  AB R2: -
+        // BA R1: -  BA R2: +
+        // or vice versa (AB-R1:-, AB-R2:+, AB-R1:-, AB-R2: +
+        // Therefore, AB-R1s and BA-R2s should be on the same strand, and the same for AB-R2s and BA-R1s
+        // Check for this explicitly here.
+        if (singleStrand1.nonEmpty) {
+          val ss1Flag = singleStrand1.head.getReadNegativeStrandFlag
+          val ss1MI   = singleStrand1.head.getStringAttribute(ConsensusTags.MolecularId)
+          require(singleStrand1.forall(_.getReadNegativeStrandFlag == ss1Flag),
+            s"Not all AB-R1s and BA-R2s were on the same strand for molecule with id: $ss1MI")
+        }
+        if (singleStrand2.nonEmpty) {
+          val ss2Flag = singleStrand2.head.getReadNegativeStrandFlag
+          val ss2MI   = singleStrand2.head.getStringAttribute(ConsensusTags.MolecularId)
+          require(singleStrand2.forall(_.getReadNegativeStrandFlag == ss2Flag),
+            s"Not all AB-R2s and BA-R1s were on the same strand for molecule with id: $ss2MI")
+        }
+
         // Filter by common indel pattern with AB and BA together
         val filteredXs = filterToMostCommonAlignment(abR1s ++ baR2s)
         val filteredYs = filterToMostCommonAlignment(abR2s ++ baR1s)

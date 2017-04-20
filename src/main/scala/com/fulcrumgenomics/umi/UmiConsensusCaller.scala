@@ -253,6 +253,10 @@ trait UmiConsensusCaller[C <: SimpleRead] {
     * NOTE: filtered out reads are sent to the [[rejectRecords()]] method and do not need further handling
     */
   protected[umi] def filterToMostCommonAlignment(recs: Seq[SAMRecord]): Seq[SAMRecord] = {
+    if (recs.nonEmpty) {
+      require(recs.forall(r => r.getReadNegativeStrandFlag == recs.head.getReadNegativeStrandFlag),
+        "Not all records were on the same strand.")
+    }
     val groups = recs.groupBy { r =>
       val builder = new mutable.StringBuilder
       val elems = r.getCigar.getCigarElements.iterator().bufferBetter

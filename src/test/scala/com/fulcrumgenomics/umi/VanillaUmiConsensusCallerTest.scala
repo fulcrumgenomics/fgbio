@@ -26,7 +26,7 @@
 package com.fulcrumgenomics.umi
 
 import com.fulcrumgenomics.FgBioDef._
-import com.fulcrumgenomics.testing.SamRecordSetBuilder.Minus
+import com.fulcrumgenomics.testing.SamRecordSetBuilder.{Minus, Plus}
 import com.fulcrumgenomics.testing.{SamRecordSetBuilder, UnitSpec}
 import com.fulcrumgenomics.umi.UmiConsensusCaller.SourceRead
 import com.fulcrumgenomics.umi.VanillaUmiConsensusCallerOptions._
@@ -398,6 +398,20 @@ class VanillaUmiConsensusCallerTest extends UnitSpec with OptionValues {
     consensus.getFloatAttribute(ConsensusTags.PerRead.RawReadErrorRate) shouldBe 0.toFloat
   }
 
+  it should "calculate the # of errors relative to the most likely consensus call, even when the final call is an N" in {
+    // NB: missing last base on the first read, which causes an N no-call, but errors should still be 1/3
+    val call = cc(cco(minReads=4)).consensusCall(Seq(
+      src("GATTACAN", Array(20,20,20,20,20,20,20,20)),
+      src("GATTACAG", Array(20,20,20,20,20,20,20,20)),
+      src("GATTACAG", Array(20,20,20,20,20,20,20,20)),
+      src("GATTACAT", Array(20,20,20,20,20,20,20,20))
+    )).value
+
+    call.baseString shouldBe "GATTACAN"
+    call.depths should contain theSameElementsInOrderAs Seq(4,4,4,4,4,4,4,3)
+    call.errors should contain theSameElementsInOrderAs Seq(0,0,0,0,0,0,0,1)
+  }
+
   "VanillaUmiConsensusCaller.filterToMostCommonAlignment" should "return all reads when all cigars are 50M" in {
     val builder = new SamRecordSetBuilder(readLength=50)
     (1 to 10).foreach { i => builder.addFrag(start=100, cigar="50M") }
@@ -441,18 +455,13 @@ class VanillaUmiConsensusCallerTest extends UnitSpec with OptionValues {
     recs.map(_.getCigarString).distinct.sorted shouldBe Seq("25M1D25M", "5S20M1D25M", "5S20M1D20M5H", "25M1D20M5S").sorted
   }
 
-  it should "calculate the # of errors relative to the most likely consensus call, even when the final call is an N" in {
-    // NB: missing last base on the first read, which causes an N no-call, but errors should still be 1/3
-    val call = cc(cco(minReads=4)).consensusCall(Seq(
-      src("GATTACAN", Array(20,20,20,20,20,20,20,20)),
-      src("GATTACAG", Array(20,20,20,20,20,20,20,20)),
-      src("GATTACAG", Array(20,20,20,20,20,20,20,20)),
-      src("GATTACAT", Array(20,20,20,20,20,20,20,20))
-    )).value
 
-    call.baseString shouldBe "GATTACAN"
-    call.depths should contain theSameElementsInOrderAs Seq(4,4,4,4,4,4,4,3)
-    call.errors should contain theSameElementsInOrderAs Seq(0,0,0,0,0,0,0,1)
+  it should "throw an exception if reads where given from opposite strands" in {
+    val builder = new SamRecordSetBuilder(readLength=50)
+    // These should all be returned
+    (1 to  5).foreach { i => builder.addFrag(start=100, cigar="25M1D25M", strand = if (i % 2 == 0) Plus else Minus) }
+
+    an[Exception] should be thrownBy cc().filterToMostCommonAlignment(builder.toSeq)
   }
 
   "VanillaConsensusCaller.toSourceRead" should "mask bases that are below the quality threshold" in {
