@@ -24,13 +24,17 @@
 
 package com.fulcrumgenomics.umi
 
+import java.io.BufferedWriter
 import java.lang.Math.min
 
 import com.fulcrumgenomics.FgBioDef._
 import com.fulcrumgenomics.umi.DuplexConsensusCaller._
 import com.fulcrumgenomics.umi.UmiConsensusCaller.{SimpleRead, SourceRead}
 import com.fulcrumgenomics.umi.UmiConsensusCaller.ReadType.{ReadType, _}
+import com.fulcrumgenomics.util.Io
 import com.fulcrumgenomics.util.NumericTypes.PhredScore
+import dagr.commons.io.PathUtil
+import dagr.commons.util.Logger
 import htsjdk.samtools.SAMRecord
 
 /**
@@ -94,6 +98,13 @@ class DuplexConsensusCaller(override val readNamePrefix: String,
                             val errorRatePostUmi: PhredScore    = DuplexConsensusCaller.ErrorRatePostUmi
                            ) extends UmiConsensusCaller[DuplexConsensusRead] {
 
+  // vars to track how many reads meet various fates
+  private var _filteredFragments: Long = 0
+  private var _filteredAb: Long = 0
+  private var _filteredSingleStrandConsensusOnly: Long = 0
+  private var _readsPreCigarFilter = 0
+  private var _readsPostCigarFilter = 0
+
   private val ssCaller = new VanillaUmiConsensusCaller(readNamePrefix="x", options=new VanillaUmiConsensusCallerOptions(
       errorRatePreUmi         = this.errorRatePreUmi,
       errorRatePostUmi        = this.errorRatePostUmi,
@@ -115,6 +126,32 @@ class DuplexConsensusCaller(override val readNamePrefix: String,
   }
 
   /**
+    * Returns the number of raw reads filtered out due to there being insufficient reads present
+    * to build the necessary set of consensus reads.
+    */
+  override def readsFilteredInsufficientSupport: Long = {
+    super.readsFilteredInsufficientSupport -
+      this._filteredFragments -
+      this._filteredAb -
+      this._filteredSingleStrandConsensusOnly
+  }
+
+  /**
+    * Returns the number of raw reads filtered out due to being fragment (not paired) reads.
+    */
+  def readsFilteredFragments = _filteredFragments
+
+  /**
+    * Returns the number of raw reads filtered out due to only see AB or BA reads respectively.
+    */
+  def readsFilteredAb = _filteredAb
+
+  /**
+    * Returns the number of raw reads filtered out due to producing a single-strand consensus only.
+    */
+  def readsFilteredSingleStrandConsensusOnly = _filteredSingleStrandConsensusOnly
+
+  /**
     * Takes in all the reads for a source molecule and, if possible, generates one or more
     * output consensus reads as SAM records.
     *
@@ -124,15 +161,17 @@ class DuplexConsensusCaller(override val readNamePrefix: String,
   override protected def consensusSamRecordsFromSamRecords(recs: Seq[SAMRecord]): Seq[SAMRecord] = {
     val (pairs, frags) = recs.partition(_.getReadPairedFlag)
     rejectRecords(frags)
+    this._filteredFragments += frags.length
 
     // Group the reads by /A vs. /B and ensure that /A is the first group and /B the second
-    val groups = pairs.groupBy(_.getStringAttribute(ConsensusTags.MolecularId)).toSeq.sortBy { case (mi, rs) => mi }.map(_._2)
+    val groups = pairs.groupBy(_.getStringAttribute(ConsensusTags.MolecularId)).toSeq.sortBy { case (mi, _) => mi }.map(_._2)
 
     groups match {
       case Seq() =>
         Nil
       case Seq(ab) =>
         rejectRecords(ab)
+        this._filteredAb += ab.length
         Nil
       case Seq(ab, ba) =>
         // Fragments have no place in duplex land (and are filtered out previously anyway)!
@@ -162,12 +201,18 @@ class DuplexConsensusCaller(override val readNamePrefix: String,
         // Convert to SAMRecords and return
         (duplexR1, duplexR2) match {
           case (Some(r1), Some(r2)) =>
+            _readsPreCigarFilter += (abR1s ++ baR2s ++ abR2s ++ baR1s).length
+            _readsPostCigarFilter += (filteredXs ++ filteredYs).length
             Seq(createSamRecord(r1, FirstOfPair), createSamRecord(r2, SecondOfPair))
           case _                    =>
-            rejectRecords(recs)
+            // NB: some reads may have been rejected already in filterToMostCommonAlignment, so use the records
+            // that have the most common alignment
+            val remainingRecs = filteredXs ++ filteredYs
+            this._filteredSingleStrandConsensusOnly += remainingRecs.length
+            rejectRecords(remainingRecs)
             Nil
         }
-      case gs =>
+      case _ =>
         unreachable("SAMRecords supplied with more than two distinct MI values.")
     }
   }
@@ -255,5 +300,21 @@ class DuplexConsensusCaller(override val readNamePrefix: String,
     }
 
     rec
+  }
+
+
+  /**
+    * Logs statistics about how many reads were seen, and how many were filtered/discarded due
+    * to various filters.
+    */
+  override def logStatistics(logger: Logger): Unit = {
+    require(readsFilteredInsufficientSupport == 0, s"readsFilteredInsufficientSupport should be zero, was ${readsFilteredInsufficientSupport}%,d")
+    logger.info(f"Total Raw Reads Considered: ${totalReads}%,d.")
+    logger.info(f"Raw Reads Filtered Due to Being Fragment Reads: ${readsFilteredFragments}%,d.")
+    logger.info(f"Raw Reads Filtered Due to Observing AB/BA Reads Only: ${readsFilteredAb}%,d.")
+    logger.info(f"Raw Reads Filtered Due to Mismatching Alignments: ${readsFilteredMinorityAlignment}%,d.")
+    logger.info(f"Raw Reads Filtered Due to Creating an Orphan Consensus: ${readsFilteredSingleStrandConsensusOnly}%,d.")
+    logger.info(f"Fraction of Raw Reads in Consensus Filtered due to Mismatching Alignments: ${(_readsPreCigarFilter - _readsPostCigarFilter) / _readsPreCigarFilter.toDouble}%.4f")
+    logger.info(f"Consensus reads emitted: ${consensusReadsConstructed}%,d.")
   }
 }
