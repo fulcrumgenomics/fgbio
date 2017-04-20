@@ -97,7 +97,7 @@ class AlignmentTest extends UnitSpec {
   }
 
   Seq("5S10M", "10M5H", "5M50N5M", "50P10M").foreach { cigar =>
-    it should s"throw an exception if with unsupported operator contained in cigar $cigar" in {
+    it should s"throw an exception with unsupported operator contained in cigar $cigar" in {
       val cig       = Cigar(cigar)
       val alignment = Alignment("AAAAAAAAAA", "AAAAAAAAAA", 1, 1, cig, 1)
       an [Exception] shouldBe thrownBy { alignment.paddedString() }
@@ -107,12 +107,12 @@ class AlignmentTest extends UnitSpec {
   it should "use alternative characters if asked to" in {
     val expected =
       """
-      |AA--GGGGGAACC-GGGTTT
+      |AA..GGGGGAACC.GGGTTT
       |++--+++##++++-++-+++
-      |AACCGGGTAAACCCGG-TTT
+      |AACCGGGTAAACCCGG.TTT
        """.stripMargin.trim.lines.toSeq
 
-    val alignment = Alignment(expected.head.replace("-", ""), expected.last.replace("-", ""), 1, 1, Cigar("2M2D9M1D2M1I3M"), 1)
-    alignment.paddedString(matchChar='+', mismatchChar='#', gapChar='-') shouldBe expected
+    val alignment = Alignment(expected.head.replace(".", ""), expected.last.replace(".", ""), 1, 1, Cigar("2M2D9M1D2M1I3M"), 1)
+    alignment.paddedString(matchChar='+', mismatchChar='#', gapChar='-', padChar='.') shouldBe expected
   }
 }

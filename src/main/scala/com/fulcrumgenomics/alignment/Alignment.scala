@@ -132,9 +132,10 @@ case class Alignment(query: Array[Byte],
     * @param matchChar the character to use in the alignment line when the bases match
     * @param mismatchChar the character to use in the alignment line when the bases mismatch
     * @param gapChar the character to use in the alignment line when one of the sequences is gapped
+    * @param padChar the character to use in the query or target sequence lines when padding is required
     * @return Three lines representing the alignment
     */
-  def paddedString(matchChar: Char = '|', mismatchChar: Char = '.', gapChar: Char = ' '): Seq[String] = {
+  def paddedString(matchChar: Char = '|', mismatchChar: Char = '.', gapChar: Char = ' ', padChar: Char = '-'): Seq[String] = {
     val buffers = Seq(new StringBuilder, new StringBuilder, new StringBuilder)
     val Seq(queryBuffer, alignBuffer, targetBuffer) = buffers
 
@@ -155,12 +156,12 @@ case class Alignment(query: Array[Byte],
         forloop (from=0, until=len) { i =>
           queryBuffer.append(this.query(qOffset).toChar)
           alignBuffer.append(gapChar)
-          targetBuffer.append('-')
+          targetBuffer.append(padChar)
           qOffset += 1
         }
       case CigarElem(CigarOperator.DELETION, len) =>
         forloop (from=0, until=len) { i =>
-          queryBuffer.append('-')
+          queryBuffer.append(padChar)
           alignBuffer.append(gapChar)
           targetBuffer.append(this.target(tOffset).toChar)
           tOffset += 1
