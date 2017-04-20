@@ -27,6 +27,8 @@ package com.fulcrumgenomics.alignment
 import com.fulcrumgenomics.FgBioDef._
 import htsjdk.samtools.CigarOperator
 
+import scala.collection.mutable.ArrayBuffer
+
 /**
   * Represents an element in a Cigar.
   *
@@ -38,6 +40,34 @@ case class CigarElem(operator: CigarOperator, length: Int) {
 
   /** Returns how this element should be represented in a cigar string. */
   override def toString: String = length + operator.toString
+}
+
+/** Companion object for Cigar that offers alternative constructors. */
+object Cigar {
+  private val ZeroCharAsInt = '0'.toInt
+
+  /** Constructs a Cigar object from a Cigar string. */
+  def apply(cigar: String): Cigar = {
+    require(cigar != null && cigar.length > 0, "Can't parse a null or empty cigar string.")
+    val elements = new ArrayBuffer[CigarElem]
+    val chars    = cigar.toCharArray
+
+    var i = 0
+    while (i < chars.length) {
+      // Parse out the length of the operator
+      val expectedNumberAtPosition = i
+      var length = 0
+      while (Character.isDigit(chars(i))) { length = (length * 10) + chars(i).toInt - ZeroCharAsInt; i += 1 }
+      require(i > expectedNumberAtPosition, s"Malformed CIGAR string $cigar, found non-digit ${chars(i)} where number expected.")
+
+      // Grab the operator (characterToEnum will throw an exception if the operator is invalid)
+      val operator = CigarOperator.characterToEnum(chars(i))
+      elements += CigarElem(operator, length)
+      i += 1
+    }
+
+    Cigar(elements.toIndexedSeq)
+  }
 }
 
 /**
@@ -61,6 +91,14 @@ case class Cigar(elems: IndexedSeq[CigarElem]) extends Iterable[CigarElem] {
 }
 
 
+/** Companion object for Alignment. */
+object Alignment {
+  /** Construct an alignment using Strings for sequences instead of byte arrays. */
+  def apply(query: String, target: String, queryStart: Int, targetStart: Int, cigar: Cigar, score: Int): Alignment = {
+    new Alignment(query.getBytes, target.getBytes, queryStart, targetStart, cigar, score)
+  }
+}
+
 /**
   * A general class to describe the alignment between two sequences or partial ranges thereof
   * @param query the query sequence
@@ -82,4 +120,55 @@ case class Alignment(query: Array[Byte],
 
   /** One based closed coordinate of the end of the alignment on the query sequence. */
   def targetEnd: Int = targetStart + cigar.lengthOnTarget - 1
+
+  /**
+    * Generates a padded text representation of the alignment for visualization. The returned
+    * sequence will consist of three lines as follows (minus the labels on the left):
+    *
+    * query : ACGTGAACTGACT-ACTGTATGCG
+    * align : |||||  |||||| ||||||||.|
+    * target: ACGTG--CTGACTGACTGTATGGG
+    *
+    * @param matchChar the character to use in the alignment line when the bases match
+    * @param mismatchChar the character to use in the alignment line when the bases mismatch
+    * @param gapChar the character to use in the alignment line when one of the sequences is gapped
+    * @return Three lines representing the alignment
+    */
+  def paddedString(matchChar: Char = '|', mismatchChar: Char = '.', gapChar: Char = ' '): Seq[String] = {
+    val buffers = Seq(new StringBuilder, new StringBuilder, new StringBuilder)
+    val Seq(queryBuffer, alignBuffer, targetBuffer) = buffers
+
+    var qOffset = queryStart - 1
+    var tOffset = targetStart - 1
+    cigar.foreach {
+      case CigarElem(CigarOperator.M | CigarOperator.EQ | CigarOperator.X, len) =>
+        forloop (from=0, until=len) { i =>
+          val q = this.query(qOffset).toChar
+          val t = this.target(tOffset).toChar
+          queryBuffer.append(q)
+          alignBuffer.append(if (q == t) matchChar else mismatchChar)
+          targetBuffer.append(t)
+          qOffset += 1
+          tOffset += 1
+        }
+      case CigarElem(CigarOperator.INSERTION, len) =>
+        forloop (from=0, until=len) { i =>
+          queryBuffer.append(this.query(qOffset).toChar)
+          alignBuffer.append(gapChar)
+          targetBuffer.append('-')
+          qOffset += 1
+        }
+      case CigarElem(CigarOperator.DELETION, len) =>
+        forloop (from=0, until=len) { i =>
+          queryBuffer.append('-')
+          alignBuffer.append(gapChar)
+          targetBuffer.append(this.target(tOffset).toChar)
+          tOffset += 1
+        }
+      case other =>
+        throw new IllegalStateException(s"Padding string cannot support cigar operator $other")
+    }
+
+    buffers.map(_.toString())
+  }
 }
