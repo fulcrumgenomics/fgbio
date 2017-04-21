@@ -23,7 +23,7 @@ addons:
 before_install:
 - pip install --user codecov
 - sudo bash .travis.install-git-lfs.sh "$GITHUB_ACCESS_TOKEN"
-- Rscript -e 'if (!require("ggplot2", quietly=T)) install.packages("ggplot2", lib=Sys.getenv("R_LIBS_USER"), repos="http://cran.us.r-project.org")'
+- Rscript -e 'if (!require("ggplot2", quietly=T)) install.packages("ggplot2", lib=Sys.getenv("R_LIBS_USER"), repos="http://cran.us.r-project.org", dependencies=TRUE)'
 - sudo chmod +x /usr/local/bin/sbt
 after_success:
 - codecov
