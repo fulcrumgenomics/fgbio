@@ -72,11 +72,12 @@ object DemuxFastqs {
 
   /** Gets the quality format of the FASTQs. */
   private def determineQualityFormat(fastqs: Seq[PathToFastq], expectedQualityFormat: Option[FastqQualityFormat] = None, logger: Option[Logger] = None): FastqQualityFormat = {
+    import htsjdk.samtools.util.{QualityEncodingDetector => Detector}
     val readers = fastqs.map { fastq => new FastqReader(fastq.toFile) }
-    val detector: QualityEncodingDetector = new QualityEncodingDetector
-    detector.add(QualityEncodingDetector.DEFAULT_MAX_RECORDS_TO_ITERATE, readers:_*)
+    val detector: Detector = new Detector
+    detector.add(Detector.DEFAULT_MAX_RECORDS_TO_ITERATE, readers:_*)
     readers.foreach(_.close())
-    val format = detector.generateBestGuess(QualityEncodingDetector.FileContext.FASTQ, expectedQualityFormat.orNull)
+    val format = detector.generateBestGuess(Detector.FileContext.FASTQ, expectedQualityFormat.orNull)
     if (detector.isDeterminationAmbiguous) {
       logger.foreach(_.warning("Making ambiguous determination about fastq's quality encoding; more than one format possible based on observed qualities."))
     }
