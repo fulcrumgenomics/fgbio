@@ -29,7 +29,8 @@ import java.util
 import com.fulcrumgenomics.FgBioDef._
 import com.fulcrumgenomics.cmdline.{ClpGroups, FgBioTool}
 import com.fulcrumgenomics.umi.ConsensusTags
-import com.fulcrumgenomics.util.{Io, ProgressLogger, ReadStructure}
+import com.fulcrumgenomics.util.{Io, ProgressLogger, ReadStructure, SegmentType}
+import SegmentType._
 import dagr.commons.CommonsDef.PathToFastq
 import dagr.commons.util.LazyLogging
 import dagr.sopt.{arg, clp}
@@ -61,7 +62,7 @@ class FastqToBam
   Io.assertReadable(input)
   Io.assertCanWriteFile(output)
   validate(input.length == readStructures.length, "input and read-structure must be supplied the same number of times.")
-  validate(Range.inclusive(1,2).contains(readStructures.flatMap(_.template).size), "read structures must contain 1-2 template reads total.")
+  validate(1 to 2 contains readStructures.flatMap(_.templateSegments).size, "read structures must contain 1-2 template reads total.")
 
   override def execute(): Unit = {
     val encoding = qualityEncoding
@@ -71,7 +72,7 @@ class FastqToBam
     val progress = this.sortOrder match {
       case SortOrder.unsorted => ProgressLogger(logger, verb="written")
       case _ =>
-        writer.setProgressLogger(ProgressLogger(logger, verb="writter"))
+        writer.setProgressLogger(ProgressLogger(logger, verb="written"))
         ProgressLogger(logger, verb="read")
     }
 
@@ -111,16 +112,16 @@ class FastqToBam
                                encoding: QualityEncoding
                               ): Seq[SAMRecord] = {
     val subs = fqs.iterator.zip(rss.iterator).flatMap { case(fq, rs) => rs.structureReadWithQualities(fq.bases, fq.quals, strict=false)}.toIndexedSeq
-    val sampleBarcode = subs.iterator.filter(_.segment.symbol == 'B').map(_.bases).mkString("-")
-    val umi           = subs.iterator.filter(_.segment.symbol == 'M').map(_.bases).mkString("-")
-    val templates     = subs.iterator.filter(_.segment.symbol == 'T').toList
+    val sampleBarcode = subs.iterator.filter(_.segment.kind == SampleBarcode).map(_.bases).mkString("-")
+    val umi           = subs.iterator.filter(_.segment.kind == MolecularBarcode).map(_.bases).mkString("-")
+    val templates     = subs.iterator.filter(_.segment.kind == Template).toList
 
     templates.zipWithIndex.map { case (read, index) =>
       val rec = new SAMRecord(header)
       rec.setAttribute(ReservedTagConstants.READ_GROUP_ID, this.readGroupId)
       rec.setReadName(fqs.head.name)
       rec.setReadString(read.bases)
-      rec.setBaseQualities(encoding.toStandardNumeric(read.quals.getOrElse(unreachable("Quals must be here!"))))
+      rec.setBaseQualities(encoding.toStandardNumeric(read.quals))
       rec.setReadUnmappedFlag(true)
       if (templates.size == 2) {
         rec.setReadPairedFlag(true)

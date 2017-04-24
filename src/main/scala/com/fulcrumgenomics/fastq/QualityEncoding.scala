@@ -52,6 +52,12 @@ sealed trait QualityEncoding {
     forloop (from=0, until=bs.length) { i => bs(i) = toStandardNumeric(qs(i)) }
     bs
   }
+
+  /** Converts a character from one ascii encoding another */
+  def toStandardAscii(ch: Char): Char = (toStandardNumeric(ch) + QualityEncoding.Standard.asciiOffset).toChar
+
+  /** Converts a String in one ascii encoding to another. */
+  def toStandardAscii(qs: String): String = qs.map(toStandardAscii)
 }
 
 object QualityEncoding {
@@ -77,6 +83,8 @@ object QualityEncoding {
     override val numericRange: Range = Range.inclusive(0, 93)
     override val asciiOffset : Int   = 33
     override def toStandardNumeric(q: Byte):Byte = q
+    override def toStandardAscii(ch: Char): Char = ch
+    override def toStandardAscii(qs: String): String = qs
   }
 
   /** All possible values of quality encoding. */

@@ -29,10 +29,10 @@ import htsjdk.samtools.util.AbstractProgressLogger
 /**
   * A subclass of HTSJDK's progress logger that uses fgbio's logging system.
   */
-class ProgressLogger(val logger: Logger,
-                     noun: String = "record",
-                     verb: String = "processed",
-                     unit: Int = 1000 * 1000) extends AbstractProgressLogger(noun, verb, unit) {
+case class ProgressLogger(logger: Logger,
+                          noun: String = "record",
+                          verb: String = "processed",
+                          unit: Int = 1000 * 1000) extends AbstractProgressLogger(noun, verb, unit) {
 
   override def log(message: String*): Unit = {
     this.logger.info(message:_*)

@@ -29,17 +29,30 @@ import com.fulcrumgenomics.testing.UnitSpec
 
 class QualityEncodingTest extends UnitSpec {
   private val ExpectedQuals = Array(2,3,4,5,10,15,20,25,30,35,40,45,50).map(_.toByte)
+  private val ExpectedAscii = ExpectedQuals.map(b => (b + 33).toChar).mkString
 
   "Solexa quality encoding" should "decode some qualities correctly" in {
     QualityEncoding.Solexa.toStandardNumeric(">@BDJOTY^chmr") shouldBe ExpectedQuals
+  }
+
+  it should "translate some qualities into standard ascii correctly" in {
+    QualityEncoding.Solexa.toStandardAscii(">@BDJOTY^chmr") shouldBe ExpectedAscii
   }
 
   "Illumina quality encoding" should "decode some qualities correctly" in {
     QualityEncoding.Illumina.toStandardNumeric("BCDEJOTY^chmr") shouldBe ExpectedQuals
   }
 
+  it should "translate some qualities into standard ascii correctly" in {
+    QualityEncoding.Illumina.toStandardAscii("BCDEJOTY^chmr") shouldBe ExpectedAscii
+  }
+
   "Standard quality encoding" should "decode some qualities correctly" in {
     QualityEncoding.Standard.toStandardNumeric("#$%&+05:?DINS") shouldBe ExpectedQuals
+  }
+
+  it should "return an identical string when translateing to standard ascii" in {
+    QualityEncoding.Standard.toStandardAscii("#$%&+05:?DINS") shouldBe ExpectedAscii
   }
 
   "QualityEncodingDetector" should "find every encoding compatible with no evidence" in {

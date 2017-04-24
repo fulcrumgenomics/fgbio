@@ -25,7 +25,9 @@
 package com.fulcrumgenomics.illumina
 
 import com.fulcrumgenomics.FgBioDef.FilePath
-import com.fulcrumgenomics.util.{Metric, ReadStructure, SampleBarcode, Template}
+import com.fulcrumgenomics.bam.Template
+import com.fulcrumgenomics.util.SegmentType.SampleBarcode
+import com.fulcrumgenomics.util.{Metric, ReadSegment, ReadStructure, SegmentType}
 import htsjdk.samtools.util.Iso8601Date
 
 /** Stores the result of parsing the run info (RunInfo.xml) file from an Illumina run folder.
@@ -63,9 +65,9 @@ object RunInfo {
     val segments        = (xml \\ "RunInfo" \\ "Run" \\ "Reads" \\ "Read").map { read =>
       val isIndexedRead = (read \ "@IsIndexedRead").text.equals("Y")
       val numCycles     = (read \ "@NumCycles").text.toInt
-      if (isIndexedRead) SampleBarcode(offset=0, length=numCycles) else Template(offset=0, length=numCycles)
+      ReadSegment(offset=0, length=Some(numCycles), kind=if (isIndexedRead) SegmentType.SampleBarcode else SegmentType.Template)
     }
-    val readStructure = new ReadStructure(segments, resetOffsets=true)
+    val readStructure = ReadStructure(segments, resetOffsets=true)
     val numLanes = (xml \\ "RunInfo" \\ "Run" \\ "FlowcellLayout" \ "@LaneCount").text.toInt
 
     RunInfo(

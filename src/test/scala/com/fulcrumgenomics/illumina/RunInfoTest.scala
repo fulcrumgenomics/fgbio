@@ -26,7 +26,7 @@ package com.fulcrumgenomics.illumina
 
 import com.fulcrumgenomics.FgBioDef.FilePath
 import com.fulcrumgenomics.testing.UnitSpec
-import com.fulcrumgenomics.util.{Io, ReadStructure}
+import com.fulcrumgenomics.util.{Io, ReadStructure, SegmentType}
 import htsjdk.samtools.util.Iso8601Date
 
 object RunInfoTest extends UnitSpec {
@@ -45,8 +45,8 @@ object RunInfoTest extends UnitSpec {
                  |""".stripMargin
 
     val reads = readStructure.zipWithIndex.map { case (segment, idx) =>
-      val isIndexedRead = if (segment.symbol == 'B') "Y" else "N"
-      s"""      <Read Number="${idx+1}" NumCycles="${segment.length}" IsIndexedRead="${isIndexedRead}" />"""
+      val isIndexedRead = if (segment.kind == SegmentType.SampleBarcode) "Y" else "N"
+      s"""      <Read Number="${idx+1}" NumCycles="${segment.length.get}" IsIndexedRead="${isIndexedRead}" />"""
     }.mkString("\n")
 
     val post =

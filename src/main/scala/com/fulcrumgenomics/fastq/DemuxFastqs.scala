@@ -25,15 +25,15 @@
 
 package com.fulcrumgenomics.fastq
 
-import java.io.{Closeable, Serializable}
+import java.io.Closeable
 
 import com.fulcrumgenomics.FgBioDef.unreachable
 import com.fulcrumgenomics.cmdline.{ClpGroups, FgBioTool}
 import com.fulcrumgenomics.fastq.FastqDemultiplexer.{DemuxRecord, DemuxResult}
 import com.fulcrumgenomics.illumina.{Sample, SampleSheet}
 import com.fulcrumgenomics.umi.ConsensusTags
-import com.fulcrumgenomics.util.ReadStructure.SubRead
-import com.fulcrumgenomics.util.{ReadStructure, SampleBarcodeMetric, SampleBarcode => _, _}
+import com.fulcrumgenomics.util.ReadStructure.{SubRead, SubReadWithQuals}
+import com.fulcrumgenomics.util.{ReadStructure, SampleBarcodeMetric, _}
 import dagr.commons.CommonsDef.{DirPath, FilePath, PathPrefix, PathToBam, PathToFastq, yieldAndThen}
 import dagr.commons.io.PathUtil
 import dagr.commons.util.{LazyLogging, Logger}
@@ -71,18 +71,17 @@ object DemuxFastqs {
   }
 
   /** Gets the quality format of the FASTQs. */
-  private def determineQualityFormat(fastqs: Seq[PathToFastq], expectedQualityFormat: Option[FastqQualityFormat] = None, logger: Option[Logger] = None): FastqQualityFormat = {
-    import htsjdk.samtools.util.{QualityEncodingDetector => Detector}
-    val readers = fastqs.map { fastq => new FastqReader(fastq.toFile) }
-    val detector: Detector = new Detector
-    detector.add(Detector.DEFAULT_MAX_RECORDS_TO_ITERATE, readers:_*)
-    readers.foreach(_.close())
-    val format = detector.generateBestGuess(Detector.FileContext.FASTQ, expectedQualityFormat.orNull)
-    if (detector.isDeterminationAmbiguous) {
-      logger.foreach(_.warning("Making ambiguous determination about fastq's quality encoding; more than one format possible based on observed qualities."))
+  private def determineQualityFormat(fastqs: Seq[PathToFastq], logger: Option[Logger] = None): QualityEncoding = {
+    val detector = new QualityEncodingDetector
+    detector.sample(fastqs.iterator.flatMap(FastqSource(_)).map(_.bases))
+    detector.rankedCompatibleEncodings(q=30) match {
+      case Seq() =>
+        throw new IllegalStateException("Could not determine quality score encoding in fastq. No known encodings are valid for all observed qualities.")
+      case encs =>
+        if (encs.size > 1) logger.foreach(_.warning(s"Making ambiguous determination about fastq's quality encoding; possible encodings: ${encs.mkString(", ")}."))
+        logger.foreach(_.info(s"Auto-detected quality format as: %s."))
+        encs.head
     }
-    logger.foreach(_.info(String.format("Auto-detected quality format as: %s.", format)))
-    format
   }
 
   /** Create a sample with sample barcodes extracted from a custom column. */
@@ -109,8 +108,11 @@ object DemuxFastqs {
 
   /** Create the unmatched sample with the given sample ordinal. */
   private[fastq] def unmatchedSample(sampleOrdinal: Int, readStructures: Seq[ReadStructure]): Sample = {
-    val noMatchBarcode: String = readStructures.flatMap(_.sampleBarcode).map("N" * _.length).mkString("-")
-    require(noMatchBarcode.nonEmpty, "No sample barcodes found in read structures: " + readStructures.map(_.toString).mkString(", "))
+    val barcodeSegments = readStructures.flatMap(_.sampleBarcodeSegments)
+    require(barcodeSegments.nonEmpty, "No sample barcodes found in read structures: " + readStructures.mkString(", "))
+    require(barcodeSegments.forall(_.hasDefiniteLength), "Barcode segments must have fixed lengths in: " + readStructures.mkString(", "))
+
+    val noMatchBarcode: String = barcodeSegments.map("N" * _.length.getOrElse(0)).mkString("-")
     Sample(sampleOrdinal=sampleOrdinal, sampleId=UnmatchedSampleId, sampleName=UnmatchedSampleId, libraryId=UnmatchedSampleId, i7IndexBases=Some(noMatchBarcode))
   }
 
@@ -276,9 +278,9 @@ val qualityFormat: Option[FastqQualityFormat] = None,
   private[fastq] val metricsPath = metrics.getOrElse(output.resolve(DefaultDemuxMetricsFileName))
 
   validate(inputs.length == readStructures.length, "The same number of read structures should be given as FASTQs.")
-  validate(readStructures.flatMap(_.sampleBarcode).nonEmpty, s"No sample barcodes found in read structures: " + readStructures.map(_.toString).mkString(", "))
+  validate(readStructures.flatMap(_.sampleBarcodeSegments).nonEmpty, s"No sample barcodes found in read structures: " + readStructures.map(_.toString).mkString(", "))
 
-  private val pairedEnd = readStructures.count(_.template.nonEmpty) match {
+  private val pairedEnd = readStructures.count(_.templateSegments.nonEmpty) match {
     case 1 => false
     case 2 => true
     case n => invalid(s"Found $n read structures with template bases but expected 1 or 2.")
@@ -306,7 +308,7 @@ val qualityFormat: Option[FastqQualityFormat] = None,
 
   override def execute(): Unit = {
     // Get the FASTQ quality encoding format
-    val qualityFormat = this.qualityFormat.getOrElse(determineQualityFormat(inputs, this.qualityFormat, Some(this.logger)))
+    val qualityEncoding = determineQualityFormat(inputs, Some(this.logger))
 
     // Read in the sample sheet and create the sample information
     val samplesFromSampleSheet = sampleSheet.map(s => withCustomSampleBarcode(s, columnForSampleBarcode))
@@ -316,7 +318,7 @@ val qualityFormat: Option[FastqQualityFormat] = None,
 
     // Validate that the # of sample barcode bases in the read structure matches the # of sample barcode in the sample sheet.
     {
-      val rsNumSampleBarcodeBases = readStructures.map(_.sampleBarcode.map(_.length).sum).sum
+      val rsNumSampleBarcodeBases = readStructures.map(_.sampleBarcodeSegments.map(_.length.getOrElse(0)).sum).sum
       samples.foreach { sample =>
         val numSampleBarcodeBases = sample.sampleBarcodeBytes.length
         require(numSampleBarcodeBases == rsNumSampleBarcodeBases,
@@ -351,11 +353,7 @@ val qualityFormat: Option[FastqQualityFormat] = None,
       demuxRecord.sampleInfo.metric.increment(numMismatches=demuxRecord.numMismatches)
       val writer = sampleToWriter(demuxRecord.sampleInfo.sample)
       demuxRecord.records.foreach { rec =>
-
-        val readQualsBytes = rec.quals.getBytes
-        convertQuality(readQualsBytes, qualityFormat, rec.name)
-
-        writer.add(rec.copy(quals=readQualsBytes.mkString))
+        writer.add(rec.copy(quals=qualityEncoding.toStandardAscii(rec.quals)))
         progress.record()
       }
     }
@@ -396,20 +394,6 @@ val qualityFormat: Option[FastqQualityFormat] = None,
       comments.foreach(header.addComment)
 
       new SamRecordWriter(PathUtil.pathTo(prefix + ".bam"), header, this.umiTag)
-    }
-  }
-
-  /** Based on the type of quality scores coming in, converts them to a numeric byte[] in phred scale. */
-  private[fastq] def convertQuality(quals: Array[Byte], version: FastqQualityFormat, name: String) = {
-    version match {
-      case FastqQualityFormat.Standard => SAMUtils.fastqToPhred(quals)
-      case FastqQualityFormat.Solexa => solexaQualityConverter.convertSolexaQualityCharsToPhredBinary(quals)
-      case FastqQualityFormat.Illumina => solexaQualityConverter.convertSolexa_1_3_QualityCharsToPhredBinary(quals)
-    }
-    // Check that the converted qualities are same.
-    quals.foreach { qual =>
-      val uQual: Int = qual & 0xff
-      require(0 <= uQual && uQual <= SAMUtils.MAX_PHRED_SCORE, s"Base quality $uQual is not in the range 0 ... ${SAMUtils.MAX_PHRED_SCORE} for read: $name")
     }
   }
 }
@@ -532,7 +516,7 @@ private[fastq] object FastqDemultiplexer {
   * @param maxNoCalls the maximum number of no calls in the sample barcode bases allowed for matching.
   */
 private class FastqDemultiplexer(val sampleInfos: Seq[SampleInfo],
-                                 val readStructures: Seq[ReadStructure],
+                                 readStructures: Seq[ReadStructure],
                                  val umiTag: String = ConsensusTags.UmiBases,
                                  val maxMismatches: Int = 2,
                                  val minMismatchDelta: Int = 1,
@@ -540,6 +524,7 @@ private class FastqDemultiplexer(val sampleInfos: Seq[SampleInfo],
   import FastqDemultiplexer._
 
   require(readStructures.nonEmpty, "No read structures were given")
+  private val variableReadStructures = readStructures.map(_.withVariableLastSegment)
 
   {
     val samples = sampleInfos.map(_.sample)
@@ -550,10 +535,10 @@ private class FastqDemultiplexer(val sampleInfos: Seq[SampleInfo],
   private val unmatchedSample        = sampleInfos.find(_.isUnmatched).getOrElse(throw new IllegalArgumentException("No unmatched sample provided."))
 
   /** The number of reads that are expected to be given to the [[demultiplex()]] method. */
-  def expectedNumberOfReads: Int = readStructures.length
+  def expectedNumberOfReads: Int = this.variableReadStructures.length
 
   /** True if the read structure implies paired end reads will be produced, false otherwise. */
-  val pairedEnd: Boolean = readStructures.count(_.template.nonEmpty) == 2
+  val pairedEnd: Boolean = this.variableReadStructures.count(_.templateSegments.nonEmpty) == 2
 
   /** Converts the segments across all reads to a string, with each read delimited by the given delimiter. */
   private def toBarcode(allBases: Seq[String], delimiter: String, allSegments: Seq[Seq[ReadSegment]]): String = {
@@ -566,13 +551,13 @@ private class FastqDemultiplexer(val sampleInfos: Seq[SampleInfo],
   }
 
   /** The sub-reads for the sample barcodes across all read structures. */
-  private val sampleBarcodeSegments = this.readStructures.map(_.sampleBarcode)
+  private val sampleBarcodeSegments = this.variableReadStructures.map(_.sampleBarcodeSegments)
 
   /** Get the sample barcodes for all reads, with reads delimited by the given delimiter. */
   private def sampleBarcode(allBases: Seq[String], delimiter: String): String = toBarcode(allBases, delimiter, sampleBarcodeSegments)
 
   /** The sub-reads for the molecular barcodes across all read structures. */
-  private val molecularBarcodeSegments = this.readStructures.map(_.molecularBarcode)
+  private val molecularBarcodeSegments = this.variableReadStructures.map(_.molecularBarcodeSegments)
 
   /** Get the molecular barcode bases for all reads, with reads delimited by the given delimiter. */
   private def molecularBarcode(allBases: Seq[String], delimiter: String): String = toBarcode(allBases, delimiter, molecularBarcodeSegments)
@@ -629,16 +614,16 @@ private class FastqDemultiplexer(val sampleInfos: Seq[SampleInfo],
     val molecularBarcode  = this.molecularBarcode(allBases, "-")
     val sampleBarcode     = this.sampleBarcode(allBases, "-")
     var readNumber        = 1
-    val records           = reads.zip(readStructures).flatMap { case (read, readStructure) =>
-      val templateSegments = readStructure.template
+    val records           = reads.zip(this.variableReadStructures).flatMap { case (read, readStructure) =>
+      val templateSegments = readStructure.templateSegments
       if (templateSegments.isEmpty) {
         None
       }
       else {
         // NB: strict=false in case folks have trimmed the reads prior can be handled gracefully.
-        val subReads: Seq[SubRead] = ReadStructure.structureReadWithQualities(bases=read.bases, qualities=read.quals, segments=templateSegments, strict=false)
-        val bases                  = subReads.map(_.bases).mkString
-        val quals                  = subReads.flatMap(_.quals).mkString
+        val subReads: Seq[SubReadWithQuals] = ReadStructure.extract(bases=read.bases, quals=read.quals, segments=templateSegments)
+        val bases = subReads.map(_.bases).mkString
+        val quals = subReads.map(_.quals).mkString
         require(bases.length == quals.length, s"Bases and qualities have differing lengths for read: ${read.header}")
         require(readNumber == 1 || readNumber == 2, s"Invalid read number '$readNumber' for read: ${read.header}")
 
