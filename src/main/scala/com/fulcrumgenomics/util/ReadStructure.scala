@@ -120,8 +120,21 @@ object ReadStructure {
     throw new IllegalArgumentException(s"$msg: $prefix[$error]$suffix")
   }
 
+  /**
+    * Creates sub-reads for the set of read segments provided.
+    * @param bases the sequenced bases
+    * @param segments the set of segments to extract
+    * @return a sequence of [[SubRead]] objects, one for each segment
+    */
   def extract(bases: String, segments: Seq[ReadSegment]): Seq[SubReadWithoutQuals] = segments.map(_.extract(bases))
 
+  /**
+    * Creates sub-reads for the set of read segments provided.
+    * @param bases the sequenced bases
+    * @param quals the quality scores for the bases (must be same length as bases)
+    * @param segments the set of segments to extract
+    * @return a sequence of [[SubRead]] objects, one for each segment
+    */
   def extract(bases: String, quals: String, segments: Seq[ReadSegment]): Seq[SubReadWithQuals] = {
     assert(bases.length == quals.length)
     segments.map(s => s.extract(bases, quals))
