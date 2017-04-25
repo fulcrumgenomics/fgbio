@@ -26,7 +26,7 @@ package com.fulcrumgenomics.fastq
 /**
   * Represents a record that can be read from or written to a fastq file.
   */
-case class FastqRecord(name: String, bases: String, quals: String, comment: Option[String], readNumber: Option[Int]) {
+case class FastqRecord(name: String, bases: String, quals: String, comment: Option[String] = None, readNumber: Option[Int] = None) {
   /** Constructs the header line from the name, read number and comment. */
   def header: String = name + readNumber.map("/" + _).getOrElse("") + comment.map(" " + _).getOrElse("")
 

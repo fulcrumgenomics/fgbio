@@ -37,105 +37,150 @@ import dagr.sopt.{arg, clp}
 import htsjdk.samtools.SAMFileHeader.{GroupOrder, SortOrder}
 import htsjdk.samtools.util.Iso8601Date
 import htsjdk.samtools.{ReservedTagConstants, SAMFileHeader, SAMFileWriter, SAMFileWriterFactory, SAMReadGroupRecord, SAMRecord}
+
 @clp(group=ClpGroups.Fastq, description=
   """
-    |DOES STUFF!!
+    |Generates an unmapped BAM (or SAM or CRAM) file from fastq files.  Takes in one or more fastq files (optionally
+    |gzipped), each representing a different sequencing read (e.g. R1, R2, I1 or I2) and can use a set of read
+    |structures to allocate bases in those reads to template reads, sample indices, unique molecular indices, or to
+    |designate bases to be skipped over.
+    |
+    |Read structures are made up of <number><operator> pairs much like the CIGAR string in BAM files. Four kinds of
+    |operators are recognized:
+    |  1. T identifies a template read
+    |  2. B identifies a sample barcode read
+    |  3. M identifies a unique molecular index read
+    |  4. S identifies a set of bases that should be skipped or ignored
+    |
+    |The last <number><operator> pair may be specified using a '+' sign instead of number to denote "all remaining
+    |bases". This is useful if, e.g., fastqs have been trimmed and contain reads of varying length.  For example
+    |to convert a paired-end run with an index read and where the first 5 bases of R1 are a UMI and the second
+    |five bases are monotemplate you might specify:
+    |  --input r1.fq r2.fq i1.fq --read-structures 5M5S+T +T +B
+    |
+    |Alternative if you know your reads are of fixed length you could specify:
+    |    --input r1.fq r2.fq i1.fq --read-structures 5M5S65T 75T 8B
+    |
+    |The same number of input files and read structures must be provided, with one exception: if supplying exactly
+    |1 or 2 fastq files, both of which are solely template reads, no read structures need be provided.
+    |
+    |The output file can be sorted by queryname using the --sort-order option; the default is to produce a BAM
+    |with reads in the same order as they appear in the fastq file.
   """)
 class FastqToBam
 (
   @arg(flag="i", doc="Fastq files corresponding to each sequencing read (e.g. R1, I1, etc.).") val input: Seq[PathToFastq],
   @arg(flag="o", doc="The output SAM or BAM file to be written.")                              val output: PathToBam,
-  @arg(flag="r", doc="Read structures, one for each of the FASTQs.")                           val readStructures: Seq[ReadStructure],
-  @arg(flag="s", doc="Sort order for the output sam/bam file (e.g. unsorted or queryname).")   val sortOrder: SortOrder = SortOrder.unsorted,
+  @arg(flag="r", doc="Read structures, one for each of the FASTQs.", minElements=0)            val readStructures: Seq[ReadStructure] = Seq(),
+  @arg(flag="s", doc="If true, queryname sort the BAM file, otherwise preserve input order.")  val sort: Boolean = false,
   @arg(flag="u", doc="Tag in which to store molecular barcodes/UMIs.")                         val umiTag: String = ConsensusTags.UmiBases,
   @arg(          doc="Read group ID to use in the file header.")                               val readGroupId: String = "A",
+  @arg(          doc="The name of the sequenced sample.")                                      val sample: String,
+  @arg(          doc="The name/ID of the sequenced library.")                                  val library: String,
   @arg(          doc="Sequencing Platform.")                                                   val platform: String = "illumina",
   @arg(doc="Platform unit (e.g. '<flowcell-barcode>.<lane>.<sample-barcode>')")                val platformUnit: Option[String] = None,
+  @arg(doc="Platform model to insert into the group header (ex. miseq, hiseq2500, hiseqX)")    val platformModel: Option[String] = None,
   @arg(doc="The sequencing center from which the data originated")                             val sequencingCenter: Option[String] = None,
   @arg(doc="Predicted median insert size, to insert into the read group header")               val predictedInsertSize: Option[Integer] = None,
-  @arg(doc="Platform model to insert into the group header (ex. miseq, hiseq2500, hiseqX)")    val platformModel: Option[String] = None,
-  @arg(doc="Comment(s) to include in the merged output file's header.", minElements = 0)       val comment: List[String] = Nil,
+  @arg(doc="Description of the read group.")                                                   val description: Option[String] = None,
+  @arg(doc="Comment(s) to include in the output file's header.", minElements = 0)              val comment: List[String] = Nil,
   @arg(doc="Date the run was produced, to insert into the read group header")                  val runDate: Option[Iso8601Date] = None
 )
   extends FgBioTool with LazyLogging {
 
+  // If no read structures are provided and we only have 1-2 fastqs, assume that they are just template reads
+  private val actualReadStructures = if (readStructures.isEmpty && (1 to 2 contains input.length)) input.map(_ => ReadStructure("+T")) else readStructures
+
   Io.assertReadable(input)
   Io.assertCanWriteFile(output)
-  validate(input.length == readStructures.length, "input and read-structure must be supplied the same number of times.")
-  validate(1 to 2 contains readStructures.flatMap(_.templateSegments).size, "read structures must contain 1-2 template reads total.")
+  validate(input.length == actualReadStructures.length, "input and read-structure must be supplied the same number of times.")
+  validate(1 to 2 contains actualReadStructures.flatMap(_.templateSegments).size, "read structures must contain 1-2 template reads total.")
 
   override def execute(): Unit = {
     val encoding = qualityEncoding
     val writer   = makeSamWriter()
-    val readers  = this.input.map(FastqSource(_))
+    val iterator = FastqSource.zipped(this.input.map(FastqSource(_)))
 
-    val progress = this.sortOrder match {
-      case SortOrder.unsorted => ProgressLogger(logger, verb="written")
-      case _ =>
-        writer.setProgressLogger(ProgressLogger(logger, verb="written"))
-        ProgressLogger(logger, verb="read")
+    // If sorting, setup a pair of progress loggers, otherwise just the one
+    val progress = if (sort) {
+      writer.setProgressLogger(ProgressLogger(logger, verb="written"))
+      ProgressLogger(logger, verb="read")
+    }
+    else {
+      ProgressLogger(logger, verb = "written")
     }
 
-    while (readers.forall(_.hasNext)) {
-      val recs = makeSamRecords(readers.map(_.next()), readStructures, writer.getFileHeader, encoding)
+    iterator.foreach { fqs =>
+      val recs = makeSamRecords(fqs, actualReadStructures, writer.getFileHeader, encoding)
       recs.foreach(writer.addAlignment)
       recs.foreach(progress.record)
     }
 
     writer.close()
-    if (!readers.forall(r => !r.hasNext)) fail("Fastq files appear to have different numbers of records.")
   }
 
   /** Makes the SAMFileWriter we'll use to output the file. */
   protected def makeSamWriter(): SAMFileWriter = {
     val header = new SAMFileHeader
-    header.setSortOrder(this.sortOrder)
-    if (this.sortOrder == SortOrder.unsorted) header.setGroupOrder(GroupOrder.query)
+    header.setSortOrder(if (sort) SortOrder.queryname else SortOrder.unsorted)
+    header.setGroupOrder(GroupOrder.query)
     header.setComments(util.Arrays.asList(this.comment:_*))
 
     val rg = new SAMReadGroupRecord(this.readGroupId)
+    rg.setSample(sample)
+    rg.setLibrary(library)
     rg.setPlatform(this.platform)
     this.platformUnit.foreach(pu => rg.setPlatformUnit(pu))
     this.sequencingCenter.foreach(cn => rg.setSequencingCenter(cn))
     this.predictedInsertSize.foreach(isize => rg.setPredictedMedianInsertSize(isize))
     this.platformModel.foreach(pm => rg.setPlatformModel(pm))
     this.runDate.foreach(date => rg.setRunDate(date))
+    this.description.foreach(desc => rg.setDescription(desc))
     header.addReadGroup(rg)
 
     val factory =  new SAMFileWriterFactory().setCreateIndex(false)
-    factory.makeWriter(header, this.sortOrder == SortOrder.unsorted, this.output.toFile, null)
+    factory.makeWriter(header, !sort, this.output.toFile, null)
   }
 
+  /** Generates SAMRecords for each of the template reads across the read structures. */
   protected def makeSamRecords(fqs: Seq[FastqRecord],
                                rss: Seq[ReadStructure],
                                header: SAMFileHeader,
                                encoding: QualityEncoding
                               ): Seq[SAMRecord] = {
-    val subs = fqs.iterator.zip(rss.iterator).flatMap { case(fq, rs) => rs.structureReadWithQualities(fq.bases, fq.quals, strict=false)}.toIndexedSeq
-    val sampleBarcode = subs.iterator.filter(_.segment.kind == SampleBarcode).map(_.bases).mkString("-")
-    val umi           = subs.iterator.filter(_.segment.kind == MolecularBarcode).map(_.bases).mkString("-")
-    val templates     = subs.iterator.filter(_.segment.kind == Template).toList
+    // Make the SAMRecords inside a try so we can provide more informative error messages
+    try {
+      val subs = fqs.iterator.zip(rss.iterator).flatMap { case(fq, rs) => rs.extract(fq.bases, fq.quals) }.toIndexedSeq
+      val sampleBarcode = subs.iterator.filter(_.kind == SampleBarcode).map(_.bases).mkString("-")
+      val umi           = subs.iterator.filter(_.kind == MolecularBarcode).map(_.bases).mkString("-")
+      val templates     = subs.iterator.filter(_.kind == Template).toList
 
-    templates.zipWithIndex.map { case (read, index) =>
-      val rec = new SAMRecord(header)
-      rec.setAttribute(ReservedTagConstants.READ_GROUP_ID, this.readGroupId)
-      rec.setReadName(fqs.head.name)
-      rec.setReadString(read.bases)
-      rec.setBaseQualities(encoding.toStandardNumeric(read.quals))
-      rec.setReadUnmappedFlag(true)
-      if (templates.size == 2) {
-        rec.setReadPairedFlag(true)
-        rec.setMateUnmappedFlag(true)
-        if (index == 1) rec.setFirstOfPairFlag(true) else rec.setSecondOfPairFlag(true)
+      templates.zipWithIndex.map { case (read, index) =>
+        // If the template read had no bases, we'll substitute in a single N @ Q2 below to keep htsjdk happy
+        val empty = read.bases.length == 0
+
+        val rec = new SAMRecord(header)
+        rec.setAttribute(ReservedTagConstants.READ_GROUP_ID, this.readGroupId)
+        rec.setReadName(fqs.head.name)
+        rec.setReadString(if (empty) "N" else read.bases)
+        rec.setBaseQualities(if (empty) Array[Byte](2) else encoding.toStandardNumeric(read.quals))
+        rec.setReadUnmappedFlag(true)
+        if (templates.size == 2) {
+          rec.setReadPairedFlag(true)
+          rec.setMateUnmappedFlag(true)
+          if (index == 0) rec.setFirstOfPairFlag(true) else rec.setSecondOfPairFlag(true)
+        }
+
+        if (sampleBarcode.nonEmpty) rec.setAttribute("BC", sampleBarcode)
+        if (umi.nonEmpty) rec.setAttribute(this.umiTag, umi)
+
+        rec
       }
-
-      if (sampleBarcode.nonEmpty) rec.setAttribute("BC", sampleBarcode)
-      if (umi.nonEmpty) rec.setAttribute(this.umiTag, umi)
-
-      rec
+    }
+    catch {
+      case ex: Exception => fail(s"Failed to process record(s) with name ${fqs.map(_.name).head} due to: ${ex.getMessage}")
     }
   }
-
 
   /** Determine the quality encoding of the incoming fastq files. */
   protected def qualityEncoding: QualityEncoding = {

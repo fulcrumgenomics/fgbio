@@ -116,20 +116,6 @@ object DemuxFastqs {
     Sample(sampleOrdinal=sampleOrdinal, sampleId=UnmatchedSampleId, sampleName=UnmatchedSampleId, libraryId=UnmatchedSampleId, i7IndexBases=Some(noMatchBarcode))
   }
 
-  /** A little class to group reads from the same template together. */
-  private class ZippedIterator(sources: Seq[Iterator[FastqRecord]]) extends Iterator[Seq[FastqRecord]] {
-    require(sources.nonEmpty, "No sources provided")
-    def hasNext(): Boolean = sources.exists(_.hasNext)
-    def next(): Seq[FastqRecord] = {
-      if (!this.hasNext) throw new NoSuchElementException("Calling next() when hasNext() is false.")
-      require(sources.forall(_.hasNext) == sources.head.hasNext, "Sources are out of sync.")
-      val records = sources.map(_.next)
-      // Check that the FASTQ records all have the same name
-      require(records.forall(_.name == records.head.name), "Sources out of sync, found read names: \n" + records.map(_.name).mkString("\n"))
-      records
-    }
-  }
-
   private[fastq] def toSampleOutputPrefix(sample: Sample, isUnmatched: Boolean, output: DirPath, unmatched: String): PathPrefix = {
     if (isUnmatched) PathUtil.removeExtension(output.resolve(unmatched)) else outputPrefixFrom(output, sample)
   }
@@ -140,7 +126,7 @@ object DemuxFastqs {
     * @param demultiplexer the demultiplexer to use.  The demultiplexer's [[FastqDemultiplexer.demultiplex()]] method
     *                      expects the same number of reads as sources.
     */
-  def demultiplexingIterator(sources: Seq[Iterator[FastqRecord]],
+  def demultiplexingIterator(sources: Seq[FastqSource],
                              demultiplexer: FastqDemultiplexer,
                              threads: Int,
                              batchSize: Int = DemuxBatchRecordsSize): Iterator[DemuxResult] = {
@@ -148,7 +134,7 @@ object DemuxFastqs {
     require(demultiplexer.expectedNumberOfReads == sources.length,
       s"The demultiplexer expects ${demultiplexer.expectedNumberOfReads} reads but ${sources.length} FASTQ sources given.")
 
-    val zippedIterator = new ZippedIterator(sources=sources)
+    val zippedIterator = FastqSource.zipped(sources)
     if (threads > 1) {
       // Developer Note: Iterator does not support parallel operations, so we need to group together records into a
       // [[List]] or [[Seq]].  A fixed number of records are grouped to reduce memory overhead.
