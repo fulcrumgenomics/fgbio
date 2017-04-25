@@ -110,9 +110,9 @@ object DemuxFastqs {
   private[fastq] def unmatchedSample(sampleOrdinal: Int, readStructures: Seq[ReadStructure]): Sample = {
     val barcodeSegments = readStructures.flatMap(_.sampleBarcodeSegments)
     require(barcodeSegments.nonEmpty, "No sample barcodes found in read structures: " + readStructures.mkString(", "))
-    require(barcodeSegments.forall(_.hasDefiniteLength), "Barcode segments must have fixed lengths in: " + readStructures.mkString(", "))
+    require(barcodeSegments.forall(_.hasFixedLength), "Barcode segments must have fixed lengths in: " + readStructures.mkString(", "))
 
-    val noMatchBarcode: String = barcodeSegments.map("N" * _.length.getOrElse(0)).mkString("-")
+    val noMatchBarcode: String = barcodeSegments.map("N" * _.fixedLength).mkString("-")
     Sample(sampleOrdinal=sampleOrdinal, sampleId=UnmatchedSampleId, sampleName=UnmatchedSampleId, libraryId=UnmatchedSampleId, i7IndexBases=Some(noMatchBarcode))
   }
 
@@ -304,7 +304,7 @@ val qualityFormat: Option[FastqQualityFormat] = None,
 
     // Validate that the # of sample barcode bases in the read structure matches the # of sample barcode in the sample sheet.
     {
-      val rsNumSampleBarcodeBases = readStructures.map(_.sampleBarcodeSegments.map(_.length.getOrElse(0)).sum).sum
+      val rsNumSampleBarcodeBases = readStructures.map(_.sampleBarcodeSegments.map(_.fixedLength).sum).sum
       samples.foreach { sample =>
         val numSampleBarcodeBases = sample.sampleBarcodeBytes.length
         require(numSampleBarcodeBases == rsNumSampleBarcodeBases,
@@ -532,7 +532,7 @@ private class FastqDemultiplexer(val sampleInfos: Seq[SampleInfo],
     allBases.zip(allSegments).map { case (bases, segments) =>
       // Get the bases for the given read.  For example, we may have 8B2S4B100T.  If the segments are sample barcodes,
       // we want the bases corresponding to the 8B4S.
-      ReadStructure.structureRead(bases=bases, segments=segments).map(_.bases).filter(_.nonEmpty).mkString
+      ReadStructure.extract(bases=bases, segments=segments).map(_.bases).filter(_.nonEmpty).mkString
     }.filter(_.nonEmpty).mkString(delimiter)
   }
 

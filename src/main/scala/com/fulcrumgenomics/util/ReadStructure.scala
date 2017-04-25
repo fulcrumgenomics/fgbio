@@ -52,7 +52,7 @@ object ReadStructure {
   /** Creates a new ReadStructure, optionally resetting the offsets on each of the segments. */
   def apply(segments: Seq[ReadSegment], resetOffsets: Boolean = false): ReadStructure = {
     // Check that none but the last segment has an indefinite length
-    require(segments.dropRight(1).forall(_.hasDefiniteLength), s"Variable length ($AnyLengthChar) can only be used in the last segment: ${segments.mkString}")
+    require(segments.dropRight(1).forall(_.hasFixedLength), s"Variable length ($AnyLengthChar) can only be used in the last segment: ${segments.mkString}")
 
     val segs = if (!resetOffsets) segments else {
       var idx, off = 0
@@ -139,22 +139,6 @@ object ReadStructure {
     assert(bases.length == quals.length)
     segments.map(s => s.extract(bases, quals))
   }
-
-  /** Splits the given bases into tuples with its associated read segment.  If strict is false then only return
-    * [[com.fulcrumgenomics.util.ReadStructure.SubRead]]s for which we have bases in `bases`, otherwise throw an exception.
-    **/
-  @deprecated(message="Use ReadStructure.extract() instead.")
-  def structureRead(bases: String, segments: Seq[ReadSegment]): Seq[SubReadWithoutQuals] = {
-    extract(bases=bases, segments=segments)
-  }
-
-  /** Splits the given bases and qualities into triples with its associated read segment.  If strict is false then only
-    * return [[com.fulcrumgenomics.util.ReadStructure.SubRead]]s for which we have bases in `bases`, otherwise throw an exception.
-    **/
-  @deprecated(message="Use ReadStructure.extract() instead.")
-  def structureReadWithQualities(bases: String, qualities: String, segments: Seq[ReadSegment]): Seq[SubReadWithQuals] = {
-    extract(bases=bases, quals=qualities, segments=segments)
-  }
 }
 
 /**
@@ -184,7 +168,7 @@ class ReadStructure private(val segments: Seq[ReadSegment]) extends immutable.Se
 
   /** Generates a new ReadStucture that is the same as this one except that the last segment has undefined length. */
   def withVariableLastSegment: ReadStructure =
-    if (this.segments.last.hasDefiniteLength) new ReadStructure(segments.dropRight(1) :+ segments.last.copy(length=None)) else this
+    if (this.segments.last.hasFixedLength) new ReadStructure(segments.dropRight(1) :+ segments.last.copy(length=None)) else this
 
   /** Splits the given bases into tuples with its associated read segment.  If strict is false then only return
     * tuples for which we have bases in `bases`, otherwise throw an exception.
@@ -245,14 +229,18 @@ object ReadSegment {
   def apply(offset: Int, length: Int, c: Char): ReadSegment = new ReadSegment(offset=offset, length=Some(length), kind=SegmentType(c))
 }
 
-/** Encapsulates all the information about a segment within a read structure. */
+/**
+  * Encapsulates all the information about a segment within a read structure. A segment can either
+  * have a definite length, in which case length must be Some(Int), or an indefinite length (can be
+  * any length, 0 or more) in which case length must be None.
+  */
 case class ReadSegment (offset: Int, length: Option[Int], kind: SegmentType) {
   /** Checks some requirements and then calculates the end position for the segment for the given read. */
   private def calculateEnd(bases: String): Int = {
     require(bases.length >= offset, s"Read ends before read segment starts: $this")
     length.foreach(l => require(bases.length >= offset + l, s"Read ends before end of segment: $this"))
 
-    if (hasDefiniteLength) math.min(offset + length.get, bases.length)
+    if (hasFixedLength) math.min(offset + fixedLength, bases.length)
     else bases.length
   }
 
@@ -279,7 +267,10 @@ case class ReadSegment (offset: Int, length: Option[Int], kind: SegmentType) {
   }
 
   /** Returns true if the read segment has a defined length. */
-  def hasDefiniteLength: Boolean = this.length.nonEmpty
+  def hasFixedLength: Boolean = this.length.nonEmpty
+
+  /** Returns the fixed length if there is one. Throws an exception on segments without fixed lengths! */
+  def fixedLength: Int = this.length.getOrElse(throw new IllegalStateException(s"fixedLength called on variable length segment: $this"))
 
   /** Provides a string representation of this segment (ex. "23T" or "4M"). */
   override def toString: String = s"${length.getOrElse(ReadStructure.AnyLengthChar)}${kind.code}"

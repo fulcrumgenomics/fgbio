@@ -226,7 +226,7 @@ object ExtractUmisFromBam {
     // get the bases associated with each segment
     val readStructureBases = readStructure.structureReadWithQualities(bases, qualities, strict = false)
     // get the molecular index segments
-    val molecularIndexBases = readStructureBases.filter(_.segment.kind == SegmentType.MolecularBarcode).map(_.bases)
+    val molecularIndexBases = readStructureBases.filter(_.kind == SegmentType.MolecularBarcode).map(_.bases)
 
     // set the index tags
     // TODO: when we remove the deprecated molecularBarcodeTags option, consider whether or not we still
@@ -240,7 +240,7 @@ object ExtractUmisFromBam {
     }
 
     // keep only template bases and qualities in the output read
-    val basesAndQualities = readStructureBases.filter(_.segment.kind == SegmentType.Template)
+    val basesAndQualities = readStructureBases.filter(_.kind == SegmentType.Template)
 
     // update any clipping information
     updateClippingInformation(record=record, clippingAttribute=clippingAttribute, readStructure=readStructure)

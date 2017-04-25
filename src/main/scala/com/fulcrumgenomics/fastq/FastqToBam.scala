@@ -61,6 +61,8 @@ import htsjdk.samtools.{ReservedTagConstants, SAMFileHeader, SAMFileWriter, SAMF
     |Alternative if you know your reads are of fixed length you could specify:
     |    --input r1.fq r2.fq i1.fq --read-structures 5M5S65T 75T 8B
     |
+    |For more information on read structures see: https://github.com/fulcrumgenomics/fgbio/wiki/Read-Structures
+    |
     |The same number of input files and read structures must be provided, with one exception: if supplying exactly
     |1 or 2 fastq files, both of which are solely template reads, no read structures need be provided.
     |
@@ -103,11 +105,11 @@ class FastqToBam
 
     // If sorting, setup a pair of progress loggers, otherwise just the one
     val progress = if (sort) {
-      writer.setProgressLogger(ProgressLogger(logger, verb="written"))
-      ProgressLogger(logger, verb="read")
+      writer.setProgressLogger(ProgressLogger(logger, verb="Wrote"))
+      ProgressLogger(logger, verb="Read")
     }
     else {
-      ProgressLogger(logger, verb = "written")
+      ProgressLogger(logger, verb = "Wrote")
     }
 
     iterator.foreach { fqs =>
@@ -144,13 +146,13 @@ class FastqToBam
 
   /** Generates SAMRecords for each of the template reads across the read structures. */
   protected def makeSamRecords(fqs: Seq[FastqRecord],
-                               rss: Seq[ReadStructure],
+                               structures: Seq[ReadStructure],
                                header: SAMFileHeader,
                                encoding: QualityEncoding
                               ): Seq[SAMRecord] = {
     // Make the SAMRecords inside a try so we can provide more informative error messages
     try {
-      val subs = fqs.iterator.zip(rss.iterator).flatMap { case(fq, rs) => rs.extract(fq.bases, fq.quals) }.toIndexedSeq
+      val subs = fqs.iterator.zip(structures.iterator).flatMap { case(fq, rs) => rs.extract(fq.bases, fq.quals) }.toIndexedSeq
       val sampleBarcode = subs.iterator.filter(_.kind == SampleBarcode).map(_.bases).mkString("-")
       val umi           = subs.iterator.filter(_.kind == MolecularBarcode).map(_.bases).mkString("-")
       val templates     = subs.iterator.filter(_.kind == Template).toList

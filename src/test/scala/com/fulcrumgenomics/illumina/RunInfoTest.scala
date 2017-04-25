@@ -46,7 +46,7 @@ object RunInfoTest extends UnitSpec {
 
     val reads = readStructure.zipWithIndex.map { case (segment, idx) =>
       val isIndexedRead = if (segment.kind == SegmentType.SampleBarcode) "Y" else "N"
-      s"""      <Read Number="${idx+1}" NumCycles="${segment.length.get}" IsIndexedRead="${isIndexedRead}" />"""
+      s"""      <Read Number="${idx+1}" NumCycles="${segment.fixedLength}" IsIndexedRead="${isIndexedRead}" />"""
     }.mkString("\n")
 
     val post =
