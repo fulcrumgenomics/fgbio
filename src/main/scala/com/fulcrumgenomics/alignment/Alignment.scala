@@ -25,7 +25,9 @@
 package com.fulcrumgenomics.alignment
 
 import com.fulcrumgenomics.FgBioDef._
-import htsjdk.samtools.CigarOperator
+import htsjdk.samtools.{CigarOperator, TextCigarCodec, Cigar => HtsJdkCigar}
+
+import scala.collection.mutable.ArrayBuffer
 
 /**
   * Represents an element in a Cigar.
@@ -38,6 +40,14 @@ case class CigarElem(operator: CigarOperator, length: Int) {
 
   /** Returns how this element should be represented in a cigar string. */
   override def toString: String = length + operator.toString
+}
+
+object Cigar {
+  /** Constructs a Cigar objects from the HTSJDK class of the same name. */
+  def apply(ciggy: HtsJdkCigar): Cigar = Cigar(ciggy.iterator().map(e => CigarElem(e.getOperator, e.getLength)).toIndexedSeq)
+
+  /** Constructs a Cigar object from a String. */
+  def apply(cigar: String): Cigar = apply(TextCigarCodec.decode(cigar))
 }
 
 /**
@@ -55,6 +65,35 @@ case class Cigar(elems: IndexedSeq[CigarElem]) extends Iterable[CigarElem] {
 
   /** Returns the length of the alignment on the query sequence. */
   def lengthOnTarget: Int = elems.filter(_.operator.consumesReferenceBases()).map(_.length).sum
+
+  /** Yields a new cigar that is truncated to the given ength on the query. */
+  def truncateToQueryLength(len: Int): Cigar = truncate(len, e => e.operator.consumesReadBases())
+
+  /** Yields a new cigar that is truncated to the given length on the target. */
+  def truncateToTargetLength(len: Int): Cigar = truncate(len, e => e.operator.consumesReferenceBases())
+
+  /** Truncates the cigar based on either query or target length cutoff. */
+  private def truncate(len: Int, shouldCount: CigarElem => Boolean): Cigar = {
+    var pos = 1
+    val iter = iterator
+    val buffer = new ArrayBuffer[CigarElem]()
+    while (pos <= len && iter.hasNext) {
+      val elem = iter.next()
+      if (shouldCount(elem)) {
+        val maxElemLength = len - pos + 1
+        buffer += (if (elem.length <= maxElemLength) elem else elem.copy(length=maxElemLength))
+        pos += elem.length
+      }
+      else {
+        buffer += elem
+      }
+    }
+
+    Cigar(buffer)
+  }
+
+  /** Returns a new Cigar that contains the same elements in the reverse order of this cigar. */
+  def reverse: Cigar = Cigar(this.elems.reverse)
 
   /** Returns the canonical Cigar string. */
   override def toString(): String = elems.mkString

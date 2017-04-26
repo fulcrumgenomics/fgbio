@@ -25,15 +25,16 @@
 package com.fulcrumgenomics.umi
 
 import com.fulcrumgenomics.FgBioDef._
+import com.fulcrumgenomics.alignment.Cigar
 import com.fulcrumgenomics.bam.Bams
 import com.fulcrumgenomics.umi.UmiConsensusCaller._
 import com.fulcrumgenomics.util.NumericTypes.PhredScore
 import dagr.commons.util.Logger
 import htsjdk.samtools.SAMFileHeader.{GroupOrder, SortOrder}
-import htsjdk.samtools.util.{Murmur3, SequenceUtil}
+import htsjdk.samtools.util.{Murmur3, SequenceUtil, TrimmingUtil}
 import htsjdk.samtools.{SAMFileHeader, SAMReadGroupRecord, SAMRecord, SAMTag}
-import math.{min,abs}
 
+import math.{abs, min}
 import scala.collection.mutable
 
 /**
@@ -62,7 +63,7 @@ object UmiConsensusCaller {
   }
 
   /** Stores information about a read to be fed into a consensus. */
-  case class SourceRead(id: String, bases: Array[Byte], quals: Array[Byte]) extends SimpleRead {
+  case class SourceRead(id: String, bases: Array[Byte], quals: Array[Byte], cigar: Cigar, sam: Option[SAMRecord] = None) extends SimpleRead {
     require(bases.length == quals.length, "Bases and qualities are not the same length.")
   }
 
@@ -171,17 +172,22 @@ trait UmiConsensusCaller[C <: SimpleRead] {
     *
     * @return Some(SourceRead) if there are any called bases with quality > minBaseQuality, else None
     */
-  protected[umi] def toSourceRead(rec: SAMRecord, minBaseQuality: PhredScore): Option[SourceRead] = {
+  protected[umi] def toSourceRead(rec: SAMRecord, minBaseQuality: PhredScore, trim: Boolean): Option[SourceRead] = {
     // Extract and possibly RC the source bases and quals from the SAMRecord
-    val bases = rec.getReadBases.clone()
-    val quals = rec.getBaseQualities.clone()
+    var bases = rec.getReadBases.clone()
+    var quals = rec.getBaseQualities.clone()
+    var cigar = Cigar(rec.getCigar)
     if (rec.getReadNegativeStrandFlag) {
       SequenceUtil.reverseComplement(bases)
       SequenceUtil.reverse(quals, 0, quals.length)
+      cigar = cigar.reverse
     }
 
-    // Mask low quality bases to Ns
-    forloop (from=0, until=bases.length) { i =>
+    // Quality trim the reads if requested.
+    val trimToLength = if (trim) TrimmingUtil.findQualityTrimPoint(quals, minBaseQuality) else bases.length
+
+    // Mask remaining low quality bases to Ns
+    forloop (from=0, until=trimToLength) { i =>
       if (quals(i) < minBaseQuality) {
         bases(i) = NoCall
         quals(i) = NoCallQual
@@ -191,20 +197,23 @@ trait UmiConsensusCaller[C <: SimpleRead] {
     // Find the last non-N base of sufficient quality in the record, starting from either the
     // end of the read, or the end of the insert, whichever is shorter!
     val len = {
-      var index = if (Bams.isFrPair(rec)) min(abs(rec.getInferredInsertSize), bases.length) - 1 else bases.length - 1
+      var index = if (Bams.isFrPair(rec)) min(abs(rec.getInferredInsertSize), trimToLength) - 1 else trimToLength - 1
       while (index >= 0 && (bases(index) == NoCall)) index -= 1
       index + 1
     }
 
     len match {
-      case 0                         => None
-      case n if n == bases.length    => Some(SourceRead(sourceMoleculeId(rec), bases, quals))
+      case 0 =>
+        rejectRecords(Seq(rec))
+        None
+      case n if n == bases.length =>
+        Some(SourceRead(sourceMoleculeId(rec), bases, quals, cigar, Some(rec)))
       case n                         =>
         val trimmedBases = new Array[Byte](len)
         val trimmedQuals = new Array[Byte](len)
         System.arraycopy(bases, 0, trimmedBases, 0, len)
         System.arraycopy(quals, 0, trimmedQuals, 0, len)
-        Some(SourceRead(sourceMoleculeId(rec), trimmedBases, trimmedQuals))
+        Some(SourceRead(sourceMoleculeId(rec), trimmedBases, trimmedQuals, cigar.truncateToQueryLength(len), Some(rec)))
     }
   }
 
@@ -255,10 +264,10 @@ trait UmiConsensusCaller[C <: SimpleRead] {
     *
     * NOTE: filtered out reads are sent to the [[rejectRecords()]] method and do not need further handling
     */
-  protected[umi] def filterToMostCommonAlignment(recs: Seq[SAMRecord]): Seq[SAMRecord] = {
+  protected[umi] def filterToMostCommonAlignment(recs: Seq[SourceRead]): Seq[SourceRead] = {
     val groups = recs.groupBy { r =>
       val builder = new mutable.StringBuilder
-      val elems = r.getCigar.getCigarElements.iterator().bufferBetter
+      val elems = r.cigar.iterator.bufferBetter
 
       // This loop constructs a pseudo-cigar for each read.  The result is a string that contains, for each indel
       // operator in the reads's cigar, the number of non-indel bases in the read since the start/last indel, then
@@ -269,7 +278,7 @@ trait UmiConsensusCaller[C <: SimpleRead] {
       while (elems.nonEmpty) {
         // Consume and merge all non-indel operators (clip, match/mismatch) at the head of the
         // iterator since we only care where the indels occur relative to the read
-        val len = elems.takeWhile(e => !e.getOperator.isIndelOrSkippedRegion).map(_.getLength).sum
+        val len = elems.takeWhile(e => !e.operator.isIndelOrSkippedRegion).map(_.length).sum
 
         // Now the iterator is either at the end of the read, in which case we don't need to do anything,
         // or it is before an I or D cigar entry, so we should output how much read it took to get here
@@ -286,8 +295,8 @@ trait UmiConsensusCaller[C <: SimpleRead] {
 
     val max = groups.values.map(_.size).max
     val (keepers, rejects) = groups.values.partition(_.size == max)
-    rejects.foreach { rejectGroup =>
-      rejectRecords(rejectGroup)
+    (rejects ++ keepers.tail).foreach { rejectGroup =>
+      rejectRecords(rejectGroup.flatMap(_.sam))
       this._filteredForMinorityAlignment += rejectGroup.size
     }
 

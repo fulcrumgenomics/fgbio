@@ -47,6 +47,7 @@ object VanillaUmiConsensusCallerOptions {
   val DefaultMinConsensusBaseQuality: PhredScore = 40.toByte
   val DefaultMinReads: Int                       = 2
   val DefaultProducePerBaseTags: Boolean         = true
+  val DefaultQualityTrim: Boolean                = false
 }
 
 /**
@@ -58,6 +59,7 @@ case class VanillaUmiConsensusCallerOptions
   errorRatePreUmi: PhredScore         = DefaultErrorRatePreUmi,
   errorRatePostUmi: PhredScore        = DefaultErrorRatePostUmi,
   minInputBaseQuality: PhredScore     = DefaultMinInputBaseQuality,
+  qualityTrim: Boolean                = DefaultQualityTrim,
   minConsensusBaseQuality: PhredScore = DefaultMinConsensusBaseQuality,
   minReads: Int                       = DefaultMinReads,
   producePerBaseTags: Boolean         = DefaultProducePerBaseTags
@@ -141,7 +143,8 @@ class VanillaUmiConsensusCaller(override val readNamePrefix: String,
       None
     }
     else {
-      val filteredRecords = filterToMostCommonAlignment(records)
+      val sourceRecords   = records.flatMap(toSourceRead(_, this.options.minInputBaseQuality, this.options.qualityTrim))
+      val filteredRecords = filterToMostCommonAlignment(sourceRecords)
 
       if (filteredRecords.size < records.size) {
         val r = records.head
@@ -151,8 +154,7 @@ class VanillaUmiConsensusCaller(override val readNamePrefix: String,
         logger.debug("Discarded ", discards, "/", records.size, " records due to mismatched alignments for ", m, n)
       }
 
-      if (filteredRecords.size < this.options.minReads) None
-      else consensusCall(filteredRecords.flatMap(r => toSourceRead(r, this.options.minInputBaseQuality)))
+      if (filteredRecords.size < this.options.minReads) None else consensusCall(filteredRecords)
     }
   }
 

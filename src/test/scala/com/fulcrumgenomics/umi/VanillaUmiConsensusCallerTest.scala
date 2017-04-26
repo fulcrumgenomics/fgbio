@@ -26,6 +26,7 @@
 package com.fulcrumgenomics.umi
 
 import com.fulcrumgenomics.FgBioDef._
+import com.fulcrumgenomics.alignment.Cigar
 import com.fulcrumgenomics.testing.SamRecordSetBuilder.Minus
 import com.fulcrumgenomics.testing.{SamRecordSetBuilder, UnitSpec}
 import com.fulcrumgenomics.umi.UmiConsensusCaller.SourceRead
@@ -35,6 +36,8 @@ import htsjdk.samtools.util.CloserUtil
 import htsjdk.samtools.{SAMRecordSetBuilder, SAMUtils}
 import net.jafama.FastMath._
 import org.scalatest.OptionValues
+
+import scala.collection.mutable.ArrayBuffer
 
 /**
   * Tests for ConsensusCaller.
@@ -49,10 +52,17 @@ class VanillaUmiConsensusCallerTest extends UnitSpec with OptionValues {
   }
 
   /** Helper function to make a SourceRead. */
-  def src(bases: String, quals: TraversableOnce[Int]) = SourceRead(id="x", bases.getBytes(), quals.toArray.map(_.toByte))
+  def src(bases: String, quals: TraversableOnce[Int]) = SourceRead(id="x", bases.getBytes(), quals.toArray.map(_.toByte), Cigar(bases.length + "M"))
 
   /** Helper function to make a SourceRead from bases and Phred-33 ascii quals. */
-  def src(bases: String, quals: String) = SourceRead(id="x", bases.getBytes(), SAMUtils.fastqToPhred(quals))
+  def src(bases: String, quals: String) = SourceRead(id="x", bases.getBytes(), SAMUtils.fastqToPhred(quals), Cigar(bases.length + "M"))
+
+  /** Helper function to make a SourceRead from bases and Phred-33 ascii quals. */
+  def src(cigar: String) = {
+    val cig = Cigar(cigar)
+    val len = cig.lengthOnQuery
+    SourceRead(id="x", ("A"*len).getBytes, Array.tabulate(len)(_ => 30.toByte), cigar=cig)
+  }
 
   /**
     * Function to calculated the expected quality of a consensus base in non-log math, that should work for
@@ -384,46 +394,44 @@ class VanillaUmiConsensusCallerTest extends UnitSpec with OptionValues {
   }
 
   "VanillaUmiConsensusCaller.filterToMostCommonAlignment" should "return all reads when all cigars are 50M" in {
-    val builder = new SamRecordSetBuilder(readLength=50)
-    (1 to 10).foreach { i => builder.addFrag(start=100, cigar="50M") }
-    val recs = cc().filterToMostCommonAlignment(builder.toSeq)
+    val srcs = (1 to 10).map { i => src(cigar="50M") }
+    val recs = cc().filterToMostCommonAlignment(srcs)
     recs should have size 10
   }
 
   it should "return all reads when all cigars are complicated but the same" in {
-    val builder = new SamRecordSetBuilder(readLength=50)
-    (1 to 10).foreach { i => builder.addFrag(start=100, cigar="10M5D10M5I20M5S") }
-    val recs = cc().filterToMostCommonAlignment(builder.toSeq)
+    val srcs = (1 to 10).map { i => src(cigar="10M5D10M5I20M5S") }
+    val recs = cc().filterToMostCommonAlignment(srcs)
     recs should have size 10
   }
 
   it should "return only the 50M reads (i.e. the most common alignment)" in {
-    val builder = new SamRecordSetBuilder(readLength=50)
-    (1 to  3).foreach { i => builder.addFrag(start=100, cigar="25M1D25M") }
-    (1 to 10).foreach { i => builder.addFrag(start=100, cigar="50M") }
-    (1 to  3).foreach { i => builder.addFrag(start=100, cigar="25M2I23M") }
+    val buffer = new ArrayBuffer[SourceRead]
+    (1 to  3).foreach { i => buffer += src(cigar="25M1D25M") }
+    (1 to 10).foreach { i => buffer += src(cigar="50M") }
+    (1 to  3).foreach { i => buffer += src(cigar="25M2I23M") }
 
-    val recs = cc().filterToMostCommonAlignment(builder.toSeq)
+    val recs = cc().filterToMostCommonAlignment(buffer)
     recs should have size 10
-    recs.map(_.getCigarString).distinct shouldBe Seq("50M")
+    recs.map(_.cigar.toString()).distinct shouldBe Seq("50M")
   }
 
   it should "return only the reads with a single base deletion at base 25" in {
-    val builder = new SamRecordSetBuilder(readLength=50)
+    val buffer = new ArrayBuffer[SourceRead]
     // These should all be returned
-    (1 to  5).foreach { i => builder.addFrag(start=100, cigar="25M1D25M") }
-    (1 to  2).foreach { i => builder.addFrag(start=100, cigar="5S20M1D25M") }
-    (1 to  2).foreach { i => builder.addFrag(start=100, cigar="5S20M1D20M5H") }
-    (1 to  2).foreach { i => builder.addFrag(start=100, cigar="25M1D20M5S") }
+    (1 to  5).foreach { i => buffer += src(cigar="25M1D25M") }
+    (1 to  2).foreach { i => buffer += src(cigar="5S20M1D25M") }
+    (1 to  2).foreach { i => buffer += src(cigar="5S20M1D20M5H") }
+    (1 to  2).foreach { i => buffer += src(cigar="25M1D20M5S") }
 
     // These should not be!
-    (1 to  2).foreach { i => builder.addFrag(start=100, cigar="25M2D25M") }
-    (1 to  2).foreach { i => builder.addFrag(start=100, cigar="25M1I24M") }
-    (1 to  2).foreach { i => builder.addFrag(start=100, cigar="20M1D5M1D25M") }
+    (1 to  2).foreach { i => buffer += src(cigar="25M2D25M") }
+    (1 to  2).foreach { i => buffer += src(cigar="25M1I24M") }
+    (1 to  2).foreach { i => buffer += src(cigar="20M1D5M1D25M") }
 
-    val recs = cc().filterToMostCommonAlignment(builder.toSeq)
+    val recs = cc().filterToMostCommonAlignment(buffer)
     recs should have size 11
-    recs.map(_.getCigarString).distinct.sorted shouldBe Seq("25M1D25M", "5S20M1D25M", "5S20M1D20M5H", "25M1D20M5S").sorted
+    recs.map(_.cigar.toString).distinct.sorted shouldBe Seq("25M1D25M", "5S20M1D25M", "5S20M1D20M5H", "25M1D20M5S").sorted
   }
 
   it should "calculate the # of errors relative to the most likely consensus call, even when the final call is an N" in {
@@ -443,7 +451,7 @@ class VanillaUmiConsensusCallerTest extends UnitSpec with OptionValues {
   "VanillaConsensusCaller.toSourceRead" should "mask bases that are below the quality threshold" in {
     val builder = new SamRecordSetBuilder(readLength=10)
     val rec     = builder.addFrag(start=1).map { r => r.setReadString("AAAAAAAAAA"); r.setBaseQualities(Array[Byte](2,30,19,21,18,20,0,30,2,30)); r}.get
-    val source  = cc().toSourceRead(rec, minBaseQuality=20.toByte).get
+    val source  = cc().toSourceRead(rec, minBaseQuality=20.toByte, trim=false).get
 
     source.baseString shouldBe "NANANANANA"
     source.quals      shouldBe Array[Byte](2,30,2,21,2,20,2,30,2,30)
@@ -452,7 +460,7 @@ class VanillaUmiConsensusCallerTest extends UnitSpec with OptionValues {
   it should "trim the source read when the end is low-quality so that there are no trailing no-calls" in {
     val builder = new SamRecordSetBuilder(readLength=10)
     val rec     = builder.addFrag(start=1).map { r => r.setReadString("AAAAAAAAAA"); r.setBaseQualities(Array[Byte](30,30,30,30,30,30,2,2,2,2)); r}.get
-    val source  = cc().toSourceRead(rec, minBaseQuality=20.toByte).get
+    val source  = cc().toSourceRead(rec, minBaseQuality=20.toByte, trim=false).get
 
     source.baseString shouldBe "AAAAAA"
     source.quals      shouldBe Array[Byte](30,30,30,30,30,30)
@@ -461,7 +469,7 @@ class VanillaUmiConsensusCallerTest extends UnitSpec with OptionValues {
   it should "trim the source read when the end of the raw read is all Ns so that there are no trailing no-calls" in {
     val builder = new SamRecordSetBuilder(readLength=10)
     val rec     = builder.addFrag(start=1).map { r => r.setReadString("AAAAAANNNN"); r.setBaseQualities(Array[Byte](30,30,30,30,30,30,30,30,30,30)); r}.get
-    val source  = cc().toSourceRead(rec, minBaseQuality=20.toByte).get
+    val source  = cc().toSourceRead(rec, minBaseQuality=20.toByte, trim=false).get
 
     source.baseString shouldBe "AAAAAA"
     source.quals      shouldBe Array[Byte](30,30,30,30,30,30)
@@ -470,7 +478,7 @@ class VanillaUmiConsensusCallerTest extends UnitSpec with OptionValues {
   it should "trim the source read when the end of the raw read is all Ns and the read is mapped to the negative strand" in {
     val builder = new SamRecordSetBuilder(readLength=10)
     val rec     = builder.addFrag(start=1, strand=Minus).map { r => r.setReadString("NNNNAAAAAA"); r.setBaseQualities(Array[Byte](30,30,30,30,30,30,30,30,30,30)); r}.get
-    val source  = cc().toSourceRead(rec, minBaseQuality=20.toByte).get
+    val source  = cc().toSourceRead(rec, minBaseQuality=20.toByte, trim=false).get
 
     source.baseString shouldBe "TTTTTT" // cos revcomp'd
     source.quals      shouldBe Array[Byte](30,30,30,30,30,30)
@@ -479,7 +487,7 @@ class VanillaUmiConsensusCallerTest extends UnitSpec with OptionValues {
   it should "return None if the read is all low-quality or Ns" in {
     val builder = new SamRecordSetBuilder(readLength=10)
     val rec     = builder.addFrag(start=1).map { r => r.setReadString("NANANANANA"); r.setBaseQualities(Array[Byte](30,2,30,2,30,2,30,2,30,2)); r}.get
-    val source  = cc().toSourceRead(rec, minBaseQuality=20.toByte)
+    val source  = cc().toSourceRead(rec, minBaseQuality=20.toByte, trim=false)
     source shouldBe None
   }
 }

@@ -88,12 +88,14 @@ object DuplexConsensusCaller {
   * @param readNamePrefix the prefix to apply to all consensus read names
   * @param readGroupId    the read group ID to apply to all created consensus reads
   * @param minInputBaseQuality the minimum input base quality score to use a raw read's base
+  * @param trim if true, quality trim reads in addition to masking. If false just mask.
   * @param errorRatePreUmi the estimated rate of errors in the DNA prior to attaching UMIs
   * @param errorRatePostUmi the estimated rate of errors in the DNA post attaching UMIs
   */
 class DuplexConsensusCaller(override val readNamePrefix: String,
                             override val readGroupId: String    = "A",
                             val minInputBaseQuality: PhredScore = DuplexConsensusCaller.MinInputBaseQuality,
+                            val trim: Boolean = false,
                             val errorRatePreUmi: PhredScore     = DuplexConsensusCaller.ErrorRatePreUmi,
                             val errorRatePostUmi: PhredScore    = DuplexConsensusCaller.ErrorRatePostUmi
                            ) extends UmiConsensusCaller[DuplexConsensusRead] {
@@ -179,14 +181,14 @@ class DuplexConsensusCaller(override val readNamePrefix: String,
         val (_, baR1s, baR2s) = subGroupRecords(ba)
 
         // Filter by common indel pattern with AB and BA together
-        val filteredXs = filterToMostCommonAlignment(abR1s ++ baR2s)
-        val filteredYs = filterToMostCommonAlignment(abR2s ++ baR1s)
+        val filteredXs = filterToMostCommonAlignment((abR1s ++ baR2s).flatMap(toSourceRead(_, this.minInputBaseQuality, this.trim)))
+        val filteredYs = filterToMostCommonAlignment((abR2s ++ baR1s).flatMap(toSourceRead(_, this.minInputBaseQuality, this.trim)))
 
-        // Then split then back apart for SS calling and turn them into SourceReads
-        val filteredAbR1s = filteredXs.filter(_.getFirstOfPairFlag).flatMap(toSourceRead(_, this.minInputBaseQuality))
-        val filteredAbR2s = filteredYs.filter(_.getSecondOfPairFlag).flatMap(toSourceRead(_, this.minInputBaseQuality))
-        val filteredBaR1s = filteredYs.filter(_.getFirstOfPairFlag).flatMap(toSourceRead(_, this.minInputBaseQuality))
-        val filteredBaR2s = filteredXs.filter(_.getSecondOfPairFlag).flatMap(toSourceRead(_, this.minInputBaseQuality))
+        // Then split then back apart for SS calling
+        val filteredAbR1s = filteredXs.filter(_.sam.exists(_.getFirstOfPairFlag))
+        val filteredAbR2s = filteredYs.filter(_.sam.exists(_.getSecondOfPairFlag))
+        val filteredBaR1s = filteredYs.filter(_.sam.exists(_.getFirstOfPairFlag))
+        val filteredBaR2s = filteredXs.filter(_.sam.exists(_.getSecondOfPairFlag))
 
         // Call the single-stranded consensus reads
         val abR1Consensus = ssCaller.consensusCall(filteredAbR1s)
@@ -205,11 +207,11 @@ class DuplexConsensusCaller(override val readNamePrefix: String,
             _readsPostCigarFilter += (filteredXs ++ filteredYs).length
             Seq(createSamRecord(r1, FirstOfPair), createSamRecord(r2, SecondOfPair))
           case _                    =>
-            // NB: some reads may have been rejected already in filterToMostCommonAlignment, so use the records
-            // that have the most common alignment
+            // NB: some reads may have been rejected already in filterToMostCommonAlignment, so just
+            //     reject those records that survived the initial filtering.
             val remainingRecs = filteredXs ++ filteredYs
             this._filteredSingleStrandConsensusOnly += remainingRecs.length
-            rejectRecords(remainingRecs)
+            rejectRecords(remainingRecs.flatMap(_.sam))
             Nil
         }
       case _ =>
