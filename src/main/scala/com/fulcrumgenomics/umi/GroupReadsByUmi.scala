@@ -460,7 +460,7 @@ class GroupReadsByUmi
       // Then output the records in the right order (assigned tag, read name, r1, r2)
       val pairsByAssignedTag = pairs.groupBy(pair => pair._1.getStringAttribute(this.assignTag))
 
-      pairsByAssignedTag.keys.toSeq.sorted.foreach(tag => {
+      pairsByAssignedTag.keys.toSeq.sortBy(id => (id.length, id)).foreach(tag => {
         pairsByAssignedTag(tag).sortBy(pair => pair._1.getReadName).flatMap(pair => Seq(pair._1, pair._2)).foreach(rec => {
           out.addAlignment(rec)
           outProgress.record(rec)
