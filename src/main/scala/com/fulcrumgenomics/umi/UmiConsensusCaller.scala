@@ -25,17 +25,18 @@
 package com.fulcrumgenomics.umi
 
 import com.fulcrumgenomics.FgBioDef._
-import com.fulcrumgenomics.alignment.Cigar
+import com.fulcrumgenomics.alignment.{Cigar, CigarElem}
 import com.fulcrumgenomics.bam.Bams
 import com.fulcrumgenomics.umi.UmiConsensusCaller._
 import com.fulcrumgenomics.util.NumericTypes.PhredScore
 import dagr.commons.util.Logger
 import htsjdk.samtools.SAMFileHeader.{GroupOrder, SortOrder}
 import htsjdk.samtools.util.{Murmur3, SequenceUtil, TrimmingUtil}
-import htsjdk.samtools.{SAMFileHeader, SAMReadGroupRecord, SAMRecord, SAMTag}
+import htsjdk.samtools._
 
 import math.{abs, min}
 import scala.collection.mutable
+import scala.collection.mutable.ArrayBuffer
 
 /**
   * Contains shared types and functions used when writing UMI-driven consensus
@@ -265,43 +266,61 @@ trait UmiConsensusCaller[C <: SimpleRead] {
     * NOTE: filtered out reads are sent to the [[rejectRecords()]] method and do not need further handling
     */
   protected[umi] def filterToMostCommonAlignment(recs: Seq[SourceRead]): Seq[SourceRead] = {
-    val groups = recs.groupBy { r =>
-      val builder = new mutable.StringBuilder
-      val elems = r.cigar.iterator.bufferBetter
+    val groups = new ArrayBuffer[mutable.Buffer[SourceRead]]
+    val cigars = new ArrayBuffer[Cigar]
 
-      // This loop constructs a pseudo-cigar for each read.  The result is a string that contains, for each indel
-      // operator in the reads's cigar, the number of non-indel bases in the read since the start/last indel, then
-      // the length of the indel.  E.g.:
-      //     50M         => <empty> because there are no indels!
-      //     10M2D10M    => 10M2D   because we don't care about anything after the last indel
-      //     5H5S5M1I40M => 15M1I   because all the leading stuff gets collapsed
-      while (elems.nonEmpty) {
-        // Consume and merge all non-indel operators (clip, match/mismatch) at the head of the
-        // iterator since we only care where the indels occur relative to the read
-        val len = elems.takeWhile(e => !e.operator.isIndelOrSkippedRegion).map(_.length).sum
+    recs.sortBy(r => -r.length).foreach { rec =>
+      var compatible  = 0
+      val simpleCigar = simplifyCigar(rec.cigar)
 
-        // Now the iterator is either at the end of the read, in which case we don't need to do anything,
-        // or it is before an I or D cigar entry, so we should output how much read it took to get here
-        // followed by the I or D element
-        if (elems.nonEmpty) {
-          val indel = elems.next()
-          if (len > 0) builder.append(len).append("M")
-          builder.append(indel.toString)
+      groups.iterator.zip(cigars.iterator).foreach { case(group, cigar) =>
+        if (areCompatible(cigar, simpleCigar)) {
+          group      += rec
+          compatible += 1
         }
       }
 
-      builder.toString()
+      if (compatible == 0) {
+        groups += ArrayBuffer(rec)
+        cigars += simpleCigar
+      }
     }
 
-    val max = groups.values.map(_.size).max
-    val (keepers, rejects) = groups.values.partition(_.size == max)
-    (rejects ++ keepers.tail).foreach { rejectGroup =>
-      rejectRecords(rejectGroup.flatMap(_.sam))
-      this._filteredForMinorityAlignment += rejectGroup.size
+    if (groups.isEmpty) {
+      Seq()
     }
+    else {
+      val keepers = groups.sortBy(g => - g.size).head
+      val rejects = recs.filter(r => !keepers.contains(r))
+      rejectRecords(rejects.flatMap(_.sam))
+      this._filteredForMinorityAlignment += rejects.size
 
-    keepers.head
+      if (rejects.size > recs.size * 0.3 && rejects.size > 5) {
+        val cigs = recs.map(r => simplifyCigar(r.cigar).toString()).toArray
+        val foo = 1
+      }
+
+      keepers
+    }
   }
+
+  private def simplifyCigar(cigar: Cigar) = {
+      val newElems = cigar.elems.map {
+        case CigarElem(CigarOperator.S, len)  => CigarElem(CigarOperator.M, len)
+        case CigarElem(CigarOperator.EQ, len) => CigarElem(CigarOperator.M, len)
+        case CigarElem(CigarOperator.X, len)  => CigarElem(CigarOperator.M, len)
+        case CigarElem(CigarOperator.H, len)  => CigarElem(CigarOperator.M, len)
+        case cig => cig
+      }
+
+      Cigar(newElems).coalesce
+  }
+
+  /** Returns true if c2 is equal to or a prefix of c1 after converting clipping to matches. */
+  protected[umi] def areCompatible(c1: Cigar, c2: Cigar): Boolean = {
+    c1.truncateToQueryLength(c2.lengthOnQuery) == c2
+  }
+
 
   /** Creates a `SAMRecord` from the called consensus base and qualities. */
   protected def createSamRecord(read: C, readType: ReadType): SAMRecord = {

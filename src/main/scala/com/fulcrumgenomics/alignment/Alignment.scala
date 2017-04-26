@@ -57,6 +57,8 @@ object Cigar {
 case class Cigar(elems: IndexedSeq[CigarElem]) extends Iterable[CigarElem] {
   require(elems.nonEmpty, s"Cigar must have at least one element.")
 
+  private val isCoalesced = elems.sliding(2).filter(_.size == 2).forall { case Seq(a,b) => a.operator != b.operator }
+
   /** Provides an iterator over the elements in the cigar. */
   override def iterator: Iterator[CigarElem] = elems.iterator
 
@@ -94,6 +96,25 @@ case class Cigar(elems: IndexedSeq[CigarElem]) extends Iterable[CigarElem] {
 
   /** Returns a new Cigar that contains the same elements in the reverse order of this cigar. */
   def reverse: Cigar = Cigar(this.elems.reverse)
+
+  /** Coalesces adjacent operators of the same type into single operators. */
+  def coalesce: Cigar = {
+    if (isCoalesced) {
+      this
+    }
+    else {
+      val buffer = new ArrayBuffer[CigarElem]
+      val iter   = iterator.bufferBetter
+
+      while (iter.hasNext) {
+        val elem = iter.next()
+        val same = iter.takeWhile(_.operator == elem.operator).foldLeft(elem)((a,b) => CigarElem(a.operator, a.length + b.length))
+        buffer += same
+      }
+
+      Cigar(buffer)
+    }
+  }
 
   /** Returns the canonical Cigar string. */
   override def toString(): String = elems.mkString

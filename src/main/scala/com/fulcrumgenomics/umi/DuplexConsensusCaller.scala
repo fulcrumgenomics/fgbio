@@ -310,7 +310,7 @@ class DuplexConsensusCaller(override val readNamePrefix: String,
     * to various filters.
     */
   override def logStatistics(logger: Logger): Unit = {
-    require(readsFilteredInsufficientSupport == 0, s"readsFilteredInsufficientSupport should be zero, was ${readsFilteredInsufficientSupport}%,d")
+//    require(readsFilteredInsufficientSupport == 0, s"readsFilteredInsufficientSupport should be zero, was ${readsFilteredInsufficientSupport}%,d")
     logger.info(f"Total Raw Reads Considered: ${totalReads}%,d.")
     logger.info(f"Raw Reads Filtered Due to Being Fragment Reads: ${readsFilteredFragments}%,d.")
     logger.info(f"Raw Reads Filtered Due to Observing AB/BA Reads Only: ${readsFilteredAb}%,d.")
