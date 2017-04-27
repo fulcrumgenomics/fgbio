@@ -274,7 +274,7 @@ trait UmiConsensusCaller[C <: SimpleRead] {
       val simpleCigar = simplifyCigar(rec.cigar)
 
       groups.iterator.zip(cigars.iterator).foreach { case(group, cigar) =>
-        if (areCompatible(cigar, simpleCigar)) {
+        if (simpleCigar.isPrefixOf(cigar)) {
           group      += rec
           compatible += 1
         }
@@ -287,25 +287,26 @@ trait UmiConsensusCaller[C <: SimpleRead] {
     }
 
     if (groups.isEmpty) {
-      Seq()
+      Seq.empty
     }
     else {
-      val keepers = groups.sortBy(g => - g.size).head
+      val sorted  = groups.sortBy(g => - g.size)
+      val keepers = sorted.head
       val rejects = recs.filter(r => !keepers.contains(r))
       rejectRecords(rejects.flatMap(_.sam))
       this._filteredForMinorityAlignment += rejects.size
-
-      if (rejects.size > recs.size * 0.3 && rejects.size > 5) {
-        val cigs = recs.map(r => simplifyCigar(r.cigar).toString()).toArray
-        val groupCigs = groups.map(g => g.map(r => simplifyCigar(r.cigar).toString).toArray).toArray
-        val foo = 1
-      }
 
       keepers
     }
   }
 
+  /** Simplifies the cigar by turning other operators into Ms if that's how we want to think of them. */
   private def simplifyCigar(cigar: Cigar) = {
+    import CigarOperator._
+    if (cigar.forall(e => e.operator == M || e.operator == I || e.operator == D)) {
+      cigar
+    }
+    else {
       val newElems = cigar.elems.map {
         case CigarElem(CigarOperator.S, len)  => CigarElem(CigarOperator.M, len)
         case CigarElem(CigarOperator.EQ, len) => CigarElem(CigarOperator.M, len)
@@ -315,13 +316,8 @@ trait UmiConsensusCaller[C <: SimpleRead] {
       }
 
       Cigar(newElems).coalesce
+    }
   }
-
-  /** Returns true if c2 is equal to or a prefix of c1 after converting clipping to matches. */
-  protected[umi] def areCompatible(c1: Cigar, c2: Cigar): Boolean = {
-    c1.truncateToQueryLength(c2.lengthOnQuery) == c2
-  }
-
 
   /** Creates a `SAMRecord` from the called consensus base and qualities. */
   protected def createSamRecord(read: C, readType: ReadType): SAMRecord = {

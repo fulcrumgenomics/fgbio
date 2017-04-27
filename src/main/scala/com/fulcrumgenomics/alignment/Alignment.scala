@@ -94,6 +94,33 @@ case class Cigar(elems: IndexedSeq[CigarElem]) extends Iterable[CigarElem] {
     Cigar(buffer)
   }
 
+  /**
+    * Returns true if this Cigar is a prefix of the other cigar. Prefix is defined as having the same
+    * operators for the same bases through the length of the cigar.  E.g.:
+    *   10M is a prefix of 10M2S
+    *   10M is a prefix of 10M
+    *   10M is a prefix of 20M
+    *   10M is not a prefix of 2S10M
+    */
+  def isPrefixOf(that: Cigar): Boolean = {
+    if (that.elems.size < this.elems.size) {
+      false
+    }
+    else {
+      val lastIndex = this.elems.size - 1
+      var isPrefix  = true
+      var i = 0
+      while (isPrefix && i <= lastIndex) {
+        val lhs = this.elems(i)
+        val rhs = that.elems(i)
+        isPrefix = lhs.operator == rhs.operator && (if (i == lastIndex) lhs.length <= rhs.length else lhs.length == rhs.length)
+        i += 1
+      }
+
+      isPrefix
+    }
+  }
+
   /** Returns a new Cigar that contains the same elements in the reverse order of this cigar. */
   def reverse: Cigar = Cigar(this.elems.reverse)
 
