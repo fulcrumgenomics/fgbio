@@ -297,6 +297,7 @@ trait UmiConsensusCaller[C <: SimpleRead] {
 
       if (rejects.size > recs.size * 0.3 && rejects.size > 5) {
         val cigs = recs.map(r => simplifyCigar(r.cigar).toString()).toArray
+        val groupCigs = groups.map(g => g.map(r => simplifyCigar(r.cigar).toString).toArray).toArray
         val foo = 1
       }
 
