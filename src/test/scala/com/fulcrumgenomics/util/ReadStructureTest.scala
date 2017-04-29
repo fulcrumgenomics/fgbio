@@ -224,4 +224,8 @@ class ReadStructureTest extends UnitSpec with OptionValues {
       case SubReadWithQuals(bases, quals, seg) =>  bases shouldBe "GG"; quals shouldBe "33"
     }
   }
+
+  "SegmentType.toString" should "return the String value of the segment code letter" in {
+    SegmentType.values.foreach { kind => kind.toString shouldBe String.valueOf(kind.code) }
+  }
 }

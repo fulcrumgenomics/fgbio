@@ -134,6 +134,15 @@ class ReadStructure private(val segments: Seq[ReadSegment]) extends immutable.Se
   /** The minimum length read that this read structure can process. */
   private val minLength = segments.flatMap(_.length).sum
 
+  /** Returns true if the ReadStructure has a fixed (i.e. non-variable) length. */
+  def hasFixedLength: Boolean = segments.last.hasFixedLength
+
+  /** Returns the fixed length if there is one. Throws an exception on segments without fixed lengths! */
+  def fixedLength: Int = {
+    require(hasFixedLength, s"fixedLength called on variable length segment: $this")
+    this.minLength
+  }
+
   /** Length is defined as the number of segments (not bases!) in the read structure. */
   override def length: Int = segments.length
 
@@ -173,12 +182,15 @@ class ReadStructure private(val segments: Seq[ReadSegment]) extends immutable.Se
 }
 
 /** Sealed class hierarchy for the types of segments that can show up in a read structure. */
-sealed abstract class SegmentType(val code: Char)
+sealed abstract class SegmentType(val code: Char) { final override def toString: String = String.valueOf(code) }
 object SegmentType {
   case object Template extends SegmentType('T')
   case object SampleBarcode extends SegmentType('B')
   case object MolecularBarcode extends SegmentType('M')
   case object Skip extends SegmentType('S')
+
+  /** All the possible types. */
+  val values: Seq[SegmentType] = Seq(Template, SampleBarcode, MolecularBarcode, Skip)
 
   /** Returns the [[SegmentType]] for the given code/letter. */
   def apply(code: Char): SegmentType = code match {
