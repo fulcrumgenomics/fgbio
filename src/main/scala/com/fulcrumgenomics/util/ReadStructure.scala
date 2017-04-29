@@ -119,26 +119,6 @@ object ReadStructure {
     val suffix = if (end == rs.length) "" else rs.substring(end, rs.length)
     throw new IllegalArgumentException(s"$msg: $prefix[$error]$suffix")
   }
-
-  /**
-    * Creates sub-reads for the set of read segments provided.
-    * @param bases the sequenced bases
-    * @param segments the set of segments to extract
-    * @return a sequence of [[SubRead]] objects, one for each segment
-    */
-  def extract(bases: String, segments: Seq[ReadSegment]): Seq[SubReadWithoutQuals] = segments.map(_.extract(bases))
-
-  /**
-    * Creates sub-reads for the set of read segments provided.
-    * @param bases the sequenced bases
-    * @param quals the quality scores for the bases (must be same length as bases)
-    * @param segments the set of segments to extract
-    * @return a sequence of [[SubRead]] objects, one for each segment
-    */
-  def extract(bases: String, quals: String, segments: Seq[ReadSegment]): Seq[SubReadWithQuals] = {
-    assert(bases.length == quals.length)
-    segments.map(s => s.extract(bases, quals))
-  }
 }
 
 /**
@@ -173,23 +153,14 @@ class ReadStructure private(val segments: Seq[ReadSegment]) extends immutable.Se
   /** Splits the given bases into tuples with its associated read segment.  If strict is false then only return
     * tuples for which we have bases in `bases`, otherwise throw an exception.
     **/
-  def extract(bases: String): Seq[SubReadWithoutQuals] = ReadStructure.extract(bases=bases, segments=this)
+  def extract(bases: String): Seq[SubReadWithoutQuals] = segments.map(_.extract(bases))
 
   /** Splits the given bases and qualities into triples with its associated read segment.  If strict is false then only
     * return tuples for which we have bases in `bases`, otherwise throw an exception.
     **/
-  def extract(bases: String, qualities: String): Seq[SubReadWithQuals] = ReadStructure.extract(bases=bases, quals=qualities, segments=this)
-
-  @deprecated(message="Use extract() instead.")
-  def structureRead(bases: String, strict: Boolean = true): Seq[SubReadWithoutQuals] = {
-    val rs = if (strict) this else withVariableLastSegment
-    rs.extract(bases)
-  }
-
-  @deprecated(message="Use extract() instead.")
-  def structureReadWithQualities(bases: String, qualities: String, strict: Boolean = true): Seq[SubReadWithQuals] = {
-    val rs = if (strict) this else withVariableLastSegment
-    rs.extract(bases, qualities)
+  def extract(bases: String, quals: String): Seq[SubReadWithQuals] = {
+    assert(bases.length == quals.length)
+    segments.map(s => s.extract(bases, quals))
   }
 
   /** Returns just the segments of a given kind. */

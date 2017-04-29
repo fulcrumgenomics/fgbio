@@ -151,7 +151,7 @@ class ReadStructureTest extends UnitSpec with OptionValues {
         case Skip             => r.bases shouldBe "TT"; r.quals shouldBe "44"
       }
     }
-    an[Exception] should be thrownBy rs.structureReadWithQualities("AAAAAAA", "AAAAAAA")
+    an[Exception] should be thrownBy rs.extract("AAAAAAA", "AAAAAAA")
 
     // the last segment is truncated
     rs.withVariableLastSegment.extract("AACCGGT", "1122334").foreach { r =>

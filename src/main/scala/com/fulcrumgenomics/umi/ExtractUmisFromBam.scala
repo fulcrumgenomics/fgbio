@@ -66,13 +66,14 @@ import htsjdk.samtools.util._
     |  - M: molecular index bases
     |  - S: bases to ignore
     |An example would be "10B3M7S100T" which describes 120 bases, with the first ten bases being a sample barcode,
-    |bases 11-13 being a molecular index, bases 14-20 ignored, and bases 21-120 being template bases.
+    |bases 11-13 being a molecular index, bases 14-20 ignored, and bases 21-120 being template bases. For more
+    |information see: https://github.com/fulcrumgenomics/fgbio/wiki/Read-Structures
   """,
   group = ClpGroups.SamOrBam)
 class ExtractUmisFromBam
 ( @arg(flag = "i", doc = "Input BAM file.")                                      val input: PathToBam,
   @arg(flag = "o", doc = "Output BAM file.")                                     val output: PathToBam,
-  @arg(flag = "r", doc = "The read structure, one per read in a template.")      val readStructure: Seq[String],
+  @arg(flag = "r", doc = "The read structure, one per read in a template.")      val readStructure: Seq[ReadStructure],
   @deprecated @arg(flag = "b", doc = "[DEPRECATED] SAM tags in which to store the molecular barcodes (one-per segment).",
     mutex=Array("molecularIndexTags"), minElements=0) val molecularBarcodeTags: Seq[String] = Seq.empty,
   @arg(flag = "t", doc = "SAM tag(s) in which to store the molecular indices.", mutex=Array("molecularBarcodeTags"), minElements=0)
@@ -87,8 +88,8 @@ class ExtractUmisFromBam
   Io.assertCanWriteFile(output)
 
   val (rs1, rs2) = readStructure match {
-    case Seq(readStructure1, readStructure2) => (ReadStructure(readStructure1), Some(ReadStructure(readStructure2)))
-    case Seq(readStructure1) => (ReadStructure(readStructure1), None)
+    case Seq(r1, r2) => (r1.withVariableLastSegment, Some(r2.withVariableLastSegment))
+    case Seq(r1)     => (r1.withVariableLastSegment, None)
     case Seq() => invalid("No read structures given")
     case _     => invalid("More than two read structures given")
   }
@@ -100,11 +101,11 @@ class ExtractUmisFromBam
   // validate the read structure versus the molecular index tags
   {
     // create a read structure for the entire template
-    val rs = ReadStructure(readStructure.mkString(""))
+    val rsMolecularBarcodeSegmentCount = readStructure.map(_.molecularBarcodeSegments.size).sum
     // make sure each tag is of length 2
     perIndexTags.foreach(tag => if (tag.length != 2) invalid("SAM tags must be of length two: " + tag))
     // ensure we either have one tag, or we have the same # of tags as molecular indices in the read structure.
-    if (perIndexTags.size > 1 && rs.molecularBarcodeSegments.size != perIndexTags.size) {
+    if (perIndexTags.size > 1 && rsMolecularBarcodeSegmentCount != perIndexTags.size) {
       invalid("Either a single SAM tag, or the same # of SAM tags as molecular indices in the read structure,  must be given.")
     }
   }
@@ -224,7 +225,7 @@ object ExtractUmisFromBam {
     val bases = record.getReadString
     val qualities = record.getBaseQualityString
     // get the bases associated with each segment
-    val readStructureBases = readStructure.structureReadWithQualities(bases, qualities, strict = false)
+    val readStructureBases = readStructure.extract(bases, qualities)
     // get the molecular index segments
     val molecularIndexBases = readStructureBases.filter(_.kind == SegmentType.MolecularBarcode).map(_.bases)
 

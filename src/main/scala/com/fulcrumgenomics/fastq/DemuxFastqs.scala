@@ -32,14 +32,13 @@ import com.fulcrumgenomics.cmdline.{ClpGroups, FgBioTool}
 import com.fulcrumgenomics.fastq.FastqDemultiplexer.{DemuxRecord, DemuxResult}
 import com.fulcrumgenomics.illumina.{Sample, SampleSheet}
 import com.fulcrumgenomics.umi.ConsensusTags
-import com.fulcrumgenomics.util.ReadStructure.{SubRead, SubReadWithQuals}
+import com.fulcrumgenomics.util.ReadStructure.SubRead
 import com.fulcrumgenomics.util.{ReadStructure, SampleBarcodeMetric, _}
-import dagr.commons.CommonsDef.{DirPath, FilePath, PathPrefix, PathToBam, PathToFastq, yieldAndThen}
+import dagr.commons.CommonsDef.{DirPath, FilePath, PathPrefix, PathToBam, PathToFastq}
 import dagr.commons.io.PathUtil
 import dagr.commons.util.{LazyLogging, Logger}
 import dagr.sopt.{arg, clp}
 import htsjdk.samtools.SAMFileHeader.SortOrder
-import htsjdk.samtools.fastq.FastqReader
 import htsjdk.samtools.util.{ProgressLogger => _, _}
 import htsjdk.samtools.{SAMRecord, _}
 
@@ -524,34 +523,17 @@ private class FastqDemultiplexer(val sampleInfos: Seq[SampleInfo],
   def expectedNumberOfReads: Int = this.variableReadStructures.length
 
   /** True if the read structure implies paired end reads will be produced, false otherwise. */
-  val pairedEnd: Boolean = this.variableReadStructures.count(_.templateSegments.nonEmpty) == 2
-
-  /** Converts the segments across all reads to a string, with each read delimited by the given delimiter. */
-  private def toBarcode(allBases: Seq[String], delimiter: String, allSegments: Seq[Seq[ReadSegment]]): String = {
-    // Get the barcode bases delimited by read, not segment
-    allBases.zip(allSegments).map { case (bases, segments) =>
-      // Get the bases for the given read.  For example, we may have 8B2S4B100T.  If the segments are sample barcodes,
-      // we want the bases corresponding to the 8B4S.
-      ReadStructure.extract(bases=bases, segments=segments).map(_.bases).filter(_.nonEmpty).mkString
-    }.filter(_.nonEmpty).mkString(delimiter)
+  val pairedEnd: Boolean = this.variableReadStructures.flatMap(_.templateSegments).size match {
+    case 0 => throw new IllegalArgumentException("No template reads in any read structure.")
+    case 1 => false
+    case 2 => true
+    case n => throw new IllegalArgumentException(s"$n template reads defined. Can't process > 2 template reads.")
   }
-
-  /** The sub-reads for the sample barcodes across all read structures. */
-  private val sampleBarcodeSegments = this.variableReadStructures.map(_.sampleBarcodeSegments)
-
-  /** Get the sample barcodes for all reads, with reads delimited by the given delimiter. */
-  private def sampleBarcode(allBases: Seq[String], delimiter: String): String = toBarcode(allBases, delimiter, sampleBarcodeSegments)
-
-  /** The sub-reads for the molecular barcodes across all read structures. */
-  private val molecularBarcodeSegments = this.variableReadStructures.map(_.molecularBarcodeSegments)
-
-  /** Get the molecular barcode bases for all reads, with reads delimited by the given delimiter. */
-  private def molecularBarcode(allBases: Seq[String], delimiter: String): String = toBarcode(allBases, delimiter, molecularBarcodeSegments)
 
   /** Gets the [[SampleInfo]] and the number of mismatches between the bases and matched sample barcode.  If no match is
     * found, the unmatched sample and [[Int.MaxValue]] are returned. */
-  private def matchSampleBarcode(allBases: Seq[String]): (SampleInfo, Int) = {
-    val observedBarcode = sampleBarcode(allBases, delimiter="").getBytes
+  private def matchSampleBarcode(subReads: Seq[SubRead]): (SampleInfo, Int) = {
+    val observedBarcode = subReads.filter(_.kind == SegmentType.SampleBarcode).map(_.bases).mkString.getBytes
     val numNoCalls      = observedBarcode.count(base => SequenceUtil.isNoCall(base))
 
     // Get the best and second best sample barcode matches.
@@ -592,30 +574,21 @@ private class FastqDemultiplexer(val sampleInfos: Seq[SampleInfo],
     require(reads.nonEmpty, "No reads given for demultiplexing.")
     require(reads.length == expectedNumberOfReads, s"Expected '$expectedNumberOfReads' number of reads but found '${reads.length}'.")
 
+    // Generate the sub-reads by type
+    val subReads = reads.zip(this.variableReadStructures).flatMap { case (read, rs) => rs.extract(read.bases, read.quals) }
+
     // Get the sample
-    val allBases                    = reads.map(_.bases)
-    val (sampleInfo, numMismatches) = matchSampleBarcode(allBases)
+    val (sampleInfo, numMismatches) = matchSampleBarcode(subReads)
 
     // Create the [[DemuxRecord]]s.
-    val molecularBarcode  = this.molecularBarcode(allBases, "-")
-    val sampleBarcode     = this.sampleBarcode(allBases, "-")
-    var readNumber        = 1
-    val records           = reads.zip(this.variableReadStructures).flatMap { case (read, readStructure) =>
-      val templateSegments = readStructure.templateSegments
-      if (templateSegments.isEmpty) {
-        None
-      }
-      else {
-        // NB: strict=false in case folks have trimmed the reads prior can be handled gracefully.
-        val subReads: Seq[SubReadWithQuals] = ReadStructure.extract(bases=read.bases, quals=read.quals, segments=templateSegments)
-        val bases = subReads.map(_.bases).mkString
-        val quals = subReads.map(_.quals).mkString
-        require(bases.length == quals.length, s"Bases and qualities have differing lengths for read: ${read.header}")
-        require(readNumber == 1 || readNumber == 2, s"Invalid read number '$readNumber' for read: ${read.header}")
-
-        def f(s: String): Option[String] = if (s.isEmpty) None else Some(s)
-        yieldAndThen(Some(DemuxRecord(read.header, bases, quals, f(molecularBarcode), f(sampleBarcode), readNumber, pairedEnd)))(readNumber += 1)
-      }
+    def opt(s: String): Option[String] = if (s.isEmpty) None else Some(s)
+    val molecularBarcode = subReads.filter(_.kind == SegmentType.MolecularBarcode).map(_.bases).mkString("-")
+    val sampleBarcode    = subReads.filter(_.kind == SegmentType.SampleBarcode).map(_.bases).mkString("-")
+    val readName         = reads.head.name
+    var readNumber       = 0
+    val records          = subReads.filter(_.kind == SegmentType.Template).map { read =>
+      readNumber += 1
+      DemuxRecord(readName, read.bases, read.quals, opt(molecularBarcode), opt(sampleBarcode), readNumber, pairedEnd)
     }
 
     DemuxResult(sampleInfo=sampleInfo, numMismatches=numMismatches, records=records)

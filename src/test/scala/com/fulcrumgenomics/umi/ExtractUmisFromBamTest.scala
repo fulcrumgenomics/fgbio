@@ -38,6 +38,11 @@ class ExtractUmisFromBamTest extends UnitSpec with OptionValues {
 
   def newBam = makeTempFile("extract_umis_from_bam_test.", ".bam")
 
+  /** An implicit conversion to read stucture to make test writing easier below by allowing the use of Strings
+    * directly instead of having to write ReadStructure("75T") everywhere.
+    */
+  private implicit def stringToReadStructure(rs: String): ReadStructure = ReadStructure(rs)
+
   def annotateRecordFragment: SAMRecord = {
     new SamRecordSetBuilder(readLength=100).addFrag(name="Frag", start=1).map {rec => rec.setReadString("A" * 100); rec }.get
   }
