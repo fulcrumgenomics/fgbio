@@ -27,11 +27,11 @@ package com.fulcrumgenomics.bam
 
 import java.nio.file.{Files, Path}
 
-import com.fulcrumgenomics.fasta.ReferenceSetBuilder
-import com.fulcrumgenomics.testing.{SamRecordSetBuilder, UnitSpec, VariantContextSetBuilder}
-import com.fulcrumgenomics.util.{Metric, Rscript}
+import com.fulcrumgenomics.bam.api.SamOrder
 import com.fulcrumgenomics.commons.io.PathUtil
-import htsjdk.samtools.SAMFileHeader.SortOrder
+import com.fulcrumgenomics.fasta.ReferenceSetBuilder
+import com.fulcrumgenomics.testing.{SamBuilder, UnitSpec, VariantContextSetBuilder}
+import com.fulcrumgenomics.util.{Metric, Rscript}
 import htsjdk.samtools.util.{Interval, IntervalList}
 import htsjdk.variant.utils.SAMSequenceDictionaryExtractor
 
@@ -70,7 +70,7 @@ class ErrorRateByReadPositionTest extends UnitSpec {
   }
 
   private def newSamBuilder = {
-    val builder = new SamRecordSetBuilder(readLength=20, sortOrder=SortOrder.coordinate)
+    val builder = new SamBuilder(readLength=20, sort=Some(SamOrder.Coordinate))
     builder.header.setSequenceDictionary(dict)
     builder
   }
@@ -92,10 +92,10 @@ class ErrorRateByReadPositionTest extends UnitSpec {
 
   it should "compute the error rate for some simple paired end reads" in {
     val builder = newSamBuilder
-    1 to 9 foreach {i => builder.addPair(name="$i", contig=1, start1=100, start2=200).foreach {_.setReadString("A"*20) } }
+    1 to 9 foreach {i => builder.addPair(name="$i", contig=1, start1=100, start2=200, bases1="A"*20, bases2="A"*20) }
     builder.addPair("err", contig=1, start1=300, start2=400).foreach { rec =>
-      if (rec.getFirstOfPairFlag) rec.setReadString("AAAAAAAAAAAAAAAAACGT")
-      else rec.setReadString("AAAAAAAAAAAAAAAAACGT")
+      if (rec.firstOfPair) rec.bases = "AAAAAAAAAAAAAAAAACGT"
+      else rec.bases = "AAAAAAAAAAAAAAAAACGT"
     }
 
     val (out, pre) = outputAndPrefix
@@ -127,8 +127,8 @@ class ErrorRateByReadPositionTest extends UnitSpec {
 
   it should "not count as errors either Ns in reads or ambiguous bases in the reference" in {
     val builder = newSamBuilder
-    builder.addPair(contig=0, start1=100, start2=100).foreach(_.setReadString("A"*20))
-    builder.addPair(contig=1, start1=100, start2=200).foreach(_.setReadString("AANA"*5))
+    builder.addPair(contig=0, start1=100, start2=100, bases1="A"*20  , bases2="A"*20   )
+    builder.addPair(contig=1, start1=100, start2=200, bases1="AANA"*5, bases2="AANA"*5 )
     val (out, pre) = outputAndPrefix
     val metrics = new ErrorRateByReadPosition(input=builder.toTempFile(), output=Some(pre), ref=ref).computeMetrics
     metrics.size shouldBe 40
@@ -138,10 +138,10 @@ class ErrorRateByReadPositionTest extends UnitSpec {
 
   it should "restrict to a set of intervals if provided" in {
     val builder = newSamBuilder
-    builder.addPair(contig=1, start1=100, start2=150).foreach(_.setReadString("AAAA"*5))
-    builder.addPair(contig=1, start1=200, start2=250).foreach(_.setReadString("AAAA"*5))
-    builder.addPair(contig=1, start1=300, start2=350).foreach(_.setReadString("ACGA"*5))
-    builder.addPair(contig=1, start1=400, start2=450).foreach(_.setReadString("AAAA"*5))
+    builder.addPair(contig=1, start1=100, start2=150, bases1="AAAA"*5, bases2="AAAA"*5)
+    builder.addPair(contig=1, start1=200, start2=250, bases1="AAAA"*5, bases2="AAAA"*5)
+    builder.addPair(contig=1, start1=300, start2=350, bases1="ACGA"*5, bases2="ACGA"*5)
+    builder.addPair(contig=1, start1=400, start2=450, bases1="AAAA"*5, bases2="AAAA"*5)
 
     val intervals = new IntervalList(dict)
     intervals.add(new Interval("chr1", 100, 275))
@@ -157,10 +157,10 @@ class ErrorRateByReadPositionTest extends UnitSpec {
 
   it should "not count errors that occur at sites with variants" in {
     val builder = newSamBuilder
-    builder.addFrag(contig=1, start=490).foreach(_.setReadString("GAAAAAAAAAGAAAAAAAAA"))
-    builder.addFrag(contig=2, start=490).foreach(_.setReadString("TCCCCCCCCCTCCCCCCCCC"))
-    builder.addFrag(contig=3, start=490).foreach(_.setReadString("AGGGGGGGGGAGGGGGGGGG"))
-    builder.addFrag(contig=4, start=490).foreach(_.setReadString("CTTTTTTTTTTTTTTTTTTT"))
+    builder.addFrag(contig=1, start=490, bases="GAAAAAAAAAGAAAAAAAAA")
+    builder.addFrag(contig=2, start=490, bases="TCCCCCCCCCTCCCCCCCCC")
+    builder.addFrag(contig=3, start=490, bases="AGGGGGGGGGAGGGGGGGGG")
+    builder.addFrag(contig=4, start=490, bases="CTTTTTTTTTTTTTTTTTTT")
 
     val (out, pre) = outputAndPrefix
     val metrics = new ErrorRateByReadPosition(input=builder.toTempFile(), output=Some(pre), ref=ref, variants=Some(vcf)).computeMetrics
@@ -174,8 +174,8 @@ class ErrorRateByReadPositionTest extends UnitSpec {
 
   it should "run end to end and maybe generate a PDF" in {
     val builder = newSamBuilder
-    1 to 99 foreach {i => builder.addPair(contig=1, start1=i, start2=i+50).foreach(_.setReadString("A"*20)) }
-    builder.addPair(contig=1, start1=100, start2=200).foreach(_.setReadString("AAAAAAAAATTAAAAAAAAA"))
+    1 to 99 foreach {i => builder.addPair(contig=1, start1=i, start2=i+50, bases1="A"*20, bases2="A"*20) }
+    builder.addPair(contig=1, start1=100, start2=200, bases1="AAAAAAAAATTAAAAAAAAA", bases2="AAAAAAAAATTAAAAAAAAA")
 
     val (out, pre) = outputAndPrefix
     new ErrorRateByReadPosition(input=builder.toTempFile(), output=Some(pre), ref=ref).execute()
@@ -195,8 +195,8 @@ class ErrorRateByReadPositionTest extends UnitSpec {
 
   it should "handle interval lists that are unsorted and/or contain duplicate entries" in {
     val builder = newSamBuilder
-    1 to 99 foreach {i => builder.addPair(contig=1, start1=i, start2=i+50).foreach(_.setReadString("A"*20)) }
-    builder.addPair(contig=1, start1=100, start2=200).foreach(_.setReadString("AAAAAAAAATTAAAAAAAAA"))
+    1 to 99 foreach {i => builder.addPair(contig=1, start1=i, start2=i+50, bases1="A"*20, bases2="A"*20) }
+    builder.addPair(contig=1, start1=100, start2=200, bases1="AAAAAAAAATTAAAAAAAAA", bases2="AAAAAAAAATTAAAAAAAAA")
 
     val dict = builder.dict
     val intervals = new IntervalList(dict)

@@ -23,9 +23,10 @@
  */
 package com.fulcrumgenomics.fastq
 
-import java.io.{BufferedWriter, Closeable, Writer}
+import java.io.{BufferedWriter, Closeable}
 import java.nio.file.Path
 
+import com.fulcrumgenomics.Writer
 import com.fulcrumgenomics.util.Io
 
 /**
@@ -36,7 +37,7 @@ object FastqWriter {
   def apply(path: Path): FastqWriter = apply(Io.toWriter(path))
 
   /** Constructs a FastqWriter from a Writer. */
-  def apply(writer: Writer): FastqWriter = {
+  def apply(writer: java.io.Writer): FastqWriter = {
     if (writer.isInstanceOf[BufferedWriter]) new FastqWriter(writer.asInstanceOf[BufferedWriter])
     else new FastqWriter(new BufferedWriter(writer))
   }
@@ -45,9 +46,9 @@ object FastqWriter {
 /**
   * Implements a writer for fastq records.
   */
-class FastqWriter private(val out: BufferedWriter) extends Closeable {
+class FastqWriter private(val out: BufferedWriter) extends Closeable with Writer[FastqRecord] {
   /** Writes a single record to the output. */
-  def write(rec: FastqRecord) = {
+  override def write(rec: FastqRecord): Unit = {
     out.append('@').append(rec.header).append('\n')
     out.append(rec.bases).append('\n')
     out.append('+').append('\n')

@@ -27,11 +27,11 @@ package com.fulcrumgenomics.umi
 import java.lang.Math.min
 
 import com.fulcrumgenomics.FgBioDef._
+import com.fulcrumgenomics.bam.api.SamRecord
 import com.fulcrumgenomics.umi.DuplexConsensusCaller._
 import com.fulcrumgenomics.umi.UmiConsensusCaller.ReadType.{ReadType, _}
 import com.fulcrumgenomics.umi.UmiConsensusCaller.{SimpleRead, SourceRead}
 import com.fulcrumgenomics.util.NumericTypes.PhredScore
-import htsjdk.samtools.SAMRecord
 
 /**
   * Container for constant values and types used by the [[DuplexConsensusCaller]]
@@ -74,7 +74,7 @@ object DuplexConsensusCaller {
 
 
 /**
-  * Creates duplex consensus reads from SAMRecords that have been grouped by their source molecule
+  * Creates duplex consensus reads from SamRecords that have been grouped by their source molecule
   * but not yet by source strand.
   *
   * Filters incoming bases by quality before building the duplex.
@@ -113,27 +113,30 @@ class DuplexConsensusCaller(override val readNamePrefix: String,
   /**
     * Returns the MI tag minus the trailing suffix that identifies /A vs /B
     */
-  override protected[umi] def sourceMoleculeId(rec: SAMRecord): String = {
-    val mi = rec.getStringAttribute(ConsensusTags.MolecularId)
-    require(mi != null, s"Read ${rec.getReadName} is missing it's ${ConsensusTags.MolecularId} tag.")
-    val index = mi.lastIndexOf('/')
-    require(index > 0, s"Read ${rec.getReadName}'s ${ConsensusTags} tag doesn't look like a duplex id: ${mi}")
-    mi.substring(0, index)
+  override protected[umi] def sourceMoleculeId(rec: SamRecord): String = {
+    rec.get[String](ConsensusTags.MolecularId) match {
+      case None =>
+        throw new IllegalStateException(s"Read ${rec.name} is missing it's ${ConsensusTags.MolecularId} tag.")
+      case Some(mi) =>
+        val index = mi.lastIndexOf('/')
+        require(index > 0, s"Read ${rec.name}'s ${ConsensusTags} tag doesn't look like a duplex id: ${mi}")
+        mi.substring(0, index)
+    }
   }
 
   /**
     * Takes in all the reads for a source molecule and, if possible, generates one or more
     * output consensus reads as SAM records.
     *
-    * @param recs the full set of source SAMRecords for a source molecule
+    * @param recs the full set of source SamRecords for a source molecule
     * @return a seq of consensus SAM records, may be empty
     */
-  override protected def consensusSamRecordsFromSamRecords(recs: Seq[SAMRecord]): Seq[SAMRecord] = {
-    val (pairs, frags) = recs.partition(_.getReadPairedFlag)
+  override protected def consensusSamRecordsFromSamRecords(recs: Seq[SamRecord]): Seq[SamRecord] = {
+    val (pairs, frags) = recs.partition(_.paired)
     rejectRecords(frags, FilterFragments)
 
     // Group the reads by /A vs. /B and ensure that /A is the first group and /B the second
-    val groups = pairs.groupBy(_.getStringAttribute(ConsensusTags.MolecularId)).toSeq.sortBy { case (mi, _) => mi }.map(_._2)
+    val groups = pairs.groupBy(r => r[String](ConsensusTags.MolecularId)).toSeq.sortBy { case (mi, _) => mi }.map(_._2)
 
     groups match {
       case Seq() =>
@@ -157,15 +160,15 @@ class DuplexConsensusCaller(override val readNamePrefix: String,
         // Therefore, AB-R1s and BA-R2s should be on the same strand, and the same for AB-R2s and BA-R1s
         // Check for this explicitly here.
         if (singleStrand1.nonEmpty) {
-          val ss1Flag = singleStrand1.head.getReadNegativeStrandFlag
-          val ss1MI   = singleStrand1.head.getStringAttribute(ConsensusTags.MolecularId)
-          require(singleStrand1.forall(_.getReadNegativeStrandFlag == ss1Flag),
+          val ss1Flag = singleStrand1.head.negativeStrand
+          val ss1MI   = singleStrand1.head.apply[String](ConsensusTags.MolecularId)
+          require(singleStrand1.forall(_.negativeStrand == ss1Flag),
             s"Not all AB-R1s and BA-R2s were on the same strand for molecule with id: $ss1MI")
         }
         if (singleStrand2.nonEmpty) {
-          val ss2Flag = singleStrand2.head.getReadNegativeStrandFlag
-          val ss2MI   = singleStrand2.head.getStringAttribute(ConsensusTags.MolecularId)
-          require(singleStrand2.forall(_.getReadNegativeStrandFlag == ss2Flag),
+          val ss2Flag = singleStrand2.head.negativeStrand
+          val ss2MI   = singleStrand2.head.apply[String](ConsensusTags.MolecularId)
+          require(singleStrand2.forall(_.negativeStrand == ss2Flag),
             s"Not all AB-R2s and BA-R1s were on the same strand for molecule with id: $ss2MI")
         }
 
@@ -174,10 +177,10 @@ class DuplexConsensusCaller(override val readNamePrefix: String,
         val filteredYs = filterToMostCommonAlignment((abR2s ++ baR1s).flatMap(toSourceRead(_, this.minInputBaseQuality, this.trim)))
 
         // Then split then back apart for SS calling
-        val filteredAbR1s = filteredXs.filter(_.sam.exists(_.getFirstOfPairFlag))
-        val filteredAbR2s = filteredYs.filter(_.sam.exists(_.getSecondOfPairFlag))
-        val filteredBaR1s = filteredYs.filter(_.sam.exists(_.getFirstOfPairFlag))
-        val filteredBaR2s = filteredXs.filter(_.sam.exists(_.getSecondOfPairFlag))
+        val filteredAbR1s = filteredXs.filter(_.sam.exists(_.firstOfPair))
+        val filteredAbR2s = filteredYs.filter(_.sam.exists(_.secondOfPair))
+        val filteredBaR1s = filteredYs.filter(_.sam.exists(_.firstOfPair))
+        val filteredBaR2s = filteredXs.filter(_.sam.exists(_.secondOfPair))
 
         // Call the single-stranded consensus reads
         val abR1Consensus = ssCaller.consensusCall(filteredAbR1s)
@@ -189,7 +192,7 @@ class DuplexConsensusCaller(override val readNamePrefix: String,
         val duplexR1 = duplexConsensus(abR1Consensus, baR2Consensus, filteredAbR1s ++ filteredBaR2s)
         val duplexR2 = duplexConsensus(abR2Consensus, baR1Consensus, filteredAbR2s ++ filteredBaR1s)
 
-        // Convert to SAMRecords and return
+        // Convert to SamRecords and return
         (duplexR1, duplexR2) match {
           case (Some(r1), Some(r2)) =>
             Seq(createSamRecord(r1, FirstOfPair), createSamRecord(r2, SecondOfPair))
@@ -201,7 +204,7 @@ class DuplexConsensusCaller(override val readNamePrefix: String,
             Nil
         }
       case _ =>
-        unreachable("SAMRecords supplied with more than two distinct MI values.")
+        unreachable("SamRecords supplied with more than two distinct MI values.")
     }
   }
 
@@ -258,9 +261,9 @@ class DuplexConsensusCaller(override val readNamePrefix: String,
   @inline private def isError(lhs: Byte, rhs: Byte): Boolean = lhs != NoCall && rhs != NoCall && lhs != rhs
 
   /**
-    * Creates a SAMRecord with a ton of additional tags annotating the duplex read.
+    * Creates a SamRecord with a ton of additional tags annotating the duplex read.
     */
-  override protected def createSamRecord(read: DuplexConsensusRead, readType: ReadType): SAMRecord = {
+  override protected def createSamRecord(read: DuplexConsensusRead, readType: ReadType): SamRecord = {
     val rec = super.createSamRecord(read, readType)
     val ab = read.abConsensus
     val ba = read.baConsensus
@@ -269,22 +272,22 @@ class DuplexConsensusCaller(override val readNamePrefix: String,
     val totalDepths = read.abConsensus.depths.zip(read.baConsensus.depths).map(x => x._1 + x._2)
 
     { import ConsensusTags.PerRead._
-      rec.setAttribute(RawReadCount,       totalDepths.max)
-      rec.setAttribute(MinRawReadCount,    totalDepths.min)
-      rec.setAttribute(RawReadErrorRate,   sum(read.errors) / totalDepths.sum.toFloat)
-      rec.setAttribute(AbRawReadCount,     read.abConsensus.depths.max.toInt)
-      rec.setAttribute(BaRawReadCount,     read.baConsensus.depths.max.toInt)
-      rec.setAttribute(AbMinRawReadCount,  read.abConsensus.depths.min.toInt)
-      rec.setAttribute(BaMinRawReadCount,  read.baConsensus.depths.min.toInt)
-      rec.setAttribute(AbRawReadErrorRate, sum(read.abConsensus.errors) / sum(read.abConsensus.depths).toFloat)
-      rec.setAttribute(BaRawReadErrorRate, sum(read.baConsensus.errors) / sum(read.baConsensus.depths).toFloat)
+      rec(RawReadCount)       = totalDepths.max
+      rec(MinRawReadCount)    = totalDepths.min
+      rec(RawReadErrorRate)   = sum(read.errors) / totalDepths.sum.toFloat
+      rec(AbRawReadCount)     = read.abConsensus.depths.max.toInt
+      rec(BaRawReadCount)     = read.baConsensus.depths.max.toInt
+      rec(AbMinRawReadCount)  = read.abConsensus.depths.min.toInt
+      rec(BaMinRawReadCount)  = read.baConsensus.depths.min.toInt
+      rec(AbRawReadErrorRate) = sum(read.abConsensus.errors) / sum(read.abConsensus.depths).toFloat
+      rec(BaRawReadErrorRate) = sum(read.baConsensus.errors) / sum(read.baConsensus.depths).toFloat
     }
 
     { import ConsensusTags.PerBase._
-      rec.setAttribute(AbRawReadCount,  read.abConsensus.depths)
-      rec.setAttribute(BaRawReadCount,  read.baConsensus.depths)
-      rec.setAttribute(AbRawReadErrors, read.abConsensus.errors)
-      rec.setAttribute(BaRawReadErrors, read.baConsensus.errors)
+      rec(AbRawReadCount)  = read.abConsensus.depths
+      rec(BaRawReadCount)  = read.baConsensus.depths
+      rec(AbRawReadErrors) = read.abConsensus.errors
+      rec(BaRawReadErrors) = read.baConsensus.errors
     }
 
     rec

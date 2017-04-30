@@ -25,7 +25,7 @@
 package com.fulcrumgenomics.umi
 
 import com.fulcrumgenomics.FgBioDef._
-import com.fulcrumgenomics.testing.{SamRecordSetBuilder, UnitSpec}
+import com.fulcrumgenomics.testing.{SamBuilder, UnitSpec}
 import com.fulcrumgenomics.umi.CorrectUmis.{UmiCorrectionMetrics, UmiMatch}
 import com.fulcrumgenomics.util.{Io, Metric}
 import com.fulcrumgenomics.sopt.cmdline.ValidationException
@@ -91,7 +91,7 @@ class CorrectUmisTest extends UnitSpec {
   }
 
   "CorrectUmis" should "rejects reads that do not have umis, and emit an error" in {
-    val builder = new SamRecordSetBuilder(readLength = 10)
+    val builder = new SamBuilder(readLength = 10)
     builder.addFrag(name = "q1", start = 1)
     val input = builder.toTempFile()
     val corrected = makeTempFile("corrected.", ".bam")
@@ -111,8 +111,8 @@ class CorrectUmisTest extends UnitSpec {
   }
 
   it should "reject reads with incorrect length UMIs and emit an error" in {
-    val builder = new SamRecordSetBuilder(readLength = 10)
-    builder.addFrag(name = "q1", start = 1).foreach(rec => rec.setAttribute(ConsensusTags.UmiBases, "ACGT"))
+    val builder = new SamBuilder(readLength = 10)
+    builder.addFrag(name = "q1", start = 1, attrs=Map(ConsensusTags.UmiBases -> "ACGT"))
     val input = builder.toTempFile()
     val corrected = makeTempFile("corrected.", ".bam")
     val rejects = makeTempFile("rejects.", ".bam")
@@ -125,17 +125,17 @@ class CorrectUmisTest extends UnitSpec {
   }
 
   it should "run end to end and do the right thing for a handful of fragments with single UMIs" in {
-    val builder = new SamRecordSetBuilder(readLength = 10)
-    builder.addFrag(name="q1",  start=1).foreach(rec => rec.setAttribute(ConsensusTags.UmiBases, "AAAAAA"))
-    builder.addFrag(name="q2",  start=1).foreach(rec => rec.setAttribute(ConsensusTags.UmiBases, "AAAAAA"))
-    builder.addFrag(name="q3",  start=1).foreach(rec => rec.setAttribute(ConsensusTags.UmiBases, "AATAAA"))
-    builder.addFrag(name="q4",  start=1).foreach(rec => rec.setAttribute(ConsensusTags.UmiBases, "AATTAA"))
-    builder.addFrag(name="q5",  start=1).foreach(rec => rec.setAttribute(ConsensusTags.UmiBases, "AAATGC"))
-    builder.addFrag(name="q6",  start=1).foreach(rec => rec.setAttribute(ConsensusTags.UmiBases, "CCCCCC"))
-    builder.addFrag(name="q7",  start=1).foreach(rec => rec.setAttribute(ConsensusTags.UmiBases, "GGGGGG"))
-    builder.addFrag(name="q8",  start=1).foreach(rec => rec.setAttribute(ConsensusTags.UmiBases, "TTTTTT"))
-    builder.addFrag(name="q9",  start=1).foreach(rec => rec.setAttribute(ConsensusTags.UmiBases, "GGGTTT"))
-    builder.addFrag(name="q10", start=1).foreach(rec => rec.setAttribute(ConsensusTags.UmiBases, "AAACCC"))
+    val builder = new SamBuilder(readLength = 10)
+    builder.addFrag(name="q1",  start=1, attrs=Map(ConsensusTags.UmiBases -> "AAAAAA"))
+    builder.addFrag(name="q2",  start=1, attrs=Map(ConsensusTags.UmiBases -> "AAAAAA"))
+    builder.addFrag(name="q3",  start=1, attrs=Map(ConsensusTags.UmiBases -> "AATAAA"))
+    builder.addFrag(name="q4",  start=1, attrs=Map(ConsensusTags.UmiBases -> "AATTAA"))
+    builder.addFrag(name="q5",  start=1, attrs=Map(ConsensusTags.UmiBases -> "AAATGC"))
+    builder.addFrag(name="q6",  start=1, attrs=Map(ConsensusTags.UmiBases -> "CCCCCC"))
+    builder.addFrag(name="q7",  start=1, attrs=Map(ConsensusTags.UmiBases -> "GGGGGG"))
+    builder.addFrag(name="q8",  start=1, attrs=Map(ConsensusTags.UmiBases -> "TTTTTT"))
+    builder.addFrag(name="q9",  start=1, attrs=Map(ConsensusTags.UmiBases -> "GGGTTT"))
+    builder.addFrag(name="q10", start=1, attrs=Map(ConsensusTags.UmiBases -> "AAACCC"))
 
     val input     = builder.toTempFile()
     val corrected = makeTempFile("corrected.", ".bam")
@@ -146,8 +146,8 @@ class CorrectUmisTest extends UnitSpec {
     val logLines = executeFgbioTool(corrector)
     logLines.exists(line => line.contains("Error")) shouldBe false // No errors this time
 
-    readBamRecs(corrected).map(_.getReadName) should contain theSameElementsAs Seq("q1", "q2", "q3", "q4", "q5", "q6", "q7", "q8")
-    readBamRecs(rejects).map(_.getReadName) should contain theSameElementsAs Seq("q9", "q10")
+    readBamRecs(corrected).map(_.name) should contain theSameElementsAs Seq("q1", "q2", "q3", "q4", "q5", "q6", "q7", "q8")
+    readBamRecs(rejects).map(_.name) should contain theSameElementsAs Seq("q9", "q10")
 
     val metricsByUmi = Metric.read[UmiCorrectionMetrics](metrics).map(m => m.umi -> m).toMap
     metricsByUmi("AAAAAA") shouldBe UmiCorrectionMetrics(umi="AAAAAA", total_matches=5, perfect_matches=2, one_mismatch_matches=1, two_mismatch_matches=1, other_matches=1, fraction_of_matches = 5/10.0, representation = (5/8.0) / (1/4d))
@@ -158,12 +158,12 @@ class CorrectUmisTest extends UnitSpec {
   }
 
   it should "run end to end and do the right thing for a handful of fragments with duplex UMIs" in {
-    val builder = new SamRecordSetBuilder(readLength = 10)
-    builder.addFrag(name="q1",  start=1).foreach(rec => rec.setAttribute(ConsensusTags.UmiBases, "AAAAAA-CCCCCC")) // ok-ok = ok
-    builder.addFrag(name="q2",  start=1).foreach(rec => rec.setAttribute(ConsensusTags.UmiBases, "AAACAA-CCCCAC")) // ok-ok = ok
-    builder.addFrag(name="q3",  start=1).foreach(rec => rec.setAttribute(ConsensusTags.UmiBases, "AAAAAA-ACTACT")) // ok-ko = reject
-    builder.addFrag(name="q4",  start=1).foreach(rec => rec.setAttribute(ConsensusTags.UmiBases, "GGGGGG-TTTTTT")) // ok-ok = ok
-    builder.addFrag(name="q5",  start=1).foreach(rec => rec.setAttribute(ConsensusTags.UmiBases, "GCGCGC-TTTTTT")) // ko-ok = reject
+    val builder = new SamBuilder(readLength = 10)
+    builder.addFrag(name="q1",  start=1, attrs=Map(ConsensusTags.UmiBases -> "AAAAAA-CCCCCC")) // ok-ok = ok
+    builder.addFrag(name="q2",  start=1, attrs=Map(ConsensusTags.UmiBases -> "AAACAA-CCCCAC")) // ok-ok = ok
+    builder.addFrag(name="q3",  start=1, attrs=Map(ConsensusTags.UmiBases -> "AAAAAA-ACTACT")) // ok-ko = reject
+    builder.addFrag(name="q4",  start=1, attrs=Map(ConsensusTags.UmiBases -> "GGGGGG-TTTTTT")) // ok-ok = ok
+    builder.addFrag(name="q5",  start=1, attrs=Map(ConsensusTags.UmiBases -> "GCGCGC-TTTTTT")) // ko-ok = reject
 
     val input     = builder.toTempFile()
     val corrected = makeTempFile("corrected.", ".bam")
@@ -174,8 +174,8 @@ class CorrectUmisTest extends UnitSpec {
     val logLines = executeFgbioTool(corrector)
     logLines.exists(line => line.contains("Error")) shouldBe false // No errors this time
 
-    readBamRecs(corrected).map(_.getReadName) should contain theSameElementsAs Seq("q1", "q2", "q4")
-    readBamRecs(rejects).map(_.getReadName) should contain theSameElementsAs Seq("q3", "q5")
+    readBamRecs(corrected).map(_.name) should contain theSameElementsAs Seq("q1", "q2", "q4")
+    readBamRecs(rejects).map(_.name) should contain theSameElementsAs Seq("q3", "q5")
 
     val metricsByUmi = Metric.read[UmiCorrectionMetrics](metrics).map(m => m.umi -> m).toMap
     metricsByUmi("AAAAAA") shouldBe UmiCorrectionMetrics(umi="AAAAAA", total_matches=3, perfect_matches=2, one_mismatch_matches=1, two_mismatch_matches=0, other_matches=0, fraction_of_matches = 3/10.0, representation = (3/8.0) / (1/4d))
@@ -186,12 +186,12 @@ class CorrectUmisTest extends UnitSpec {
   }
 
   it should "do the same thing whether the UMIs are on the command line or in a file" in {
-    val builder = new SamRecordSetBuilder(readLength = 10)
-    builder.addFrag(name="q1",  start=1).foreach(rec => rec.setAttribute(ConsensusTags.UmiBases, "AAAAAA"))
-    builder.addFrag(name="q2",  start=1).foreach(rec => rec.setAttribute(ConsensusTags.UmiBases, "AAAAAA"))
-    builder.addFrag(name="q3",  start=1).foreach(rec => rec.setAttribute(ConsensusTags.UmiBases, "AATAAA"))
-    builder.addFrag(name="q4",  start=1).foreach(rec => rec.setAttribute(ConsensusTags.UmiBases, "AATTAA"))
-    builder.addFrag(name="q5",  start=1).foreach(rec => rec.setAttribute(ConsensusTags.UmiBases, "AAATGC"))
+    val builder = new SamBuilder(readLength = 10)
+    builder.addFrag(name="q1",  start=1, attrs=Map(ConsensusTags.UmiBases -> "AAAAAA"))
+    builder.addFrag(name="q2",  start=1, attrs=Map(ConsensusTags.UmiBases -> "AAAAAA"))
+    builder.addFrag(name="q3",  start=1, attrs=Map(ConsensusTags.UmiBases -> "AATAAA"))
+    builder.addFrag(name="q4",  start=1, attrs=Map(ConsensusTags.UmiBases -> "AATTAA"))
+    builder.addFrag(name="q5",  start=1, attrs=Map(ConsensusTags.UmiBases -> "AAATGC"))
 
     val input     = builder.toTempFile()
     val corrected = makeTempFile("corrected.", ".bam")

@@ -25,10 +25,10 @@
 
 package com.fulcrumgenomics.umi
 
-import com.fulcrumgenomics.testing.{SamRecordSetBuilder, UnitSpec}
-import com.fulcrumgenomics.util.ReadStructure
+import com.fulcrumgenomics.bam.api.{SamRecord, SamWriter}
 import com.fulcrumgenomics.sopt.cmdline.ValidationException
-import htsjdk.samtools.{SAMFileWriterFactory, SAMRecord}
+import com.fulcrumgenomics.testing.{SamBuilder, UnitSpec}
+import com.fulcrumgenomics.util.ReadStructure
 import org.scalatest.OptionValues
 
 /**
@@ -43,14 +43,14 @@ class ExtractUmisFromBamTest extends UnitSpec with OptionValues {
     */
   private implicit def stringToReadStructure(rs: String): ReadStructure = ReadStructure(rs)
 
-  def annotateRecordFragment: SAMRecord = {
-    new SamRecordSetBuilder(readLength=100).addFrag(name="Frag", start=1).map {rec => rec.setReadString("A" * 100); rec }.get
+  def annotateRecordFragment: SamRecord = {
+    new SamBuilder(readLength=100).addFrag(name="Frag", start=1).map {rec => rec.bases = "A" * 100; rec }.get
   }
 
   "ExtractUmisFromBam.annotateRecord" should "should not annotate with no molecular indices" in {
     val frag = annotateRecordFragment
     ExtractUmisFromBam.annotateRecord(record=frag, ReadStructure("100T"), Seq.empty) shouldBe 'empty
-    frag.getReadLength shouldBe 100
+    frag.length shouldBe 100
   }
 
   it should "throw an exception when fewer molecular indices in the read structure than molecular SAM tags are given then " in {
@@ -67,62 +67,62 @@ class ExtractUmisFromBamTest extends UnitSpec with OptionValues {
 
   "ExtractUmisFromBam" should "should annotate a single molecular index for a read pair" in {
     val output  = newBam
-    val builder = new SamRecordSetBuilder(readLength=100)
-    val records = builder.addPair(name="Pair", start1=1, start2=1, record1Unmapped=true, record2Unmapped=true)
+    val builder = new SamBuilder(readLength=100)
+    val records = builder.addPair(name="Pair", start1=1, start2=1, unmapped1=true, unmapped2=true)
     records.foreach { rec =>
-      val base = if (rec.getFirstOfPairFlag) "A" else "C"
-      rec.setReadString(base * 100)
+      val base = if (rec.firstOfPair) "A" else "C"
+      rec.bases = base * 100
     }
     new ExtractUmisFromBam(input=builder.toTempFile(), output=output, readStructure=Seq("10M90T", "10M90T"), molecularIndexTags=Seq("A1")).execute()
     val recs = readBamRecs(output)
     recs.foreach { rec =>
-      val base = if (rec.getFirstOfPairFlag) "A" else "C"
-      rec.getStringAttribute("A1") shouldBe "AAAAAAAAAA-CCCCCCCCCC"
-      rec.getReadLength shouldBe 90
-      rec.getReadString shouldBe base * 90
+      val base = if (rec.firstOfPair) "A" else "C"
+      rec[String]("A1") shouldBe "AAAAAAAAAA-CCCCCCCCCC"
+      rec.length shouldBe 90
+      rec.basesString shouldBe base * 90
     }
   }
 
   it should "should annotate a single molecular index for a fragment read" in {
     val output  = newBam
-    val builder = new SamRecordSetBuilder(readLength=100)
-    builder.addFrag(name="Frag1", start=1, unmapped=true).map { rec => rec.setReadString("A" * 100); rec }
-    builder.addFrag(name="Frag2", start=1, unmapped=true).map { rec => rec.setReadString("C" * 100); rec }
+    val builder = new SamBuilder(readLength=100)
+    builder.addFrag(name="Frag1", start=1, unmapped=true).map { rec => rec.bases = "A" * 100; rec }
+    builder.addFrag(name="Frag2", start=1, unmapped=true).map { rec => rec.bases = "C" * 100; rec }
     new ExtractUmisFromBam(input=builder.toTempFile(), output=output, readStructure=Seq("10M90T"), molecularIndexTags=Seq("A1")).execute()
     val recs = readBamRecs(output)
 
-    recs.head.getStringAttribute("A1") shouldBe "AAAAAAAAAA"
-    recs.head.getReadLength shouldBe 90
-    recs.head.getReadString shouldBe "A" * 90
+    recs.head[String]("A1") shouldBe "AAAAAAAAAA"
+    recs.head.length shouldBe 90
+    recs.head.basesString shouldBe "A" * 90
 
-    recs.last.getStringAttribute("A1") shouldBe "CCCCCCCCCC"
-    recs.last.getReadLength shouldBe 90
-    recs.last.getReadString shouldBe "C" * 90
+    recs.last[String]("A1") shouldBe "CCCCCCCCCC"
+    recs.last.length shouldBe 90
+    recs.last.basesString shouldBe "C" * 90
   }
 
   it should "accept a single molecular index SAM tag" in {
     val output  = newBam
-    val builder = new SamRecordSetBuilder(readLength=100)
+    val builder = new SamBuilder(readLength=100)
     new ExtractUmisFromBam(input=builder.toTempFile(), output=output, readStructure=Seq("10M90T", "10M90T"), molecularIndexTags=Seq("R1")).execute()
   }
 
   it should "should annotate a two molecular index" in {
-    val builder = new SamRecordSetBuilder(readLength=100)
+    val builder = new SamBuilder(readLength=100)
     val frag = annotateRecordFragment
     ExtractUmisFromBam.annotateRecord(record=frag, ReadStructure("90T5M5M"), Seq("R1", "R2")) shouldBe "A" * 10
-    frag.getReadLength shouldBe 90
+    frag.length shouldBe 90
   }
 
   it should "not accept a single read" in {
     val output = newBam
-    val builder = new SamRecordSetBuilder(readLength=100)
+    val builder = new SamBuilder(readLength=100)
     builder.addFrag(name="Frag1", start=1)
     an[Exception] should be thrownBy new ExtractUmisFromBam(input=builder.toTempFile(), output=output, readStructure=Seq("10M90T", "10M90T")).execute()
   }
 
   it should "not accept mapped fragments" in {
     val output = newBam
-    val builder = new SamRecordSetBuilder(readLength=100)
+    val builder = new SamBuilder(readLength=100)
     builder.addFrag(name="Frag1", start=1)
     builder.addFrag(name="Frag2", start=1)
     an[Exception] should be thrownBy new ExtractUmisFromBam(input=builder.toTempFile(), output=output, readStructure=Seq("10M90T")).execute()
@@ -130,7 +130,7 @@ class ExtractUmisFromBamTest extends UnitSpec with OptionValues {
 
   it should "not accept mapped reads" in {
     val output = newBam
-    val builder = new SamRecordSetBuilder(readLength=100)
+    val builder = new SamBuilder(readLength=100)
     builder.addPair(name="Pair", start1=1, start2=1)
     an[Exception] should be thrownBy new ExtractUmisFromBam(input=builder.toTempFile(), output=output, readStructure=Seq("10M90T", "10M90T")).execute()
   }
@@ -138,7 +138,7 @@ class ExtractUmisFromBamTest extends UnitSpec with OptionValues {
 
   it should "not accept read pairs when only one read structure is given" in {
     val output  = newBam
-    val builder = new SamRecordSetBuilder(readLength=100)
+    val builder = new SamBuilder(readLength=100)
     val records = builder.addPair(name="Pair", start1=1, start2=1)
     an[Exception] should be thrownBy new ExtractUmisFromBam(input=builder.toTempFile(), output=output, readStructure=Seq("10M90T")).execute()
   }
@@ -146,12 +146,11 @@ class ExtractUmisFromBamTest extends UnitSpec with OptionValues {
   it should "only not accept paired records with the first end before the second end" in {
     val input   = newBam
     val output  = newBam
-    val builder = new SamRecordSetBuilder(readLength=100)
+    val builder = new SamBuilder(readLength=100)
     builder.addPair(name="Pair", start1=1, start2=1)
 
-    val writer = new SAMFileWriterFactory()
-      .makeWriter(builder.header, true, input.toFile, null)
-    builder.iterator.toSeq.reverse.foreach(writer.addAlignment)
+    val writer = SamWriter(input, builder.header)
+    writer ++= builder.iterator.toSeq.reverse
     writer.close()
 
     an[Exception] should be thrownBy new ExtractUmisFromBam(input=input, output=output, readStructure=Seq("10M90T", "10M90T")).execute()
@@ -159,128 +158,128 @@ class ExtractUmisFromBamTest extends UnitSpec with OptionValues {
 
   it should "not accept read pairs with the different names" in {
     val output  = newBam
-    val builder = new SamRecordSetBuilder(readLength=100)
+    val builder = new SamBuilder(readLength=100)
     val records = builder.addPair(name="Pair", start1=1, start2=1)
-    records.head.setReadName("PairNot")
+    records.head.name = "PairNot"
     an[Exception] should be thrownBy new ExtractUmisFromBam(input=builder.toTempFile(), output=output, readStructure=Seq("10M90T", "10M90T")).execute()
   }
 
   it should "not accept multiple molecular index SAM tags and have a different number of molecular indices in the read structure" in {
     val output  = newBam
-    val builder = new SamRecordSetBuilder(readLength=100)
+    val builder = new SamBuilder(readLength=100)
     an[ValidationException] should be thrownBy new ExtractUmisFromBam(input=builder.toTempFile(), output=output, readStructure=Seq("10M90T", "10M90T"), molecularIndexTags=Seq("A1", "B1", "C1")).execute()
   }
 
   it should "accept duplicate molecular index SAM tags and concatenate the values" in {
     val output  = newBam
-    val builder = new SamRecordSetBuilder(readLength=100)
-    val records = builder.addPair(name="Pair", start1=1, start2=1, record1Unmapped=true, record2Unmapped=true)
+    val builder = new SamBuilder(readLength=100)
+    val records = builder.addPair(name="Pair", start1=1, start2=1, unmapped1=true, unmapped2=true)
     records.foreach { rec =>
-      val base = if (rec.getFirstOfPairFlag) "A" else "C"
-      rec.setReadString(base * 100)
+      val base = if (rec.firstOfPair) "A" else "C"
+      rec.bases = base * 100
     }
     new ExtractUmisFromBam(input=builder.toTempFile(), output=output, readStructure=Seq("10M90T", "10M90T"), molecularIndexTags=Seq("A1", "A1")).execute()
     val recs = readBamRecs(output)
     recs.foreach { rec =>
-      val base = if (rec.getFirstOfPairFlag) "A" else "C"
-      rec.getStringAttribute("A1") shouldBe "AAAAAAAAAA-CCCCCCCCCC"
-      rec.getReadLength shouldBe 90
-      rec.getReadString shouldBe base * 90
+      val base = if (rec.firstOfPair) "A" else "C"
+      rec[String]("A1") shouldBe "AAAAAAAAAA-CCCCCCCCCC"
+      rec.length shouldBe 90
+      rec.basesString shouldBe base * 90
     }
   }
 
   it should "accept duplicate molecular index SAM tags and concatenate the values for fragment reads" in {
     val output  = newBam
-    val builder = new SamRecordSetBuilder(readLength=100)
-    builder.addFrag(name="Frag1", start=1, unmapped=true).map { rec => rec.setReadString("A" * 100); rec }
-    builder.addFrag(name="Frag2", start=1, unmapped=true).map { rec => rec.setReadString("C" * 100); rec }
+    val builder = new SamBuilder(readLength=100)
+    builder.addFrag(name="Frag1", start=1, unmapped=true).map { rec => rec.bases = "A" * 100; rec }
+    builder.addFrag(name="Frag2", start=1, unmapped=true).map { rec => rec.bases = "C" * 100; rec }
 
     new ExtractUmisFromBam(input=builder.toTempFile(), output=output, readStructure=Seq("10M80T10M"), molecularIndexTags=Seq("A1", "A1")).execute()
     val recs = readBamRecs(output)
 
-    recs.head.getStringAttribute("A1") shouldBe "AAAAAAAAAA-AAAAAAAAAA"
-    recs.head.getReadLength shouldBe 80
-    recs.head.getReadString shouldBe "A" * 80
+    recs.head[String]("A1") shouldBe "AAAAAAAAAA-AAAAAAAAAA"
+    recs.head.length shouldBe 80
+    recs.head.basesString shouldBe "A" * 80
 
-    recs.last.getStringAttribute("A1") shouldBe "CCCCCCCCCC-CCCCCCCCCC"
-    recs.last.getReadLength shouldBe 80
-    recs.last.getReadString shouldBe "C" * 80
+    recs.last[String]("A1") shouldBe "CCCCCCCCCC-CCCCCCCCCC"
+    recs.last.length shouldBe 80
+    recs.last.basesString shouldBe "C" * 80
   }
 
   it should "extract the molecular indices and annotate them for a read pair in tags" in {
     val output  = newBam
-    val builder = new SamRecordSetBuilder(readLength=100)
-    val records = builder.addPair(name="Pair", start1=1, start2=1, record1Unmapped=true, record2Unmapped=true)
-    records.foreach { rec => rec.setReadString("A" * 100) }
+    val builder = new SamBuilder(readLength=100)
+    val records = builder.addPair(name="Pair", start1=1, start2=1, unmapped1=true, unmapped2=true)
+    records.foreach { rec => rec.bases = "A" * 100 }
     new ExtractUmisFromBam(input=builder.toTempFile(), output=output, readStructure=Seq("10M90T", "1M99T"), molecularIndexTags=Seq("P1", "P2")).execute()
     val recs = readBamRecs(output)
     recs.foreach { rec =>
-      if (rec.getFirstOfPairFlag) {
-        rec.getStringAttribute("P1") shouldBe "A" * 10
-        rec.getReadLength shouldBe 90
-        rec.getReadString shouldBe "A" * 90
+      if (rec.firstOfPair) {
+        rec[String]("P1") shouldBe "A" * 10
+        rec.length shouldBe 90
+        rec.basesString shouldBe "A" * 90
       }
       else {
-        rec.getStringAttribute("P2") shouldBe "A"
-        rec.getReadLength shouldBe 99
-        rec.getReadString shouldBe "A" * 99
+        rec[String]("P2") shouldBe "A"
+        rec.length shouldBe 99
+        rec.basesString shouldBe "A" * 99
       }
     }
   }
 
   it should "extract the molecular indices and annotate them for a read pair in tags and in the names" in {
     val output  = newBam
-    val builder = new SamRecordSetBuilder(readLength=100)
-    val records = builder.addPair(name="Pair", start1=1, start2=1, record1Unmapped=true, record2Unmapped=true)
-    records.foreach { rec => rec.setReadString("A" * 100) }
+    val builder = new SamBuilder(readLength=100)
+    val records = builder.addPair(name="Pair", start1=1, start2=1, unmapped1=true, unmapped2=true)
+    records.foreach { rec => rec.bases = "A" * 100 }
     new ExtractUmisFromBam(input=builder.toTempFile(), output=output, readStructure=Seq("10M90T", "1M99T"), molecularIndexTags=Seq("P1", "P2"), annotateReadNames=true).execute()
     val recs = readBamRecs(output)
     recs.foreach { rec =>
-      if (rec.getFirstOfPairFlag) {
-        rec.getStringAttribute("P1") shouldBe "A" * 10
-        rec.getReadLength shouldBe 90
-        rec.getReadString shouldBe "A" * 90
-        rec.getReadName shouldBe "Pair+" + "A" * 11
+      if (rec.firstOfPair) {
+        rec[String]("P1") shouldBe "A" * 10
+        rec.length shouldBe 90
+        rec.basesString shouldBe "A" * 90
+        rec.name shouldBe "Pair+" + "A" * 11
       }
       else {
-        rec.getStringAttribute("P2") shouldBe "A"
-        rec.getReadLength shouldBe 99
-        rec.getReadString shouldBe "A" * 99
-        rec.getReadName shouldBe "Pair+" + "A" * 11
+        rec[String]("P2") shouldBe "A"
+        rec.length shouldBe 99
+        rec.basesString shouldBe "A" * 99
+        rec.name shouldBe "Pair+" + "A" * 11
       }
     }
   }
 
   it should "extract the molecular indices and annotate them for a fragment reads in tags and in the names" in {
     val output  = newBam
-    val builder = new SamRecordSetBuilder(readLength=100)
-    builder.addFrag(name="Frag1", start=1, unmapped=true).map { rec => rec.setReadString("A" * 100); rec }
-    builder.addFrag(name="Frag2", start=1, unmapped=true).map { rec => rec.setReadString("C" * 100); rec }
+    val builder = new SamBuilder(readLength=100)
+    builder.addFrag(name="Frag1", start=1, unmapped=true).map { rec => rec.bases = "A" * 100; rec }
+    builder.addFrag(name="Frag2", start=1, unmapped=true).map { rec => rec.bases = "C" * 100; rec }
 
     new ExtractUmisFromBam(input=builder.toTempFile(), output=output, readStructure=Seq("1M99T"), molecularIndexTags=Seq("P1"), annotateReadNames=true).execute()
     val recs = readBamRecs(output)
 
-    recs.head.getStringAttribute("P1") shouldBe "A"
-    recs.head.getReadLength shouldBe 99
-    recs.head.getReadString shouldBe "A" * 99
-    recs.head.getReadName shouldBe "Frag1+A"
+    recs.head[String]("P1") shouldBe "A"
+    recs.head.length shouldBe 99
+    recs.head.basesString shouldBe "A" * 99
+    recs.head.name shouldBe "Frag1+A"
 
-    recs.last.getStringAttribute("P1") shouldBe "C"
-    recs.last.getReadLength shouldBe 99
-    recs.last.getReadString shouldBe "C" * 99
-    recs.last.getReadName shouldBe "Frag2+C"
+    recs.last[String]("P1") shouldBe "C"
+    recs.last.length shouldBe 99
+    recs.last.basesString shouldBe "C" * 99
+    recs.last.name shouldBe "Frag2+C"
   }
 
   it should "extract the molecular indices and annotate them for a read pair in tags and in a single tag" in {
     val output  = newBam
-    val builder = new SamRecordSetBuilder(readLength=100)
-    builder.addPair(name="q", start1=1, start2=1, record1Unmapped=true, record2Unmapped=true).foreach(r => r.setReadString("A" * 100))
+    val builder = new SamBuilder(readLength=100)
+    builder.addPair(name="q", start1=1, start2=1, unmapped1=true, unmapped2=true).foreach(r => r.bases = "A" * 100)
     new ExtractUmisFromBam(input=builder.toTempFile(), output=output, readStructure=Seq("4M96T", "6M94T"), molecularIndexTags=Seq("ZA", "ZB"), singleTag=Some("RX")).execute()
     val recs = readBamRecs(output)
     recs.foreach { rec =>
-      rec.getStringAttribute("ZA") shouldBe "AAAA"
-      rec.getStringAttribute("ZB") shouldBe "AAAAAA"
-      rec.getStringAttribute("RX") shouldBe "AAAA-AAAAAA"
+      rec[String]("ZA") shouldBe "AAAA"
+      rec[String]("ZB") shouldBe "AAAAAA"
+      rec[String]("RX") shouldBe "AAAA-AAAAAA"
     }
   }
 
@@ -306,91 +305,91 @@ class ExtractUmisFromBamTest extends UnitSpec with OptionValues {
 
   it should "should annotate a single molecular index and update clipping information" in {
     val output  = newBam
-    val builder = new SamRecordSetBuilder(readLength=100)
-    val records = builder.addPair(name="Pair", start1=1, start2=1, record1Unmapped=true, record2Unmapped=true)
+    val builder = new SamBuilder(readLength=100)
+    val records = builder.addPair(name="Pair", start1=1, start2=1, unmapped1=true, unmapped2=true)
     records.foreach { rec =>
-      val base = if (rec.getFirstOfPairFlag) "A" else "C"
-      rec.setReadString(base * 100)
-      rec.setAttribute("XT", 20)
+      val base = if (rec.firstOfPair) "A" else "C"
+      rec.bases = base * 100
+      rec("XT") =  20
     }
     new ExtractUmisFromBam(input=builder.toTempFile(), output=output, readStructure=Seq("10M90T", "10M90T"), molecularIndexTags=Seq("A1"), clippingAttribute=Some("XT")).execute()
     val recs = readBamRecs(output)
     recs.foreach { rec =>
-      val base = if (rec.getFirstOfPairFlag) "A" else "C"
-      rec.getStringAttribute("A1") shouldBe "AAAAAAAAAA-CCCCCCCCCC"
-      rec.getReadLength shouldBe 90
-      rec.getReadString shouldBe base * 90
-      rec.getIntegerAttribute("XT") shouldBe 10
+      val base = if (rec.firstOfPair) "A" else "C"
+      rec[String]("A1") shouldBe "AAAAAAAAAA-CCCCCCCCCC"
+      rec.length shouldBe 90
+      rec.basesString shouldBe base * 90
+      rec[Int]("XT") shouldBe 10
     }
   }
 
   it should "should annotate a single molecular index and update clipping information, even with skips" in {
     val output  = newBam
-    val builder = new SamRecordSetBuilder(readLength=100)
-    val records = builder.addPair(name="Pair", start1=1, start2=1, record1Unmapped=true, record2Unmapped=true)
+    val builder = new SamBuilder(readLength=100)
+    val records = builder.addPair(name="Pair", start1=1, start2=1, unmapped1=true, unmapped2=true)
     records.foreach { rec =>
-      val base = if (rec.getFirstOfPairFlag) "A" else "C"
-      rec.setReadString(base * 100)
-      rec.setAttribute("XT", 30)
+      val base = if (rec.firstOfPair) "A" else "C"
+      rec.bases = base * 100
+      rec("XT") = 30
     }
     new ExtractUmisFromBam(input=builder.toTempFile(), output=output, readStructure=Seq("10M10S80T", "10M10S80T"), molecularIndexTags=Seq("A1"), clippingAttribute=Some("XT")).execute()
     val recs = readBamRecs(output)
     recs.foreach { rec =>
-      val base = if (rec.getFirstOfPairFlag) "A" else "C"
-      rec.getStringAttribute("A1") shouldBe "AAAAAAAAAA-CCCCCCCCCC"
-      rec.getReadLength shouldBe 80
-      rec.getReadString shouldBe base * 80
-      rec.getIntegerAttribute("XT") shouldBe 10
+      val base = if (rec.firstOfPair) "A" else "C"
+      rec[String]("A1") shouldBe "AAAAAAAAAA-CCCCCCCCCC"
+      rec.length shouldBe 80
+      rec.basesString shouldBe base * 80
+      rec[Int]("XT") shouldBe 10
     }
   }
 
   it should "should annotate a single molecular index and update clipping information on only the first of pair" in {
     val output  = newBam
-    val builder = new SamRecordSetBuilder(readLength=100)
-    val records = builder.addPair(name="Pair", start1=1, start2=1, record1Unmapped=true, record2Unmapped=true)
+    val builder = new SamBuilder(readLength=100)
+    val records = builder.addPair(name="Pair", start1=1, start2=1, unmapped1=true, unmapped2=true)
     records.foreach { rec =>
-      val base = if (rec.getFirstOfPairFlag) "A" else "C"
-      rec.setReadString(base * 100)
-      if (rec.getFirstOfPairFlag) rec.setAttribute("XT", 20)
+      val base = if (rec.firstOfPair) "A" else "C"
+      rec.bases = base * 100
+      if (rec.firstOfPair) rec("XT") = 20
     }
     new ExtractUmisFromBam(input=builder.toTempFile(), output=output, readStructure=Seq("10M90T", "10M90T"), molecularIndexTags=Seq("A1"), clippingAttribute=Some("XT")).execute()
     val recs = readBamRecs(output)
     recs.foreach { rec =>
-      val base = if (rec.getFirstOfPairFlag) "A" else "C"
-      rec.getStringAttribute("A1") shouldBe "AAAAAAAAAA-CCCCCCCCCC"
-      rec.getReadLength shouldBe 90
-      rec.getReadString shouldBe base * 90
-      if (rec.getFirstOfPairFlag) rec.getIntegerAttribute("XT") shouldBe 10
-      else rec.getAttribute("XT") shouldBe null
+      val base = if (rec.firstOfPair) "A" else "C"
+      rec[String]("A1") shouldBe "AAAAAAAAAA-CCCCCCCCCC"
+      rec.length shouldBe 90
+      rec.basesString shouldBe base * 90
+      if (rec.firstOfPair) rec[Int]("XT") shouldBe 10
+      else rec.get("XT") shouldBe None
     }
   }
 
   "ExtractUmisFromBam.updateClippingInformation" should "update the clipping information for non-template bases" in {
-    val builder = new SamRecordSetBuilder(readLength=100)
+    val builder = new SamBuilder(readLength=100)
     val record = builder.addFrag(contig=0, start=1).value
 
     // no clipping information on the record
     ExtractUmisFromBam.updateClippingInformation(record, Some("XT"), ReadStructure("100T"))
-    record.getIntegerAttribute("XT") shouldBe null
+    record.get("XT") shouldBe None
 
     // no clipping tag given
-    record.setAttribute("XT", 100)
+    record("XT") = 100
     ExtractUmisFromBam.updateClippingInformation(record, None, ReadStructure("100T"))
-    record.getIntegerAttribute("XT") shouldBe 100
+    record[Int]("XT") shouldBe 100
 
     // no non-template bases
-    record.setAttribute("XT", 80)
+    record("XT") = 80
     ExtractUmisFromBam.updateClippingInformation(record, Some("XT"), ReadStructure("100T"))
-    record.getIntegerAttribute("XT") shouldBe 80
+    record[Int]("XT") shouldBe 80
 
     // 10-bases are skipped, so the read will be 90 bases long, and the clipping position should be shifted accordingly
-    record.setAttribute("XT", 80)
+    record("XT") = 80
     ExtractUmisFromBam.updateClippingInformation(record, Some("XT"), ReadStructure("20T10S70T"))
-    record.getIntegerAttribute("XT") shouldBe 70
+    record[Int]("XT") shouldBe 70
 
     // same as previous, but the clipping position is in the skip
-    record.setAttribute("XT", 80)
+    record("XT") = 80
     ExtractUmisFromBam.updateClippingInformation(record, Some("XT"), ReadStructure("75T10S15T"))
-    record.getIntegerAttribute("XT") shouldBe 75
+    record[Int]("XT") shouldBe 75
   }
 }

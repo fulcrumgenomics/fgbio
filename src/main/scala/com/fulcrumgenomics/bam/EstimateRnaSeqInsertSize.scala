@@ -26,6 +26,8 @@
 package com.fulcrumgenomics.bam
 
 import com.fulcrumgenomics.FgBioDef._
+import com.fulcrumgenomics.alignment.Cigar
+import com.fulcrumgenomics.bam.api.{SamRecord, SamSource}
 import com.fulcrumgenomics.cmdline.{ClpGroups, FgBioTool}
 import com.fulcrumgenomics.commons.CommonsDef.PathToBam
 import com.fulcrumgenomics.commons.io.PathUtil
@@ -83,25 +85,25 @@ class EstimateRnaSeqInsertSize
   private val geneOverlapDetector = new OverlapDetector[Gene](0, 0)
 
   override def execute(): Unit = {
-    val progress            = new ProgressLogger(logger, verb = "read", unit = 5e6.toInt)
+    val progress            = ProgressLogger(logger, verb = "read", unit = 5e6.toInt)
     val pairOrientations    = PairOrientation.values()
-    val in                  = SamReaderFactory.make.open(input)
-    val refFlatSource       = RefFlatSource(refFlat, Some(in.getFileHeader.getSequenceDictionary))
+    val in                  = SamSource(input)
+    val refFlatSource       = RefFlatSource(refFlat, Some(in.header.getSequenceDictionary))
     val counters            = pairOrientations.map { pairOrientation => (pairOrientation, new NumericCounter[Long]()) }.toMap
     val filter              = new AggregateFilter(EstimateRnaSeqInsertSize.filters(minimumMappingQuality=minimumMappingQuality, includeDuplicates=includeDuplicates).asJava)
     var numReadPairs        = 0L
-    val recordIterator      = new FilteringSamIterator(
-      in.iterator().map { rec => progress.record(rec); if (rec.getReadPairedFlag && rec.getFirstOfPairFlag) numReadPairs += 1; rec },
-      filter,
-      false
-    )
+    val recordIterator      = in.iterator.filter { rec =>
+      progress.record(rec)
+      if (rec.paired && rec.firstOfPair) numReadPairs += 1
+      !filter.filterOut(rec.asSam)
+    }
 
     refFlatSource.foreach { gene => geneOverlapDetector.addLhs(gene, gene) }
 
     recordIterator.foreach { rec =>
       calculateInsertSize(rec=rec) match {
         case None             => Unit // ignore
-        case Some(insertSize) => counters(SamPairUtil.getPairOrientation(rec)).count(insertSize)
+        case Some(insertSize) => counters(rec.pairOrientation).count(insertSize)
       }
     }
 
@@ -150,10 +152,10 @@ class EstimateRnaSeqInsertSize
   }
 
   /** Calculates the insert size in transcript space. */
-  private def calculateInsertSize(rec: SAMRecord): Option[Int] = {
+  private def calculateInsertSize(rec: SamRecord): Option[Int] = {
     // Get the overlapping genes
     val mateCigar        = getAndRequireMateCigar(rec)
-    val mateAlignmentEnd = mateAlignmentEndFrom(mateCigar, rec.getMateAlignmentStart)
+    val mateAlignmentEnd = mateAlignmentEndFrom(mateCigar, rec.mateStart)
     val recInterval      = intervalFrom(rec, mateAlignmentEnd=mateAlignmentEnd)
     val overlappingGenes = geneOverlapDetector.getOverlaps(recInterval)
 
@@ -163,8 +165,8 @@ class EstimateRnaSeqInsertSize
         gene             = overlappingGenes.iterator().next(),
         minimumOverlap   = minimumOverlap,
         recInterval      = recInterval,
-        recBlocks        = rec.getAlignmentBlocks.toList,
-        mateBlocks       = mateAlignmentBlocksFrom(mateCigar, rec.getMateAlignmentStart),
+        recBlocks        = rec.asSam.getAlignmentBlocks.toList,
+        mateBlocks       = mateAlignmentBlocksFrom(mateCigar, rec.mateStart),
         mateAlignmentEnd = mateAlignmentEnd
       )
     }
@@ -176,9 +178,12 @@ object EstimateRnaSeqInsertSize {
   val RnaSeqInsertSizeMetricExtension: String = ".rnaseq_insert_size.txt"
   val RnaSeqInsertSizeMetricHistogramExtension: String = ".rnaseq_insert_size_histogram.txt"
 
-  private trait SingleEndSamRecordFilter extends SamRecordFilter { override def filterOut(r1: SAMRecord, r2: SAMRecord) = filterOut(r1) || filterOut(r2) }
-  def filter(f: SAMRecord => Boolean): SamRecordFilter = new SingleEndSamRecordFilter {
-    override def filterOut(r: SAMRecord): Boolean = f(r)
+  private trait SingleEndSamRecordFilter extends SamRecordFilter {
+    override def filterOut(r1: SAMRecord, r2: SAMRecord) = filterOut(r1) || filterOut(r2)
+  }
+
+  def filter(f: SamRecord => Boolean): SamRecordFilter = new SingleEndSamRecordFilter {
+    override def filterOut(r: SAMRecord): Boolean = f(r.asInstanceOf[SamRecord])
   }
 
   private def filters(minimumMappingQuality: Int, includeDuplicates: Boolean) = List(
@@ -192,40 +197,41 @@ object EstimateRnaSeqInsertSize {
     DifferentReferenceIndexFilter
   )
 
-  private def ReadPairedFilter                             = filter(!_.getReadPairedFlag)
-  private def MateMappedFilter                             = filter(r => !r.getReadPairedFlag || r.getMateUnmappedFlag)
-  private def DuplicatesFilter(includeDuplicates: Boolean) = filter(r => !includeDuplicates && r.getDuplicateReadFlag)
-  private def FirstOfPairOnlyFilter                        = filter(_.getFirstOfPairFlag)
-  private def DifferentReferenceIndexFilter                = filter(r => r.getReferenceIndex != r.getMateReferenceIndex)
+  private def ReadPairedFilter                             = filter(!_.paired)
+  private def MateMappedFilter                             = filter(r => !r.paired || r.mateUnmapped)
+  private def DuplicatesFilter(includeDuplicates: Boolean) = filter(r => !includeDuplicates && r.duplicate)
+  private def FirstOfPairOnlyFilter                        = filter(_.firstOfPair)
+  private def DifferentReferenceIndexFilter                = filter(r => r.refIndex != r.mateRefIndex)
 
-  private[bam] def getAndRequireMateCigar(rec: SAMRecord): Cigar = {
-    val mateCigar = SAMUtils.getMateCigar(rec)
-    require(mateCigar != null, s"Mate CIGAR (Tag MC) not found for $rec, consider using SetMateInformation.")
-    mateCigar
+  private[bam] def getAndRequireMateCigar(rec: SamRecord): Cigar = {
+    rec.get[String](SAMTag.MC.name()) match {
+      case None => throw new IllegalStateException(s"Mate CIGAR (Tag MC) not found for $rec, consider using SetMateInformation.")
+      case Some(mc) => Cigar(mc)
+    }
   }
 
   /** Calculates an interval representing the records span.  If mateAlignmentEnd is not given, computes from
     * the mate cigar.
     */
-  private[bam] def intervalFrom(rec: SAMRecord, mateAlignmentEnd: Int): Interval = {
-    val leftMostBase     = Math.min(rec.getAlignmentStart, rec.getMateAlignmentStart)
-    val rightMostBase    = Math.max(rec.getAlignmentEnd, mateAlignmentEnd)
-    new Interval(rec.getReferenceName, leftMostBase, rightMostBase)
+  private[bam] def intervalFrom(rec: SamRecord, mateAlignmentEnd: Int): Interval = {
+    val leftMostBase     = Math.min(rec.start, rec.mateStart)
+    val rightMostBase    = Math.max(rec.end, mateAlignmentEnd)
+    new Interval(rec.refName, leftMostBase, rightMostBase)
   }
 
   /** Gets the mate's alignment end. */
   private[bam] def mateAlignmentEndFrom(mateCigar: Cigar, mateAlignmentStart: Int): Int = {
-    CoordMath.getEnd(mateAlignmentStart, mateCigar.getReferenceLength)
+    CoordMath.getEnd(mateAlignmentStart, mateCigar.lengthOnTarget)
   }
 
   /** Gets the mate's alignment blocks. */
   private[bam] def mateAlignmentBlocksFrom(mateCigar: Cigar, mateAlignmentStart: Int): List[AlignmentBlock] = {
-    SAMUtils.getAlignmentBlocks(mateCigar, mateAlignmentStart, "mate cigar").toList
+    SAMUtils.getAlignmentBlocks(mateCigar.toHtsjdkCigar, mateAlignmentStart, "mate cigar").toList
   }
 
   /** Calculates the insert size from a gene.  Returns None if the record's span is not enclosed in the gene or if
     * the insert size disagree across transcripts.  Assumes the record and gene are mapped to the same chromosome. */
-  private[bam] def insertSizeFromGene(rec: SAMRecord,
+  private[bam] def insertSizeFromGene(rec: SamRecord,
                                       gene: Gene,
                                       minimumOverlap: Double,
                                       recInterval: Interval,
@@ -261,10 +267,10 @@ object EstimateRnaSeqInsertSize {
   }
 
   /** Computes the insert size (5' to 5') from a record and transcript, assuming that the record overlaps the transcript. */
-  private[bam] def insertSizeFromTranscript(rec: SAMRecord, transcript: Transcript, mateAlignmentEnd: Int): Int = {
+  private[bam] def insertSizeFromTranscript(rec: SamRecord, transcript: Transcript, mateAlignmentEnd: Int): Int = {
     // get the 5' position of the record and its mate
-    val rec5Prime   = if (rec.getReadNegativeStrandFlag) rec.getAlignmentEnd else rec.getAlignmentStart
-    val mate5Prime  = if (rec.getMateNegativeStrandFlag) mateAlignmentEnd    else rec.getMateAlignmentStart
+    val rec5Prime   = if (rec.negativeStrand)     rec.end          else rec.start
+    val mate5Prime  = if (rec.mateNegativeStrand) mateAlignmentEnd else rec.mateStart
 
     // calculate the distance in transcript space
     val lower5Prime      = Math.min(rec5Prime, mate5Prime)

@@ -26,16 +26,15 @@
 package com.fulcrumgenomics.umi
 
 import com.fulcrumgenomics.FgBioDef._
+import com.fulcrumgenomics.bam.api.{SamOrder, SamSource, SamWriter}
 import com.fulcrumgenomics.cmdline.{ClpGroups, FgBioTool}
-import com.fulcrumgenomics.umi.VanillaUmiConsensusCallerOptions._
-import com.fulcrumgenomics.util.NumericTypes.PhredScore
-import com.fulcrumgenomics.util.ProgressLogger
 import com.fulcrumgenomics.commons.io.Io
 import com.fulcrumgenomics.commons.util.{LazyLogging, LogLevel, Logger}
 import com.fulcrumgenomics.sopt._
 import com.fulcrumgenomics.sopt.cmdline.ValidationException
-import htsjdk.samtools.SAMFileHeader.SortOrder
-import htsjdk.samtools._
+import com.fulcrumgenomics.umi.VanillaUmiConsensusCallerOptions._
+import com.fulcrumgenomics.util.NumericTypes.PhredScore
+import com.fulcrumgenomics.util.ProgressLogger
 
 @clp(description =
   """
@@ -121,7 +120,7 @@ class CallMolecularConsensusReads
           """)
  val maxReads: Option[Int] = None,
  @arg(flag='B', doc="If true produce tags on consensus reads that contain per-base information.") val outputPerBaseTags: Boolean = DefaultProducePerBaseTags,
- @arg(flag='S', doc="The sort order of the output, if None then the same as the input.") val sortOrder: Option[SortOrder] = Some(SortOrder.queryname),
+ @arg(flag='S', doc="The sort order of the output, if `:none:` then the same as the input.") val sortOrder: Option[SamOrder] = Some(SamOrder.Queryname),
  @arg(flag='D', doc="Turn on debug logging.") val debug: Boolean = false
 ) extends FgBioTool with LazyLogging {
 
@@ -137,12 +136,12 @@ class CallMolecularConsensusReads
 
   /** Main method that does the work of reading input files, creating the consensus reads, and writing the output file. */
   override def execute(): Unit = {
-    val in  = SamReaderFactory.make().open(input.toFile)
-    val rej = rejects.map(r => new SAMFileWriterFactory().makeWriter(in.getFileHeader, true, r.toFile, null))
+    val in  = SamSource(input)
+    val rej = rejects.map(r => SamWriter(r, in.header))
 
     // The output file is unmapped, so for now let's clear out the sequence dictionary & PGs
-    val outHeader = UmiConsensusCaller.outputHeader(in.getFileHeader, readGroupId, sortOrder)
-    val out = new SAMFileWriterFactory().makeWriter(outHeader, sortOrder.forall(_ == in.getFileHeader.getSortOrder), output.toFile, null)
+    val outHeader = UmiConsensusCaller.outputHeader(in.header, readGroupId, sortOrder)
+    val out       = SamWriter(output, outHeader, sort=sortOrder)
 
     val options = new VanillaUmiConsensusCallerOptions(
       tag                          = tag,
@@ -156,14 +155,14 @@ class CallMolecularConsensusReads
     )
 
     val caller = new VanillaUmiConsensusCaller(
-      readNamePrefix = readNamePrefix.getOrElse(UmiConsensusCaller.makePrefixFromSamHeader(in.getFileHeader)),
+      readNamePrefix = readNamePrefix.getOrElse(UmiConsensusCaller.makePrefixFromSamHeader(in.header)),
       readGroupId    = readGroupId,
       options        = options,
       rejects        = rej
     )
 
     val iterator = new ConsensusCallingIterator(in.toIterator, caller, Some(new ProgressLogger(logger, unit=5e5.toInt)))
-    iterator.foreach { rec => out.addAlignment(rec) }
+    out ++= iterator
 
     in.safelyClose()
     out.close()

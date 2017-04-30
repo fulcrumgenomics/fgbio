@@ -24,20 +24,20 @@
 
 package com.fulcrumgenomics.bam
 
+import java.lang.Math.{max, min}
+
 import com.fulcrumgenomics.FgBioDef._
+import com.fulcrumgenomics.bam.api.SamSource
 import com.fulcrumgenomics.cmdline.{ClpGroups, FgBioTool}
-import com.fulcrumgenomics.util.{Io, Metric, Sequences}
-import com.fulcrumgenomics.vcf.ByIntervalListVariantContextIterator
 import com.fulcrumgenomics.commons.util.LazyLogging
 import com.fulcrumgenomics.sopt.{arg, clp}
-import htsjdk.samtools.SamReaderFactory
+import com.fulcrumgenomics.util.{Io, Metric, Sequences}
+import com.fulcrumgenomics.vcf.ByIntervalListVariantContextIterator
 import htsjdk.samtools.util.SamLocusIterator.LocusInfo
 import htsjdk.samtools.util._
 import htsjdk.variant.variantcontext.VariantContext
 import htsjdk.variant.vcf.VCFFileReader
 import org.apache.commons.math3.stat.regression.OLSMultipleLinearRegression
-
-import Math.{min, max}
 
 @clp(group=ClpGroups.SamOrBam, description=
   """
@@ -180,10 +180,10 @@ class EstimatePoolingFractions
 
   /** Constructs a SamLocusIterator that will visit every locus in the input. */
   def constructBamIterator(loci: Traversable[Locus]): Iterator[LocusInfo] = {
-    val in = SamReaderFactory.make().open(this.bam)
-    val intervals = new IntervalList(in.getFileHeader)
+    val in = SamSource(this.bam)
+    val intervals = new IntervalList(in.header)
     loci.foreach(l => intervals.add(new Interval(l.chrom, l.pos, l.pos)))
-    val iterator = new SamLocusIterator(in, intervals.uniqued())
+    val iterator = new SamLocusIterator(in.toSamReader, intervals.uniqued())
     iterator.setEmitUncoveredLoci(true)
     iterator.setIncludeNonPfReads(false)
     iterator.setMappingQualityScoreCutoff(this.minMappingQuality)

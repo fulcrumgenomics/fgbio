@@ -24,45 +24,46 @@
 
 package com.fulcrumgenomics.personal.nhomer
 
-import com.fulcrumgenomics.cmdline.{ClpGroups, FgBioTool}
 import com.fulcrumgenomics.FgBioDef._
+import com.fulcrumgenomics.bam.api.{SamSource, SamWriter}
+import com.fulcrumgenomics.cmdline.{ClpGroups, FgBioTool}
 import com.fulcrumgenomics.commons.io.Io
 import com.fulcrumgenomics.sopt._
-import com.fulcrumgenomics.sopt.cmdline.ValidationException
 import htsjdk.samtools.util.CloserUtil
-import htsjdk.samtools.{SAMFileWriter, SAMFileWriterFactory, SamReader, SamReaderFactory}
 
 @clp(
   description = "Splits an optional tag in a SAM or BAM into multiple optional tags.",
   group = ClpGroups.Personal
 )
 class SplitTag
-( @arg(doc = "Input SAM or BAM.") val input: PathToBam,
+( @arg(doc = "Input SAM or BAM.")  val input: PathToBam,
   @arg(doc = "Output SAM or BAM.") val output: PathToBam,
-  @arg(doc = "Tag to split.") val tagToSplit: String,
+  @arg(doc = "Tag to split.")      val tagToSplit: String,
   @arg(doc = "Tag(s) to output.  There should be one per produced token.", minElements = 1) val tagsToOutput: List[String],
   @arg(doc = "The delimiter used to split the string.") val delimiter: String = "-"
 ) extends FgBioTool {
 
   Io.assertReadable(input)
   Io.assertCanWriteFile(output)
-  if (tagToSplit.length != 2) throw new ValidationException(s"The tag to split must be of length two (was ${tagToSplit.length}).")
-  tagsToOutput.foreach { tagToOutput =>
-    if (tagToOutput.length != 2) throw new ValidationException(s"The tag to output '$tagToOutput' must be of length two (was ${tagToOutput.length}).")
-  }
+  validate(tagToSplit.length == 2, s"The tag to split must be of length two (was ${tagToSplit.length}).")
+  tagsToOutput.foreach { tag => validate(tag.length == 2, s"The tag to output '$tag' must be of length two (was ${tag.length}).") }
 
   override def execute(): Unit = {
-    val reader: SamReader = SamReaderFactory.makeDefault.open(input.toFile)
-    val writer: SAMFileWriter = new SAMFileWriterFactory().makeSAMOrBAMWriter(reader.getFileHeader, true, output.toFile)
-    reader.foreach { record =>
-      val value: String = record.getStringAttribute(tagToSplit)
-      if (value == null) fail(String.format("Record '%s' was missing the tag '%s'", record.getReadName, tagToSplit))
-      val tokens: Array[String] = value.split(delimiter)
-      if (tokens.length != tagsToOutput.size) fail(s"Record '${record.getReadName}' did not have '${tagsToOutput.size}' tokens")
-      tagsToOutput.zip(tokens).foreach { case (tagToOutput, token) => record.setAttribute(tagToOutput, token) }
-      writer.addAlignment(record)
+    val in  = SamSource(input)
+    val out = SamWriter(output, in.header)
+    in.foreach { record =>
+      record.get[String](tagToSplit) match {
+        case None =>
+          fail(String.format("Record '%s' was missing the tag '%s'", record.name, tagToSplit))
+        case Some(value) =>
+          val tokens: Array[String] = value.split(delimiter)
+          if (tokens.length != tagsToOutput.size) fail(s"Record '${record.name}' did not have '${tagsToOutput.size}' tokens")
+          tagsToOutput.zip(tokens).foreach { case (tagToOutput, token) => record(tagToOutput) = token }
+          out += record
+
+      }
     }
-    CloserUtil.close(reader)
-    writer.close()
+    CloserUtil.close(in)
+    out.close()
   }
 }

@@ -28,12 +28,10 @@ package com.fulcrumgenomics.umi
 
 import java.nio.file.Files
 
-import com.fulcrumgenomics.testing.{SamRecordSetBuilder, UnitSpec}
+import com.fulcrumgenomics.bam.api.{SamOrder, SamRecord}
+import com.fulcrumgenomics.testing.SamBuilder.{Minus, Plus}
+import com.fulcrumgenomics.testing.{SamBuilder, UnitSpec}
 import com.fulcrumgenomics.umi.GroupReadsByUmi._
-import htsjdk.samtools.SAMFileHeader.SortOrder
-import htsjdk.samtools.{SAMRecord, SamPairUtil, SamReaderFactory}
-import com.fulcrumgenomics.FgBioDef._
-import SamRecordSetBuilder._
 
 import scala.collection.mutable
 import scala.collection.mutable.ListBuffer
@@ -172,62 +170,24 @@ class GroupReadsByUmiTest extends UnitSpec {
     }
   }
 
-  // Tests for the comparator which is used internally
   {
     val comparator = new GroupReadsByUmi.EarlierReadComparator()
 
-    "EarlierReadComparator" should "reject unmapped reads" in {
-      val recs = new SamRecordSetBuilder(readLength=100).addPair("q1", start1=100, start2=100, record1Unmapped = true)
-      an[AssertionError] should be thrownBy recs.sortWith(comparator.lt)
-    }
-
-    it should "reject unpaired reads" in {
-      val builder = new SamRecordSetBuilder(readLength=100)
-      builder.addFrag("q1", start=100)
-      builder.addFrag("q2", start=200)
-      an[AssertionError] should be thrownBy builder.toList.sortWith(comparator.lt)
-    }
-
-    it should "reject secondary reads" in {
-      val recs = new SamRecordSetBuilder(readLength=100).addPair("q1", start1=100, start2=300)
-      recs.foreach(rec => rec.setNotPrimaryAlignmentFlag(true))
-      an[AssertionError] should be thrownBy recs.sortWith(comparator.lt)
-    }
-
-    it should "reject supplementary reads" in {
-      val recs = new SamRecordSetBuilder(readLength=100).addPair("q1", start1=100, start2=300)
-      recs.foreach(rec => rec.setSupplementaryAlignmentFlag(true))
-      an[AssertionError] should be thrownBy recs.sortWith(comparator.lt)
-    }
-
-    it should "reject pairs with reads mapped to different chromosomes" in {
-      val recs = new SamRecordSetBuilder(readLength=100).addPair("q1", start1=100, start2=300)
-      recs match {
-        case Seq(r1, r2) =>
-          r2.setReferenceIndex(3)
-          SamPairUtil.setMateInfo(r1, r2, true)
-        case _           => unreachable("This should never happen!!")
-      }
-
-      an[AssertionError] should be thrownBy recs.sortWith(comparator.lt)
-    }
-
-    it should "sort pairs by the 'lower' 5' position of the pair" in {
-      val builder = new SamRecordSetBuilder(readLength=100, sortOrder=SortOrder.coordinate)
-      val exp = ListBuffer[SAMRecord]()
+    "TemplateCoordinate SamOrder" should "sort pairs by the 'lower' 5' position of the pair" in {
+      val builder = new SamBuilder(readLength=100, sort=Some(SamOrder.Coordinate))
+      val exp = ListBuffer[SamRecord]()
       // Records are added to the builder in the order that we expect them to be sorted, but the builder
       // will coordinate sort them for us, so we can re-sort them and test the results
-      exp ++= builder.addPair("q1", 0, 100, 300)
-      exp ++= builder.addPair("q2", 0, 106, 300, cigar1="5S95M") // effective=101
-      exp ++= builder.addPair("q3", 0, 102, 299)
-      exp ++= builder.addPair("q4", 0, 300, 110, strand1=Minus, strand2=Plus)
-      exp ++= builder.addPair("q5", 0, 120, 320)
-      exp ++= builder.addPair("q6", 1, 1, 200)
+      exp ++= builder.addPair("q1", contig=0, start1=100, start2=300)
+      exp ++= builder.addPair("q2", contig=0, start1=106, start2=300, cigar1="5S95M") // effective=101
+      exp ++= builder.addPair("q3", contig=0, start1=102, start2=299)
+      exp ++= builder.addPair("q4", contig=0, start1=300, start2=110, strand1=Minus, strand2=Plus)
+      exp ++= builder.addPair("q5", contig=0, start1=120, start2=320)
+      exp ++= builder.addPair("q6", contig=1, start1=1,   start2=200)
 
-      val f = (r:SAMRecord) => r.getReadName + "/" + (if (r.getFirstOfPairFlag) 1 else 2 )
       // Order they are added in except for q4 gets it's mate's flipped because of strand order
       val expected = List("q1/1", "q1/2", "q2/1", "q2/2", "q3/1", "q3/2", "q4/2", "q4/1", "q5/1", "q5/2", "q6/1", "q6/2")
-      val actual   = builder.toList.sorted(Ordering.comparatorToOrdering(comparator)).map(f)
+      val actual   = builder.toList.sortBy(r => SamOrder.TemplateCoordinate.sortkey(r)).map(_.id)
 
       actual should contain theSameElementsInOrderAs expected
     }
@@ -235,12 +195,12 @@ class GroupReadsByUmiTest extends UnitSpec {
 
   // Test for running the GroupReadsByUmi command line program with some sample input
   "GroupReadsByUmi" should "group reads correctly" in {
-    val builder = new SamRecordSetBuilder(readLength=100, sortOrder=SortOrder.coordinate)
+    val builder = new SamBuilder(readLength=100, sort=Some(SamOrder.Coordinate))
     builder.addPair(name="a01", start1=100, start2=300, attrs=Map("RX" -> "AAAAAAAA"))
     builder.addPair(name="a02", start1=100, start2=300, attrs=Map("RX" -> "AAAAgAAA"))
     builder.addPair(name="a03", start1=100, start2=300, attrs=Map("RX" -> "AAAAAAAA"))
     builder.addPair(name="a04", start1=100, start2=300, attrs=Map("RX" -> "AAAAAAAt"))
-    builder.addPair(name="a05", start1=100, start2=300, record2Unmapped=true, attrs=Map("RX" -> "AAAAAAAt"))
+    builder.addPair(name="a05", start1=100, start2=300, unmapped2=true, attrs=Map("RX" -> "AAAAAAAt"))
     builder.addPair(name="a06", start1=100, start2=300, mapq1=5)
 
     val in  = builder.toTempFile()
@@ -248,16 +208,13 @@ class GroupReadsByUmiTest extends UnitSpec {
     val hist = Files.createTempFile("umi_grouped.", ".histogram.txt")
     new GroupReadsByUmi(input=in, output=out, familySizeHistogram=Some(hist), rawTag="RX", assignTag="MI", strategy="edit", edits=1).execute()
 
-    val reader = SamReaderFactory.make().open(out.toFile)
-    val groups = reader.iterator().toSeq.groupBy(_.getReadName.charAt(0))
+    val groups = readBamRecs(out).groupBy(_.name.charAt(0))
 
     // Group A: Read 5 out for unmapped mate, 6 out for low mapq, 1-4 all passed through into one umi group
     groups('a') should have size 4*2
-    groups('a').map(_.getReadName).toSet shouldEqual Set("a01", "a02", "a03", "a04")
-    groups('a').map(_.getAttribute("MI")).toSet should have size 1
+    groups('a').map(_.name).toSet shouldEqual Set("a01", "a02", "a03", "a04")
+    groups('a').map(r => r[String]("MI")).toSet should have size 1
 
     hist.toFile.exists() shouldBe true
-
-    reader.close()
   }
 }

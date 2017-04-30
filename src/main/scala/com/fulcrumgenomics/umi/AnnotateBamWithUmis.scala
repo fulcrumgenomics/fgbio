@@ -24,14 +24,14 @@
  */
 package com.fulcrumgenomics.umi
 
-import com.fulcrumgenomics.cmdline.{ClpGroups, FgBioTool}
-import com.fulcrumgenomics.fastq.FastqSource
-import com.fulcrumgenomics.util.ProgressLogger
 import com.fulcrumgenomics.FgBioDef._
+import com.fulcrumgenomics.bam.api.{SamSource, SamWriter}
+import com.fulcrumgenomics.cmdline.{ClpGroups, FgBioTool}
 import com.fulcrumgenomics.commons.io.Io
 import com.fulcrumgenomics.commons.util.LazyLogging
+import com.fulcrumgenomics.fastq.FastqSource
 import com.fulcrumgenomics.sopt._
-import htsjdk.samtools.{SAMFileWriterFactory, SamReaderFactory}
+import com.fulcrumgenomics.util.ProgressLogger
 
 @clp(description =
   """
@@ -82,17 +82,17 @@ class AnnotateBamWithUmis(
 
     // Loop through the BAM file an annotate it
     logger.info("Reading input BAM and annotating output BAM.")
-    val in  = SamReaderFactory.make().open(input.toFile)
-    val out = new SAMFileWriterFactory().makeWriter(in.getFileHeader, true, output.toFile, null)
-    val progress = new ProgressLogger(logger)
+    val in  = SamSource(input)
+    val out = SamWriter(output, in.header)
+    val progress = ProgressLogger(logger)
 
     in.foreach(rec => {
-      val name = rec.getReadName
+      val name = rec.name
       nameToUmi.get(name) match {
-        case Some(umi) => rec.setAttribute(attribute, umi)
+        case Some(umi) => rec(attribute) = umi
         case None      => logMissingUmi(name)
       }
-      out.addAlignment(rec)
+      out += rec
       progress.record(rec)
     })
 

@@ -27,11 +27,13 @@ package com.fulcrumgenomics.bam
 import java.nio.file.Paths
 
 import com.fulcrumgenomics.FgBioDef._
+import com.fulcrumgenomics.bam.api.{SamRecord, SamSource, SamWriter}
 import com.fulcrumgenomics.testing.UnitSpec
 import com.fulcrumgenomics.util.Metric
 import htsjdk.samtools.SAMFileHeader.SortOrder
-import htsjdk.samtools.{MergingSamRecordIterator, SAMFileWriterFactory, SamFileHeaderMerger, SamReaderFactory}
+import htsjdk.samtools.{MergingSamRecordIterator, SamFileHeaderMerger}
 import org.scalatest.ParallelTestExecution
+
 import scala.collection.JavaConverters._
 
 class EstimatePoolingFractionsTest extends UnitSpec with ParallelTestExecution {
@@ -43,23 +45,21 @@ class EstimatePoolingFractionsTest extends UnitSpec with ParallelTestExecution {
 
   /** Merges one or more BAMs and returns the path to the merged BAM. */
   def merge(bams: Seq[PathToBam]): PathToBam = {
-    val factory = SamReaderFactory.make()
-    val readers = bams.map(factory.open)
+    val readers = bams.map(bam => SamSource(bam))
 
     // Mangle the library names in the header so that the merger sees duplicate RGs as different RGs.
     readers.zipWithIndex.foreach { case (reader, index) =>
-        reader.getFileHeader.getReadGroups.foreach(rg => rg.setLibrary(rg.getLibrary + ":" + index))
+        reader.header.getReadGroups.foreach(rg => rg.setLibrary(rg.getLibrary + ":" + index))
     }
-    val headerMerger = new SamFileHeaderMerger(SortOrder.coordinate, readers.map(_.getFileHeader).asJava, false)
-    val iterator     = new MergingSamRecordIterator(headerMerger, readers.asJava, true)
+    val headerMerger = new SamFileHeaderMerger(SortOrder.coordinate, readers.map(_.header).asJava, false)
+    val iterator     = new MergingSamRecordIterator(headerMerger, readers.iterator.map(_.toSamReader).toJavaList, true)
 
     val output = makeTempFile("merged.", ".bam")
-    val out    = new SAMFileWriterFactory().setCompressionLevel(0).setCreateIndex(true)
-      .makeBAMWriter(headerMerger.getMergedHeader, true, output.toFile)
-    iterator.foreach { r =>
+    val out    = SamWriter(output, headerMerger.getMergedHeader, compression = 0)
+    iterator.map(_.asInstanceOf[SamRecord]).foreach { r =>
        // Add the RG ID to the read name so we don't have identical read names when merging the same BAM 2+ times
-      r.setReadName(r.getReadGroup.getReadGroupId + ":" + r.getReadName)
-      out.addAlignment(r)
+      r.name = r.readGroup.getReadGroupId + ":" + r.name
+      out += r
     }
     out.close()
     readers.foreach(_.safelyClose())

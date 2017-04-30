@@ -25,11 +25,9 @@
 package com.fulcrumgenomics.alignment
 
 import com.fulcrumgenomics.FgBioDef._
-import htsjdk.samtools.{CigarOperator, TextCigarCodec, Cigar => HtsJdkCigar}
 
 import scala.collection.mutable.ArrayBuffer
-
-import scala.collection.mutable.ArrayBuffer
+import htsjdk.samtools.{CigarElement, CigarOperator, SAMRecord, Cigar => HtsJdkCigar}
 
 /**
   * Represents an element in a Cigar.
@@ -47,6 +45,9 @@ case class CigarElem(operator: CigarOperator, length: Int) {
 /** Companion object for Cigar that offers alternative constructors. */
 object Cigar {
   private val ZeroCharAsInt = '0'.toInt
+
+  /** An empty Cigar object. */
+  val empty = Cigar(IndexedSeq.empty)
 
   /** Constructs a Cigar object from a Cigar string. */
   def apply(cigar: String): Cigar = {
@@ -71,6 +72,14 @@ object Cigar {
     Cigar(elements.toIndexedSeq)
   }
 
+  /**
+    * Constructs a Cigar from a Cigar string, allowing the string to be either `null` or
+    * `*`, in which case Cigar.empty is returned.  Useful for parsing Cigars from SAM files.
+    */
+  def fromSam(cigar: String): Cigar = {
+    if (cigar == null || cigar == SAMRecord.NO_ALIGNMENT_CIGAR) Cigar.empty else apply(cigar)
+  }
+
   /** Constructs a Cigar objects from the HTSJDK class of the same name. */
   def apply(ciggy: HtsJdkCigar): Cigar = Cigar(ciggy.iterator().map(e => CigarElem(e.getOperator, e.getLength)).toIndexedSeq)
 }
@@ -80,8 +89,6 @@ object Cigar {
   * @param elems the ordered sequence of elements in the Cigar
   */
 case class Cigar(elems: IndexedSeq[CigarElem]) extends Iterable[CigarElem] {
-  require(elems.nonEmpty, s"Cigar must have at least one element.")
-
   // Cache whether or not the Cigar is coalesced alrady (i.e. has no pair of adjacent elements with the same operator)
   private val isCoalesced: Boolean = {
     var itIs = true
@@ -95,6 +102,9 @@ case class Cigar(elems: IndexedSeq[CigarElem]) extends Iterable[CigarElem] {
 
   /** Provides an iterator over the elements in the cigar. */
   override def iterator: Iterator[CigarElem] = elems.iterator
+
+  /** Provides an iterator over the elements in the reverse order. */
+  def reverseIterator: Iterator[CigarElem] = elems.reverseIterator
 
   /** Returns the length of the alignment on the query sequence. */
   def lengthOnQuery: Int = elems.filter(_.operator.consumesReadBases()).map(_.length).sum
@@ -179,6 +189,11 @@ case class Cigar(elems: IndexedSeq[CigarElem]) extends Iterable[CigarElem] {
 
   /** Returns the canonical Cigar string. */
   override def toString(): String = elems.mkString
+
+  /** Converts the Cigar into an HTSJDK Cigar object. */
+  def toHtsjdkCigar: htsjdk.samtools.Cigar = {
+    new htsjdk.samtools.Cigar(elems.iterator.map(e => new CigarElement(e.length, e.operator)).toJavaList)
+  }
 }
 
 

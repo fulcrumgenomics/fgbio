@@ -24,12 +24,11 @@
 
 package com.fulcrumgenomics.umi
 
+import com.fulcrumgenomics.FgBioDef._
+import com.fulcrumgenomics.bam.api.SamRecord
 import com.fulcrumgenomics.util.ProgressLogger
-import htsjdk.samtools.SAMRecord
 
 import scala.collection.mutable
-import scala.collection.mutable.ListBuffer
-import com.fulcrumgenomics.FgBioDef._
 
 /**
   * An iterator that consumes from an incoming iterator of SAMRecords and generates consensus
@@ -39,19 +38,19 @@ import com.fulcrumgenomics.FgBioDef._
   * @param caller   the consensus caller to use to call consensus reads
   * @param progress an optional progress logger to which to log progress in input reads
   */
-class ConsensusCallingIterator(sourceIterator: Iterator[SAMRecord],
+class ConsensusCallingIterator(sourceIterator: Iterator[SamRecord],
                                val caller: UmiConsensusCaller[_],
                                val progress: Option[ProgressLogger] = None
-                              ) extends Iterator[SAMRecord] {
+                              ) extends Iterator[SamRecord] {
 
   private val input = sourceIterator.bufferBetter
-  private val outputQueue: mutable.Queue[SAMRecord] = mutable.Queue[SAMRecord]()
+  private val outputQueue: mutable.Queue[SamRecord] = mutable.Queue[SamRecord]()
 
     /** True if there are more consensus reads, false otherwise. */
   def hasNext(): Boolean = this.outputQueue.nonEmpty || (this.input.nonEmpty && advance())
 
   /** Returns the next consensus read. */
-  def next(): SAMRecord = {
+  def next(): SamRecord = {
     if (!this.hasNext()) throw new NoSuchElementException("Calling next() when hasNext() is false.")
     this.outputQueue.dequeue()
   }
@@ -60,7 +59,7 @@ class ConsensusCallingIterator(sourceIterator: Iterator[SAMRecord],
     * Consumes the next group of records from the input iterator, based on molecule id
     * and returns them as a Seq.
     */
-  private def nextGroupOfRecords(): Seq[SAMRecord] = {
+  private def nextGroupOfRecords(): Seq[SamRecord] = {
     if (this.input.isEmpty) {
       Nil
     }

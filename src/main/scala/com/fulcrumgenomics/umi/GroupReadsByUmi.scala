@@ -26,10 +26,11 @@
  */
 package com.fulcrumgenomics.umi
 
-import java.nio.file.Paths
 import java.util.concurrent.atomic.AtomicLong
 
 import com.fulcrumgenomics.FgBioDef._
+import com.fulcrumgenomics.bam.Bams
+import com.fulcrumgenomics.bam.api.{SamOrder, SamRecord, SamSource, SamWriter}
 import com.fulcrumgenomics.cmdline.{ClpGroups, FgBioTool}
 import com.fulcrumgenomics.commons.util.{LazyLogging, NumericCounter, SimpleCounter}
 import com.fulcrumgenomics.sopt.cmdline.ValidationException
@@ -38,7 +39,6 @@ import com.fulcrumgenomics.util.Sequences.countMismatches
 import com.fulcrumgenomics.util._
 import htsjdk.samtools.SAMFileHeader.{GroupOrder, SortOrder}
 import htsjdk.samtools._
-import htsjdk.samtools.util.SortingCollection
 
 import scala.collection.mutable
 import scala.collection.mutable.ListBuffer
@@ -71,25 +71,24 @@ object GroupReadsByUmi {
     /** Looks in all the places the library name can be hiding. Returns the library name
       * if one is found, otherwise returns "unknown".
       */
-    private def library(rec: SAMRecord): String = {
-      val rg = rec.getReadGroup
-      if (rg != null && rg.getLibrary != null) rg.getLibrary
-      else "unknown"
+    private def library(rec: SamRecord): String = {
+      val rg = rec.readGroup
+      if (rg != null && rg.getLibrary != null) rg.getLibrary else "unknown"
     }
 
-    /** Creates/retrieves a ReadEnds object from a SAMRecord and stores it in a temporary attribute for later user. */
-    def apply(rec: SAMRecord) : ReadInfo = {
-      val tmp = rec.getTransientAttribute(GroupReadsByUmi.ReadInfoTempAttributeName)
+    /** Creates/retrieves a ReadEnds object from a SamRecord and stores it in a temporary attribute for later user. */
+    def apply(rec: SamRecord) : ReadInfo = {
+      val tmp = rec.getTransientAttr[ReadInfo](GroupReadsByUmi.ReadInfoTempAttributeName)
       if (tmp != null) {
-        tmp.asInstanceOf[ReadInfo]
+        tmp
       }
       else {
-        if (rec.getReferenceIndex != rec.getMateReferenceIndex) throw new IllegalArgumentException("Mate on different chrom.")
-        val chrom   = rec.getReferenceIndex.toInt
-        val recNeg  = rec.getReadNegativeStrandFlag
-        val recPos  = if (recNeg) rec.getUnclippedEnd else rec.getUnclippedStart
-        val mateNeg = rec.getMateNegativeStrandFlag
-        val matePos = if (mateNeg) SAMUtils.getMateUnclippedEnd(rec) else SAMUtils.getMateUnclippedStart(rec)
+        if (rec.refIndex != rec.mateRefIndex) throw new IllegalArgumentException("Mate on different chrom.")
+        val chrom   = rec.refIndex
+        val recNeg  = rec.negativeStrand
+        val recPos  = if (recNeg) rec.unclippedEnd else rec.unclippedStart
+        val mateNeg = rec.mateNegativeStrand
+        val matePos = if (mateNeg) SAMUtils.getMateUnclippedEnd(rec.asSam) else SAMUtils.getMateUnclippedStart(rec.asSam)
         val lib = library(rec)
 
         val result = if (recPos < matePos || (recPos == matePos && !recNeg)) {
@@ -99,7 +98,7 @@ object GroupReadsByUmi {
           new ReadInfo(chrom, matePos, recPos, mateNeg, recNeg, lib)
         }
 
-        rec.setTransientAttribute(GroupReadsByUmi.ReadInfoTempAttributeName, result)
+        rec.setTransientAttr(GroupReadsByUmi.ReadInfoTempAttributeName, result)
         result
       }
     }
@@ -116,11 +115,14 @@ object GroupReadsByUmi {
     *   - Read and mate _must_ be mapped to the same chromosome
     * If any of these conditions are violated it will go badly!
     */
-  private[umi] class EarlierReadComparator extends SAMRecordComparator with Ordering[SAMRecord] {
+  private[umi] class EarlierReadComparator extends SAMRecordComparator /* with Ordering[SamRecord] */ {
     override def fileOrderCompare(lhs: SAMRecord, rhs: SAMRecord): Int = compare(lhs, rhs)
 
+    override def compare(lhs: SAMRecord, rhs: SAMRecord): Int =
+      compare(lhs.asInstanceOf[SamRecord], rhs.asInstanceOf[SamRecord])
+
     /** Compares two reads for sort order. */
-    override def compare(lhs: SAMRecord, rhs: SAMRecord): Int = {
+    /* override */ def compare(lhs: SamRecord, rhs: SamRecord): Int = {
       // Do some asserting!
       assertValidRead(lhs)
       assertValidRead(rhs)
@@ -128,19 +130,19 @@ object GroupReadsByUmi {
       val r = ReadInfo(rhs)
       val result = l.compare(r)
 
-      if (result == 0) lhs.getReadName.compareTo(rhs.getReadName)
+      if (result == 0) lhs.name.compareTo(rhs.name)
       else result
     }
 
     /** Asserts that we didn't get reads we are unable to sort. */
-    final def assertValidRead(rec: SAMRecord): Unit = {
-      assert(rec.getReadPairedFlag,    "Unpaired read: " + rec.getReadName)
-      assert(!rec.getReadUnmappedFlag, "Unmapped read: " + rec.getReadName)
-      assert(!rec.getMateUnmappedFlag, "Read w/unmapped mate: " + rec.getReadName)
-      assert(rec.getReferenceIndex == rec.getMateReferenceIndex, "Read w/mate on different chr: " + rec.getReadName)
-      assert(SAMUtils.getMateCigarString(rec) != null, "Read w/o Mate Cigar tag: " + rec.getReadName)
-      assert(rec.getAttribute("MQ") != null, "Read w/o Mate MQ tag: " + rec.getReadName)
-      assert(!rec.isSecondaryOrSupplementary, "Secondary or supplementary read: " + rec.getReadName)
+    final def assertValidRead(rec: SamRecord): Unit = {
+      assert(rec.paired,     "Unpaired read: " + rec.name)
+      assert(rec.mapped,     "Unmapped read: " + rec.name)
+      assert(rec.mateMapped, "Read w/unmapped mate: " + rec.name)
+      assert(rec.refIndex == rec.mateRefIndex, "Read w/mate on different chr: " + rec.name)
+      assert(SAMUtils.getMateCigarString(rec.asSam) != null, "Read w/o Mate Cigar tag: " + rec.name)
+      assert(rec.get("MQ").isDefined , "Read w/o Mate MQ tag: " + rec.name)
+      assert(!rec.secondary && !rec.supplementary, "Secondary or supplementary read: " + rec.name)
     }
   }
 
@@ -408,8 +410,7 @@ class GroupReadsByUmi
   @arg(flag='m', doc="Minimum mapping quality.")         val minMapQ: Int      = 30,
   @arg(flag='n', doc="Include non-PF reads.")            val includeNonPfReads: Boolean = false,
   @arg(flag='s', doc="The UMI assignment strategy; one of 'identity', 'edit', 'adjacency' or 'paired'.") val strategy: String,
-  @arg(flag='e', doc="The allowable number of edits between UMIs.") val edits: Int = 1,
-  @arg(          doc="Temporary directory for sorting.") val tmpDir: DirPath = Paths.get(System.getProperty("java.io.tmpdir"))
+  @arg(flag='e', doc="The allowable number of edits between UMIs.") val edits: Int = 1
 )extends FgBioTool with LazyLogging {
   import GroupReadsByUmi._
 
@@ -421,53 +422,50 @@ class GroupReadsByUmi
     case other       => throw new ValidationException(s"Unknown strategy: $other")
   }
 
-  type ReadPair = (SAMRecord, SAMRecord)
+  type ReadPair = (SamRecord, SamRecord)
 
   override def execute(): Unit = {
     Io.assertReadable(input)
     Io.assertCanWriteFile(output)
     this.familySizeHistogram.foreach(f => Io.assertCanWriteFile(f))
 
-    val in = SamReaderFactory.make().open(input.toFile)
-    val header = in.getFileHeader
-    val sorter = SortingCollection.newInstance(classOf[SAMRecord], new BAMRecordCodec(header), new EarlierReadComparator, 100000, tmpDir.toFile)
-    val sortProgress = new ProgressLogger(logger, verb="Sorted")
+    val in = SamSource(input)
+    val header = in.header
+    val sorter = Bams.sorter(SamOrder.TemplateCoordinate, header)
+    val sortProgress = ProgressLogger(logger, verb="Sorted")
 
     // Filter and sort the input BAM file
     logger.info("Filtering and sorting input.")
     in.iterator
-      .filter(r => includeNonPfReads || !r.getReadFailsVendorQualityCheckFlag)
-      .filter(r => !r.isSecondaryOrSupplementary)
-      .filter(r => r.getReadPairedFlag)
-      .filter(r => !r.getReadUnmappedFlag && !r.getMateUnmappedFlag)
-      .filter(r => r.getReferenceIndex == r.getMateReferenceIndex)
-      .filter(r => r.getMappingQuality >= this.minMapQ && Option(r.getIntegerAttribute(SAMTag.MQ.name())).exists(_ >= this.minMapQ))
-      .foreach(r => { sorter.add(r); sortProgress.record(r) })
+      .filter(r => includeNonPfReads || r.pf)
+      .filter(r => !r.secondary && !r.supplementary)
+      .filter(r => r.paired && r.mapped && r.mateMapped)
+      .filter(r => r.refIndex == r.mateRefIndex)
+      .filter(r => r.mapq >= this.minMapQ && r.get[Int](SAMTag.MQ.name()).exists(_ >= this.minMapQ))
+      .foreach(r => { sorter += r; sortProgress.record(r) })
 
     // Output the reads in the new ordering
     logger.info("Assigning reads to UMIs and outputting.")
     val outHeader = header.clone()
     outHeader.setSortOrder(SortOrder.unsorted)
     outHeader.setGroupOrder(GroupOrder.query)
-    val out = new SAMFileWriterFactory().makeWriter(outHeader, true, output.toFile, null)
-    val outProgress = new ProgressLogger(logger, verb="Output")
+    val out = SamWriter(output, outHeader)
 
-    val iterator = sorter.iterator().grouped(2).map(i => (i(0), i(1))).buffered // consume in pairs
+    val iterator = sorter.iterator.grouped(2).map(i => (i(0), i(1))).buffered // consume in pairs
     val tagFamilySizeCounter = new NumericCounter[Int]()
 
     while (iterator.hasNext) {
       // Take the next set of pairs by position and assign UMIs
       val pairs = takeNextGroup(iterator)
-      pairs.foreach { case(r1, r2) => assert(r1.getReadName == r2.getReadName, "Reads out of order @ " + r1.getReadName) }
+      pairs.foreach { case(r1, r2) => assert(r1.name == r2.name, s"Reads out of order @ ${r1.id} + ${r2.id}") }
       assignUmiGroups(pairs)
 
       // Then output the records in the right order (assigned tag, read name, r1, r2)
-      val pairsByAssignedTag = pairs.groupBy(pair => pair._1.getStringAttribute(this.assignTag))
+      val pairsByAssignedTag = pairs.groupBy { case (r1,r2) => r1[String](this.assignTag) }
 
       pairsByAssignedTag.keys.toSeq.sortBy(id => (id.length, id)).foreach(tag => {
-        pairsByAssignedTag(tag).sortBy(pair => pair._1.getReadName).flatMap(pair => Seq(pair._1, pair._2)).foreach(rec => {
-          out.addAlignment(rec)
-          outProgress.record(rec)
+        pairsByAssignedTag(tag).sortBy(pair => pair._1.name).flatMap(pair => Seq(pair._1, pair._2)).foreach(rec => {
+          out += rec
         })
       })
 
@@ -493,7 +491,7 @@ class GroupReadsByUmi
   def takeNextGroup(iterator: BufferedIterator[ReadPair]) : Seq[ReadPair] = {
     val first = iterator.next()
     val firstEnds = ReadInfo(first._1)
-    val buffer = ListBuffer[(SAMRecord, SAMRecord)]()
+    val buffer = ListBuffer[(SamRecord, SamRecord)]()
     while (iterator.hasNext && firstEnds == ReadInfo(iterator.head._1)) buffer += iterator.next()
     first :: buffer.toList
   }
@@ -509,12 +507,12 @@ class GroupReadsByUmi
     pairs.foreach(pair => Seq(pair._1, pair._2).foreach(rec => {
       val raw = getRawUmi(rec)
       val id  = rawToId(raw)
-      rec.setAttribute(this.assignTag, id)
+      rec(this.assignTag) = id
     }))
   }
 
-  private def getRawUmi(rec: SAMRecord): String = rec.getStringAttribute(this.rawTag) match {
-    case null | "" => fail(s"Record '$rec' was missing the raw UMI tag '${this.rawTag}'")
-    case value => value.toUpperCase
+  private def getRawUmi(rec: SamRecord): String = rec.get[String](this.rawTag) match {
+    case None | Some("") => fail(s"Record '$rec' was missing the raw UMI tag '${this.rawTag}'")
+    case Some(umi) => umi.toUpperCase
   }
 }

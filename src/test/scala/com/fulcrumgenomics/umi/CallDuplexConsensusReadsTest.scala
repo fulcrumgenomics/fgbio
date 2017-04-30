@@ -26,10 +26,9 @@ package com.fulcrumgenomics.umi
 
 import java.nio.file.Paths
 
-import com.fulcrumgenomics.FgBioDef._
-import com.fulcrumgenomics.testing.SamRecordSetBuilder.{Minus, Plus}
-import com.fulcrumgenomics.testing.{SamRecordSetBuilder, UnitSpec}
-import htsjdk.samtools.SamReaderFactory
+import com.fulcrumgenomics.bam.api.SamSource
+import com.fulcrumgenomics.testing.SamBuilder.{Minus, Plus}
+import com.fulcrumgenomics.testing.{SamBuilder, UnitSpec}
 
 class CallDuplexConsensusReadsTest extends UnitSpec {
   private val MI = ConsensusTags.MolecularId
@@ -60,9 +59,9 @@ class CallDuplexConsensusReadsTest extends UnitSpec {
   }
 
   it should "run fail if AB-R1s are not on the same strand ads BA-R2s" in {
-    val builder = new SamRecordSetBuilder(readLength=10)
-    builder.addPair(name="ab1", start1=100, start2=200, attrs=Map(MI -> "1/A")).foreach { _.setReadString("AAAAAAAAAA") }
-    builder.addPair(name="ba1", start1=200, start2=100, attrs=Map(MI -> "1/B")).foreach { _.setReadString("AAAAAAAAAA") }
+    val builder = new SamBuilder(readLength=10)
+    builder.addPair(name="ab1", start1=100, start2=200, attrs=Map(MI -> "1/A"), bases1="AAAAAAAAAA", bases2="AAAAAAAAAA")
+    builder.addPair(name="ba1", start1=200, start2=100, attrs=Map(MI -> "1/B"), bases1="AAAAAAAAAA", bases2="AAAAAAAAAA")
 
     val in  = builder.toTempFile()
     val out = makeTempFile("duplex.", ".bam")
@@ -70,22 +69,22 @@ class CallDuplexConsensusReadsTest extends UnitSpec {
   }
 
   it should "run successfully and create consensus reads" in {
-    val builder = new SamRecordSetBuilder(readLength=10)
-    builder.addPair(name="ab1", start1=100, start2=100, attrs=Map(MI -> "1/A")).foreach { _.setReadString("AAAAAAAAAA") }
-    builder.addPair(name="ab2", start1=100, start2=100, attrs=Map(MI -> "1/A")).foreach { _.setReadString("AAAAAAAAAA") }
-    builder.addPair(name="ab3", start1=100, start2=100, attrs=Map(MI -> "1/A")).foreach { _.setReadString("AAAAAAAAAA") }
-    builder.addPair(name="ba1", start1=100, start2=100, strand1=Minus, strand2=Plus, attrs=Map(MI -> "1/B")).foreach { _.setReadString("AAAAAAAAAA") }
-    builder.addPair(name="ba2", start1=100, start2=100, strand1=Minus, strand2=Plus, attrs=Map(MI -> "1/B")).foreach { _.setReadString("AAAAAAAAAA") }
-    builder.addPair(name="ba3", start1=100, start2=100, strand1=Minus, strand2=Plus, attrs=Map(MI -> "1/B")).foreach { _.setReadString("AAAAAAAAAA") }
+    val builder = new SamBuilder(readLength=10)
+    builder.addPair(name="ab1", start1=100, start2=100, attrs=Map(MI -> "1/A"), bases1="AAAAAAAAAA", bases2="AAAAAAAAAA")
+    builder.addPair(name="ab2", start1=100, start2=100, attrs=Map(MI -> "1/A"), bases1="AAAAAAAAAA", bases2="AAAAAAAAAA")
+    builder.addPair(name="ab3", start1=100, start2=100, attrs=Map(MI -> "1/A"), bases1="AAAAAAAAAA", bases2="AAAAAAAAAA")
+    builder.addPair(name="ba1", start1=100, start2=100, strand1=Minus, strand2=Plus, attrs=Map(MI -> "1/B"), bases1="AAAAAAAAAA", bases2="AAAAAAAAAA")
+    builder.addPair(name="ba2", start1=100, start2=100, strand1=Minus, strand2=Plus, attrs=Map(MI -> "1/B"), bases1="AAAAAAAAAA", bases2="AAAAAAAAAA")
+    builder.addPair(name="ba3", start1=100, start2=100, strand1=Minus, strand2=Plus, attrs=Map(MI -> "1/B"), bases1="AAAAAAAAAA", bases2="AAAAAAAAAA")
 
     val in  = builder.toTempFile()
     val out = makeTempFile("duplex.", ".bam")
     new CallDuplexConsensusReads(input=in, output=out, readGroupId="ZZ").execute()
-    val reader = SamReaderFactory.make().open(out)
+    val reader = SamSource(out)
     val recs = reader.toSeq
 
-    reader.getFileHeader.getReadGroups should have size 1
-    reader.getFileHeader.getReadGroups.iterator().next().getId shouldBe "ZZ"
+    reader.header.getReadGroups should have size 1
+    reader.header.getReadGroups.iterator().next().getId shouldBe "ZZ"
     recs should have size 2
   }
 }

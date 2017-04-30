@@ -363,7 +363,7 @@ class DemuxFastqsTest extends UnitSpec with OptionValues with ErrorLogLevel {
             else {
               val bam = PathUtil.pathTo(prefix + ".bam")
               val records = readBamRecs(bam)
-              (records.map(_.getReadName), records.map(_.getStringAttribute("BC")))
+              (records.map(_.name), records.map(_[String]("BC")))
             }
 
             if (sample.sampleOrdinal == 1) {

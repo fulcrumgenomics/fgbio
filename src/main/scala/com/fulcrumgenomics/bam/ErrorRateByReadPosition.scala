@@ -28,16 +28,17 @@ package com.fulcrumgenomics.bam
 import java.util
 
 import com.fulcrumgenomics.FgBioDef._
+import com.fulcrumgenomics.bam.api.SamSource
 import com.fulcrumgenomics.cmdline.{ClpGroups, FgBioTool}
-import com.fulcrumgenomics.util.{Metric, ProgressLogger, Rscript}
-import com.fulcrumgenomics.vcf.{ByIntervalListVariantContextIterator, VariantMask}
 import com.fulcrumgenomics.commons.io.{Io, PathUtil}
 import com.fulcrumgenomics.commons.util.LazyLogging
 import com.fulcrumgenomics.sopt._
+import com.fulcrumgenomics.util.{Metric, ProgressLogger, Rscript}
+import com.fulcrumgenomics.vcf.{ByIntervalListVariantContextIterator, VariantMask}
 import htsjdk.samtools.filter.{DuplicateReadFilter, FailsVendorReadQualityFilter, SamRecordFilter, SecondaryOrSupplementaryFilter}
 import htsjdk.samtools.reference.ReferenceSequenceFileWalker
 import htsjdk.samtools.util.{IntervalList, SamLocusIterator, SequenceUtil}
-import htsjdk.samtools.{SAMRecord, SAMSequenceDictionary, SamReader, SamReaderFactory}
+import htsjdk.samtools.{SAMRecord, SAMSequenceDictionary}
 import htsjdk.variant.vcf.VCFFileReader
 
 import scala.collection.mutable
@@ -118,8 +119,8 @@ class ErrorRateByReadPosition
 
   /** Computes the metrics from the BAM file. */
   private[bam] def computeMetrics: Seq[ErrorRateByReadPositionMetric] = {
-    val progress = new ProgressLogger(logger, verb="Processed", noun="loci", unit=50000)
-    val in       = SamReaderFactory.make().referenceSequence(ref.toFile).open(input)
+    val progress = ProgressLogger(logger, verb="Processed", noun="loci", unit=50000)
+    val in       = SamSource(input, ref=Some(ref))
     val ilist    = this.intervals.map(p => IntervalList.fromFile(p.toFile).uniqued(false))
 
     val refWalker     = new ReferenceSequenceFileWalker(this.ref.toFile)
@@ -156,10 +157,10 @@ class ErrorRateByReadPosition
   }
 
   /** Generates a SamLocusIterator that will traverse over the relevant parts of the BAM. */
-  private def buildSamLocusIterator(in: SamReader, intervals: Option[IntervalList]): SamLocusIterator = {
+  private def buildSamLocusIterator(in: SamSource, intervals: Option[IntervalList]): SamLocusIterator = {
     val iterator = intervals match {
-      case None => new SamLocusIterator(in)
-      case Some(i) => new SamLocusIterator(in, i)
+      case None => new SamLocusIterator(in.toSamReader)
+      case Some(i) => new SamLocusIterator(in.toSamReader, i)
     }
 
     val filters = new util.ArrayList[SamRecordFilter]()

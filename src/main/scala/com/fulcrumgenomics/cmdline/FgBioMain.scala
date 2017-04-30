@@ -28,12 +28,13 @@ import java.net.InetAddress
 import java.nio.file.Paths
 import java.text.DecimalFormat
 
+import com.fulcrumgenomics.bam.api.{SamSource, SamWriter}
 import com.fulcrumgenomics.cmdline.FgBioMain.FailureException
 import com.fulcrumgenomics.commons.util.LazyLogging
 import com.fulcrumgenomics.sopt.{Sopt, arg}
 import com.fulcrumgenomics.sopt.cmdline.{CommandLineParser, CommandLineProgramParserStrings}
 import com.fulcrumgenomics.util.Io
-import htsjdk.samtools.util.{BlockCompressedOutputStream, IOUtil}
+import htsjdk.samtools.util.{BlockCompressedOutputStream, IOUtil, SnappyLoader}
 import com.fulcrumgenomics.commons.CommonsDef._
 
 /**
@@ -55,14 +56,16 @@ class FgBioCommonArgs
   @arg(doc="Default GZIP compression level, BAM compression level.")           val compression: Int = 5,
   @arg(doc="Directory to use for temporary files.")                            val tmpDir: DirPath  = Paths.get(System.getProperty("java.io.tmpdir"))
 ) {
-  System.setProperty("use_async_io_read_samtools",  asyncIo.toString)
-  System.setProperty("use_async_io_write_samtools", asyncIo.toString)
-  System.setProperty("compression_level", 5.toString)
-  
+
+  SamSource.DefaultUseAsyncIo = asyncIo
+  SamWriter.DefaultUseAsyncIo = asyncIo
+
+  SamWriter.DefaultCompressionLevel = compression
   BlockCompressedOutputStream.setDefaultCompressionLevel(compression)
   IOUtil.setCompressionLevel(compression)
   Io.compressionLevel = compression
-  
+
+  Io.tmpDir = tmpDir
   System.setProperty("java.io.tmpdir", tmpDir.toAbsolutePath.toString)
 }
 
@@ -117,7 +120,8 @@ class FgBioMain extends LazyLogging {
     val host       = InetAddress.getLocalHost.getHostName
     val user       = System.getProperty("user.name")
     val jreVersion = System.getProperty("java.runtime.version")
-    logger.info(s"Executing $tool from $name version $version as $user@$host on JRE $jreVersion")
+    val snappy     = if (new SnappyLoader(false).SnappyAvailable) "with snappy" else "without snappy"
+    logger.info(s"Executing $tool from $name version $version as $user@$host on JRE $jreVersion $snappy")
   }
 
   /** Prints a line of useful information when a tool stops executing. */

@@ -25,15 +25,14 @@
 
 package com.fulcrumgenomics.umi
 
-import com.fulcrumgenomics.FgBioDef._
 import com.fulcrumgenomics.alignment.Cigar
-import com.fulcrumgenomics.testing.SamRecordSetBuilder.{Minus, Plus}
-import com.fulcrumgenomics.testing.{SamRecordSetBuilder, UnitSpec}
+import com.fulcrumgenomics.testing.SamBuilder.{Minus, Plus}
+import com.fulcrumgenomics.testing.{SamBuilder, UnitSpec}
 import com.fulcrumgenomics.umi.UmiConsensusCaller.SourceRead
 import com.fulcrumgenomics.umi.VanillaUmiConsensusCallerOptions._
 import com.fulcrumgenomics.util.NumericTypes._
+import htsjdk.samtools.SAMUtils
 import htsjdk.samtools.util.CloserUtil
-import htsjdk.samtools.{SAMRecordSetBuilder, SAMUtils}
 import net.jafama.FastMath._
 import org.scalatest.OptionValues
 
@@ -261,9 +260,9 @@ class VanillaUmiConsensusCallerTest extends UnitSpec with OptionValues {
   }
 
   it should "apply the minInputBaseQuality appropriately" in {
-    val builder = new SamRecordSetBuilder(readLength=7)
-    builder.addFrag(start=100, baseQuality=20).foreach(_.setReadString("GATTACA"))
-    builder.addFrag(start=100, baseQuality=30).foreach(_.setReadString("GATTACA"))
+    val builder = new SamBuilder(readLength=7)
+    builder.addFrag(start=100, bases="GATTACA", quals="5555555", attrs=Map("MI" -> "1")) // Q20
+    builder.addFrag(start=100, bases="GATTACA", quals="???????", attrs=Map("MI" -> "1")) // Q30
     val opts = cco(
       errorRatePreUmi             = PhredScore.MaxValue,
       errorRatePostUmi            = PhredScore.MaxValue,
@@ -281,18 +280,15 @@ class VanillaUmiConsensusCallerTest extends UnitSpec with OptionValues {
   }
 
   it should "should create two consensus for two UMI groups" in {
-    val builder = new SAMRecordSetBuilder()
-    builder.addFrag("READ1", 0, 1, false).setAttribute(DefaultTag, "GATTACA")
-    builder.addFrag("READ2", 0, 1, false).setAttribute(DefaultTag, "GATTACA")
-    builder.addFrag("READ3", 0, 1, false).setAttribute(DefaultTag, "ACATTAG")
-    builder.addFrag("READ4", 0, 1, false).setAttribute(DefaultTag, "ACATTAG")
-    builder.getRecords.foreach { rec =>
-      rec.setReadString("A" * rec.getReadLength)
-      rec.setBaseQualityString(SAMUtils.phredToFastq(40).toString * rec.getReadLength)
-    }
-    val reader = builder.getSamReader
+    val builder = new SamBuilder()
+    builder.addFrag(name="READ1", start=1, attrs=Map(DefaultTag -> "GATTACA"), bases="A"*builder.readLength, quals="|"*builder.readLength)
+    builder.addFrag(name="READ2", start=1, attrs=Map(DefaultTag -> "GATTACA"), bases="A"*builder.readLength, quals="|"*builder.readLength)
+    builder.addFrag(name="READ3", start=1, attrs=Map(DefaultTag -> "ACATTAG"), bases="A"*builder.readLength, quals="|"*builder.readLength)
+    builder.addFrag(name="READ4", start=1, attrs=Map(DefaultTag -> "ACATTAG"), bases="A"*builder.readLength, quals="|"*builder.readLength)
+
+    val reader = builder.toSource
     val consensusCaller = cc(cco(minReads=1, errorRatePreUmi = PhredScore.MaxValue, errorRatePostUmi = PhredScore.MaxValue))
-    val iterator = new ConsensusCallingIterator(reader.toIterator, consensusCaller)
+    val iterator = new ConsensusCallingIterator(reader.iterator, consensusCaller)
 
     iterator.hasNext shouldBe true
     val calls = iterator.toList
@@ -302,79 +298,62 @@ class VanillaUmiConsensusCallerTest extends UnitSpec with OptionValues {
   }
 
   it should "should create two consensus for a read pair" in {
-    val builder = new SAMRecordSetBuilder()
-    builder.addPair("READ1", 0, 1, 1000)
-    builder.getRecords.foreach {
-      rec =>
-        rec.setAttribute(DefaultTag, "GATTACA")
-        rec.setReadString("A" * rec.getReadLength)
-        rec.setBaseQualityString(SAMUtils.phredToFastq(40).toString * rec.getReadLength)
-    }
-    val reader = builder.getSamReader
+    val len = 100
+    val builder = new SamBuilder(readLength = len)
+    builder.addPair(name="READ1", start1=1, start2=1000, bases1="A"*len, bases2="A"*len, quals1="|"*len, quals2="|"*len, attrs=Map(DefaultTag -> "GATTACA"))
+    val reader = builder.toSource
     val consensusCaller = cc(cco(minReads = 1, errorRatePreUmi  = PhredScore.MaxValue, errorRatePostUmi = PhredScore.MaxValue))
-    val iterator = new ConsensusCallingIterator(reader.toIterator, consensusCaller)
+    val iterator = new ConsensusCallingIterator(reader.iterator, consensusCaller)
 
     iterator.hasNext shouldBe true
     val calls = iterator.toList
     iterator.hasNext shouldBe false
     calls should have size 2
     calls.foreach { rec =>
-      rec.getReadPairedFlag shouldBe true
+      rec.paired shouldBe true
     }
-    calls.head.getFirstOfPairFlag shouldBe true
-    calls.last.getSecondOfPairFlag shouldBe true
-    calls.head.getReadName shouldBe calls.last.getReadName
+    calls.head.firstOfPair shouldBe true
+    calls.last.secondOfPair shouldBe true
+    calls.head.name shouldBe calls.last.name
     CloserUtil.close(reader)
   }
 
   it should "should create four consensus for two read pairs with different group ids" in {
-    val builder = new SAMRecordSetBuilder()
-    builder.addPair("READ1", 0, 1, 1000)
-    builder.addPair("READ2", 1, 1, 1000)
+    val len     = 100
+    val builder = new SamBuilder()
+    builder.addPair("READ1", start1=1, start2=1000, bases1="A"*len, bases2="A"*len, quals1="|"*len, quals2="|"*len, attrs=Map(DefaultTag -> "GATTACA"))
+    builder.addPair("READ2", start1=1, start2=1000, bases1="A"*len, bases2="A"*len, quals1="|"*len, quals2="|"*len, attrs=Map(DefaultTag -> "ACATTAG"))
 
-    builder.getRecords.slice(0, 2).foreach {
-      rec =>
-        rec.setAttribute(DefaultTag, "GATTACA")
-        rec.setReadString("A" * rec.getReadLength)
-        rec.setBaseQualityString(SAMUtils.phredToFastq(40).toString * rec.getReadLength)
-    }
-    builder.getRecords.slice(2, 4).foreach {
-      rec =>
-        rec.setAttribute(DefaultTag, "ACATTAG")
-        rec.setReadString("A" * rec.getReadLength)
-        rec.setBaseQualityString(SAMUtils.phredToFastq(40).toString * rec.getReadLength)
-    }
-    val reader = builder.getSamReader
+    val reader = builder.toSource
     val consensusCaller = cc(cco(minReads=1, errorRatePreUmi  = PhredScore.MaxValue, errorRatePostUmi = PhredScore.MaxValue))
-    val iterator = new ConsensusCallingIterator(reader.toIterator, consensusCaller)
+    val iterator = new ConsensusCallingIterator(reader.iterator, consensusCaller)
 
     iterator.hasNext shouldBe true
     val calls = iterator.toList
     iterator.hasNext shouldBe false
     calls should have size 4
     calls.foreach { rec =>
-      rec.getReadPairedFlag shouldBe true
+      rec.paired shouldBe true
     }
-    calls.map(_.getFirstOfPairFlag) should contain theSameElementsInOrderAs Seq(true, false, true, false)
-    calls.map(_.getSecondOfPairFlag) should contain theSameElementsInOrderAs Seq(false, true, false, true)
-    calls(0).getReadName shouldBe calls(1).getReadName
-    calls(2).getReadName shouldBe calls(3).getReadName
-    calls(0).getReadName should not be calls(2).getReadName
+    calls.map(_.firstOfPair) should contain theSameElementsInOrderAs Seq(true, false, true, false)
+    calls.map(_.secondOfPair) should contain theSameElementsInOrderAs Seq(false, true, false, true)
+    calls(0).name shouldBe calls(1).name
+    calls(2).name shouldBe calls(3).name
+    calls(0).name should not be calls(2).name
     CloserUtil.close(reader)
   }
 
   it should "generate accurate per-read and per-base tags on the consensus reads" in {
-    val builder = new SamRecordSetBuilder(readLength=10)
-    builder.addFrag("READ1", 0, 1, false).foreach(_.setAttribute(DefaultTag, "AAA"))
-    builder.addFrag("READ2", 0, 1, false).foreach(_.setAttribute(DefaultTag, "AAA"))
-    builder.addFrag("READ3", 0, 1, false).foreach(_.setAttribute(DefaultTag, "AAA"))
-    builder.addFrag("READ4", 0, 1, false).foreach(_.setAttribute(DefaultTag, "AAA"))
-    builder.foreach { rec => rec.setReadString("A" * rec.getReadLength) }
+    val builder = new SamBuilder(readLength=10)
+    builder.addFrag("READ1", start=1, bases="A"*builder.readLength, attrs=Map(DefaultTag -> "AAA"))
+    builder.addFrag("READ2", start=1, bases="A"*builder.readLength, attrs=Map(DefaultTag -> "AAA"))
+    builder.addFrag("READ3", start=1, bases="A"*builder.readLength, attrs=Map(DefaultTag -> "AAA"))
+    builder.addFrag("READ4", start=1, bases="A"*builder.readLength, attrs=Map(DefaultTag -> "AAA"))
 
     // Monkey with one of the four reads
-    builder.find(_.getReadName == "READ2").foreach { r =>
-      r.getReadBases()(5) = 'C'.toByte
-      r.getBaseQualities()(7) = 5.toByte
+    builder.find(_.name == "READ2").foreach { r =>
+      r.bases(5) = 'C'.toByte
+      r.quals(7) = 5.toByte
     }
 
     val consensusCaller = cc(cco(minReads = 2, minInputBaseQuality = 20.toByte))
@@ -382,30 +361,29 @@ class VanillaUmiConsensusCallerTest extends UnitSpec with OptionValues {
     consensuses.size shouldBe 1
 
     val consensus = consensuses.head
-    consensus.getReadBases.foreach(_ shouldBe 'A'.toByte)
-    consensus.getSignedShortArrayAttribute(ConsensusTags.PerBase.RawReadCount)  shouldBe Array[Short](4,4,4,4,4,4,4,3,4,4)
-    consensus.getSignedShortArrayAttribute(ConsensusTags.PerBase.RawReadErrors) shouldBe Array[Short](0,0,0,0,0,1,0,0,0,0)
-    consensus.getIntegerAttribute(ConsensusTags.PerRead.RawReadCount)     shouldBe 4
-    consensus.getIntegerAttribute(ConsensusTags.PerRead.MinRawReadCount)  shouldBe 3
-    consensus.getFloatAttribute(ConsensusTags.PerRead.RawReadErrorRate) shouldBe (1 / 39.toFloat)
+    consensus.bases.foreach(_ shouldBe 'A'.toByte)
+    consensus[Array[Short]](ConsensusTags.PerBase.RawReadCount)  shouldBe Array[Short](4,4,4,4,4,4,4,3,4,4)
+    consensus[Array[Short]](ConsensusTags.PerBase.RawReadErrors) shouldBe Array[Short](0,0,0,0,0,1,0,0,0,0)
+    consensus[Int](ConsensusTags.PerRead.RawReadCount)     shouldBe 4
+    consensus[Int](ConsensusTags.PerRead.MinRawReadCount)  shouldBe 3
+    consensus[Float](ConsensusTags.PerRead.RawReadErrorRate) shouldBe (1 / 39.toFloat)
   }
 
   it should "not generate per-base tags when turned off" in {
-    val builder = new SamRecordSetBuilder(readLength=10)
-    builder.addFrag("READ1", 0, 1, false).foreach(_.setAttribute(DefaultTag, "AAA"))
-    builder.addFrag("READ2", 0, 1, false).foreach(_.setAttribute(DefaultTag, "AAA"))
-    builder.foreach { rec => rec.setReadString("A" * rec.getReadLength) }
+    val builder = new SamBuilder(readLength=10)
+    builder.addFrag("READ1", start=1, bases="A"*builder.readLength, attrs=Map(DefaultTag -> "AAA"))
+    builder.addFrag("READ2", start=1, bases="A"*builder.readLength, attrs=Map(DefaultTag -> "AAA"))
 
     val caller = cc(options=cco(producePerBaseTags=false))
     val consensuses = caller.consensusReadsFromSamRecords(builder.toSeq)
     consensuses.size shouldBe 1
 
     val consensus = consensuses.head
-    consensus.getSignedShortArrayAttribute(ConsensusTags.PerBase.RawReadCount)  shouldBe null
-    consensus.getSignedShortArrayAttribute(ConsensusTags.PerBase.RawReadErrors) shouldBe null
-    consensus.getIntegerAttribute(ConsensusTags.PerRead.RawReadCount)     shouldBe 2
-    consensus.getIntegerAttribute(ConsensusTags.PerRead.MinRawReadCount)  shouldBe 2
-    consensus.getFloatAttribute(ConsensusTags.PerRead.RawReadErrorRate) shouldBe 0.toFloat
+    consensus.get[Array[Short]](ConsensusTags.PerBase.RawReadCount)  shouldBe None
+    consensus.get[Array[Short]](ConsensusTags.PerBase.RawReadErrors) shouldBe None
+    consensus[Int](ConsensusTags.PerRead.RawReadCount)     shouldBe 2
+    consensus[Int](ConsensusTags.PerRead.MinRawReadCount)  shouldBe 2
+    consensus[Float](ConsensusTags.PerRead.RawReadErrorRate) shouldBe 0.toFloat
   }
 
   it should "calculate the # of errors relative to the most likely consensus call, even when the final call is an N" in {
@@ -462,7 +440,7 @@ class VanillaUmiConsensusCallerTest extends UnitSpec with OptionValues {
     recs should have size 11
     recs.map(_.cigar.toString).distinct.sorted shouldBe Seq("25M1D25M", "5S20M1D25M", "5S20M1D20M5H", "25M1D20M5S").sorted
   }
-  
+
   it should "return all the reads that are compatible with a 2 base deletion at base 25" in {
     val expected = Seq("25M2D75M", "25M2D65M", "25M2D50M5S", "25M", "24M", "10M").sorted
     val others   = Seq("30M", "25M1D25M", "25M4D25M").sorted
@@ -473,8 +451,8 @@ class VanillaUmiConsensusCallerTest extends UnitSpec with OptionValues {
 
 
   "VanillaConsensusCaller.toSourceRead" should "mask bases that are below the quality threshold" in {
-    val builder = new SamRecordSetBuilder(readLength=10)
-    val rec     = builder.addFrag(start=1).map { r => r.setReadString("AAAAAAAAAA"); r.setBaseQualities(Array[Byte](2,30,19,21,18,20,0,30,2,30)); r}.get
+    val builder = new SamBuilder(readLength=10)
+    val rec     = builder.addFrag(start=1, bases="AAAAAAAAAA").map { r => r.quals = Array[Byte](2,30,19,21,18,20,0,30,2,30); r}.get
     val source  = cc().toSourceRead(rec, minBaseQuality=20.toByte, trim=false).get
 
     source.baseString shouldBe "NANANANANA"
@@ -482,8 +460,8 @@ class VanillaUmiConsensusCallerTest extends UnitSpec with OptionValues {
   }
 
   it should "trim the source read when the end is low-quality so that there are no trailing no-calls" in {
-    val builder = new SamRecordSetBuilder(readLength=10)
-    val rec     = builder.addFrag(start=1).map { r => r.setReadString("AAAAAAAAAA"); r.setBaseQualities(Array[Byte](30,30,30,30,30,30,2,2,2,2)); r}.get
+    val builder = new SamBuilder(readLength=10)
+    val rec     = builder.addFrag(start=1, bases="AAAAAAAAAA").map { r => r.quals = Array[Byte](30,30,30,30,30,30,2,2,2,2); r}.get
     val source  = cc().toSourceRead(rec, minBaseQuality=20.toByte, trim=false).get
 
     source.baseString shouldBe "AAAAAA"
@@ -491,8 +469,8 @@ class VanillaUmiConsensusCallerTest extends UnitSpec with OptionValues {
   }
 
   it should "trim the source read when the end of the raw read is all Ns so that there are no trailing no-calls" in {
-    val builder = new SamRecordSetBuilder(readLength=10)
-    val rec     = builder.addFrag(start=1).map { r => r.setReadString("AAAAAANNNN"); r.setBaseQualities(Array[Byte](30,30,30,30,30,30,30,30,30,30)); r}.get
+    val builder = new SamBuilder(readLength=10)
+    val rec     = builder.addFrag(start=1, bases="AAAAAANNNN").map { r => r.quals = Array[Byte](30,30,30,30,30,30,30,30,30,30); r}.get
     val source  = cc().toSourceRead(rec, minBaseQuality=20.toByte, trim=false).get
 
     source.baseString shouldBe "AAAAAA"
@@ -500,8 +478,8 @@ class VanillaUmiConsensusCallerTest extends UnitSpec with OptionValues {
   }
 
   it should "trim the source read when the end of the raw read is all Ns and the read is mapped to the negative strand" in {
-    val builder = new SamRecordSetBuilder(readLength=10)
-    val rec     = builder.addFrag(start=1, strand=Minus, cigar="4S1M1D5M").map { r => r.setReadString("NNNNAAAAAA"); r.setBaseQualities(Array[Byte](30,30,30,30,30,30,30,30,30,30)); r}.get
+    val builder = new SamBuilder(readLength=10)
+    val rec     = builder.addFrag(start=1, strand=Minus, cigar="4S1M1D5M", bases="NNNNAAAAAA").map { r => r.quals = Array[Byte](30,30,30,30,30,30,30,30,30,30); r}.get
     val source  = cc().toSourceRead(rec, minBaseQuality=20.toByte, trim=false).get
 
     source.baseString shouldBe "TTTTTT" // cos revcomp'd
@@ -510,15 +488,15 @@ class VanillaUmiConsensusCallerTest extends UnitSpec with OptionValues {
   }
 
   it should "return None if the read is all low-quality or Ns" in {
-    val builder = new SamRecordSetBuilder(readLength=10)
-    val rec     = builder.addFrag(start=1).map { r => r.setReadString("NANANANANA"); r.setBaseQualities(Array[Byte](30,2,30,2,30,2,30,2,30,2)); r}.get
+    val builder = new SamBuilder(readLength=10)
+    val rec     = builder.addFrag(start=1, bases="NANANANANA").map { r => r.quals = Array[Byte](30,2,30,2,30,2,30,2,30,2); r}.get
     val source  = cc().toSourceRead(rec, minBaseQuality=20.toByte, trim=false)
     source shouldBe None
   }
 
   it should "apply phred-style quality trimming to the read in addition to masking" in {
-    val builder = new SamRecordSetBuilder(readLength=10)
-    val rec     = builder.addFrag(start=1).map { r => r.setReadString("AGCACGACGT"); r.setBaseQualities(Array[Byte](30,30,30,2,5,2,3,20,2,6)); r}.get
+    val builder = new SamBuilder(readLength=10)
+    val rec     = builder.addFrag(start=1, bases="AGCACGACGT").map { r => r.quals = Array[Byte](30,30,30,2,5,2,3,20,2,6); r}.get
     val source  = cc().toSourceRead(rec, minBaseQuality=15.toByte, trim=true).get
     source.baseString shouldBe "AGC"
     source.quals should have length 3

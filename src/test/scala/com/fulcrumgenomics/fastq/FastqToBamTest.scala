@@ -25,11 +25,11 @@
 package com.fulcrumgenomics.fastq
 
 import com.fulcrumgenomics.FgBioDef._
+import com.fulcrumgenomics.bam.api.SamSource
 import com.fulcrumgenomics.testing.UnitSpec
 import com.fulcrumgenomics.umi.ConsensusTags
 import com.fulcrumgenomics.util.ReadStructure
 import htsjdk.samtools.SAMFileHeader.{GroupOrder, SortOrder}
-import htsjdk.samtools.SamReaderFactory
 import htsjdk.samtools.util.Iso8601Date
 
 class FastqToBamTest extends UnitSpec {
@@ -52,19 +52,19 @@ class FastqToBamTest extends UnitSpec {
 
     recs should have size 2
     val Seq(q1, q2) = recs
-    q1.getReadName shouldBe "q1"
-    q1.getReadPairedFlag shouldBe false
-    q1.getReadString shouldBe "AAAAAAAAAA"
-    q1.getBaseQualities.forall(_ == 28) shouldBe true
-    q1.getReadGroup.getSample shouldBe "foo"
-    q1.getReadGroup.getLibrary shouldBe "bar"
+    q1.name shouldBe "q1"
+    q1.paired shouldBe false
+    q1.basesString shouldBe "AAAAAAAAAA"
+    q1.quals.forall(_ == 28) shouldBe true
+    q1.readGroup.getSample shouldBe "foo"
+    q1.readGroup.getLibrary shouldBe "bar"
 
-    q2.getReadName shouldBe "q2"
-    q2.getReadPairedFlag shouldBe false
-    q2.getReadString shouldBe "CCCCCCCCCC"
-    q2.getBaseQualities.forall(_ == 2) shouldBe true
-    q2.getReadGroup.getSample shouldBe "foo"
-    q2.getReadGroup.getLibrary shouldBe "bar"
+    q2.name shouldBe "q2"
+    q2.paired shouldBe false
+    q2.basesString shouldBe "CCCCCCCCCC"
+    q2.quals.forall(_ == 2) shouldBe true
+    q2.readGroup.getSample shouldBe "foo"
+    q2.readGroup.getLibrary shouldBe "bar"
   }
 
   it should "make a BAM from two fastq files without any read structures" in {
@@ -76,23 +76,23 @@ class FastqToBamTest extends UnitSpec {
 
     recs should have size 2
     val Seq(r1, r2) = recs
-    r1.getReadName shouldBe "q1"
-    r1.getReadPairedFlag shouldBe true
-    r1.getFirstOfPairFlag shouldBe true
-    r1.getSecondOfPairFlag shouldBe false
-    r1.getReadString shouldBe "AAAAAAAAAA"
-    r1.getBaseQualities.forall(_ == 28) shouldBe true
-    r1.getReadGroup.getSample shouldBe "pip"
-    r1.getReadGroup.getLibrary shouldBe "pop"
+    r1.name shouldBe "q1"
+    r1.paired shouldBe true
+    r1.firstOfPair shouldBe true
+    r1.secondOfPair shouldBe false
+    r1.basesString shouldBe "AAAAAAAAAA"
+    r1.quals.forall(_ == 28) shouldBe true
+    r1.readGroup.getSample shouldBe "pip"
+    r1.readGroup.getLibrary shouldBe "pop"
 
-    r2.getReadName shouldBe "q1"
-    r2.getReadPairedFlag shouldBe true
-    r2.getFirstOfPairFlag shouldBe false
-    r2.getSecondOfPairFlag shouldBe true
-    r2.getReadString shouldBe "CCCCCCCCCC"
-    r2.getBaseQualities.forall(_ == 2) shouldBe true
-    r2.getReadGroup.getSample shouldBe "pip"
-    r2.getReadGroup.getLibrary shouldBe "pop"
+    r2.name shouldBe "q1"
+    r2.paired shouldBe true
+    r2.firstOfPair shouldBe false
+    r2.secondOfPair shouldBe true
+    r2.basesString shouldBe "CCCCCCCCCC"
+    r2.quals.forall(_ == 2) shouldBe true
+    r2.readGroup.getSample shouldBe "pip"
+    r2.readGroup.getLibrary shouldBe "pop"
   }
 
   it should "make a BAM file with two fastqs with an inline UMI in R1" in {
@@ -104,15 +104,15 @@ class FastqToBamTest extends UnitSpec {
 
     recs should have size 2
     val Seq(r1, r2) = recs
-    r1.getReadName shouldBe "q1"
-    r1.getReadString shouldBe "AAAAAA"
-    r1.getBaseQualityString shouldBe "======"
-    r1.getAttribute(ConsensusTags.UmiBases) shouldBe "ACGT"
+    r1.name shouldBe "q1"
+    r1.basesString shouldBe "AAAAAA"
+    r1.qualsString shouldBe "======"
+    r1[String](ConsensusTags.UmiBases) shouldBe "ACGT"
 
-    r2.getReadName shouldBe "q1"
-    r2.getReadString shouldBe "CCCCCCCCCC"
-    r2.getBaseQualityString shouldBe "##########"
-    r2.getAttribute(ConsensusTags.UmiBases) shouldBe "ACGT"
+    r2.name shouldBe "q1"
+    r2.basesString shouldBe "CCCCCCCCCC"
+    r2.qualsString shouldBe "##########"
+    r2[String](ConsensusTags.UmiBases) shouldBe "ACGT"
   }
 
   it should "correctly handle complicated read structures with multiple UMI and sample barcode segments" in {
@@ -124,17 +124,17 @@ class FastqToBamTest extends UnitSpec {
 
     recs should have size 2
     val Seq(r1, r2) = recs
-    r1.getReadName shouldBe "q1"
-    r1.getReadString shouldBe "AAAAA"
-    r1.getBaseQualityString shouldBe "====="
-    r1.getAttribute(ConsensusTags.UmiBases) shouldBe "CCC-TTT"
-    r1.getAttribute("BC") shouldBe "AAA-TTT-GGG-AAA"
+    r1.name shouldBe "q1"
+    r1.basesString shouldBe "AAAAA"
+    r1.qualsString shouldBe "====="
+    r1[String](ConsensusTags.UmiBases) shouldBe "CCC-TTT"
+    r1[String]("BC") shouldBe "AAA-TTT-GGG-AAA"
 
-    r2.getReadName shouldBe "q1"
-    r2.getReadString shouldBe "CCCCC"
-    r2.getBaseQualityString shouldBe "#####"
-    r2.getAttribute(ConsensusTags.UmiBases) shouldBe "CCC-TTT"
-    r2.getAttribute("BC") shouldBe "AAA-TTT-GGG-AAA"
+    r2.name shouldBe "q1"
+    r2.basesString shouldBe "CCCCC"
+    r2.qualsString shouldBe "#####"
+    r2[String](ConsensusTags.UmiBases) shouldBe "CCC-TTT"
+    r2[String]("BC") shouldBe "AAA-TTT-GGG-AAA"
   }
 
   it should "use four fastqs to make reads" in {
@@ -148,17 +148,17 @@ class FastqToBamTest extends UnitSpec {
 
     recs should have size 2
     val Seq(r1, r2) = recs
-    r1.getReadName shouldBe "q1"
-    r1.getReadString shouldBe "AAAAAAAAAA"
-    r1.getBaseQualityString shouldBe "=========="
-    r1.getAttribute(ConsensusTags.UmiBases) shouldBe "GAGA"
-    r1.getAttribute("BC") shouldBe "ACGT"
+    r1.name shouldBe "q1"
+    r1.basesString shouldBe "AAAAAAAAAA"
+    r1.qualsString shouldBe "=========="
+    r1[String](ConsensusTags.UmiBases) shouldBe "GAGA"
+    r1[String]("BC") shouldBe "ACGT"
 
-    r2.getReadName shouldBe "q1"
-    r2.getReadString shouldBe "CCCCCCCCCC"
-    r2.getBaseQualityString shouldBe "##########"
-    r2.getAttribute(ConsensusTags.UmiBases) shouldBe "GAGA"
-    r2.getAttribute("BC") shouldBe "ACGT"
+    r2.name shouldBe "q1"
+    r2.basesString shouldBe "CCCCCCCCCC"
+    r2.qualsString shouldBe "##########"
+    r2[String](ConsensusTags.UmiBases) shouldBe "GAGA"
+    r2[String]("BC") shouldBe "ACGT"
   }
 
   it should "put everything in the right place in the header" in {
@@ -180,8 +180,8 @@ class FastqToBamTest extends UnitSpec {
       runDate=Some(new Iso8601Date("")),
       comment=List("hello world", "comment two")).execute()
 
-    val reader = SamReaderFactory.make().open(bam)
-    val header = reader.getFileHeader
+    val reader = SamSource(bam)
+    val header = reader.header
     header.getComments.iterator().toSeq shouldBe Seq("@CO\thello world", "@CO\tcomment two") // ewww
     header.getReadGroups.size() shouldBe 1
     header.getSortOrder shouldBe SortOrder.unsorted
@@ -198,14 +198,14 @@ class FastqToBamTest extends UnitSpec {
     rg.getPredictedMedianInsertSize shouldBe 300
     rg.getDescription shouldBe "Some reads!"
 
-    reader.iterator().next().getReadGroup shouldBe rg
+    reader.iterator.next().readGroup shouldBe rg
   }
 
   it should "sort the output bam if asked to" in {
     val r1 = fq(FastqRecord("q2", "AAAAAAAAAA", "=========="), FastqRecord("q10", "CCCCCCCCCC", "##########"))
     val bam = makeTempFile("fastqToBamTest.", ".bam")
     new FastqToBam(input=Seq(r1), output=bam, sample="s", library="l", sort=true).execute()
-    readBamRecs(bam).map(_.getReadName) shouldBe Seq("q10", "q2")
+    readBamRecs(bam).map(_.name) shouldBe Seq("q10", "q2")
   }
 
   it should "work with fastq files with zero length reads" in {
@@ -216,10 +216,10 @@ class FastqToBamTest extends UnitSpec {
 
     val recs = readBamRecs(bam)
     recs should have size 4
-    recs(0).getReadString shouldBe "AAAAAAAAAA"
-    recs(1).getReadString shouldBe "N"
-    recs(2).getReadString shouldBe "N"
-    recs(3).getReadString shouldBe "CCCCCCCCCC"
+    recs(0).basesString shouldBe "AAAAAAAAAA"
+    recs(1).basesString shouldBe "N"
+    recs(2).basesString shouldBe "N"
+    recs(3).basesString shouldBe "CCCCCCCCCC"
   }
 
   it should "fail when read names don't match up" in {

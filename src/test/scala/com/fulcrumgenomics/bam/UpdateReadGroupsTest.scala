@@ -28,9 +28,11 @@ package com.fulcrumgenomics.bam
 import java.nio.file.Files
 
 import com.fulcrumgenomics.FgBioDef._
-import com.fulcrumgenomics.testing.{SamRecordSetBuilder, UnitSpec}
+import com.fulcrumgenomics.bam.api.{SamOrder, SamSource, SamWriter}
+import com.fulcrumgenomics.testing.{SamBuilder, UnitSpec}
 import htsjdk.samtools.SAMFileHeader.SortOrder
 import htsjdk.samtools._
+
 import scala.collection.JavaConverters._
 
 /**
@@ -39,12 +41,12 @@ import scala.collection.JavaConverters._
 class UpdateReadGroupsTest extends UnitSpec {
   def newBam = makeTempFile("update_read_group_test.", ".bam")
 
-  private val builderOne   = new SamRecordSetBuilder(sortOrder=SortOrder.coordinate, readGroupId=Some("IDA"))
-  private val builderTwo   = new SamRecordSetBuilder(sortOrder=SortOrder.coordinate, readGroupId=Some("IDB"))
+  private val builderOne   = new SamBuilder(sort=Some(SamOrder.Coordinate), readGroupId=Some("IDA"))
+  private val builderTwo   = new SamBuilder(sort=Some(SamOrder.Coordinate), readGroupId=Some("IDB"))
 
   Stream(builderOne, builderTwo).foreach { builder =>
-    builder.addPair("ok_1" + builder.readGroupId.get, 0, 100, 300)
-    builder.addPair("ok_2" + builder.readGroupId.get, 0, 200, 400)
+    builder.addPair("ok_1" + builder.readGroupId.get, contig=0, start1=100, start2=300)
+    builder.addPair("ok_2" + builder.readGroupId.get, contig=0, start1=200, start2=400)
     builder.header.getReadGroups.foreach { rg => rg.setDescription("Description") }
   }
 
@@ -76,24 +78,19 @@ class UpdateReadGroupsTest extends UnitSpec {
   def headerToTempFile(header: SAMFileHeader): PathToBam = {
     val path = Files.createTempFile("SamRecordSet.", ".bam")
     path.toFile.deleteOnExit()
-    val writer = new SAMFileWriterFactory()
-      .setCreateIndex(true)
-      .makeWriter(header, false, path.toFile, null)
-    writer.close()
+    SamWriter(path, header).close()
     path
   }
 
   /** Creates a temp SAM file after merging the header and records from multiple builders. */
-  def mergeToTempFile(builder: SamRecordSetBuilder*): PathToBam = {
+  def mergeToTempFile(builder: SamBuilder*): PathToBam = {
     val path = Files.createTempFile("SamRecordSet.", ".bam")
     path.toFile.deleteOnExit()
     val merger = new SamFileHeaderMerger(SortOrder.coordinate, builder.map(_.header).asJava, false)
     val header = merger.getMergedHeader
     merger.hasReadGroupCollisions shouldBe false
-    val writer = new SAMFileWriterFactory()
-      .setCreateIndex(true)
-      .makeWriter(header, false, path.toFile, null)
-    builder.foreach { b => b.iterator.foreach(writer.addAlignment) }
+    val writer = SamWriter(path, header, sort=Some(SamOrder.Coordinate))
+    builder.foreach { b => writer ++= b }
     writer.close()
     path
   }
@@ -101,21 +98,21 @@ class UpdateReadGroupsTest extends UnitSpec {
   "UpdateReadGroups" should "change the read group ID from IDA to IDB with an extra read group in the input file" in {
     val out = newBam
     new UpdateReadGroups(input=builderOne.toTempFile(), output=out, readGroupsFile=headerToTempFile(headerAtoB), ignoreMissingReadGroups=true).execute()
-    val reader = SamReaderFactory.make.open(out.toFile)
-    reader.iterator().foreach { rec => rec.getReadGroup.getId shouldBe headerAtoB.getReadGroups.iterator().next().getId }
+    val reader = SamSource(out)
+    reader.foreach { rec => rec.readGroup.getId shouldBe headerAtoB.getReadGroups.iterator().next().getId }
     reader.close()
   }
 
   it should "change the read group ID from IDA to IDB" in {
     // remove the read group with ID "1" from the builder :/
-    val builder = new SamRecordSetBuilder(sortOrder=SortOrder.coordinate, readGroupId=Some("IDA"))
-    builder.addPair("ok_1" + builder.readGroupId.get, 0, 100, 300)
-    builder.addPair("ok_2" + builder.readGroupId.get, 0, 200, 400)
+    val builder = new SamBuilder(sort=Some(SamOrder.Coordinate), readGroupId=Some("IDA"))
+    builder.addPair("ok_1" + builder.readGroupId.get, contig=0, start1=100, start2=300)
+    builder.addPair("ok_2" + builder.readGroupId.get, contig=0, start1=200, start2=400)
     builder.header.setReadGroups(builder.header.getReadGroups.filter { rg => rg.getId == "IDA" }.toJavaList)
     val out = newBam
     new UpdateReadGroups(input=builder.toTempFile(), output=out, readGroupsFile=headerToTempFile(headerAtoB), ignoreMissingReadGroups=false).execute()
-    val reader = SamReaderFactory.make.open(out.toFile)
-    reader.iterator().foreach { rec => rec.getReadGroup.getId shouldBe headerAtoB.getReadGroups.iterator().next().getId }
+    val reader = SamSource(out)
+    reader.foreach { rec => rec.readGroup.getId shouldBe headerAtoB.getReadGroups.iterator().next().getId }
     reader.close()
   }
 
@@ -123,31 +120,44 @@ class UpdateReadGroupsTest extends UnitSpec {
     val in  = mergeToTempFile(builderOne, builderTwo)
     val out = newBam
     new UpdateReadGroups(input=in, output=out, readGroupsFile=headerToTempFile(headerAandBtoCandD), ignoreMissingReadGroups=true).execute()
-    val reader = SamReaderFactory.make.open(out.toFile)
-    val builderOneReadNames = builderOne.iterator.map(_.getReadName).toSet
-    reader.iterator().foreach { rec =>
-      if (builderOneReadNames.contains(rec.getReadName)) rec.getReadGroup.getId shouldBe "IDC"
-      else rec.getReadGroup.getId shouldBe "IDD"
+    val reader = SamSource(out)
+    val builderOneReadNames = builderOne.iterator.map(_.name).toSet
+    reader.foreach { rec =>
+      if (builderOneReadNames.contains(rec.name)) rec.readGroup.getId shouldBe "IDC"
+      else rec.readGroup.getId shouldBe "IDD"
     }
     reader.close()
   }
 
   it should "fail if missing read groups when ignoreMissingReadGroups is false" in {
     val out = newBam
-    an[Exception] should be thrownBy new UpdateReadGroups(input=builderOne.toTempFile(), output=out, readGroupsFile=headerToTempFile(headerAtoB), ignoreMissingReadGroups=false).execute()
+    val in  = newBam
+    val header = builderOne.header.clone()
+    val extraRg = new SAMReadGroupRecord("X")
+    extraRg.setKeySequence("XX")
+    header.addReadGroup(extraRg)
+    val writer = SamWriter(in, header, sort=Some(SamOrder.Coordinate))
+    writer ++= builderOne.iterator
+    writer.close()
+
+    an[Exception] should be thrownBy new UpdateReadGroups(input=in, output=out, readGroupsFile=headerToTempFile(headerAtoB), ignoreMissingReadGroups=false).execute()
   }
 
   it should "allow missing read groups when ignoreMissingReadGroups is true" in {
     val out = newBam
     // headerAtoB is missing read group "ID:1".
-    val builder = new SamRecordSetBuilder(sortOrder=SortOrder.coordinate, readGroupId=Some("IDA"))
-    builder.addPair("ok_1", 0, 100, 300).foreach { rec => rec.setAttribute(SAMTag.RG.name, "IDA") }
-    builder.addPair("ok_2", 0, 200, 400).foreach { rec => rec.setAttribute(SAMTag.RG.name, "1") }
+    val builder = new SamBuilder(sort=Some(SamOrder.Coordinate), readGroupId=Some("IDA"))
+    val rg1 = new SAMReadGroupRecord("1")
+    rg1.setSample("SomeOtherSample")
+    builder.header.addReadGroup(rg1)
+
+    builder.addPair("ok_1", contig=0, start1=100, start2=300).foreach { rec => rec(SAMTag.RG.name) = "IDA" }
+    builder.addPair("ok_2", contig=0, start1=200, start2=400).foreach { rec => rec(SAMTag.RG.name) = "1" }
     new UpdateReadGroups(input=builder.toTempFile(), output=out, readGroupsFile=headerToTempFile(headerAtoB), ignoreMissingReadGroups=true).execute()
-    val reader = SamReaderFactory.make.open(out.toFile)
-    reader.iterator().foreach { rec =>
-      if (rec.getReadName == "ok_1") rec.getReadGroup.getId shouldBe "IDB"
-      else rec.getReadGroup.getId shouldBe "1"
+    val reader = SamSource(out)
+    reader.iterator.foreach { rec =>
+      if (rec.name == "ok_1") rec.readGroup.getId shouldBe "IDB"
+      else rec.readGroup.getId shouldBe "1"
     }
     reader.close()
   }
@@ -161,11 +171,11 @@ class UpdateReadGroupsTest extends UnitSpec {
       ignoreMissingReadGroups = true,
       keepReadGroupAttributes = false
     ).execute()
-    val reader = SamReaderFactory.make.open(out.toFile)
-    reader.iterator().foreach { rec =>
-      rec.getReadGroup.getId shouldBe headerAtoBWithNewSample.getReadGroups.iterator().next().getId
-      rec.getReadGroup.getSample shouldBe "NoName"
-      rec.getReadGroup.getDescription shouldBe null
+    val reader = SamSource(out)
+    reader.foreach { rec =>
+      rec.readGroup.getId shouldBe headerAtoBWithNewSample.getReadGroups.iterator().next().getId
+      rec.readGroup.getSample shouldBe "NoName"
+      rec.readGroup.getDescription shouldBe null
     }
     reader.close()
   }
@@ -179,11 +189,11 @@ class UpdateReadGroupsTest extends UnitSpec {
       ignoreMissingReadGroups = true,
       keepReadGroupAttributes = true
     ).execute()
-    val reader = SamReaderFactory.make.open(out.toFile)
-    reader.iterator().foreach { rec =>
-      rec.getReadGroup.getId shouldBe headerAtoBWithNewSample.getReadGroups.iterator().next().getId
-      rec.getReadGroup.getSample shouldBe "NoName" // overwritten
-      rec.getReadGroup.getDescription shouldBe "Description" // kept!
+    val reader = SamSource(out)
+    reader.foreach { rec =>
+      rec.readGroup.getId shouldBe headerAtoBWithNewSample.getReadGroups.iterator().next().getId
+      rec.readGroup.getSample shouldBe "NoName" // overwritten
+      rec.readGroup.getDescription shouldBe "Description" // kept!
     }
     reader.close()
   }
@@ -210,8 +220,8 @@ class UpdateReadGroupsTest extends UnitSpec {
 
   it should "fail if a record in the input file has no read group" in {
     val out = newBam
-    val builder = new SamRecordSetBuilder(sortOrder=SortOrder.coordinate, readGroupId=Some("IDA"))
-    builder.addPair("ok_1" + builder.readGroupId.get, 0, 100, 300).foreach { rec => rec.setAttribute("RG", null); }
+    val builder = new SamBuilder(sort=Some(SamOrder.Coordinate), readGroupId=Some("IDA"))
+    builder.addPair("ok_1" + builder.readGroupId.get, contig=0, start1=100, start2=300).foreach { rec => rec("RG") = null }
     an[Exception] should be thrownBy new UpdateReadGroups(
       input                   = builder.toTempFile(),
       output                  = out,

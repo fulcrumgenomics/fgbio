@@ -25,12 +25,12 @@
 
 package com.fulcrumgenomics.bam
 
-import com.fulcrumgenomics.FgBioDef.{PathToBam, javaIterableToIterator}
+import com.fulcrumgenomics.FgBioDef.PathToBam
+import com.fulcrumgenomics.bam.api.{SamSource, SamWriter}
 import com.fulcrumgenomics.cmdline.{ClpGroups, FgBioTool}
-import com.fulcrumgenomics.util.Io
 import com.fulcrumgenomics.commons.CommonsDef.SafelyClosable
 import com.fulcrumgenomics.sopt.{arg, clp}
-import htsjdk.samtools.{SAMFileWriter, SAMFileWriterFactory, SamReader, SamReaderFactory}
+import com.fulcrumgenomics.util.Io
 
 @clp(
   description = "Removes SAM tags from a SAM or BAM file.  If no tags to remove are given, the original file is produced.",
@@ -48,13 +48,13 @@ class RemoveSamTags
   validate(tagsToRemove.forall(_.length == 2), "Tags to remove must be of length two: " + tagsToRemove.filter(_.length != 2).mkString(", "))
 
   override def execute(): Unit = {
-    val reader: SamReader     = SamReaderFactory.makeDefault.open(input.toFile)
-    val writer: SAMFileWriter = new SAMFileWriterFactory().makeSAMOrBAMWriter(reader.getFileHeader, true, output.toFile)
-    reader.foreach { rec =>
-      tagsToRemove.foreach { tag => rec.setAttribute(tag, null) }
-      writer.addAlignment(rec)
+    val in  = SamSource(input)
+    val out = SamWriter(output, in.header)
+    in.foreach { rec =>
+      tagsToRemove.foreach { tag => rec(tag) = null }
+      out += rec
     }
-    reader.safelyClose()
-    writer.close()
+    in.safelyClose()
+    out.close()
   }
 }

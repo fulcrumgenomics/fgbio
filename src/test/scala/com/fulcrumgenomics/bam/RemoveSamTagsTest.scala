@@ -25,15 +25,15 @@
 
 package com.fulcrumgenomics.bam
 
-import com.fulcrumgenomics.testing.{SamRecordSetBuilder, UnitSpec}
+import com.fulcrumgenomics.testing.{SamBuilder, UnitSpec}
 
 class RemoveSamTagsTest extends UnitSpec {
 
   "RemoveSamTags" should "run end-to-end" in {
-    val builder = new SamRecordSetBuilder()
-    builder.addFrag(unmapped=true).foreach { rec => rec.setAttribute("OK", "foo"); rec.setAttribute("NO", "bar") }
-    builder.addFrag(unmapped=true).foreach { rec => rec.setAttribute("OK", "foo"); }
-    builder.addFrag(unmapped=true).foreach { rec => rec.setAttribute("NO", "bar") }
+    val builder = new SamBuilder()
+    builder.addFrag(unmapped=true, attrs=Map("OK" -> "foo", "NO" -> "bar"))
+    builder.addFrag(unmapped=true, attrs=Map("OK" -> "foo"))
+    builder.addFrag(unmapped=true, attrs=Map("NO" -> "bar"))
     builder.addFrag(unmapped=true)
 
     val input = builder.toTempFile()
@@ -44,15 +44,15 @@ class RemoveSamTagsTest extends UnitSpec {
 
     val records = readBamRecs(output)
     records should have size 4
-    records.count(_.getAttribute("OK") != null) shouldBe 2
-    records.count(_.getAttribute("NO") == null) shouldBe 4
+    records.count(_.get("OK").isDefined) shouldBe 2
+    records.count(_.get("NO").isEmpty)   shouldBe 4
   }
 
   it should "run end-to-end with no tags to remove" in {
-    val builder = new SamRecordSetBuilder()
-    builder.addFrag(unmapped=true).foreach { rec => rec.setAttribute("OK", "foo"); rec.setAttribute("NO", "bar") }
-    builder.addFrag(unmapped=true).foreach { rec => rec.setAttribute("OK", "foo"); }
-    builder.addFrag(unmapped=true).foreach { rec => rec.setAttribute("NO", "bar") }
+    val builder = new SamBuilder()
+    builder.addFrag(unmapped=true, attrs=Map("OK" -> "foo", "NO" -> "bar"))
+    builder.addFrag(unmapped=true, attrs=Map("OK" -> "foo"))
+    builder.addFrag(unmapped=true, attrs=Map("NO" -> "bar"))
     builder.addFrag(unmapped=true)
 
     val input = builder.toTempFile()
@@ -62,7 +62,7 @@ class RemoveSamTagsTest extends UnitSpec {
 
     val records = readBamRecs(output)
     records should have size 4
-    records.count(_.getAttribute("OK") != null) shouldBe 2
-    records.count(_.getAttribute("NO") != null) shouldBe 2
+    records.count(_.get("OK").isDefined) shouldBe 2
+    records.count(_.get("NO").isDefined) shouldBe 2
   }
 }

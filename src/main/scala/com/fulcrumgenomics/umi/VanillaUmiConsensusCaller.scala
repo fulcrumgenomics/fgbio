@@ -25,13 +25,13 @@
 
 package com.fulcrumgenomics.umi
 
+import com.fulcrumgenomics.bam.api.{SamRecord, SamWriter}
+import com.fulcrumgenomics.commons.util.LazyLogging
 import com.fulcrumgenomics.umi.ConsensusCaller.Base
 import com.fulcrumgenomics.umi.UmiConsensusCaller.ReadType._
 import com.fulcrumgenomics.umi.UmiConsensusCaller._
 import com.fulcrumgenomics.umi.VanillaUmiConsensusCallerOptions._
 import com.fulcrumgenomics.util.NumericTypes._
-import com.fulcrumgenomics.commons.util.LazyLogging
-import htsjdk.samtools._
 
 import scala.collection.mutable.ListBuffer
 import scala.util.Random
@@ -102,7 +102,7 @@ case class VanillaConsensusRead(id: String, bases: Array[Byte], quals: Array[Byt
 class VanillaUmiConsensusCaller(override val readNamePrefix: String,
                                 override val readGroupId: String = "A",
                                 val options: VanillaUmiConsensusCallerOptions = new VanillaUmiConsensusCallerOptions(),
-                                val rejects: Option[SAMFileWriter] = None
+                                val rejects: Option[SamWriter] = None
                                ) extends UmiConsensusCaller[VanillaConsensusRead] with LazyLogging {
 
   private val NotEnoughReadsQual: PhredScore = 0.toByte // Score output when masking to N due to insufficient input reads
@@ -116,13 +116,13 @@ class VanillaUmiConsensusCaller(override val readNamePrefix: String,
   private val random = new Random(42)
 
   /** Returns the value of the SAM tag directly. */
-  override def sourceMoleculeId(rec: SAMRecord): String = rec.getStringAttribute(this.options.tag)
+  override def sourceMoleculeId(rec: SamRecord): String = rec(this.options.tag)
 
-  /** Takes in all the SAMRecords for a single source molecule and produces consensus records. */
-  override protected def consensusSamRecordsFromSamRecords(recs: Seq[SAMRecord]): Seq[SAMRecord] = {
+  /** Takes in all the SamRecords for a single source molecule and produces consensus records. */
+  override protected def consensusSamRecordsFromSamRecords(recs: Seq[SamRecord]): Seq[SamRecord] = {
     // partition the records to which end of a pair it belongs, or if it is a fragment read.
     val (fragments, firstOfPair, secondOfPair) = subGroupRecords(recs)
-    val buffer = new ListBuffer[SAMRecord]()
+    val buffer = new ListBuffer[SamRecord]()
 
     // fragment
     consensusFromSamRecords(records=fragments).map { frag => buffer += createSamRecord(read=frag, readType=Fragment) }
@@ -141,7 +141,7 @@ class VanillaUmiConsensusCaller(override val readNamePrefix: String,
   }
 
   /** Creates a consensus read from the given records.  If no consensus read was created, None is returned. */
-  protected[umi] def consensusFromSamRecords(records: Seq[SAMRecord]): Option[VanillaConsensusRead] = {
+  protected[umi] def consensusFromSamRecords(records: Seq[SamRecord]): Option[VanillaConsensusRead] = {
     if (records.size < this.options.minReads) {
       rejectRecords(records, UmiConsensusCaller.FilterInsufficientSupport)
       None
@@ -152,8 +152,8 @@ class VanillaUmiConsensusCaller(override val readNamePrefix: String,
 
       if (filteredRecords.size < records.size) {
         val r = records.head
-        val n = if (r.getReadPairedFlag && r.getSecondOfPairFlag) "/2" else "/1"
-        val m = r.getAttribute(this.options.tag)
+        val n = if (r.paired && r.secondOfPair) "/2" else "/1"
+        val m = r[String](this.options.tag)
         val discards = records.size - filteredRecords.size
         logger.debug("Discarded ", discards, "/", records.size, " records due to mismatched alignments for ", m, n)
       }
@@ -238,21 +238,21 @@ class VanillaUmiConsensusCaller(override val readNamePrefix: String,
   }
 
   /** If a reject writer was provided, emit the reads to that writer. */
-  override protected def rejectRecords(recs: Traversable[SAMRecord], reason: String): Unit = {
+  override protected def rejectRecords(recs: Traversable[SamRecord], reason: String): Unit = {
     super.rejectRecords(recs, reason)
-    this.rejects.foreach(rej => recs.foreach(rej.addAlignment))
+    this.rejects.foreach(rej => rej ++= recs)
   }
 
-  /** Creates a `SAMRecord` from the called consensus base and qualities. */
-  override protected def createSamRecord(read: VanillaConsensusRead, readType: ReadType): SAMRecord = {
+  /** Creates a `SamRecord` from the called consensus base and qualities. */
+  override protected def createSamRecord(read: VanillaConsensusRead, readType: ReadType): SamRecord = {
     val rec = super.createSamRecord(read, readType)
     // Set some additional information tags on the read
-    rec.setAttribute(ConsensusTags.PerRead.RawReadCount,     read.depths.max.toInt)
-    rec.setAttribute(ConsensusTags.PerRead.MinRawReadCount,  read.depths.min.toInt)
-    rec.setAttribute(ConsensusTags.PerRead.RawReadErrorRate, sum(read.errors) / sum(read.depths).toFloat)
+    rec(ConsensusTags.PerRead.RawReadCount)     = read.depths.max.toInt
+    rec(ConsensusTags.PerRead.MinRawReadCount)  = read.depths.min.toInt
+    rec(ConsensusTags.PerRead.RawReadErrorRate) = sum(read.errors) / sum(read.depths).toFloat
     if (this.options.producePerBaseTags) {
-      rec.setAttribute(ConsensusTags.PerBase.RawReadCount,  read.depths)
-      rec.setAttribute(ConsensusTags.PerBase.RawReadErrors, read.errors)
+      rec(ConsensusTags.PerBase.RawReadCount)  = read.depths
+      rec(ConsensusTags.PerBase.RawReadErrors) = read.errors
     }
 
     rec

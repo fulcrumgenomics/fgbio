@@ -28,11 +28,11 @@ package com.fulcrumgenomics.bam
 import java.util.concurrent.atomic.AtomicInteger
 
 import com.fulcrumgenomics.FgBioDef._
+import com.fulcrumgenomics.bam.api.{SamOrder, SamSource, SamWriter}
 import com.fulcrumgenomics.cmdline.{ClpGroups, FgBioTool}
-import com.fulcrumgenomics.util.{Io, ProgressLogger}
 import com.fulcrumgenomics.commons.util.LazyLogging
 import com.fulcrumgenomics.sopt._
-import htsjdk.samtools.SAMFileHeader.SortOrder
+import com.fulcrumgenomics.util.{Io, ProgressLogger}
 import htsjdk.samtools._
 import htsjdk.samtools.util.Iso8601Date
 
@@ -70,24 +70,24 @@ class AutoGenerateReadGroupsByName
  @arg(doc="Description inserted into the read groups") val description: Option[String] = None,
  @arg(doc="Date the run was produced (ISO 8601: `YYYY-MM-DD` ), to insert into the read groups") val runDate: Option[Iso8601Date] = None,
  @arg(doc="Comment(s) to include in the merged output file's header.", minElements = 0) val comments: List[String] = Nil,
- @arg(doc="The sort order for the output sam/bam file.") val sortOrder: Option[SortOrder] = None
+ @arg(doc="The sort order for the output sam/bam file.") val sortOrder: Option[SamOrder] = None
 ) extends FgBioTool with LazyLogging {
 
   Io.assertReadable(input)
   Io.assertCanWriteFile(output)
 
   private val nextId = new AtomicInteger(0)
-  private val readGroups = new mutable.HashMap[RunInfo, SAMReadGroupRecord]()
+  private val readGroups = new mutable.HashMap[RunInfoFromRead, SAMReadGroupRecord]()
 
   override def execute(): Unit = {
 
     // Gather all the read groups
     {
-      val progress = new ProgressLogger(logger, verb = "read", unit = 5e6.toInt)
-      val in = SamReaderFactory.make().open(input.toFile)
+      val progress = ProgressLogger(logger, verb = "read", unit = 5e6.toInt)
+      val in = SamSource(input)
 
       in.foreach { record =>
-        val runInfo       = RunInfo(name=record.getReadName)
+        val runInfo = RunInfoFromRead(name=record.name)
 
         if (!readGroups.contains(runInfo)) {
           val readGroup = new SAMReadGroupRecord(nextId.incrementAndGet().toString)
@@ -107,26 +107,23 @@ class AutoGenerateReadGroupsByName
         }
         progress.record(record)
       }
+
       in.safelyClose()
     }
 
     // Write them all out
     {
-      val progress  = new ProgressLogger(logger, verb = "written", unit = 1e6.toInt)
-      val in        = SamReaderFactory.make().open(input.toFile)
-      val inHeader  = in.getFileHeader
-      val outHeader = inHeader.clone()
-      sortOrder.foreach(outHeader.setSortOrder)
+      val in        = SamSource(input)
+      val outHeader = in.header.clone()
       outHeader.setReadGroups(java.util.Arrays.asList(readGroups.values.toSeq:_*))
       comments.foreach(outHeader.addComment)
-      val out = new SAMFileWriterFactory().makeWriter(outHeader, sortOrder.forall(_ == inHeader.getSortOrder), output.toFile, null)
+      val out = SamWriter(output, outHeader, sort=sortOrder)
 
-      in.iterator().foreach { record =>
-        val runInfo = RunInfo(name = record.getReadName)
+      in.foreach { record =>
+        val runInfo = RunInfoFromRead(name = record.name)
         val readGroupId = readGroups(runInfo).getReadGroupId
-        record.setAttribute(SAMTag.RG.name(), readGroupId)
-        out.addAlignment(record)
-        progress.record(record)
+        record(SAMTag.RG.name()) = readGroupId
+        out += record
       }
 
       in.safelyClose()
@@ -136,18 +133,18 @@ class AutoGenerateReadGroupsByName
 }
 
 /** Stores parsed run-level information about a read. */
-private[bam] case class RunInfo(instrument: String, runNumber: String, flowcellId: String, lane: Int)
+private[bam] case class RunInfoFromRead(instrument: String, runNumber: String, flowcellId: String, lane: Int)
 {
   /** The platform unit: <flowcell.lane> */
   val platformUnit: String = s"$flowcellId.$lane"
 }
 
-private[bam] object RunInfo {
+private[bam] object RunInfoFromRead {
   /** Parse a read name to get run-level information. */
-  def apply(name: String): RunInfo = {
+  def apply(name: String): RunInfoFromRead = {
     val tokens = name.split(':').toSeq
     if (tokens.length != 7) throw new IllegalArgumentException(s"Expected seven colon-delimited fields for read with name: $name")
-    new RunInfo(
+    new RunInfoFromRead(
       instrument = tokens(0),
       runNumber  = tokens(1),
       flowcellId = tokens(2),

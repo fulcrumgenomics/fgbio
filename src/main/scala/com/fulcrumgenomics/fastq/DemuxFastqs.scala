@@ -29,19 +29,20 @@ import java.io.Closeable
 import java.util.concurrent.ForkJoinPool
 
 import com.fulcrumgenomics.FgBioDef.unreachable
+import com.fulcrumgenomics.bam.api.{SamOrder, SamRecord, SamWriter}
 import com.fulcrumgenomics.cmdline.{ClpGroups, FgBioTool}
-import com.fulcrumgenomics.fastq.FastqDemultiplexer.{DemuxRecord, DemuxResult}
-import com.fulcrumgenomics.illumina.{Sample, SampleSheet}
-import com.fulcrumgenomics.umi.ConsensusTags
-import com.fulcrumgenomics.util.ReadStructure.SubRead
-import com.fulcrumgenomics.util.{ReadStructure, SampleBarcodeMetric, _}
 import com.fulcrumgenomics.commons.CommonsDef.{DirPath, FilePath, PathPrefix, PathToBam, PathToFastq}
 import com.fulcrumgenomics.commons.io.PathUtil
 import com.fulcrumgenomics.commons.util.{LazyLogging, Logger}
+import com.fulcrumgenomics.fastq.FastqDemultiplexer.{DemuxRecord, DemuxResult}
+import com.fulcrumgenomics.illumina.{Sample, SampleSheet}
 import com.fulcrumgenomics.sopt.{arg, clp}
+import com.fulcrumgenomics.umi.ConsensusTags
+import com.fulcrumgenomics.util.ReadStructure.SubRead
+import com.fulcrumgenomics.util.{ReadStructure, SampleBarcodeMetric, _}
 import htsjdk.samtools.SAMFileHeader.SortOrder
+import htsjdk.samtools._
 import htsjdk.samtools.util.{ProgressLogger => _, _}
-import htsjdk.samtools.{SAMRecord, _}
 
 
 object DemuxFastqs {
@@ -406,32 +407,31 @@ private trait DemuxWriter extends Closeable {
   def add(rec: DemuxRecord): Unit
 }
 
-/** A writer that writes [[DemuxRecord]]s as [[SAMRecord]]s. */
+/** A writer that writes [[DemuxRecord]]s as [[SamRecord]]s. */
 private class SamRecordWriter(output: PathToBam,
                               val header: SAMFileHeader,
                               val umiTag: String) extends DemuxWriter {
-  private val writer = new SAMFileWriterFactory()
-    .setUseAsyncIo(DemuxFastqs.UseAsyncIo)
-    .setMaxRecordsInRam(DemuxFastqs.MaxRecordsInRamPerSamFileWriter)
-    .makeSAMOrBAMWriter(header, header.getSortOrder == SortOrder.unsorted, output.toFile)
+  val order = if (header.getSortOrder == SortOrder.unsorted) None else SamOrder(header)
+  private val writer = SamWriter(output, header, sort=order,
+    async = DemuxFastqs.UseAsyncIo, maxRecordsInRam = DemuxFastqs.MaxRecordsInRamPerSamFileWriter)
 
   private val rgId: String = this.header.getReadGroups.get(0).getId
 
   def add(rec: DemuxRecord): Unit = {
-    val record  = new SAMRecord(header)
-    record.setReadName(rec.name)
-    record.setReadString(rec.bases)
-    record.setBaseQualities(rec.quals.getBytes)
-    record.setReadUnmappedFlag(true)
+    val record = SamRecord(header)
+    record.name     = rec.name
+    record.bases    = rec.bases
+    record.quals    = rec.quals.getBytes
+    record.unmapped = true
     if (rec.pairedEnd) {
-      record.setReadPairedFlag(true)
-      record.setMateUnmappedFlag(true)
-      if (rec.readNumber == 1) record.setFirstOfPairFlag(true) else record.setSecondOfPairFlag(true)
+      record.paired = true
+      record.mateUnmapped = true
+      if (rec.readNumber == 1) record.firstOfPair = true else record.secondOfPair = true
     }
-    rec.sampleBarcode.foreach(bc => record.setAttribute("BC", bc))
-    record.setAttribute(ReservedTagConstants.READ_GROUP_ID, rgId)
-    rec.molecularBarcode.foreach(mb => record.setAttribute(umiTag, mb))
-    writer.addAlignment(record)
+    rec.sampleBarcode.foreach(bc => record("BC") = bc)
+    record(ReservedTagConstants.READ_GROUP_ID) =  rgId
+    rec.molecularBarcode.foreach(mb => record(umiTag) =  mb)
+    writer += record
   }
 
   override def close(): Unit = writer.close()

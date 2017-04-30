@@ -27,13 +27,13 @@ import java.io.PrintStream
 import java.nio.file.{Files, Path}
 
 import com.fulcrumgenomics.FgBioDef._
+import com.fulcrumgenomics.bam.api.{SamRecord, SamSource}
 import com.fulcrumgenomics.cmdline.FgBioTool
-import com.fulcrumgenomics.util.Io
 import com.fulcrumgenomics.commons.reflect.ReflectionUtil
 import com.fulcrumgenomics.commons.util.{LazyLogging, LogLevel, Logger}
 import com.fulcrumgenomics.sopt.cmdline.CommandLineProgramParser
 import com.fulcrumgenomics.sopt.util.ParsingUtil
-import htsjdk.samtools.{SAMRecord, SamReaderFactory}
+import com.fulcrumgenomics.util.Io
 import htsjdk.variant.variantcontext.VariantContext
 import htsjdk.variant.vcf.VCFFileReader
 import org.scalatest.{BeforeAndAfterAll, FlatSpec, Matchers}
@@ -54,10 +54,7 @@ trait UnitSpec extends FlatSpec with Matchers {
   }
 
   /** Reads all the records from a SAM or BAM file into an indexed seq. */
-  protected def readBamRecs(bam: PathToBam): IndexedSeq[SAMRecord] = {
-    val in = SamReaderFactory.make().open(bam.toFile)
-    yieldAndThen(in.toIndexedSeq) { in.safelyClose() }
-  }
+  protected def readBamRecs(bam: PathToBam): IndexedSeq[SamRecord] = SamSource(bam).toIndexedSeq
 
   /** Reads all the records from a VCF file into an indexed seq. */
   protected def readVcfRecs(vcf: PathToVcf): IndexedSeq[VariantContext] = {

@@ -28,11 +28,11 @@ import java.util.Collections
 
 import com.fulcrumgenomics.FgBioDef._
 import com.fulcrumgenomics.bam._
+import com.fulcrumgenomics.bam.api.{QueryType, SamSource}
 import com.fulcrumgenomics.cmdline.{ClpGroups, FgBioTool}
-import com.fulcrumgenomics.util.Io
 import com.fulcrumgenomics.commons.util.LazyLogging
 import com.fulcrumgenomics.sopt.{arg, clp}
-import htsjdk.samtools.{SAMRecord, SamReaderFactory}
+import com.fulcrumgenomics.util.Io
 import htsjdk.variant.variantcontext.VariantContextBuilder
 import htsjdk.variant.variantcontext.writer.{Options, VariantContextWriter, VariantContextWriterBuilder}
 import htsjdk.variant.vcf._
@@ -94,8 +94,8 @@ class FilterSomaticVcf
 
   override def execute(): Unit = {
     val vcfIn = new VCFFileReader(input.toFile, false)
-    val bamIn = SamReaderFactory.make().open(bam)
-    val dict  = bamIn.getFileHeader.getSequenceDictionary
+    val bamIn = SamSource(bam)
+    val dict  = bamIn.dict
     val vcfSample = sample match {
       case Some(s) =>
         validate(vcfIn.getFileHeader.getSampleNamesInOrder.contains(s), s"Sample $s not present in VCF.")
@@ -106,8 +106,7 @@ class FilterSomaticVcf
     }
 
     val filters = Seq(new EndRepairArtifactLikelihoodFilter(endRepairDistance, endRepairPValue))
-    val builder = new PileupBuilder(bamIn.getFileHeader.getSequenceDictionary,
-      mappedPairsOnly=pairedReadsOnly, minBaseQ=minBaseQuality, minMapQ=minMappingQuality)
+    val builder = new PileupBuilder(bamIn.dict, mappedPairsOnly=pairedReadsOnly, minBaseQ=minBaseQuality, minMapQ=minMappingQuality)
     val out = makeWriter(output, vcfIn.getFileHeader, filters)
 
     vcfIn.foreach { ctx =>
@@ -118,7 +117,7 @@ class FilterSomaticVcf
 
       if (applicableFilters.nonEmpty) {
         val ctxBuilder = new VariantContextBuilder(ctx)
-        val iterator   = bamIn.queryOverlapping(chrom, pos, pos)
+        val iterator   = bamIn.query(chrom, pos, pos, QueryType.Overlapping)
         val pileup     = filterPileup(builder.build(iterator, chrom, pos).withoutOverlaps)
         iterator.close()
 
@@ -147,12 +146,12 @@ class FilterSomaticVcf
     */
   private def filterPileup[A <: PileupEntry](pileup: Pileup[A]): Pileup[A] = {
     val filtered = pileup.pile.filter { e =>
-      if (Bams.isFrPair(e.rec)) {
+      if (e.rec.isFrPair) {
         val (start, end) = Bams.insertCoordinates(e.rec)
         if (pileup.pos < start || pileup.pos > end) {
           logger.warning(
             s"""
-              |Ignoring read ${e.rec.getReadName} mapped over variant site ${pileup.refName}:${pileup.pos} that has
+              |Ignoring read ${e.rec.name} mapped over variant site ${pileup.refName}:${pileup.pos} that has
               |incompatible insert size yielding insert coordinates of ${pileup.refName}:$start-$end which do not overlap the variant.
             """.stripMargin.trim.lines.mkString(" "))
           false

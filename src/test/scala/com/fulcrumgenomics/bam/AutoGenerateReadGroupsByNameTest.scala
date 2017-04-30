@@ -26,34 +26,33 @@
 package com.fulcrumgenomics.bam
 
 import com.fulcrumgenomics.FgBioDef._
-import com.fulcrumgenomics.testing.{SamRecordSetBuilder, UnitSpec}
+import com.fulcrumgenomics.bam.api.SamSource
+import com.fulcrumgenomics.testing.{SamBuilder, UnitSpec}
+import htsjdk.samtools.SAMFileHeader
 import htsjdk.samtools.util.Iso8601Date
-import htsjdk.samtools.{SAMFileHeader, SamReaderFactory}
 
 class AutoGenerateReadGroupsByNameTest extends UnitSpec {
 
   "RunInfo" should "throw an exception if a read name is malformed" in {
     // Fail
-    an[Exception] should be thrownBy RunInfo("")
-    an[Exception] should be thrownBy RunInfo("field")
-    an[Exception] should be thrownBy RunInfo("1:2:3:4:5:6")
-    an[Exception] should be thrownBy RunInfo("1:2:3:4:5:6:7:8")
-    an[Exception] should be thrownBy RunInfo("1:2:3:a:5:6:7")
+    an[Exception] should be thrownBy RunInfoFromRead("")
+    an[Exception] should be thrownBy RunInfoFromRead("field")
+    an[Exception] should be thrownBy RunInfoFromRead("1:2:3:4:5:6")
+    an[Exception] should be thrownBy RunInfoFromRead("1:2:3:4:5:6:7:8")
+    an[Exception] should be thrownBy RunInfoFromRead("1:2:3:a:5:6:7")
 
     // Ok
-    RunInfo("1:2:3:4:5:6:7")
-    RunInfo("EAS139:136:FC706VJ:2:5:1000:12850")
+    RunInfoFromRead("1:2:3:4:5:6:7")
+    RunInfoFromRead("EAS139:136:FC706VJ:2:5:1000:12850")
   }
 
   private def getHeader(bam: PathToBam): SAMFileHeader = {
-    val in = SamReaderFactory.make().open(bam.toFile)
-    val header = in.getFileHeader
-    in.close()
-    header
+    val in = SamSource(bam)
+    yieldAndThen(in.header) { in.safelyClose() }
   }
 
   private def runAddReadGroups(name: String*): PathToBam = {
-    val builder = new SamRecordSetBuilder()
+    val builder = new SamBuilder()
     name.foreach { n => builder.addFrag(name=n, unmapped=true) }
     val in = builder.toTempFile()
     val out = makeTempFile("AddReadGroupsByNameTest", ".bam")
@@ -137,7 +136,7 @@ class AutoGenerateReadGroupsByNameTest extends UnitSpec {
       "instrument:run-number:flowcell-id:1:2:4:4",
       "instrument:run-number:flowcell-id:1:2:3:5"
     )
-    val builder = new SamRecordSetBuilder()
+    val builder = new SamBuilder()
     names.foreach { name => builder.addFrag(name=name, unmapped=true) }
     val in = builder.toTempFile()
     val out = makeTempFile("AddReadGroupsByNameTest", ".bam")

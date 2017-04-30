@@ -25,8 +25,8 @@
 package com.fulcrumgenomics.vcf.filtration
 
 import com.fulcrumgenomics.bam.{BaseEntry, Pileup, PileupBuilder, PileupEntry}
-import com.fulcrumgenomics.testing.SamRecordSetBuilder.{Minus, Plus}
-import com.fulcrumgenomics.testing.{SamRecordSetBuilder, UnitSpec, VariantContextSetBuilder}
+import com.fulcrumgenomics.testing.SamBuilder.{Minus, Plus}
+import com.fulcrumgenomics.testing.{SamBuilder, UnitSpec, VariantContextSetBuilder}
 import htsjdk.variant.variantcontext.{Genotype, VariantContext}
 
 class EndRepairArtifactLikelihoodFilterTest extends UnitSpec {
@@ -67,8 +67,7 @@ class EndRepairArtifactLikelihoodFilterTest extends UnitSpec {
 
   "isArtifactCongruent" should "return false for any base in a read that is not near the ends" in {
     val filter  = new EndRepairArtifactLikelihoodFilter(distance=5)
-    val recs    = new SamRecordSetBuilder(readLength=50).addPair(start1=101, start2=101)
-    recs.foreach(_.setReadString("ACACA"*10))
+    val recs    = new SamBuilder(readLength=50).addPair(start1=101, start2=101, bases1="ACACA"*10, bases2="ACACA"*10)
 
     for (r <- recs; pos <- Range.inclusive(106, 145)) {
       filter.isArtifactCongruent(C, A, BaseEntry(r, pos-101), pos) shouldBe false
@@ -77,8 +76,8 @@ class EndRepairArtifactLikelihoodFilterTest extends UnitSpec {
 
   it should "return false for any base at the ends of the insert that is not allele-matched" in {
     val filter = new EndRepairArtifactLikelihoodFilter(distance=5)
-    val recs   = new SamRecordSetBuilder(readLength=50).addPair(start1=101, start2=101)
-    recs.foreach(_.setReadString("CACAC" + ("N"*40) + "GTGTG"))
+    val recs   = new SamBuilder(readLength=50).addPair(start1=101, start2=101)
+    recs.foreach(_.bases = "CACAC" + ("N" * 40) + "GTGTG")
 
     for (r <- recs; pos <- Range.inclusive(101, 105)) {
       filter.isArtifactCongruent(C, A, BaseEntry(r, pos-101), pos) shouldBe false
@@ -91,8 +90,8 @@ class EndRepairArtifactLikelihoodFilterTest extends UnitSpec {
 
   it should "return true for bases at the ends of the insert that are allele-matched" in {
     val filter = new EndRepairArtifactLikelihoodFilter(distance=5)
-    val recs   = new SamRecordSetBuilder(readLength=50).addPair(start1=101, start2=101)
-    recs.foreach(_.setReadString("GTGTG" + ("N" * 40) + "CACAC"))
+    val recs   = new SamBuilder(readLength=50).addPair(start1=101, start2=101)
+    recs.foreach(_.bases = "GTGTG" + ("N" * 40) + "CACAC")
 
     for (r <- recs; pos <- Range.inclusive(101, 105)) {
       filter.isArtifactCongruent(G, T, BaseEntry(r, pos-101), pos) shouldBe true
@@ -126,16 +125,16 @@ class EndRepairArtifactLikelihoodFilterTest extends UnitSpec {
   "annotations" should "compute a non-significant p-value when data is distributed throughout the reads" in {
     // Simulate a G>T non-artifact at bp 25
     val filter  = new EndRepairArtifactLikelihoodFilter(distance=5)
-    val builder = new SamRecordSetBuilder(readLength=50, baseQuality=40)
+    val builder = new SamBuilder(readLength=50, baseQuality=40)
 
     // Add a ton of reference allele
     for (start <- Range.inclusive(1, 25); i <- Range.inclusive(1, 10); strand <- Seq(Plus, Minus)) {
-      builder.addFrag(start=start, strand=strand).foreach(r => r.setReadString("G"*50))
+      builder.addFrag(start=start, strand=strand, bases="G"*50)
     }
 
     // And a bit of alt allele
     for (start <- Range.inclusive(1, 25); strand <- Seq(Plus, Minus)) {
-      builder.addFrag(start=start, strand=strand).foreach(r => r.setReadString("T"*50))
+      builder.addFrag(start=start, strand=strand, bases="T"*50)
     }
 
     val refName     = builder.dict.getSequence(0).getSequenceName
@@ -148,16 +147,16 @@ class EndRepairArtifactLikelihoodFilterTest extends UnitSpec {
   it should "compute a significant p-value when data is heavily biased" in {
     // Simulate a G>T non-artifact at bp 25
     val filter  = new EndRepairArtifactLikelihoodFilter(distance=5)
-    val builder = new SamRecordSetBuilder(readLength=50, baseQuality=40)
+    val builder = new SamBuilder(readLength=50, baseQuality=40)
 
     // Add a ton of reference allele at various positions
     for (start <- Range.inclusive(1, 25); i <- Range.inclusive(1, 5); strand <- Seq(Plus, Minus)) {
-      builder.addFrag(start=start, strand=strand).foreach(r => r.setReadString("G"*50))
+      builder.addFrag(start=start, strand=strand, bases="G"*50)
     }
 
     // And a bit of alt allele, all at the start of the read
     for (start <- Range.inclusive(21, 25); strand <- Seq(Plus)) {
-      builder.addFrag(start=start, strand=strand).foreach(r => r.setReadString("T"*50))
+      builder.addFrag(start=start, strand=strand, bases="T"*50)
     }
 
     val refName     = builder.dict.getSequence(0).getSequenceName
@@ -170,16 +169,16 @@ class EndRepairArtifactLikelihoodFilterTest extends UnitSpec {
   it should "compute an intermediate p-value when data is heavily biased for both ref and alt" in {
     // Simulate a G>T non-artifact at bp 25
     val filter  = new EndRepairArtifactLikelihoodFilter(distance=5)
-    val builder = new SamRecordSetBuilder(readLength=50, baseQuality=40)
+    val builder = new SamBuilder(readLength=50, baseQuality=40)
 
     // Add a ton of reference allele, 5/6ths in the first 5bp of the read
     for (start <- Range.inclusive(20, 25); i <- Range.inclusive(1, 10); strand <- Seq(Plus, Minus)) {
-      builder.addFrag(start=start, strand=strand).foreach(r => r.setReadString("G"*50))
+      builder.addFrag(start=start, strand=strand, bases="G"*50)
     }
 
     // And a bit of alt allele, all at the start of the read
     for (start <- Range.inclusive(21, 25); strand <- Seq(Plus)) {
-      builder.addFrag(start=start, strand=strand).foreach(r => r.setReadString("T"*50))
+      builder.addFrag(start=start, strand=strand, bases="T"*50)
     }
 
     val refName     = builder.dict.getSequence(0).getSequenceName
@@ -191,7 +190,7 @@ class EndRepairArtifactLikelihoodFilterTest extends UnitSpec {
 
   it should "not throw an exception if there is no alt allele coverage or the pileup is empty" in {
     val filter  = new EndRepairArtifactLikelihoodFilter(distance=10)
-    val builder = new SamRecordSetBuilder(readLength=50, baseQuality=40)
+    val builder = new SamBuilder(readLength=50, baseQuality=40)
     val refName = builder.dict.getSequence(0).getSequenceName
 
     { // Test with just an empty pileup
@@ -202,7 +201,7 @@ class EndRepairArtifactLikelihoodFilterTest extends UnitSpec {
 
     { // And again with just a bunch of ref allele
       for (start <- Range.inclusive(1, 20); i <- Range.inclusive(1, 10); strand <- Seq(Plus, Minus)) {
-        builder.addFrag(start = start, strand = strand).foreach(r => r.setReadString("G" * 50))
+        builder.addFrag(start = start, strand = strand, bases = "G" * 50)
       }
       val pile        = new PileupBuilder(dict = builder.dict, mappedPairsOnly = false).build(builder.iterator, refName, 25)
       val annotations = filter.annotations(pile, singleGenotype("G", "T"))

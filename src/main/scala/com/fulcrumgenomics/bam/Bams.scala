@@ -25,14 +25,16 @@
 package com.fulcrumgenomics.bam
 
 import com.fulcrumgenomics.FgBioDef._
+import com.fulcrumgenomics.bam.api.{SamOrder, SamRecord, SamRecordCodec, SamSource}
 import com.fulcrumgenomics.commons.collection.BetterBufferedIterator
-import com.fulcrumgenomics.util.ProgressLogger
+import com.fulcrumgenomics.util.{Io, ProgressLogger, Sorter}
 import com.fulcrumgenomics.commons.util.LazyLogging
+import com.fulcrumgenomics.commons.collection.SelfClosingIterator
 import htsjdk.samtools.SAMFileHeader.{GroupOrder, SortOrder}
 import htsjdk.samtools.SamPairUtil.PairOrientation
 import htsjdk.samtools._
 import htsjdk.samtools.reference.ReferenceSequenceFileWalker
-import htsjdk.samtools.util.{CoordMath, SequenceUtil, SortingCollection}
+import htsjdk.samtools.util.{CloserUtil, CoordMath, SequenceUtil, SortingCollection}
 
 import scala.collection.mutable.ListBuffer
 import scala.math.{max, min}
@@ -40,27 +42,27 @@ import scala.math.{max, min}
 /**
   * Class that represents all reads from a template within a BAM file.
   */
-case class Template(r1: Option[SAMRecord],
-                    r2: Option[SAMRecord],
-                    r1Supplementals: Seq[SAMRecord] = Nil,
-                    r2Supplementals: Seq[SAMRecord] = Nil,
-                    r1Secondaries:   Seq[SAMRecord] = Nil,
-                    r2Secondaries:   Seq[SAMRecord] = Nil) {
+case class Template(r1: Option[SamRecord],
+                    r2: Option[SamRecord],
+                    r1Supplementals: Seq[SamRecord] = Nil,
+                    r2Supplementals: Seq[SamRecord] = Nil,
+                    r1Secondaries:   Seq[SamRecord] = Nil,
+                    r2Secondaries:   Seq[SamRecord] = Nil) {
 
   /** Gets the query name of the template (assumes all records have the same read name). */
   val name: String = {
-    if (r1.isDefined) r1.get.getReadName
-    else if (r2.isDefined) r2.get.getReadName
-    else Seq(r1Supplementals, r2Supplementals, r1Secondaries, r2Secondaries).find(_.nonEmpty).map(_.head.getReadName)
+    if (r1.isDefined) r1.get.name
+    else if (r2.isDefined) r2.get.name
+    else Seq(r1Supplementals, r2Supplementals, r1Secondaries, r2Secondaries).find(_.nonEmpty).map(_.head.name)
       .getOrElse(throw new IllegalStateException("Template created with no reads!"))
   }
 
   /** Returns an iterator over all records that are not the primary r1 and r2. */
-  def allSupplementaryAndSecondary: Iterator[SAMRecord] =
+  def allSupplementaryAndSecondary: Iterator[SamRecord] =
     r1Supplementals.iterator ++ r2Supplementals.iterator ++ r1Secondaries.iterator ++ r2Secondaries.iterator
 
   /** Returns an iterator of all reads for the template. */
-  def allReads: Iterator[SAMRecord] = r1.iterator ++ r2.iterator ++ allSupplementaryAndSecondary
+  def allReads: Iterator[SamRecord] = r1.iterator ++ r2.iterator ++ allSupplementaryAndSecondary
 
   /** The total count of records for the template. */
   lazy val readCount: Int = r1.size + r2.size + r1Supplementals.size + r2Supplementals.size + r1Secondaries.size + r2Secondaries.size
@@ -71,38 +73,38 @@ object Template {
     * Generates a Template for the next template in the buffered iterator. Assumes that the
     * iterator is queryname sorted or grouped.
     */
-  def apply(recs: BetterBufferedIterator[SAMRecord]): Template = {
+  def apply(recs: BetterBufferedIterator[SamRecord]): Template = {
     require(recs.hasNext)
-    val name = recs.head.getReadName
-    apply(recs.takeWhile(_.getReadName == name))
+    val name = recs.head.name
+    apply(recs.takeWhile(_.name == name))
   }
 
-  /** Generates a Template object from an iterator of SAMRecords from the same template. */
-  def apply(recs: Iterator[SAMRecord]): Template = {
-    var r1: Option[SAMRecord] = None
-    var r2: Option[SAMRecord] = None
-    val r1Supp = ListBuffer[SAMRecord]()
-    val r2Supp = ListBuffer[SAMRecord]()
-    val r1Sec  = ListBuffer[SAMRecord]()
-    val r2Sec  = ListBuffer[SAMRecord]()
+  /** Generates a Template object from an iterator of SamRecords from the same template. */
+  def apply(recs: Iterator[SamRecord]): Template = {
+    var r1: Option[SamRecord] = None
+    var r2: Option[SamRecord] = None
+    val r1Supp = ListBuffer[SamRecord]()
+    val r2Supp = ListBuffer[SamRecord]()
+    val r1Sec  = ListBuffer[SamRecord]()
+    val r2Sec  = ListBuffer[SamRecord]()
 
     var name: Option[String] = None
 
     recs foreach { r =>
-      if (name.isEmpty) name = Some(r.getReadName)
-      else require(name.get == r.getReadName, "Reads for same template have different query names.")
+      if (name.isEmpty) name = Some(r.name)
+      else require(name.get == r.name, "Reads for same template have different query names.")
 
-      val isR1 = !r.getReadPairedFlag || r.getFirstOfPairFlag
+      val isR1 = !r.paired || r.firstOfPair
       if (isR1) {
-        if      (r.getNotPrimaryAlignmentFlag)    r1Sec += r
-        else if (r.getSupplementaryAlignmentFlag) r1Supp += r
-        else if (r1.isDefined) throw new IllegalArgumentException(s"Multiple non-secondary, non-supplemental R1s for ${r.getReadName}")
+        if      (r.secondary)     r1Sec += r
+        else if (r.supplementary) r1Supp += r
+        else if (r1.isDefined) throw new IllegalArgumentException(s"Multiple non-secondary, non-supplemental R1s for ${r.name}")
         else r1 = Some(r)
       }
       else {
-        if      (r.getNotPrimaryAlignmentFlag)    r2Sec += r
-        else if (r.getSupplementaryAlignmentFlag) r2Supp += r
-        else if (r2.isDefined) throw new IllegalArgumentException(s"Multiple non-secondary, non-supplemental R2s for ${r.getReadName}")
+        if      (r.secondary)     r2Sec += r
+        else if (r.supplementary) r2Supp += r
+        else if (r2.isDefined) throw new IllegalArgumentException(s"Multiple non-secondary, non-supplemental R2s for ${r.name}")
         else r2 = Some(r)
       }
     }
@@ -115,31 +117,17 @@ object Template {
   * Utility methods for working with BAMs.
   */
 object Bams extends LazyLogging {
-
   /** The default maximum # of records to keep and sort in memory. */
   val MaxInMemory: Int = 1e6.toInt
 
-  /**
-    * Builds a sorting collection for sorting SAMRecords.
-    *
-    * @param order the desired output sort order
-    * @param header the header to use to encode records during sorting
-    * @param maxInMemory the maximum number of records to keep and sort in memory
-    * @param tmpDir an optional temp directory to use for temporary sorting files
-    * @return a SortingCollection
-    */
-  def sortingCollection(order: SortOrder,
-                        header: SAMFileHeader,
-                        maxInMemory: Int = MaxInMemory,
-                        tmpDir: Option[DirPath] = None): SortingCollection[SAMRecord] = {
-    SortingCollection.newInstance(
-      classOf[SAMRecord],
-      new BAMRecordCodec(header),
-      order.getComparatorInstance,
-      maxInMemory,
-      tmpDir.map(_.toFile).orNull
-    )
+  /** Generates a [[Sorter]] for doing disk-backed sorting of objects. */
+  def sorter(order: SamOrder,
+             header: SAMFileHeader,
+             maxRecordsInRam: Int = MaxInMemory,
+             tmpDir: DirPath = Io.tmpDir): Sorter[SamRecord,order.A] = {
+    new Sorter(maxRecordsInRam, new SamRecordCodec(header), order.sortkey)
   }
+
 
   /**
     * Returns an iterator over the records in the given reader in such a way that all
@@ -151,10 +139,10 @@ object Bams extends LazyLogging {
     * @param tmpDir an optional temp directory to use for temporary sorting files if needed
     * @return an Iterator with reads from the same query grouped together
     */
-  def queryGroupedIterator(in: SamReader,
+  def queryGroupedIterator(in: SamSource,
                            maxInMemory: Int = MaxInMemory,
-                           tmpDir: Option[DirPath] = None): BetterBufferedIterator[SAMRecord] = {
-    queryGroupedIterator(in.iterator(), in.getFileHeader, maxInMemory, tmpDir)
+                           tmpDir: DirPath = Io.tmpDir): BetterBufferedIterator[SamRecord] = {
+    queryGroupedIterator(in.iterator, in.header, maxInMemory, tmpDir)
   }
 
   /**
@@ -168,22 +156,26 @@ object Bams extends LazyLogging {
     * @param tmpDir an optional temp directory to use for temporary sorting files if needed
     * @return an Iterator with reads from the same query grouped together
     */
-  def queryGroupedIterator(iterator: Iterator[SAMRecord],
+  def queryGroupedIterator(iterator: Iterator[SamRecord],
                            header: SAMFileHeader,
                            maxInMemory: Int,
-                           tmpDir: Option[DirPath]): BetterBufferedIterator[SAMRecord] = {
+                           tmpDir: DirPath): SelfClosingIterator[SamRecord] = {
     if (header.getSortOrder == SortOrder.queryname || header.getGroupOrder == GroupOrder.query) {
-      iterator.bufferBetter
+      iterator match {
+        case iter: SelfClosingIterator[SamRecord] => iter
+        case _ => new SelfClosingIterator(iterator.bufferBetter, () => CloserUtil.close(iterator))
+      }
     }
     else {
       logger.info("Sorting into queryname order.")
-      val progress = new ProgressLogger(this.logger, "Queryname sorted")
-      val sorter = sortingCollection(SortOrder.queryname, header, maxInMemory, tmpDir)
+      val progress = ProgressLogger(this.logger, "Queryname sorted")
+      val sort     = sorter(SamOrder.Queryname, header, maxInMemory, tmpDir)
       iterator.foreach { rec =>
-        sorter.add(rec)
+        sort += rec
         progress.record(rec)
       }
-      sorter.iterator().bufferBetter
+
+      new SelfClosingIterator(sort.iterator, () => sort.close())
     }
   }
 
@@ -196,10 +188,10 @@ object Bams extends LazyLogging {
     * @param tmpDir an optional temp directory to use for temporary sorting files if needed
     * @return an Iterator of Template objects
     */
-  def templateIterator(in: SamReader,
+  def templateIterator(in: SamSource,
                        maxInMemory: Int = MaxInMemory,
-                       tmpDir: Option[DirPath] = None): Iterator[Template] = {
-    templateIterator(in.iterator(), in.getFileHeader, maxInMemory, tmpDir)
+                       tmpDir: DirPath = Io.tmpDir): Iterator[Template] = {
+    templateIterator(in.iterator, in.header, maxInMemory, tmpDir)
   }
 
   /**
@@ -212,11 +204,11 @@ object Bams extends LazyLogging {
     * @param tmpDir an optional temp directory to use for temporary sorting files if needed
     * @return an Iterator of Template objects
     */
-  def templateIterator(iterator: Iterator[SAMRecord],
+  def templateIterator(iterator: Iterator[SamRecord],
                        header: SAMFileHeader,
                        maxInMemory: Int,
-                       tmpDir: Option[DirPath]): Iterator[Template] = {
-    val queryIterator: BetterBufferedIterator[SAMRecord] = queryGroupedIterator(iterator, header, maxInMemory, tmpDir)
+                       tmpDir: DirPath): Iterator[Template] = {
+    val queryIterator = queryGroupedIterator(iterator, header, maxInMemory, tmpDir)
 
     new Iterator[Template] {
       override def hasNext: Boolean = queryIterator.hasNext
@@ -231,32 +223,23 @@ object Bams extends LazyLogging {
     * Ensures that any NM/UQ/MD tags on the read are accurate.  If the read is unmapped, any existing
     * values are removed.  If the read is mapped all three tags will have values regenerated.
     *
-    * @param rec the SAMRecord to update
+    * @param rec the SamRecord to update
     * @param ref a reference sequence file walker to pull the reference information from
     */
-  def regenerateNmUqMdTags(rec: SAMRecord, ref: ReferenceSequenceFileWalker): Unit = {
+  def regenerateNmUqMdTags(rec: SamRecord, ref: ReferenceSequenceFileWalker): Unit = {
     import SAMTag._
-    if (rec.getReadUnmappedFlag) {
-      rec.setAttribute(NM.name(), null)
-      rec.setAttribute(UQ.name(), null)
-      rec.setAttribute(MD.name(), null)
+    if (rec.unmapped) {
+      rec(NM.name()) =  null
+      rec(UQ.name()) =  null
+      rec(MD.name()) =  null
     }
     else {
-      val refBases = ref.get(rec.getReferenceIndex).getBases
-      SequenceUtil.calculateMdAndNmTags(rec, refBases, true, true)
-      if (rec.getBaseQualities != null && rec.getBaseQualities.length != 0) {
-        rec.setAttribute(SAMTag.UQ.name, SequenceUtil.sumQualitiesOfMismatches(rec, refBases, 0))
+      val refBases = ref.get(rec.refIndex).getBases
+      SequenceUtil.calculateMdAndNmTags(rec.asSam, refBases, true, true)
+      if (rec.quals != null && rec.quals.length != 0) {
+        rec(SAMTag.UQ.name) = SequenceUtil.sumQualitiesOfMismatches(rec.asSam, refBases, 0)
       }
     }
-  }
-
-  /** Returns true if the read is mapped in an FR pair, false otherwise. */
-  def isFrPair(rec: SAMRecord): Boolean = {
-    rec.getReadPairedFlag &&
-      !rec.getReadUnmappedFlag &&
-      !rec.getMateUnmappedFlag &&
-      rec.getReferenceIndex == rec.getMateReferenceIndex &&
-      SamPairUtil.getPairOrientation(rec) == PairOrientation.FR
   }
 
   /**
@@ -267,16 +250,16 @@ object Bams extends LazyLogging {
     *
     * @return the start and end position of the insert as a tuple, always with start <= end
     */
-  def insertCoordinates(rec: SAMRecord): (Int, Int) = {
-    require(rec.getReadPairedFlag, s"Read ${rec.getReadName} is not paired, cannot calculate insert coordinates.")
-    require(!rec.getReadUnmappedFlag, s"Read ${rec.getReadName} must be mapped to calculate insert coordinates.")
-    require(!rec.getMateUnmappedFlag, s"Read ${rec.getReadName} must have mapped mate to calculate insert coordinates.")
-    require(rec.getReferenceIndex == rec.getMateReferenceIndex, s"Read ${rec.getReadName} must be mapped to same chrom as it's mate.")
+  def insertCoordinates(rec: SamRecord): (Int, Int) = {
+    require(rec.paired, s"Read ${rec.name} is not paired, cannot calculate insert coordinates.")
+    require(rec.mapped, s"Read ${rec.name} must be mapped to calculate insert coordinates.")
+    require(rec.mateMapped, s"Read ${rec.name} must have mapped mate to calculate insert coordinates.")
+    require(rec.refIndex == rec.mateRefIndex, s"Read ${rec.name} must be mapped to same chrom as it's mate.")
 
-    val isize      = rec.getInferredInsertSize
-    val firstEnd   = if (rec.getReadNegativeStrandFlag) rec.getAlignmentEnd else rec.getAlignmentStart
-    val adjustment = if (rec.getInferredInsertSize < 0) 1 else -1
-    val secondEnd  = firstEnd + rec.getInferredInsertSize + adjustment
+    val isize      = rec.insertSize
+    val firstEnd   = if (rec.negativeStrand) rec.end else rec.start
+    val adjustment = if (isize < 0) 1 else -1
+    val secondEnd  = firstEnd + isize + adjustment
 
     (min(firstEnd,secondEnd), max(firstEnd,secondEnd))
   }
@@ -285,15 +268,15 @@ object Bams extends LazyLogging {
   /** If the read is mapped in an FR pair, returns the distance of the position from the other end
     * of the template, other wise returns None.
     *
-    * @param rec the SAMRecord whose insert to calculate the position within
+    * @param rec the SamRecord whose insert to calculate the position within
     * @param genomicPosition the genomic position of interest (NOT the position within the read)
     */
-  def positionFromOtherEndOfTemplate(rec: SAMRecord, genomicPosition: Int): Option[Int] = {
-    if (isFrPair(rec) && rec.getInferredInsertSize != 0) {
-      val isize        = rec.getInferredInsertSize
-      val thisEnd      = if (rec.getReadNegativeStrandFlag) rec.getAlignmentEnd else rec.getAlignmentStart
-      val adjustment   = if (rec.getInferredInsertSize < 0) 1 else -1
-      val otherEnd     = thisEnd + rec.getInferredInsertSize + adjustment
+  def positionFromOtherEndOfTemplate(rec: SamRecord, genomicPosition: Int): Option[Int] = {
+    if (rec.isFrPair && rec.insertSize != 0) {
+      val isize        = rec.insertSize
+      val thisEnd      = if (rec.negativeStrand) rec.end else rec.start
+      val adjustment   = if (isize < 0) 1 else -1
+      val otherEnd     = thisEnd + isize + adjustment
       val (start, end) = (min(thisEnd, otherEnd), max(thisEnd,otherEnd))
       require(genomicPosition >= start && genomicPosition <= end, s"genomicPosition is outside of template for $rec")
 
@@ -303,5 +286,15 @@ object Bams extends LazyLogging {
     else {
       None
     }
+  }
+
+  // TODO: delete this method!
+  /** Returns true if the read is mapped in an FR pair, false otherwise. */
+  def isFrPair(rec: SAMRecord): Boolean = {
+    rec.getReadPairedFlag &&
+      !rec.getReadUnmappedFlag &&
+      !rec.getMateUnmappedFlag &&
+      rec.getReferenceIndex == rec.getMateReferenceIndex &&
+      SamPairUtil.getPairOrientation(rec) == PairOrientation.FR
   }
 }

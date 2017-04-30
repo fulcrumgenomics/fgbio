@@ -25,7 +25,8 @@
 package com.fulcrumgenomics.bam
 
 import com.fulcrumgenomics.FgBioDef._
-import htsjdk.samtools.{CigarOperator, SAMRecord, SAMSequenceDictionary}
+import com.fulcrumgenomics.bam.api.SamRecord
+import htsjdk.samtools.{CigarOperator, SAMSequenceDictionary}
 import htsjdk.samtools.util.SequenceUtil
 
 import scala.collection.mutable
@@ -54,7 +55,7 @@ case class Pileup[A <: PileupEntry](refName: String, refIndex: Int, pos: Int, pi
   def withoutOverlaps: Pileup[A] = {
     val buffer = new ListBuffer[A]()
     val names  = new mutable.HashSet[String]()
-    this.pile.foreach { p => if (names.add(p.rec.getReadName)) buffer += p }
+    this.pile.foreach { p => if (names.add(p.rec.name)) buffer += p }
     copy(pile=buffer)
   }
 
@@ -66,28 +67,28 @@ case class Pileup[A <: PileupEntry](refName: String, refIndex: Int, pos: Int, pi
 }
 
 /**
-  * Base trait for pileup entries that exposes the [[SAMRecord]] and the 0-based offset into
+  * Base trait for pileup entries that exposes the [[com.fulcrumgenomics.bam.api.SamRecord]] and the 0-based offset into
   * the record's bases and qualities that is relevant to the pileup.
   */
 sealed trait PileupEntry {
-  /** The SAMRecord that the pileup entry represents. */
-  val rec: SAMRecord
+  /** The SamRecord that the pileup entry represents. */
+  val rec: SamRecord
 
   /**
-    * The zero-based offset within the [[SAMRecord]] that is represented.
+    * The zero-based offset within the [[SamRecord]] that is represented.
     * For matches and mismatches this is the offset of the base in question.
     * For deletions it is the base prior to the deleted sequence.
     * For insertions it is the first inserted base in the read.
     */
   val offset: Int
 
-  require(offset >= 0 && offset < rec.getReadLength, s"Offset must be between 0 and read length. Offset=$offset, rlen=${rec.getReadLength}")
+  require(offset >= 0 && offset < rec.length, s"Offset must be between 0 and read length. Offset=$offset, rlen=${rec.length}")
 }
 
 /** Pileup entry representing a match or mismatch. */
-case class BaseEntry(override val rec: SAMRecord, override val offset: Int) extends PileupEntry {
-  val base: Byte = SequenceUtil.upperCase(rec.getReadBases()(offset))
-  val qual: Byte = rec.getBaseQualities()(offset)
+case class BaseEntry(override val rec: SamRecord, override val offset: Int) extends PileupEntry {
+  val base: Byte = SequenceUtil.upperCase(rec.bases(offset))
+  val qual: Byte = rec.quals(offset)
 
   /** Returns the 1-based position within the read in the read's current orientation. */
   def positionInRead: Int = offset + 1
@@ -97,19 +98,19 @@ case class BaseEntry(override val rec: SAMRecord, override val offset: Int) exte
     * This can be thought of as the offset from the 5' end plus one.
     */
   def positionInReadInReadOrder: Int = {
-    if (rec.getReadNegativeStrandFlag) rec.getReadLength - offset else positionInRead
+    if (rec.negativeStrand) rec.length - offset else positionInRead
   }
 
   /** Returns the base as it was read on the sequencer. */
-  def baseInReadOrientation: Byte = if (rec.getReadNegativeStrandFlag) SequenceUtil.complement(base) else base
+  def baseInReadOrientation: Byte = if (rec.negativeStrand) SequenceUtil.complement(base) else base
 
 }
 
 /** Pileup entry representing an insertion. */
-case class InsertionEntry(override val rec: SAMRecord, override val offset: Int) extends PileupEntry
+case class InsertionEntry(override val rec: SamRecord, override val offset: Int) extends PileupEntry
 
 /** Pileup entry representing a deletion. */
-case class DeletionEntry(override val rec: SAMRecord, override val offset: Int) extends PileupEntry
+case class DeletionEntry(override val rec: SamRecord, override val offset: Int) extends PileupEntry
 
 /**
   * Class that provides methods to build and filter [[Pileup]]s.
@@ -130,15 +131,15 @@ class PileupBuilder(dict: SAMSequenceDictionary,
                     includeSecondaryAlignments: Boolean = false,
                     includeSupplementalAlignments: Boolean = false) {
 
-  private val readFilters = new ListBuffer[SAMRecord => Boolean]()
+  private val readFilters = new ListBuffer[SamRecord => Boolean]()
   private val baseFilters = new ListBuffer[PileupEntry => Boolean]()
 
   // Setup the default read level filters
-  if (minMapQ > 0)                    readFilters += { r => r.getMappingQuality >= minMapQ }
-  if (mappedPairsOnly)                readFilters += { r => r.getReadPairedFlag && !r.getReadUnmappedFlag && !r.getMateUnmappedFlag }
-  if (!includeDuplicates)             readFilters += { r => !r.getDuplicateReadFlag }
-  if (!includeSecondaryAlignments)    readFilters += { r => !r.getNotPrimaryAlignmentFlag }
-  if (!includeSupplementalAlignments) readFilters += { r => !r.getSupplementaryAlignmentFlag }
+  if (minMapQ > 0)                    readFilters += { r => r.mapq >= minMapQ }
+  if (mappedPairsOnly)                readFilters += { r => r.paired && r.mapped && r.mateMapped }
+  if (!includeDuplicates)             readFilters += { r => !r.duplicate }
+  if (!includeSecondaryAlignments)    readFilters += { r => !r.secondary }
+  if (!includeSupplementalAlignments) readFilters += { r => !r.supplementary }
 
   // Setup the default base level filters
   if (minBaseQ > 0) baseFilters += {
@@ -147,13 +148,13 @@ class PileupBuilder(dict: SAMSequenceDictionary,
   }
 
   /** Adds a read level filter to the set of filters. */
-  def withReadFilter(f: SAMRecord => Boolean): PileupBuilder = yieldAndThen(this) { this.readFilters += f }
+  def withReadFilter(f: SamRecord => Boolean): PileupBuilder = yieldAndThen(this) { this.readFilters += f }
 
   /** Adds a base level filter to the set of filters. */
   def withBaseFilter(f: PileupEntry => Boolean): PileupBuilder = yieldAndThen(this) { this.baseFilters += f }
 
   /** Checks to see if all read filters accept the read. */
-  protected def accepts(rec: SAMRecord): Boolean = this.readFilters.forall(f => f(rec))
+  protected def accepts(rec: SamRecord): Boolean = this.readFilters.forall(f => f(rec))
 
   /** Checks to see if all read filters accept the read. */
   protected def accepts(entry: PileupEntry): Boolean = this.baseFilters.forall(f => f(entry))
@@ -161,33 +162,33 @@ class PileupBuilder(dict: SAMSequenceDictionary,
   /**
     * Constructs a pileup, at the single requested position, from the records returned by the iterator.
     *
-    * @param iterator an Iterator of SAMRecords that may or may not overlap the position
+    * @param iterator an Iterator of SamRecords that may or may not overlap the position
     * @param refName the name of the reference sequence/contig/chrom on which the position resides
     * @param pos the 1-based position on the reference sequence at which to construct the pileup
     */
-  def build(iterator: Iterator[SAMRecord], refName: String, pos: Int): Pileup[PileupEntry] = {
+  def build(iterator: Iterator[SamRecord], refName: String, pos: Int): Pileup[PileupEntry] = {
     val refIndex = dict.getSequenceIndex(refName)
     require(refIndex >= 0, s"Unknown reference sequence: ${refName}")
 
     val buffer = new ListBuffer[PileupEntry]()
     iterator.bufferBetter
-      .dropWhile(r => r.getReferenceIndex < refIndex)
-      .takeWhile(r => r.getReferenceIndex == refIndex && r.getAlignmentStart <= pos + 1)
-      .filterNot(r => r.getReadUnmappedFlag)
-      .filter(r => r.getAlignmentStart <= pos || startsWithInsertion(r))
-      .filter(r => r.getAlignmentEnd >= pos)
+      .dropWhile(r => r.refIndex < refIndex)
+      .takeWhile(r => r.refIndex == refIndex && r.start <= pos + 1)
+      .filterNot(r => r.unmapped)
+      .filter(r => r.start <= pos || startsWithInsertion(r))
+      .filter(r => r.end >= pos)
       .filter(r => this.readFilters.forall(f => f(r)))
       .foreach { rec =>
-        if (rec.getAlignmentStart == pos + 1) {
+        if (rec.start == pos + 1) {
           // Must be an insertion at the start of the read
           val entry = new InsertionEntry(rec, 0)
           if (accepts(entry)) buffer += entry
         }
         else {
-          rec.getReadPositionAtReferencePosition(pos) match {
+          rec.readPosAtRefPos(pos, returnLastBaseIfDeleted=false) match {
             case 0 =>
               // Must be deleted in the read
-              val delPos = rec.getReadPositionAtReferencePosition(pos, true)
+              val delPos = rec.readPosAtRefPos(pos, returnLastBaseIfDeleted=true)
               val entry = DeletionEntry(rec, delPos-1)
               if (accepts(entry)) buffer += entry
             case p =>
@@ -195,7 +196,7 @@ class PileupBuilder(dict: SAMSequenceDictionary,
               if (accepts(entry)) buffer += entry
 
               // Also check to see if the subsequent base represents an insertion
-              if (p < rec.getReadLength - 1 && rec.getReferencePositionAtReadPosition(p+1) == 0) {
+              if (p < rec.length - 1 && rec.refPosAtReadPos(p+1) == 0) {
                 val entry = InsertionEntry(rec, p)
                 if (accepts(entry)) buffer += entry
               }
@@ -207,14 +208,9 @@ class PileupBuilder(dict: SAMSequenceDictionary,
   }
 
   /** Returns true if the read is mapped and the first non-clipping operator is an insertion. */
-  private def startsWithInsertion(r: SAMRecord) = {
-    if (r.getReadUnmappedFlag) {
-      false
-    }
-    else {
-      val cigarOps = r.getCigar.getCigarElements.iterator().bufferBetter.dropWhile(_.getOperator.isClipping)
-      cigarOps.hasNext && cigarOps.head.getOperator == CigarOperator.INSERTION
-    }
+  private def startsWithInsertion(r: SamRecord) = {
+    r.mapped &&
+      r.cigar.iterator.bufferBetter.dropWhile(_.operator.isClipping).headOption.exists(_.operator == CigarOperator.INSERTION)
   }
 }
 

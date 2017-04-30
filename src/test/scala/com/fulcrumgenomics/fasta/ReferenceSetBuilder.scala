@@ -27,9 +27,10 @@ package com.fulcrumgenomics.fasta
 import java.nio.file.{Files, Path}
 
 import com.fulcrumgenomics.FgBioDef._
-import com.fulcrumgenomics.util.Io
+import com.fulcrumgenomics.bam.api.SamWriter
 import com.fulcrumgenomics.commons.io.PathUtil
-import htsjdk.samtools.{SAMFileHeader, SAMFileWriterFactory, SAMSequenceDictionary, SAMSequenceRecord}
+import com.fulcrumgenomics.util.Io
+import htsjdk.samtools.{SAMFileHeader, SAMSequenceDictionary, SAMSequenceRecord, SAMTextHeaderCodec}
 
 import scala.collection.mutable.ListBuffer
 
@@ -85,6 +86,9 @@ class ReferenceSetBuilder {
     }
 
     out.close()
-    new SAMFileWriterFactory().makeSAMWriter(header, true, PathUtil.replaceExtension(path, ".dict").toFile).close()
+
+    val dictOut = Io.toWriter(PathUtil.replaceExtension(path, ".dict"))
+    new SAMTextHeaderCodec().encode(dictOut, header)
+    dictOut.close()
   }
 }

@@ -28,7 +28,6 @@ import java.nio.file.Paths
 
 import com.fulcrumgenomics.FgBioDef._
 import com.fulcrumgenomics.testing.UnitSpec
-import htsjdk.samtools.SamReaderFactory
 import org.apache.commons.math3.stat.regression.SimpleRegression
 
 import scala.util.Random
@@ -40,14 +39,7 @@ class RandomizeBamTest extends UnitSpec {
   val bam = Paths.get("src/test/resources/com/fulcrumgenomics/bam/200reads.bam")
 
   /** Slurps read names with /1 or /2 suffixes, in order, from a BAM file. */
-  def slurp(p: PathToBam): IndexedSeq[String] = {
-    val in = SamReaderFactory.make().open(p.toFile)
-    val seq = in.iterator().map(rec => {
-      rec.getReadName + (if (rec.getFirstOfPairFlag) "/1" else "/2")
-    }).toIndexedSeq
-    in.safelyClose()
-    seq
-  }
+  def slurp(p: PathToBam): IndexedSeq[String] = readBamRecs(p).map(_.id)
 
   "RandomizeBam" should "truly randomize the order of reads in a file in non-query-grouped mode" in {
     val out1 = makeTempFile("random1.", ".bam")
@@ -70,7 +62,7 @@ class RandomizeBamTest extends UnitSpec {
     }}
   }
 
-  "RandomizeBam" should "randomize the order of reads in a file in query-grouped mode" in {
+  it should "randomize the order of reads in a file in query-grouped mode" in {
     val out1 = makeTempFile("random1.", ".bam")
     val out2 = makeTempFile("random1.", ".bam")
     val random = new Random(7)
@@ -93,8 +85,6 @@ class RandomizeBamTest extends UnitSpec {
     // Additionally validate that the outputs are query-grouped
     Seq(o1, o2).foreach(names => {
       names.grouped(2).foreach { case Seq(r1, r2) => {
-        r1 should endWith("/1")
-        r2 should endWith("/2")
         r1.substring(0, r1.length-2) shouldEqual r2.substring(0, r2.length-2)
       }}
     })

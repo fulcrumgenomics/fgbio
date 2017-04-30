@@ -23,15 +23,15 @@
  */
 package com.fulcrumgenomics.bam
 
-import com.fulcrumgenomics.cmdline.{ClpGroups, FgBioTool}
-import com.fulcrumgenomics.util.{Io, ProgressLogger}
 import com.fulcrumgenomics.FgBioDef._
+import com.fulcrumgenomics.bam.api.{SamRecord, SamSource, SamWriter}
+import com.fulcrumgenomics.cmdline.{ClpGroups, FgBioTool}
 import com.fulcrumgenomics.commons.util.LazyLogging
 import com.fulcrumgenomics.sopt.cmdline.ValidationException
 import com.fulcrumgenomics.sopt.{arg, clp}
+import com.fulcrumgenomics.util.Io
 import htsjdk.samtools.SAMFileHeader.{GroupOrder, SortOrder}
 import htsjdk.samtools.SamPairUtil.SetMateInfoIterator
-import htsjdk.samtools.{SAMFileWriterFactory, SamReaderFactory}
 
 @clp(group=ClpGroups.SamOrBam, description=
 """
@@ -56,22 +56,17 @@ class SetMateInformation
 
   Io.assertReadable(input)
   Io.assertCanWriteFile(output)
-  private val in = SamReaderFactory.make().open(input.toFile)
-  if (in.getFileHeader.getSortOrder != SortOrder.queryname && in.getFileHeader.getGroupOrder != GroupOrder.query) {
+  private val in = SamSource(input)
+  if (in.header.getSortOrder != SortOrder.queryname && in.header.getGroupOrder != GroupOrder.query) {
     in.safelyClose()
     throw new ValidationException("Input is not queryname sorted or grouped.")
   }
 
   override def execute(): Unit = {
-    val out = new SAMFileWriterFactory().makeWriter(in.getFileHeader, true, output.toFile, ref.map(_.toFile).orNull)
-    val progress = new ProgressLogger(logger)
-    val iterator = new SetMateInfoIterator(in.iterator(), true, allowMissingMates).toIterator
-
-    for (rec <- iterator) {
-      out.addAlignment(rec)
-      progress.record(rec)
-    }
-
+    val out = SamWriter(output, in.header, ref=ref)
+    val iterator = new SetMateInfoIterator(in.iterator.map(_.asSam), true, allowMissingMates).map(_.asInstanceOf[SamRecord])
+    out ++= iterator
     out.close()
+    in.safelyClose()
   }
 }

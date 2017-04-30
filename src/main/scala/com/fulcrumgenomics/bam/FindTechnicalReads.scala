@@ -25,12 +25,12 @@
 package com.fulcrumgenomics.bam
 
 import com.fulcrumgenomics.FgBioDef._
+import com.fulcrumgenomics.bam.api.{SamRecord, SamSource, SamWriter}
 import com.fulcrumgenomics.cmdline.{ClpGroups, FgBioTool}
-import com.fulcrumgenomics.util.{IlluminaAdapters, Io, ProgressLogger}
 import com.fulcrumgenomics.commons.util.LazyLogging
 import com.fulcrumgenomics.sopt._
+import com.fulcrumgenomics.util.{IlluminaAdapters, Io}
 import htsjdk.samtools.util.SequenceUtil
-import htsjdk.samtools.{SAMFileWriterFactory, SAMRecord, SamReaderFactory}
 
 import scala.annotation.tailrec
 import scala.collection.mutable
@@ -76,30 +76,29 @@ class FindTechnicalReads
 
   override def execute(): Unit = {
     // Built the appropriate input iterator
-    val in = SamReaderFactory.make().open(input.toFile)
-    val iter = (allReads, in.hasIndex) match {
-      case (true, _)      => in.iterator().buffered
-      case (false, true)  => in.queryUnmapped().buffered
-      case (false, false) => in.iterator().filter(isUnmappedTemplate).buffered
+    val in = SamSource(input)
+    val iter = (allReads, in.indexed) match {
+      case (true, _)      => in.iterator.buffered
+      case (false, true)  => in.unmapped.buffered
+      case (false, false) => in.iterator.filter(isUnmappedTemplate).buffered
     }
 
-    val out      = new SAMFileWriterFactory().makeWriter(in.getFileHeader, true, output.toFile, null)
+    val out      = SamWriter(output, in.header)
     val matcher  = new Matcher(sequences=sequences, matchLength=matchLength, maxErrors=maxErrors)
-    val progress = new ProgressLogger(logger, unit=250000)
     var n: Long  = 0
 
     while (iter.hasNext) {
       val r1 = iter.next()
-      val r2 = if (iter.hasNext && iter.head.getReadName == r1.getReadName) Some(iter.next()) else None
+      val r2 = if (iter.hasNext && iter.head.name == r1.name) Some(iter.next()) else None
       val recs = Seq(Some(r1), r2).flatten
 
       val isTechnical = if (isUnmappedTemplate(r1)) {
-        recs.toStream.flatMap(r => matcher.findMatch(r.getReadBases)).headOption match {
+        recs.toStream.flatMap(r => matcher.findMatch(r.bases)).headOption match {
           case None =>
             false
           case Some(hit) =>
             val hitIndex = sequenceToIndex(hit)
-            for (t <- tag; r <- recs) r.setAttribute(t, hitIndex)
+            for (t <- tag; r <- recs) r(t) = hitIndex
             n += recs.size
             true
         }
@@ -108,8 +107,7 @@ class FindTechnicalReads
         false
       }
 
-      if (isTechnical || allReads) recs.foreach(out.addAlignment)
-      recs.foreach(progress.record)
+      if (isTechnical || allReads) out ++= recs
     }
 
     logger.info(s"Found ${n} reads that matched to technical sequences.")
@@ -118,7 +116,7 @@ class FindTechnicalReads
   }
 
   /** Returns true if all reads from the template are unmapped, otherwise false. */
-  private def isUnmappedTemplate(rec: SAMRecord) : Boolean = rec.getReadUnmappedFlag && (!rec.getReadPairedFlag || rec.getMateUnmappedFlag)
+  private def isUnmappedTemplate(rec: SamRecord) : Boolean = rec.unmapped && (!rec.paired|| rec.mateUnmapped)
 }
 
 /** Little utility class to match reads to technical sequences. */

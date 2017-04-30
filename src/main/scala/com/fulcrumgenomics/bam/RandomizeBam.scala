@@ -31,14 +31,14 @@ package com.fulcrumgenomics.bam
 // import com.fulcrumgenomics.FgBioDef._
 
 
-import com.fulcrumgenomics.cmdline.{ClpGroups, FgBioTool}
-import com.fulcrumgenomics.util.{Io, ProgressLogger}
 import com.fulcrumgenomics.FgBioDef._
+import com.fulcrumgenomics.bam.api._
+import com.fulcrumgenomics.cmdline.{ClpGroups, FgBioTool}
 import com.fulcrumgenomics.commons.util.LazyLogging
 import com.fulcrumgenomics.sopt.{arg, clp}
+import com.fulcrumgenomics.util.{Io, ProgressLogger, Sorter}
 import htsjdk.samtools.SAMFileHeader.{GroupOrder, SortOrder}
-import htsjdk.samtools._
-import htsjdk.samtools.util.{Murmur3, SortingCollection}
+import htsjdk.samtools.util.Murmur3
 
 @clp(group=ClpGroups.SamOrBam, description=
 """
@@ -51,59 +51,35 @@ class RandomizeBam(
   @arg(flag='i', doc="The input SAM or BAM file.")           val input: PathToBam = Io.StdIn,
   @arg(flag='o', doc="The output SAM or BAM file.")          val output: PathToBam = Io.StdOut,
   @arg(flag='s', doc="Random seed.")                         val seed: Int = 42,
-  @arg(flag='q', doc="Group together reads by queryname.")   val queryGroup: Boolean = true,
-  @arg(flag='t', doc="Temporary directory for sorting.")     val tempDirectory: DirPath = Io.defaultTempDir()
+  @arg(flag='q', doc="Group together reads by queryname.")   val queryGroup: Boolean = true
 ) extends FgBioTool with LazyLogging {
 
   Io.assertCanWriteFile(input)
   Io.assertCanWriteFile(output)
 
   override def execute(): Unit = {
-    val extractor  = if (queryGroup) (rec: SAMRecord) => rec.getReadName
-                     else            (rec: SAMRecord) => rec.getReadName + ":" + rec.getReadString + ":" + rec.getBaseQualityString
-    val in = SamReaderFactory.make().open(input.toFile)
-    val header = in.getFileHeader
-    val comparator = new HashComparator(seed, extractor)
-    val sorter = SortingCollection.newInstance(classOf[SAMRecord], new BAMRecordCodec(header), comparator, 2e6.toInt, tempDirectory.toFile)
+    val extractor  = if (queryGroup) (rec: SamRecord) => rec.name
+                     else            (rec: SamRecord) => rec.name + ":" + rec.basesString + ":" + rec.qualsString
+    val in = SamSource(input)
+    val hasher = new Murmur3(seed)
+    val keyfunc = (r: SamRecord) => SamOrder.RandomKey(hasher.hashUnencodedChars(extractor.apply(r)), r.asSam.getFlags)
+    val sorter = new Sorter(2e6.toInt, new SamRecordCodec(in.header), keyfunc)
 
     logger.info("Sorting reads into random order.")
-    val sortProgress = new ProgressLogger(logger, verb="sorted", unit=5e6.toInt)
+    val sortProgress = ProgressLogger(logger, verb="sorted", unit=5e6.toInt)
     in.foreach(rec => {
-      sorter.add(rec)
+      sorter += rec
       sortProgress.record()
     })
 
     logger.info("Writing reads out to output.")
-    val writeProgress = new ProgressLogger(logger, verb="written", unit=5e6.toInt)
-    val outHeader = header.clone()
+    val outHeader = in.header.clone()
+    (if (queryGroup) SamOrder.RandomQuery else SamOrder.Random).applyTo(outHeader)
     outHeader.setSortOrder(SortOrder.unsorted)
     if (queryGroup) outHeader.setGroupOrder(GroupOrder.query)
-    val out = new SAMFileWriterFactory().makeWriter(outHeader, true, output.toFile, null)
+    val out = SamWriter(output, outHeader)
 
-    sorter.foreach(rec => {
-      out.addAlignment(rec)
-      writeProgress.record(rec)
-    })
-
+    out ++= sorter
     out.close()
-  }
-}
-
-/** Comparator that compares record based on a hash of extracted fields. */
-private class HashComparator(val seed: Int = 42, val extractor: SAMRecord => String) extends SAMRecordQueryNameComparator {
-  private val hasher: Murmur3 = new Murmur3(seed)
-  private val HashAttributeKey = hasher.hashUnencodedChars("SecretMagicWord")
-
-  override def fileOrderCompare(lhs: SAMRecord, rhs: SAMRecord): Int = hash(lhs).compareTo(hash(rhs))
-
-  /** Extracts fields from a SAMRecord and hashes them, caching the result for re-use. */
-  def hash(rec: SAMRecord): Int = {
-    var result = rec.getTransientAttribute(HashAttributeKey).asInstanceOf[Integer]
-    if (result == null) {
-      result = this.hasher.hashUnencodedChars(extractor(rec))
-      rec.setTransientAttribute(HashAttributeKey, result)
-    }
-
-    result
   }
 }

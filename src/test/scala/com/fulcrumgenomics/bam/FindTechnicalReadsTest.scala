@@ -24,54 +24,50 @@
 
 package com.fulcrumgenomics.bam
 
-import com.fulcrumgenomics.testing.{SamRecordSetBuilder, UnitSpec}
+import com.fulcrumgenomics.testing.{SamBuilder, UnitSpec}
 import com.fulcrumgenomics.util.IlluminaAdapters
-import htsjdk.samtools.SamReaderFactory
 import htsjdk.samtools.util.SequenceUtil
-import com.fulcrumgenomics.FgBioDef._
 
 class FindTechnicalReadsTest extends UnitSpec {
   "FindTechnicalReads" should "run and output the expected reads to a file." in {
-    val builder  = new SamRecordSetBuilder(readLength=36)
-    IlluminaAdapters.PairedEnd.both.flatMap(a => Seq(a, SequenceUtil.reverseComplement(a))).flatMap(_.sliding(36)).foreach(bases => {
-      val Seq(r1, r2) = builder.addPair(start1=0, start2=0, record1Unmapped=true, record2Unmapped=true)
-      r1.setReadString(bases)
-      r2.setReadString("ACGA" * 9)
-    })
+    val builder  = new SamBuilder(readLength=36)
+    IlluminaAdapters.PairedEnd.both.flatMap(a => Seq(a, SequenceUtil.reverseComplement(a))).flatMap(_.sliding(36)).foreach { bases =>
+      builder.addPair(start1=0, start2=0, unmapped1=true, unmapped2=true, bases1=bases, bases2="ACGA" * 9)
+    }
 
-    val expected = builder.map(_.getSAMString).toSeq
+    val expected = builder.map(_.id).toSeq
 
-    builder.addPair(start1=300, start2=500).foreach(_.setReadString("A" * 36))
-    builder.addPair(start1=300, start2=500).foreach(_.setReadString("C" * 36))
-    builder.addPair(start1=300, start2=500).foreach(_.setReadString("G" * 36))
-    builder.addPair(start1=300, start2=500).foreach(_.setReadString("T" * 36))
+    builder.addPair(start1=300, start2=500, bases1="A" * 36, bases2="A" * 36)
+    builder.addPair(start1=300, start2=500, bases1="C" * 36, bases2="C" * 36)
+    builder.addPair(start1=300, start2=500, bases1="G" * 36, bases2="G" * 36)
+    builder.addPair(start1=300, start2=500, bases1="T" * 36, bases2="T" * 36)
 
     val in  = builder.toTempFile()
     val out = makeTempFile("technical_sequences.", ".bam")
     new FindTechnicalReads(input=in, output=out).execute()
-    val actual = SamReaderFactory.make().open(out.toFile).iterator().map(_.getSAMString).toSeq
+    val actual = readBamRecs(out).map(_.id)
 
     actual should contain theSameElementsAs expected
   }
 
   "FindTechnicalReads" should "output all reads, tagging only those that are technical" in {
     val tseqs = IlluminaAdapters.DualIndexed.both ++ IlluminaAdapters.NexteraV2.both
-    val builder  = new SamRecordSetBuilder(readLength=30)
-    builder.addFrag(name="ok1", start=100)    .foreach(_.setReadString("AACCGGTTAACCGGTTAACCGGTTAACCGG"))
-    builder.addFrag(name="di1", unmapped=true).foreach(_.setReadString("CTCTTTCCCTACACGACGCTCTTCCGATCT"))
-    builder.addFrag(name="di2", unmapped=true).foreach(_.setReadString("AATGATACGGCGACCACCGAGATCTNNNNN"))
-    builder.addFrag(name="nx1", unmapped=true).foreach(_.setReadString("TCGTCGGCAGCGTCAGATGTGTATAAGAGA"))
+    val builder  = new SamBuilder(readLength=30)
+    builder.addFrag(name="ok1", start=100,     bases="AACCGGTTAACCGGTTAACCGGTTAACCGG")
+    builder.addFrag(name="di1", unmapped=true, bases="CTCTTTCCCTACACGACGCTCTTCCGATCT")
+    builder.addFrag(name="di2", unmapped=true, bases="AATGATACGGCGACCACCGAGATCTNNNNN")
+    builder.addFrag(name="nx1", unmapped=true, bases="TCGTCGGCAGCGTCAGATGTGTATAAGAGA")
 
     val in  = builder.toTempFile()
     val out = makeTempFile("technical_sequences.", ".bam")
     new FindTechnicalReads(input=in, output=out, sequences=tseqs, allReads=true, tag=Some("XS")).execute()
-    val actual = SamReaderFactory.make().open(out.toFile).iterator().map(r => (r.getReadName, r)).toMap
+    val actual = readBamRecs(out).map(r => r.name -> r).toMap
 
-    actual("di1").getIntegerAttribute("XS") shouldBe 0
-    actual("di2").getIntegerAttribute("XS") shouldBe 0
-    actual("nx1").getIntegerAttribute("XS") shouldBe 2
+    actual("di1")[Int]("XS") shouldBe 0
+    actual("di2")[Int]("XS") shouldBe 0
+    actual("nx1")[Int]("XS") shouldBe 2
     actual should contain key "ok1"
-    actual("ok1").getIntegerAttribute("XS") shouldBe null
+    actual("ok1").get[Int]("XS") shouldBe None
   }
 
   "Matcher" should "match reads that come from the adapters and don't contain Ns" in {

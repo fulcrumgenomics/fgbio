@@ -24,12 +24,11 @@
  */
 package com.fulcrumgenomics.umi
 
-import com.fulcrumgenomics.FgBioDef._
+import com.fulcrumgenomics.bam.api.SamSource
 import com.fulcrumgenomics.cmdline.FgBioMain.FailureException
+import com.fulcrumgenomics.commons.io.PathUtil
 import com.fulcrumgenomics.testing.UnitSpec
 import com.fulcrumgenomics.util.Io
-import com.fulcrumgenomics.commons.io.PathUtil
-import htsjdk.samtools.SamReaderFactory
 
 /**
   * Tests for AnnotateBamWithUmis
@@ -45,8 +44,8 @@ class AnnotateBamWithUmisTest extends UnitSpec {
     val out = makeTempFile("with_umis.", ".bam")
     val annotator = new AnnotateBamWithUmis(input=sam, fastq=fq, output=out, attribute=umiTag)
     annotator.execute()
-    SamReaderFactory.make().open(out.toFile).iterator().foreach(rec => {
-      rec.getStringAttribute(umiTag) shouldBe rec.getReadString.take(8)
+    SamSource(out).foreach(rec => {
+      rec[String](umiTag) shouldBe rec.basesString.substring(0,8)
     })
   }
 

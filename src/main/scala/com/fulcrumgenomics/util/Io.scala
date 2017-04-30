@@ -23,18 +23,20 @@
  */
 package com.fulcrumgenomics.util
 
-import java.io.{BufferedWriter, InputStream, OutputStream, OutputStreamWriter}
+import java.io.{InputStream, OutputStream}
 import java.nio.file.{Files, Path, Paths}
 import java.util.zip.{GZIPInputStream, GZIPOutputStream}
 
-import com.fulcrumgenomics.commons.io.{IoUtil, PathUtil}
 import com.fulcrumgenomics.commons.CommonsDef.DirPath
+import com.fulcrumgenomics.commons.io.{IoUtil, PathUtil}
 
 /**
   * Provides common IO utility methods.  Can be instantiated to create a custom factory, or
   * the companion object can be used as a singleton version.
   */
-class Io(var compressionLevel: Int = 5, override val bufferSize: Int = 128*1024) extends IoUtil {
+class Io(var compressionLevel: Int = 5,
+         override val bufferSize: Int = 128*1024,
+         var tmpDir: DirPath = Paths.get(System.getProperty("java.io.tmpdir"))) extends IoUtil {
   /** Adds the automatic handling of gzipped files when opening files for reading. */
   override def toInputStream(path: Path): InputStream = {
     PathUtil.extensionOf(path) match {
@@ -51,9 +53,12 @@ class Io(var compressionLevel: Int = 5, override val bufferSize: Int = 128*1024)
     }
   }
 
-  /** Returns the system default temporary directory path. */
-  def defaultTempDir(): DirPath = Paths.get(System.getProperty("java.io.tmpdir"))
+  /** Overridden to ensure tmp directories are created within the given tmpDir. */
+  override def makeTempDir(name: String): DirPath = Files.createTempDirectory(tmpDir, name)
+
+  /** Overridden to ensure that tmp fiels are created within the correct tmpDir. */
+  override def makeTempFile(prefix: String, suffix: String, dir: Option[DirPath] = Some(tmpDir)): DirPath = super.makeTempFile(prefix, suffix, dir)
 }
 
 /** Singleton object that can be used when the default buffer size and compression are desired. */
-object Io extends Io(compressionLevel=5, bufferSize=128*1024)
+object Io extends Io(compressionLevel=5, bufferSize=128*1024, Paths.get(System.getProperty("java.io.tmpdir")))

@@ -26,21 +26,21 @@ package com.fulcrumgenomics.umi
 
 import com.fulcrumgenomics.FgBioDef._
 import com.fulcrumgenomics.alignment.{Cigar, CigarElem}
-import com.fulcrumgenomics.bam.Bams
+import com.fulcrumgenomics.bam.api.{SamOrder, SamRecord}
+import com.fulcrumgenomics.commons.util.{Logger, SimpleCounter}
 import com.fulcrumgenomics.umi.UmiConsensusCaller._
 import com.fulcrumgenomics.util.NumericTypes.PhredScore
-import com.fulcrumgenomics.commons.util.{Logger, SimpleCounter}
-import htsjdk.samtools.SAMFileHeader.{GroupOrder, SortOrder}
+import htsjdk.samtools.SAMFileHeader.GroupOrder
 import htsjdk.samtools.util.{Murmur3, SequenceUtil, TrimmingUtil}
-import htsjdk.samtools._
+import htsjdk.samtools.{CigarOperator, SAMFileHeader, SAMReadGroupRecord, SAMTag}
 
-import math.{abs, min}
 import scala.collection.mutable
 import scala.collection.mutable.ArrayBuffer
+import scala.math.{abs, min}
 
 /**
   * Contains shared types and functions used when writing UMI-driven consensus
-  * callers that take in SAMRecords and emit SAMRecords.
+  * callers that take in SamRecords and emit SamRecords.
   */
 object UmiConsensusCaller {
   /** The type of consensus read to output. */
@@ -76,7 +76,7 @@ object UmiConsensusCaller {
   }
 
   /** Stores information about a read to be fed into a consensus. */
-  case class SourceRead(id: String, bases: Array[Byte], quals: Array[Byte], cigar: Cigar, sam: Option[SAMRecord] = None) extends SimpleRead {
+  case class SourceRead(id: String, bases: Array[Byte], quals: Array[Byte], cigar: Cigar, sam: Option[SamRecord] = None) extends SimpleRead {
     require(bases.length == quals.length, "Bases and qualities are not the same length.")
   }
 
@@ -94,7 +94,7 @@ object UmiConsensusCaller {
   /**
     * Constructs an output header with a single read group for the a BAM.
     */
-  def outputHeader(in: SAMFileHeader, readGroupId: String, sortOrder: Option[SortOrder] = None): SAMFileHeader = {
+  def outputHeader(in: SAMFileHeader, readGroupId: String, sortOrder: Option[SamOrder] = None): SAMFileHeader = {
     val oldRgs = in.getReadGroups.toSeq
     def collapse(f: SAMReadGroupRecord => String): String = oldRgs.map(f).filter(_ != null).distinct match {
       case Nil => null
@@ -111,8 +111,11 @@ object UmiConsensusCaller {
 
     val outHeader = new SAMFileHeader
     outHeader.addReadGroup(rg)
-    outHeader.setSortOrder(sortOrder.getOrElse(SortOrder.unsorted))
-    outHeader.setGroupOrder(GroupOrder.query)
+    sortOrder match {
+      case Some(so) => so.applyTo(outHeader)
+      case None     => SamOrder.Unsorted.applyTo(outHeader); outHeader.setGroupOrder(GroupOrder.query)
+    }
+
     outHeader.addComment(s"Read group ${rg.getId} contains consensus reads generated from ${oldRgs.size} input read groups.")
     outHeader
   }
@@ -121,10 +124,10 @@ object UmiConsensusCaller {
 
 /**
   * A trait that can be mixed in by any consensus caller that works at the read level,
-  * mapping incoming SAMRecords into consensus SAMRecords.
+  * mapping incoming SamRecords into consensus SamRecords.
   *
   * @tparam C Internally, the type of lightweight consensus read that is used prior to
-  *           rebuilding [[SAMRecord]]s.
+  *           rebuilding [[SamRecord]]s.
   */
 trait UmiConsensusCaller[C <: SimpleRead] {
   import com.fulcrumgenomics.umi.UmiConsensusCaller.ReadType._
@@ -158,7 +161,7 @@ trait UmiConsensusCaller[C <: SimpleRead] {
   def consensusReadsConstructed: Long = _consensusReadsConstructed
 
   /** Records that the supplied records were rejected, and not used to build a consensus read. */
-  protected def rejectRecords(recs: Traversable[SAMRecord], reason: String) : Unit = {
+  protected def rejectRecords(recs: Traversable[SamRecord], reason: String) : Unit = {
     this.filteredReads.count(reason, recs.size)
   }
 
@@ -169,27 +172,27 @@ trait UmiConsensusCaller[C <: SimpleRead] {
   protected val readNamePrefix: String
 
   /**
-    * Needs to be implemented to return a value from a SAMRecord that represents the unit of
+    * Needs to be implemented to return a value from a SamRecord that represents the unit of
     * grouping, e.g. the MI tag for vanilla UMI data and the MI tag minus the /?? suffix for
     * duplex data.
-    * @param rec a SAMRecord
+    * @param rec a SamRecord
     * @return an identified for the source molecule
     */
-  protected[umi] def sourceMoleculeId(rec: SAMRecord): String
+  protected[umi] def sourceMoleculeId(rec: SamRecord): String
 
   /**
-    * Converts from a SAMRecord into a SourceRead.  During conversion the record is end-trimmed
+    * Converts from a SamRecord into a SourceRead.  During conversion the record is end-trimmed
     * to remove Ns and bases below the `minBaseQuality`.  Remaining bases that are below
     * `minBaseQuality` are then masked to Ns.
     *
     * @return Some(SourceRead) if there are any called bases with quality > minBaseQuality, else None
     */
-  protected[umi] def toSourceRead(rec: SAMRecord, minBaseQuality: PhredScore, trim: Boolean): Option[SourceRead] = {
-    // Extract and possibly RC the source bases and quals from the SAMRecord
-    var bases = rec.getReadBases.clone()
-    var quals = rec.getBaseQualities.clone()
-    var cigar = Cigar(rec.getCigar)
-    if (rec.getReadNegativeStrandFlag) {
+  protected[umi] def toSourceRead(rec: SamRecord, minBaseQuality: PhredScore, trim: Boolean): Option[SourceRead] = {
+    // Extract and possibly RC the source bases and quals from the SamRecord
+    var bases = rec.bases.clone()
+    var quals = rec.quals.clone()
+    var cigar = rec.cigar
+    if (rec.negativeStrand) {
       SequenceUtil.reverseComplement(bases)
       SequenceUtil.reverse(quals, 0, quals.length)
       cigar = cigar.reverse
@@ -209,7 +212,7 @@ trait UmiConsensusCaller[C <: SimpleRead] {
     // Find the last non-N base of sufficient quality in the record, starting from either the
     // end of the read, or the end of the insert, whichever is shorter!
     val len = {
-      var index = if (Bams.isFrPair(rec)) min(abs(rec.getInferredInsertSize), trimToLength) - 1 else trimToLength - 1
+      var index = if (rec.isFrPair) min(abs(rec.insertSize), trimToLength) - 1 else trimToLength - 1
       while (index >= 0 && (bases(index) == NoCall)) index -= 1
       index + 1
     }
@@ -233,10 +236,10 @@ trait UmiConsensusCaller[C <: SimpleRead] {
     * Takes in all the reads for a source molecule and, if possible, generates one or more
     * output consensus reads as SAM records.
     *
-    * @param recs the full set of source SAMRecords for a source molecule
+    * @param recs the full set of source SamRecords for a source molecule
     * @return a seq of consensus SAM records, may be empty
     */
-  final def consensusReadsFromSamRecords(recs: Seq[SAMRecord]): Seq[SAMRecord] = {
+  final def consensusReadsFromSamRecords(recs: Seq[SamRecord]): Seq[SamRecord] = {
     this._totalReads += recs.size
     val result = consensusSamRecordsFromSamRecords(recs)
     this._consensusReadsConstructed += result.size
@@ -247,23 +250,23 @@ trait UmiConsensusCaller[C <: SimpleRead] {
     * Takes in all the reads for a source molecule and, if possible, generates one or more
     * output consensus reads as SAM records.
     *
-    * @param recs the full set of source SAMRecords for a source molecule
+    * @param recs the full set of source SamRecords for a source molecule
     * @return a seq of consensus SAM records, may be empty
     */
-  protected def consensusSamRecordsFromSamRecords(recs: Seq[SAMRecord]): Seq[SAMRecord]
+  protected def consensusSamRecordsFromSamRecords(recs: Seq[SamRecord]): Seq[SamRecord]
 
   /** Split records into those that should make a single-end consensus read, first of pair consensus read,
     * and second of pair consensus read, respectively.  The default method is to use the SAM flag to find
     * unpaired reads, first of pair reads, and second of pair reads.
     */
-  protected def subGroupRecords(records: Seq[SAMRecord]): (Seq[SAMRecord], Seq[SAMRecord], Seq[SAMRecord]) = {
-    val fragments    = records.filter { rec => !rec.getReadPairedFlag }
-    val (firstOfPair, secondOfPair) = records.filter(_.getReadPairedFlag).partition(_. getFirstOfPairFlag)
+  protected def subGroupRecords(records: Seq[SamRecord]): (Seq[SamRecord], Seq[SamRecord], Seq[SamRecord]) = {
+    val fragments    = records.filter { rec => !rec.paired }
+    val (firstOfPair, secondOfPair) = records.filter(_.paired).partition(_.firstOfPair)
     (fragments, firstOfPair, secondOfPair)
   }
 
   /**
-    * Takes in a non-empty seq of SAMRecords and filters them such that the returned seq only contains
+    * Takes in a non-empty seq of SamRecords and filters them such that the returned seq only contains
     * those reads that share the most common alignment of the read sequence to the reference.
     * If two or more different alignments share equal numbers of reads, the 'most common' will
     * be an arbitrary pick amongst those alignments, and the group of reads with that alignment will
@@ -318,10 +321,10 @@ trait UmiConsensusCaller[C <: SimpleRead] {
     }
     else {
       val newElems = cigar.elems.map {
-        case CigarElem(CigarOperator.S, len)  => CigarElem(CigarOperator.M, len)
-        case CigarElem(CigarOperator.EQ, len) => CigarElem(CigarOperator.M, len)
-        case CigarElem(CigarOperator.X, len)  => CigarElem(CigarOperator.M, len)
-        case CigarElem(CigarOperator.H, len)  => CigarElem(CigarOperator.M, len)
+        case CigarElem(S,  len) => CigarElem(M, len)
+        case CigarElem(EQ, len) => CigarElem(M, len)
+        case CigarElem(X,  len) => CigarElem(M, len)
+        case CigarElem(H,  len) => CigarElem(M, len)
         case cig => cig
       }
 
@@ -329,26 +332,26 @@ trait UmiConsensusCaller[C <: SimpleRead] {
     }
   }
 
-  /** Creates a `SAMRecord` from the called consensus base and qualities. */
-  protected def createSamRecord(read: C, readType: ReadType): SAMRecord = {
-    val rec = new SAMRecord(null)
-    rec.setReadName(this.readNamePrefix + ":" + read.id)
-    rec.setReadUnmappedFlag(true)
+  /** Creates a `SamRecord` from the called consensus base and qualities. */
+  protected def createSamRecord(read: C, readType: ReadType): SamRecord = {
+    val rec = SamRecord(null)
+    rec.name = this.readNamePrefix + ":" + read.id
+    rec.unmapped = true
     readType match {
       case Fragment     => // do nothing
       case FirstOfPair  =>
-        rec.setReadPairedFlag(true)
-        rec.setFirstOfPairFlag(true)
-        rec.setMateUnmappedFlag(true)
+        rec.paired       = true
+        rec.firstOfPair  = true
+        rec.mateUnmapped = true
       case SecondOfPair =>
-        rec.setReadPairedFlag(true)
-        rec.setSecondOfPairFlag(true)
-        rec.setMateUnmappedFlag(true)
+        rec.paired       = true
+        rec.secondOfPair = true
+        rec.mateUnmapped = true
     }
-    rec.setReadBases(read.bases)
-    rec.setBaseQualities(read.quals)
-    rec.setAttribute(SAMTag.RG.name(), readGroupId)
-    rec.setAttribute(ConsensusTags.MolecularId, read.id)
+    rec.bases = read.bases
+    rec.quals = read.quals
+    rec(SAMTag.RG.name()) = readGroupId
+    rec(ConsensusTags.MolecularId) = read.id
 
     rec
   }

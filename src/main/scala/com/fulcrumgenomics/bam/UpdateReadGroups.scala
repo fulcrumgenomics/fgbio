@@ -24,13 +24,14 @@
 
 package com.fulcrumgenomics.bam
 
-import com.fulcrumgenomics.cmdline.{ClpGroups, FgBioTool}
-import com.fulcrumgenomics.util.ProgressLogger
 import com.fulcrumgenomics.FgBioDef._
+import com.fulcrumgenomics.bam.api.{SamRecord, SamSource, SamWriter}
+import com.fulcrumgenomics.cmdline.{ClpGroups, FgBioTool}
 import com.fulcrumgenomics.commons.io.Io
 import com.fulcrumgenomics.commons.util.LazyLogging
 import com.fulcrumgenomics.sopt._
 import htsjdk.samtools._
+
 import scala.collection.JavaConverters._
 
 /**
@@ -72,38 +73,34 @@ class UpdateReadGroups
   Io.assertCanWriteFile(output)
 
   override def execute(): Unit = {
-    val progress: ProgressLogger = new ProgressLogger(logger)
-
-    val in: SamReader = SamReaderFactory.make.open(input.toFile)
-    val toReadGroupsMap = getReadGroupMap(readGroupsFile, in.getFileHeader)
-    val outHeader = in.getFileHeader.clone()
+    val in              = SamSource(input)
+    val toReadGroupsMap = getReadGroupMap(readGroupsFile, in.header)
+    val outHeader = in.header.clone()
     outHeader.setReadGroups(toReadGroupsMap.values.toList.sortBy(_.getId).asJava)
-    val out: SAMFileWriter = new SAMFileWriterFactory().makeSAMOrBAMWriter(outHeader, true, output.toFile)
+    val out = SamWriter(output, outHeader)
 
     // main loop
     in.foreach { record =>
       updateRecord(record, outHeader, toReadGroupsMap)
-      out.addAlignment(record)
-      progress.record(record)
+      out += record
     }
-    logger.info(s"Processed ${progress.getCount} in ${progress.getElapsedSeconds} seconds")
 
     in.safelyClose()
     out.close()
   }
 
-  private def updateRecord(record: SAMRecord,
+  private def updateRecord(record: SamRecord,
                            header: SAMFileHeader,
-                           readGroupMap: Map[String, SAMReadGroupRecord]): SAMRecord = {
-    val fromReadGroup = record.getReadGroup match {
-      case null => fail(s"Record '${record.getReadName}' has no read group")
+                           readGroupMap: Map[String, SAMReadGroupRecord]): SamRecord = {
+    val fromReadGroup = record.readGroup match {
+      case null => fail(s"Record '${record.name}' has no read group")
       case rg => rg
     }
     readGroupMap.get(fromReadGroup.getId) match {
-      case None => unreachable(s"Read group id '${record.getReadGroup.getId}' from record '${record.getReadName}' not found in the SAM header.")
+      case None => unreachable(s"Read group id '${record.readGroup.getId}' from record '${record.name}' not found in the SAM header.")
       case Some(readGroup: SAMReadGroupRecord) =>
-        record.setAttribute(SAMTag.RG.name(), readGroup.getId)
-        record.setHeader(header)
+        record(SAMTag.RG.name()) = readGroup.getId
+        record.header = header
     }
     record
   }
@@ -112,8 +109,8 @@ class UpdateReadGroups
     val fromReadGroups = samFileHeader.getReadGroups.map { rg => rg.getId -> rg }.toMap
 
     // get the header
-    val reader = SamReaderFactory.make.open(readGroupsFile)
-    val h = reader.getFileHeader
+    val reader = SamSource(readGroupsFile)
+    val h = reader.header
     reader.safelyClose()
 
     // map from the "FR" attribute value to the new read group

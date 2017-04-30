@@ -29,12 +29,12 @@ import java.util.Collections
 
 import com.fulcrumgenomics.FgBioDef._
 import com.fulcrumgenomics.bam.BaseCounts
+import com.fulcrumgenomics.bam.api.{SamRecord, SamSource, SamWriter}
 import com.fulcrumgenomics.cmdline.{ClpGroups, FgBioTool}
+import com.fulcrumgenomics.commons.util.LazyLogging
+import com.fulcrumgenomics.sopt.{arg, clp}
 import com.fulcrumgenomics.umi.ReviewConsensusVariants._
 import com.fulcrumgenomics.util.{Io, Metric}
-import com.fulcrumgenomics.commons.util.LazyLogging
-import com.fulcrumgenomics.sopt
-import com.fulcrumgenomics.sopt.{arg, clp}
 import htsjdk.samtools.SamPairUtil.PairOrientation
 import htsjdk.samtools._
 import htsjdk.samtools.reference.{ReferenceSequenceFile, ReferenceSequenceFileFactory}
@@ -79,40 +79,38 @@ object ReviewConsensusVariants {
   ) extends Metric
 
   /** Extracts the molecular identifier minus any trailing /A etc. */
-  private[umi] def toMi(r: SAMRecord): String = Option(r.getStringAttribute(ConsensusTags.MolecularId)) match {
+  private[umi] def toMi(r: SamRecord): String = r.get[String](ConsensusTags.MolecularId) match {
     case Some(mi) =>
       val slash = mi.lastIndexOf('/')
       if (slash > 0) mi.substring(0, slash) else mi
     case None     =>
-      throw new IllegalStateException(s"${r.getReadName} did not have a value for tag ${ConsensusTags.MolecularId}")
+      throw new IllegalStateException(s"${r.name} did not have a value for tag ${ConsensusTags.MolecularId}")
   }
 
   /** Generate a /1 or /2 suffix based on whether a read is first or second of pair or unpaired. */
-  private[umi] def readNumberSuffix(r : SAMRecord): String = if (r.getReadPairedFlag && r.getSecondOfPairFlag) "/2" else "/1"
+  private[umi] def readNumberSuffix(r : SamRecord): String = if (r.paired && r.secondOfPair) "/2" else "/1"
 
   /**
     * Generates a string of the format 'chr1:500-650 | F1R2' for the insert represented by a read.
     * Only generates strings for FR pairs, all other reads get "NA".
     */
-  private[umi] def toInsertString(r: SAMRecord): String = {
-    if (!r.getReadPairedFlag || r.getReadUnmappedFlag || r.getMateUnmappedFlag ||
-      r.getReferenceIndex != r.getMateReferenceIndex ||
-      SamPairUtil.getPairOrientation(r) != PairOrientation.FR) {
+  private[umi] def toInsertString(r: SamRecord): String = {
+    if (!r.paired || r.unmapped || r.mateUnmapped || r.refIndex != r.mateRefIndex || r.pairOrientation != PairOrientation.FR) {
       "NA"
     }
     else {
-      val outer   = if (r.getReadNegativeStrandFlag) r.getAlignmentEnd else r.getAlignmentStart
-      val isize   = r.getInferredInsertSize
+      val outer   = if (r.negativeStrand) r.end else r.start
+      val isize   = r.insertSize
       val Seq(start, end) = Seq(outer, outer + isize + (if (isize < 0) 1 else -1)).sorted
 
-      val pairing = (r.getFirstOfPairFlag, start == outer) match {
+      val pairing = (r.firstOfPair, start == outer) match {
         case (true, true)   => "F1R2"
         case (true, false)  => "F2R1"
         case (false, true)  => "F2R1"
         case (false, false) => "F1R2"
       }
 
-      s"${r.getReferenceName}:${start}-${end} | ${pairing}"
+      s"${r.refName}:${start}-${end} | ${pairing}"
     }
   }
 }
@@ -158,7 +156,12 @@ class ReviewConsensusVariants
   private val dict = refFile.getSequenceDictionary
 
   /** Simple case class to hold the relevant information from a variant context for easy access. */
-  private[umi] case class Variant(chrom: String, start: Int, refBase: Char, genotype: Option[String], filters: Option[String]) {
+  private[umi] case class Variant(chrom: String, start: Int, refBase: Char, genotype: Option[String], filters: Option[String])
+  extends Locatable {
+    override def getContig: String= chrom
+    override def getStart: Int = start
+    override def getEnd: Int = start
+
     def toQueryInterval: QueryInterval = new QueryInterval(dict.getSequenceIndex(chrom), start, start)
     def toInterval: Interval = new Interval(chrom, start, start)
   }
@@ -166,23 +169,21 @@ class ReviewConsensusVariants
   override def execute(): Unit = {
     def f(ext: String): Path = output.getParent.resolve(output.getFileName + ext)
 
-    val consensusIn  = SamReaderFactory.make().open(consensusBam)
-    val groupedIn    = SamReaderFactory.make().open(groupedBam)
-    val factory      = new SAMFileWriterFactory().setCreateIndex(true)
-    val consensusOut = factory.makeWriter(consensusIn.getFileHeader, true, f(".consensus.bam").toFile, ref.toFile)
-    val groupedOut   = factory.makeWriter(groupedIn.getFileHeader,   true, f(".grouped.bam").toFile,   ref.toFile)
+    val consensusIn  = SamSource(consensusBam)
+    val groupedIn    = SamSource(groupedBam)
+    val consensusOut = SamWriter(f(".consensus.bam"), consensusIn.header, ref=Some(ref))
+    val groupedOut   = SamWriter(f(".grouped.bam"),   consensusIn.header, ref=Some(ref))
 
     // Pull out the consensus reads
     logger.info(s"Loading variants from ${input.toAbsolutePath}")
     val variants        = loadPositions(path=input, refFile=refFile)
     logger.info(s"Loaded ${variants.size} variant positions for review.")
     val variantsByChrom = variants.groupBy(v => v.chrom)
-    val queries         = variants.map(_.toQueryInterval).toArray
     val sources         = mutable.HashSet[String]()
 
     logger.info(s"Extracting consensus reads from ${consensusBam.toAbsolutePath}")
-    consensusIn.query(queries, false).filter(r => nonReferenceAtAnyVariant(r, variantsByChrom)).foreach { rec =>
-      consensusOut.addAlignment(rec)
+    consensusIn.query(variants).filter(r => nonReferenceAtAnyVariant(r, variantsByChrom)).foreach { rec =>
+      consensusOut += rec
       sources.add(toMi(rec))
     }
     consensusIn.safelyClose()
@@ -190,9 +191,7 @@ class ReviewConsensusVariants
 
     // And now the raw reads
     logger.info(s"Extracting raw/grouped reads from ${groupedBam.toAbsolutePath}")
-    groupedIn.query(queries, false)
-      .filter(rec => sources.contains(toMi(rec)))
-      .foreach(groupedOut.addAlignment)
+    groupedOut ++= groupedIn.query(variants).filter(rec => sources.contains(toMi(rec)))
     groupedIn.safelyClose()
     groupedOut.close()
 
@@ -210,14 +209,14 @@ class ReviewConsensusVariants
     * @param output the file to write
     */
   private def generateDetailsFile(consensusBam: PathToBam, groupedBam: PathToBam, variants: Seq[Variant], output: FilePath): Unit = {
-    val consensusReader = SamReaderFactory.make().open(consensusBam)
-    val groupedReader   = SamReaderFactory.make().open(groupedBam)
-    val intervals = new IntervalList(consensusReader.getFileHeader)
+    val consensusReader = SamSource(consensusBam)
+    val groupedReader   = SamSource(groupedBam)
+    val intervals = new IntervalList(consensusReader.header)
     variants.foreach (v => intervals.add(v.toInterval))
 
     // Make locus iterators for both the consensus and grouped BAMs
     val Seq(consensusIterator, groupedIterator) = Seq(consensusReader, groupedReader).map { r =>
-      val iterator = new SamLocusIterator(r, intervals, true)
+      val iterator = new SamLocusIterator(r.toSamReader, intervals, true)
       iterator.setEmitUncoveredLoci(true)
       iterator.setMappingQualityScoreCutoff(0)
       iterator.setQualityScoreCutoff(0)
@@ -236,16 +235,20 @@ class ReviewConsensusVariants
 
       // Setup ready to iterate through the consensus reads
       val consensusCounts  = BaseCounts(consensusPileup.getRecordAndOffsets.asScala)
-      val rawByMiAndReadNum = groupedPileup.getRecordAndOffsets.asScala.groupBy(r => toMi(r.getRecord) + readNumberSuffix(r.getRecord))
+      val rawByMiAndReadNum = groupedPileup.getRecordAndOffsets.asScala.groupBy { r =>
+        val rec = r.getRecord.asInstanceOf[SamRecord]
+        toMi(rec) + readNumberSuffix(rec)
+      }
 
       consensusPileup.getRecordAndOffsets
         .filter(r => r.getReadBase.toChar.toUpper != variant.refBase)
         .filterNot(r => this.ignoreNsInConsensusReads && r.getReadBase.toChar.toUpper == 'N')
-        .toSeq.sortBy(r => toMi(r.getRecord) + readNumberSuffix(r.getRecord))
+        .toSeq.sortBy(r => toMi(r.getRecord.asInstanceOf[SamRecord]) + readNumberSuffix(r.getRecord.asInstanceOf[SamRecord]))
         .foreach { c =>
-          val mi = toMi(c.getRecord)
-          val consensusReadName = c.getRecord.getReadName + readNumberSuffix(c.getRecord)
-          val rawCounts = BaseCounts(rawByMiAndReadNum(mi + readNumberSuffix(c.getRecord)))
+          val rec = c.getRecord.asInstanceOf[SamRecord]
+          val mi = toMi(rec)
+          val consensusReadName = c.getRecord.getReadName + readNumberSuffix(rec)
+          val rawCounts = BaseCounts(rawByMiAndReadNum(mi + readNumberSuffix(rec)))
 
           val m =  ConsensusVariantReviewInfo(
             chrom = variant.chrom,
@@ -259,7 +262,7 @@ class ReviewConsensusVariants
             T = consensusCounts.t,
             N = consensusCounts.n,
             consensus_read = consensusReadName,
-            consensus_insert = toInsertString(c.getRecord),
+            consensus_insert = toInsertString(rec),
             consensus_call = c.getReadBase.toString.toUpperCase,
             consensus_qual = c.getBaseQuality,
             a = rawCounts.a,
@@ -324,17 +327,17 @@ class ReviewConsensusVariants
     * Returns true if the read contains either a variant base, a no-call, or a deletion at one or more
     * of the variants that we are interested in.
 
-    * @param rec the SAMRecord of interest
+    * @param rec the SamRecord of interest
     * @param variantsByChromAndPos the set of variants we care about, grouped by chromosome
     * @return true if the read is non-reference at any variant base, otherwise false
     */
-  private def nonReferenceAtAnyVariant(rec: SAMRecord, variantsByChromAndPos: Map[String, Seq[Variant]]): Boolean = {
-    !rec.getReadUnmappedFlag && variantsByChromAndPos(rec.getContig).exists { v =>
-      if (v.start >= rec.getAlignmentStart && v.start <= rec.getAlignmentEnd) {
-        val readPos = rec.getReadPositionAtReferencePosition(v.start)
+  private def nonReferenceAtAnyVariant(rec: SamRecord, variantsByChromAndPos: Map[String, Seq[Variant]]): Boolean = {
+    rec.mapped && variantsByChromAndPos(rec.refName).exists { v =>
+      if (v.start >= rec.start && v.start <= rec.end) {
+        val readPos = rec.readPosAtRefPos(v.start, false)
         if (readPos == 0) true
         else {
-          val base = rec.getReadBases()(readPos - 1)
+          val base = rec.bases(readPos - 1)
           !SequenceUtil.basesEqual(base, v.refBase.toByte) && (!this.ignoreNsInConsensusReads || !SequenceUtil.isNoCall(base))
         }
       }

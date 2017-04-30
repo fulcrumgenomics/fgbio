@@ -25,14 +25,14 @@
 package com.fulcrumgenomics.umi
 
 import com.fulcrumgenomics.FgBioDef._
+import com.fulcrumgenomics.bam.api.{SamSource, SamWriter}
 import com.fulcrumgenomics.cmdline.{ClpGroups, FgBioTool}
-import com.fulcrumgenomics.util._
 import com.fulcrumgenomics.commons.util.LazyLogging
 import com.fulcrumgenomics.sopt.{arg, clp}
-import htsjdk.samtools.{SAMFileWriterFactory, SamReaderFactory}
+import com.fulcrumgenomics.umi.CorrectUmis._
+import com.fulcrumgenomics.util._
 
 import scala.collection.mutable
-import CorrectUmis._
 
 object CorrectUmis {
   /**
@@ -154,59 +154,58 @@ class CorrectUmis
 
     // Now go through and correct the UMIs in the BAM
     var (totalRecords, missingUmisRecords, wrongLengthRecords, mismatchedRecords) = (0L, 0L, 0L, 0L)
-    val in        = SamReaderFactory.make().open(input)
-    val out       = new SAMFileWriterFactory().setCreateIndex(true).makeWriter(in.getFileHeader, true, output.toFile, null)
-    val rejectOut = rejects.map(r => new SAMFileWriterFactory().setCreateIndex(true).makeWriter(in.getFileHeader, true, r.toFile, null))
-    val progress  = new ProgressLogger(logger)
+    val in        = SamSource(input)
+    val out       = SamWriter(output, in.header)
+    val rejectOut = rejects.map(r => SamWriter(r, in.header))
+    val progress  = ProgressLogger(logger)
 
     in.foreach { rec =>
       totalRecords += 1
 
-      val umiAttribute = rec.getStringAttribute(umiTag)
-      if (umiAttribute == null || umiAttribute.isEmpty) {
-        if (missingUmisRecords == 0) logger.warning(s"Read (${rec.getReadName}) detected without UMI in tag $umiTag")
-        missingUmisRecords += 1
-        rejectOut.foreach(w => w.addAlignment(rec))
-      }
-      else {
-        val sequences = umiAttribute.split('-')
-        if (sequences.exists(_.length != umiLength)) {
-          if (wrongLengthRecords == 0) logger.warning(s"Read (${rec.getReadName}) detected with unexpected length UMI(s): ${sequences.mkString(" ")}")
-          wrongLengthRecords += 1
-          rejectOut.foreach(w => w.addAlignment(rec))
-        }
-        else {
-          // Find matches for all the UMIs
-          val matches = sequences.map(findBestMatch(_, umiSequences))
-
-          // Update the metrics
-          matches.foreach { m =>
-            if (m.matched) {
-              val metric = umiMetrics(m.umi)
-              metric.total_matches += 1
-              m.mismatches match {
-                case 0 => metric.perfect_matches      += 1
-                case 1 => metric.one_mismatch_matches += 1
-                case 2 => metric.two_mismatch_matches += 1
-                case _ => metric.other_matches        += 1
-              }
-            }
-            else {
-              umiMetrics(unmatchedUmi).total_matches += 1
-            }
-          }
-
-          // Output the corrected read
-          if (matches.forall(_.matched)) {
-            val correctedUmi = matches.map(_.umi).mkString("-")
-            rec.setAttribute(this.umiTag, correctedUmi)
-            out.addAlignment(rec)
+      rec.get[String](umiTag) match {
+        case None | Some("") =>
+          if (missingUmisRecords == 0) logger.warning(s"Read (${rec.name}) detected without UMI in tag $umiTag")
+          missingUmisRecords += 1
+          rejectOut.foreach(w => w += rec)
+        case Some(umi) =>
+          val sequences = umi.split('-')
+          if (sequences.exists(_.length != umiLength)) {
+            if (wrongLengthRecords == 0) logger.warning(s"Read (${rec.name}) detected with unexpected length UMI(s): ${sequences.mkString(" ")}")
+            wrongLengthRecords += 1
+            rejectOut.foreach(w => w += rec)
           }
           else {
-            mismatchedRecords += 1
-            rejectOut.foreach(r => r.addAlignment(rec))
+            // Find matches for all the UMIs
+            val matches = sequences.map(findBestMatch(_, umiSequences))
+
+            // Update the metrics
+            matches.foreach { m =>
+              if (m.matched) {
+                val metric = umiMetrics(m.umi)
+                metric.total_matches += 1
+                m.mismatches match {
+                  case 0 => metric.perfect_matches      += 1
+                  case 1 => metric.one_mismatch_matches += 1
+                  case 2 => metric.two_mismatch_matches += 1
+                  case _ => metric.other_matches        += 1
+                }
+              }
+              else {
+                umiMetrics(unmatchedUmi).total_matches += 1
+              }
+            }
+
+            // Output the corrected read
+            if (matches.forall(_.matched)) {
+              val correctedUmi = matches.map(_.umi).mkString("-")
+              rec(this.umiTag) = correctedUmi
+              out += rec
+            }
+            else {
+              mismatchedRecords += 1
+              rejectOut.foreach(r => r += rec)
+            }
           }
-        }
       }
 
       progress.record(rec)

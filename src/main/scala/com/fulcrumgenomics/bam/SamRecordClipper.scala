@@ -24,16 +24,16 @@
 
 package com.fulcrumgenomics.bam
 
-import java.util
-
 import com.fulcrumgenomics.FgBioDef._
+import com.fulcrumgenomics.alignment.{Cigar, CigarElem}
 import com.fulcrumgenomics.bam.SamRecordClipper.ClippingMode
-import htsjdk.samtools.{Cigar, CigarElement, SAMRecord, SAMUtils, CigarOperator => Op}
+import com.fulcrumgenomics.bam.api.SamRecord
+import htsjdk.samtools.{SAMUtils, CigarOperator => Op}
 
-import scala.collection.mutable.ListBuffer
+import scala.collection.mutable.ArrayBuffer
 
 /**
-  * Holds types and constants related to SAMRecord clipping.
+  * Holds types and constants related to SamRecord clipping.
   */
 object SamRecordClipper {
   /** An enumeration representing the various ways to clip bases within a read. */
@@ -94,33 +94,31 @@ class SamRecordClipper(val mode: ClippingMode, val autoClipAttributes: Boolean) 
     * @param numberOfBasesToClip the number of additional bases to clip beyond any clipping
     *                            already applied to the read
     */
-  def clipStartOfAlignment(rec: SAMRecord, numberOfBasesToClip: Int) : Unit = {
-    if (rec.getReadUnmappedFlag || numberOfBasesToClip < 1) {
+  def clipStartOfAlignment(rec: SamRecord, numberOfBasesToClip: Int) : Unit = {
+    if (rec.unmapped || numberOfBasesToClip < 1) {
       Unit
     }
     else if (numberOfClippableBases(rec) <= numberOfBasesToClip) {
-      SAMUtils.makeReadUnmapped(rec)
+      SAMUtils.makeReadUnmapped(rec.asSam)
     }
     else {
-      val oldElems = rec.getCigar.toSeq
-      val oldBases = rec.getReadBases
-      val oldQuals = rec.getBaseQualities
+      val oldElems = rec.cigar.elems
+      val oldBases = rec.bases
+      val oldQuals = rec.quals
       val (newElems, readBasesClipped, refBasesClipped, bases, quals) = clip(oldElems, numberOfBasesToClip, oldBases, oldQuals)
-      rec.setAlignmentStart(rec.getAlignmentStart + refBasesClipped)
-      rec.setCigar(new Cigar(util.Arrays.asList(newElems:_*)))
-      rec.setReadBases(bases)
-      rec.setBaseQualities(quals)
+      rec.start = rec.start + refBasesClipped
+      rec.cigar = Cigar(newElems)
+      rec.bases = bases
+      rec.quals = quals
       cleanupClippedRecord(rec)
 
       if (mode == ClippingMode.Hard && readBasesClipped > 0 && autoClipAttributes) {
         val oldLength = oldBases.length
         val shortenBy = oldLength - bases.length
-        rec.getAttributes.foreach { kv =>
-          kv.value match {
-            case s: String   if s.length == oldLength => rec.setAttribute(kv.tag, s.drop(shortenBy))
-            case a: Array[_] if a.length == oldLength => rec.setAttribute(kv.tag, a.drop(shortenBy))
-            case _  => Unit
-          }
+        rec.attributes.foreach { 
+          case (tag, s: String)   if s.length == oldLength => rec(tag) =  s.drop(shortenBy)
+          case (tag, a: Array[_]) if a.length == oldLength => rec(tag) =  a.drop(shortenBy)
+          case _ => Unit
         }
       }
     }
@@ -147,32 +145,30 @@ class SamRecordClipper(val mode: ClippingMode, val autoClipAttributes: Boolean) 
     * @param numberOfBasesToClip the number of additional bases to clip beyond any clipping
     *                            already applied to the read
     */
-  def clipEndOfAlignment(rec: SAMRecord, numberOfBasesToClip: Int) : Unit = {
-    if (rec.getReadUnmappedFlag || numberOfBasesToClip < 1) {
+  def clipEndOfAlignment(rec: SamRecord, numberOfBasesToClip: Int) : Unit = {
+    if (rec.unmapped || numberOfBasesToClip < 1) {
       Unit
     }
     else if (numberOfClippableBases(rec) <= numberOfBasesToClip) {
-      SAMUtils.makeReadUnmapped(rec)
+      SAMUtils.makeReadUnmapped(rec.asSam)
     }
     else {
-      val oldElems = rec.getCigar.toSeq.reverse
-      val oldBases = rec.getReadBases.reverse
-      val oldQuals = rec.getBaseQualities.reverse
+      val oldElems = rec.cigar.elems.reverse
+      val oldBases = rec.bases.reverse
+      val oldQuals = rec.quals.reverse
       val (newElems, readBasesClipped, refBasesClipped, bases, quals) = clip(oldElems, numberOfBasesToClip, oldBases, oldQuals)
-      rec.setCigar(new Cigar(util.Arrays.asList(newElems.reverse:_*)))
-      rec.setReadBases(bases.reverse)
-      rec.setBaseQualities(quals.reverse)
+      rec.cigar = Cigar(newElems.reverse)
+      rec.bases = bases.reverse
+      rec.quals = quals.reverse
       cleanupClippedRecord(rec)
 
       if (mode == ClippingMode.Hard && readBasesClipped > 0 && autoClipAttributes) {
         val oldLength = oldBases.length
         val newLength = bases.length
-        rec.getAttributes.foreach { kv =>
-          kv.value match {
-            case s: String   if s.length == oldLength => rec.setAttribute(kv.tag, s.take(newLength))
-            case a: Array[_] if a.length == oldLength => rec.setAttribute(kv.tag, a.take(newLength))
+        rec.attributes.foreach {
+            case (tag, s: String)   if s.length == oldLength => rec(tag) = s.take(newLength)
+            case (tag, a: Array[_]) if a.length == oldLength => rec(tag) = a.take(newLength)
             case _  => Unit
-          }
         }
       }
     }
@@ -185,8 +181,8 @@ class SamRecordClipper(val mode: ClippingMode, val autoClipAttributes: Boolean) 
     * @param rec the record to be clipped
     * @param numberOfBasesToClip the number of additional bases to be clipped
     */
-  def clip5PrimeEndOfAlignment(rec: SAMRecord, numberOfBasesToClip: Int): Unit = {
-    if (rec.getReadNegativeStrandFlag) clipEndOfAlignment(rec, numberOfBasesToClip)
+  def clip5PrimeEndOfAlignment(rec: SamRecord, numberOfBasesToClip: Int): Unit = {
+    if (rec.negativeStrand) clipEndOfAlignment(rec, numberOfBasesToClip)
     else clipStartOfAlignment(rec, numberOfBasesToClip)
   }
 
@@ -197,8 +193,8 @@ class SamRecordClipper(val mode: ClippingMode, val autoClipAttributes: Boolean) 
     * @param rec the record to be clipped
     * @param numberOfBasesToClip the number of additional bases to be clipped
     */
-  def clip3PrimeEndOfAlignment(rec: SAMRecord, numberOfBasesToClip: Int): Unit = {
-    if (rec.getReadNegativeStrandFlag) clipStartOfAlignment(rec, numberOfBasesToClip)
+  def clip3PrimeEndOfAlignment(rec: SamRecord, numberOfBasesToClip: Int): Unit = {
+    if (rec.negativeStrand) clipStartOfAlignment(rec, numberOfBasesToClip)
     else clipEndOfAlignment(rec, numberOfBasesToClip)
   }
 
@@ -210,8 +206,8 @@ class SamRecordClipper(val mode: ClippingMode, val autoClipAttributes: Boolean) 
     * @param rec the record to be clipped
     * @param clipLength the total amount of clipping desired, including any existing clipping
     */
-  def clipStartOfRead(rec: SAMRecord, clipLength: Int): Unit = {
-    val existingClipping = rec.getCigar.getCigarElements.takeWhile(_.getOperator.isClipping).map(_.getLength).sum
+  def clipStartOfRead(rec: SamRecord, clipLength: Int): Unit = {
+    val existingClipping = rec.cigar.takeWhile(_.operator.isClipping).map(_.length).sum
     if (clipLength > existingClipping) clipStartOfAlignment(rec, clipLength - existingClipping)
   }
 
@@ -223,8 +219,8 @@ class SamRecordClipper(val mode: ClippingMode, val autoClipAttributes: Boolean) 
     * @param rec the record to be clipped
     * @param clipLength the total amount of clipping desired, including any existing clipping
     */
-  def clipEndOfRead(rec: SAMRecord, clipLength: Int): Unit = {
-    val existingClipping = rec.getCigar.getCigarElements.toSeq.reverse.takeWhile(_.getOperator.isClipping).map(_.getLength).sum
+  def clipEndOfRead(rec: SamRecord, clipLength: Int): Unit = {
+    val existingClipping = rec.cigar.reverseIterator.takeWhile(_.operator.isClipping).map(_.length).sum
     if (clipLength > existingClipping) clipEndOfAlignment(rec, clipLength - existingClipping)
   }
 
@@ -236,8 +232,8 @@ class SamRecordClipper(val mode: ClippingMode, val autoClipAttributes: Boolean) 
     * @param rec the record to be clipped
     * @param numberOfBasesToClip the number of additional bases to be clipped
     */
-  def clip5PrimeEndOfRead(rec: SAMRecord, numberOfBasesToClip: Int): Unit = {
-    if (!rec.getReadUnmappedFlag && rec.getReadNegativeStrandFlag) clipEndOfRead(rec, numberOfBasesToClip)
+  def clip5PrimeEndOfRead(rec: SamRecord, numberOfBasesToClip: Int): Unit = {
+    if (rec.mapped && rec.negativeStrand) clipEndOfRead(rec, numberOfBasesToClip)
     else clipStartOfRead(rec, numberOfBasesToClip)
   }
 
@@ -249,14 +245,14 @@ class SamRecordClipper(val mode: ClippingMode, val autoClipAttributes: Boolean) 
     * @param rec the record to be clipped
     * @param numberOfBasesToClip the number of additional bases to be clipped
     */
-  def clip3PrimeEndOfRead(rec: SAMRecord, numberOfBasesToClip: Int): Unit = {
-    if (!rec.getReadUnmappedFlag && rec.getReadNegativeStrandFlag) clipStartOfRead(rec, numberOfBasesToClip)
+  def clip3PrimeEndOfRead(rec: SamRecord, numberOfBasesToClip: Int): Unit = {
+    if (rec.mapped && rec.negativeStrand) clipStartOfRead(rec, numberOfBasesToClip)
     else clipEndOfRead(rec, numberOfBasesToClip)
   }
 
-  /** Computes the number of bases that are available to be clipped in a mapped SAMRecord. */
-  private def numberOfClippableBases(rec: SAMRecord): Int = {
-    rec.getCigar.filter(e => e.getOperator.isAlignment || e.getOperator == Op.INSERTION).map(_.getLength).sum
+  /** Computes the number of bases that are available to be clipped in a mapped SamRecord. */
+  private def numberOfClippableBases(rec: SamRecord): Int = {
+    rec.cigar.filter(e => e.operator.isAlignment || e.operator == Op.INSERTION).map(_.length).sum
   }
 
   /**
@@ -269,19 +265,19 @@ class SamRecordClipper(val mode: ClippingMode, val autoClipAttributes: Boolean) 
     * @param quals the array of quality scores for the read to be clipped
     * @return a tuple of (newCigarElems, readBasesClipped, refBasesClipped, newBases, newQuals)
     */
-  private def clip(originalElems: Seq[CigarElement],
+  private def clip(originalElems: Seq[CigarElem],
                    numberOfBasesToClip: Int,
                    bases: Array[Byte],
-                   quals: Array[Byte]): (Seq[CigarElement], Int, Int, Array[Byte], Array[Byte]) = {
+                   quals: Array[Byte]): (IndexedSeq[CigarElem], Int, Int, Array[Byte], Array[Byte]) = {
 
-    if (originalElems.exists(_.getOperator == Op.PADDING)) throw new IllegalArgumentException("Can't handle reads with padding.")
+    if (originalElems.exists(_.operator == Op.PADDING)) throw new IllegalArgumentException("Can't handle reads with padding.")
 
-    val existingHardClip = originalElems.takeWhile(_.getOperator == Op.HARD_CLIP).map(_.getLength).sum
-    val existingSoftClip = originalElems.dropWhile(_.getOperator == Op.HARD_CLIP).takeWhile(_.getOperator == Op.SOFT_CLIP).map(_.getLength).sum
-    val postClipElems = originalElems.dropWhile(e => e.getOperator == Op.HARD_CLIP || e.getOperator == Op.SOFT_CLIP).iterator.bufferBetter
+    val existingHardClip = originalElems.takeWhile(_.operator == Op.HARD_CLIP).map(_.length).sum
+    val existingSoftClip = originalElems.dropWhile(_.operator == Op.HARD_CLIP).takeWhile(_.operator == Op.SOFT_CLIP).map(_.length).sum
+    val postClipElems = originalElems.dropWhile(e => e.operator == Op.HARD_CLIP || e.operator == Op.SOFT_CLIP).iterator.bufferBetter
     var readBasesClipped = 0
     var refBasesClipped  = 0
-    val newElems = ListBuffer[CigarElement]()
+    val newElems = ArrayBuffer[CigarElem]()
 
     // The loop skips over all operators that are getting turned into clipping, while keeping track of
     // how many reference bases and how many read bases are skipped over.  If the clipping point falls
@@ -295,10 +291,10 @@ class SamRecordClipper(val mode: ClippingMode, val autoClipAttributes: Boolean) 
     //   a) Empty
     //   b) Contains a single element which is the remainder of an element that had to be split
     while (readBasesClipped < numberOfBasesToClip ||
-      (readBasesClipped == numberOfBasesToClip && newElems.isEmpty && postClipElems.hasNext && postClipElems.head.getOperator == Op.DELETION)) {
+      (readBasesClipped == numberOfBasesToClip && newElems.isEmpty && postClipElems.hasNext && postClipElems.head.operator == Op.DELETION)) {
       val elem = postClipElems.next()
-      val op   = elem.getOperator
-      val len  = elem.getLength
+      val op   = elem.operator
+      val len  = elem.length
 
       if (op.consumesReadBases() && len > (numberOfBasesToClip - readBasesClipped)) {
         op match {
@@ -308,7 +304,7 @@ class SamRecordClipper(val mode: ClippingMode, val autoClipAttributes: Boolean) 
             val remainingLength = len - remainingClip
             readBasesClipped += remainingClip
             refBasesClipped  += remainingClip
-            newElems += new CigarElement(remainingLength, op)
+            newElems += CigarElem(op, remainingLength)
         }
       }
       else {
@@ -324,14 +320,14 @@ class SamRecordClipper(val mode: ClippingMode, val autoClipAttributes: Boolean) 
     if (mode == ClippingMode.Hard) {
       val addedHardClip = existingSoftClip + readBasesClipped
       val totalHardClip = existingHardClip + addedHardClip
-      newElems.prepend(new CigarElement(totalHardClip, Op.HARD_CLIP))
+      newElems.prepend(CigarElem(Op.HARD_CLIP, totalHardClip))
       (newElems, readBasesClipped, refBasesClipped, bases.drop(addedHardClip), quals.drop(addedHardClip))
     }
     else {
       val addedSoftClip = readBasesClipped
       val totalSoftClip = existingSoftClip + readBasesClipped
-      newElems.prepend(new CigarElement(totalSoftClip, Op.SOFT_CLIP))
-      if (existingHardClip > 0) newElems.prepend(new CigarElement(existingHardClip, Op.HARD_CLIP))
+      newElems.prepend(CigarElem(Op.SOFT_CLIP, totalSoftClip))
+      if (existingHardClip > 0) newElems.prepend(CigarElem(Op.HARD_CLIP, existingHardClip))
       if (mode == ClippingMode.SoftWithMask) hardMaskStartOfRead(bases, quals, totalSoftClip)
       (newElems, readBasesClipped, refBasesClipped, bases, quals)
     }
@@ -346,5 +342,5 @@ class SamRecordClipper(val mode: ClippingMode, val autoClipAttributes: Boolean) 
   }
 
   /** Invalidates the set of tags that cannot be trusted if clipping is applied to a read. */
-  protected def cleanupClippedRecord(rec: SAMRecord): Unit = TagsToInvalidate.foreach(tag => rec.setAttribute(tag, null))
+  protected def cleanupClippedRecord(rec: SamRecord): Unit = TagsToInvalidate.foreach(tag => rec(tag) = null)
 }

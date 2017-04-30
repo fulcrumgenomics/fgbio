@@ -28,13 +28,13 @@ import java.lang.Math.{max, min}
 
 import com.fulcrumgenomics.FgBioDef._
 import com.fulcrumgenomics.bam.Bams
+import com.fulcrumgenomics.bam.api.{SamOrder, SamRecord, SamSource, SamWriter}
 import com.fulcrumgenomics.cmdline.{ClpGroups, FgBioTool}
 import com.fulcrumgenomics.commons.util.LazyLogging
 import com.fulcrumgenomics.sopt.{arg, clp}
 import com.fulcrumgenomics.util.NumericTypes.PhredScore
 import com.fulcrumgenomics.util.{Io, ProgressLogger}
 import htsjdk.samtools.SAMFileHeader.SortOrder
-import htsjdk.samtools._
 import htsjdk.samtools.reference.ReferenceSequenceFileWalker
 
 @clp(
@@ -158,19 +158,19 @@ class FilterConsensusReads
   private val EmptyFilterResult = FilterResult(keepRead=true, maskedBases=0)
 
   override def execute(): Unit = {
-    val in        = SamReaderFactory.make().open(input)
-    val header    = in.getFileHeader.clone()
+    val in        = SamSource(input)
+    val header    = in.header.clone()
     header.setSortOrder(SortOrder.coordinate)
-    val sorter    = Bams.sortingCollection(SortOrder.coordinate, header, maxInMemory=MaxRecordsInMemoryWhenSorting)
-    val out       = new SAMFileWriterFactory().setCreateIndex(true).makeWriter(header, true, output.toFile, null)
-    val progress1 = new ProgressLogger(logger, verb="Filtered and masked")
+    val sorter    = Bams.sorter(SamOrder.Coordinate, header, maxRecordsInRam=MaxRecordsInMemoryWhenSorting)
+    val out       = SamWriter(output, header)
+    val progress1 = ProgressLogger(logger, verb="Filtered and masked")
 
     // Go through the reads by template and do the filtering
     val templateIterator = Bams.templateIterator(in, maxInMemory=MaxRecordsInMemoryWhenSorting)
     logger.info("Filtering reads.")
     templateIterator.foreach { template =>
       val r1 = template.r1.getOrElse(throw new IllegalStateException(s"${template.name} had no R1."))
-      if (r1.getReadPairedFlag) require(template.r2.isDefined, s"Paired read missing R2: ${template.name}")
+      if (r1.paired) require(template.r2.isDefined, s"Paired read missing R2: ${template.name}")
       val primaryReadCount = if (template.r2.isDefined) 2 else 1
       totalReads += primaryReadCount
 
@@ -183,16 +183,16 @@ class FilterConsensusReads
 
       if (r1Result.keepRead && r2Result.keepRead) {
         keptReads   += primaryReadCount
-        totalBases  += r1.getReadLength + template.r2.map(_.getReadLength).getOrElse(0)
+        totalBases  += r1.length + template.r2.map(_.length).getOrElse(0)
         maskedBases += r1Result.maskedBases + r2Result.maskedBases
-        sorter.add(r1)
+        sorter += r1
         progress1.record(r1)
-        template.r2.foreach { r => sorter.add(r); progress1.record(r) }
+        template.r2.foreach { r => sorter += r; progress1.record(r) }
 
         template.allSupplementaryAndSecondary.foreach { r =>
           val result = filterRecord(r)
           if (result.keepRead) {
-            sorter.add(r)
+            sorter += r
             progress1.record(r)
           }
         }
@@ -205,7 +205,7 @@ class FilterConsensusReads
     val walker = new ReferenceSequenceFileWalker(ref.toFile)
     sorter.foreach { rec =>
       Bams.regenerateNmUqMdTags(rec, walker)
-      out.addAlignment(rec)
+      out += rec
       progress2.record(rec)
     }
 
@@ -223,15 +223,15 @@ class FilterConsensusReads
     *         and false if it should be filtered out, and the second value is the count of bases
     *         in the read that were masked to Ns as a result of per-base filtering
     */
-  private[umi] def filterRecord(rec: SAMRecord): FilterResult = {
+  private[umi] def filterRecord(rec: SamRecord): FilterResult = {
     // Checks that are common to vanilla and duplex reads
-    val maxDepth = rec.getIntegerAttribute(ConsensusTags.PerRead.RawReadCount)
-    val errRate  = rec.getFloatAttribute(ConsensusTags.PerRead.RawReadErrorRate)
-    if (maxDepth == null || errRate == null) fail(s"Read ${rec.getReadName} does not appear to have consensus calling tags present.")
+    val maxDepth = rec.get[Int](ConsensusTags.PerRead.RawReadCount)
+    val errRate  = rec.get[Float](ConsensusTags.PerRead.RawReadErrorRate)
+    if (maxDepth.isEmpty || errRate.isEmpty) fail(s"Read ${rec.name} does not appear to have consensus calling tags present.")
 
     // Only bother looking at reads where per-read criteria are met
-    if (maxDepth < this.ccFilters.minReads || errRate > this.ccFilters.maxReadErrorRate) {
-      FilterResult(false, 0)
+    if (maxDepth.exists(_ < this.ccFilters.minReads) || errRate.exists(_ > this.ccFilters.maxReadErrorRate)) {
+      FilterResult(keepRead=false, 0)
     }
     else {
       val result = if (isDuplexRecord(rec)) filterDuplexConsensusRead(rec) else filterVanillaConsensusRead(rec)
@@ -240,25 +240,25 @@ class FilterConsensusReads
   }
 
   /** Computes the fraction of the read that are no-calls. */
-  private def fractionNoCalls(rec: SAMRecord): Double = {
-    val bases = rec.getReadBases
+  private def fractionNoCalls(rec: SamRecord): Double = {
+    val bases = rec.bases
     var ns = 0
-    forloop(from = 0, until = rec.getReadLength) { i => if (bases(i) == NoCall) ns += 1 }
+    forloop(from = 0, until = bases.length) { i => if (bases(i) == NoCall) ns += 1 }
     ns / bases.length.toDouble
   }
 
   /** Performs filtering that is specific to Vanilla (single-umi/non-duplex) consensus reads. */
-  private def filterVanillaConsensusRead(rec: SAMRecord): FilterResult = {
-    val bases  = rec.getReadBases
-    val quals  = rec.getBaseQualities
-    val depths = rec.getSignedShortArrayAttribute(ConsensusTags.PerBase.RawReadCount)
-    val errors = rec.getSignedShortArrayAttribute(ConsensusTags.PerBase.RawReadErrors)
+  private def filterVanillaConsensusRead(rec: SamRecord): FilterResult = {
+    val bases  = rec.bases
+    val quals  = rec.quals
+    val depths = rec[Array[Short]](ConsensusTags.PerBase.RawReadCount)
+    val errors = rec[Array[Short]](ConsensusTags.PerBase.RawReadErrors)
     val pb = depths != null && errors != null
     val filters = this.ccFilters
 
     // Do the per-base masking
     var maskedBasesThisRead = 0
-    forloop(from = 0, until = rec.getReadLength) { i =>
+    forloop(from = 0, until = rec.length) { i =>
       if ((quals(i) < this.minBaseQuality) ||
         (pb && depths(i) < filters.minReads) ||
         (pb && errors(i) / depths(i).toDouble > filters.maxBaseErrorRate)) {
@@ -268,17 +268,17 @@ class FilterConsensusReads
       }
     }
 
-    rec.setReadBases(bases)
-    rec.setBaseQualities(quals)
+    rec.bases = bases
+    rec.quals = quals
     FilterResult(keepRead=true, maskedBases=maskedBasesThisRead)
   }
 
   /** Performs filtering that is specific to Duplex consensus reads. */
-  private def filterDuplexConsensusRead(rec: SAMRecord): FilterResult = {
+  private def filterDuplexConsensusRead(rec: SamRecord): FilterResult = {
     val failsReadLevelChecks = {
       import ConsensusTags.PerRead._
-      val Seq(baDepth, abDepth) = Seq(AbRawReadCount,     BaRawReadCount    ).map(rec.getIntegerAttribute).sorted
-      val Seq(abError, baError) = Seq(AbRawReadErrorRate, BaRawReadErrorRate).map(rec.getFloatAttribute).sorted
+      val Seq(baDepth, abDepth) = Seq(AbRawReadCount,     BaRawReadCount    ).map(rec.apply[Int]).sorted
+      val Seq(abError, baError) = Seq(AbRawReadErrorRate, BaRawReadErrorRate).map(rec.apply[Float]).sorted
       abDepth < abFilters.minReads || abError > abFilters.maxReadErrorRate ||
         baDepth < baFilters.minReads || baError > baFilters.maxReadErrorRate
     }
@@ -288,12 +288,12 @@ class FilterConsensusReads
     }
     else {
       import ConsensusTags.PerBase._
-      val bases   = rec.getReadBases
-      val quals   = rec.getBaseQualities
-      val depths1 = rec.getSignedShortArrayAttribute(AbRawReadCount)
-      val depths2 = rec.getSignedShortArrayAttribute(BaRawReadCount)
-      val errors1 = rec.getSignedShortArrayAttribute(AbRawReadErrors)
-      val errors2 = rec.getSignedShortArrayAttribute(BaRawReadErrors)
+      val bases   = rec.bases
+      val quals   = rec.quals
+      val depths1 = rec[Array[Short]](AbRawReadCount)
+      val depths2 = rec[Array[Short]](BaRawReadCount)
+      val errors1 = rec[Array[Short]](AbRawReadErrors)
+      val errors2 = rec[Array[Short]](BaRawReadErrors)
 
       var maskedBases = 0
       forloop(from=0, until=bases.length) { i =>
@@ -316,22 +316,22 @@ class FilterConsensusReads
         }
       }
 
-      rec.setReadBases(bases)
-      rec.setBaseQualities(quals)
+      rec.bases = bases
+      rec.quals = quals
       FilterResult(keepRead=true, maskedBases=maskedBases)
     }
   }
 
   /** Quick check to see if a record is a duplex record. */
-  private def isDuplexRecord(rec: SAMRecord): Boolean = rec.getAttribute(ConsensusTags.PerRead.AbRawReadCount) != null
+  private def isDuplexRecord(rec: SamRecord): Boolean = rec.get(ConsensusTags.PerRead.AbRawReadCount).isDefined
 
   /** Reverses all the consensus tags if the right conditions are set. */
-  private def reverseConsensusTagsIfNeeded(rec: SAMRecord): Unit = if (reversePerBaseTags && rec.getReadNegativeStrandFlag) {
+  private def reverseConsensusTagsIfNeeded(rec: SamRecord): Unit = if (reversePerBaseTags && rec.negativeStrand) {
     ConsensusTags.PerBase.AllPerBaseTags.foreach { tag =>
-      val value = rec.getSignedShortArrayAttribute(tag)
+      val value = rec[Array[Short]](tag)
       if (value != null) {
         reverse(value)
-        rec.setAttribute(tag, value)
+        rec(tag) =  value
       }
     }
   }

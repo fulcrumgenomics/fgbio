@@ -46,7 +46,7 @@ object VariantContextSetBuilder {
 /**
   * A class to make artificial variant contexts and VCFs just a little bit easier to generate.
   *
-  * This builder uses the default sequence dictionary from [SamRecordSetBuilder] by default.
+  * This builder uses the default sequence dictionary from [SamBuilder] by default.
   */
 class VariantContextSetBuilder(sampleNames: Seq[String] = List("Sample")) extends Iterable[VariantContext] {
 
@@ -54,7 +54,7 @@ class VariantContextSetBuilder(sampleNames: Seq[String] = List("Sample")) extend
 
   private var _header = {
     val h = new VCFHeader(Collections.emptySet[VCFHeaderLine](), sampleNames.toList.asJava)
-    h.setSequenceDictionary(new SamRecordSetBuilder().header.getSequenceDictionary)
+    h.setSequenceDictionary(new SamBuilder().header.getSequenceDictionary)
     h
   }
 

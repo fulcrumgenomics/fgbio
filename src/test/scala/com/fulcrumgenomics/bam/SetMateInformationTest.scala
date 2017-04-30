@@ -25,10 +25,9 @@ package com.fulcrumgenomics.bam
 
 import java.nio.file.Paths
 
-import com.fulcrumgenomics.FgBioDef._
-import com.fulcrumgenomics.testing.UnitSpec
+import com.fulcrumgenomics.bam.api.SamSource
 import com.fulcrumgenomics.sopt.cmdline.ValidationException
-import htsjdk.samtools.SamReaderFactory
+import com.fulcrumgenomics.testing.UnitSpec
 
 /**
   * Tests running SetMateInformation on a few different input files. Does not exhaustively
@@ -45,10 +44,10 @@ class SetMateInformationTest extends UnitSpec {
     val out = makeTempFile("mated.", ".bam")
     val fixer = new SetMateInformation(input=querySortedSam, output=out)
     fixer.execute()
-    val in = SamReaderFactory.make().open(out.toFile)
-    in.iterator().filterNot(r => r.getReadUnmappedFlag || r.getMateUnmappedFlag).foreach(rec => {
-      rec.getAttribute("MC") should not be null
-      rec.getAttribute("MQ") should not be null
+    val in = SamSource(out)
+    in.iterator.filter(r => r.mapped && r.mateMapped).foreach(rec => {
+      rec.get("MC") shouldBe defined
+      rec.get("MQ") shouldBe defined
     })
     in.close()
   }
@@ -57,10 +56,10 @@ class SetMateInformationTest extends UnitSpec {
     val out = makeTempFile("mated.", ".bam")
     val fixer = new SetMateInformation(input=queryGroupedSam, output=out)
     fixer.execute()
-    val in = SamReaderFactory.make().open(out.toFile)
-    in.iterator().filterNot(r => r.getReadUnmappedFlag || r.getMateUnmappedFlag).foreach(rec => {
-      rec.getAttribute("MC") should not be null
-      rec.getAttribute("MQ") should not be null
+    val in = SamSource(out)
+    in.iterator.filter(r => r.mapped && r.mateMapped).foreach(rec => {
+      rec.get("MC") shouldBe defined
+      rec.get("MQ") shouldBe defined
     })
     in.close()
   }

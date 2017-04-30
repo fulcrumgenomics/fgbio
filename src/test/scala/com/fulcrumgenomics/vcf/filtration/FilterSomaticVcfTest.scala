@@ -25,8 +25,8 @@
 package com.fulcrumgenomics.vcf.filtration
 
 import com.fulcrumgenomics.FgBioDef._
-import com.fulcrumgenomics.testing.{SamRecordSetBuilder, UnitSpec, VariantContextSetBuilder}
-import htsjdk.samtools.SAMFileHeader.SortOrder
+import com.fulcrumgenomics.bam.api.SamOrder
+import com.fulcrumgenomics.testing.{SamBuilder, UnitSpec, VariantContextSetBuilder}
 import htsjdk.variant.vcf.VCFFileReader
 
 class FilterSomaticVcfTest extends UnitSpec {
@@ -59,24 +59,24 @@ class FilterSomaticVcfTest extends UnitSpec {
   // BAM file that has reads over each of the variant sites
   private lazy val bam = {
     val rlen    = 40
-    val builder = new SamRecordSetBuilder(readLength=rlen, baseQuality=40, sortOrder=SortOrder.coordinate)
+    val builder = new SamBuilder(readLength=rlen, baseQuality=40, sort=Some(SamOrder.Coordinate))
 
     // C>A SNP at 100 with signal for end repair artifact
     for (pos <- 61 to 100; i <- 1 to 3) {
-      builder.addPair(start1=pos,      start2=pos+rlen).foreach(_.setReadString("C"*rlen))
-      builder.addPair(start1=pos-rlen, start2=pos     ).foreach(_.setReadString("C"*rlen))
+      builder.addPair(start1=pos,      start2=pos+rlen, bases1="C"*rlen, bases2="C"*rlen)
+      builder.addPair(start1=pos-rlen, start2=pos     , bases1="C"*rlen, bases2="C"*rlen)
     }
-    builder.addPair(start1=20, start2=62).foreach(_.setReadString("A"*rlen))
-    builder.addPair(start1=21, start2=61).foreach(_.setReadString("A"*rlen))
-    builder.addPair(start1=16, start2=63).foreach(_.setReadString("A"*rlen))
+    builder.addPair(start1=20, start2=62, bases1="A"*rlen, bases2="A"*rlen)
+    builder.addPair(start1=21, start2=61, bases1="A"*rlen, bases2="A"*rlen)
+    builder.addPair(start1=16, start2=63, bases1="A"*rlen, bases2="A"*rlen)
 
     // A>G SNP at 200 with low MAF but even reads
     for (pos <- 161 to 200; i <- 1 to 3) {
-      builder.addPair(start1=pos,      start2=pos+rlen).foreach(_.setReadString("A"*rlen))
-      builder.addPair(start1=pos-rlen, start2=pos     ).foreach(_.setReadString("A"*rlen))
+      builder.addPair(start1=pos,      start2=pos+rlen, bases1="A"*rlen, bases2="A"*rlen)
+      builder.addPair(start1=pos-rlen, start2=pos     , bases1="A"*rlen, bases2="A"*rlen)
       if (i == 1 && pos % 4 == 0) {
-        builder.addPair(start1=pos,      start2=pos+rlen).foreach(_.setReadString("G"*rlen))
-        builder.addPair(start1=pos-rlen, start2=pos     ).foreach(_.setReadString("G"*rlen))
+        builder.addPair(start1=pos,      start2=pos+rlen, bases1="G"*rlen, bases2="G"*rlen)
+        builder.addPair(start1=pos-rlen, start2=pos     , bases1="G"*rlen, bases2="G"*rlen)
       }
     }
 
@@ -84,14 +84,14 @@ class FilterSomaticVcfTest extends UnitSpec {
 
     // A>T SNP at 400 with signal for end repair artifact
     for (pos <- 361 to 400; i <- 1 to 3) {
-      builder.addPair(start1=pos,      start2=pos+rlen).foreach(_.setReadString("A"*rlen))
-      builder.addPair(start1=pos-rlen, start2=pos     ).foreach(_.setReadString("A"*rlen))
+      builder.addPair(start1=pos,      start2=pos+rlen, bases1="A"*rlen, bases2="A"*rlen)
+      builder.addPair(start1=pos-rlen, start2=pos     , bases1="A"*rlen, bases2="A"*rlen)
     }
-    builder.addPair(start1=398, start2=430).foreach(_.setReadString("T"*rlen))
-    builder.addPair(start1=398, start2=440).foreach(_.setReadString("T"*rlen))
-    builder.addPair(start1=399, start2=437).foreach(_.setReadString("T"*rlen))
-    builder.addPair(start1=400, start2=449).foreach(_.setReadString("T"*rlen))
-    builder.addPair(start1=400, start2=441).foreach(_.setReadString("T"*rlen))
+    builder.addPair(start1=398, start2=430, bases1="T"*rlen, bases2="T"*rlen)
+    builder.addPair(start1=398, start2=440, bases1="T"*rlen, bases2="T"*rlen)
+    builder.addPair(start1=399, start2=437, bases1="T"*rlen, bases2="T"*rlen)
+    builder.addPair(start1=400, start2=449, bases1="T"*rlen, bases2="T"*rlen)
+    builder.addPair(start1=400, start2=441, bases1="T"*rlen, bases2="T"*rlen)
 
     builder.toTempFile()
   }

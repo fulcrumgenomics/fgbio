@@ -23,6 +23,7 @@
  */
 package com.fulcrumgenomics.util
 
+import com.fulcrumgenomics.bam.api.SamRecord
 import com.fulcrumgenomics.commons.util.Logger
 import htsjdk.samtools.util.AbstractProgressLogger
 
@@ -40,4 +41,6 @@ case class ProgressLogger(logger: Logger,
 
   /** Method to use to record progress when genome location isn't available or relevant. */
   def record(): Unit = record(null, -1)
+
+  def record(rec: SamRecord): Unit = record(rec.asSam)
 }

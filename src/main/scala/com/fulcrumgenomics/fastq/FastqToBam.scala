@@ -27,16 +27,17 @@ package com.fulcrumgenomics.fastq
 import java.util
 
 import com.fulcrumgenomics.FgBioDef._
+import com.fulcrumgenomics.bam.api.{SamOrder, SamRecord, SamWriter}
 import com.fulcrumgenomics.cmdline.{ClpGroups, FgBioTool}
-import com.fulcrumgenomics.umi.ConsensusTags
-import com.fulcrumgenomics.util.{Io, ProgressLogger, ReadStructure, SegmentType}
-import SegmentType._
 import com.fulcrumgenomics.commons.CommonsDef.PathToFastq
 import com.fulcrumgenomics.commons.util.LazyLogging
 import com.fulcrumgenomics.sopt.{arg, clp}
+import com.fulcrumgenomics.umi.ConsensusTags
+import com.fulcrumgenomics.util.SegmentType._
+import com.fulcrumgenomics.util.{Io, ProgressLogger, ReadStructure}
 import htsjdk.samtools.SAMFileHeader.{GroupOrder, SortOrder}
 import htsjdk.samtools.util.Iso8601Date
-import htsjdk.samtools.{ReservedTagConstants, SAMFileHeader, SAMFileWriter, SAMFileWriterFactory, SAMReadGroupRecord, SAMRecord}
+import htsjdk.samtools.{ReservedTagConstants, SAMFileHeader, SAMReadGroupRecord}
 
 @clp(group=ClpGroups.Fastq, description=
   """
@@ -110,19 +111,11 @@ class FastqToBam
     val encoding = qualityEncoding
     val writer   = makeSamWriter()
     val iterator = FastqSource.zipped(this.input.map(FastqSource(_)))
-
-    // If sorting, setup a pair of progress loggers, otherwise just the one
-    val progress = if (sort) {
-      writer.setProgressLogger(ProgressLogger(logger, verb="Wrote"))
-      ProgressLogger(logger, verb="Read")
-    }
-    else {
-      ProgressLogger(logger, verb = "Wrote")
-    }
+    val progress = ProgressLogger(logger, verb = if (sort) "Read" else "Wrote")
 
     iterator.foreach { fqs =>
-      val recs = makeSamRecords(fqs, actualReadStructures, writer.getFileHeader, encoding)
-      recs.foreach(writer.addAlignment)
+      val recs = makeSamRecords(fqs, actualReadStructures, writer.header, encoding)
+      writer ++= recs
       recs.foreach(progress.record)
     }
 
@@ -130,7 +123,7 @@ class FastqToBam
   }
 
   /** Makes the SAMFileWriter we'll use to output the file. */
-  protected def makeSamWriter(): SAMFileWriter = {
+  protected def makeSamWriter(): SamWriter = {
     val header = new SAMFileHeader
     header.setSortOrder(if (sort) SortOrder.queryname else SortOrder.unsorted)
     header.setGroupOrder(GroupOrder.query)
@@ -148,17 +141,16 @@ class FastqToBam
     this.description.foreach(desc => rg.setDescription(desc))
     header.addReadGroup(rg)
 
-    val factory =  new SAMFileWriterFactory().setCreateIndex(false)
-    factory.makeWriter(header, !sort, this.output.toFile, null)
+    SamWriter(this.output, header, sort = if (sort) Some(SamOrder.Queryname) else None)
   }
 
-  /** Generates SAMRecords for each of the template reads across the read structures. */
+  /** Generates SamRecords for each of the template reads across the read structures. */
   protected def makeSamRecords(fqs: Seq[FastqRecord],
                                structures: Seq[ReadStructure],
                                header: SAMFileHeader,
                                encoding: QualityEncoding
-                              ): Seq[SAMRecord] = {
-    // Make the SAMRecords inside a try so we can provide more informative error messages
+                              ): Seq[SamRecord] = {
+    // Make the SamRecords inside a try so we can provide more informative error messages
     try {
       val subs = fqs.iterator.zip(structures.iterator).flatMap { case(fq, rs) => rs.extract(fq.bases, fq.quals) }.toIndexedSeq
       val sampleBarcode = subs.iterator.filter(_.kind == SampleBarcode).map(_.bases).mkString("-")
@@ -169,20 +161,20 @@ class FastqToBam
         // If the template read had no bases, we'll substitute in a single N @ Q2 below to keep htsjdk happy
         val empty = read.bases.length == 0
 
-        val rec = new SAMRecord(header)
-        rec.setAttribute(ReservedTagConstants.READ_GROUP_ID, this.readGroupId)
-        rec.setReadName(fqs.head.name)
-        rec.setReadString(if (empty) "N" else read.bases)
-        rec.setBaseQualities(if (empty) Array[Byte](2) else encoding.toStandardNumeric(read.quals))
-        rec.setReadUnmappedFlag(true)
+        val rec = SamRecord(header)
+        rec(ReservedTagConstants.READ_GROUP_ID) = this.readGroupId
+        rec.name  = fqs.head.name
+        rec.bases = if (empty) "N" else read.bases
+        rec.quals = if (empty) Array[Byte](2) else encoding.toStandardNumeric(read.quals)
+        rec.unmapped = true
         if (templates.size == 2) {
-          rec.setReadPairedFlag(true)
-          rec.setMateUnmappedFlag(true)
-          if (index == 0) rec.setFirstOfPairFlag(true) else rec.setSecondOfPairFlag(true)
+          rec.paired = true
+          rec.mateUnmapped = true
+          if (index == 0) rec.firstOfPair = true else rec.secondOfPair = true
         }
 
-        if (sampleBarcode.nonEmpty) rec.setAttribute("BC", sampleBarcode)
-        if (umi.nonEmpty) rec.setAttribute(this.umiTag, umi)
+        if (sampleBarcode.nonEmpty) rec("BC") = sampleBarcode
+        if (umi.nonEmpty) rec(this.umiTag) = umi
 
         rec
       }

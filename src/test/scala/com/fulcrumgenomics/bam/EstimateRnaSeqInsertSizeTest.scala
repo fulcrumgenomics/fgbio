@@ -26,46 +26,46 @@
 package com.fulcrumgenomics.bam
 import com.fulcrumgenomics.FgBioDef._
 import com.fulcrumgenomics.bam.EstimateRnaSeqInsertSize._
-import com.fulcrumgenomics.testing.SamRecordSetBuilder._
-import com.fulcrumgenomics.testing.{SamRecordSetBuilder, UnitSpec}
+import com.fulcrumgenomics.bam.api.SamRecord
+import com.fulcrumgenomics.testing.SamBuilder._
+import com.fulcrumgenomics.testing.{SamBuilder, UnitSpec}
 import com.fulcrumgenomics.util.GeneAnnotations.{Exon, Gene, Transcript}
 import com.fulcrumgenomics.util.{Io, Metric}
 import com.fulcrumgenomics.commons.io.PathUtil
-import htsjdk.samtools.SAMRecord
 import htsjdk.samtools.SamPairUtil.PairOrientation
 import org.scalatest.OptionValues
 
 class EstimateRnaSeqInsertSizeTest extends UnitSpec with OptionValues {
   /** Calculates the insert size from a gene.  Returns None if the record's span is not enclosed in the gene or if
     * the insert size disagree across transcripts. */
-  def testInsertSizeFromGene(rec: SAMRecord,
+  def testInsertSizeFromGene(rec: SamRecord,
                              gene: Gene,
                              minimumOverlap: Double): Option[Int] = {
     val mateCigar        = EstimateRnaSeqInsertSize.getAndRequireMateCigar(rec)
-    val mateAlignmentEnd = EstimateRnaSeqInsertSize.mateAlignmentEndFrom(mateCigar, rec.getMateAlignmentStart)
+    val mateAlignmentEnd = EstimateRnaSeqInsertSize.mateAlignmentEndFrom(mateCigar, rec.mateStart)
     EstimateRnaSeqInsertSize.insertSizeFromGene(
       rec              = rec,
       gene             = gene,
       minimumOverlap   = minimumOverlap,
       recInterval      = EstimateRnaSeqInsertSize.intervalFrom(rec=rec, mateAlignmentEnd=mateAlignmentEnd),
-      recBlocks        = rec.getAlignmentBlocks.toList,
-      mateBlocks       = EstimateRnaSeqInsertSize.mateAlignmentBlocksFrom(mateCigar, rec.getMateAlignmentStart),
+      recBlocks        = rec.asSam.getAlignmentBlocks.toList,
+      mateBlocks       = EstimateRnaSeqInsertSize.mateAlignmentBlocksFrom(mateCigar, rec.mateStart),
       mateAlignmentEnd = mateAlignmentEnd
     )
   }
 
-  def mateAlignmentEnd(rec: SAMRecord): Int = {
+  def mateAlignmentEnd(rec: SamRecord): Int = {
     val mateCigar        = EstimateRnaSeqInsertSize.getAndRequireMateCigar(rec)
-    EstimateRnaSeqInsertSize.mateAlignmentEndFrom(mateCigar, rec.getMateAlignmentStart)
+    EstimateRnaSeqInsertSize.mateAlignmentEndFrom(mateCigar, rec.mateStart)
   }
 
 
   "EstimateRnaSeqInsertSize.numReadBasesOverlappingTranscript" should "return the number of read bases overlapping a transcript" in {
-    def estimate(rec: SAMRecord, transcript: Transcript) =  EstimateRnaSeqInsertSize.numReadBasesOverlappingTranscript(rec.getAlignmentBlocks.toList, transcript)
+    def estimate(rec: SamRecord, transcript: Transcript) =  EstimateRnaSeqInsertSize.numReadBasesOverlappingTranscript(rec.asSam.getAlignmentBlocks.toList, transcript)
 
     // many .value calls here, I know
     val transcript = Transcript("", 2, 10, 2, 10, exons=Seq(Exon(2,2), Exon(4,4), Exon(11, 11)))
-    val builder    = new SamRecordSetBuilder(readLength=10)
+    val builder    = new SamBuilder(readLength=10)
 
     // simple matches
     builder.addFrag(start=1, strand=Plus)   foreach { rec => estimate(rec, transcript) shouldBe 2 }
@@ -81,7 +81,7 @@ class EstimateRnaSeqInsertSizeTest extends UnitSpec with OptionValues {
 
     // some indels
     builder.addFrag(start=2, cigar="1M1D1M6D8M")   foreach { rec => estimate(rec, transcript) shouldBe 3 } // deletions between exons
-    builder.addFrag(start=2, cigar="1M9I1M")       foreach { rec => estimate(rec, transcript) shouldBe 1 } // insertions
+    builder.addFrag(start=2, cigar="1M8I1M")       foreach { rec => estimate(rec, transcript) shouldBe 1 } // insertions
     builder.addFrag(start=1, cigar="1M20D9M")      foreach { rec => estimate(rec, transcript) shouldBe 0 } // deletion skips gene
 
     // skips
@@ -89,11 +89,11 @@ class EstimateRnaSeqInsertSizeTest extends UnitSpec with OptionValues {
   }
 
   "EstimateRnaSeqInsertSize.insertSizeFrom" should "return the number of read bases overlapping a transcript" in {
-    def estimate(rec: SAMRecord, transcript: Transcript) = insertSizeFromTranscript(rec, transcript, mateAlignmentEnd(rec))
+    def estimate(rec: SamRecord, transcript: Transcript) = insertSizeFromTranscript(rec, transcript, mateAlignmentEnd(rec))
 
     // many .value calls here, I know
     val transcript = Transcript("", 2, 10, 2, 10, exons=Seq(Exon(2,2), Exon(4,4), Exon(11, 11)))
-    val builder    = new SamRecordSetBuilder(readLength=5)
+    val builder    = new SamBuilder(readLength=5)
 
     // Overlaps all three exons
     builder.addPair(start1=1, start2=7, strand1=Plus, strand2=Minus)  foreach { rec => estimate(rec, transcript) shouldBe 3 }
@@ -121,7 +121,7 @@ class EstimateRnaSeqInsertSizeTest extends UnitSpec with OptionValues {
   it should "return a value if the record overlaps a gene" in {
     val transcript = Transcript("example_transcript", 10, 20, 10, 20, exons=Seq(Exon(10,10), Exon(14,14), Exon(20,20)))
     val gene       = Gene(contig="chr1", start=10, end=20, negativeStrand=false, name="", transcripts=Seq(transcript))
-    val builder    = new SamRecordSetBuilder(readLength=5)
+    val builder    = new SamBuilder(readLength=5)
 
     ///////////////////////////////////////////////////////
     // not enclosed
@@ -153,7 +153,7 @@ class EstimateRnaSeqInsertSizeTest extends UnitSpec with OptionValues {
   it should "not return a value if there is too little overlap" in {
     val transcript = Transcript("example_transcript", 10, 20, 10, 20, exons=Seq(Exon(10,10), Exon(20, 20)))
     val gene       = Gene(contig="chr1", start=10, end=20, negativeStrand=false, name="", transcripts=Seq(transcript))
-    val builder    = new SamRecordSetBuilder(readLength=5)
+    val builder    = new SamBuilder(readLength=5)
 
     builder.addPair(start1=10, start2=16, strand1=Plus, strand2=Minus)  foreach { rec => testInsertSizeFromGene(rec, gene, 0.0).value shouldBe 2 }
     builder.addPair(start1=10, start2=16, strand1=Plus, strand2=Minus)  foreach { rec => testInsertSizeFromGene(rec, gene, 0.2).value shouldBe 2 }
@@ -166,7 +166,7 @@ class EstimateRnaSeqInsertSizeTest extends UnitSpec with OptionValues {
     val transcriptA = Transcript("example_transcript_A", 10, 20, 10, 20, exons=Seq(Exon(10,10), Exon(20, 20)))
     val transcriptB = Transcript("example_transcript_B", 10, 20, 10, 20, exons=Seq(Exon(10,10), Exon(19, 20))) // one longer than A
     val gene        = Gene(contig="chr1", start=10, end=20, negativeStrand=false, name="", transcripts=Seq(transcriptA, transcriptB))
-    val builder     = new SamRecordSetBuilder(readLength=5)
+    val builder     = new SamBuilder(readLength=5)
 
     builder.addPair(start1=10, start2=16, strand1=Plus, strand2=Minus)  foreach { rec => testInsertSizeFromGene(rec, gene, 0.0) shouldBe 'empty }
   }
@@ -193,7 +193,7 @@ class EstimateRnaSeqInsertSizeTest extends UnitSpec with OptionValues {
   private val EmptyMetrics = PairOrientation.values().map { po => InsertSizeMetric(po) }
 
   "EstimateRnaSeqInsertSize" should "run end-to-end" in {
-    val builder = new SamRecordSetBuilder()
+    val builder = new SamBuilder()
     // FR = (133804075 + 100) - 133801671 = 2504
     builder.addPair(contig=2, start1=133801671, start2=133804075, strand1=Plus, strand2=Minus) // overlaps ACKR4 by 100%
     builder.addPair(contig=2, start1=133801672, start2=133804074, strand1=Plus, strand2=Minus) //insert is two less
@@ -269,7 +269,7 @@ class EstimateRnaSeqInsertSizeTest extends UnitSpec with OptionValues {
     */
 
   it should "run end-to-end and ignore reads that overlap multiple genes" in {
-    val builder = new SamRecordSetBuilder()
+    val builder = new SamBuilder()
     builder.addPair(contig=3, start1=133801671, start2=133801671) // overlaps ACKR4-4-1 and ACKR4-4-2
     val bam = builder.toTempFile()
     val out = PathUtil.pathTo(PathUtil.removeExtension(bam) + EstimateRnaSeqInsertSize.RnaSeqInsertSizeMetricExtension)
@@ -282,7 +282,7 @@ class EstimateRnaSeqInsertSizeTest extends UnitSpec with OptionValues {
   }
 
   it should "run end-to-end and ignore a reads that are not fully enclosed in a gene" in {
-    val builder = new SamRecordSetBuilder()
+    val builder = new SamBuilder()
     builder.addPair(contig=2, start1=1, start2=133801671) // before ACKR4-3
     builder.addPair(contig=2, start1=133801671, start2=133814175) // after ACKR4-3
     val bam = builder.toTempFile()
@@ -296,7 +296,7 @@ class EstimateRnaSeqInsertSizeTest extends UnitSpec with OptionValues {
   }
 
   it should "run end-to-end and ignore reads when the insert size is different across transcripts" in {
-    val builder = new SamRecordSetBuilder()
+    val builder = new SamBuilder()
     builder.addPair(contig=4, start1=133801671, start2=133804077) // overlaps ACKR4-5 (multiple transcripts)
     val bam = builder.toTempFile()
     val out = PathUtil.pathTo(PathUtil.removeExtension(bam) + EstimateRnaSeqInsertSize.RnaSeqInsertSizeMetricExtension)
@@ -309,7 +309,7 @@ class EstimateRnaSeqInsertSizeTest extends UnitSpec with OptionValues {
   }
 
   it should "run end-to-end and ignore reads when there are too few mapped bases overlapping exonic sequence" in {
-    val builder = new SamRecordSetBuilder()
+    val builder = new SamBuilder()
     builder.addPair(contig=5, start1=133801671, start2=133804077, strand1=Plus, strand2=Plus) // overlaps ACKR4-6 by 2 bases!
     val bam = builder.toTempFile()
     val out = PathUtil.pathTo(PathUtil.removeExtension(bam) + EstimateRnaSeqInsertSize.RnaSeqInsertSizeMetricExtension)
