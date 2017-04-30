@@ -103,6 +103,7 @@ class ErrorRateByReadPositionTest extends UnitSpec {
     metrics.size shouldBe 40
     metrics.foreach { m =>
       m.bases_total shouldBe 10
+      m.error_rate shouldBe m.errors / m.bases_total.toDouble
       if (m.read_number == 1 && m.position >= 18) {
         m.error_rate shouldBe 0.1
         m.position match {

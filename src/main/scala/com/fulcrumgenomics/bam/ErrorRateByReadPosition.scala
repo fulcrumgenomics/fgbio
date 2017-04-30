@@ -215,12 +215,14 @@ private class ObsCounter(readNumber: Int, position: Int) {
     val totalA = a_ref_obs + a_to_c_obs + a_to_g_obs + a_to_t_obs
     val totalC = c_ref_obs + c_to_a_obs + c_to_g_obs + c_to_t_obs
     val total  = totalA + totalC
+    val errors = total - a_ref_obs - c_ref_obs
 
     new ErrorRateByReadPositionMetric(
       read_number = readNumber,
       position    = position,
       bases_total = total,
-      error_rate  = if (total == 0) 0 else (total - a_ref_obs - c_ref_obs) / total.toDouble,
+      errors      = errors,
+      error_rate  = if (total == 0) 0 else (errors) / total.toDouble,
       a_to_c_error_rate = if (totalA == 0) 0 else a_to_c_obs / totalA.toDouble,
       a_to_g_error_rate = if (totalA == 0) 0 else a_to_g_obs / totalA.toDouble,
       a_to_t_error_rate = if (totalA == 0) 0 else a_to_t_obs / totalA.toDouble,
@@ -242,6 +244,7 @@ object ErrorRateByReadPositionMetric {
   * @param read_number the read number (ex. 0 for fragments, 1 for read one of a pair, 2 for read two of a pair)
   * @param position the position or cycle within the read (1-based).
   * @param bases_total the total number of bases observed at this position.
+  * @param errors the total number of errors or non-reference basecalls observed at this position
   * @param error_rate the overall error rate at position
   * @param a_to_c_error_rate the rate of A>C (and T>G) error at the position
   * @param a_to_g_error_rate the rate of A>G (and T>C) error at the position
@@ -254,6 +257,7 @@ case class ErrorRateByReadPositionMetric
 ( read_number: Int,
   position: Int,
   bases_total: Long,
+  errors: Long,
   error_rate: Double,
   a_to_c_error_rate: Double,
   a_to_g_error_rate: Double,
