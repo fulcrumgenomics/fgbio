@@ -163,10 +163,9 @@ class VanillaUmiConsensusCallerTest extends UnitSpec with OptionValues {
       val consensus = caller.consensusCall(srcs)
 
       consensus match {
-        case None    => fail("Consensus should have been generated")
-        case Some(c) =>
-          if (n < max) c.depths.forall(_ <= n)   shouldBe true
-          else         c.depths.forall(_ <= max) shouldBe true
+        case None                => fail("Consensus should have been generated")
+        case Some(c) if n <= max => c.depths.forall(_ <= n)   shouldBe true
+        case Some(c)             => c.depths.forall(_ <= max) shouldBe true
       }
     }
   }

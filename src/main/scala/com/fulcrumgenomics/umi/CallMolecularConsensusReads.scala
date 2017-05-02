@@ -108,7 +108,11 @@ class CallMolecularConsensusReads
    """)
  val minConsensusBaseQuality: PhredScore = 2.toByte,
  @arg(flag="M", doc="The minimum number of reads to produce a consensus base.") val minReads: Int,
- @arg(doc="The maximum number of reads to use when building a consensus.") val maxReads: Option[Int] = None,
+ @arg(doc="""
+            |The maximum number of reads to use when building a consensus. If more than this many reads are
+            |present in a tag family, the family is randomly downsampled to exactly max-reads reads.
+          """)
+ val maxReads: Option[Int] = None,
  @arg(flag="B", doc="If true produce tags on consensus reads that contain per-base information.") val outputPerBaseTags: Boolean = DefaultProducePerBaseTags,
  @arg(flag="S", doc="The sort order of the output, if None then the same as the input.") val sortOrder: Option[SortOrder] = Some(SortOrder.queryname),
  @arg(flag="D", doc="Turn on debug logging.") val debug: Boolean = false

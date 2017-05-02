@@ -173,7 +173,7 @@ class VanillaUmiConsensusCaller(override val readNamePrefix: String,
     }
     else {
       // First limit to max reads if necessary
-      val capped  = if (reads.size < this.options.maxReads) reads else this.random.shuffle(reads).take(this.options.maxReads)
+      val capped  = if (reads.size <= this.options.maxReads) reads else this.random.shuffle(reads).take(this.options.maxReads)
 
       // get the most likely consensus bases and qualities
       val consensusLength = consensusReadLength(capped, this.options.minReads)
