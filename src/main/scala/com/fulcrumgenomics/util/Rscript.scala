@@ -54,11 +54,11 @@ object Rscript extends LazyLogging {
 
   /** Executes an Rscript from the classpath if Rscript is available. */
   def execIfAvailable(scriptResource: String, args: String*): Try[Unit] =
-    if (Available) exec(scriptResource, args:_*) else Success[Unit]()
+    if (Available) exec(scriptResource, args:_*) else Success(Unit)
 
   /** Executes an Rscript from a script stored at a Path if Rscript is available. */
   def execIfAvailable(script: Path, args: String*): Try[Unit] =
-    if (Available) exec(script, args:_*) else Success[Unit]()
+    if (Available) exec(script, args:_*) else Success(Unit)
 
   /** Executes an Rscript from the classpath. */
   def exec(scriptResource: String, args: String*): Try[Unit] =

@@ -74,7 +74,8 @@ class ExtractUmisFromBam
 ( @arg(flag = "i", doc = "Input BAM file.")                                      val input: PathToBam,
   @arg(flag = "o", doc = "Output BAM file.")                                     val output: PathToBam,
   @arg(flag = "r", doc = "The read structure, one per read in a template.")      val readStructure: Seq[ReadStructure],
-  @deprecated @arg(flag = "b", doc = "[DEPRECATED] SAM tags in which to store the molecular barcodes (one-per segment).",
+  @deprecated("Use molecular-index-tags instead.", since="0.1.3")
+  @arg(flag = "b", doc = "[DEPRECATED] SAM tags in which to store the molecular barcodes (one-per segment).",
     mutex=Array("molecularIndexTags"), minElements=0) val molecularBarcodeTags: Seq[String] = Seq.empty,
   @arg(flag = "t", doc = "SAM tag(s) in which to store the molecular indices.", mutex=Array("molecularBarcodeTags"), minElements=0)
                                                                                  val molecularIndexTags: Seq[String] = Seq.empty,
