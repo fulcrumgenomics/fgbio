@@ -151,7 +151,7 @@ class NeedlemanWunschAligner(val scoringFunction: (Byte,Byte) => Int,
     var j = target.length
     var currOperator: CigarOperator = null
     var currLength: Int = 0
-    val stack = new mutable.Stack[CigarElem]()
+    val elems = new mutable.ArrayBuffer[CigarElem]()
 
     while (i != 0 || j != 0) {
       val op = trace(i,j) match {
@@ -173,14 +173,14 @@ class NeedlemanWunschAligner(val scoringFunction: (Byte,Byte) => Int,
         currLength += 1
       }
       else {
-        if (currLength > 0) stack.push(CigarElem(currOperator, currLength))
+        if (currLength > 0) elems += CigarElem(currOperator, currLength)
         currOperator = op
         currLength   = 1
       }
 
-      if (i == 0 && j == 0) stack.push(CigarElem(currOperator, currLength))
+      if (i == 0 && j == 0) elems += CigarElem(currOperator, currLength)
     }
 
-    Alignment(query=query, target=target, queryStart=1, targetStart=1, cigar=Cigar(stack.toIndexedSeq), score=scoring(query.length, target.length))
+    Alignment(query=query, target=target, queryStart=1, targetStart=1, cigar=Cigar(elems.reverse), score=scoring(query.length, target.length))
   }
 }

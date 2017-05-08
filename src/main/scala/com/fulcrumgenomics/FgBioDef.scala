@@ -24,12 +24,13 @@
 
 package com.fulcrumgenomics
 
+import java.util.concurrent.ForkJoinPool
+
 import com.fulcrumgenomics.util.BetterBufferedIterator
 import dagr.commons.CommonsDef
 
 import scala.collection.Parallelizable
 import scala.collection.parallel.{ForkJoinTaskSupport, ParIterableLike, TaskSupport}
-import scala.concurrent.forkjoin.ForkJoinPool
 
 /**
   * Place to put common function, type and implicit definitions that can be

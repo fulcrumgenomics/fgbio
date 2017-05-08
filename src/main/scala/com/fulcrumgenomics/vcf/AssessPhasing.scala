@@ -121,7 +121,6 @@ class AssessPhasing
       Some(writer)
     }
     val chromosomes = intervals.map { intv =>
-      import scala.collection.JavaConversions.asScalaBuffer
       val intervalList = IntervalList.fromFile(intv.toFile)
       // Developer Note: warn the user if the supplied intervals do not span entire chromosomes.
       intervalList.getIntervals.find { interval =>

@@ -108,8 +108,7 @@ class MetricTest extends UnitSpec {
   // Various write methods to test with a writer
   private val writeWithWriters = Seq(
     ((writer: StringWriter, metrics: Seq[TestMetric]) => Metric.write[TestMetric](writer, metrics:_*), "write[T <: Metric](writer: Writer, metric: T*)"),
-    ((writer: StringWriter, metrics: Seq[TestMetric]) => Metric.write[TestMetric](writer, metrics), "write[T <: Metric](writer: Writer, metrics: TraversableOnce[T])"),
-    ((writer: StringWriter, metrics: Seq[TestMetric]) => Metric.write[TestMetric](metrics, writer), "write[T <: Metric](metrics: Seq[T], writer: Writer)") // NB: deprecated
+    ((writer: StringWriter, metrics: Seq[TestMetric]) => Metric.write[TestMetric](writer, metrics), "write[T <: Metric](writer: Writer, metrics: TraversableOnce[T])")
   )
 
   writeWithWriters.foreach { case (writeMethod, desc) =>
@@ -125,8 +124,7 @@ class MetricTest extends UnitSpec {
   // Various write methods to test with a path
   private val writeWithPaths = Seq(
     ((path: Path, metrics: Seq[TestMetric]) => Metric.write[TestMetric](path, metrics:_*), "write[T <: Metric](path: Path, metric: T*)"),
-    ((path: Path, metrics: Seq[TestMetric]) => Metric.write[TestMetric](path, metrics), "write[T <: Metric](path: Path, metric: TraversableOnce[T])"),
-    ((path: Path, metrics: Seq[TestMetric]) => Metric.write[TestMetric](metrics, path), "write[T <: Metric](metrics: Seq[T], path: Path)") // NB: deprecated
+    ((path: Path, metrics: Seq[TestMetric]) => Metric.write[TestMetric](path, metrics), "write[T <: Metric](path: Path, metric: TraversableOnce[T])")
   )
 
   writeWithPaths.foreach { case (writeMethod, desc) =>

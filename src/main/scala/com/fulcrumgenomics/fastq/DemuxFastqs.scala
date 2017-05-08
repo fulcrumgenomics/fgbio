@@ -26,6 +26,7 @@
 package com.fulcrumgenomics.fastq
 
 import java.io.Closeable
+import java.util.concurrent.ForkJoinPool
 
 import com.fulcrumgenomics.FgBioDef.unreachable
 import com.fulcrumgenomics.cmdline.{ClpGroups, FgBioTool}
@@ -42,7 +43,6 @@ import htsjdk.samtools.SAMFileHeader.SortOrder
 import htsjdk.samtools.util.{ProgressLogger => _, _}
 import htsjdk.samtools.{SAMRecord, _}
 
-import scala.concurrent.forkjoin.ForkJoinPool
 
 object DemuxFastqs {
 
