@@ -32,6 +32,7 @@ import com.fulcrumgenomics.cmdline.FgBioMain.FailureException
 import com.fulcrumgenomics.util.Io
 import dagr.commons.util.{LazyLogging, StringUtil}
 import dagr.sopt.cmdline.{CommandLineParser, CommandLineProgramParserStrings}
+import htsjdk.samtools.util.SnappyLoader
 
 /**
   * Main program for fgbio that loads everything up and runs the appropriate sub-command
@@ -97,7 +98,8 @@ class FgBioMain extends LazyLogging {
     val host       = InetAddress.getLocalHost.getHostName
     val user       = System.getProperty("user.name")
     val jreVersion = System.getProperty("java.runtime.version")
-    logger.info(s"Executing $tool from $name version $version as $user@$host on JRE $jreVersion")
+    val snappy     = if (new SnappyLoader(false).SnappyAvailable) "with snappy" else "without snappy"
+    logger.info(s"Executing $tool from $name version $version as $user@$host on JRE $jreVersion $snappy")
   }
 
   /** Prints a line of useful information when a tool stops executing. */
