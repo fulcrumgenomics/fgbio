@@ -28,9 +28,9 @@ import com.fulcrumgenomics.cmdline.{ClpGroups, FgBioTool}
 import com.fulcrumgenomics.fastq.FastqSource
 import com.fulcrumgenomics.util.ProgressLogger
 import com.fulcrumgenomics.FgBioDef._
-import dagr.commons.io.Io
-import dagr.commons.util.LazyLogging
-import dagr.sopt._
+import com.fulcrumgenomics.commons.io.Io
+import com.fulcrumgenomics.commons.util.LazyLogging
+import com.fulcrumgenomics.sopt._
 import htsjdk.samtools.{SAMFileWriterFactory, SamReaderFactory}
 
 @clp(description =
@@ -55,10 +55,10 @@ import htsjdk.samtools.{SAMFileWriterFactory, SamReaderFactory}
   """,
   group = ClpGroups.SamOrBam)
 class AnnotateBamWithUmis(
-  @arg(flag="i", doc="The input SAM or BAM file.")             val input: PathToBam,
-  @arg(flag="f", doc="Input FASTQ file with UMI reads.")       val fastq: PathToFastq,
-  @arg(flag="o", doc="Output BAM file to write.")              val output: PathToBam,
-  @arg(flag="t", doc="The BAM attribute to store UMIs in.")    val attribute: String = "RX",
+  @arg(flag='i', doc="The input SAM or BAM file.")             val input: PathToBam,
+  @arg(flag='f', doc="Input FASTQ file with UMI reads.")       val fastq: PathToFastq,
+  @arg(flag='o', doc="Output BAM file to write.")              val output: PathToBam,
+  @arg(flag='t', doc="The BAM attribute to store UMIs in.")    val attribute: String = "RX",
   @arg(          doc="If set, fail on the first missing UMI.") val failFast: Boolean = false
 ) extends FgBioTool with LazyLogging {
 

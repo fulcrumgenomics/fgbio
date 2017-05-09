@@ -25,7 +25,7 @@
 package com.fulcrumgenomics.fastq
 
 import com.fulcrumgenomics.FgBioDef._
-import com.fulcrumgenomics.util.{NumericCounter, SimpleCounter}
+import com.fulcrumgenomics.commons.util.{NumericCounter, SimpleCounter}
 
 /** Trait for describing quality score encoding systems. */
 sealed trait QualityEncoding {

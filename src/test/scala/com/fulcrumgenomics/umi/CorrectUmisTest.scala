@@ -28,7 +28,7 @@ import com.fulcrumgenomics.FgBioDef._
 import com.fulcrumgenomics.testing.{SamRecordSetBuilder, UnitSpec}
 import com.fulcrumgenomics.umi.CorrectUmis.{UmiCorrectionMetrics, UmiMatch}
 import com.fulcrumgenomics.util.{Io, Metric}
-import dagr.sopt.cmdline.ValidationException
+import com.fulcrumgenomics.sopt.cmdline.ValidationException
 
 class CorrectUmisTest extends UnitSpec {
   private val FixedUmis = Seq("AAAAAA", "CCCCCC", "GGGGGG", "TTTTTT")

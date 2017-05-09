@@ -29,9 +29,9 @@ import com.fulcrumgenomics.cmdline.{ClpGroups, FgBioTool}
 import com.fulcrumgenomics.umi.VanillaUmiConsensusCallerOptions._
 import com.fulcrumgenomics.util.NumericTypes.PhredScore
 import com.fulcrumgenomics.util.ProgressLogger
-import dagr.commons.io.Io
-import dagr.commons.util.LazyLogging
-import dagr.sopt._
+import com.fulcrumgenomics.commons.io.Io
+import com.fulcrumgenomics.commons.util.LazyLogging
+import com.fulcrumgenomics.sopt._
 import htsjdk.samtools.SAMFileHeader.SortOrder
 import htsjdk.samtools._
 
@@ -71,14 +71,14 @@ import htsjdk.samtools._
   """,
   group = ClpGroups.Umi)
 class CallDuplexConsensusReads
-(@arg(flag="i", doc="The input SAM or BAM file.") val input: PathToBam,
- @arg(flag="o", doc="Output SAM or BAM file to write consensus reads.") val output: PathToBam,
- @arg(flag="p", doc="The prefix all consensus read names") val readNamePrefix: Option[String] = None,
- @arg(flag="R", doc="The new read group ID for all the consensus reads.") val readGroupId: String = "A",
- @arg(flag="1", doc="The Phred-scaled error rate for an error prior to the UMIs being integrated.") val errorRatePreUmi: PhredScore = DefaultErrorRatePreUmi,
- @arg(flag="2", doc="The Phred-scaled error rate for an error post the UMIs have been integrated.") val errorRatePostUmi: PhredScore = DefaultErrorRatePostUmi,
- @arg(flag="m", doc="Ignore bases in raw reads that have Q below this value.") val minInputBaseQuality: PhredScore = DefaultMinInputBaseQuality,
- @arg(flag="S", doc="The sort order of the output, if None then the same as the input.") val sortOrder: Option[SortOrder] = Some(SortOrder.queryname)
+(@arg(flag='i', doc="The input SAM or BAM file.") val input: PathToBam,
+ @arg(flag='o', doc="Output SAM or BAM file to write consensus reads.") val output: PathToBam,
+ @arg(flag='p', doc="The prefix all consensus read names") val readNamePrefix: Option[String] = None,
+ @arg(flag='R', doc="The new read group ID for all the consensus reads.") val readGroupId: String = "A",
+ @arg(flag='1', doc="The Phred-scaled error rate for an error prior to the UMIs being integrated.") val errorRatePreUmi: PhredScore = DefaultErrorRatePreUmi,
+ @arg(flag='2', doc="The Phred-scaled error rate for an error post the UMIs have been integrated.") val errorRatePostUmi: PhredScore = DefaultErrorRatePostUmi,
+ @arg(flag='m', doc="Ignore bases in raw reads that have Q below this value.") val minInputBaseQuality: PhredScore = DefaultMinInputBaseQuality,
+ @arg(flag='S', doc="The sort order of the output, if None then the same as the input.") val sortOrder: Option[SortOrder] = Some(SortOrder.queryname)
 ) extends FgBioTool with LazyLogging {
 
   Io.assertReadable(input)

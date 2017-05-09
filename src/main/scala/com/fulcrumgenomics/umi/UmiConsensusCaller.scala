@@ -28,7 +28,7 @@ import com.fulcrumgenomics.FgBioDef._
 import com.fulcrumgenomics.bam.Bams
 import com.fulcrumgenomics.umi.UmiConsensusCaller._
 import com.fulcrumgenomics.util.NumericTypes.PhredScore
-import dagr.commons.util.Logger
+import com.fulcrumgenomics.commons.util.Logger
 import htsjdk.samtools.SAMFileHeader.{GroupOrder, SortOrder}
 import htsjdk.samtools.util.{Murmur3, SequenceUtil}
 import htsjdk.samtools.{SAMFileHeader, SAMReadGroupRecord, SAMRecord, SAMTag}

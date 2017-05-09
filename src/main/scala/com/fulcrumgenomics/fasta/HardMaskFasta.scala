@@ -25,9 +25,9 @@ package com.fulcrumgenomics.fasta
 
 import com.fulcrumgenomics.cmdline.{ClpGroups, FgBioTool}
 import com.fulcrumgenomics.util.{Io, ProgressLogger}
-import dagr.commons.CommonsDef._
-import dagr.commons.util.LazyLogging
-import dagr.sopt._
+import com.fulcrumgenomics.commons.CommonsDef._
+import com.fulcrumgenomics.commons.util.LazyLogging
+import com.fulcrumgenomics.sopt._
 import htsjdk.samtools.reference.{ReferenceSequenceFileFactory, ReferenceSequenceFileWalker}
 
 /**
@@ -44,9 +44,9 @@ import htsjdk.samtools.reference.{ReferenceSequenceFileFactory, ReferenceSequenc
   """,
   group = ClpGroups.Fasta)
 class HardMaskFasta
-( @arg(flag="i", doc="Input FASTA file.")              val input: PathToFasta,
-  @arg(flag="o", doc="Output FASTA file.")             val output: PathToFasta,
-  @arg(flag="l", doc="Line length or sequence lines.") val lineLength: Int = 100
+( @arg(flag='i', doc="Input FASTA file.")              val input: PathToFasta,
+  @arg(flag='o', doc="Output FASTA file.")             val output: PathToFasta,
+  @arg(flag='l', doc="Line length or sequence lines.") val lineLength: Int = 100
  ) extends FgBioTool with LazyLogging {
 
   override def execute(): Unit = {

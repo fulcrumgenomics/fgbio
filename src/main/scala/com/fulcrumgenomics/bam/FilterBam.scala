@@ -30,10 +30,10 @@ import java.text.DecimalFormat
 import com.fulcrumgenomics.FgBioDef._
 import com.fulcrumgenomics.cmdline.{ClpGroups, FgBioTool}
 import com.fulcrumgenomics.util.ProgressLogger
-import dagr.commons.CommonsDef.{PathToBam, PathToIntervals}
-import dagr.commons.io.Io
-import dagr.commons.util.LazyLogging
-import dagr.sopt._
+import com.fulcrumgenomics.commons.CommonsDef.{PathToBam, PathToIntervals}
+import com.fulcrumgenomics.commons.io.Io
+import com.fulcrumgenomics.commons.util.LazyLogging
+import com.fulcrumgenomics.sopt._
 import htsjdk.samtools._
 import htsjdk.samtools.util.{CloserUtil, IntervalList}
 
@@ -56,13 +56,13 @@ import htsjdk.samtools.util.{CloserUtil, IntervalList}
   """,
   group = ClpGroups.SamOrBam)
 class FilterBam
-( @arg(flag="i", doc="Input BAM file.")                                           val input: PathToBam,
-  @arg(flag="o", doc="Output BAM file.")                                          val output: PathToBam,
-  @arg(flag="l", doc="Optionally remove reads not overlapping intervals.")        val intervals: Option[PathToIntervals] = None,
-  @arg(flag="D", doc="If true remove all reads that are marked as duplicates.")   val removeDuplicates: Boolean = true,
-  @arg(flag="U", doc="Remove all unmapped reads.")                                val removeUnmappedReads: Boolean = true,
-  @arg(flag="M", doc="Remove all mapped reads with MAPQ lower than this number.") val minMapQ: Int = 1,
-  @arg(flag="S", doc="Remove all reads marked as secondary alignments.")          val removeSecondaryAlignments: Boolean = true
+( @arg(flag='i', doc="Input BAM file.")                                           val input: PathToBam,
+  @arg(flag='o', doc="Output BAM file.")                                          val output: PathToBam,
+  @arg(flag='l', doc="Optionally remove reads not overlapping intervals.")        val intervals: Option[PathToIntervals] = None,
+  @arg(flag='D', doc="If true remove all reads that are marked as duplicates.")   val removeDuplicates: Boolean = true,
+  @arg(flag='U', doc="Remove all unmapped reads.")                                val removeUnmappedReads: Boolean = true,
+  @arg(flag='M', doc="Remove all mapped reads with MAPQ lower than this number.") val minMapQ: Int = 1,
+  @arg(flag='S', doc="Remove all reads marked as secondary alignments.")          val removeSecondaryAlignments: Boolean = true
 ) extends FgBioTool with LazyLogging {
 
   Io.assertReadable(input)

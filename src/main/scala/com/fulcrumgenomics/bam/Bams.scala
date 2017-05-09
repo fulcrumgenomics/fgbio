@@ -25,8 +25,9 @@
 package com.fulcrumgenomics.bam
 
 import com.fulcrumgenomics.FgBioDef._
-import com.fulcrumgenomics.util.{BetterBufferedIterator, ProgressLogger}
-import dagr.commons.util.LazyLogging
+import com.fulcrumgenomics.commons.collection.BetterBufferedIterator
+import com.fulcrumgenomics.util.ProgressLogger
+import com.fulcrumgenomics.commons.util.LazyLogging
 import htsjdk.samtools.SAMFileHeader.{GroupOrder, SortOrder}
 import htsjdk.samtools.SamPairUtil.PairOrientation
 import htsjdk.samtools._

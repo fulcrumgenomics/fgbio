@@ -26,7 +26,7 @@ package com.fulcrumgenomics.fastq
 import java.io._
 
 import com.fulcrumgenomics.util.Io
-import dagr.commons.CommonsDef.{PathToFastq, yieldAndThen}
+import com.fulcrumgenomics.commons.CommonsDef.{PathToFastq, yieldAndThen}
 
 import scala.io.Source
 

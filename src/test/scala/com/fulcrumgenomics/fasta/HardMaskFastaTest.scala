@@ -27,8 +27,8 @@ import java.nio.file.Files
 
 import com.fulcrumgenomics.testing.UnitSpec
 import com.fulcrumgenomics.util.Io
-import dagr.commons.CommonsDef._
-import dagr.commons.io.PathUtil
+import com.fulcrumgenomics.commons.CommonsDef._
+import com.fulcrumgenomics.commons.io.PathUtil
 import htsjdk.samtools.reference.ReferenceSequenceFileFactory
 
 /**

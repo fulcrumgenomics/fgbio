@@ -30,7 +30,7 @@ import com.fulcrumgenomics.FgBioDef._
 import com.fulcrumgenomics.testing.{SamRecordSetBuilder, UnitSpec}
 import com.fulcrumgenomics.util.Io
 import com.fulcrumgenomics.util.NumericTypes.PhredScore
-import dagr.commons.io.PathUtil
+import com.fulcrumgenomics.commons.io.PathUtil
 import htsjdk.samtools.SAMFileHeader.SortOrder
 import htsjdk.samtools.{SAMFileHeader, SAMFileWriterFactory, SAMRecord, SAMSequenceDictionary, SAMSequenceRecord, SamReaderFactory}
 

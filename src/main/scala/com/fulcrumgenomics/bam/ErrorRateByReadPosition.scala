@@ -31,9 +31,9 @@ import com.fulcrumgenomics.FgBioDef._
 import com.fulcrumgenomics.cmdline.{ClpGroups, FgBioTool}
 import com.fulcrumgenomics.util.{Metric, ProgressLogger, Rscript}
 import com.fulcrumgenomics.vcf.{ByIntervalListVariantContextIterator, VariantMask}
-import dagr.commons.io.{Io, PathUtil}
-import dagr.commons.util.LazyLogging
-import dagr.sopt._
+import com.fulcrumgenomics.commons.io.{Io, PathUtil}
+import com.fulcrumgenomics.commons.util.LazyLogging
+import com.fulcrumgenomics.sopt._
 import htsjdk.samtools.filter.{DuplicateReadFilter, FailsVendorReadQualityFilter, SamRecordFilter, SecondaryOrSupplementaryFilter}
 import htsjdk.samtools.reference.ReferenceSequenceFileWalker
 import htsjdk.samtools.util.{IntervalList, SamLocusIterator, SequenceUtil}
@@ -72,14 +72,14 @@ import scala.util.Failure
   """
   )
 class ErrorRateByReadPosition
-( @arg(flag="i", doc="Input BAM file.") val input: PathToBam,
-  @arg(flag="o", doc="Output metrics prefix. If not given, will use the input BAM basename.") val output: Option[PathPrefix] = None,
-  @arg(flag="r", doc="Reference sequence fasta file.") val ref: PathToFasta,
-  @arg(flag="v", doc="Optional file of variant sites to ignore.") val variants: Option[PathToVcf] = None,
-  @arg(flag="l", doc="Optional list of intervals to restrict analysis to.") val intervals: Option[PathToIntervals] = None,
-  @arg(flag="d", doc="Include duplicate reads, otherwise ignore.") val includeDuplicates: Boolean = false,
-  @arg(flag="m", doc="The minimum mapping quality for a read to be included.") val minMappingQuality: Int = 20,
-  @arg(flag="q", doc="The minimum base quality for a base to be included.") val minBaseQuality: Int = 0
+( @arg(flag='i', doc="Input BAM file.") val input: PathToBam,
+  @arg(flag='o', doc="Output metrics prefix. If not given, will use the input BAM basename.") val output: Option[PathPrefix] = None,
+  @arg(flag='r', doc="Reference sequence fasta file.") val ref: PathToFasta,
+  @arg(flag='v', doc="Optional file of variant sites to ignore.") val variants: Option[PathToVcf] = None,
+  @arg(flag='l', doc="Optional list of intervals to restrict analysis to.") val intervals: Option[PathToIntervals] = None,
+  @arg(flag='d', doc="Include duplicate reads, otherwise ignore.") val includeDuplicates: Boolean = false,
+  @arg(flag='m', doc="The minimum mapping quality for a read to be included.") val minMappingQuality: Int = 20,
+  @arg(flag='q', doc="The minimum base quality for a base to be included.") val minBaseQuality: Int = 0
 ) extends FgBioTool with LazyLogging {
 
   private val ScriptPath = "com/fulcrumgenomics/bam/ErrorRateByReadPosition.R"

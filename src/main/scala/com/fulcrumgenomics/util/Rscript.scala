@@ -26,7 +26,7 @@ package com.fulcrumgenomics.util
 
 import java.nio.file.Path
 
-import dagr.commons.util.LazyLogging
+import com.fulcrumgenomics.commons.util.LazyLogging
 
 import scala.io.Source
 import scala.util.{Success, Try}

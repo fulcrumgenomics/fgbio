@@ -30,8 +30,9 @@ import java.util.Date
 
 import com.fulcrumgenomics.cmdline.FgBioMain.FailureException
 import com.fulcrumgenomics.util.Io
-import dagr.commons.util.{LazyLogging, StringUtil}
-import dagr.sopt.cmdline.{CommandLineParser, CommandLineProgramParserStrings}
+import com.fulcrumgenomics.commons.util.{LazyLogging, StringUtil}
+import com.fulcrumgenomics.sopt.Sopt
+import com.fulcrumgenomics.sopt.cmdline.{CommandLineParser, CommandLineProgramParserStrings}
 
 /**
   * Main program for fgbio that loads everything up and runs the appropriate sub-command
@@ -59,15 +60,16 @@ class FgBioMain extends LazyLogging {
     htsjdk.samtools.util.Log.setGlobalLogLevel(htsjdk.samtools.util.Log.LogLevel.WARNING)
 
     val startTime = System.currentTimeMillis()
-    val parser = new CommandLineParser[FgBioTool](name)
-
-    val exitCode = parser.parseSubCommand(args=args, packageList=packageList) match {
-      case None => 1
-      case Some(tool) =>
-        val name = tool.getClass.getSimpleName
+    val parser    = new CommandLineParser[FgBioTool](name)
+    val exit      = Sopt.parseCommand[FgBioTool](name, args, Sopt.find[FgBioTool](packageList)) match {
+      case Sopt.Failure(usage) =>
+        System.err.print(usage())
+        1
+      case Sopt.CommandSuccess(command) =>
+        val name = command.getClass.getSimpleName
         try {
           printStartupLines(name, args)
-          tool.execute()
+          command.execute()
           printEndingLines(startTime, name, true)
           0
         }
@@ -86,7 +88,7 @@ class FgBioMain extends LazyLogging {
         }
     }
 
-    exitCode
+    exit
   }
 
   protected def name: String = "fgbio"

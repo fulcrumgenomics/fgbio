@@ -23,7 +23,7 @@
  */
 package com.fulcrumgenomics.util
 
-import dagr.commons.util.Logger
+import com.fulcrumgenomics.commons.util.Logger
 import htsjdk.samtools.util.AbstractProgressLogger
 
 /**

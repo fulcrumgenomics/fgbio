@@ -29,14 +29,13 @@ import java.lang.Math.abs
 import com.fulcrumgenomics.FgBioDef._
 import com.fulcrumgenomics.bam.SamRecordClipper.ClippingMode
 import com.fulcrumgenomics.cmdline.{ClpGroups, FgBioTool}
-import com.fulcrumgenomics.util.{DelimitedDataParser, Io}
-import dagr.commons.util.LazyLogging
-import dagr.sopt.{arg, clp}
+import com.fulcrumgenomics.commons.util.{DelimitedDataParser, LazyLogging}
+import com.fulcrumgenomics.sopt.{arg, clp}
+import com.fulcrumgenomics.util.{Io, ProgressLogger}
 import htsjdk.samtools.SAMFileHeader.SortOrder
 import htsjdk.samtools.SamPairUtil.PairOrientation
-import htsjdk.samtools.reference.ReferenceSequenceFileWalker
-import com.fulcrumgenomics.util.ProgressLogger
 import htsjdk.samtools._
+import htsjdk.samtools.reference.ReferenceSequenceFileWalker
 import htsjdk.samtools.util._
 
 @clp(group=ClpGroups.SamOrBam, description=
@@ -58,15 +57,15 @@ import htsjdk.samtools.util._
     |information between paired-end reads can be corrected before writing the output file.
   """)
 class TrimPrimers
-( @arg(flag="i", doc="Input BAM file.")  val input: PathToBam,
-  @arg(flag="o", doc="Output BAM file.") val output: PathToBam,
-  @arg(flag="p", doc="File with primer locations.") val primers: FilePath,
-  @arg(flag="H", doc="If true, hard clip reads, else soft clip.") val hardClip: Boolean = false,
-  @arg(flag="S", doc="Match to primer locations +/- this many bases.") val slop: Int = 5,
-  @arg(flag="s", doc="Sort order of output BAM file (defaults to input sort order).") val sortOrder: Option[SortOrder] = None,
-  @arg(flag="r", doc="Optional reference fasta for recalculating NM, MD and UQ tags.") val ref: Option[PathToFasta] = None,
-  @arg(flag="t", doc="Temporary directory to use when sorting.") val tmp: Option[DirPath] = None,
-  @arg(flag="a", doc="Automatically trim extended attributes that are the same length as bases.") val autoTrimAttributes: Boolean = false
+( @arg(flag='i', doc="Input BAM file.")  val input: PathToBam,
+  @arg(flag='o', doc="Output BAM file.") val output: PathToBam,
+  @arg(flag='p', doc="File with primer locations.") val primers: FilePath,
+  @arg(flag='H', doc="If true, hard clip reads, else soft clip.") val hardClip: Boolean = false,
+  @arg(flag='S', doc="Match to primer locations +/- this many bases.") val slop: Int = 5,
+  @arg(flag='s', doc="Sort order of output BAM file (defaults to input sort order).") val sortOrder: Option[SortOrder] = None,
+  @arg(flag='r', doc="Optional reference fasta for recalculating NM, MD and UQ tags.") val ref: Option[PathToFasta] = None,
+  @arg(flag='t', doc="Temporary directory to use when sorting.") val tmp: Option[DirPath] = None,
+  @arg(flag='a', doc="Automatically trim extended attributes that are the same length as bases.") val autoTrimAttributes: Boolean = false
 )extends FgBioTool with LazyLogging {
   private val clipper = new SamRecordClipper(mode=if (hardClip) ClippingMode.Hard else ClippingMode.Soft, autoClipAttributes=autoTrimAttributes)
 

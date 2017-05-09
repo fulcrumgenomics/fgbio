@@ -27,16 +27,16 @@ package com.fulcrumgenomics.cmdline
 import java.io.{ByteArrayOutputStream, PrintStream}
 
 import com.fulcrumgenomics.testing.UnitSpec
-import dagr.commons.util.Logger
-import dagr.sopt.{arg, clp}
+import com.fulcrumgenomics.commons.util.Logger
+import com.fulcrumgenomics.sopt.{arg, clp}
 
 /* Tis a silly CLP. */
 @clp(group=ClpGroups.Utilities, description="A test class")
 class TestClp
 (
-  @arg(flag="e", doc="If set, exit with this code.")    val exitCode: Option[Int],
-  @arg(flag="m", doc="If set, fail with this message.") val message: Option[String],
-  @arg(flag="p", doc="Print this message.")             val printMe: Option[String]
+  @arg(flag='e', doc="If set, exit with this code.")    val exitCode: Option[Int],
+  @arg(flag='m', doc="If set, fail with this message.") val message: Option[String],
+  @arg(flag='p', doc="Print this message.")             val printMe: Option[String]
 ) extends FgBioTool {
   override def execute(): Unit = {
     (exitCode, message) match {

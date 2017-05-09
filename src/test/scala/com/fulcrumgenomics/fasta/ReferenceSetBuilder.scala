@@ -28,7 +28,7 @@ import java.nio.file.{Files, Path}
 
 import com.fulcrumgenomics.FgBioDef._
 import com.fulcrumgenomics.util.Io
-import dagr.commons.io.PathUtil
+import com.fulcrumgenomics.commons.io.PathUtil
 import htsjdk.samtools.{SAMFileHeader, SAMFileWriterFactory, SAMSequenceDictionary, SAMSequenceRecord}
 
 import scala.collection.mutable.ListBuffer

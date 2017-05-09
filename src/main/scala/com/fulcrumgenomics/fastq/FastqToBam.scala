@@ -31,9 +31,9 @@ import com.fulcrumgenomics.cmdline.{ClpGroups, FgBioTool}
 import com.fulcrumgenomics.umi.ConsensusTags
 import com.fulcrumgenomics.util.{Io, ProgressLogger, ReadStructure, SegmentType}
 import SegmentType._
-import dagr.commons.CommonsDef.PathToFastq
-import dagr.commons.util.LazyLogging
-import dagr.sopt.{arg, clp}
+import com.fulcrumgenomics.commons.CommonsDef.PathToFastq
+import com.fulcrumgenomics.commons.util.LazyLogging
+import com.fulcrumgenomics.sopt.{arg, clp}
 import htsjdk.samtools.SAMFileHeader.{GroupOrder, SortOrder}
 import htsjdk.samtools.util.Iso8601Date
 import htsjdk.samtools.{ReservedTagConstants, SAMFileHeader, SAMFileWriter, SAMFileWriterFactory, SAMReadGroupRecord, SAMRecord}
@@ -45,37 +45,40 @@ import htsjdk.samtools.{ReservedTagConstants, SAMFileHeader, SAMFileWriter, SAMF
     |structures to allocate bases in those reads to template reads, sample indices, unique molecular indices, or to
     |designate bases to be skipped over.
     |
-    |Read structures are made up of <number><operator> pairs much like the CIGAR string in BAM files. Four kinds of
+    |Read structures are made up of `<number><operator>` pairs much like the CIGAR string in BAM files. Four kinds of
     |operators are recognized:
-    |  1. T identifies a template read
-    |  2. B identifies a sample barcode read
-    |  3. M identifies a unique molecular index read
-    |  4. S identifies a set of bases that should be skipped or ignored
     |
-    |The last <number><operator> pair may be specified using a '+' sign instead of number to denote "all remaining
+    |1. `T` identifies a template read
+    |2. `B` identifies a sample barcode read
+    |3. `M` identifies a unique molecular index read
+    |4. `S` identifies a set of bases that should be skipped or ignored
+    |
+    |The last `<number><operator>` pair may be specified using a '+' sign instead of number to denote "all remaining
     |bases". This is useful if, e.g., fastqs have been trimmed and contain reads of varying length.  For example
     |to convert a paired-end run with an index read and where the first 5 bases of R1 are a UMI and the second
     |five bases are monotemplate you might specify:
-    |  --input r1.fq r2.fq i1.fq --read-structures 5M5S+T +T +B
+    |
+    |```--input r1.fq r2.fq i1.fq --read-structures 5M5S+T +T +B```
     |
     |Alternative if you know your reads are of fixed length you could specify:
-    |    --input r1.fq r2.fq i1.fq --read-structures 5M5S65T 75T 8B
+    |
+    |```--input r1.fq r2.fq i1.fq --read-structures 5M5S65T 75T 8B```
     |
     |For more information on read structures see: https://github.com/fulcrumgenomics/fgbio/wiki/Read-Structures
     |
     |The same number of input files and read structures must be provided, with one exception: if supplying exactly
     |1 or 2 fastq files, both of which are solely template reads, no read structures need be provided.
     |
-    |The output file can be sorted by queryname using the --sort-order option; the default is to produce a BAM
+    |The output file can be sorted by queryname using the `--sort-order` option; the default is to produce a BAM
     |with reads in the same order as they appear in the fastq file.
   """)
 class FastqToBam
 (
-  @arg(flag="i", doc="Fastq files corresponding to each sequencing read (e.g. R1, I1, etc.).") val input: Seq[PathToFastq],
-  @arg(flag="o", doc="The output SAM or BAM file to be written.")                              val output: PathToBam,
-  @arg(flag="r", doc="Read structures, one for each of the FASTQs.", minElements=0)            val readStructures: Seq[ReadStructure] = Seq(),
-  @arg(flag="s", doc="If true, queryname sort the BAM file, otherwise preserve input order.")  val sort: Boolean = false,
-  @arg(flag="u", doc="Tag in which to store molecular barcodes/UMIs.")                         val umiTag: String = ConsensusTags.UmiBases,
+  @arg(flag='i', doc="Fastq files corresponding to each sequencing read (e.g. R1, I1, etc.).") val input: Seq[PathToFastq],
+  @arg(flag='o', doc="The output SAM or BAM file to be written.")                              val output: PathToBam,
+  @arg(flag='r', doc="Read structures, one for each of the FASTQs.", minElements=0)            val readStructures: Seq[ReadStructure] = Seq(),
+  @arg(flag='s', doc="If true, queryname sort the BAM file, otherwise preserve input order.")  val sort: Boolean = false,
+  @arg(flag='u', doc="Tag in which to store molecular barcodes/UMIs.")                         val umiTag: String = ConsensusTags.UmiBases,
   @arg(          doc="Read group ID to use in the file header.")                               val readGroupId: String = "A",
   @arg(          doc="The name of the sequenced sample.")                                      val sample: String,
   @arg(          doc="The name/ID of the sequenced library.")                                  val library: String,

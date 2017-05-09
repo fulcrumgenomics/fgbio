@@ -28,8 +28,8 @@ package com.fulcrumgenomics.bam
 import com.fulcrumgenomics.FgBioDef.{PathToBam, javaIterableToIterator}
 import com.fulcrumgenomics.cmdline.{ClpGroups, FgBioTool}
 import com.fulcrumgenomics.util.Io
-import dagr.commons.CommonsDef.SafelyClosable
-import dagr.sopt.{arg, clp}
+import com.fulcrumgenomics.commons.CommonsDef.SafelyClosable
+import com.fulcrumgenomics.sopt.{arg, clp}
 import htsjdk.samtools.{SAMFileWriter, SAMFileWriterFactory, SamReader, SamReaderFactory}
 
 @clp(
@@ -37,9 +37,9 @@ import htsjdk.samtools.{SAMFileWriter, SAMFileWriterFactory, SamReader, SamReade
   group = ClpGroups.SamOrBam
 )
 class RemoveSamTags
-( @arg(flag="i", doc = "Input SAM or BAM.") val input: PathToBam,
-  @arg(flag="o", doc = "Output SAM or BAM.") val output: PathToBam,
-  @arg(flag="t", doc = "The tags to remove.", minElements = 0) val tagsToRemove: Seq[String] = Seq.empty
+( @arg(flag='i', doc = "Input SAM or BAM.") val input: PathToBam,
+  @arg(flag='o', doc = "Output SAM or BAM.") val output: PathToBam,
+  @arg(flag='t', doc = "The tags to remove.", minElements = 0) val tagsToRemove: Seq[String] = Seq.empty
 ) extends FgBioTool {
 
   Io.assertReadable(input)

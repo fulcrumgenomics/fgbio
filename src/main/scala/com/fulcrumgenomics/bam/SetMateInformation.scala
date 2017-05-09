@@ -26,9 +26,9 @@ package com.fulcrumgenomics.bam
 import com.fulcrumgenomics.cmdline.{ClpGroups, FgBioTool}
 import com.fulcrumgenomics.util.{Io, ProgressLogger}
 import com.fulcrumgenomics.FgBioDef._
-import dagr.commons.util.LazyLogging
-import dagr.sopt.cmdline.ValidationException
-import dagr.sopt.{arg, clp}
+import com.fulcrumgenomics.commons.util.LazyLogging
+import com.fulcrumgenomics.sopt.cmdline.ValidationException
+import com.fulcrumgenomics.sopt.{arg, clp}
 import htsjdk.samtools.SAMFileHeader.{GroupOrder, SortOrder}
 import htsjdk.samtools.SamPairUtil.SetMateInfoIterator
 import htsjdk.samtools.{SAMFileWriterFactory, SamReaderFactory}
@@ -47,10 +47,10 @@ import htsjdk.samtools.{SAMFileWriterFactory, SamReaderFactory}
 """)
 class SetMateInformation
 (
-  @arg(flag="i", doc="Input SAM/BAM/CRAM file.")                      val input: PathToBam = Io.StdIn,
-  @arg(flag="o", doc="Output SAM/BAM/CRAM file.")                     val output: PathToBam = Io.StdOut,
-  @arg(flag="r", doc="Reference fasta, only needed if writing CRAM.") val ref: Option[PathToFasta] = None,
-  @arg(flag="x", doc="If specified, do not fail when reads marked as paired are missing their mate pairs.")
+  @arg(flag='i', doc="Input SAM/BAM/CRAM file.")                      val input: PathToBam = Io.StdIn,
+  @arg(flag='o', doc="Output SAM/BAM/CRAM file.")                     val output: PathToBam = Io.StdOut,
+  @arg(flag='r', doc="Reference fasta, only needed if writing CRAM.") val ref: Option[PathToFasta] = None,
+  @arg(flag='x', doc="If specified, do not fail when reads marked as paired are missing their mate pairs.")
                                                                       val allowMissingMates: Boolean = false
 ) extends FgBioTool with LazyLogging {
 

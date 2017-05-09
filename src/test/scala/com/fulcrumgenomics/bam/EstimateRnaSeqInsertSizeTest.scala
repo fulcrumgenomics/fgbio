@@ -30,7 +30,7 @@ import com.fulcrumgenomics.testing.SamRecordSetBuilder._
 import com.fulcrumgenomics.testing.{SamRecordSetBuilder, UnitSpec}
 import com.fulcrumgenomics.util.GeneAnnotations.{Exon, Gene, Transcript}
 import com.fulcrumgenomics.util.{Io, Metric}
-import dagr.commons.io.PathUtil
+import com.fulcrumgenomics.commons.io.PathUtil
 import htsjdk.samtools.SAMRecord
 import htsjdk.samtools.SamPairUtil.PairOrientation
 import org.scalatest.OptionValues

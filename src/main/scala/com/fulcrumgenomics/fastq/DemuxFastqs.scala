@@ -35,10 +35,10 @@ import com.fulcrumgenomics.illumina.{Sample, SampleSheet}
 import com.fulcrumgenomics.umi.ConsensusTags
 import com.fulcrumgenomics.util.ReadStructure.SubRead
 import com.fulcrumgenomics.util.{ReadStructure, SampleBarcodeMetric, _}
-import dagr.commons.CommonsDef.{DirPath, FilePath, PathPrefix, PathToBam, PathToFastq}
-import dagr.commons.io.PathUtil
-import dagr.commons.util.{LazyLogging, Logger}
-import dagr.sopt.{arg, clp}
+import com.fulcrumgenomics.commons.CommonsDef.{DirPath, FilePath, PathPrefix, PathToBam, PathToFastq}
+import com.fulcrumgenomics.commons.io.PathUtil
+import com.fulcrumgenomics.commons.util.{LazyLogging, Logger}
+import com.fulcrumgenomics.sopt.{arg, clp}
 import htsjdk.samtools.SAMFileHeader.SortOrder
 import htsjdk.samtools.util.{ProgressLogger => _, _}
 import htsjdk.samtools.{SAMRecord, _}
@@ -228,14 +228,14 @@ object DemuxFastqs {
   group=ClpGroups.Fastq
 )
 class DemuxFastqs
-(@arg(flag="i", doc="One or more input fastq files each corresponding to a sub-read (ex. index read, read one, read two, fragment).") val inputs: Seq[PathToFastq],
- @arg(flag="o", doc="The output directory in which to place sample BAMs.") val output: DirPath,
- @arg(flag="x", doc="A file containing the metadata about the samples.") val metadata: FilePath,
- @arg(flag="r", doc="The read structure for each of the FASTQs.") val readStructures: Seq[ReadStructure],
- @arg(flag="m", doc="The file to which per-barcode metrics are written.  If none given, a file named 'demux_barcode_metrics.txt' will be written to the output directory.") val metrics: Option[FilePath] = None,
- @arg(flag="c", doc="The column name in the sample sheet or metadata CSV for the sample barcode.") val columnForSampleBarcode: String = "Sample_Barcode",
- @arg(flag="u", doc="Output BAM file name for the unmatched records.") val unmatched: String = DemuxFastqs.UnmatchedSampleId + ".bam",
- @arg(flag="q",
+(@arg(flag='i', doc="One or more input fastq files each corresponding to a sub-read (ex. index read, read one, read two, fragment).") val inputs: Seq[PathToFastq],
+ @arg(flag='o', doc="The output directory in which to place sample BAMs.") val output: DirPath,
+ @arg(flag='x', doc="A file containing the metadata about the samples.") val metadata: FilePath,
+ @arg(flag='r', doc="The read structure for each of the FASTQs.") val readStructures: Seq[ReadStructure],
+ @arg(flag='m', doc="The file to which per-barcode metrics are written.  If none given, a file named 'demux_barcode_metrics.txt' will be written to the output directory.") val metrics: Option[FilePath] = None,
+ @arg(flag='c', doc="The column name in the sample sheet or metadata CSV for the sample barcode.") val columnForSampleBarcode: String = "Sample_Barcode",
+ @arg(flag='u', doc="Output BAM file name for the unmatched records.") val unmatched: String = DemuxFastqs.UnmatchedSampleId + ".bam",
+ @arg(flag='q',
    doc="""A value describing how the quality values are encoded in the FASTQ.
       |Either Solexa for pre-pipeline 1.3 style scores (solexa scaling + 66),
       |Illumina for pipeline 1.3 and above (phred scaling + 64) or Standard
@@ -243,7 +243,7 @@ class DemuxFastqs
       |is not specified, the quality format will be detected automatically.
   """)
 val qualityFormat: Option[FastqQualityFormat] = None,
- @arg(flag="t", doc="The number of threads to use while de-multiplexing. The performance does not increase linearly with the # of threads and seems not to improve beyond 2-4 threads.") val threads: Int = 1,
+ @arg(flag='t', doc="The number of threads to use while de-multiplexing. The performance does not increase linearly with the # of threads and seems not to improve beyond 2-4 threads.") val threads: Int = 1,
  @arg(doc="Maximum mismatches for a barcode to be considered a match.") val maxMismatches: Int = 1,
  @arg(doc="Minimum difference between number of mismatches in the best and second best barcodes for a barcode to be considered a match.") val minMismatchDelta: Int = 2,
  @arg(doc="Maximum allowable number of no-calls in a barcode read before it is considered unmatchable.") val maxNoCalls: Int = 2,

@@ -29,7 +29,7 @@ import com.fulcrumgenomics.testing.SamRecordSetBuilder.{Minus, Plus}
 import com.fulcrumgenomics.testing.{SamRecordSetBuilder, UnitSpec, VariantContextSetBuilder}
 import com.fulcrumgenomics.umi.ReviewConsensusVariants.ConsensusVariantReviewInfo
 import com.fulcrumgenomics.util.{Io, Metric}
-import dagr.commons.io.PathUtil
+import com.fulcrumgenomics.commons.io.PathUtil
 import htsjdk.samtools.SAMFileHeader.SortOrder
 import htsjdk.samtools.reference.{ReferenceSequenceFile, ReferenceSequenceFileFactory}
 import htsjdk.samtools.util.{Interval, IntervalList}

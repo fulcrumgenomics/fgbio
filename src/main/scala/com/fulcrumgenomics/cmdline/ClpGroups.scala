@@ -23,7 +23,7 @@
  */
 package com.fulcrumgenomics.cmdline
 
-import dagr.sopt.cmdline.ClpGroup
+import com.fulcrumgenomics.sopt.cmdline.ClpGroup
 
 /** Groups for organizing command line programs for display. */
 object ClpGroups {

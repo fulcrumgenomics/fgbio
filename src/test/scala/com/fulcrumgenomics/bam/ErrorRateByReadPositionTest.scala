@@ -30,7 +30,7 @@ import java.nio.file.{Files, Path}
 import com.fulcrumgenomics.fasta.ReferenceSetBuilder
 import com.fulcrumgenomics.testing.{SamRecordSetBuilder, UnitSpec, VariantContextSetBuilder}
 import com.fulcrumgenomics.util.{Metric, Rscript}
-import dagr.commons.io.PathUtil
+import com.fulcrumgenomics.commons.io.PathUtil
 import htsjdk.samtools.SAMFileHeader.SortOrder
 import htsjdk.samtools.util.{Interval, IntervalList}
 import htsjdk.variant.utils.SAMSequenceDictionaryExtractor

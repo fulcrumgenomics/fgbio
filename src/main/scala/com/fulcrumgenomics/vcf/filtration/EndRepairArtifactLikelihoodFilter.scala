@@ -29,7 +29,7 @@ import java.lang.Math.{max, min, pow}
 import com.fulcrumgenomics.FgBioDef._
 import com.fulcrumgenomics.bam.{Bams, BaseEntry, Pileup, PileupEntry}
 import com.fulcrumgenomics.util.NumericTypes.{LogProbability => LnProb}
-import dagr.commons.util.LazyLogging
+import com.fulcrumgenomics.commons.util.LazyLogging
 import htsjdk.samtools.SamPairUtil.PairOrientation
 import htsjdk.samtools.util.{CoordMath, SequenceUtil}
 import htsjdk.samtools.{SAMRecord, SamPairUtil}

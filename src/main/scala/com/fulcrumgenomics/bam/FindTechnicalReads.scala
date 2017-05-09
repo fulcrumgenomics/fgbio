@@ -27,8 +27,8 @@ package com.fulcrumgenomics.bam
 import com.fulcrumgenomics.FgBioDef._
 import com.fulcrumgenomics.cmdline.{ClpGroups, FgBioTool}
 import com.fulcrumgenomics.util.{IlluminaAdapters, Io, ProgressLogger}
-import dagr.commons.util.LazyLogging
-import dagr.sopt._
+import com.fulcrumgenomics.commons.util.LazyLogging
+import com.fulcrumgenomics.sopt._
 import htsjdk.samtools.util.SequenceUtil
 import htsjdk.samtools.{SAMFileWriterFactory, SAMRecord, SamReaderFactory}
 
@@ -59,13 +59,13 @@ import scala.collection.mutable
   """
   )
 class FindTechnicalReads
-( @arg(flag="i", doc="Input SAM or BAM file") val input: PathToBam,
-  @arg(flag="o", doc="Output SAM or BAM file") val output: PathToBam,
-  @arg(flag="m", doc="The number of bases at the start of the read to match against.") val matchLength: Int = 15,
-  @arg(flag="e", doc="The maximum number of errors in the matched region.") val maxErrors: Int = 1,
-  @arg(flag="s", doc="The set of technical sequences to look for.") val sequences: Seq[String] = IlluminaAdapters.all.flatMap(_.both),
-  @arg(flag="a", doc="Output all reads.") val allReads: Boolean = false,
-  @arg(flag="t", doc="Tag to set to indicate a read is a technical sequence.") val tag: Option[String] = None
+( @arg(flag='i', doc="Input SAM or BAM file") val input: PathToBam,
+  @arg(flag='o', doc="Output SAM or BAM file") val output: PathToBam,
+  @arg(flag='m', doc="The number of bases at the start of the read to match against.") val matchLength: Int = 15,
+  @arg(flag='e', doc="The maximum number of errors in the matched region.") val maxErrors: Int = 1,
+  @arg(flag='s', doc="The set of technical sequences to look for.") val sequences: Seq[String] = IlluminaAdapters.all.flatMap(_.both),
+  @arg(flag='a', doc="Output all reads.") val allReads: Boolean = false,
+  @arg(flag='t', doc="Tag to set to indicate a read is a technical sequence.") val tag: Option[String] = None
 ) extends FgBioTool with LazyLogging {
 
   Io.assertReadable(input)

@@ -31,9 +31,9 @@ import java.nio.file.Path
 
 import com.fulcrumgenomics.cmdline.ClpGroups.Personal
 import com.fulcrumgenomics.cmdline.FgBioTool
-import dagr.commons.CommonsDef.PathToBam
-import dagr.commons.io.Io
-import dagr.sopt._
+import com.fulcrumgenomics.commons.CommonsDef.PathToBam
+import com.fulcrumgenomics.commons.io.Io
+import com.fulcrumgenomics.sopt._
 import htsjdk.samtools._
 import htsjdk.samtools.metrics.{MetricBase, MetricsFile}
 import htsjdk.samtools.util._
@@ -45,12 +45,12 @@ import scala.io.Source
   group = Personal
 )
 class HasSequence
-( @arg(flag = "i", doc = "Input SAM or BAM.") val input: PathToBam,
-  @arg(flag = "o", doc = "Output SAM or BAM.") val output: PathToBam,
-  @arg(flag = "m", doc = "File containing the DNA sequences to search for.") val sequences: Path,
-  @arg(flag = "s", doc = "Sequence match histogram written to this file.") val metrics: Path,
+( @arg(flag='i', doc = "Input SAM or BAM.") val input: PathToBam,
+  @arg(flag='o', doc = "Output SAM or BAM.") val output: PathToBam,
+  @arg(flag='m', doc = "File containing the DNA sequences to search for.") val sequences: Path,
+  @arg(flag='s', doc = "Sequence match histogram written to this file.") val metrics: Path,
   @arg(            doc = "Maximum mismatches for matching a sequence.") val maxMismatches: Int = 1,
-  @arg(            doc = "Minimum base quality. Any bases falling below this quality will be considered a mismatch even in the bases match.", flag = "q") val minimumBaseQuality: Int = 0,
+  @arg(            doc = "Minimum base quality. Any bases falling below this quality will be considered a mismatch even in the bases match.", flag='q') val minimumBaseQuality: Int = 0,
   @arg(            doc = "Count no calls as mismatches unless both bases are no calls.") val includeNoCalls: Boolean = false,
   @arg(            doc = "Search for mismatches at the start only") val startOnly: Boolean = true,
   @arg(            doc = "The tag to store the result.") val hasSequenceTag: String = "XW"

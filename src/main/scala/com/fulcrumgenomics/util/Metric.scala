@@ -28,8 +28,9 @@ package com.fulcrumgenomics.util
 import java.io.{Closeable, Writer}
 import java.nio.file.Path
 
-import dagr.commons.CommonsDef.unreachable
-import dagr.commons.reflect.{ReflectionUtil, ReflectiveBuilder}
+import com.fulcrumgenomics.commons.CommonsDef.unreachable
+import com.fulcrumgenomics.commons.reflect.{ReflectionUtil, ReflectiveBuilder}
+import com.fulcrumgenomics.commons.util.DelimitedDataParser
 import htsjdk.samtools.util.FormatUtil
 
 import scala.reflect.runtime.{universe => ru}

@@ -29,7 +29,7 @@ import com.fulcrumgenomics.FgBioDef.FilePath
 import com.fulcrumgenomics.cmdline.{ClpGroups, FgBioTool}
 import com.fulcrumgenomics.illumina.RunInfo
 import com.fulcrumgenomics.util._
-import dagr.sopt.{arg, clp}
+import com.fulcrumgenomics.sopt.{arg, clp}
 
 @clp(group=ClpGroups.Basecalling, description=
   """
@@ -46,8 +46,8 @@ import dagr.sopt.{arg, clp}
   """)
 class ExtractIlluminaRunInfo
 (
-  @arg(flag="i", doc="The input RunInfo.xml typically found in the run folder.") val input: FilePath,
-  @arg(flag="o", doc="The output file.") val output: FilePath
+  @arg(flag='i', doc="The input RunInfo.xml typically found in the run folder.") val input: FilePath,
+  @arg(flag='o', doc="The output file.") val output: FilePath
 ) extends FgBioTool {
 
   Io.assertReadable(input)

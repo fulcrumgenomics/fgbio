@@ -28,7 +28,7 @@ import com.fulcrumgenomics.FgBioDef._
 import com.fulcrumgenomics.cmdline.FgBioMain.FailureException
 import com.fulcrumgenomics.testing.UnitSpec
 import com.fulcrumgenomics.util.Io
-import dagr.commons.io.PathUtil
+import com.fulcrumgenomics.commons.io.PathUtil
 import htsjdk.samtools.SamReaderFactory
 
 /**

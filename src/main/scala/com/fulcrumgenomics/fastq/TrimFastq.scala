@@ -25,9 +25,9 @@ package com.fulcrumgenomics.fastq
 
 import com.fulcrumgenomics.cmdline.{FgBioTool, ClpGroups}
 import com.fulcrumgenomics.util.ProgressLogger
-import dagr.commons.CommonsDef._
-import dagr.commons.util.LazyLogging
-import dagr.sopt._
+import com.fulcrumgenomics.commons.CommonsDef._
+import com.fulcrumgenomics.commons.util.LazyLogging
+import com.fulcrumgenomics.sopt._
 
 @clp(
   description =
@@ -39,10 +39,10 @@ import dagr.sopt._
   group=ClpGroups.Fastq
 )
 class TrimFastq
-(   @arg(flag="i", doc="One or more input fastq files.")       val input:  Seq[PathToFastq],
-    @arg(flag="o", doc="A matching number of output files.")   val output: Seq[PathToFastq],
-    @arg(flag="l", doc="Length to trim reads to.")             val length: Int,
-    @arg(flag="x", doc="Exclude reads below the trim length.") val exclude: Boolean = false
+(   @arg(flag='i', doc="One or more input fastq files.")       val input:  Seq[PathToFastq],
+    @arg(flag='o', doc="A matching number of output files.")   val output: Seq[PathToFastq],
+    @arg(flag='l', doc="Length to trim reads to.")             val length: Int,
+    @arg(flag='x', doc="Exclude reads below the trim length.") val exclude: Boolean = false
 ) extends FgBioTool with LazyLogging {
 
   validate(input.size == output.size, "Number of input and output files must match.")

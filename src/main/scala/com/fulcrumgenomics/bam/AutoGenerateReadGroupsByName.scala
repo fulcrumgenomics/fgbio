@@ -30,8 +30,8 @@ import java.util.concurrent.atomic.AtomicInteger
 import com.fulcrumgenomics.FgBioDef._
 import com.fulcrumgenomics.cmdline.{ClpGroups, FgBioTool}
 import com.fulcrumgenomics.util.{Io, ProgressLogger}
-import dagr.commons.util.LazyLogging
-import dagr.sopt._
+import com.fulcrumgenomics.commons.util.LazyLogging
+import com.fulcrumgenomics.sopt._
 import htsjdk.samtools.SAMFileHeader.SortOrder
 import htsjdk.samtools._
 import htsjdk.samtools.util.Iso8601Date
@@ -56,10 +56,10 @@ import scala.collection.mutable
   """
 )
 class AutoGenerateReadGroupsByName
-(@arg(flag="i", doc="Input SAM or BAM file") val input: PathToBam,
- @arg(flag="o", doc="Output SAM or BAM file") val output: PathToBam,
- @arg(flag="s", doc="The sample to insert into the read groups") val sample: String,
- @arg(flag="l", doc="The library to insert into the read groups") val library: String,
+(@arg(flag='i', doc="Input SAM or BAM file") val input: PathToBam,
+ @arg(flag='o', doc="Output SAM or BAM file") val output: PathToBam,
+ @arg(flag='s', doc="The sample to insert into the read groups") val sample: String,
+ @arg(flag='l', doc="The library to insert into the read groups") val library: String,
  @arg(doc="The sequencing center from which the data originated") val sequencingCenter: Option[String] = None,
  @arg(doc="Predicted median insert size, to insert into the read groups") val predictedInsertSize: Option[Integer] = None,
  @arg(doc="Program group to insert into the read groups") val programGroup: Option[String] = None,

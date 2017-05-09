@@ -28,8 +28,8 @@ import com.fulcrumgenomics.FgBioDef._
 import com.fulcrumgenomics.cmdline.{ClpGroups, FgBioTool}
 import com.fulcrumgenomics.util.{Io, Metric, Sequences}
 import com.fulcrumgenomics.vcf.ByIntervalListVariantContextIterator
-import dagr.commons.util.LazyLogging
-import dagr.sopt.{arg, clp}
+import com.fulcrumgenomics.commons.util.LazyLogging
+import com.fulcrumgenomics.sopt.{arg, clp}
 import htsjdk.samtools.SamReaderFactory
 import htsjdk.samtools.util.SamLocusIterator.LocusInfo
 import htsjdk.samtools.util._
@@ -57,16 +57,16 @@ import Math.{min, max}
     | --min-base-quality filters out bases in the BAM with Q < n
   """)
 class EstimatePoolingFractions
-(@arg(flag="v", doc="VCF of individual sample genotypes.")  val vcf: PathToVcf,
- @arg(flag="b", doc="Path to BAM file of sequencing data.") val bam: PathToBam,
- @arg(flag="o", doc="Output file to write with pooling fractions.") val output: FilePath,
- @arg(flag="l", minElements=0, doc="Zero or more set of regions to restrict analysis to.") val intervals: Seq[PathToIntervals] = Seq.empty,
- @arg(flag="s", minElements=0, doc="Optional subset of samples from VCF to use.") val samples: Seq[String] = Seq.empty,
- @arg(flag="n", doc="Non-autosomal chromosomes to avoid.") val nonAutosomes: Seq[String] = Sequences.CommonNonAutosomalContigNames,
- @arg(flag="g", doc="Minimum genotype quality. Use -1 to disable.") val minGenotypeQuality: Int = 30,
- @arg(flag="c", doc="Minimum (sequencing coverage @ SNP site / n_samples).") val minMeanSampleCoverage: Int = 6,
- @arg(flag="m", doc="Minimum mapping quality.") val minMappingQuality: Int = 20,
- @arg(flag="q", doc="Minimum base quality.") val minBaseQuality:Int = 5
+(@arg(flag='v', doc="VCF of individual sample genotypes.")  val vcf: PathToVcf,
+ @arg(flag='b', doc="Path to BAM file of sequencing data.") val bam: PathToBam,
+ @arg(flag='o', doc="Output file to write with pooling fractions.") val output: FilePath,
+ @arg(flag='l', minElements=0, doc="Zero or more set of regions to restrict analysis to.") val intervals: Seq[PathToIntervals] = Seq.empty,
+ @arg(flag='s', minElements=0, doc="Optional subset of samples from VCF to use.") val samples: Seq[String] = Seq.empty,
+ @arg(flag='n', doc="Non-autosomal chromosomes to avoid.") val nonAutosomes: Seq[String] = Sequences.CommonNonAutosomalContigNames,
+ @arg(flag='g', doc="Minimum genotype quality. Use -1 to disable.") val minGenotypeQuality: Int = 30,
+ @arg(flag='c', doc="Minimum (sequencing coverage @ SNP site / n_samples).") val minMeanSampleCoverage: Int = 6,
+ @arg(flag='m', doc="Minimum mapping quality.") val minMappingQuality: Int = 20,
+ @arg(flag='q', doc="Minimum base quality.") val minBaseQuality:Int = 5
 ) extends FgBioTool with LazyLogging {
   Io.assertReadable(vcf :: bam :: intervals.toList)
 

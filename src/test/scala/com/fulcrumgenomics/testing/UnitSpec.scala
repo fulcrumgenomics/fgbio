@@ -29,10 +29,10 @@ import java.nio.file.{Files, Path}
 import com.fulcrumgenomics.FgBioDef._
 import com.fulcrumgenomics.cmdline.FgBioTool
 import com.fulcrumgenomics.util.Io
-import dagr.commons.reflect.ReflectionUtil
-import dagr.commons.util.{LazyLogging, LogLevel, Logger}
-import dagr.sopt.cmdline.CommandLineProgramParser
-import dagr.sopt.util.ParsingUtil
+import com.fulcrumgenomics.commons.reflect.ReflectionUtil
+import com.fulcrumgenomics.commons.util.{LazyLogging, LogLevel, Logger}
+import com.fulcrumgenomics.sopt.cmdline.CommandLineProgramParser
+import com.fulcrumgenomics.sopt.util.ParsingUtil
 import htsjdk.samtools.{SAMRecord, SamReaderFactory}
 import htsjdk.variant.variantcontext.VariantContext
 import htsjdk.variant.vcf.VCFFileReader

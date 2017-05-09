@@ -29,12 +29,12 @@ import java.util
 import java.util.Comparator
 
 import com.fulcrumgenomics.cmdline.{ClpGroups, FgBioTool}
-import com.fulcrumgenomics.util.{GenomicSpan, Metric, NumericCounter, ProgressLogger}
+import com.fulcrumgenomics.util.{GenomicSpan, Metric, ProgressLogger}
 import com.fulcrumgenomics.FgBioDef._
 import com.fulcrumgenomics.vcf.PhaseCigarOp.PhaseCigarOp
-import dagr.commons.io.{Io, PathUtil}
-import dagr.commons.util.LazyLogging
-import dagr.sopt._
+import com.fulcrumgenomics.commons.io.{Io, PathUtil}
+import com.fulcrumgenomics.commons.util.{LazyLogging, NumericCounter}
+import com.fulcrumgenomics.sopt._
 import htsjdk.samtools.SAMSequenceDictionary
 import htsjdk.samtools.util.{IntervalList, OverlapDetector}
 import htsjdk.variant.variantcontext.{Genotype, GenotypeBuilder, VariantContext, VariantContextBuilder}
@@ -68,15 +68,15 @@ import scala.collection.JavaConverters._
   group=ClpGroups.VcfOrBcf
 )
 class AssessPhasing
-( @arg(flag="c", doc="The VCF with called phased variants.") val calledVcf: PathToVcf,
-  @arg(flag="t", doc="The VCF with known phased variants.") val truthVcf: PathToVcf,
-  @arg(flag="o", doc="The output prefix for all output files.") val output: PathPrefix,
-  @arg(flag="k", doc="The interval list over which known phased variants should be kept.") val knownIntervals: Option[PathToIntervals] = None,
-  @arg(flag="m", doc="Allow missing fields in the VCF header.") val allowMissingFieldsInVcfHeader: Boolean = true,
-  @arg(flag="s", doc="Skip sites where the truth and call are both called but do not share the same alleles.") val skipMismatchingAlleles: Boolean = true,
-  @arg(flag="l", doc="Analyze only the given chromosomes in the interval list.  The entire chromosome will be analyzed (start and end ignored).") val intervals: Option[PathToIntervals] = None,
-  @arg(flag="b", doc="Remove enclosed phased blocks and truncate overlapping blocks.") val modifyBlocks: Boolean = true,
-  @arg(flag="d", doc="Output a VCF with the called variants annotated by if their phase matches the truth") val debugVcf: Boolean = false
+( @arg(flag='c', doc="The VCF with called phased variants.") val calledVcf: PathToVcf,
+  @arg(flag='t', doc="The VCF with known phased variants.") val truthVcf: PathToVcf,
+  @arg(flag='o', doc="The output prefix for all output files.") val output: PathPrefix,
+  @arg(flag='k', doc="The interval list over which known phased variants should be kept.") val knownIntervals: Option[PathToIntervals] = None,
+  @arg(flag='m', doc="Allow missing fields in the VCF header.") val allowMissingFieldsInVcfHeader: Boolean = true,
+  @arg(flag='s', doc="Skip sites where the truth and call are both called but do not share the same alleles.") val skipMismatchingAlleles: Boolean = true,
+  @arg(flag='l', doc="Analyze only the given chromosomes in the interval list.  The entire chromosome will be analyzed (start and end ignored).") val intervals: Option[PathToIntervals] = None,
+  @arg(flag='b', doc="Remove enclosed phased blocks and truncate overlapping blocks.") val modifyBlocks: Boolean = true,
+  @arg(flag='d', doc="Output a VCF with the called variants annotated by if their phase matches the truth") val debugVcf: Boolean = false
 ) extends FgBioTool with LazyLogging {
   import AssessPhasing.{CalledSampleName, TruthSampleName}
 

@@ -28,9 +28,10 @@ import java.nio.file.{Files, Paths}
 
 import com.fulcrumgenomics.FgBioDef._
 import com.fulcrumgenomics.testing.{ErrorLogLevel, UnitSpec, VariantContextSetBuilder}
-import com.fulcrumgenomics.util.{Metric, NumericCounter}
+import com.fulcrumgenomics.util.Metric
 import com.fulcrumgenomics.vcf.PhaseCigar.IlluminaSwitchErrors
-import dagr.commons.io.PathUtil
+import com.fulcrumgenomics.commons.io.PathUtil
+import com.fulcrumgenomics.commons.util.NumericCounter
 import htsjdk.samtools.SAMFileHeader
 import htsjdk.samtools.util.{Interval, IntervalList}
 import htsjdk.variant.variantcontext.writer.{Options, VariantContextWriterBuilder}

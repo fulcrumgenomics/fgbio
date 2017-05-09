@@ -27,8 +27,8 @@ package com.fulcrumgenomics.umi
 import com.fulcrumgenomics.FgBioDef._
 import com.fulcrumgenomics.cmdline.{ClpGroups, FgBioTool}
 import com.fulcrumgenomics.util._
-import dagr.commons.util.LazyLogging
-import dagr.sopt.{arg, clp}
+import com.fulcrumgenomics.commons.util.LazyLogging
+import com.fulcrumgenomics.sopt.{arg, clp}
 import htsjdk.samtools.{SAMFileWriterFactory, SamReaderFactory}
 
 import scala.collection.mutable
@@ -111,15 +111,15 @@ object CorrectUmis {
     |be single, non-hyphenated UMIs (e.g. if a record has RX:Z:ACGT-GGCA, you would use --umis ACGT GGCA).
   """)
 class CorrectUmis
-( @arg(flag="i", doc="Input SAM or BAM file.")  val input: PathToBam,
-  @arg(flag="o", doc="Output SAM or BAM file.") val output: PathToBam,
-  @arg(flag="r", doc="Reject BAM file to save unassigned reads.") val rejects: Option[PathToBam] = None,
-  @arg(flag="M", doc="Metrics file to write.") val metrics: Option[FilePath] = None,
-  @arg(flag="m", doc="Maximum number of mismatches between a UMI and an expected UMI.") val maxMismatches: Int,
-  @arg(flag="d", doc="Minimum distance (in mismatches) to next best UMI.") val minDistance: Int,
-  @arg(flag="u", doc="Expected UMI sequences.", minElements=0) val umis: Seq[String] = Seq.empty,
-  @arg(flag="U", doc="File of UMI sequences, one per line.", minElements=0) val umiFiles: Seq[FilePath] = Seq.empty,
-  @arg(flag="t", doc="Tag in which UMIs are stored.") val umiTag: String = ConsensusTags.UmiBases
+( @arg(flag='i', doc="Input SAM or BAM file.")  val input: PathToBam,
+  @arg(flag='o', doc="Output SAM or BAM file.") val output: PathToBam,
+  @arg(flag='r', doc="Reject BAM file to save unassigned reads.") val rejects: Option[PathToBam] = None,
+  @arg(flag='M', doc="Metrics file to write.") val metrics: Option[FilePath] = None,
+  @arg(flag='m', doc="Maximum number of mismatches between a UMI and an expected UMI.") val maxMismatches: Int,
+  @arg(flag='d', doc="Minimum distance (in mismatches) to next best UMI.") val minDistance: Int,
+  @arg(flag='u', doc="Expected UMI sequences.", minElements=0) val umis: Seq[String] = Seq.empty,
+  @arg(flag='U', doc="File of UMI sequences, one per line.", minElements=0) val umiFiles: Seq[FilePath] = Seq.empty,
+  @arg(flag='t', doc="Tag in which UMIs are stored.") val umiTag: String = ConsensusTags.UmiBases
 ) extends FgBioTool with LazyLogging {
 
   validate(umis.nonEmpty || umiFiles.nonEmpty, "At least one UMI or UMI file must be provided.")

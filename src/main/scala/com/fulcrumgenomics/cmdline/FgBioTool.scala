@@ -24,7 +24,7 @@
 package com.fulcrumgenomics.cmdline
 
 import com.fulcrumgenomics.cmdline.FgBioMain.FailureException
-import dagr.sopt.cmdline.ValidationException
+import com.fulcrumgenomics.sopt.cmdline.ValidationException
 
 /** All fgbio tools should extend this. */
 trait FgBioTool {

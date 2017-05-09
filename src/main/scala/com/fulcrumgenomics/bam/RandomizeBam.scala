@@ -34,8 +34,8 @@ package com.fulcrumgenomics.bam
 import com.fulcrumgenomics.cmdline.{ClpGroups, FgBioTool}
 import com.fulcrumgenomics.util.{Io, ProgressLogger}
 import com.fulcrumgenomics.FgBioDef._
-import dagr.commons.util.LazyLogging
-import dagr.sopt.{arg, clp}
+import com.fulcrumgenomics.commons.util.LazyLogging
+import com.fulcrumgenomics.sopt.{arg, clp}
 import htsjdk.samtools.SAMFileHeader.{GroupOrder, SortOrder}
 import htsjdk.samtools._
 import htsjdk.samtools.util.{Murmur3, SortingCollection}
@@ -48,11 +48,11 @@ import htsjdk.samtools.util.{Murmur3, SortingCollection}
   |turned off by specifying --query-group=false.
 """)
 class RandomizeBam(
-  @arg(flag="i", doc="The input SAM or BAM file.")           val input: PathToBam = Io.StdIn,
-  @arg(flag="o", doc="The output SAM or BAM file.")          val output: PathToBam = Io.StdOut,
-  @arg(flag="s", doc="Random seed.")                         val seed: Int = 42,
-  @arg(flag="q", doc="Group together reads by queryname.")   val queryGroup: Boolean = true,
-  @arg(flag="t", doc="Temporary directory for sorting.")     val tempDirectory: DirPath = Io.defaultTempDir()
+  @arg(flag='i', doc="The input SAM or BAM file.")           val input: PathToBam = Io.StdIn,
+  @arg(flag='o', doc="The output SAM or BAM file.")          val output: PathToBam = Io.StdOut,
+  @arg(flag='s', doc="Random seed.")                         val seed: Int = 42,
+  @arg(flag='q', doc="Group together reads by queryname.")   val queryGroup: Boolean = true,
+  @arg(flag='t', doc="Temporary directory for sorting.")     val tempDirectory: DirPath = Io.defaultTempDir()
 ) extends FgBioTool with LazyLogging {
 
   Io.assertCanWriteFile(input)

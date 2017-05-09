@@ -28,9 +28,9 @@ package com.fulcrumgenomics.umi
 import com.fulcrumgenomics.FgBioDef._
 import com.fulcrumgenomics.cmdline.{ClpGroups, FgBioTool}
 import com.fulcrumgenomics.util.{ProgressLogger, _}
-import dagr.commons.io.Io
-import dagr.commons.util.LazyLogging
-import dagr.sopt._
+import com.fulcrumgenomics.commons.io.Io
+import com.fulcrumgenomics.commons.util.LazyLogging
+import com.fulcrumgenomics.sopt._
 import htsjdk.samtools._
 import htsjdk.samtools.util._
 
@@ -71,17 +71,17 @@ import htsjdk.samtools.util._
   """,
   group = ClpGroups.SamOrBam)
 class ExtractUmisFromBam
-( @arg(flag = "i", doc = "Input BAM file.")                                      val input: PathToBam,
-  @arg(flag = "o", doc = "Output BAM file.")                                     val output: PathToBam,
-  @arg(flag = "r", doc = "The read structure, one per read in a template.")      val readStructure: Seq[ReadStructure],
+( @arg(flag='i', doc = "Input BAM file.")                                      val input: PathToBam,
+  @arg(flag='o', doc = "Output BAM file.")                                     val output: PathToBam,
+  @arg(flag='r', doc = "The read structure, one per read in a template.")      val readStructure: Seq[ReadStructure],
   @deprecated("Use molecular-index-tags instead.", since="0.1.3")
-  @arg(flag = "b", doc = "[DEPRECATED] SAM tags in which to store the molecular barcodes (one-per segment).",
+  @arg(flag='b', doc = "[DEPRECATED] SAM tags in which to store the molecular barcodes (one-per segment).",
     mutex=Array("molecularIndexTags"), minElements=0) val molecularBarcodeTags: Seq[String] = Seq.empty,
-  @arg(flag = "t", doc = "SAM tag(s) in which to store the molecular indices.", mutex=Array("molecularBarcodeTags"), minElements=0)
+  @arg(flag='t', doc = "SAM tag(s) in which to store the molecular indices.", mutex=Array("molecularBarcodeTags"), minElements=0)
                                                                                  val molecularIndexTags: Seq[String] = Seq.empty,
-  @arg(flag = "s", doc = "Single tag into which to concatenate all molecular indices.") val singleTag: Option[String] = None,
-  @arg(flag = "a", doc = "Annotate the read names with the molecular indices. See usage for more details.") val annotateReadNames: Boolean = false,
-  @arg(flag = "c", doc = "The SAM tag with the position in read to clip adapters (e.g. XT as produced by Picard's MarkIlluminaAdapters).") val clippingAttribute: Option[String] = None
+  @arg(flag='s', doc = "Single tag into which to concatenate all molecular indices.") val singleTag: Option[String] = None,
+  @arg(flag='a', doc = "Annotate the read names with the molecular indices. See usage for more details.") val annotateReadNames: Boolean = false,
+  @arg(flag='c', doc = "The SAM tag with the position in read to clip adapters (e.g. XT as produced by Picard's MarkIlluminaAdapters).") val clippingAttribute: Option[String] = None
 ) extends FgBioTool with LazyLogging {
 
   val progress = new ProgressLogger(logger, verb="written", unit=5e6.toInt)

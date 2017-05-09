@@ -32,8 +32,8 @@ import com.fulcrumgenomics.cmdline.{ClpGroups, FgBioTool}
 import com.fulcrumgenomics.umi.VanillaUmiConsensusCallerOptions._
 import com.fulcrumgenomics.util.NumericTypes.PhredScore
 import com.fulcrumgenomics.util.{Io, ProgressLogger}
-import dagr.commons.util.LazyLogging
-import dagr.sopt.{arg, clp}
+import com.fulcrumgenomics.commons.util.LazyLogging
+import com.fulcrumgenomics.sopt.{arg, clp}
 import htsjdk.samtools.SAMFileHeader.SortOrder
 import htsjdk.samtools._
 import htsjdk.samtools.reference.ReferenceSequenceFileWalker
@@ -86,19 +86,19 @@ import htsjdk.samtools.reference.ReferenceSequenceFileWalker
     """
 )
 class FilterConsensusReads
-( @arg(flag="i", doc="The input SAM or BAM file of consensus reads.") val input: PathToBam,
-  @arg(flag="o", doc="Output SAM or BAM file.") val output: PathToBam,
-  @arg(flag="r", doc="Reference fasta file.") val ref: PathToFasta,
-  @arg(flag="R", doc="Reverse [complement] per base tags on reverse strand reads.") val reversePerBaseTags: Boolean = false,
-  @arg(flag="M", minElements=1, maxElements=3, doc="The minimum number of reads supporting a consensus base/read.")
+( @arg(flag='i', doc="The input SAM or BAM file of consensus reads.") val input: PathToBam,
+  @arg(flag='o', doc="Output SAM or BAM file.") val output: PathToBam,
+  @arg(flag='r', doc="Reference fasta file.") val ref: PathToFasta,
+  @arg(flag='R', doc="Reverse [complement] per base tags on reverse strand reads.") val reversePerBaseTags: Boolean = false,
+  @arg(flag='M', minElements=1, maxElements=3, doc="The minimum number of reads supporting a consensus base/read.")
   val minReads: Seq[Int],
-  @arg(flag="E", minElements=1, maxElements=3, doc="The maximum raw-read error rate across the entire consensus read.")
+  @arg(flag='E', minElements=1, maxElements=3, doc="The maximum raw-read error rate across the entire consensus read.")
   val maxReadErrorRate: Seq[Double] = Seq(0.025),
-  @arg(flag="e", minElements=1, maxElements=3, doc="The maximum error rate for a single consensus base.")
+  @arg(flag='e', minElements=1, maxElements=3, doc="The maximum error rate for a single consensus base.")
   val maxBaseErrorRate: Seq[Double] = Seq(0.1),
-  @arg(flag="N", doc="Mask (make 'N') consensus bases with quality less than this threshold.")
+  @arg(flag='N', doc="Mask (make 'N') consensus bases with quality less than this threshold.")
   val minBaseQuality: PhredScore,
-  @arg(flag="n", doc="Maximum fraction of no-calls in the read after filtering.")
+  @arg(flag='n', doc="Maximum fraction of no-calls in the read after filtering.")
   val maxNoCallFraction: Double = 0.2
 
 ) extends FgBioTool with LazyLogging {

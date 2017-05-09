@@ -29,9 +29,9 @@ import com.fulcrumgenomics.FgBioDef.{DirPath, FilePath, PathToBam, unreachable}
 import com.fulcrumgenomics.cmdline.{ClpGroups, FgBioTool}
 import com.fulcrumgenomics.illumina.{Sample, SampleSheet}
 import com.fulcrumgenomics.util.Io
-import dagr.commons.io.PathUtil
-import dagr.commons.util.LazyLogging
-import dagr.sopt.{arg, clp}
+import com.fulcrumgenomics.commons.io.PathUtil
+import com.fulcrumgenomics.commons.util.LazyLogging
+import com.fulcrumgenomics.sopt.{arg, clp}
 
 import scala.collection.mutable.ListBuffer
 
@@ -53,10 +53,10 @@ import scala.collection.mutable.ListBuffer
   """)
 class ExtractBasecallingParamsForPicard
 (
-  @arg(flag="i", doc="The input sample sheet.") val input: FilePath,
-  @arg(flag="o", doc="The output folder to where per-lane parameter files should be written.") val output: DirPath,
-  @arg(flag="b", doc="Optional output folder to where per-lane BAM files should be written, otherwise the output directory will be used.") val bamOutput: Option[DirPath] = None,
-  @arg(flag="l", doc="The lane(s) (1-based) for which to write per-lane parameter files.") val lanes: Seq[Int]
+  @arg(flag='i', doc="The input sample sheet.") val input: FilePath,
+  @arg(flag='o', doc="The output folder to where per-lane parameter files should be written.") val output: DirPath,
+  @arg(flag='b', doc="Optional output folder to where per-lane BAM files should be written, otherwise the output directory will be used.") val bamOutput: Option[DirPath] = None,
+  @arg(flag='l', doc="The lane(s) (1-based) for which to write per-lane parameter files.") val lanes: Seq[Int]
 ) extends FgBioTool with LazyLogging {
 
   Io.assertReadable(input)

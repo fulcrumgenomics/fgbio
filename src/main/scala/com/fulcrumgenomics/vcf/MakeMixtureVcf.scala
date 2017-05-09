@@ -32,8 +32,8 @@ import com.fulcrumgenomics.FgBioDef._
 import com.fulcrumgenomics.cmdline.{ClpGroups, FgBioTool}
 import com.fulcrumgenomics.util.{Io, ProgressLogger}
 import com.fulcrumgenomics.vcf.MakeMixtureVcf.Sample
-import dagr.commons.util.LazyLogging
-import dagr.sopt.{arg, clp}
+import com.fulcrumgenomics.commons.util.LazyLogging
+import com.fulcrumgenomics.sopt.{arg, clp}
 import htsjdk.samtools.util.CollectionUtil
 import htsjdk.variant.variantcontext._
 import htsjdk.variant.variantcontext.writer.{Options, VariantContextWriter, VariantContextWriterBuilder}
@@ -119,13 +119,13 @@ object MakeMixtureVcf {
     |the mixture, and will be filtered.
   """)
 class MakeMixtureVcf
-( @arg(flag="i", doc="Input VCF containing genotypes for the samples to be mixed.") val input: PathToVcf,
-  @arg(flag="o", doc="Output VCF of mixture sample.") val output: PathToVcf,
-  @arg(flag="s", doc="Samples to mix. See general usage for format and examples.", minElements=0) val samples: Seq[String] = Seq.empty,
-  @arg(flag="S", doc="Output sample name.") val outputSampleName: String = "mixture",
-  @arg(flag="N", doc="Treat no-calls for samples as hom-ref genotypes.") val noCallIsHomRef: Boolean = true,
-  @arg(flag="a", doc="Format field containing allele fraction.") val alleleFractionField: Option[String] = None,
-  @arg(flag="p", doc="Digits of precision in generated allele fractions.") val precision: Int = 5
+( @arg(flag='i', doc="Input VCF containing genotypes for the samples to be mixed.") val input: PathToVcf,
+  @arg(flag='o', doc="Output VCF of mixture sample.") val output: PathToVcf,
+  @arg(flag='s', doc="Samples to mix. See general usage for format and examples.", minElements=0) val samples: Seq[String] = Seq.empty,
+  @arg(flag='S', doc="Output sample name.") val outputSampleName: String = "mixture",
+  @arg(flag='N', doc="Treat no-calls for samples as hom-ref genotypes.") val noCallIsHomRef: Boolean = true,
+  @arg(flag='a', doc="Format field containing allele fraction.") val alleleFractionField: Option[String] = None,
+  @arg(flag='p', doc="Digits of precision in generated allele fractions.") val precision: Int = 5
 ) extends FgBioTool with LazyLogging {
   Io.assertReadable(input)
   Io.assertCanWriteFile(output)

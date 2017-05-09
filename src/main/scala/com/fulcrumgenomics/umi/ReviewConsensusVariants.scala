@@ -32,9 +32,9 @@ import com.fulcrumgenomics.bam.BaseCounts
 import com.fulcrumgenomics.cmdline.{ClpGroups, FgBioTool}
 import com.fulcrumgenomics.umi.ReviewConsensusVariants._
 import com.fulcrumgenomics.util.{Io, Metric}
-import dagr.commons.util.LazyLogging
-import dagr.sopt
-import dagr.sopt.{arg, clp}
+import com.fulcrumgenomics.commons.util.LazyLogging
+import com.fulcrumgenomics.sopt
+import com.fulcrumgenomics.sopt.{arg, clp}
 import htsjdk.samtools.SamPairUtil.PairOrientation
 import htsjdk.samtools._
 import htsjdk.samtools.reference.{ReferenceSequenceFile, ReferenceSequenceFileFactory}
@@ -143,14 +143,14 @@ object ReviewConsensusVariants {
     |genotypes will be used.
   """)
 class ReviewConsensusVariants
-( @arg(flag="i", doc="Input VCF or IntervalList of variant locations.") val input : FilePath,
-  @arg(flag="s", doc="Name of the sample being reviewed.") val sample: Option[String] = None,
-  @arg(flag="c", doc="BAM file of consensus reads used to call variants.")  val consensusBam : PathToBam,
-  @arg(flag="g", doc="BAM file of grouped raw reads used to build consensuses.") val groupedBam : PathToBam,
-  @arg(flag="r", doc="Reference fasta file.") val ref: PathToFasta,
-  @arg(flag="o", doc="Basename of output files to create.") val output : PathPrefix,
-  @arg(flag="N", doc="Ignore N bases in the consensus reads.") val ignoreNsInConsensusReads: Boolean = false,
-  @arg(flag="m", doc="Only output detailed information for variants at maf and below.") val maf: Double = 0.05
+( @arg(flag='i', doc="Input VCF or IntervalList of variant locations.") val input : FilePath,
+  @arg(flag='s', doc="Name of the sample being reviewed.") val sample: Option[String] = None,
+  @arg(flag='c', doc="BAM file of consensus reads used to call variants.")  val consensusBam : PathToBam,
+  @arg(flag='g', doc="BAM file of grouped raw reads used to build consensuses.") val groupedBam : PathToBam,
+  @arg(flag='r', doc="Reference fasta file.") val ref: PathToFasta,
+  @arg(flag='o', doc="Basename of output files to create.") val output : PathPrefix,
+  @arg(flag='N', doc="Ignore N bases in the consensus reads.") val ignoreNsInConsensusReads: Boolean = false,
+  @arg(flag='m', doc="Only output detailed information for variants at maf and below.") val maf: Double = 0.05
 )extends FgBioTool with LazyLogging {
   Io.assertReadable(Seq(input, consensusBam, groupedBam, ref))
   Io.assertCanWriteFile(output)

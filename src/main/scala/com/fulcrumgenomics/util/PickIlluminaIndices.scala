@@ -3,7 +3,7 @@ package com.fulcrumgenomics.util
 import com.fulcrumgenomics.cmdline.{ClpGroups, FgBioTool}
 import com.fulcrumgenomics.FgBioDef._
 import scala.collection.JavaConverters._
-import dagr.sopt.{arg, clp}
+import com.fulcrumgenomics.sopt.{arg, clp}
 
 /**
   * Program for picking sets of indices of arbitrary length that meet certain constraints
@@ -16,17 +16,17 @@ import dagr.sopt.{arg, clp}
  group = ClpGroups.Utilities)
 class PickIlluminaIndices
 (
-  @arg(flag="l", doc="The length of each barcode sequence.")                           val length: Int = 8,
-  @arg(flag="n", doc="The number of indices desired.")                                 val indices: Int,
-  @arg(flag="e", doc="The minimum edit distance between two indices in the set.")      val editDistance: Int = 3,
-  @arg(flag="o", doc="File to write indices to.")                                      val output: FilePath,
+  @arg(flag='l', doc="The length of each barcode sequence.")                           val length: Int = 8,
+  @arg(flag='n', doc="The number of indices desired.")                                 val indices: Int,
+  @arg(flag='e', doc="The minimum edit distance between two indices in the set.")      val editDistance: Int = 3,
+  @arg(flag='o', doc="File to write indices to.")                                      val output: FilePath,
   @arg(          doc="Allow indices that are lexical reverses of one another")         val allowReverses: Boolean = false,
   @arg(          doc="Allow indices that are reverse complements of one another")      val allowReverseComplements: Boolean = false,
   @arg(          doc="Allow indices that are palindromic (bases == rev(bases)).")      val allowPalindromes: Boolean = false,
   @arg(          doc="Reject indices with a homopolymer of greater than this length.") val maxHomopolymer: Int = 2,
   @arg(          doc="The minimum GC fraction for a barcode to be accepted.")          val minGc: Double = 0,
   @arg(          doc="The maximum GC fraction for a barcode to be accepted.")          val maxGc: Double = 0.7,
-  @arg(flag="t", doc="Number of threads to use.")                                      val threads: Int = 4,
+  @arg(flag='t', doc="Number of threads to use.")                                      val threads: Int = 4,
   @arg(          doc="The installation directory for ViennaRNA.")                      val viennaRnaDir: Option[DirPath] = None,
   @arg(          doc="The lowest acceptable secondary structure deltaG.")              val minDeltaG: Double = -10,
   @arg(          doc="The indexed adapter sequence into which the indices will be integrated.")

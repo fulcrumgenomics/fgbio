@@ -27,7 +27,7 @@ import java.nio.file.Paths
 
 import com.fulcrumgenomics.FgBioDef._
 import com.fulcrumgenomics.testing.UnitSpec
-import dagr.sopt.cmdline.ValidationException
+import com.fulcrumgenomics.sopt.cmdline.ValidationException
 import htsjdk.samtools.SamReaderFactory
 
 /**

@@ -29,7 +29,7 @@ import com.fulcrumgenomics.FgBioDef._
 import com.fulcrumgenomics.testing.UnitSpec
 import com.fulcrumgenomics.util.Io
 import com.fulcrumgenomics.vcf.HapCutType.{HapCut1, HapCut2, HapCutType}
-import dagr.commons.io.PathUtil
+import com.fulcrumgenomics.commons.io.PathUtil
 import htsjdk.variant.variantcontext.VariantContext
 import htsjdk.variant.vcf.VCFFileReader
 import org.scalatest.ParallelTestExecution

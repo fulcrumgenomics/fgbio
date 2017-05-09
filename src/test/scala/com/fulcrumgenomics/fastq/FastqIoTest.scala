@@ -24,7 +24,7 @@
 package com.fulcrumgenomics.fastq
 
 import com.fulcrumgenomics.testing.UnitSpec
-import dagr.commons.io.Io
+import com.fulcrumgenomics.commons.io.Io
 
 object FastqIoTest {
   val someFastq =

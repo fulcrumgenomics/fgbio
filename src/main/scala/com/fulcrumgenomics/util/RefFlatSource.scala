@@ -27,9 +27,9 @@ package com.fulcrumgenomics.util
 
 import java.io.{Closeable, File, InputStream}
 
+import com.fulcrumgenomics.commons.CommonsDef.FilePath
+import com.fulcrumgenomics.commons.util.{DelimitedDataParser, LazyLogging}
 import com.fulcrumgenomics.util.GeneAnnotations.{Exon, Gene, Transcript}
-import dagr.commons.CommonsDef.FilePath
-import dagr.commons.util.LazyLogging
 import htsjdk.samtools.SAMSequenceDictionary
 
 import scala.io.Source

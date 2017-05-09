@@ -26,9 +26,9 @@ package com.fulcrumgenomics.personal.nhomer
 
 import com.fulcrumgenomics.cmdline.{ClpGroups, FgBioTool}
 import com.fulcrumgenomics.FgBioDef._
-import dagr.commons.io.Io
-import dagr.sopt._
-import dagr.sopt.cmdline.ValidationException
+import com.fulcrumgenomics.commons.io.Io
+import com.fulcrumgenomics.sopt._
+import com.fulcrumgenomics.sopt.cmdline.ValidationException
 import htsjdk.samtools.util.CloserUtil
 import htsjdk.samtools.{SAMFileWriter, SAMFileWriterFactory, SamReader, SamReaderFactory}
 

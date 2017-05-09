@@ -32,7 +32,8 @@ import com.fulcrumgenomics.fastq.FastqDemultiplexer.DemuxResult
 import com.fulcrumgenomics.illumina.{Sample, SampleSheet}
 import com.fulcrumgenomics.testing.{ErrorLogLevel, UnitSpec}
 import com.fulcrumgenomics.util.{Io, Metric, ReadStructure, SampleBarcodeMetric}
-import dagr.commons.io.PathUtil
+import com.fulcrumgenomics.commons.io.PathUtil
+import com.fulcrumgenomics.sopt.cmdline.ValidationException
 import htsjdk.samtools.{SAMFileHeader, SAMReadGroupRecord}
 import org.scalatest.OptionValues
 
@@ -309,7 +310,7 @@ class DemuxFastqsTest extends UnitSpec with OptionValues with ErrorLogLevel {
     val failure   = result.failed
     val throwable = failure.get
     val message = throwable match {
-      case validationException: dagr.sopt.cmdline.ValidationException => validationException.messages.mkString("\n")
+      case validationException: ValidationException => validationException.messages.mkString("\n")
       case thr => thr.getMessage
     }
     message should not be null

@@ -31,11 +31,11 @@ import java.util.concurrent.atomic.AtomicLong
 
 import com.fulcrumgenomics.FgBioDef._
 import com.fulcrumgenomics.cmdline.{ClpGroups, FgBioTool}
+import com.fulcrumgenomics.commons.util.{LazyLogging, NumericCounter, SimpleCounter}
+import com.fulcrumgenomics.sopt.cmdline.ValidationException
+import com.fulcrumgenomics.sopt.{arg, clp}
 import com.fulcrumgenomics.util.Sequences.countMismatches
 import com.fulcrumgenomics.util._
-import dagr.commons.util.LazyLogging
-import dagr.sopt.cmdline.ValidationException
-import dagr.sopt.{arg, clp}
 import htsjdk.samtools.SAMFileHeader.{GroupOrder, SortOrder}
 import htsjdk.samtools._
 import htsjdk.samtools.util.SortingCollection
@@ -396,15 +396,15 @@ case class TagFamilySizeMetric(family_size: Int,
   """
 )
 class GroupReadsByUmi
-( @arg(flag="i", doc="The input BAM file.")              val input: PathToBam  = Io.StdIn,
-  @arg(flag="o", doc="The output BAM file.")             val output: PathToBam = Io.StdOut,
-  @arg(flag="f", doc="Optional output of tag family size counts.") val familySizeHistogram: Option[FilePath] = None,
-  @arg(flag="t", doc="The tag containing the raw UMI.")  val rawTag: String    = "RX",
-  @arg(flag="T", doc="The output tag for UMI grouping.") val assignTag: String = "MI",
-  @arg(flag="m", doc="Minimum mapping quality.")         val minMapQ: Int      = 30,
-  @arg(flag="n", doc="Include non-PF reads.")            val includeNonPfReads: Boolean = false,
-  @arg(flag="s", doc="The UMI assignment strategy; one of 'identity', 'edit', 'adjacency' or 'paired'.") val strategy: String,
-  @arg(flag="e", doc="The allowable number of edits between UMIs.") val edits: Int = 1,
+( @arg(flag='i', doc="The input BAM file.")              val input: PathToBam  = Io.StdIn,
+  @arg(flag='o', doc="The output BAM file.")             val output: PathToBam = Io.StdOut,
+  @arg(flag='f', doc="Optional output of tag family size counts.") val familySizeHistogram: Option[FilePath] = None,
+  @arg(flag='t', doc="The tag containing the raw UMI.")  val rawTag: String    = "RX",
+  @arg(flag='T', doc="The output tag for UMI grouping.") val assignTag: String = "MI",
+  @arg(flag='m', doc="Minimum mapping quality.")         val minMapQ: Int      = 30,
+  @arg(flag='n', doc="Include non-PF reads.")            val includeNonPfReads: Boolean = false,
+  @arg(flag='s', doc="The UMI assignment strategy; one of 'identity', 'edit', 'adjacency' or 'paired'.") val strategy: String,
+  @arg(flag='e', doc="The allowable number of edits between UMIs.") val edits: Int = 1,
   @arg(          doc="Temporary directory for sorting.") val tmpDir: DirPath = Paths.get(System.getProperty("java.io.tmpdir"))
 )extends FgBioTool with LazyLogging {
   import GroupReadsByUmi._

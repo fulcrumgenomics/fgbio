@@ -32,8 +32,8 @@ import java.util.NoSuchElementException
 import com.fulcrumgenomics.cmdline.{ClpGroups, FgBioTool}
 import com.fulcrumgenomics.util.Io
 import com.fulcrumgenomics.FgBioDef._
-import dagr.commons.util.LazyLogging
-import dagr.sopt._
+import com.fulcrumgenomics.commons.util.LazyLogging
+import com.fulcrumgenomics.sopt._
 import htsjdk.variant.variantcontext._
 import htsjdk.variant.variantcontext.writer.{Options, VariantContextWriter, VariantContextWriterBuilder}
 import htsjdk.variant.vcf._
@@ -91,10 +91,10 @@ import scala.io.Source
   group=ClpGroups.VcfOrBcf
 )
 class HapCutToVcf
-( @arg(flag="v", doc="The original VCF provided to HAPCUT1/HAPCUT2.") val vcf: PathToVcf,
-  @arg(flag="i", doc="The output file from HAPCUT1/HAPCUT2.") val input: FilePath,
-  @arg(flag="o", doc="The output VCF with both phased and unphased variants.") val output: PathToVcf,
-  @arg(flag="r", doc="Output phased variants in GATK's ReadBackedPhasing format.") val gatkPhasingFormat: Boolean = false
+( @arg(flag='v', doc="The original VCF provided to HAPCUT1/HAPCUT2.") val vcf: PathToVcf,
+  @arg(flag='i', doc="The output file from HAPCUT1/HAPCUT2.") val input: FilePath,
+  @arg(flag='o', doc="The output VCF with both phased and unphased variants.") val output: PathToVcf,
+  @arg(flag='r', doc="Output phased variants in GATK's ReadBackedPhasing format.") val gatkPhasingFormat: Boolean = false
 ) extends FgBioTool with LazyLogging {
   import HapCutType._
 

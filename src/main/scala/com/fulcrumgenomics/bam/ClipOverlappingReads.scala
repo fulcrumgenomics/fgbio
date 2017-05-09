@@ -28,8 +28,8 @@ import com.fulcrumgenomics.FgBioDef._
 import com.fulcrumgenomics.bam.SamRecordClipper.ClippingMode
 import com.fulcrumgenomics.cmdline.{ClpGroups, FgBioTool}
 import com.fulcrumgenomics.util.{Io, ProgressLogger}
-import dagr.commons.util.LazyLogging
-import dagr.sopt.{arg, clp}
+import com.fulcrumgenomics.commons.util.LazyLogging
+import com.fulcrumgenomics.sopt.{arg, clp}
 import htsjdk.samtools.SAMFileHeader.SortOrder
 import htsjdk.samtools.SamPairUtil.PairOrientation
 import htsjdk.samtools._
@@ -55,11 +55,11 @@ import htsjdk.samtools.reference.ReferenceSequenceFileWalker
     |written in coordinate order.
   """)
 class ClipOverlappingReads
-( @arg(flag="i", doc="Input SAM or BAM file of aligned reads in coordinate order.") val input: PathToBam,
-  @arg(flag="o", doc="Output SAM or BAM file.") val output: PathToBam,
-  @arg(flag="s", doc="Soft clip reads instead of hard clipping.") val softClip: Boolean = false,
-  @arg(flag="r", doc="Reference sequence fasta file.") val ref: PathToFasta,
-  @arg(flag="a", doc="Automatically clip extended attributes that are the same length as bases.") val autoClipAttributes: Boolean = false
+( @arg(flag='i', doc="Input SAM or BAM file of aligned reads in coordinate order.") val input: PathToBam,
+  @arg(flag='o', doc="Output SAM or BAM file.") val output: PathToBam,
+  @arg(flag='s', doc="Soft clip reads instead of hard clipping.") val softClip: Boolean = false,
+  @arg(flag='r', doc="Reference sequence fasta file.") val ref: PathToFasta,
+  @arg(flag='a', doc="Automatically clip extended attributes that are the same length as bases.") val autoClipAttributes: Boolean = false
 ) extends FgBioTool with LazyLogging {
   Io.assertReadable(input)
   Io.assertReadable(ref)

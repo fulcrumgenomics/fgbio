@@ -27,7 +27,7 @@ package com.fulcrumgenomics.umi
 
 import com.fulcrumgenomics.testing.{SamRecordSetBuilder, UnitSpec}
 import com.fulcrumgenomics.util.ReadStructure
-import dagr.sopt.cmdline.ValidationException
+import com.fulcrumgenomics.sopt.cmdline.ValidationException
 import htsjdk.samtools.{SAMFileWriterFactory, SAMRecord}
 import org.scalatest.OptionValues
 

@@ -27,9 +27,9 @@ package com.fulcrumgenomics.bam
 import com.fulcrumgenomics.cmdline.{ClpGroups, FgBioTool}
 import com.fulcrumgenomics.util.ProgressLogger
 import com.fulcrumgenomics.FgBioDef._
-import dagr.commons.io.Io
-import dagr.commons.util.LazyLogging
-import dagr.sopt._
+import com.fulcrumgenomics.commons.io.Io
+import com.fulcrumgenomics.commons.util.LazyLogging
+import com.fulcrumgenomics.sopt._
 import htsjdk.samtools._
 import scala.collection.JavaConverters._
 
@@ -58,11 +58,11 @@ import scala.collection.JavaConverters._
     """,
   group = ClpGroups.SamOrBam)
 class UpdateReadGroups
-(@arg(flag = "i", doc = "Input BAM file.") val input: PathToBam,
- @arg(flag = "o", doc = "Output BAM file.") val output: PathToBam,
- @arg(flag = "r", doc = "A SAM header file with the replacement read groups (see detailed usage).") val readGroupsFile: PathToBam,
- @arg(flag = "k", doc = "Keep all read group attributes that are not replaced.") val keepReadGroupAttributes: Boolean = false,
- @arg(flag = "g", doc = "Keep all read groups not found in the replacement header, otherwise throw an error.") val ignoreMissingReadGroups: Boolean = false
+(@arg(flag='i', doc = "Input BAM file.") val input: PathToBam,
+ @arg(flag='o', doc = "Output BAM file.") val output: PathToBam,
+ @arg(flag='r', doc = "A SAM header file with the replacement read groups (see detailed usage).") val readGroupsFile: PathToBam,
+ @arg(flag='k', doc = "Keep all read group attributes that are not replaced.") val keepReadGroupAttributes: Boolean = false,
+ @arg(flag='g', doc = "Keep all read groups not found in the replacement header, otherwise throw an error.") val ignoreMissingReadGroups: Boolean = false
 ) extends FgBioTool with LazyLogging {
 
   private val fromReadGroupKey = "FR"

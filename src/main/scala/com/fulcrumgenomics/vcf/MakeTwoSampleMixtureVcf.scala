@@ -30,7 +30,7 @@ import com.fulcrumgenomics.FgBioDef._
 import com.fulcrumgenomics.cmdline.{ClpGroups, FgBioTool}
 import com.fulcrumgenomics.util.Io
 import com.fulcrumgenomics.vcf.MakeTwoSampleMixtureVcf._
-import dagr.sopt._
+import com.fulcrumgenomics.sopt._
 import htsjdk.samtools.util.IntervalList
 import htsjdk.variant.variantcontext._
 import htsjdk.variant.vcf.{VCFFilterHeaderLine, _}
@@ -83,14 +83,14 @@ object MakeTwoSampleMixtureVcf {
   """
 )
 class MakeTwoSampleMixtureVcf
-( @arg(flag="i", doc="Input VCF file.")  val input: PathToVcf,
-  @arg(flag="o", doc="Output VCF file.") val output: PathToVcf,
-  @arg(flag="t", doc="Name of the 'tumor' sample in the input VCF.")  val tumor: String,
-  @arg(flag="n", doc="Name of the 'normal' sample in the input VCF.") val normal: String,
-  @arg(flag="f", doc="What fraction of the mixture comes from the 'tumor' sample.") val tumorFraction: Double = 0.5,
-  @arg(flag="T", doc="Tumor only mode - only output tumor genotypes and don't filter sites.") val tumorOnly: Boolean = false,
-  @arg(flag="N", doc="Treat no-calls for either sample as hom-ref genotypes.") val noCallIsHomRef: Boolean = true,
-  @arg(flag="l", doc="Optional set of intervals to restrict to.") val intervals: Option[PathToIntervals] = None
+( @arg(flag='i', doc="Input VCF file.")  val input: PathToVcf,
+  @arg(flag='o', doc="Output VCF file.") val output: PathToVcf,
+  @arg(flag='t', doc="Name of the 'tumor' sample in the input VCF.")  val tumor: String,
+  @arg(flag='n', doc="Name of the 'normal' sample in the input VCF.") val normal: String,
+  @arg(flag='f', doc="What fraction of the mixture comes from the 'tumor' sample.") val tumorFraction: Double = 0.5,
+  @arg(flag='T', doc="Tumor only mode - only output tumor genotypes and don't filter sites.") val tumorOnly: Boolean = false,
+  @arg(flag='N', doc="Treat no-calls for either sample as hom-ref genotypes.") val noCallIsHomRef: Boolean = true,
+  @arg(flag='l', doc="Optional set of intervals to restrict to.") val intervals: Option[PathToIntervals] = None
 ) extends FgBioTool {
   if (tumorFraction < 0 || tumorFraction > 1) fail("Tumor fraction must be between 0 and 1.")
   if (tumor == normal) fail("Tumor and Normal samples must be different samples.")

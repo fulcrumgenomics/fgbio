@@ -27,8 +27,8 @@ import java.io.{BufferedWriter, InputStream, OutputStream, OutputStreamWriter}
 import java.nio.file.{Files, Path, Paths}
 import java.util.zip.{GZIPInputStream, GZIPOutputStream}
 
-import dagr.commons.io.{IoUtil, PathUtil}
-import dagr.commons.CommonsDef.DirPath
+import com.fulcrumgenomics.commons.io.{IoUtil, PathUtil}
+import com.fulcrumgenomics.commons.CommonsDef.DirPath
 
 /**
   * Provides common IO utility methods.  Can be instantiated to create a custom factory, or

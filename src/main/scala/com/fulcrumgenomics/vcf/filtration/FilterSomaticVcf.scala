@@ -30,8 +30,8 @@ import com.fulcrumgenomics.FgBioDef._
 import com.fulcrumgenomics.bam._
 import com.fulcrumgenomics.cmdline.{ClpGroups, FgBioTool}
 import com.fulcrumgenomics.util.Io
-import dagr.commons.util.LazyLogging
-import dagr.sopt.{arg, clp}
+import com.fulcrumgenomics.commons.util.LazyLogging
+import com.fulcrumgenomics.sopt.{arg, clp}
 import htsjdk.samtools.{SAMRecord, SamReaderFactory}
 import htsjdk.variant.variantcontext.VariantContextBuilder
 import htsjdk.variant.variantcontext.writer.{Options, VariantContextWriter, VariantContextWriterBuilder}
@@ -73,13 +73,13 @@ import htsjdk.variant.vcf._
     |                      only the annotation is produced and no filtering is performed.
   """)
 class FilterSomaticVcf
-( @arg(flag="i", doc="Input VCF of somatic variant calls.")       val input: PathToVcf,
-  @arg(flag="o", doc="Output VCF of filtered somatic variants.")  val output: PathToVcf,
-  @arg(flag="b", doc="BAM file for the tumor sample.")            val bam: PathToBam,
-  @arg(flag="s", doc="Sample name in VCF if > 1 sample present.") val sample: Option[String] = None,
-  @arg(flag="m", doc="Minimum mapping quality for reads.")        val minMappingQuality: Int = 30,
-  @arg(flag="q", doc="Minimum base quality.")                     val minBaseQuality: Int    = 20,
-  @arg(flag="p", doc="Use only paired reads mapped in pairs.")    val pairedReadsOnly: Boolean = false,
+( @arg(flag='i', doc="Input VCF of somatic variant calls.")       val input: PathToVcf,
+  @arg(flag='o', doc="Output VCF of filtered somatic variants.")  val output: PathToVcf,
+  @arg(flag='b', doc="BAM file for the tumor sample.")            val bam: PathToBam,
+  @arg(flag='s', doc="Sample name in VCF if > 1 sample present.") val sample: Option[String] = None,
+  @arg(flag='m', doc="Minimum mapping quality for reads.")        val minMappingQuality: Int = 30,
+  @arg(flag='q', doc="Minimum base quality.")                     val minBaseQuality: Int    = 20,
+  @arg(flag='p', doc="Use only paired reads mapped in pairs.")    val pairedReadsOnly: Boolean = false,
   // Developer Note: filter-specific attributes should NOT be given flags as we will likely run
   //                 out of flags that way and end up with a mix of +flag and -flag options.
   @arg(doc="Distance from end of read to implicate end repair.")  val endRepairDistance: Int = 2,

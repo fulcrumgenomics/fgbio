@@ -30,10 +30,10 @@ import com.fulcrumgenomics.cmdline.{ClpGroups, FgBioTool}
 import com.fulcrumgenomics.umi.VanillaUmiConsensusCallerOptions._
 import com.fulcrumgenomics.util.NumericTypes.PhredScore
 import com.fulcrumgenomics.util.ProgressLogger
-import dagr.commons.io.Io
-import dagr.commons.util.{LazyLogging, LogLevel, Logger}
-import dagr.sopt._
-import dagr.sopt.cmdline.ValidationException
+import com.fulcrumgenomics.commons.io.Io
+import com.fulcrumgenomics.commons.util.{LazyLogging, LogLevel, Logger}
+import com.fulcrumgenomics.sopt._
+import com.fulcrumgenomics.sopt.cmdline.ValidationException
 import htsjdk.samtools.SAMFileHeader.SortOrder
 import htsjdk.samtools._
 
@@ -92,30 +92,30 @@ import htsjdk.samtools._
   """,
   group = ClpGroups.Umi)
 class CallMolecularConsensusReads
-(@arg(flag="i", doc="The input SAM or BAM file.") val input: PathToBam,
- @arg(flag="o", doc="Output SAM or BAM file to write consensus reads.") val output: PathToBam,
- @arg(flag="r", doc="Optional output SAM or BAM file to write reads not used.") val rejects: Option[PathToBam] = None,
- @arg(flag="t", doc="The SAM attribute with the unique molecule tag.") val tag: String = DefaultTag,
- @arg(flag="p", doc="The Prefix all consensus read names") val readNamePrefix: Option[String] = None,
- @arg(flag="R", doc="The new read group ID for all the consensus reads.") val readGroupId: String = "A",
- @arg(flag="1", doc="The Phred-scaled error rate for an error prior to the UMIs being integrated.") val errorRatePreUmi: PhredScore = DefaultErrorRatePreUmi,
- @arg(flag="2", doc="The Phred-scaled error rate for an error post the UMIs have been integrated.") val errorRatePostUmi: PhredScore = DefaultErrorRatePostUmi,
- @arg(flag="m", doc="Ignore bases in raw reads that have Q below this value.") val minInputBaseQuality: PhredScore = DefaultMinInputBaseQuality,
- @arg(flag="N", doc=
+(@arg(flag='i', doc="The input SAM or BAM file.") val input: PathToBam,
+ @arg(flag='o', doc="Output SAM or BAM file to write consensus reads.") val output: PathToBam,
+ @arg(flag='r', doc="Optional output SAM or BAM file to write reads not used.") val rejects: Option[PathToBam] = None,
+ @arg(flag='t', doc="The SAM attribute with the unique molecule tag.") val tag: String = DefaultTag,
+ @arg(flag='p', doc="The Prefix all consensus read names") val readNamePrefix: Option[String] = None,
+ @arg(flag='R', doc="The new read group ID for all the consensus reads.") val readGroupId: String = "A",
+ @arg(flag='1', doc="The Phred-scaled error rate for an error prior to the UMIs being integrated.") val errorRatePreUmi: PhredScore = DefaultErrorRatePreUmi,
+ @arg(flag='2', doc="The Phred-scaled error rate for an error post the UMIs have been integrated.") val errorRatePostUmi: PhredScore = DefaultErrorRatePostUmi,
+ @arg(flag='m', doc="Ignore bases in raw reads that have Q below this value.") val minInputBaseQuality: PhredScore = DefaultMinInputBaseQuality,
+ @arg(flag='N', doc=
    """
      |Deprecated: will be removed in future versions; use FilterConsensusReads to filter consensus bases on
      |quality instead. Mask (make 'N') consensus bases with quality less than this threshold.
    """)
  val minConsensusBaseQuality: PhredScore = 2.toByte,
- @arg(flag="M", doc="The minimum number of reads to produce a consensus base.") val minReads: Int,
+ @arg(flag='M', doc="The minimum number of reads to produce a consensus base.") val minReads: Int,
  @arg(doc="""
             |The maximum number of reads to use when building a consensus. If more than this many reads are
             |present in a tag family, the family is randomly downsampled to exactly max-reads reads.
           """)
  val maxReads: Option[Int] = None,
- @arg(flag="B", doc="If true produce tags on consensus reads that contain per-base information.") val outputPerBaseTags: Boolean = DefaultProducePerBaseTags,
- @arg(flag="S", doc="The sort order of the output, if None then the same as the input.") val sortOrder: Option[SortOrder] = Some(SortOrder.queryname),
- @arg(flag="D", doc="Turn on debug logging.") val debug: Boolean = false
+ @arg(flag='B', doc="If true produce tags on consensus reads that contain per-base information.") val outputPerBaseTags: Boolean = DefaultProducePerBaseTags,
+ @arg(flag='S', doc="The sort order of the output, if None then the same as the input.") val sortOrder: Option[SortOrder] = Some(SortOrder.queryname),
+ @arg(flag='D', doc="Turn on debug logging.") val debug: Boolean = false
 ) extends FgBioTool with LazyLogging {
 
   if (debug) Logger.level = LogLevel.Debug
