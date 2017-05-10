@@ -25,7 +25,9 @@
 package com.fulcrumgenomics.alignment
 
 import com.fulcrumgenomics.FgBioDef._
-import htsjdk.samtools.CigarOperator
+import htsjdk.samtools.{CigarOperator, TextCigarCodec, Cigar => HtsJdkCigar}
+
+import scala.collection.mutable.ArrayBuffer
 
 import scala.collection.mutable.ArrayBuffer
 
@@ -68,6 +70,9 @@ object Cigar {
 
     Cigar(elements.toIndexedSeq)
   }
+
+  /** Constructs a Cigar objects from the HTSJDK class of the same name. */
+  def apply(ciggy: HtsJdkCigar): Cigar = Cigar(ciggy.iterator().map(e => CigarElem(e.getOperator, e.getLength)).toIndexedSeq)
 }
 
 /**
@@ -77,6 +82,17 @@ object Cigar {
 case class Cigar(elems: IndexedSeq[CigarElem]) extends Iterable[CigarElem] {
   require(elems.nonEmpty, s"Cigar must have at least one element.")
 
+  // Cache whether or not the Cigar is coalesced alrady (i.e. has no pair of adjacent elements with the same operator)
+  private val isCoalesced: Boolean = {
+    var itIs = true
+    var index = 0
+    while (index < elems.length-1 && itIs) {
+      itIs = elems(index).operator != elems(index+1).operator
+      index += 1
+    }
+    itIs
+  }
+
   /** Provides an iterator over the elements in the cigar. */
   override def iterator: Iterator[CigarElem] = elems.iterator
 
@@ -85,6 +101,81 @@ case class Cigar(elems: IndexedSeq[CigarElem]) extends Iterable[CigarElem] {
 
   /** Returns the length of the alignment on the query sequence. */
   def lengthOnTarget: Int = elems.filter(_.operator.consumesReferenceBases()).map(_.length).sum
+
+  /** Yields a new cigar that is truncated to the given ength on the query. */
+  def truncateToQueryLength(len: Int): Cigar = truncate(len, e => e.operator.consumesReadBases())
+
+  /** Yields a new cigar that is truncated to the given length on the target. */
+  def truncateToTargetLength(len: Int): Cigar = truncate(len, e => e.operator.consumesReferenceBases())
+
+  /** Truncates the cigar based on either query or target length cutoff. */
+  private def truncate(len: Int, shouldCount: CigarElem => Boolean): Cigar = {
+    var pos = 1
+    val iter = iterator
+    val buffer = new ArrayBuffer[CigarElem]()
+    while (pos <= len && iter.hasNext) {
+      val elem = iter.next()
+      if (shouldCount(elem)) {
+        val maxElemLength = len - pos + 1
+        buffer += (if (elem.length <= maxElemLength) elem else elem.copy(length=maxElemLength))
+        pos += elem.length
+      }
+      else {
+        buffer += elem
+      }
+    }
+
+    Cigar(buffer)
+  }
+
+  /**
+    * Returns true if this Cigar is a prefix of the other cigar. Prefix is defined as having the same
+    * operators for the same bases through the length of the cigar.  E.g.:
+    *   10M is a prefix of 10M2S
+    *   10M is a prefix of 10M
+    *   10M is a prefix of 20M
+    *   10M is not a prefix of 2S10M
+    */
+  def isPrefixOf(that: Cigar): Boolean = {
+    if (that.elems.size < this.elems.size) {
+      false
+    }
+    else {
+      val lastIndex = this.elems.size - 1
+      var isPrefix  = true
+      var i = 0
+      while (isPrefix && i <= lastIndex) {
+        val lhs = this.elems(i)
+        val rhs = that.elems(i)
+        isPrefix = lhs.operator == rhs.operator && (if (i == lastIndex) lhs.length <= rhs.length else lhs.length == rhs.length)
+        i += 1
+      }
+
+      isPrefix
+    }
+  }
+
+  /** Returns a new Cigar that contains the same elements in the reverse order of this cigar. */
+  def reverse: Cigar = Cigar(this.elems.reverse)
+
+  /** Coalesces adjacent operators of the same type into single operators. */
+  def coalesce: Cigar = {
+    if (isCoalesced) {
+      this
+    }
+    else {
+      val buffer = new ArrayBuffer[CigarElem]
+      val iter   = iterator.bufferBetter
+
+      while (iter.hasNext) {
+        val elem = iter.next()
+        val same = iter.takeWhile(_.operator == elem.operator).foldLeft(elem)((a,b) => CigarElem(a.operator, a.length + b.length))
+        buffer += same
+      }
+
+      Cigar(buffer)
+    }
+  }
 
   /** Returns the canonical Cigar string. */
   override def toString(): String = elems.mkString

@@ -26,14 +26,15 @@ package com.fulcrumgenomics.umi
 
 import com.fulcrumgenomics.FgBioDef._
 import com.fulcrumgenomics.cmdline.{ClpGroups, FgBioTool}
+import com.fulcrumgenomics.sopt.clp
 import com.fulcrumgenomics.umi.VanillaUmiConsensusCallerOptions._
 import com.fulcrumgenomics.util.NumericTypes.PhredScore
 import com.fulcrumgenomics.util.ProgressLogger
+import htsjdk.samtools.SAMFileHeader.SortOrder
+import htsjdk.samtools._
 import com.fulcrumgenomics.commons.io.Io
 import com.fulcrumgenomics.commons.util.LazyLogging
 import com.fulcrumgenomics.sopt._
-import htsjdk.samtools.SAMFileHeader.SortOrder
-import htsjdk.samtools._
 
 @clp(description =
   """
@@ -84,6 +85,7 @@ class CallDuplexConsensusReads
  @arg(flag='1', doc="The Phred-scaled error rate for an error prior to the UMIs being integrated.") val errorRatePreUmi: PhredScore = DefaultErrorRatePreUmi,
  @arg(flag='2', doc="The Phred-scaled error rate for an error post the UMIs have been integrated.") val errorRatePostUmi: PhredScore = DefaultErrorRatePostUmi,
  @arg(flag='m', doc="Ignore bases in raw reads that have Q below this value.") val minInputBaseQuality: PhredScore = DefaultMinInputBaseQuality,
+ @arg(flag='t', doc="If true quality trim input reads in addition to masking low Q bases.") val trim: Boolean = false,
  @arg(flag='S', doc="The sort order of the output, if None then the same as the input.") val sortOrder: Option[SortOrder] = Some(SortOrder.queryname)
 ) extends FgBioTool with LazyLogging {
 
@@ -103,6 +105,7 @@ class CallDuplexConsensusReads
       readNamePrefix      = readNamePrefix.getOrElse(UmiConsensusCaller.makePrefixFromSamHeader(in.getFileHeader)),
       readGroupId         = readGroupId,
       minInputBaseQuality = minInputBaseQuality,
+      trim                = trim,
       errorRatePreUmi     = errorRatePreUmi,
       errorRatePostUmi    = errorRatePostUmi
     )

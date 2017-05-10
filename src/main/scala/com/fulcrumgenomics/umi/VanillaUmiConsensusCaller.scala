@@ -49,6 +49,7 @@ object VanillaUmiConsensusCallerOptions {
   val DefaultMinReads: Int                       = 2
   val DefaultMaxReads: Int                       = Int.MaxValue
   val DefaultProducePerBaseTags: Boolean         = true
+  val DefaultQualityTrim: Boolean                = false
 }
 
 /**
@@ -60,6 +61,7 @@ case class VanillaUmiConsensusCallerOptions
   errorRatePreUmi: PhredScore         = DefaultErrorRatePreUmi,
   errorRatePostUmi: PhredScore        = DefaultErrorRatePostUmi,
   minInputBaseQuality: PhredScore     = DefaultMinInputBaseQuality,
+  qualityTrim: Boolean                = DefaultQualityTrim,
   minConsensusBaseQuality: PhredScore = DefaultMinConsensusBaseQuality,
   minReads: Int                       = DefaultMinReads,
   maxReads: Int                       = DefaultMaxReads,
@@ -123,18 +125,16 @@ class VanillaUmiConsensusCaller(override val readNamePrefix: String,
     val buffer = new ListBuffer[SAMRecord]()
 
     // fragment
-    consensusFromSamRecords(records=fragments) match {
-      case None       =>  rejectRecords(fragments);
-      case Some(frag) =>  buffer += createSamRecord(read=frag, readType=Fragment)
-    }
+    consensusFromSamRecords(records=fragments).map { frag => buffer += createSamRecord(read=frag, readType=Fragment) }
 
     // pairs
     (consensusFromSamRecords(firstOfPair), consensusFromSamRecords(secondOfPair)) match {
+      case (None, Some(r2))     => rejectRecords(secondOfPair, UmiConsensusCaller.FilterOrphan)
+      case (Some(r1), None)     => rejectRecords(firstOfPair,  UmiConsensusCaller.FilterOrphan)
+      case (None, None)         => rejectRecords(firstOfPair ++ secondOfPair, UmiConsensusCaller.FilterOrphan)
       case (Some(r1), Some(r2)) =>
         buffer += createSamRecord(r1, FirstOfPair)
         buffer += createSamRecord(r2, SecondOfPair)
-      case _ =>
-        rejectRecords(firstOfPair ++ secondOfPair)
     }
 
     buffer
@@ -143,10 +143,12 @@ class VanillaUmiConsensusCaller(override val readNamePrefix: String,
   /** Creates a consensus read from the given records.  If no consensus read was created, None is returned. */
   protected[umi] def consensusFromSamRecords(records: Seq[SAMRecord]): Option[VanillaConsensusRead] = {
     if (records.size < this.options.minReads) {
+      rejectRecords(records, UmiConsensusCaller.FilterInsufficientSupport)
       None
     }
     else {
-      val filteredRecords = filterToMostCommonAlignment(records)
+      val sourceRecords   = records.flatMap(toSourceRead(_, this.options.minInputBaseQuality, this.options.qualityTrim))
+      val filteredRecords = filterToMostCommonAlignment(sourceRecords)
 
       if (filteredRecords.size < records.size) {
         val r = records.head
@@ -156,8 +158,10 @@ class VanillaUmiConsensusCaller(override val readNamePrefix: String,
         logger.debug("Discarded ", discards, "/", records.size, " records due to mismatched alignments for ", m, n)
       }
 
-      if (filteredRecords.size < this.options.minReads) None
-      else consensusCall(filteredRecords.flatMap(r => toSourceRead(r, this.options.minInputBaseQuality)))
+      if (filteredRecords.size >= this.options.minReads) consensusCall(filteredRecords) else {
+        rejectRecords(filteredRecords.flatMap(_.sam), UmiConsensusCaller.FilterInsufficientSupport)
+        None
+      }
     }
   }
 
@@ -234,8 +238,8 @@ class VanillaUmiConsensusCaller(override val readNamePrefix: String,
   }
 
   /** If a reject writer was provided, emit the reads to that writer. */
-  override protected def rejectRecords(recs: Traversable[SAMRecord]): Unit = {
-    super.rejectRecords(recs)
+  override protected def rejectRecords(recs: Traversable[SAMRecord], reason: String): Unit = {
+    super.rejectRecords(recs, reason)
     this.rejects.foreach(rej => recs.foreach(rej.addAlignment))
   }
 
