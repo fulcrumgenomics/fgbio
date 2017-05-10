@@ -109,7 +109,7 @@ class BuildToolDocs( @arg(flag='o', doc="Output directory") val output: DirPath)
         a.name,
         a.flag.getOrElse(""),
         a.kind,
-        a.description,
+        a.description.lines.mkString(" "),
         if (a.minValues == 0) "Optional" else "Required",
         if (a.maxValues == Int.MaxValue) "Unlimited" else a.maxValues,
         a.defaultValues.mkString(", ")

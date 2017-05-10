@@ -46,10 +46,10 @@ import htsjdk.samtools.util.{CloserUtil, IntervalList}
   */
 @clp(description = 
   """
-     |Filters reads out of a BAM file. Remove reads that may not be useful in downstream processing, in order
-     |to reduce the size of the file. By default will remove unmapped reads, read with MAPQ=0, records
-     |marked as secondary alignments, records marked as duplicates, and if a set of Intervals are provided
-     |records that do not overlap any of the intervals.
+     |Filters reads out of a BAM file. Removes reads that may not be useful in downstream processing, in order
+     |to reduce the size of the file. By default will remove unmapped reads, reads with MAPQ=0, reads
+     |marked as secondary alignments, reads marked as duplicates, and if a set of Intervals are provided,
+     |reads that do not overlap any of the intervals.
      |
      |NOTE: this will usually produce a BAM file in which some mate-pairs are orphaned (i.e. read 1 or
      |read 2 is included, but not both), but does not update any flag fields.

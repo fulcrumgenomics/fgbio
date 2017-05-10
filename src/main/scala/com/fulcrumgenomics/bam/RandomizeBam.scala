@@ -43,7 +43,7 @@ import htsjdk.samtools.util.{Murmur3, SortingCollection}
 @clp(group=ClpGroups.SamOrBam, description=
 """
   |Randomizes the order of reads in a SAM or BAM file. Randomization is done by sorting
-  |on a hash of the queryname (and bases and quals if not query-grouping). By default
+  |on a hash of the `queryname` (and bases and quals if not query-grouping). By default
   |reads with the same query name are grouped together in the output file; this can be
   |turned off by specifying --query-group=false.
 """)

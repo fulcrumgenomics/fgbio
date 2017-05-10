@@ -45,7 +45,7 @@ import scala.collection.mutable
      |The identification of reads is done by testing the first N bases (controlled by the
      |match-length parameter) of each read against all sub-sequences of length N from the
      |technical sequences.  Sub-sequences are generated from both the sequences and the
-     |reverse complement of the sequences, ignoring any sub-sequences that include 'N's.
+     |reverse complement of the sequences, ignoring any sub-sequences that include `N`s.
      |
      |By default the output BAM file will contain all reads that matched to a sub-sequence of the
      |technical sequences and, if the read is paired, the read's mate pair.  An option is

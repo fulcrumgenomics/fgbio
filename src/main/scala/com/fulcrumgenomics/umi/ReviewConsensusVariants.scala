@@ -117,7 +117,7 @@ object ReviewConsensusVariants {
   }
 }
 
-@sopt.clp(group=ClpGroups.Umi, description=
+@clp(group=ClpGroups.Umi, description=
   """
     |Extracts data to make reviewing of variant calls from consensus reads easier. Creates
     |a list of variant sites from the input VCF (SNPs only) or IntervalList then extracts all
@@ -127,15 +127,15 @@ object ReviewConsensusVariants {
     |deletion at the variant site.
     |
     |Reads are correlated between consensus and grouped BAMs using a molecule ID stored
-    |in an optional attribute, MI by default.  In order to support paired molecule IDs
+    |in an optional attribute, `MI` by default.  In order to support paired molecule IDs
     |where two or more molecule IDs are related (e.g. see the Paired assignment strategy
-    |in GroupReadsByUmi) the molecule ID is truncated at the last '/' if present
-    |(e.g. "1/A" => "1" and "2" => "2").
+    |in _GroupReadsByUmi_) the molecule ID is truncated at the last `/` if present
+    |(e.g. `1/A => 1` and `2 => 2`).
     |
     |Both input BAMs must be coordinate sorted and indexed.
     |
-    |A pair of output BAMs named <output>.consensus.bam and <output>.grouped.bam are created
-    |with the relevant reads from each input BAM, and a review file <output>.txt is
+    |A pair of output BAMs named `<output>.consensus.bam` and `<output>.grouped.bam` are created
+    |with the relevant reads from each input BAM, and a review file `<output>.txt` is
     |created.  The review file contains details on each variant position along with detailed
     |information on each consensus read that supports the variant.  If the sample-name argument
     |is supplied and the input is VCF, genotype information for that sample will be retrieved.

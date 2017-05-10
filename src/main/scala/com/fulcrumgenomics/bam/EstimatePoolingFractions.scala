@@ -41,20 +41,19 @@ import Math.{min, max}
 
 @clp(group=ClpGroups.SamOrBam, description=
   """
-    |Examines a pooled sample and estimates the fraction of each constituent sample.
-    |Uses a VCF of known genotypes for the samples within the mixture along with a
-    |BAM of sequencing data derived from the pool.  Performs a multiple regression
-    |for the alt allele fractions at each SNP locus, using as inputs the individual
-    |sample's genotypes.  Only SNPs that are bi-allelic within the pooled samples are
-    |used.
+    |Examines sequence data generated from a pooled sample and estimates the fraction of sequence data
+    |coming from each constituent sample. Uses a VCF of known genotypes for the samples within the
+    |mixture along with a BAM of sequencing data derived from the pool.  Performs a multiple regression
+    |for the alternative allele fractions at each SNP locus, using as inputs the individual sample's genotypes.
+    |Only SNPs that are bi-allelic within the pooled samples are used.
     |
     |Various filtering parameters can be used to control which loci are used:
-    | --intervals will restrict analysis to variants within the described intervals
-    | --min-genotype-quality will filter out any site with any genotype with GQ < n
-    | --min-mean-sample-coverage requires that the coverage of a site in the BAM be
-    |     >= min-mean-sample-coverage * n_samples
-    | --min-mapping-quality filters out reads in the BAM with MQ < n
-    | --min-base-quality filters out bases in the BAM with Q < n
+    |
+    |- _--intervals_ will restrict analysis to variants within the described intervals
+    |- _--min-genotype-quality_ will filter out any site with any genotype with GQ < n
+    |- _--min-mean-sample-coverage_ requires that the coverage of a site in the BAM be >= `min-mean-sample-coverage * n_samples`
+    |- _--min-mapping-quality_ filters out reads in the BAM with MQ < n
+    |- _--min-base-quality_ filters out bases in the BAM with Q < n
   """)
 class EstimatePoolingFractions
 (@arg(flag='v', doc="VCF of individual sample genotypes.")  val vcf: PathToVcf,

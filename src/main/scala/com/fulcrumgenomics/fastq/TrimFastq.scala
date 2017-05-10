@@ -32,15 +32,20 @@ import com.fulcrumgenomics.sopt._
 @clp(
   description =
     """
-      |Trims reads in one or more line-matched fastq files to a specific read length,
-      |and optionally supports dropping reads from all files when one or more reads
-      |is shorter than the desired length.
+      |Trims reads in one or more line-matched fastq files to a specific read length. The
+      |individual fastq files are expected to have the same set of reads, as would be the
+      |case with an `r1.fastq` and `r2.fastq` file for the same sample.
+      |
+      |Optionally supports dropping of reads across all files when one or more reads
+      |is already shorter than the desired trim length.
+      |
+      |Input and output fastq files may be gzipped.
     """,
   group=ClpGroups.Fastq
 )
 class TrimFastq
-(   @arg(flag='i', doc="One or more input fastq files.")       val input:  Seq[PathToFastq],
-    @arg(flag='o', doc="A matching number of output files.")   val output: Seq[PathToFastq],
+(   @arg(flag='i', doc="One or more input fastq files.") val input:  Seq[PathToFastq],
+    @arg(flag='o', doc="A matching number of output fastq files.") val output: Seq[PathToFastq],
     @arg(flag='l', doc="Length to trim reads to.")             val length: Int,
     @arg(flag='x', doc="Exclude reads below the trim length.") val exclude: Boolean = false
 ) extends FgBioTool with LazyLogging {
