@@ -34,7 +34,7 @@ import com.fulcrumgenomics.commons.CommonsDef.DirPath
   * Provides common IO utility methods.  Can be instantiated to create a custom factory, or
   * the companion object can be used as a singleton version.
   */
-class Io(val compressionLevel: Int = 5, override val bufferSize: Int = 128*1024) extends IoUtil {
+class Io(var compressionLevel: Int = 5, override val bufferSize: Int = 128*1024) extends IoUtil {
   /** Adds the automatic handling of gzipped files when opening files for reading. */
   override def toInputStream(path: Path): InputStream = {
     PathUtil.extensionOf(path) match {

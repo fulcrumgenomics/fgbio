@@ -25,15 +25,16 @@
 package com.fulcrumgenomics.cmdline
 
 import java.net.InetAddress
+import java.nio.file.Paths
 import java.text.DecimalFormat
-import java.util.Date
 
 import com.fulcrumgenomics.cmdline.FgBioMain.FailureException
-import com.fulcrumgenomics.util.Io
-import com.fulcrumgenomics.commons.util.{LazyLogging, StringUtil}
-import com.fulcrumgenomics.sopt.Sopt
+import com.fulcrumgenomics.commons.util.LazyLogging
+import com.fulcrumgenomics.sopt.{Sopt, arg}
 import com.fulcrumgenomics.sopt.cmdline.{CommandLineParser, CommandLineProgramParserStrings}
-
+import com.fulcrumgenomics.util.Io
+import htsjdk.samtools.util.{BlockCompressedOutputStream, IOUtil}
+import com.fulcrumgenomics.commons.CommonsDef._
 /**
   * Main program for fgbio that loads everything up and runs the appropriate sub-command
   */
@@ -48,11 +49,25 @@ object FgBioMain {
   case class FailureException private[cmdline] (exit:Int = 1, message:Option[String] = None) extends RuntimeException
 }
 
+class FgBioCommonArgs
+( @arg(doc="Use asynchronous I/O where possible, e.g. for SAM and BAM files.") val asyncIo: Boolean = false,
+  @arg(doc="Default GZIP compression level, BAM compression level.")           val compression: Int = 5,
+  @arg(doc="Directory to use for temporary files.")                            val tmpDir: DirPath  = Paths.get(System.getProperty("java.io.tmpdir"))
+) {
+  System.setProperty("use_async_io_read_samtools",  asyncIo.toString)
+  System.setProperty("use_async_io_write_samtools", asyncIo.toString)
+  System.setProperty("compression_level", 5.toString)
+  
+  BlockCompressedOutputStream.setDefaultCompressionLevel(compression)
+  IOUtil.setCompressionLevel(compression)
+  Io.compressionLevel = compression
+  
+  System.setProperty("java.io.tmpdir", tmpDir.toAbsolutePath.toString)
+}
+
 class FgBioMain extends LazyLogging {
   /** A main method that invokes System.exit with the exit code. */
-  def makeItSoAndExit(args: Array[String]): Unit = {
-    System.exit(makeItSo(args))
-  }
+  def makeItSoAndExit(args: Array[String]): Unit = System.exit(makeItSo(args))
 
   /** A main method that returns an exit code instead of exiting. */
   def makeItSo(args: Array[String]): Int = {
@@ -61,15 +76,15 @@ class FgBioMain extends LazyLogging {
 
     val startTime = System.currentTimeMillis()
     val parser    = new CommandLineParser[FgBioTool](name)
-    val exit      = Sopt.parseCommand[FgBioTool](name, args, Sopt.find[FgBioTool](packageList)) match {
+    val exit      = Sopt.parseCommandAndSubCommand[FgBioCommonArgs,FgBioTool](name, args, Sopt.find[FgBioTool](packageList)) match {
       case Sopt.Failure(usage) =>
         System.err.print(usage())
         1
-      case Sopt.CommandSuccess(command) =>
-        val name = command.getClass.getSimpleName
+      case Sopt.SubcommandSuccess(command, subcommand) =>
+        val name = subcommand.getClass.getSimpleName
         try {
           printStartupLines(name, args)
-          command.execute()
+          subcommand.execute()
           printEndingLines(startTime, name, true)
           0
         }
