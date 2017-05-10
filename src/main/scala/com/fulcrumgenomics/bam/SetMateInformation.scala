@@ -36,7 +36,7 @@ import htsjdk.samtools.{SAMFileWriterFactory, SamReaderFactory}
 @clp(group=ClpGroups.SamOrBam, description=
 """
   |Adds and/or fixes mate information on paired-end reads. Sets the MQ (mate mapping quality),
-  |MC (mate cigar string), ensures all mate-related flag fields are set correctly, and that
+  |`MC` (mate cigar string), ensures all mate-related flag fields are set correctly, and that
   |the mate reference and mate start position are correct.
   |
   |Supplementary records are handled correctly (updated with their mate's non-supplemental

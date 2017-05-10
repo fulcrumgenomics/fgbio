@@ -40,7 +40,7 @@ import htsjdk.samtools.reference.{ReferenceSequenceFileFactory, ReferenceSequenc
   """
      |Converts soft-masked sequence to hard-masked in a FASTA file. All lower case bases are
      |converted to Ns, all other bases are left unchanged.  Line lengths are also standardized
-     |to allow easy indexing with "samtools faidx".
+     |to allow easy indexing with `samtools faidx`"
   """,
   group = ClpGroups.Fasta)
 class HardMaskFasta

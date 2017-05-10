@@ -40,7 +40,7 @@ import htsjdk.samtools.util._
     |
     |Currently only unmapped reads are supported.
     |
-    |Only template bases will be retained as read bases (stored in the SEQ field) as specified by the read structure.
+    |Only template bases will be retained as read bases (stored in the `SEQ` field) as specified by the read structure.
     |
     |A read structure should be provided for each read of a template.  For example, paired end reads should have two
     |read structures specified.  The tags to store the molecular indices will be associated with the molecular index
@@ -48,26 +48,32 @@ import htsjdk.samtools.util._
     |molecular indices will be concatenated and stored in that tag. Otherwise the number of molecular indices in the
     |read structure should match the number of tags given. In the resulting BAM file each end of a pair will contain
     |the same molecular index tags and values. Additionally, when multiple molecular indices are present the
-    |'single-tag' option may be used to write all indices, concatenated, to a single tag in addition to the tags
-    |specified in 'molecular-index-tags'.
+    |`--single-tag` option may be used to write all indices, concatenated, to a single tag in addition to the tags
+    |specified in `--molecular-index-tags`.
     |
     |Optionally, the read names can be annotated with the molecular indices directly.  In this case, the read name
-    |will be formatted "<NAME>+<UMIs1><UMIs2>" where "<UMIs1>" is the concatenation of read one's molecular indices.
-    |Similarly for "<UMIs2>".
+    |will be formatted `<NAME>+<UMIs1><UMIs2>` where `<UMIs1>` is the concatenation of read one's molecular indices.
+    |Similarly for `<UMIs2>`.
     |
     |Mapping information will not be adjusted, as such, this tool should not be used on reads that have been mapped since
     |it will lead to an BAM with inconsistent records.
     |
     |The read structure describes the structure of a given read as one or more read segments. A read segment describes
     |a contiguous stretch of bases of the same type (ex. template bases) of some length and some offset from the start
-    |of the read.  The following segment types are supported:
-    |  - T: template bases
-    |  - B: sample barcode bases
-    |  - M: molecular index bases
-    |  - S: bases to ignore
-    |An example would be "10B3M7S100T" which describes 120 bases, with the first ten bases being a sample barcode,
-    |bases 11-13 being a molecular index, bases 14-20 ignored, and bases 21-120 being template bases. For more
-    |information see: https://github.com/fulcrumgenomics/fgbio/wiki/Read-Structures
+    |of the read.  Read structures are made up of `<number><operator>` pairs much like the CIGAR string in BAM files.
+    |Four kinds ofoperators are recognized:
+    |
+    |1. `T` identifies a template read
+    |2. `B` identifies a sample barcode read
+    |3. `M` identifies a unique molecular index read
+    |4. `S` identifies a set of bases that should be skipped or ignored
+    |
+    |The last `<number><operator>` pair may be specified using a '+' sign instead of number to denote "all remaining
+    |bases". This is useful if, e.g., fastqs have been trimmed and contain reads of varying length.
+    |
+    |An example would be `10B3M7S100T` which describes 120 bases, with the first ten bases being a sample barcode,
+    |bases 11-13 being a molecular index, bases 14-20 ignored, and bases 21-120 being template bases. See
+    |[Read Structures](https://github.com/fulcrumgenomics/fgbio/wiki/Read-Structures) for more information.
   """,
   group = ClpGroups.SamOrBam)
 class ExtractUmisFromBam
@@ -75,13 +81,13 @@ class ExtractUmisFromBam
   @arg(flag='o', doc = "Output BAM file.")                                     val output: PathToBam,
   @arg(flag='r', doc = "The read structure, one per read in a template.")      val readStructure: Seq[ReadStructure],
   @deprecated("Use molecular-index-tags instead.", since="0.1.3")
-  @arg(flag='b', doc = "[DEPRECATED] SAM tags in which to store the molecular barcodes (one-per segment).",
+  @arg(flag='b', doc = "**[DEPRECATED]** SAM tags in which to store the molecular barcodes (one-per segment).",
     mutex=Array("molecularIndexTags"), minElements=0) val molecularBarcodeTags: Seq[String] = Seq.empty,
   @arg(flag='t', doc = "SAM tag(s) in which to store the molecular indices.", mutex=Array("molecularBarcodeTags"), minElements=0)
                                                                                  val molecularIndexTags: Seq[String] = Seq.empty,
   @arg(flag='s', doc = "Single tag into which to concatenate all molecular indices.") val singleTag: Option[String] = None,
   @arg(flag='a', doc = "Annotate the read names with the molecular indices. See usage for more details.") val annotateReadNames: Boolean = false,
-  @arg(flag='c', doc = "The SAM tag with the position in read to clip adapters (e.g. XT as produced by Picard's MarkIlluminaAdapters).") val clippingAttribute: Option[String] = None
+  @arg(flag='c', doc = "The SAM tag with the position in read to clip adapters (e.g. `XT` as produced by Picard's `MarkIlluminaAdapters`).") val clippingAttribute: Option[String] = None
 ) extends FgBioTool with LazyLogging {
 
   val progress = new ProgressLogger(logger, verb="written", unit=5e6.toInt)

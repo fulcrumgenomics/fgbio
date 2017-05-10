@@ -36,7 +36,7 @@ import com.fulcrumgenomics.sopt._
 import htsjdk.samtools.reference.ReferenceSequenceFileFactory
 
 @clp(
-  description="Generates a list of freebayes/bamtools region specifiers.",
+  description="Generates a list of `freebayes`/`bamtools` region specifiers.",
   group = Personal
 )
 class GenerateRegionsFromFasta

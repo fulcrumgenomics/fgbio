@@ -84,22 +84,22 @@ case class IndexMetric(index: String,
 @clp(group=ClpGroups.Utilities, description =
     """
       |Picks a set of molecular indices that have at least a given number of mismatches between
-      |them. Whereas PickIlluminaIndices attempts to pick a near-optimal set of indices,
-      |PickLongIndices implements a significantly more efficient method based on generation of
+      |them. Whereas `PickIlluminaIndices` attempts to pick a near-optimal set of indices,
+      |`PickLongIndices` implements a significantly more efficient method based on generation of
       |random indices that can generate a large set of satisfactory indices in a small amount of
-      |time and memory even for index lengths >> 10bp.
+      |time and memory even for index lengths `>> 10bp`.
       |
       |Many options exist for controlling aspects of the indices picked, including length, edit
       |distance (mismatches only), gc range, homopolymer content, secondary structure etc.
       |
-      |Secondary structure is predicted using ViennaRNA's RNAfold in DNA mode. To enable structure
-      |checking both the --vienna-rna-dir and --adapters must be specified.  Adapters must be
-      |strings of A, C, G, and T with a single block of Ns (e.g. ACGTNNNN or ACNNNNGT).  At runtime
-      |the Ns are replaced with indices, and deltaG of the index-containing sequence is calculated.
+      |Secondary structure is predicted using ViennaRNA's `RNAfold` in DNA mode. To enable structure
+      |checking both the `--vienna-rna-dir` and `--adapters` must be specified.  Adapters must be
+      |strings of A, C, G, and T with a single block of Ns (e.g. `ACGTNNNN` or `ACNNNNGT`).  At runtime
+      |the Ns are replaced with indices, and `deltaG` of the index-containing sequence is calculated.
       |
       |The number of indices requested may not be possible to produce given other constraints.
       |When this is the case the tool will output as many indices as possible, though less than
-      |the requested number.  In such cases it may be useful to try different values of --attempts.
+      |the requested number.  In such cases it may be useful to try different values for `--attempt`.
       |This parameter controls how many attempts are made to find the next valid index before
       |quitting and outputting the accumulated indices.  Higher values will yield incrementally more
       |indices but require significantly longer runtimes.
@@ -117,16 +117,16 @@ class PickLongIndices
   @arg(flag='o', doc="File to write indices to.")                                      val output: FilePath,
   @arg(          doc="Allow indices that are lexical reverses of one another")         val allowReverses: Boolean = false,
   @arg(          doc="Allow indices that are reverse complements of one another")      val allowReverseComplements: Boolean = false,
-  @arg(          doc="Allow indices that are palindromic (index == revcomp(index)).")  val allowPalindromes: Boolean = false,
+  @arg(          doc="Allow indices that are palindromic (`index == revcomp(index)`).")  val allowPalindromes: Boolean = false,
   @arg(          doc="Reject indices with a homopolymer of greater than this length.") val maxHomopolymer: Int = 2,
   @arg(flag='g', doc="The minimum GC fraction for an index to be accepted.")           val minGc: Double = 0.2,
   @arg(flag='G', doc="The maximum GC fraction for an index to be accepted.")           val maxGc: Double = 0.8,
   @arg(          doc="File of existing index sequences to integrate, one per line.")   val existing: Option[FilePath] = None,
   @arg(flag='s', doc="Random seed value.")                                             val seed: Int = 1,
   @arg(flag='a', doc="Attempts to pick the next index before quitting.")               val attempts: Int = 1e5.toInt,
-  @arg(          doc="The installation directory for ViennaRNA.")                      val viennaRnaDir: Option[DirPath] = None,
+  @arg(          doc="The installation directory for `ViennaRNA`.")                      val viennaRnaDir: Option[DirPath] = None,
   @arg(flag='t', doc="The temperature at which to predict secondary structure.")       val temperature: Double = 25d,
-  @arg(          doc="The lowest acceptable secondary structure deltaG.")              val minDeltaG: Double = -10,
+  @arg(          doc="The lowest acceptable secondary structure `deltaG`.")              val minDeltaG: Double = -10,
   @arg(          doc="Adapter sequence(s) into which indices will be inserted.", minElements=0) val adapters: Seq[String] = Seq(),
   @arg(          doc="Any index sequence that appears in an avoid sequence or its reverse complement will be discarded.")
   val avoidSequence: Seq[String] = IlluminaAdapters.all.flatMap(_.both)

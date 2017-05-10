@@ -49,11 +49,11 @@ import scala.collection.JavaConverters._
       |group identifier also needs to be changed, use this tool.
       |
       |Each read group in the input file will be mapped to one and only one new read group identifier, unless
-      |`ignoreMissingReadGroups` is set.  A SAM header file should be given with the new read groups and the ID field
-      |foreach read group containing the new read group identifier.  An additional attribute ("FR") should be provided
-      |that gives the original read group identifier ("ID") to which this new read group corresponds.
+      |`--ignore-missing-read-groups` is set.  A SAM header file should be given with the new read groups and the ID field
+      |foreach read group containing the new read group identifier.  An additional attribute (`FR`) should be provided
+      |that gives the original read group identifier (`ID`) to which this new read group corresponds.
       |
-      |If `keepReadGroupAttributes` is true, then any read group attribute not replaced will be kept in the new read
+      |If `--keep-read-group-attributes` is true, then any read group attribute not replaced will be kept in the new read
       |group.  Otherwise, only the attributes in the provided SAM header file will be used.
     """,
   group = ClpGroups.SamOrBam)

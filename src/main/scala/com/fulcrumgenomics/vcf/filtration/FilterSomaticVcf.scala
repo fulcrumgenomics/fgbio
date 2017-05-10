@@ -41,19 +41,21 @@ import htsjdk.variant.vcf._
   """
     |Applies one or more filters to a VCF of somatic variants. The VCF must contain genotype information
     |for the tumor sample.  If the VCF also contains genotypes for one or more other samples, the
-    |--sample option must be provided to specify the sample whose genotypes to examine and whose reads
+    |`--sample` option must be provided to specify the sample whose genotypes to examine and whose reads
     |are present in the BAM file.
     |
     |Various options are available for filtering the reads coming from the BAM file, including
-    |--min-mapping-quality, --min-base-quality and --paired-reads-only.  The latter filters to only
+    |`--min-mapping-quality`, `--min-base-quality` and `--paired-reads-only`.  The latter filters to only
     |paired end reads where both reads are mapped.  Reads marked as duplicates, secondary alignments
     |and supplemental alignments are all filtered out.
     |
-    |Each available filter may generate annotations in the INFO field of the output VCF and optionally,
-    |if a threshold is specified, may apply one or more FILTERs to applicable variants.
+    |Each available filter may generate annotations in the `INFO` field of the output VCF and optionally,
+    |if a threshold is specified, may apply one or more `FILTER`s to applicable variants.
     |
-    |End Repair Artifact Filter
-    |--------------------------
+    |## Available Filters
+    |
+    |### End Repair Artifact Filter
+    |
     |The end repair artifact filter attempts to measure the probability that a variant is caused by
     |errors in the template generated during the end-repair and A-base addition steps that are common
     |to many Illumina library preparation protocols.  The artifacts occur if/when the end repair creates
@@ -61,22 +63,23 @@ import htsjdk.variant.vcf._
     |This presents specifically as errors to T at the beginning of reads (and in very short templates,
     |as matching errors to A at the ends of reads).
     |
-    |The filter creates the 'ERAP' info attribute on SNVs with an A or T alternate allele, to record
+    |The filter creates the `ERAP` info attribute on SNVs with an A or T alternate allele, to record
     |the p-value for rejecting the possibility that the variant is due to an end repair artifact.
     |
     |Two options are available:
-    |--end-repair-distance allows control over how close to the ends of reads/templates errors can be
-    |                      considered to be candidates for the artifact. Higher values decrease the
-    |                      power of the test, so this should be set as low as possible given observed
-    |                      errors.
-    |--end-repair-p-value  the p-value below which a filter should be applied. If no value is supplied
-    |                      only the annotation is produced and no filtering is performed.
+    |
+    |* `--end-repair-distance`  allows control over how close to the ends of reads/templates errors can be
+    |                           considered to be candidates for the artifact. Higher values decrease the
+    |                           power of the test, so this should be set as low as possible given observed
+    |                           errors.
+    |* `--end-repair-p-value`   the p-value below which a filter should be applied. If no value is supplied
+    |                           only the annotation is produced and no filtering is performed.
   """)
 class FilterSomaticVcf
 ( @arg(flag='i', doc="Input VCF of somatic variant calls.")       val input: PathToVcf,
   @arg(flag='o', doc="Output VCF of filtered somatic variants.")  val output: PathToVcf,
   @arg(flag='b', doc="BAM file for the tumor sample.")            val bam: PathToBam,
-  @arg(flag='s', doc="Sample name in VCF if > 1 sample present.") val sample: Option[String] = None,
+  @arg(flag='s', doc="Sample name in VCF if `> 1` sample present.") val sample: Option[String] = None,
   @arg(flag='m', doc="Minimum mapping quality for reads.")        val minMappingQuality: Int = 30,
   @arg(flag='q', doc="Minimum base quality.")                     val minBaseQuality: Int    = 20,
   @arg(flag='p', doc="Use only paired reads mapped in pairs.")    val pairedReadsOnly: Boolean = false,

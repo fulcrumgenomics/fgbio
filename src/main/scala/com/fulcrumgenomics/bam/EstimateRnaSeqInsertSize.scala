@@ -51,22 +51,22 @@ import scala.collection.JavaConverters._
     |secondary, supplementary, pairs without both ends mapped, duplicates, and pairs whose reads map to different
     |chromosomes. Finally, skips transcripts where too few mapped read bases overlap exonic sequence.
     |
-    |This tool requires each mapped pair to have the mate cigar (MC) tag.  Use SetMateInformation to add the mate cigar.
+    |This tool requires each mapped pair to have the mate cigar (`MC`) tag.  Use `SetMateInformation` to add the mate cigar.
     |
-    |The output metric file will have the extension ".rna_seq_insert_size.txt" and the output histogram file will have
-    |the extension ".rna_seq_insert_size_histogram.txt".  The histogram file gives for each orientation (FR, RF, tandem),
+    |The output metric file will have the extension `.rna_seq_insert_size.txt` and the output histogram file will have
+    |the extension `.rna_seq_insert_size_histogram.txt`.  The histogram file gives for each orientation (`FR`, `RF`, `tandem`),
     |the number of read pairs that had the given insert size.
   """,
   group = ClpGroups.SamOrBam)
 class EstimateRnaSeqInsertSize
 (@arg(flag='i', doc="Input BAM file.") val input: PathToBam,
- @arg(flag='r', doc="Input gene annotations in refFlat form.  Format described here: http://genome.ucsc.edu/goldenPath/gbdDescriptionsOld.html#RefFlat")
+ @arg(flag='r', doc="Input gene annotations in [RefFlat](http://genome.ucsc.edu/goldenPath/gbdDescriptionsOld.html#RefFlat) form")
  val refFlat: FilePath,
- @arg(flag='p', doc="Output prefix file.  The file will have the extension '.rna_seq_insert_size.txt'")
+ @arg(flag='p', doc="Output prefix file.  The file will have the extension `.rna_seq_insert_size.txt` if not given")
  val prefix: Option[PathPrefix] = None,
  @arg(flag='d', doc="Include duplicates") val includeDuplicates: Boolean = false,
  @arg(flag='D', doc=
-   """Generate mean and standard deviation by filtering to 'median + deviations*median_absolute_deviation'.
+   """Generate mean and standard deviation by filtering to `median + deviations*median_absolute_deviation`.
       |This is done because insert size data typically includes enough anomalous values from chimeras
       |and other artifacts to make the mean and sd grossly misleading regarding the real distribution.
   """"

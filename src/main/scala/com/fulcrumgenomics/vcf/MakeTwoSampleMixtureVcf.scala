@@ -61,25 +61,27 @@ object MakeTwoSampleMixtureVcf {
 @clp(group=ClpGroups.VcfOrBcf, description=
   """
     |Creates a simulated tumor or tumor/normal VCF by in-silico mixing genotypes from two samples.
+    |
     |The tumor genotypes are created by mixing the incoming genotypes for the for the
     |'tumor' sample and the incoming genotypes for the 'normal' samples with the 'tumor'
-    |alleles accounting for 'tumorFraction' of the resulting mixture and the 'normal' alleles
-    |accounting for '1 - tumorFraction' of the resulting mixture.  E.g. if the 'tumor' genotype
-    |is A/C and the 'normal' genotype is C/C and 'tumorFraction' is set at 0.5 the resulting
-    |tumor genotype will be A/C with an allele fraction of 0.75.  The resulting allele fraction
-    |is written to the AF info field in the VCF.
+    |alleles accounting for `tumorFraction` of the resulting mixture and the 'normal' alleles
+    |accounting for `1 - tumorFraction` of the resulting mixture (see `--tumor-fraction`).  E.g. if the 'tumor' genotype
+    |is `A/C`, the 'normal' genotype is `C/C`, and 'tumorFraction' is set at 0.5, then the resulting
+    |tumor genotype will be `A/C` with an allele fraction of `0.75`.  The resulting allele fraction
+    |is written to the `AF` info field in the VCF.
     |
-    |In tumor-only mode only tumor genotypes are output.  In tumor/normal mode genotypes for
+    |In tumor-only mode (`--tumor-only`) only tumor genotypes are output.  In tumor/normal mode genotypes for
     |the 'normal' samples are also emitted, and match the genotypes from the input sample.
     |
     |All loci (potentially restricted by intervals) that are variant in one or both samples are written
     |to the output VCF, though in several cases the variants will be filtered:
-    |  - If either of the tumor or normal sample is no-called the resulting locus will have the
-    |    'unknown_gt' filter applied
-    |  - If the tumor and the normal have more than one alternative allele between them the
-    |    'multi_allelic' filter will be applied
-    |  - In tumor/normal mode (as opposed to tumor-only) loci that have an alt allele in the normal
-    |    sample will have the 'alt_allele_in_normal' filter applied
+    |
+    |  * If either of the tumor or normal sample is no-called the resulting locus will have the
+    |    `unknown_gt` filter applied
+    |  * If the tumor and the normal have more than one alternative allele between them the
+    |    `multi_allelic` filter will be applied
+    |  * In tumor/normal mode (as opposed to tumor-only) loci that have an alt allele in the normal
+    |    sample will have the `alt_allele_in_normal` filter applied
   """
 )
 class MakeTwoSampleMixtureVcf

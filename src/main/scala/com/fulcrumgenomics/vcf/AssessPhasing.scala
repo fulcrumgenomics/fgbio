@@ -50,9 +50,9 @@ import scala.collection.JavaConverters._
     """
       |Assess the accuracy of phasing for a set of variants.
       |
-      |All phased genotypes should be annotated with the "PS" (phase set) FORMAT tag, which by convention is the
+      |All phased genotypes should be annotated with the `PS` (phase set) `FORMAT` tag, which by convention is the
       |position of the first variant in the phase set (see the VCF specification).  Furthermore, the alleles of a phased
-      |genotype should use the '|' separator instead of the '/' separator, where the latter indicates the genotype is
+      |genotype should use the `|` separator instead of the `/` separator, where the latter indicates the genotype is
       |unphased.
       |
       |The input VCFs are assumed to be single sample: the genotype from the first sample is used.

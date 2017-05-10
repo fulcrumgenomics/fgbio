@@ -22,16 +22,16 @@ class PickIlluminaIndices
   @arg(flag='o', doc="File to write indices to.")                                      val output: FilePath,
   @arg(          doc="Allow indices that are lexical reverses of one another")         val allowReverses: Boolean = false,
   @arg(          doc="Allow indices that are reverse complements of one another")      val allowReverseComplements: Boolean = false,
-  @arg(          doc="Allow indices that are palindromic (bases == rev(bases)).")      val allowPalindromes: Boolean = false,
+  @arg(          doc="Allow indices that are palindromic (`bases == rev(bases)`).")    val allowPalindromes: Boolean = false,
   @arg(          doc="Reject indices with a homopolymer of greater than this length.") val maxHomopolymer: Int = 2,
   @arg(          doc="The minimum GC fraction for a barcode to be accepted.")          val minGc: Double = 0,
   @arg(          doc="The maximum GC fraction for a barcode to be accepted.")          val maxGc: Double = 0.7,
   @arg(flag='t', doc="Number of threads to use.")                                      val threads: Int = 4,
-  @arg(          doc="The installation directory for ViennaRNA.")                      val viennaRnaDir: Option[DirPath] = None,
-  @arg(          doc="The lowest acceptable secondary structure deltaG.")              val minDeltaG: Double = -10,
+  @arg(          doc="The installation directory for `ViennaRNA`.")                      val viennaRnaDir: Option[DirPath] = None,
+  @arg(          doc="The lowest acceptable secondary structure `deltaG`.")              val minDeltaG: Double = -10,
   @arg(          doc="The indexed adapter sequence into which the indices will be integrated.")
   val adapters: Seq[String] = IlluminaAdapters.DualIndexed.both,
-  @arg(          doc="Sequences that should be avoided.  Any kmer of 'length' that appears in these sequences and their " + "reverse complements will be thrown out.")
+  @arg(          doc="Sequences that should be avoided.  Any kmer of `length` that appears in these sequences and their reverse complements will be thrown out.")
   val avoidSequence: Seq[String] = IlluminaAdapters.all.flatMap(_.both)
 ) extends FgBioTool{
 

@@ -43,10 +43,13 @@ import scala.collection.mutable
     |Adds read groups to a BAM file for a single sample by parsing the read names.
     |
     |Will add one or more read groups by parsing the read names.  The read names should be of the form:
-    |  <instrument>:<run number>:<flowcell ID>:<lane>:<tile>:<xpos>:<y-pos>
     |
-    |Each unique combination of <instrument>:<run number>:<flowcell ID>:<lane> will be its own read group. The ID of the
-    |read group will be an integer and the platform unit will be <flowcell-id>.<lane>.
+    |```
+    |<instrument>:<run number>:<flowcell ID>:<lane>:<tile>:<xpos>:<y-pos>
+    |```
+    |
+    |Each unique combination of `<instrument>:<run number>:<flowcell ID>:<lane>` will be its own read group. The ID of the
+    |read group will be an integer and the platform unit will be `<flowcell-id>.<lane>`.
     |
     |The input is assumed to contain reads for one sample and library.  Therefore, the sample and library must be given
     |and will be applied to all read groups.  Read groups will be replaced if present.
@@ -65,7 +68,7 @@ class AutoGenerateReadGroupsByName
  @arg(doc="Program group to insert into the read groups") val programGroup: Option[String] = None,
  @arg(doc="Platform model to insert into the groups (free-form text providing further details of the platform/technology used)") val platformModel: Option[String] = None,
  @arg(doc="Description inserted into the read groups") val description: Option[String] = None,
- @arg(doc="Date the run was produced (ISO 8601: YYYY-MM-DD), to insert into the read groups") val runDate: Option[Iso8601Date] = None,
+ @arg(doc="Date the run was produced (ISO 8601: `YYYY-MM-DD` ), to insert into the read groups") val runDate: Option[Iso8601Date] = None,
  @arg(doc="Comment(s) to include in the merged output file's header.", minElements = 0) val comments: List[String] = Nil,
  @arg(doc="The sort order for the output sam/bam file.") val sortOrder: Option[SortOrder] = None
 ) extends FgBioTool with LazyLogging {

@@ -164,27 +164,37 @@ object DemuxFastqs {
       |
       |The output directory will contain one BAM file per sample in the sample sheet or metadata CSV file, plus a BAM for
       |reads that could not be assigned to a sample given the criteria.  The output file names will be the concatenation
-      |of sample id, sample name, and sample barcode bases (expected not observed), delimited by "-".  A metrics file
-      |will also be output providing analogous information to the metric described here:
-      |https://broadinstitute.github.io/picard/picard-metric-definitions.html#SampleBarcodeMetric
+      |of sample id, sample name, and sample barcode bases (expected not observed), delimited by `-`.  A metrics file
+      |will also be output providing analogous information to the metric described
+      |[SampleBarcodeMetric](https://broadinstitute.github.io/picard/picard-metric-definitions.html#SampleBarcodeMetric).
       |
-      |Alternatively, gzipped FASTQs can be written using the "--output-fastqs=true" option instead of BAMs.  For paired
-      |end data, the output will have the suffix "_R1.fastq.gz" and "_R2.fastq.gz" for read one and read two respectively.
+      |Alternatively, gzipped FASTQs can be written using the `--output-fastqs=true` option instead of BAMs.  For paired
+      |end data, the output will have the suffix `_R1.fastq.gz` and `_R2.fastq.gz` for read one and read two respectively.
       |The sample barcode and molecular barcodes (concatenated) will be appended to the read name and delimited by a
       |colon.
       |
       |The output base qualities will be standardized to Sanger/SAM format.
       |
       |FASTQs and associated read structures for each read should be given:
+      |
       |- a single fragment read should have one FASTQ and one read structure
       |- paired end reads should have two FASTQs and two read structures
       |- a dual-index sample with paired end reads should have four FASTQs and four read structures given: two for the
       |  two index reads, and two for the template reads.
       |
-      |The read structures may contain sample barcode bases ('B'), molecular identifier bases ('M'), template bases ('T'),
-      |and bases to skip ('S'). Both reads must have template bases.  Any molecular identifiers will be concatenated using
-      |the '-' delimiter and placed in the given SAM record tag ("RX" by default).  Similarly, the sample barcode bases
-      |from the given read will be placed in the "BC" tag.
+      |Read structures are made up of `<number><operator>` pairs much like the `CIGAR` string in BAM files. Four kinds of
+      |operators are recognized:
+      |
+      |1. `T` identifies a template read
+      |2. `B` identifies a sample barcode read
+      |3. `M` identifies a unique molecular index read
+      |4. `S` identifies a set of bases that should be skipped or ignored
+      |
+      |The last `<number><operator>` pair may be specified using a `+` sign instead of number to denote "all remaining
+      |bases". This is useful if, e.g., fastqs have been trimmed and contain reads of varying length. Both reads must
+      |have template bases.  Any molecular identifiers will be concatenated using
+      |the `-` delimiter and placed in the given SAM record tag (`RX` by default).  Similarly, the sample barcode bases
+      |from the given read will be placed in the `BC` tag.
       |
       |Metadata about the samples should be given in either an Illumina Experiment Manager sample sheet or a metadata CSV
       |file.  Formats are described in detail below.
@@ -196,43 +206,49 @@ object DemuxFastqs {
       |## Sample Sheet
       |The read group's sample id, sample name, and library id all correspond to the similarly named values in the
       |sample sheet.  Library id will be the sample id if not found, and the platform unit will be the sample name
-      |concatenated with the sample barcode bases delimited by a ".".
+      |concatenated with the sample barcode bases delimited by a `.`.
       |
-      |The sample section of the sample sheet should contain information related to each sample with the following
-      |columns:
-      |  - Sample_ID:   The sample identifier unique to the sample in the sample sheet.
-      |  - Sample_Name: The sample name.
-      |  - Library_ID:  The library Identifier.  The combination sample name and library identifier should be unique
+      |The sample section of the sample sheet should contain information related to each sample with the following columns:
+      |
+      |```
+      |  * Sample_ID:   The sample identifier unique to the sample in the sample sheet.
+      |  * Sample_Name: The sample name.
+      |  * Library_ID:  The library Identifier.  The combination sample name and library identifier should be unique
       |                 across the samples in the sample sheet.
-      |  - Description: The description of the sample, which will be placed in the description field in the output BAM's
+      |  * Description: The description of the sample, which will be placed in the description field in the output BAM's
       |                 read group.  This column may be omitted.
+      |```
       |
-      |Additionally, the sample barcode should be specified in a column named 'Sample_Barcode'.  The name of the column
-      |containing the sample barcode can be changed using the --column-for-sample-barcode option.  If the sample barcode
+      |Additionally, the sample barcode should be specified in a column named `Sample_Barcode`.  The name of the column
+      |containing the sample barcode can be changed using the `--column-for-sample-barcode` option.  If the sample barcode
       |is present across multiple reads (ex. dual-index, or inline in both reads of a pair), then the expected barcode
-      |bases from each read should be concatenated and placed in the 'Sample_Barcode' column.  The concatenation should
+      |bases from each read should be concatenated and placed in the `Sample_Barcode` column.  The concatenation should
       |be in the same order as the order of the reads' FASTQs and read structures given to this tool.
       |
       |## Metadata CSV
+      |
       |In lieu of a sample sheet, a simple CSV file may be provided with the necessary metadata.  This file should
-      |contain the same columns as described above for the sample sheet (Sample_ID, Sample_Name, Library_ID, and
-      |Description).
+      |contain the same columns as described above for the sample sheet (`Sample_ID`, `Sample_Name`, `Library_ID`, and
+      |`Description`).
       |
       |## Example Command Line
       |
       |As an example, if the sequencing run was 2x100bp (paired end) with two 8bp index reads both reading a sample
       |barcode, as well as an in-line 8bp sample barcode in read one, the command line would be
-      |  --inputs r1.fq i1.fq i2.fq r2.fq --read-structures 8B92T 8B 8B 100T \
+      |
+      |```
+      |--inputs r1.fq i1.fq i2.fq r2.fq --read-structures 8B92T 8B 8B 100T \
       |    --sample-sheet SampleSheet.csv --metrics metrics.txt --output output_folder
+      |```
     """,
   group=ClpGroups.Fastq
 )
 class DemuxFastqs
-(@arg(flag='i', doc="One or more input fastq files each corresponding to a sub-read (ex. index read, read one, read two, fragment).") val inputs: Seq[PathToFastq],
+(@arg(flag='i', doc="One or more input fastq files each corresponding to a sub-read (ex. index-read, read-one, read-two, fragment).") val inputs: Seq[PathToFastq],
  @arg(flag='o', doc="The output directory in which to place sample BAMs.") val output: DirPath,
  @arg(flag='x', doc="A file containing the metadata about the samples.") val metadata: FilePath,
  @arg(flag='r', doc="The read structure for each of the FASTQs.") val readStructures: Seq[ReadStructure],
- @arg(flag='m', doc="The file to which per-barcode metrics are written.  If none given, a file named 'demux_barcode_metrics.txt' will be written to the output directory.") val metrics: Option[FilePath] = None,
+ @arg(flag='m', doc="The file to which per-barcode metrics are written.  If none given, a file named `demux_barcode_metrics.txt` will be written to the output directory.") val metrics: Option[FilePath] = None,
  @arg(flag='c', doc="The column name in the sample sheet or metadata CSV for the sample barcode.") val columnForSampleBarcode: String = "Sample_Barcode",
  @arg(flag='u', doc="Output BAM file name for the unmatched records.") val unmatched: String = DemuxFastqs.UnmatchedSampleId + ".bam",
  @arg(flag='q',
@@ -249,13 +265,13 @@ val qualityFormat: Option[FastqQualityFormat] = None,
  @arg(doc="Maximum allowable number of no-calls in a barcode read before it is considered unmatchable.") val maxNoCalls: Int = 2,
  @arg(doc="The sort order for the output sam/bam file (typically unsorted or queryname).") val sortOrder: SortOrder = SortOrder.unsorted,
  @arg(doc="The SAM tag for any molecular barcode.  If multiple molecular barcodes are specified, they will be concatenated and stored here.") val umiTag: String = ConsensusTags.UmiBases,
- @arg(doc="The platform unit (typically '<flowcell-barcode>-<samle-barcode>.<lane>')") val platformUnit: Option[String] = None,
+ @arg(doc="The platform unit (typically `<flowcell-barcode>-<samle-barcode>.<lane>`)") val platformUnit: Option[String] = None,
  @arg(doc="The sequencing center from which the data originated") val sequencingCenter: Option[String] = None,
  @arg(doc="Predicted median insert size, to insert into the read group header") val predictedInsertSize: Option[Integer] = None,
  @arg(doc="Platform model to insert into the group header (ex. miseq, hiseq2500, hiseqX)") val platformModel: Option[String] = None,
  @arg(doc="Comment(s) to include in the merged output file's header.", minElements = 0) val comments: List[String] = Nil,
  @arg(doc="Date the run was produced, to insert into the read group header") val runDate: Option[Iso8601Date] = None,
- @arg(doc="Output FASTQs (.fastq.gz) in addition to BAM files") val outputFastqs: Boolean = false
+ @arg(doc="Output gzipped FASTQs (`.fastq.gz`) instead of BAM files") val outputFastqs: Boolean = false
 ) extends FgBioTool with LazyLogging {
 
   import DemuxFastqs._
