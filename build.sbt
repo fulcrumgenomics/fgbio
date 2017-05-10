@@ -66,7 +66,7 @@ credentials ++= (for {
 ////////////////////////////////////////////////////////////////////////////////////////////////
 // Coverage settings: don't include personal packages in coverage counts
 ////////////////////////////////////////////////////////////////////////////////////////////////
-coverageExcludedPackages := "com.fulcrumgenomics.personal.*"
+coverageExcludedPackages := "com.fulcrumgenomics.personal.*;com.fulcrumgenomics.internal.*"
 val htmlReportsDirectory: String = "target/test-reports"
 
 ////////////////////////////////////////////////////////////////////////////////////////////////
@@ -117,6 +117,7 @@ lazy val root = Project(id="fgbio", base=file("."))
   .settings(unidocSettings: _*)
   .settings(assemblySettings: _*)
   .settings(description := "fgbio")
+  .settings(mainClass := Some("com.fulcrumgenomics.cmdline.FgBioMain"))  
   .settings(
     libraryDependencies ++= Seq(
       "org.scala-lang"            %  "scala-reflect"  %  scalaVersion.value,

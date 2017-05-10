@@ -35,6 +35,7 @@ import com.fulcrumgenomics.sopt.cmdline.{CommandLineParser, CommandLineProgramPa
 import com.fulcrumgenomics.util.Io
 import htsjdk.samtools.util.{BlockCompressedOutputStream, IOUtil}
 import com.fulcrumgenomics.commons.CommonsDef._
+
 /**
   * Main program for fgbio that loads everything up and runs the appropriate sub-command
   */
@@ -80,6 +81,8 @@ class FgBioMain extends LazyLogging {
       case Sopt.Failure(usage) =>
         System.err.print(usage())
         1
+      case Sopt.CommandSuccess(cmd) =>
+        unreachable("CommandSuccess should never be returned by parseCommandAndSubCommand.")
       case Sopt.SubcommandSuccess(command, subcommand) =>
         val name = subcommand.getClass.getSimpleName
         try {
