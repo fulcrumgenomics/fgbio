@@ -78,7 +78,7 @@ object DemuxFastqs {
         throw new IllegalStateException("Could not determine quality score encoding in fastq. No known encodings are valid for all observed qualities.")
       case encs =>
         if (encs.size > 1) logger.foreach(_.warning(s"Making ambiguous determination about fastq's quality encoding; possible encodings: ${encs.mkString(", ")}."))
-        logger.foreach(_.info(s"Auto-detected quality format as: %s."))
+        logger.foreach(_.info(s"Auto-detected quality format as: ${encs.head}"))
         encs.head
     }
   }
@@ -289,7 +289,6 @@ val qualityFormat: Option[FastqQualityFormat] = None,
 
   Io.assertReadable(inputs)
   Io.assertReadable(metadata)
-  Io.assertWritableDirectory(output)
 
   /** The quality format converter. */
   private val solexaQualityConverter: SolexaQualityConverter = SolexaQualityConverter.getSingleton
@@ -308,6 +307,9 @@ val qualityFormat: Option[FastqQualityFormat] = None,
   }
 
   override def execute(): Unit = {
+    Io.mkdirs(this.output)
+    Io.assertCanWriteFile(this.metricsPath)
+
     // Get the FASTQ quality encoding format
     val qualityEncoding = determineQualityFormat(inputs, Some(this.logger))
 
