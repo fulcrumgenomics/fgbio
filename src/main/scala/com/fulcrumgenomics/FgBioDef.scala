@@ -25,8 +25,20 @@
 package com.fulcrumgenomics
 
 import com.fulcrumgenomics.commons.CommonsDef
+import enumeratum.{Enum, EnumEntry}
 
 /** FgBioDef that is just an extension of the commons CommonsDef. Here in case
   * there's a need for FgBio specific defs later.
   */
-object FgBioDef extends CommonsDef
+object FgBioDef extends CommonsDef {
+  /** Extends this trait in your enumeration object to enable the case objects to be created on the command line.
+    * You should implement the [[Enum#values]] method in your object, for example:
+    * `def values: IndexedSeq[T] = findValues`.
+    * */
+  trait FgBioEnum[T<:EnumEntry] extends Enum[T] {
+    // NB: we cannot put `def values: IndexedSeq[T] = findValues` here since ClpEnum is not a class!
+
+    /** The string constructor method that enables us to create the case object instance by name. */
+    def apply(name: String): T = withNameInsensitive(name)
+  }
+}
