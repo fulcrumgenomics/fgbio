@@ -31,7 +31,6 @@ import htsjdk.samtools.{BAMRecordCodec, SAMFileHeader}
 
 /** Sorter.Codec implementation that wraps HTSJDK's BAMRecordCodec to read/write records to bytes. */
 class SamRecordCodec(header: SAMFileHeader, maxRecordSize: Int = 128 * 1024) extends Sorter.Codec[SamRecord] {
-  private val bytes    = new Array[Byte](maxRecordSize)
   private val out      = new ByteArrayOutputStream(maxRecordSize)
   private val bamCodec = new BAMRecordCodec(header, SamRecord.Factory)
 
