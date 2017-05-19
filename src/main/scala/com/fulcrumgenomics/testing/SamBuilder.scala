@@ -38,7 +38,10 @@ import scala.collection.mutable.ArrayBuffer
 import scala.util.Random
 
 object SamBuilder {
-  sealed trait Strand { val isNegative: Boolean }
+  sealed trait Strand {
+    val isNegative: Boolean
+    override def toString(): String = this.getClass.getSimpleName.replaceFirst("[$].*$", "")
+  }
   object Plus  extends Strand { val isNegative = false }
   object Minus extends Strand { val isNegative = true }
 }

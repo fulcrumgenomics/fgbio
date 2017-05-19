@@ -24,17 +24,17 @@
 
 package com.fulcrumgenomics.bam
 
-import com.fulcrumgenomics.bam.api.SamSource
+import com.fulcrumgenomics.bam.api.{SamRecord, SamSource}
 import com.fulcrumgenomics.fasta.ReferenceSetBuilder
 import com.fulcrumgenomics.testing.SamBuilder._
 import com.fulcrumgenomics.testing.{SamBuilder, UnitSpec}
 import htsjdk.samtools.reference.ReferenceSequenceFileFactory
 import htsjdk.samtools.util.SequenceUtil
-import htsjdk.samtools.{CigarOperator, SAMTag}
+import htsjdk.samtools.SAMTag
 
 import scala.util.Random
 
-class ClipOverlappingReadsTest extends UnitSpec {
+class ClipBamTest extends UnitSpec {
   private val ref = {
     val builder = new ReferenceSetBuilder
     builder.add("chr1").add("AAAAAAAAAA", 500) // 5000 bases
@@ -43,6 +43,36 @@ class ClipOverlappingReadsTest extends UnitSpec {
   }
 
   private val dummyBam = makeTempFile("dummy.", ".bam")
+
+  private object StartAndEnd {
+    def apply(r: SamRecord): StartAndEnd = StartAndEnd(start=r.start, end=r.end)
+  }
+
+  private case class StartAndEnd(start: Int, end: Int) {
+    // NB: assumes FR reads
+    def checkClipping(r: SamRecord, fivePrime: Int, threePrime: Int): Unit = {
+      if (r.negativeStrand) {
+        r.start shouldBe (this.start + threePrime)
+        r.end shouldBe (this.end - fivePrime)
+      }
+      else {
+        r.start shouldBe (this.start + fivePrime)
+        r.end shouldBe (this.end - threePrime)
+      }
+    }
+  }
+
+  private case class StartsAndEnds(r1: SamRecord, r2: SamRecord) {
+    private val prior1 = StartAndEnd(r1)
+    private val prior2 = StartAndEnd(r2)
+    // NB: assumes FR reads
+    def checkClipping(r1: SamRecord, r2: SamRecord,
+                      readOneFivePrime: Int, readOneThreePrime: Int,
+                      readTwoFivePrime: Int, readTwoThreePrime: Int): Unit = {
+      prior1.checkClipping(r=r1, readOneFivePrime, readOneThreePrime)
+      prior2.checkClipping(r=r2, readTwoFivePrime, readTwoThreePrime)
+    }
+  }
 
   "ClipOverlappingReads.clip" should "not clip reads where either read is unaligned" in {
     val builder = new SamBuilder(readLength=50)
@@ -55,7 +85,7 @@ class ClipOverlappingReadsTest extends UnitSpec {
 
   it should "not clip reads that are on different chromosomes" in {
     val builder = new SamBuilder(readLength=50)
-    val clipper = new ClipOverlappingReads(input=dummyBam, output=dummyBam, ref=ref)
+    val clipper = new ClipBam(input=dummyBam, output=dummyBam, ref=ref)
     val Seq(r1, r2) = builder.addPair(start1=100, start2=100)
     r2.refIndex = 1
 
@@ -67,7 +97,7 @@ class ClipOverlappingReadsTest extends UnitSpec {
 
   it should "not clip reads that are abutting but not overlapped" in {
     val builder = new SamBuilder(readLength=50)
-    val clipper = new ClipOverlappingReads(input=dummyBam, output=dummyBam, ref=ref)
+    val clipper = new ClipBam(input=dummyBam, output=dummyBam, ref=ref)
     val Seq(r1, r2) = builder.addPair(start1=100, start2=150)
 
     val (r1Exp, r2Exp) = (r1.cigar, r2.cigar)
@@ -78,7 +108,7 @@ class ClipOverlappingReadsTest extends UnitSpec {
 
   it should "not clip non-FR reads " in {
     val builder = new SamBuilder(readLength=50)
-    val clipper = new ClipOverlappingReads(input=dummyBam, output=dummyBam, ref=ref)
+    val clipper = new ClipBam(input=dummyBam, output=dummyBam, ref=ref)
     val Seq(r1, r2) = builder.addPair(start1=100, start2=100, strand2=Plus)
 
     val (r1Exp, r2Exp) = (r1.cigar, r2.cigar)
@@ -89,7 +119,7 @@ class ClipOverlappingReadsTest extends UnitSpec {
 
   it should "clip reads that are fully overlapped" in {
     val builder = new SamBuilder(readLength=50)
-    val clipper = new ClipOverlappingReads(input=dummyBam, output=dummyBam, ref=ref)
+    val clipper = new ClipBam(input=dummyBam, output=dummyBam, ref=ref)
     val Seq(r1, r2) = builder.addPair(start1=100, start2=100)
 
     clipper.clip(r1, r2)
@@ -99,7 +129,7 @@ class ClipOverlappingReadsTest extends UnitSpec {
 
   it should "clip reads that are overlapped by just one base" in {
     val builder = new SamBuilder(readLength=50)
-    val clipper = new ClipOverlappingReads(input=dummyBam, output=dummyBam, ref=ref)
+    val clipper = new ClipBam(input=dummyBam, output=dummyBam, ref=ref)
     val Seq(r1, r2) = builder.addPair(start1=100, start2=149)
 
     r1.end shouldBe r2.start
@@ -109,7 +139,7 @@ class ClipOverlappingReadsTest extends UnitSpec {
 
   it should "handle reads that contain insertions" in {
     val builder = new SamBuilder(readLength=50)
-    val clipper = new ClipOverlappingReads(input=dummyBam, output=dummyBam, ref=ref)
+    val clipper = new ClipBam(input=dummyBam, output=dummyBam, ref=ref)
     val Seq(r1, r2) = builder.addPair(start1=100, start2=130, cigar1="40M2I8M", cigar2="10M2I38M")
 
     r1.end >= r2.start shouldBe true
@@ -119,8 +149,8 @@ class ClipOverlappingReadsTest extends UnitSpec {
 
   it should "handle reads that contain deletions" in {
     val builder = new SamBuilder(readLength=50)
-    val clipper = new ClipOverlappingReads(input=dummyBam, output=dummyBam, ref=ref)
-    val Seq(r1, r2) = builder.addPair(start1=100, start2=130, cigar1="40M2D10M", cigar2="10M2D10M30S")
+    val clipper = new ClipBam(input=dummyBam, output=dummyBam, ref=ref)
+    val Seq(r1, r2) = builder.addPair(start1=100, start2=130, cigar1="40M2D10M", cigar2="10M2D40M")
 
     r1.end >= r2.start shouldBe true
     clipper.clip(r1, r2)
@@ -131,7 +161,7 @@ class ClipOverlappingReadsTest extends UnitSpec {
   // input reads, one of the reads becomes unmapped during clipping
   it should "handle reads that get unmapped because they are fully overlapped" in {
     val builder = new SamBuilder(readLength=50)
-    val clipper = new ClipOverlappingReads(input=dummyBam, output=dummyBam, ref=ref)
+    val clipper = new ClipBam(input=dummyBam, output=dummyBam, ref=ref)
     val Seq(r1a, r2a) = builder.addPair(name="q1", start1=100, start2=100, cigar1="3M47S", cigar2="48S2M")
     val Seq(r1b, r2b) = builder.addPair(name="q2", start1=100, start2=100, cigar1="2M48S", cigar2="47S3M")
 
@@ -142,7 +172,66 @@ class ClipOverlappingReadsTest extends UnitSpec {
     }
   }
 
-  "ClipOverlappingReads" should "clip overlapping reads, update mate info, and reset NM, UQ & MD" in {
+  it should "clip a fixed amount on the ends of the reads with reads that do not overlap" in {
+    val builder = new SamBuilder(readLength=50)
+    val clipper = new ClipBam(input=dummyBam, output=dummyBam, ref=ref,
+      readOneFivePrime=1, readOneThreePrime=2, readTwoFivePrime=3, readTwoThreePrime=4)
+    val Seq(r1, r2) = builder.addPair(start1=100, start2=150)
+
+    val prior = StartsAndEnds(r1, r2)
+    r1.end shouldBe (r2.start - 1)
+    clipper.clip(r1, r2)
+    prior.checkClipping(r1, r2, 1, 2, 3, 4)
+  }
+
+  it should "clip a fixed amount on the ends of the reads with reads with clipping present" in {
+    val builder = new SamBuilder(readLength=50)
+    val clipper = new ClipBam(input=dummyBam, output=dummyBam, ref=ref,
+      readOneFivePrime=5, readOneThreePrime=2, readTwoFivePrime=3, readTwoThreePrime=4)
+    val Seq(r1, r2) = builder.addPair(start1=104, start2=150)
+
+    r1.cigar = "4H46M"
+    r2.cigar = "44M6H"
+
+    val prior = StartsAndEnds(r1, r2)
+    r1.end shouldBe (r2.start - 1)
+    clipper.clip(r1, r2)
+    // R1 5' end has one more base clipped
+    // R1 3' end has two bases clipped
+    // R2 5' end has has no more bases clipped
+    // R2 e' end has four bases clipped
+    prior.checkClipping(r1, r2, 1, 2, 0, 4)
+  }
+
+  it should "clip a fixed amount on the ends of the reads then clip overlapping reads" in {
+    val builder = new SamBuilder(readLength=50)
+    val clipper = new ClipBam(input=dummyBam, output=dummyBam, ref=ref,
+      readOneFivePrime=0, readOneThreePrime=1, readTwoFivePrime=0, readTwoThreePrime=1)
+    val Seq(r1, r2) = builder.addPair(start1=100, start2=146)
+
+    val prior = StartsAndEnds(r1, r2)
+    r1.end shouldBe (r2.start + 3) // four bases overlap!
+    clipper.clip(r1, r2)
+    prior.checkClipping(r1, r2, 0, 2, 0, 2) // clipping due to overlapping reads
+  }
+
+  Seq(Plus, Minus).foreach { strand1 =>
+    Seq(Plus, Minus).foreach { strand2 =>
+      it should s"clip a fixed amount on the ends of the reads in $strand1/$strand2" in {
+        val builder = new SamBuilder(readLength=50)
+        val clipper = new ClipBam(input=dummyBam, output=dummyBam, ref=ref,
+          readOneFivePrime=1, readOneThreePrime=2, readTwoFivePrime=3, readTwoThreePrime=4)
+        val Seq(r1, r2) = builder.addPair(start1=100, start2=150, strand1=strand1, strand2=strand2)
+
+        val prior = StartsAndEnds(r1, r2)
+        r1.end shouldBe (r2.start - 1)
+        clipper.clip(r1, r2)
+        prior.checkClipping(r1, r2, 1, 2, 3, 4)
+      }
+    }
+  }
+
+  "ClipBam" should "clip overlapping reads, update mate info, and reset NM, UQ & MD" in {
     val random = new Random(1)
     val builder = new SamBuilder(readLength=50)
     builder.addPair(name="q1", start1=100, start2=140)
@@ -165,11 +254,19 @@ class ClipOverlappingReadsTest extends UnitSpec {
     }
 
     val out = makeTempFile("out.", ".bam")
-    new ClipOverlappingReads(input=builder.toTempFile(), output=out, ref=ref).execute()
+    new ClipBam(
+      input=builder.toTempFile(), output=out, ref=ref,
+      readOneFivePrime=2, readOneThreePrime=0, readTwoFivePrime=2, readTwoThreePrime=0
+    ).execute()
     val clipped = SamSource(out).toSeq
 
-    // Check that some reads got clipped
-    clipped.count(_.cigar.exists(_.operator == CigarOperator.HARD_CLIP)) shouldBe 10
+    // Check that some reads got clipped due to being overlapped
+    clipped.filter(_.negativeStrand).count(_.cigar.head.operator.toString == "H") shouldBe 5
+    clipped.filterNot(_.negativeStrand).count(_.cigar.last.operator.toString == "H") shouldBe 5
+
+    // Check that all reads got clipped due to the fixed clipping
+    clipped.filter(_.negativeStrand).count(_.cigar.last.toString == "2H") shouldBe 6
+    clipped.filterNot(_.negativeStrand).count(_.cigar.head.toString == "2H") shouldBe 6
 
     // Check that everything is in coordinate order
     clipped.sliding(2).foreach { case Seq(lhs, rhs) => lhs.start <= rhs.start shouldBe true}
