@@ -26,10 +26,10 @@
 package com.fulcrumgenomics.vcf
 
 import com.fulcrumgenomics.FgBioDef._
+import com.fulcrumgenomics.commons.io.PathUtil
 import com.fulcrumgenomics.testing.UnitSpec
 import com.fulcrumgenomics.util.Io
 import com.fulcrumgenomics.vcf.HapCutType.{HapCut1, HapCut2, HapCutType}
-import com.fulcrumgenomics.commons.io.PathUtil
 import htsjdk.variant.variantcontext.VariantContext
 import htsjdk.variant.vcf.VCFFileReader
 import org.scalatest.ParallelTestExecution
@@ -56,6 +56,12 @@ class HapCutToVcfTest extends UnitSpec with ParallelTestExecution {
   // For testing HapCut2 with missing variants in the input VCF
   private val missingVariantsIn  = dir.resolve("missing_leading_variants.vcf")
   private val missingVariantsOut = dir.resolve("missing_leading_variants.hapcut2")
+
+  // For testing HapCut2 with missing genotype info
+  private val missingGenotyeInfoIn = dir.resolve("hapcut2_for_missing_genotype_info.vcf")
+  private val noSwitchErrorsIn     = dir.resolve("no_switch_errors.hapcut2")
+  private val skipPruneIn          = dir.resolve("skip_prune.hapcut2")
+  private val withSwitchErrors     = dir.resolve("with_switch_errors.hapcut2")
 
   private def countVcfRecords(vcf: PathToVcf): Int = {
     val vcfReader = new VCFFileReader(vcf.toFile, false)
@@ -284,5 +290,53 @@ class HapCutToVcfTest extends UnitSpec with ParallelTestExecution {
       output            = out,
       gatkPhasingFormat = false
     ).execute()
+  }
+
+  it should "support missing genotype info in HapCut2" in {
+    Seq(noSwitchErrorsIn, skipPruneIn, withSwitchErrors).foreach { hapCut2In =>
+      val expectedOutput = PathUtil.replaceExtension(hapCut2In, ".vcf")
+      val out = makeTempFile("hap_cut_to_vcf.hapcut2", ".vcf")
+
+      new HapCutToVcf(
+        vcf               = missingGenotyeInfoIn,
+        input             = hapCut2In,
+        output            = out,
+        gatkPhasingFormat = false
+      ).execute()
+
+      // check that we have the same # of records in the output as the input
+      countVcfRecords(out) shouldBe countVcfRecords(missingGenotyeInfoIn)
+
+      // check that all records in the output are found in the input
+      compareVcfs(out, missingGenotyeInfoIn)
+
+      // get the # of phased variants from the output
+      val numPhasedFromOut = getNumPhasedFromVcf(out, false)
+
+      // check that the # of variants phased in the output agrees with the # of phased calls produced by HapCut
+      val hapCutReader = HapCutReader(hapCut2In)
+
+      val numPhasedFromHapCut = hapCutReader.flatMap(_.call).length
+      numPhasedFromOut shouldBe numPhasedFromHapCut
+      hapCutReader.close()
+
+      // check that the # of variants phased in the output agrees with the # of phased calls in the expected output
+      //Files.copy(out, expectedOutput, StandardCopyOption.REPLACE_EXISTING)
+      numPhasedFromOut shouldBe getNumPhasedFromVcf(expectedOutput, false)
+
+      // check that if a variant is not phased it does not have a PS tag
+      hasPhasingSetFormatTagButUnphased(out, false) shouldBe false
+    }
+  }
+
+  "HapCutToVcf.HapCut2GenotypeInfo" should "ignore the values of pruned, SE, and NE when they are '.'" in {
+    // HapCut2 run with default options: switch error scores are blank
+    HapCut2GenotypeInfo(info="0\t.\t16.00", missingAlleles=false, thresholdPruning=false).asInstanceOf[HapCut2GenotypeInfo] shouldBe HapCut2GenotypeInfo(pruned=Some(false), None, Some(16.00))
+
+    // HapCut2 run with error analysis: switch error scores are present
+    HapCut2GenotypeInfo(info="0\t1.00\t16.00", missingAlleles=false, thresholdPruning=false).asInstanceOf[HapCut2GenotypeInfo] shouldBe HapCut2GenotypeInfo(pruned=Some(false), Some(1.00), Some(16.00))
+
+    // HapCut2 with skip prune: all info are blank
+    HapCut2GenotypeInfo(info=".\t.\t.", missingAlleles=false, thresholdPruning=false).asInstanceOf[HapCut2GenotypeInfo] shouldBe HapCut2GenotypeInfo(pruned=None, None, None)
   }
 }

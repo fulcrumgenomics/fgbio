@@ -76,8 +76,10 @@ import scala.io.Source
       |`HapCut2`:
       |
       |  1. The `PR` tag is `1` if `HapCut2` pruned this variant, `0` otherwise.
-      |  2. The `SE` tag gives the confidence (`log10`) that there is not a switch error occurring immediately before the SNV
-      |  3. The `NE` tag gives the confidence (`log10`) that the SNV is not a mismatch (single SNV) error.
+      |  2. The `SE` tag gives the confidence (`log10`) that there is not a switch error occurring immediately before
+      |     the SNV (closer to zero means that a switch error is more likely).
+      |  3. The `NE` tag gives the confidence (`log10`) that the SNV is not a mismatch (single SNV) error (closer to
+      |     zero means a mismatch is more likely).
       |
       |HapCut2 should not be run with `--call-homozygous` as the genotypes may be different than the input and so is not
       |currently supported.
@@ -211,22 +213,22 @@ object HapCut2VcfHeaderLines extends HeaderLines {
   val PrunedFormatDescription = "1 if HapCut2 pruned this variant, 0 otherwise"
   val PrunedFormatHeaderLine  = new VCFFormatHeaderLine(PrunedFormatTag, 1, VCFHeaderLineType.Integer, PrunedFormatDescription)
 
-  val Log10SwitchErrorFormatTag         = "SE"
-  val Log10SwitchErrorFormatDescription = "The confidence (log10) that there is not a switch error occurring immediately before the SNV"
-  val Log10SwitchErrorFormatHeaderLine  = new VCFFormatHeaderLine(Log10SwitchErrorFormatTag, 1, VCFHeaderLineType.Float, Log10SwitchErrorFormatDescription)
+  val SwitchErrorFormatTag         = "SE"
+  val SwitchErrorFormatDescription = "The confidence (phred-scaled) that there is not a switch error occurring immediately before the SNV"
+  val SwitchErrorFormatHeaderLine  = new VCFFormatHeaderLine(SwitchErrorFormatTag, 1, VCFHeaderLineType.Float, SwitchErrorFormatDescription)
 
-  val Log10NoErrorFormatTag         = "NE"
-  val Log10NoErrorFormatDescription = "The confidence (log10) that the SNV is not a mismatch (single SNV) error."
-  val Log10NoErrorFormatHeaderLine  = new VCFFormatHeaderLine(Log10NoErrorFormatTag, 1, VCFHeaderLineType.Float, Log10NoErrorFormatDescription)
+  val NoErrorFormatTag         = "NE"
+  val NoErrorFormatDescription = "The confidence (phred-scaled) that the SNV is not a mismatch (single SNV) error."
+  val NoErrorFormatHeaderLine  = new VCFFormatHeaderLine(NoErrorFormatTag, 1, VCFHeaderLineType.Float, NoErrorFormatDescription)
 
   /** The VCF header FORMAT keys that will be added for HapCut2 specific-genotype information. */
   val formatHeaderKeys: Seq[String] = {
-    Seq(PrunedFormatTag, Log10SwitchErrorFormatTag, Log10NoErrorFormatTag, PhaseSetFormatTag)
+    Seq(PrunedFormatTag, SwitchErrorFormatTag, NoErrorFormatTag, PhaseSetFormatTag)
   }
 
   /** The VCF header FORMAT lines that will be added for HapCut2 specific-genotype information. */
   val formatHeaderLines: Seq[VCFHeaderLine] = {
-    Seq(PrunedFormatHeaderLine, Log10SwitchErrorFormatHeaderLine, Log10NoErrorFormatHeaderLine, PhaseSetFormatHeaderLine)
+    Seq(PrunedFormatHeaderLine, SwitchErrorFormatHeaderLine, NoErrorFormatHeaderLine, PhaseSetFormatHeaderLine)
   }
 }
 
@@ -395,15 +397,15 @@ private object GenotypeInfo {
 }
 
 /** Genotype-level information specific to HapCut1 or HapCut2. */
-private trait GenotypeInfo {
+private sealed trait GenotypeInfo {
   def addTo(builder: GenotypeBuilder): GenotypeBuilder
 }
 
 /** Genotype-level information produced by HapCut1 */
-private class HapCut1GenotypeInfo private(val readCounts: List[Int],
-                                          val likelihoods: List[Float],
-                                          val delta: Float,
-                                          val rMEC: Float) extends GenotypeInfo {
+private case class HapCut1GenotypeInfo private(readCounts: List[Int],
+                                               likelihoods: List[Float],
+                                               delta: Float,
+                                               rMEC: Float) extends GenotypeInfo {
   import HapCut1VcfHeaderLines._
   /** Adds the HapCut-specific genotype information to the given genotype builder. */
   def addTo(builder: GenotypeBuilder): GenotypeBuilder = {
@@ -439,23 +441,24 @@ private object HapCut1GenotypeInfo {
 }
 
 /** Genotype-level information produced by HapCut2 */
-private class HapCut2GenotypeInfo private(val pruned: Boolean, val log10SwitchError: Double, val log10NoError: Double) extends GenotypeInfo {
+private[vcf] case class HapCut2GenotypeInfo private[vcf](pruned: Option[Boolean], log10SwitchError: Option[Double], log10NoError: Option[Double]) extends GenotypeInfo {
   import HapCut2VcfHeaderLines._
   def addTo(builder: GenotypeBuilder): GenotypeBuilder = {
     builder
-      .attribute(PrunedFormatTag, if (this.pruned) 1 else 0)
-      .attribute(Log10SwitchErrorFormatTag, this.log10SwitchError)
-      .attribute(Log10NoErrorFormatTag, this.log10NoError)
+      .attribute(PrunedFormatTag, this.pruned.map(p => if (p) 1 else 0).orNull)
+      .attribute(SwitchErrorFormatTag, this.log10SwitchError.orNull)
+      .attribute(NoErrorFormatTag, this.log10NoError.orNull)
   }
 }
 
 /** Values and methods for HapCut2-specific genotype information. */
-private object HapCut2GenotypeInfo {
+private[vcf] object HapCut2GenotypeInfo {
 
-  private def toDouble(str: String): Double = {
+  private def toDouble(str: String): Option[Double] = {
     str match {
-      case "-inf" => Double.MinValue
-      case s      => s.toDouble
+      case "."    => None
+      case "-inf" => Some(Double.MinValue)
+      case s      => Some(s.toDouble)
     }
   }
 
@@ -463,7 +466,7 @@ private object HapCut2GenotypeInfo {
   def apply(info: String, missingAlleles: Boolean, thresholdPruning: Boolean): GenotypeInfo = {
     val tokens = info.split("\t")
     new HapCut2GenotypeInfo(
-      pruned           = "1" == tokens(0) || missingAlleles || thresholdPruning,
+      pruned           = if ("." == tokens(0)) None else Some("1" == tokens(0) || missingAlleles || thresholdPruning),
       log10SwitchError = toDouble(tokens(1)),
       log10NoError     = toDouble(tokens(2))
     )
