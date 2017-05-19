@@ -133,12 +133,12 @@ class SamBuilder(val readLength: Int=100,
     r1.paired         = true
     r1.firstOfPair    = true
     r1.unmapped       = unmapped1
-    attrs.foreach { case (key, value) => r1(key) = value }
     if (!unmapped1) {
       r1.cigar = cig1
       r1.mapq  = mapq1
     }
     r1("RG") = this.rg.getId
+    attrs.foreach { case (key, value) => r1(key) = value }
 
     val r2            = SamRecord(header)
     r2.pf             = true
@@ -151,12 +151,12 @@ class SamBuilder(val readLength: Int=100,
     r2.paired         = true
     r2.secondOfPair   = true
     r2.unmapped       = unmapped2
-    attrs.foreach { case (key, value) => r2(key) = value }
     if (!unmapped2) {
       r2.cigar = cig2
       r2.mapq  = mapq2
     }
     r2("RG") = this.rg.getId
+    attrs.foreach { case (key, value) => r2(key) = value }
 
     SamPairUtil.setMateInfo(r1.asSam, r2.asSam, true)
     val recs = Seq(r1, r2)
@@ -189,12 +189,12 @@ class SamBuilder(val readLength: Int=100,
     r1.start          = start
     r1.positiveStrand = strand == Plus
     r1.unmapped       = unmapped
-    attrs.foreach { case (key, value) => r1(key) = value }
     if (!unmapped) {
       r1.cigar = cig
       r1.mapq  = mapq
     }
     r1("RG") = this.rg.getId
+    attrs.foreach { case (key, value) => r1(key) = value }
 
     this.records += r1
     Some(r1)
