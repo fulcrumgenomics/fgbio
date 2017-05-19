@@ -63,7 +63,7 @@ object Sorter {
     /** Encode the object into an array of bytes. */
     def encode(a: A): Array[Byte]
     /** Decode an object from an array of bytes. */
-    def decode(bs: Array[Byte]): A
+    def decode(bs: Array[Byte], start: Int, length: Int): A
   }
 }
 
@@ -90,6 +90,7 @@ class Sorter[A,B <: Ordered[B]](val maxObjectsInRam: Int,
     */
   private class SortedIterator(stream: InputStream, codec: Codec[A]) extends Iterator[A] with Comparable[SortedIterator] with Closeable  {
     private val dataStream = new DataInputStream(stream)
+    private var bytes = new Array[Byte](0)
     private var nextValue : A = _
     private var nextKey   : B = _
     private var closed: Boolean = false
@@ -107,9 +108,9 @@ class Sorter[A,B <: Ordered[B]](val maxObjectsInRam: Int,
           clear()
         }
         else {
-          val bytes = new Array[Byte](length)
-          val read  = dataStream.read(bytes)
-          this.nextValue = this.codec.decode(bytes)
+          if (this.bytes.length < length) this.bytes = new Array[Byte](length)
+          val read  = dataStream.read(bytes, 0, length)
+          this.nextValue = this.codec.decode(bytes, 0, length)
           this.nextKey   = keyfunc(this.nextValue)
         }
       }

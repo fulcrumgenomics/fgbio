@@ -30,7 +30,7 @@ import com.fulcrumgenomics.util.Sorter.Codec
 
 private class StringCodec extends Codec[String] {
   override def encode(a: String): Array[Byte] = a.getBytes
-  override def decode(bs: Array[Byte]): String = new String(bs)
+  override def decode(bs: Array[Byte], start: Int, length: Int): String = new String(bs, start, length)
 }
 
 private case class OrderedString(s: String) extends Ordered[OrderedString] {

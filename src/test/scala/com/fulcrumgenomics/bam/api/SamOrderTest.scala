@@ -39,6 +39,7 @@ object SamOrderTest {
   Range.inclusive(1, 1000).foreach { i =>
     builder.addPair(name="q"+random.nextInt(), contig=random.nextInt(23), start1=random.nextInt(1e7.toInt)+1, start2=random.nextInt(1e7.toInt)+1)
   }
+  Range.inclusive(1, 10).foreach { i => builder.addPair(name="q"+random.nextInt(), unmapped1=true, unmapped2=true)}
 }
 
 class SamOrderTest extends UnitSpec {

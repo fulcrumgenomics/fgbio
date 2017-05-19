@@ -33,7 +33,6 @@ import com.fulcrumgenomics.util.{ProgressLogger, Sorter}
 import htsjdk.samtools.SAMFileHeader.SortOrder
 import htsjdk.samtools._
 
-// TODO add options for passing in a logger and unit and do progress logging on both sorting and writing?
 object SamWriter extends LazyLogging {
   var DefaultCompressionLevel: Int = 5
   var DefaultUseAsyncIo: Boolean      = true
@@ -74,9 +73,14 @@ object SamWriter extends LazyLogging {
             writeProgress: Option[ProgressLogger] = Some(ProgressLogger(logger, noun="records", verb="Wrote ", unit=2e6.toInt))
            ): SamWriter = {
 
-    val sorter = sort.map { so =>
-      so.applyTo(header)
-      new Sorter(maxRecordsInRam, new SamRecordCodec(header), so.sortkey)
+    val sorter = sort match {
+      case None => None
+      case Some(so) if so == SamOrder.Unsorted || so == SamOrder.Unknown =>
+        so.applyTo(header)
+        None
+      case Some(so) =>
+        so.applyTo(header)
+        Some(new Sorter(maxRecordsInRam, new SamRecordCodec(header), so.sortkey))
     }
 
     val factory = new SAMFileWriterFactory()

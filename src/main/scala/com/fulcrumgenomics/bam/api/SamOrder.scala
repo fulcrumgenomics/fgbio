@@ -70,7 +70,7 @@ object SamOrder {
     throw new NoSuchElementException("No SamOrder: " + name)
   }
 
-  /** If the header represents a known sort order returns that SortOrder otherwise None.. */
+  /** If the header represents a known sort order returns that SortOrder otherwise None. */
   def apply(header: SAMFileHeader): Option[SamOrder] = {
     // TODO: Update this to allow partial matches?
     val so = header.getSortOrder
@@ -81,7 +81,7 @@ object SamOrder {
     values.find(sam => sam.sortOrder == so && sam.groupOrder == go && sam.subSort == ss)
   }
 
-  /** Ordering object for coordinate order per the SAM spec. */
+  /** Ordering object for coordinate order per the SAM spec - reads without refIndex/coordinate are sorted to the end. */
   case object Coordinate extends SamOrder {
     override type A = CoordinateKey
     override val sortOrder:  SortOrder      = SortOrder.coordinate
@@ -110,7 +110,7 @@ object SamOrder {
     override val sortOrder:  SortOrder      = SortOrder.queryname
     override val groupOrder: GroupOrder     = GroupOrder.none
     override val subSort:    Option[String] = None
-    override val sortkey: (SamRecord => A)  = r => QuerynameKey(r.name, r.asSam.getFlags)
+    override val sortkey: (SamRecord => A)  = r => QuerynameKey(r.name, r.flags)
   }
 
   /** Ordered key object for Queryname order. */
@@ -129,7 +129,7 @@ object SamOrder {
     override val sortOrder:  SortOrder      = SortOrder.unsorted
     override val groupOrder: GroupOrder     = GroupOrder.none
     override val subSort:    Option[String] = Some("random")
-    override val sortkey: (SamRecord => A)  = rec => RandomKey(hasher.hashUnencodedChars(rec.id + rec.basesString), rec.asSam.getFlags)
+    override val sortkey: (SamRecord => A)  = rec => RandomKey(hasher.hashUnencodedChars(rec.id + rec.basesString), rec.flags)
   }
 
   /** Ordering object for generating a random order with queryname grouping.. */
@@ -139,7 +139,7 @@ object SamOrder {
     override val sortOrder:  SortOrder      = SortOrder.unsorted
     override val groupOrder: GroupOrder     = GroupOrder.query
     override val subSort:    Option[String] = Some("random-query")
-    override val sortkey: SamRecord => A    = rec => RandomKey(hasher.hashUnencodedChars(rec.name), rec.asSam.getFlags)
+    override val sortkey: SamRecord => A    = rec => RandomKey(hasher.hashUnencodedChars(rec.name), rec.flags)
   }
 
   /** Key object used by Random and RandomQuery sorts. */

@@ -43,8 +43,8 @@ class SamRecordCodec(header: SAMFileHeader, maxRecordSize: Int = 128 * 1024) ext
   }
 
   /** Decode an object from an array of bytes. */
-  override def decode(bs: Array[Byte]): SamRecord = this.synchronized {
-    bamCodec.setInputStream(new ByteArrayInputStream(bs))
+  override def decode(bs: Array[Byte], start: Int, length: Int): SamRecord = this.synchronized {
+    bamCodec.setInputStream(new ByteArrayInputStream(bs, start, length))
     bamCodec.decode().asInstanceOf[SamRecord]
   }
 }

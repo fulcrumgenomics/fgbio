@@ -115,7 +115,7 @@ class TrimPrimers
 
     // Main processing loop
     val iterator = queryNameOrderIterator(in)
-    val trimProgress = new ProgressLogger(this.logger, "Trimmed")
+    val trimProgress = ProgressLogger(this.logger, "Trimmed")
     while (iterator.hasNext) {
       val reads = nextTemplate(iterator)
       trimReadsForTemplate(detector, maxPrimerLength, reads)
@@ -127,7 +127,7 @@ class TrimPrimers
     (sorter, ref) match {
       case (Some(sorter), Some(path)) =>
         val walker = new ReferenceSequenceFileWalker(path.toFile)
-        val progress = new ProgressLogger(this.logger, "Written")
+        val progress = ProgressLogger(this.logger, "Written")
 
         sorter.foreach { rec =>
           recalculateTags(rec, walker)

@@ -48,8 +48,17 @@ private[api] trait SamRecordIntermediate extends SAMRecord {
   }
 
   override def setCigarString(cigar: String): Unit = { super.setCigarString(cigar);  cigarChanged(cigar) }
-  def setCigarStringNoNotify(cigar: String): Unit = super.setCigarString(cigar)
-  def cigarChanged(cigar: String): Unit = {}
+  protected[api] def setCigarStringNoNotify(cigar: String): Unit = super.setCigarString(cigar)
+  protected[api] def cigarChanged(cigar: String): Unit = {}
+}
+
+/** Class that is used to provide a nice API to transient attributes in the SamRecord. */
+class TransientAttrs(private val rec: SamRecord) {
+  def apply[A](key: Any): A = rec.asSam.getTransientAttribute(key).asInstanceOf[A]
+  def update(key: Any, value: Any): Unit = {
+    if (value == null) rec.asSam.removeTransientAttribute(key) else rec.asSam.setTransientAttribute(key, value)
+  }
+  def get[A](key: Any): Option[A] = Option(apply(key))
 }
 
 /**
@@ -70,6 +79,8 @@ trait SamRecord {
 
   @inline final def name: String = getReadName
   @inline final def name_=(name: String): Unit = setReadName(name)
+
+  @inline final def flags: Int = getFlags
 
   @inline final def paired: Boolean = getReadPairedFlag
   @inline final def paired_=(paired: Boolean):Unit = setReadPairedFlag(paired)
@@ -138,7 +149,7 @@ trait SamRecord {
   @inline final def cigar: Cigar = { if (_cigar == null) _cigar = Cigar.fromSam(getCigarString);  _cigar }
   @inline final def cigar_=(cig: String): Unit = { this._cigar = null; setCigarStringNoNotify(cig) }
   @inline final def cigar_=(cig: Cigar): Unit  = { this._cigar = cig; setCigarStringNoNotify(if (cig.isEmpty) null else cig.toString()) }
-  @inline final override def cigarChanged(cigar: String): Unit = { this._cigar = null }
+  @inline final override def cigarChanged(cigar: String): Unit = { this._cigar = null } // null out the cigar; lazily reconstruct if asked for again
 
   @inline final def mateRefName: String = getMateReferenceName
   @inline final def mateRefName_=(name: String):Unit = setMateReferenceName(name)
@@ -148,6 +159,10 @@ trait SamRecord {
 
   @inline final def mateStart: Int = getMateAlignmentStart
   @inline final def mateStart_=(s: Int):Unit = setMateAlignmentStart(s)
+  @inline final def mateEnd: Option[Int] = {
+    require(paired && mateMapped, "Cannot get mate end position on read without a mapped mate.")
+    get[String]("MC").map(cig => mateStart + Cigar(cig).lengthOnTarget - 1)
+  }
 
   @inline final def insertSize: Int = getInferredInsertSize
   @inline final def insertSize_=(s: Int):Unit = setInferredInsertSize(s)
@@ -175,9 +190,7 @@ trait SamRecord {
   @inline final def attributes: Map[String,Any] = getAttributes.map(x => x.tag -> x.value).toMap
 
   // transient attributes
-  @inline final def getTransientAttr[A](key: AnyRef): A = getTransientAttribute(key).asInstanceOf[A]
-  @inline final def setTransientAttr(key: AnyRef, value: Any) =
-    if (value == null) removeTransientAttribute(name) else setTransientAttribute(key, value)
+  @inline final def transientAttrs: TransientAttrs = new TransientAttrs(this)
 
   // TODO long-term: replace these two methods with methods on [[Cigar]] to save creating alignment blocks in memory
   @inline final def refPosAtReadPos(pos: Int) = getReferencePositionAtReadPosition(pos)

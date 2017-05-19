@@ -66,7 +66,7 @@ object GroupReadsByUmi {
 
     /** Creates/retrieves a ReadEnds object from a SamRecord and stores it in a temporary attribute for later user. */
     def apply(rec: SamRecord) : ReadInfo = {
-      val tmp = rec.getTransientAttr[ReadInfo](GroupReadsByUmi.ReadInfoTempAttributeName)
+      val tmp = rec.transientAttrs[ReadInfo](GroupReadsByUmi.ReadInfoTempAttributeName)
       if (tmp != null) {
         tmp
       }
@@ -86,7 +86,7 @@ object GroupReadsByUmi {
           new ReadInfo(chrom, matePos, recPos, mateNeg, recNeg, lib)
         }
 
-        rec.setTransientAttr(GroupReadsByUmi.ReadInfoTempAttributeName, result)
+        rec.transientAttrs(GroupReadsByUmi.ReadInfoTempAttributeName, result)
         result
       }
     }
