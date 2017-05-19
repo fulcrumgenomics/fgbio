@@ -104,8 +104,5 @@ class SamRecordTest extends UnitSpec {
     rec.cigar.toString shouldBe       ""
     rec.asSam.getCigarString shouldBe null
     rec.asSam.getCigar shouldBe       null
-
-
-
   }
 }

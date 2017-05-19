@@ -24,8 +24,11 @@
 
 package com.fulcrumgenomics.bam.api
 
+import com.fulcrumgenomics.FgBioDef._
 import com.fulcrumgenomics.testing.{SamBuilder, UnitSpec}
 import com.fulcrumgenomics.util.Io
+
+import scala.util.Random
 
 class SamIoTest extends UnitSpec {
   "SamWriter/SamSource" should "write some records to a BAM on disk and read them back" in {
@@ -60,5 +63,29 @@ class SamIoTest extends UnitSpec {
     in.toSeq.map(_.start) should contain theSameElementsInOrderAs Seq(100, 200, 300, 300, 400, 400, 500, 600)
 
     Io.readLines(sam).next() should startWith ("@HD")
+  }
+
+  it should "sort to disk and read records back" in {
+    val builder = new SamBuilder(sort=None)
+    val random  = new Random(42)
+    Range.inclusive(1, 1000).foreach { i =>
+      builder.addPair(contig=random.nextInt(23), start1=random.nextInt(1000000), start2=random.nextInt(1000000))
+    }
+
+    val tmp = makeTempFile("sorted.", ".bam")
+    val out = SamWriter(tmp, builder.header, sort=Some(SamOrder.Coordinate), maxRecordsInRam=500)
+    out ++= builder.iterator
+    out.close()
+    val recs = SamSource(tmp).iterator.toSeq
+    recs.size shouldBe builder.size
+    recs.grouped(2).foreach { case Seq(r1, r2) => r1.refIndex < r2.refIndex || r1.start <= r2.start shouldBe true }
+  }
+
+  "HeaderHelper" should "provide tidy access to things in the header" in {
+    val builder = new SamBuilder()
+    val source = builder.toSource
+    source.readGroups should contain theSameElementsInOrderAs source.header.getReadGroups.toSeq
+    source.dict shouldBe source.header.getSequenceDictionary
+    source.programGroups should contain theSameElementsInOrderAs source.header.getProgramRecords.toSeq
   }
 }

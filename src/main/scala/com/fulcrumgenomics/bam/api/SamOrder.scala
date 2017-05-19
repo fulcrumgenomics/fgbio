@@ -41,6 +41,9 @@ sealed trait SamOrder extends Product {
     header
   }
 
+  /** Returns the order's name. */
+  def name: String = productPrefix
+
   /** Returns the sort order that should be set in the SAM header. */
   def sortOrder : SortOrder
 
@@ -63,7 +66,7 @@ object SamOrder {
     * Performs case insensitive matching so that we can use capitalized class names, but have backwards
     * compatibility to SAM spec sort orders that are all lower-case.
     * */
-  def apply(name: String): SamOrder = values.find(_.productPrefix.equalsIgnoreCase(name)).getOrElse {
+  def apply(name: String): SamOrder = values.find(_.name.equalsIgnoreCase(name)).getOrElse {
     throw new NoSuchElementException("No SamOrder: " + name)
   }
 
@@ -125,7 +128,7 @@ object SamOrder {
     private  val hasher = new Murmur3(42)
     override val sortOrder:  SortOrder      = SortOrder.unsorted
     override val groupOrder: GroupOrder     = GroupOrder.none
-    override val subSort:    Option[String] = None
+    override val subSort:    Option[String] = Some("random")
     override val sortkey: (SamRecord => A)  = rec => RandomKey(hasher.hashUnencodedChars(rec.id + rec.basesString), rec.asSam.getFlags)
   }
 
