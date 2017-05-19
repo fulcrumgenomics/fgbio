@@ -91,7 +91,7 @@ lazy val commonSettings = Seq(
   autoAPIMappings := true,
   testOptions in Test  += Tests.Argument(TestFrameworks.ScalaTest, "-h", Option(System.getenv("TEST_HTML_REPORTS")).getOrElse(htmlReportsDirectory)),
   // uncomment for full stack traces
-  //testOptions in Test  += Tests.Argument("-oD"),
+  //testOptions in Test  += Tests.Argument("-oDF"),
   fork in Test         := true,
   resolvers            += Resolver.sonatypeRepo("public"),
   resolvers            += Resolver.mavenLocal,
