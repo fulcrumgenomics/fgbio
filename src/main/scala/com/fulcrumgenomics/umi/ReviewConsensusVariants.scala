@@ -162,7 +162,6 @@ class ReviewConsensusVariants
     override def getStart: Int = start
     override def getEnd: Int = start
 
-    def toQueryInterval: QueryInterval = new QueryInterval(dict.getSequenceIndex(chrom), start, start)
     def toInterval: Interval = new Interval(chrom, start, start)
   }
 

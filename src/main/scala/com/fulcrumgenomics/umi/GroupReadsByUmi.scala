@@ -53,21 +53,9 @@ object GroupReadsByUmi {
   private val ReadInfoTempAttributeName = "__GRBU_ReadInfo"
 
   /** A case class to represent all the information we need to order reads for duplicate marking / grouping. */
-  case class ReadInfo(refIndex: Int, start1: Int, start2: Int, strand1: Boolean, strand2: Boolean, library: String) extends Ordered[ReadInfo] {
-    override def compare(that: ReadInfo): Int = ReadInfo.Comparisons.map(f => f(this, that)).find(_ != 0).getOrElse(0)
-  }
+  case class ReadInfo(refIndex: Int, start1: Int, start2: Int, strand1: Boolean, strand2: Boolean, library: String)
 
   object ReadInfo {
-    /* The set of comparisons by which we order ReadInfo objects. */
-    private val Comparisons: Seq[(ReadInfo,ReadInfo) => Int] = Seq(
-      (lhs, rhs) => lhs.refIndex - rhs.refIndex,
-      (lhs, rhs) => lhs.start1   - rhs.start1,
-      (lhs, rhs) => lhs.start2   - rhs.start2,
-      (lhs, rhs) => lhs.strand1.compare(rhs.strand1),
-      (lhs, rhs) => lhs.strand2.compare(rhs.strand2),
-      (lhs, rhs) => lhs.library.compare(rhs.library)
-    )
-
     /** Looks in all the places the library name can be hiding. Returns the library name
       * if one is found, otherwise returns "unknown".
       */
@@ -103,49 +91,6 @@ object GroupReadsByUmi {
       }
     }
   }
-
-    /** Comparator to sort the reads by the earlier of the unclipped 5' position of the
-    * first or second read.  Groups reads in a convenient way for duplicate-marking and
-    * UMI assignment, and ensures that both ends of a read come together.
-    *
-    * Private because it has some serious restrictions!  Only allows:
-    *   - Paired reads only
-    *   - Mapped reads with mapped mates only
-    *   - No secondary or supplementary reads
-    *   - Read and mate _must_ be mapped to the same chromosome
-    * If any of these conditions are violated it will go badly!
-    */
-  private[umi] class EarlierReadComparator extends SAMRecordComparator /* with Ordering[SamRecord] */ {
-    override def fileOrderCompare(lhs: SAMRecord, rhs: SAMRecord): Int = compare(lhs, rhs)
-
-    override def compare(lhs: SAMRecord, rhs: SAMRecord): Int =
-      compare(lhs.asInstanceOf[SamRecord], rhs.asInstanceOf[SamRecord])
-
-    /** Compares two reads for sort order. */
-    /* override */ def compare(lhs: SamRecord, rhs: SamRecord): Int = {
-      // Do some asserting!
-      assertValidRead(lhs)
-      assertValidRead(rhs)
-      val l = ReadInfo(lhs)
-      val r = ReadInfo(rhs)
-      val result = l.compare(r)
-
-      if (result == 0) lhs.name.compareTo(rhs.name)
-      else result
-    }
-
-    /** Asserts that we didn't get reads we are unable to sort. */
-    final def assertValidRead(rec: SamRecord): Unit = {
-      assert(rec.paired,     "Unpaired read: " + rec.name)
-      assert(rec.mapped,     "Unmapped read: " + rec.name)
-      assert(rec.mateMapped, "Read w/unmapped mate: " + rec.name)
-      assert(rec.refIndex == rec.mateRefIndex, "Read w/mate on different chr: " + rec.name)
-      assert(SAMUtils.getMateCigarString(rec.asSam) != null, "Read w/o Mate Cigar tag: " + rec.name)
-      assert(rec.get("MQ").isDefined , "Read w/o Mate MQ tag: " + rec.name)
-      assert(!rec.secondary && !rec.supplementary, "Secondary or supplementary read: " + rec.name)
-    }
-  }
-
 
   /** Trait that can be implemented to provide a UMI assignment strategy. */
   private[umi] sealed trait UmiAssigner {

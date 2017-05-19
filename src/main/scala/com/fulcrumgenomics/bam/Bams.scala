@@ -287,14 +287,4 @@ object Bams extends LazyLogging {
       None
     }
   }
-
-  // TODO: delete this method!
-  /** Returns true if the read is mapped in an FR pair, false otherwise. */
-  def isFrPair(rec: SAMRecord): Boolean = {
-    rec.getReadPairedFlag &&
-      !rec.getReadUnmappedFlag &&
-      !rec.getMateUnmappedFlag &&
-      rec.getReferenceIndex == rec.getMateReferenceIndex &&
-      SamPairUtil.getPairOrientation(rec) == PairOrientation.FR
-  }
 }

@@ -171,8 +171,6 @@ class GroupReadsByUmiTest extends UnitSpec {
   }
 
   {
-    val comparator = new GroupReadsByUmi.EarlierReadComparator()
-
     "TemplateCoordinate SamOrder" should "sort pairs by the 'lower' 5' position of the pair" in {
       val builder = new SamBuilder(readLength=100, sort=Some(SamOrder.Coordinate))
       val exp = ListBuffer[SamRecord]()
