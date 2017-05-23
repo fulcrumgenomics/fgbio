@@ -84,6 +84,48 @@ class SampleSheetTest extends FlatSpec with Matchers with OptionValues {
     an[Exception] should be thrownBy SampleSheet(testDir.resolve("SampleSheetSampleMissingColumns.csv"))
   }
 
+  it should "throw an exception if sample ids are not unique " in {
+    val sample = Sample(sampleOrdinal=0, sampleId="ID", sampleName="NAMEA", libraryId="LIBRARY")
+    an[IllegalArgumentException] should be thrownBy new SampleSheet(Seq(sample, sample.copy(sampleName="NAMEB")))
+
+    // within a lane
+    val sampleForLane = Sample(sampleOrdinal=0, sampleId="ID", sampleName="NAMEA", libraryId="LIBRARY", lane=Some(1))
+    an[IllegalArgumentException] should be thrownBy new SampleSheet(Seq(sampleForLane, sampleForLane.copy(sampleName="NAMEB")))
+  }
+
+  it should "throw an exception if the combination of sample name and library id are not unique" in {
+    val sample = Sample(sampleOrdinal=0, sampleId="ID1", sampleName="NAME", libraryId="LIBRARY")
+    an[IllegalArgumentException] should be thrownBy new SampleSheet(Seq(sample, sample.copy(sampleId="ID2")))
+
+    // within a lane
+    val sampleForLane = Sample(sampleOrdinal=0, sampleId="ID1", sampleName="NAME", libraryId="LIBRARY", lane=Some(1))
+    an[IllegalArgumentException] should be thrownBy new SampleSheet(Seq(sampleForLane, sampleForLane.copy(sampleId="ID2")))
+  }
+
+  it should "not throw an exception if sample ids are unique and if the combination of sample name and library id are unique" in {
+    val sample = Sample(sampleOrdinal=0, sampleId="IDA", sampleName="NAMEA", libraryId="LIBRARY")
+    new SampleSheet(Seq(sample, sample.copy(sampleId="IDB", sampleName="NAMEB"))).size shouldBe 2
+
+    // within lane
+    val sampleForLane = Sample(sampleOrdinal=0, sampleId="IDA", sampleName="NAMEA", libraryId="LIBRARY", lane=Some(1))
+    new SampleSheet(Seq(sampleForLane, sampleForLane.copy(sampleId="IDB", sampleName="NAMEB"))).size shouldBe 2
+  }
+
+  it should "not throw an exception if samples are replicated across lanes" in {
+    val sample1= Sample(sampleOrdinal=0, sampleId="ID1", sampleName="NAME1", libraryId="LIBRARY1", lane=Some(1))
+    val sample2 = Sample(sampleOrdinal=1, sampleId="ID2", sampleName="NAME2", libraryId="LIBRARY2", lane=Some(1))
+
+    val samples = Seq(
+      sample1,
+      sample2,
+      sample1.copy(lane=Some(2)),
+      sample2.copy(lane=Some(2))
+    )
+
+    new SampleSheet(samples).size shouldBe 4
+  }
+
+
   "SampleSheet.get" should "get the ith sample" in {
     val sampleSheet = SampleSheet(testDir.resolve("SampleSheet.csv"))
     val samples = sampleSheet.toList

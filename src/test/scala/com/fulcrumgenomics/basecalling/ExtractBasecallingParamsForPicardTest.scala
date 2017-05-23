@@ -203,11 +203,6 @@ class ExtractBasecallingParamsForPicardTest extends UnitSpec with ErrorLogLevel 
     libraryParams.last shouldBe s"N\tN\t${outputDir.resolve("unmatched.1.bam")}\tunmatched\tunmatched"
   }
 
-  it should "fail if the BAM file names are not unique" in {
-    val sampleSheet = SampleSheet(duplicateNamesSampleSheet.toIterator, lane=None)
-    an[Exception] should be thrownBy BasecallingParams.from(sampleSheet=sampleSheet, lanes=Seq(1), output=outputDir)
-  }
-
   "ExtractBasecallingParams" should "run end-to-end" in {
     val sampleSheet = makeTempFile("SampleSheet", ".csv")
     Io.writeLines(sampleSheet, dualIndexedSampleSheet.toSeq)

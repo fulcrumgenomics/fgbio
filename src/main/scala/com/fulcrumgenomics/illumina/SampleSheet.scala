@@ -29,6 +29,7 @@ package com.fulcrumgenomics.illumina
 
 import java.nio.file.Path
 
+import scala.collection.Set
 import scala.io.Source
 
 object SampleSheet {
@@ -149,6 +150,16 @@ object SampleSheet {
   }
 
   protected[illumina] val SplitRegex = ",(?=(?:[^\"]*\"[^\"]*\")*[^\"]*$)"
+
+  /** Validate that the sample ids are unique, and that the combination of sample name and library id are unique. */
+  private def validateSamples(samples: Seq[Sample]): Unit = {
+    // Validate some properties for a sample sheet
+    require(samples.map(_.sampleId).toSet.size == samples.length,
+      "Sample identifiers were not unique: " + samples.groupBy(_.sampleId).filter(_._2.length > 2).keys.mkString(", "))
+    require(samples.map(s => s"${s.sampleName} ${s.libraryId}").toSet.size == samples.length,
+      "Sample name and library identifier combinations were not unique: " +
+        samples.groupBy(s => s"${s.sampleName} ${s.libraryId}").filter(_._2.length > 2).keys.mkString(", "))
+  }
 }
 
 /**
@@ -168,12 +179,11 @@ object SampleSheet {
   */
 class SampleSheet(samples: Seq[Sample]) extends Iterable[Sample] {
 
-  // Validate some properties for a sample sheet
-  require(samples.map(_.sampleId).toSet.size == samples.length,
-    "Sample identifiers were not unique: " + samples.groupBy(_.sampleId).filter(_._2.length > 2).keys.mkString(", "))
-  require(samples.map(s => s"${s.sampleId} ${s.libraryId}").toSet.size == samples.length,
-    "Sample name and library identifier combinations were not unique: " +
-      samples.groupBy(s => s"${s.sampleId} ${s.libraryId}").filter(_._2.length > 2).keys.mkString(", "))
+  // Validate samples
+  samples.flatMap(_.lane).toSet[Int].toList.foreach { lane =>
+    SampleSheet.validateSamples(samples.filter(_.lane.contains(lane)))
+  }
+  SampleSheet.validateSamples(samples.filter(_.lane.isEmpty))
 
   def iterator: Iterator[Sample] = this.samples.iterator
 
