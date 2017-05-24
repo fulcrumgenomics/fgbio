@@ -31,12 +31,16 @@ import com.fulcrumgenomics.sopt.{Sopt, arg, clp}
 import com.fulcrumgenomics.util.Io
 
 @clp(description="Generates the suite of per-tool MarkDown documents.")
-class BuildToolDocs( @arg(flag='o', doc="Output directory") val output: DirPath) extends InternalTool {
+class BuildToolDocs
+( @arg(flag='o', doc="Output directory") val output: DirPath,
+  @arg(flag='p', doc="The packages to document") val packages: Seq[String] = Seq("com.fulcrumgenomics"),
+  @arg(flag='n', doc="The name of the tool chain") val name: String = "fgbio"
+) extends InternalTool {
   
   override def execute(): Unit = {
     Io.mkdirs(output)
     val version = getClass.getPackage.getImplementationVersion
-    val classes = Sopt.find[FgBioTool](packages=Seq("com.fulcrumgenomics"))
+    val classes = Sopt.find[FgBioTool](packages=packages)
     logger.info(s"Found ${classes.size} tools to document.")
     
     val toolsByGroup = classes.map(c => Sopt.inspect(c)).groupBy(_.group.name)
@@ -44,12 +48,12 @@ class BuildToolDocs( @arg(flag='o', doc="Output directory") val output: DirPath)
     val indexHeader =
       s"""
         |---
-        |title: fgbio tools
+        |title: $name tools
         |---
         |
-        |# fgbio tools
+        |# $name tools
         |
-        |The following tools are available in fgbio version $version.
+        |The following tools are available in $name version $version.
         |
       """.trim.stripMargin
     
