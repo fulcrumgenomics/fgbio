@@ -1,11 +1,11 @@
 sudo: required
 language: scala
 scala:
-- 2.11.8
+- 2.12.2
 jdk:
 - oraclejdk8
 script:
-- sbt clean coverage test && sbt coverageReport coverageAggregate
+- sbt +clean coverage +test && sbt coverageReport coverageAggregate
 - find $HOME/.sbt -name "*.lock" | xargs rm
 - find $HOME/.ivy2 -name "ivydata-*.properties" | xargs rm
 cache:
@@ -27,7 +27,7 @@ before_install:
 - sudo chmod +x /usr/local/bin/sbt
 after_success:
 - codecov
-- test "$TRAVIS_REPO_SLUG" == 'fulcrumgenomics/fgbio' && test "$TRAVIS_PULL_REQUEST" == 'false' && test "$TRAVIS_BRANCH" == 'master' && sbt publish #&& sbt 'set version := version.value + "." + System.getenv("TRAVIS_BUILD_NUMBER")' publish
+- test "$TRAVIS_REPO_SLUG" == 'fulcrumgenomics/fgbio' && test "$TRAVIS_PULL_REQUEST" == 'false' && test "$TRAVIS_BRANCH" == 'master' && sbt +publish #&& sbt 'set version := version.value + "." + System.getenv("TRAVIS_BUILD_NUMBER")' publish
 env:
   global:
   - R_LIBS_USER=$HOME/Rlib
