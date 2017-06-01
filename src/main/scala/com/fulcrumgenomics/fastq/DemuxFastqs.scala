@@ -26,7 +26,6 @@
 package com.fulcrumgenomics.fastq
 
 import java.io.Closeable
-import java.util.concurrent.ForkJoinPool
 
 import com.fulcrumgenomics.FgBioDef.unreachable
 import com.fulcrumgenomics.bam.api.{SamOrder, SamRecord, SamWriter}
@@ -42,6 +41,7 @@ import com.fulcrumgenomics.util.ReadStructure.SubRead
 import com.fulcrumgenomics.util.{ReadStructure, SampleBarcodeMetric, _}
 import htsjdk.samtools.SAMFileHeader.SortOrder
 import htsjdk.samtools._
+import scala.concurrent.forkjoin.ForkJoinPool
 import htsjdk.samtools.util.{ProgressLogger => _, _}
 
 
