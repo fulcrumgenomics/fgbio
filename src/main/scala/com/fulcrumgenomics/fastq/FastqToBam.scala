@@ -111,14 +111,8 @@ class FastqToBam
     val encoding = qualityEncoding
     val writer   = makeSamWriter()
     val iterator = FastqSource.zipped(this.input.map(FastqSource(_)))
-    val progress = ProgressLogger(logger, verb = if (sort) "Read" else "Wrote")
 
-    iterator.foreach { fqs =>
-      val recs = makeSamRecords(fqs, actualReadStructures, writer.header, encoding)
-      writer ++= recs
-      recs.foreach(progress.record)
-    }
-
+    iterator.foreach { fqs => writer ++= makeSamRecords(fqs, actualReadStructures, writer.header, encoding) }
     writer.close()
   }
 
