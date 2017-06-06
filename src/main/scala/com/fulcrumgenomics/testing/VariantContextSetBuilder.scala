@@ -88,6 +88,7 @@ class VariantContextSetBuilder(sampleNames: Seq[String] = List("Sample")) extend
   def addVariant(refIdx: Int = 0,
                  start: Long,
                  variantAlleles: List[String],
+                 variantAttributes: Map[String,Any] = Map.empty,
                  genotypeAlleles: List[String] = List.empty,
                  genotypeAttributes: Map[String,Any] = Map.empty,
                  sampleName: Option[String] = None,
@@ -137,6 +138,7 @@ class VariantContextSetBuilder(sampleNames: Seq[String] = List("Sample")) extend
     }
     val genotypes = genotype +: prevGenotypes
     ctxBuilder.genotypes(genotypes:_*)
+    ctxBuilder.attributes(variantAttributes.asJava)
     yieldingThis(this.variants.append(ctxBuilder.make()))
   }
 
