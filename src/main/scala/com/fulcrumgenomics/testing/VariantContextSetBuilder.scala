@@ -124,7 +124,7 @@ class VariantContextSetBuilder(sampleNames: Seq[String] = List("Sample")) extend
     // create a genotype builder.
     val name = sampleName.getOrElse(header.getSampleNamesInOrder.iterator().next())
     val genotypeBuilder = genotypeAlleles match {
-      case Nil      => new GenotypeBuilder(name, Collections.emptyList[Allele]())
+      case Nil      => new GenotypeBuilder(name, Collections.singletonList(Allele.create(Allele.NO_CALL_STRING)))
       case gAlleles => new GenotypeBuilder(name, toAlleles(gAlleles, referenceAllele=referenceAllele).asJava)
     }
     genotypeBuilder.phased(phased)

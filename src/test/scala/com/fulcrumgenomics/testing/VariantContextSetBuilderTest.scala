@@ -40,4 +40,13 @@ class VariantContextSetBuilderTest extends  UnitSpec {
     builder.iterator.next().getGenotypesOrderedByName.map(_.getSampleName).toSeq should contain theSameElementsInOrderAs sampleNames
     builder.size shouldBe 1
   }
+
+  it should "add a no call genotype" in {
+    val builder     = new VariantContextSetBuilder()
+      .addVariant(refIdx=0, start=1, variantAlleles=List("A", "C"))
+    val vcf = builder.toTempFile()
+    val variants = readVcfRecs(vcf).toIndexedSeq
+    variants.length shouldBe 1
+    variants.head.getGenotype(0).isNoCall shouldBe true
+  }
 }
