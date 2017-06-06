@@ -132,7 +132,7 @@ object SamOrder {
     override val sortkey: (SamRecord => A)  = rec => RandomKey(hasher.hashUnencodedChars(rec.id + rec.basesString), rec.flags)
   }
 
-  /** Ordering object for generating a random order with queryname grouping.. */
+  /** Ordering object for generating a random order with queryname grouping. */
   case object RandomQuery extends SamOrder {
     override type A = RandomKey
     private  val hasher = new Murmur3(42)
