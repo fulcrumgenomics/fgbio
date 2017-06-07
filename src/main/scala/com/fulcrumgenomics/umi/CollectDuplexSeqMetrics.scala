@@ -105,7 +105,7 @@ object CollectDuplexSeqMetrics {
     *
     * @param ab_size The number of reads in the larger single-strand tag family for this double-strand tag family
     * @param ba_size The number of reads in the smaller single-strand tag family for this double-strand tag family
-    * @param count The number of families with the A and B ss families of size ab_size and ba_size
+    * @param count The number of families with the A and B SS families of size ab_size and ba_size
     * @param fraction The fraction of all double-stranded tag families that have ab_size and ba_size
     * @param fraction_gt_or_eq_size The fraction of all double-stranded tag families that have
     *                               AB reads >= ab_size and BA reads >= ba_size
@@ -117,6 +117,7 @@ object CollectDuplexSeqMetrics {
                                     var fraction_gt_or_eq_size: Double = 0
                                    ) extends Metric with Ordered[DuplexFamilySizeMetric] {
 
+    /** Orders by ab_size, then ba_size. */
     override def compare(that: DuplexFamilySizeMetric): Int = {
       var retval = this.ab_size - that.ab_size
       if (retval == 0) retval = this.ba_size - that.ba_size
@@ -154,9 +155,9 @@ object CollectDuplexSeqMetrics {
   /**
     * Metrics describing the set of observed UMI sequences and the frequency of their observations.  The UMI
     * sequences reported may have been corrected using information within a double-stranded tag family.  For
-    * example if a tag family is comprised of three read pairs with UMIs ACGT-TGGT ACGT-TGGT ACGT-TGGG that
-    * a consensus UMI of will be generated ACGT-TGGT will be generated, and 3 raw observations counted for each
-    * of ACGT and TGGT, and no observations counted for TGGG.
+    * example if a tag family is comprised of three read pairs with UMIs ACGT-TGGT ACGT-TGGT ACGT-TGGG then
+    * a consensus UMI of will be generated ACGT-TGGT will be generated, and three raw observations counted
+    * for each of ACGT and TGGT, and no observations counted for TGGG.
     *
     * @param umi the possibly-corrected UMI sequence
     * @param raw_observations the number of read pairs in the input BAM that observe the UMI (after correction)
@@ -233,7 +234,7 @@ class CollectDuplexSeqMetrics
   @arg(flag='d', doc="Description of dataset used to label plots. Defaults to sample/library.") val description: Option[String] = None,
   @arg(flag='a', doc="Minimum AB reads to call a tag family a 'duplex'.") val minAbReads: Int = 1,
   @arg(flag='b', doc="Minimum BA reads to call a tag family a 'duplex'.") val minBaReads: Int = 1,
-  val generatePlots: Boolean = true // not a CLP arg - here to allow disabling of plots to speed up testing
+  private val generatePlots: Boolean = true // not a CLP arg - here to allow disabling of plots to speed up testing
 ) extends FgBioTool with LazyLogging {
   import CollectDuplexSeqMetrics._
 
@@ -288,13 +289,13 @@ class CollectDuplexSeqMetrics
 
     // Do a bunch of metrics collection
     collect(iterator)
-    in.close()
+    in.safelyClose()
 
     // Write the output files
     write(description)
   }
 
-  /** Consumes from the iterator and collects information internal from which to generate metrics. */
+  /** Consumes from the iterator and collects information internally from which to generate metrics. */
   def collect(iterator: Iterator[SamRecord]): Unit = {
     val buffered = iterator.bufferBetter
     val progress = ProgressLogger(logger)
@@ -351,10 +352,6 @@ class CollectDuplexSeqMetrics
 
     Seq(umi1s, umi2s).foreach { umis =>
       val consensus = callConsensus(umis)
-      if (consensus.contains('N')) {
-        val x = 0
-      }
-
       val metric    = this.umiMetricsMap.getOrElseUpdate(consensus, UmiMetric(umi=consensus))
       metric.raw_observations    += umis.size
       metric.unique_observations += 1
@@ -456,7 +453,6 @@ class CollectDuplexSeqMetrics
       }.sum
 
       val countOfDuplexesIdeal = duplexCounter.map { case (pair, count) => count * pDuplexIdeal(pair.ab + pair.ba) }.sum
-
 
       new DuplexYieldMetric(
         fraction                   = fraction,

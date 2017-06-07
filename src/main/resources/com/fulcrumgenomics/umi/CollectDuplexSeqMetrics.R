@@ -21,12 +21,12 @@
 #################################################################################
 # R script to generate QC plots for duplex sequencing data QC's with
 # CollectDuplexSeqMetrics tools.  All arguments are positional and required:
-#   1. The family size file with data on families by start/stop, ss and ds
-#   2. The duplex family size file
-#   3. The duplex yield metrics file
-#   4. The UMI metrics file
-#   5. An output PDF to write
-#   6+ One or more strings to use in plot titles to ID the sample/dataset
+#   1.  The family size file with data on families by start/stop, ss and ds
+#   2.  The duplex family size file
+#   3.  The duplex yield metrics file
+#   4.  The UMI metrics file
+#   5.  An output PDF to write
+#   6+. One or more strings to use in plot titles to ID the sample/dataset
 #################################################################################
 
 options(warn = -1) # Don't emit warnings, only errors
@@ -53,16 +53,15 @@ pdf(outputFile, width=11, height=8.5)
 ggplot(familyData) + aes(x=family_size) +
   geom_line(aes(y=ds_count, color="DS Families")) +
   geom_line(aes(y=ss_count, color="SS Families")) + 
-  geom_line(aes(y=cs_count, color="By Position")) + 
+  geom_line(aes(y=cs_count, color="By Coord+Strand")) +
   scale_x_continuous(trans="log2", minor_breaks=seq(0,max(familyData$family_size), by=2)) +
   scale_color_manual(values=fgcolors) +
   labs(x="Family Size (log2 scaled)", y="Count of Families", title=paste("Family Size Distributions for", sampleInfo)) +
   theme(plot.title = element_text(hjust = 0.5), legend.title=element_blank())
 
-
 # Plot #2- Cumulative Family Sizes for different kinds of familes
 ggplot(familyData) + aes(x=family_size) +
-  geom_line(aes(y=cs_fraction_gt_or_eq_size, color="By Position"), alpha=0.5) + 
+  geom_line(aes(y=cs_fraction_gt_or_eq_size, color="By Coord+Strand"), alpha=0.5) +
   geom_line(aes(y=ss_fraction_gt_or_eq_size, color="SS Families"), alpha=0.5) + 
   geom_line(aes(y=ds_fraction_gt_or_eq_size, color="DS Families"), alpha=0.5) +
   scale_x_continuous(trans="log2", minor_breaks=seq(0,max(familyData$family_size), by=2)) +
@@ -107,7 +106,7 @@ ggplot(subset(umiData, !grepl("N", umiData$umi, fixed=T))) +
 
 # Plot #6 - Distribution of reads within tag families
 ggplot(familyData) + aes(x=family_size) +
-  geom_line(aes(y=cs_count * family_size, color="By Position")) + 
+  geom_line(aes(y=cs_count * family_size, color="By Coord+Strand")) +
   geom_line(aes(y=ss_count * family_size, color="SS Families")) + 
   geom_line(aes(y=ds_count * family_size, color="DS Families")) +
   scale_x_continuous(trans="log2", minor_breaks=seq(0,max(familyData$family_size), by=2)) +
