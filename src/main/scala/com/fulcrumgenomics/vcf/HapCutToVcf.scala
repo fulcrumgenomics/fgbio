@@ -124,7 +124,8 @@ class HapCutToVcf
       .setOutputFile(path.toFile)
       .setReferenceDictionary(inputHeader.getSequenceDictionary)
       .setOption(Options.INDEX_ON_THE_FLY)
-      .modifyOption(Options.ALLOW_MISSING_FIELDS_IN_HEADER, true)
+      .setOption(Options.WRITE_FULL_FORMAT_FIELD)
+      .setOption(Options.ALLOW_MISSING_FIELDS_IN_HEADER)
     val writer: VariantContextWriter = builder.build
 
     // get the header lines in the input header that we wish to skip/replace with our own definitions
@@ -210,7 +211,7 @@ object HapCut1VcfHeaderLines extends HeaderLines {
 
 object HapCut2VcfHeaderLines extends HeaderLines {
   val PrunedFormatTag         = "PR"
-  val PrunedFormatDescription = "1 if HapCut2 pruned this variant, 0 otherwise"
+  val PrunedFormatDescription = "1 if HapCut2 pruned this variant when using --discrete_pruning, 0 otherwise"
   val PrunedFormatHeaderLine  = new VCFFormatHeaderLine(PrunedFormatTag, 1, VCFHeaderLineType.Integer, PrunedFormatDescription)
 
   val SwitchErrorFormatTag         = "SE"
