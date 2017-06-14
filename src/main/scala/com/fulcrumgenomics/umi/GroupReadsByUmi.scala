@@ -39,6 +39,7 @@ import com.fulcrumgenomics.util.Sequences.countMismatches
 import com.fulcrumgenomics.util._
 import htsjdk.samtools.SAMFileHeader.{GroupOrder, SortOrder}
 import htsjdk.samtools._
+import htsjdk.samtools.util.StringUtil
 
 import scala.collection.mutable
 import scala.collection.mutable.ListBuffer
@@ -230,6 +231,12 @@ object GroupReadsByUmi {
     * @param maxMismatches the maximum number of mismatches between UMIs
     */
   class PairedUmiAssigner(maxMismatches: Int) extends AdjacencyUmiAssigner(maxMismatches) {
+    /** String that is prefixed onto the UMI from the genomically earlier/lower read. */
+    val lowerReadUmiPrefix: String = ("a" * (maxMismatches+1)) + ":"
+
+    /** String that is prefixed onto the UMI from the genomically later/higher read. */
+    val higherReadUmiPrefix: String = ("b" * (maxMismatches+1)) + ":"
+
     /** Takes a UMI of the form "A-B" and returns "B-A". */
     def reverse(umi: Umi): Umi = umi.indexOf('-') match {
       case -1 => throw new IllegalStateException(s"UMI ${umi} is not a paired UMI.")
@@ -396,13 +403,15 @@ class GroupReadsByUmi
     outHeader.setGroupOrder(GroupOrder.query)
     val out = SamWriter(output, outHeader)
 
-    val iterator = sorter.iterator.grouped(2).map(i => (i(0), i(1))).buffered // consume in pairs
+    val iterator = sorter.iterator.grouped(2).map { case Seq(x,y) => if (x.firstOfPair) (x, y) else (y, x) }.buffered // consume in pairs
     val tagFamilySizeCounter = new NumericCounter[Int]()
 
     while (iterator.hasNext) {
       // Take the next set of pairs by position and assign UMIs
       val pairs = takeNextGroup(iterator)
-      pairs.foreach { case(r1, r2) => assert(r1.name == r2.name, s"Reads out of order @ ${r1.id} + ${r2.id}") }
+      pairs.foreach { case(r1, r2) =>
+        assert(r1.name == r2.name && r1.firstOfPair && r2.secondOfPair, s"Reads out of order @ ${r1.id} + ${r2.id}")
+      }
       assignUmiGroups(pairs)
 
       // Then output the records in the right order (assigned tag, read name, r1, r2)
@@ -446,18 +455,43 @@ class GroupReadsByUmi
     * sub-grouping into UMI groups by original molecule.
     */
   def assignUmiGroups(pairs: Seq[ReadPair]): Unit = {
-    val rawUmis = pairs.map(_._1).map(getRawUmi)
-    val rawToId = this.assigner.assign(rawUmis)
+    val umis = pairs.map { case (r1, r2) => umiForRead(r1, r2) }
+    val rawToId = this.assigner.assign(umis)
 
-    pairs.foreach(pair => Seq(pair._1, pair._2).foreach(rec => {
-      val raw = getRawUmi(rec)
-      val id  = rawToId(raw)
-      rec(this.assignTag) = id
-    }))
+    pairs.foreach { case (r1, r2) =>
+      val umi = umiForRead(r1, r2)
+      val id  = rawToId(umi)
+      r1(this.assignTag) = id
+      r2(this.assignTag) = id
+    }
   }
 
-  private def getRawUmi(rec: SamRecord): String = rec.get[String](this.rawTag) match {
-    case None | Some("") => fail(s"Record '$rec' was missing the raw UMI tag '${this.rawTag}'")
-    case Some(umi) => umi.toUpperCase
+  /**
+    * Retrieves the UMI to use for a read pair.  In the case of single-umi strategies this is just
+    * the upper-case UMI sequence.
+    *
+    * For Paired the UMI is extended to encode which "side" of the template the read came from - the earlier
+    * or later read on the genome.  This is necessary to ensure that, when the two paired UMIs are the same
+    * or highly similar, that the A vs. B groups are constructed correctly.
+    */
+  private def umiForRead(r1: SamRecord, r2: SamRecord): String = r1.get[String](this.rawTag) match {
+    case None | Some("") => fail(s"Record '$r1' was missing the raw UMI tag '${this.rawTag}'")
+    case Some(chs) =>
+      val umi = chs.toUpperCase
+
+      this.assigner match {
+        case paired: PairedUmiAssigner =>
+          require(r1.refIndex == r2.refIndex, s"Mates on different references not supported: ${r1.name}")
+          val pos1 = if (r1.positiveStrand) r1.unclippedStart else r1.unclippedEnd
+          val pos2 = if (r2.positiveStrand) r2.unclippedStart else r2.unclippedEnd
+
+          val umis = umi.split('-')
+          require(umis.length == 2, s"Paired strategy used but umi did not contain 2 segments: $umi")
+
+          if (pos1 < pos2) s"${paired.lowerReadUmiPrefix}:${umis(0)}-${paired.higherReadUmiPrefix}:${umis(1)}"
+          else             s"${paired.higherReadUmiPrefix}:${umis(0)}-${paired.lowerReadUmiPrefix}:${umis(1)}"
+        case _ =>
+          umi
+      }
   }
 }

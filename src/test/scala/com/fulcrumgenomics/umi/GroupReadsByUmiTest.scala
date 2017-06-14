@@ -215,4 +215,32 @@ class GroupReadsByUmiTest extends UnitSpec {
 
     hist.toFile.exists() shouldBe true
   }
+
+  it should "correctly group reads with the paired assigner when the two UMIs are the same" in {
+    val builder = new SamBuilder(readLength=100, sort=Some(SamOrder.Coordinate))
+    builder.addPair(name="a01", start1=100, start2=300, strand1=Plus,  strand2=Minus, attrs=Map("RX" -> "ACT-ACT"))
+    builder.addPair(name="a02", start1=100, start2=300, strand1=Plus,  strand2=Minus, attrs=Map("RX" -> "ACT-ACT"))
+    builder.addPair(name="a03", start1=100, start2=300, strand1=Plus,  strand2=Minus, attrs=Map("RX" -> "ACT-ACT"))
+    builder.addPair(name="a04", start1=100, start2=300, strand1=Plus,  strand2=Minus, attrs=Map("RX" -> "ACT-ACT"))
+    builder.addPair(name="b01", start1=300, start2=100, strand1=Minus, strand2=Plus,  attrs=Map("RX" -> "ACT-ACT"))
+    builder.addPair(name="b02", start1=300, start2=100, strand1=Minus, strand2=Plus,  attrs=Map("RX" -> "ACT-ACT"))
+    builder.addPair(name="b03", start1=300, start2=100, strand1=Minus, strand2=Plus,  attrs=Map("RX" -> "ACT-ACT"))
+    builder.addPair(name="b04", start1=300, start2=100, strand1=Minus, strand2=Plus,  attrs=Map("RX" -> "ACT-ACT"))
+
+    val in  = builder.toTempFile()
+    val out = Files.createTempFile("umi_grouped.", ".sam")
+    val hist = Files.createTempFile("umi_grouped.", ".histogram.txt")
+    new GroupReadsByUmi(input=in, output=out, familySizeHistogram=Some(hist), rawTag="RX", assignTag="MI", strategy="paired", edits=1).execute()
+
+    val recs = readBamRecs(out)
+
+    val aIds = recs.filter(_.name.startsWith("a")).map(r => r[String]("MI")).distinct
+    val bIds = recs.filter(_.name.startsWith("b")).map(r => r[String]("MI")).distinct
+
+    aIds should have size 1
+    bIds should have size 1
+
+    aIds.head.takeWhile(_ != '/') shouldBe bIds.head.takeWhile(_ != '/')
+    aIds.head should not equal bIds.head
+  }
 }
