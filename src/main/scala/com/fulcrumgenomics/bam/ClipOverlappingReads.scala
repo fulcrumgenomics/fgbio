@@ -31,6 +31,8 @@ import com.fulcrumgenomics.sopt.{arg, clp}
 @deprecated("Use ClipBam instead", "fgbio 0.2.0")
 @clp(group = ClpGroups.SamOrBam, description=
   """
+    |DEPRECATED: Use `ClipBam` instead.
+    |
     |Clips reads from the same template to eliminate overlap between the reads. Ensures that downstream
     |processes, particularly variant calling, cannot double-count evidence from the same template when
     |both reads span a variant site in the same template.
@@ -47,6 +49,8 @@ import com.fulcrumgenomics.sopt.{arg, clp}
     |pair information can be reset across all reads for the template.  Post-clipping the reads are
     |resorted into coordinate order, any existing `NM`, `UQ` and `MD` tags are repaired, and the output is
     |written in coordinate order.
+    |
+    |DEPRECATED: Use `ClipBam` instead.
   """)
 class ClipOverlappingReads
 ( @arg(flag='i', doc="Input SAM or BAM file of aligned reads in coordinate order.") input: PathToBam,
