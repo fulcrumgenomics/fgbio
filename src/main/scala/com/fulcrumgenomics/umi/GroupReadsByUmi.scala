@@ -231,11 +231,11 @@ object GroupReadsByUmi {
     * @param maxMismatches the maximum number of mismatches between UMIs
     */
   class PairedUmiAssigner(maxMismatches: Int) extends AdjacencyUmiAssigner(maxMismatches) {
-    /** String that is prefixed onto the UMI from the genomically earlier/lower read. */
-    val lowerReadUmiPrefix: String = ("a" * (maxMismatches+1)) + ":"
+    /** String that is prefixed onto the UMI from the read with that maps to a lower coordinate in the genome.. */
+    private[umi] val lowerReadUmiPrefix: String = ("a" * (maxMismatches+1)) + ":"
 
-    /** String that is prefixed onto the UMI from the genomically later/higher read. */
-    val higherReadUmiPrefix: String = ("b" * (maxMismatches+1)) + ":"
+    /** String that is prefixed onto the UMI from the read with that maps to a higher coordinate in the genome.. */
+    private[umi] val higherReadUmiPrefix: String = ("b" * (maxMismatches+1)) + ":"
 
     /** Takes a UMI of the form "A-B" and returns "B-A". */
     def reverse(umi: Umi): Umi = umi.indexOf('-') match {
@@ -455,11 +455,10 @@ class GroupReadsByUmi
     * sub-grouping into UMI groups by original molecule.
     */
   def assignUmiGroups(pairs: Seq[ReadPair]): Unit = {
-    val umis = pairs.map { case (r1, r2) => umiForRead(r1, r2) }
+    val umis    = pairs.map { case (r1, r2) => umiForRead(r1, r2) }
     val rawToId = this.assigner.assign(umis)
 
-    pairs.foreach { case (r1, r2) =>
-      val umi = umiForRead(r1, r2)
+    pairs.iterator.zip(umis.iterator).foreach { case ((r1, r2), umi) =>
       val id  = rawToId(umi)
       r1(this.assignTag) = id
       r2(this.assignTag) = id
@@ -474,9 +473,9 @@ class GroupReadsByUmi
     * or later read on the genome.  This is necessary to ensure that, when the two paired UMIs are the same
     * or highly similar, that the A vs. B groups are constructed correctly.
     */
-  private def umiForRead(r1: SamRecord, r2: SamRecord): String = r1.get[String](this.rawTag) match {
+  private def umiForRead(r1: SamRecord, r2: SamRecord): Umi = r1.get[String](this.rawTag) match {
     case None | Some("") => fail(s"Record '$r1' was missing the raw UMI tag '${this.rawTag}'")
-    case Some(chs) =>
+    case Some(chs)       =>
       val umi = chs.toUpperCase
 
       this.assigner match {
@@ -484,12 +483,12 @@ class GroupReadsByUmi
           require(r1.refIndex == r2.refIndex, s"Mates on different references not supported: ${r1.name}")
           val pos1 = if (r1.positiveStrand) r1.unclippedStart else r1.unclippedEnd
           val pos2 = if (r2.positiveStrand) r2.unclippedStart else r2.unclippedEnd
-
+          val r1Lower = pos1 < pos2 || pos1 == pos2 && r1.positiveStrand
           val umis = umi.split('-')
           require(umis.length == 2, s"Paired strategy used but umi did not contain 2 segments: $umi")
 
-          if (pos1 < pos2) s"${paired.lowerReadUmiPrefix}:${umis(0)}-${paired.higherReadUmiPrefix}:${umis(1)}"
-          else             s"${paired.higherReadUmiPrefix}:${umis(0)}-${paired.lowerReadUmiPrefix}:${umis(1)}"
+          if (r1Lower) paired.lowerReadUmiPrefix  + ":" + umis(0) + "-" + paired.higherReadUmiPrefix + ":" + umis(1)
+          else         paired.higherReadUmiPrefix + ":" + umis(0) + "-" + paired.lowerReadUmiPrefix  + ":" + umis(1)
         case _ =>
           umi
       }
