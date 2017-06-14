@@ -28,7 +28,7 @@ import com.fulcrumgenomics.FgBioDef._
 import com.fulcrumgenomics.cmdline.ClpGroups
 import com.fulcrumgenomics.sopt.{arg, clp}
 
-@deprecated(since="0.2.0", message="Use ClipBam instead")
+@deprecated("Use ClipBam instead", "fgbio 0.2.0")
 @clp(group = ClpGroups.SamOrBam, description=
   """
     |Clips reads from the same template to eliminate overlap between the reads. Ensures that downstream
