@@ -312,6 +312,19 @@ object EstimateRnaSeqInsertSize {
   }
 }
 
+/**
+  * Metrics produced by `EstimateRnaSeqInsertSize` to describe the distribution of insert sizes within an
+  * RNA-seq experiment.
+  *
+  * @param pair_orientation The orientation of the reads within a read-pair relative to each other.
+  * @param read_pairs The number of read pairs observed with the `pair_orientation`.
+  * @param mean The mean insert size of the read pairs.
+  * @param standard_deviation The standard deviation of the insert size of the read pairs.
+  * @param median The median insert size of the read pairs.
+  * @param min The minimum observed insert size of the read pairs.
+  * @param max The maximum observed insert size of the read pairs.
+  * @param median_absolute_deviation The median absolution deviation of the read pairs.
+  */
 case class InsertSizeMetric(pair_orientation: PairOrientation,
                             read_pairs: Long = 0,
                             mean: Double = 0,

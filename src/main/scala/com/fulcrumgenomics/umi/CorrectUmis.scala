@@ -30,7 +30,8 @@ import com.fulcrumgenomics.cmdline.{ClpGroups, FgBioTool}
 import com.fulcrumgenomics.commons.util.LazyLogging
 import com.fulcrumgenomics.sopt.{arg, clp}
 import com.fulcrumgenomics.umi.CorrectUmis._
-import com.fulcrumgenomics.util._
+import com.fulcrumgenomics.util.Metric.{Count, Proportion}
+import com.fulcrumgenomics.util.{Metric, _}
 
 import scala.collection.mutable
 
@@ -44,24 +45,24 @@ object CorrectUmis {
   private[umi] case class UmiMatch(matched: Boolean, umi: String, mismatches: Int)
 
   /**
-    * Metrics for the correction of UMI sequences to a fixed set of known UMIs.
+    * Metrics produced by `CorrectUmis` regarding the correction of UMI sequences to a fixed set of known UMIs.
     *
-    * @param umi the corrected UMI sequence (or all Ns for unmatched)
-    * @param total_matches the number of UMI sequences that matched/were corrected to this UMI
-    * @param perfect_matches the number of UMI sequences that were perfect matches to this UMI
-    * @param one_mismatch_matches the number of UMI sequences that matched with a single mismatch
-    * @param two_mismatch_matches the number of UMI sequences that matched with two mismatches
-    * @param other_matches the number of UMI sequences that matched with > 2 mismatches
-    * @param fraction_of_matches the fraction of all UMIs that matched or were corrected to this UMI
-    * @param representation the [[total_matches]] for this UMI divided by the mean [[total_matches]] for all UMIs
+    * @param umi The corrected UMI sequence (or all `N`s for unmatched).
+    * @param total_matches The number of UMI sequences that matched/were corrected to this UMI.
+    * @param perfect_matches The number of UMI sequences that were perfect matches to this UMI.
+    * @param one_mismatch_matches The number of UMI sequences that matched with a single mismatch.
+    * @param two_mismatch_matches The number of UMI sequences that matched with two mismatches.
+    * @param other_matches The number of UMI sequences that matched with three or more mismatches.
+    * @param fraction_of_matches The fraction of all UMIs that matched or were corrected to this UMI.
+    * @param representation The `total_matches` for this UMI divided by the _mean_ `total_matches` for all UMIs.
     */
   case class UmiCorrectionMetrics(umi: String,
-                                  var total_matches: Long = 0,
-                                  var perfect_matches: Long = 0,
-                                  var one_mismatch_matches: Long = 0,
-                                  var two_mismatch_matches: Long = 0,
-                                  var other_matches: Long = 0,
-                                  var fraction_of_matches: Double = 0,
+                                  var total_matches: Count = 0,
+                                  var perfect_matches: Count = 0,
+                                  var one_mismatch_matches: Count = 0,
+                                  var two_mismatch_matches: Count = 0,
+                                  var other_matches: Count = 0,
+                                  var fraction_of_matches: Proportion = 0,
                                   var representation: Double = 0
                                  ) extends Metric
 

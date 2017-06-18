@@ -40,6 +40,12 @@ object Metric {
   val Delimiter: Char = '\t'
   val DelimiterAsString: String = s"$Delimiter"
 
+  /** A typedef for [[Long]] to be used when representing counts. */
+  type Count = Long
+
+  /** A typedef for [[Double]] to be used when representing values between 0 and 1. */
+  type Proportion = Double
+
   /** A class that provides streaming writing capability for metrics. */
   class MetricWriter[T <: Metric] private[Metric](val writer: Writer)(implicit tt: ru.TypeTag[T]) extends Closeable {
     this.writer.write(names[T].mkString(DelimiterAsString))
@@ -159,6 +165,7 @@ object Metric {
   * words separated by underscores.
   */
 trait Metric extends Product with Iterable[(String,String)] {
+  type Proportion = Double
   private lazy val reflectiveBuilder = new ReflectiveBuilder(this.getClass)
   private val formatter = new FormatUtil {
     override def format(value: Any): String = value match {

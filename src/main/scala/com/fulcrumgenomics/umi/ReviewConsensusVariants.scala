@@ -36,7 +36,6 @@ import com.fulcrumgenomics.sopt.{arg, clp}
 import com.fulcrumgenomics.umi.ReviewConsensusVariants._
 import com.fulcrumgenomics.util.{Io, Metric}
 import htsjdk.samtools.SamPairUtil.PairOrientation
-import htsjdk.samtools._
 import htsjdk.samtools.reference.{ReferenceSequenceFile, ReferenceSequenceFileFactory}
 import htsjdk.samtools.util.IOUtil.{VCF_EXTENSIONS => VcfExtensions}
 import htsjdk.samtools.util._
@@ -50,26 +49,32 @@ import scala.collection.mutable.ListBuffer
 object ReviewConsensusVariants {
 
   /**
-    * Metric class that is used to output detailed information on each consensus read that carries a variant allele
-    * @param chrom the chromosome on which the variant exists
-    * @param pos the position of the variant
-    * @param ref the reference allele at the position
-    * @param genotype the genotype of the sample in question
-    * @param filters the set of filters applied to the variant in the VCF
-    * @param A the count of A observations at the variant locus
-    * @param C the count of C observations at the variant locus
-    * @param G the count of G observations at the variant locus
-    * @param T the count of T observations at the variant locus
-    * @param N the count of N observations at the variant locus
-    * @param consensus_read the consensus read name for which the following fields contain values
-    * @param consensus_insert a description of the insert that generated the consensus read
-    * @param consensus_call the base call from the consensus read
-    * @param consensus_qual the quality score from the consensus read
-    * @param a the number of As in raw-reads contributing to the consensus base call at the variant site
-    * @param c the number of Cs in raw-reads contributing to the consensus base call at the variant site
-    * @param g the number of Gs in raw-reads contributing to the consensus base call at the variant site
-    * @param t the number of Ts in raw-reads contributing to the consensus base call at the variant site
-    * @param n the number of Ns in raw-reads contributing to the consensus base call at the variant site
+    * Detailed information produced by `ReviewConsensusVariants` on variants called in consensus reads. Each
+    * row contains information about a consensus _read_ that carried a variant or non-reference allele at a
+    * particular variant site.
+    *
+    * The first 10 columns (up to `N`) contain information about the variant site and are repeated for each
+    * consensus read reported at that site.  The remaining fields are specific to the consensus read.
+    *
+    * @param chrom The chromosome on which the variant exists.
+    * @param pos The position of the variant.
+    * @param ref The reference allele at the position.
+    * @param genotype The genotype of the sample in question.
+    * @param filters The set of filters applied to the variant in the VCF.
+    * @param A The count of A observations at the variant locus across all consensus reads.
+    * @param C The count of C observations at the variant locus across all consensus reads.
+    * @param G The count of G observations at the variant locus across all consensus reads.
+    * @param T The count of T observations at the variant locus across all consensus reads.
+    * @param N The count of N observations at the variant locus across all consensus reads.
+    * @param consensus_read The consensus read name for which the following fields contain values.
+    * @param consensus_insert A description of the insert that generated the consensus read.
+    * @param consensus_call The base call from the consensus read.
+    * @param consensus_qual The quality score from the consensus read.
+    * @param a The number of As in raw-reads contributing to the consensus base call at the variant site.
+    * @param c The number of Cs in raw-reads contributing to the consensus base call at the variant site.
+    * @param g The number of Gs in raw-reads contributing to the consensus base call at the variant site.
+    * @param t The number of Ts in raw-reads contributing to the consensus base call at the variant site.
+    * @param n The number of Ns in raw-reads contributing to the consensus base call at the variant site.
     */
   case class ConsensusVariantReviewInfo
   ( // First set is all the same for each variant

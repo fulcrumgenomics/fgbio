@@ -35,6 +35,7 @@ import com.fulcrumgenomics.cmdline.{ClpGroups, FgBioTool}
 import com.fulcrumgenomics.commons.util.{LazyLogging, NumericCounter, SimpleCounter}
 import com.fulcrumgenomics.sopt.cmdline.ValidationException
 import com.fulcrumgenomics.sopt.{arg, clp}
+import com.fulcrumgenomics.util.Metric.{Count, Proportion}
 import com.fulcrumgenomics.util.Sequences.countMismatches
 import com.fulcrumgenomics.util._
 import htsjdk.samtools.SAMFileHeader.{GroupOrder, SortOrder}
@@ -301,11 +302,19 @@ object GroupReadsByUmi {
   }
 }
 
-/** Trivial metrics class for representing a tag family size histogram entry. */
+/**
+  * Metrics produced by `GroupReadsByUmi` to describe the distribution of tag family sizes
+  * observed during grouping.
+  *
+  * @param family_size The family size, or number of templates/read-pairs belonging to the family.
+  * @param count The number of families (or source molecules) observed with `family_size` observations.
+  * @param fraction The fraction of all families of all sizes that have this specific `family_size`.
+  * @param fraction_gt_or_eq_family_size The fraction of all families that have `>= family_size`.
+  */
 case class TagFamilySizeMetric(family_size: Int,
-                               count: Long,
-                               var fraction: Double = 0,
-                               var fraction_gt_or_eq_family_size: Double = 0) extends Metric
+                               count: Count,
+                               var fraction: Proportion = 0,
+                               var fraction_gt_or_eq_family_size: Proportion = 0) extends Metric
 
 @clp(group=ClpGroups.Umi, description =
   """

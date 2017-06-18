@@ -32,6 +32,7 @@ import com.fulcrumgenomics.commons.collection.BetterBufferedIterator
 import com.fulcrumgenomics.commons.util.{LazyLogging, NumericCounter, SimpleCounter}
 import com.fulcrumgenomics.sopt.{arg, clp}
 import com.fulcrumgenomics.umi.ConsensusTags.{MolecularId => MI, UmiBases => RX}
+import com.fulcrumgenomics.util.Metric.{Count, Proportion}
 import com.fulcrumgenomics.util._
 import htsjdk.samtools.util.{Interval, IntervalList, Murmur3, OverlapDetector}
 import org.apache.commons.math3.distribution.BinomialDistribution
@@ -58,63 +59,64 @@ object CollectDuplexSeqMetrics {
   private case class Pair(ab: Int, ba: Int)
 
   /**
-    * Metrics that captures information about family sizes for three kinds of families:
-    *   1. CS or "Coordinate & Strand": families of reads that are grouped together by their 5' genomic
-    *      positions and strands just as they are in traditional PCR duplicate marking
-    *   2. SS or "Single Strand": single-strand families that are each subsets of a CS family create by
-    *      also using the UMIs to partition the larger family, but not linking up families that are
-    *      created from opposing strands of the same source molecule.
-    *   3. DS or "Double Strand": families that are created by combining single-strand families that are from
-    *      opposite strands of the same source molecule. This does NOT imply that all DS families are composed
-    *      of reads from both strands; where only one strand of a source molecule is observed a DS family is
-    *      still created.
+    * Metrics produced by `CollectDuplexSeqMetrics` to quantify the distribution of different kinds of read family
+    * sizes.  Three kinds of families are described:
     *
-    * @param family_size the family size, i.e. the number of read pairs grouped together into a family
-    * @param cs_count the count of families, of family size, when grouping just by coordinates and strand information
-    * @param cs_fraction the fraction of all CS families where size == family_size
-    * @param cs_fraction_gt_or_eq_size the fraction of all CS families where size >= family_size
-    * @param ss_count the count of families, of family size, when also grouping by UMI to create single-strand families
-    * @param ss_fraction the fraction of all SS families where size == family_size
-    * @param ss_fraction_gt_or_eq_size the fraction of all SS families where size >= family_size
-    * @param ds_count the count of families, of family size, when also grouping by UMI and merging single-strand
-    *                 families from opposite strands of the same source molecule
-    * @param ds_fraction the fraction of all DS families where size == family_size
-    * @param ds_fraction_gt_or_eq_size the fraction of all DS families where size >= family_size
+    * 1. _CS_ or _Coordinate & Strand_: families of reads that are grouped together by their 5' genomic
+    *    positions and strands just as they are in traditional PCR duplicate marking
+    * 2. _SS_ or _Single Strand_: single-strand families that are each subsets of a CS family create by
+    *    also using the UMIs to partition the larger family, but not linking up families that are
+    *    created from opposing strands of the same source molecule.
+    * 3. _DS_ or _Double Strand_: families that are created by combining single-strand families that are from
+    *    opposite strands of the same source molecule. This does **not** imply that all DS families are composed
+    *    of reads from both strands; where only one strand of a source molecule is observed a DS family is
+    *    still created.
+    *
+    * @param family_size The family size, i.e. the number of read pairs grouped together into a family.
+    * @param cs_count The count of families, of family size, when grouping just by coordinates and strand information.
+    * @param cs_fraction The fraction of all _CS_ families where `size == family_size`.
+    * @param cs_fraction_gt_or_eq_size The fraction of all _CS_ families where `size >= family_size`.
+    * @param ss_count The count of families, of family size, when also grouping by UMI to create single-strand families.
+    * @param ss_fraction The fraction of all _SS_ families where `size == family_size`.
+    * @param ss_fraction_gt_or_eq_size The fraction of all _SS_ families where `size >= family_size`.
+    * @param ds_count The count of families, of family size, when also grouping by UMI and merging single-strand
+    *                 families from opposite strands of the same source molecule.
+    * @param ds_fraction The fraction of all _DS_ families where `size == family_size`.
+    * @param ds_fraction_gt_or_eq_size The fraction of all _DS_ families where `size >= family_size`.
     */
   case class FamilySizeMetric(family_size: Int,
-                              var cs_count: Long = 0,
-                              var cs_fraction: Double = 0,
-                              var cs_fraction_gt_or_eq_size: Double = 0,
-                              var ss_count: Long = 0,
-                              var ss_fraction: Double = 0,
-                              var ss_fraction_gt_or_eq_size: Double = 0,
-                              var ds_count: Long = 0,
-                              var ds_fraction: Double = 0,
-                              var ds_fraction_gt_or_eq_size: Double =0
+                              var cs_count: Count = 0,
+                              var cs_fraction: Proportion = 0,
+                              var cs_fraction_gt_or_eq_size: Proportion = 0,
+                              var ss_count: Count = 0,
+                              var ss_fraction: Proportion = 0,
+                              var ss_fraction_gt_or_eq_size: Proportion = 0,
+                              var ds_count: Count = 0,
+                              var ds_fraction: Proportion = 0,
+                              var ds_fraction_gt_or_eq_size: Proportion =0
                              ) extends Metric
 
   /**
-    * Metrics that capture information specifically about double-stranded tag families. Since double-stranded
-    * families have contributions from two different strands it is useful to see the distribution of families
-    * across both strands.
+    * Metrics produced by `CollectDuplexSeqMetrics` to describe the distribution of double-stranded (duplex)
+    * tag families in terms of the number of reads observed on each strand.
     *
-    * We refer to the two strands as "ab" and "ba" because we identify the two strands by observing the same pair of
-    * UMIs (A and B) in opposite order (A->B vs B->A). Which strand is AB and which is BA is largely arbitrary, so
+    * We refer to the two strands as `ab` and `ba` because we identify the two strands by observing the same pair of
+    * UMIs (A and B) in opposite order (A->B vs B->A). Which strand is `ab` and which is `ba` is largely arbitrary, so
     * to make interpretation of the metrics simpler we use a definition here that for a given tag family
-    * AB is the sub-family with more reads and BA is the tag family with fewer reads.
+    * `ab` is the sub-family with more reads and `ba` is the tag family with fewer reads.
     *
-    * @param ab_size The number of reads in the larger single-strand tag family for this double-strand tag family
-    * @param ba_size The number of reads in the smaller single-strand tag family for this double-strand tag family
-    * @param count The number of families with the A and B SS families of size ab_size and ba_size
-    * @param fraction The fraction of all double-stranded tag families that have ab_size and ba_size
+    * @param ab_size The number of reads in the larger single-strand tag family for this double-strand tag family.
+    * @param ba_size The number of reads in the smaller single-strand tag family for this double-strand tag family.
+    * @param count The number of families with the A and B single-strand families of size `ab_size` and `ba_size`.
+    * @param fraction The fraction of all double-stranded tag families that have `ab_size` and `ba_size`.
     * @param fraction_gt_or_eq_size The fraction of all double-stranded tag families that have
-    *                               AB reads >= ab_size and BA reads >= ba_size
+    *                               `AB reads >= ab_size` and `BA reads >= ba_size`.
     */
   case class DuplexFamilySizeMetric(ab_size: Int,
                                     ba_size: Int,
-                                    count: Long = 0,
-                                    var fraction: Double = 0,
-                                    var fraction_gt_or_eq_size: Double = 0
+                                    count: Count = 0,
+                                    var fraction: Proportion = 0,
+                                    var fraction_gt_or_eq_size: Proportion = 0
                                    ) extends Metric with Ordered[DuplexFamilySizeMetric] {
 
     /** Orders by ab_size, then ba_size. */
@@ -126,53 +128,53 @@ object CollectDuplexSeqMetrics {
   }
 
   /**
-    * Metrics that are sampled at various levels of coverage, via random downsampling, during the construction
-    * of duplex metrics.  The downsampling is done in such a way that the fractions are approximate, and not
-    * exact, therefore the fraction field should only be interpreted as a guide and the read_pairs field used
-    * to quantify how much data was used.
+    * Metrics produced by `CollectDuplexSeqMetrics` that are sampled at various levels of coverage, via random
+    * downsampling, during the construction of duplex metrics.  The downsampling is done in such a way that the
+    * `fraction`s are approximate, and not exact, therefore the `fraction` field should only be interpreted as a guide
+    * and the `read_pairs` field used to quantify how much data was used.
     *
-    * @param fraction the approximate fraction of the full dataset that was used to generate the remaining values
-    * @param read_pairs the number of read pairs upon which the remaining metrics are based
-    * @param cs_families the number of CS (Coordinate & Strand) families present in the data
-    * @param ss_families the number of SS (Single-Strand by UMI) families present in the data
-    * @param ds_families the number of DS (Double-Strand by UMI) families present in the data
-    * @param ds_duplexes the number of DS families that had the minimum number of observations on both strands to be
-    *                    called duplexes (default = 1 read on each strand)
-    * @param ds_fraction_duplexes the fraction of DS families that are duplexes (ds_duplexes / ds_families)
-    * @param ds_fraction_duplexes_ideal the fraction of DS families that should be duplexes under an idealized model
-    *                                   where each strand, A and B, have equal probability of being sampled, given
-    *                                   the observed distribution of DS family sizes.
+    * @param fraction    The approximate fraction of the full dataset that was used to generate the remaining values.
+    * @param read_pairs  The number of read pairs upon which the remaining metrics are based.
+    * @param cs_families The number of _CS_ (Coordinate & Strand) families present in the data.
+    * @param ss_families The number of _SS_ (Single-Strand by UMI) families present in the data.
+    * @param ds_families The number of _DS_ (Double-Strand by UMI) families present in the data.
+    * @param ds_duplexes The number of _DS_ families that had the minimum number of observations on both strands to be
+    *                    called duplexes (default = 1 read on each strand).
+    * @param ds_fraction_duplexes The fraction of _DS_ families that are duplexes (`ds_duplexes / ds_families`).
+    * @param ds_fraction_duplexes_ideal The fraction of _DS_ families that should be duplexes under an idealized model
+    *                                   where each strand, `A` and `B`, have equal probability of being sampled, given
+    *                                   the observed distribution of _DS_ family sizes.
     */
-  case class DuplexYieldMetric(fraction: Double,
-                               read_pairs: Long,
-                               cs_families: Long,
-                               ss_families: Long,
-                               ds_families: Long,
-                               ds_duplexes: Long,
-                               ds_fraction_duplexes: Double,
-                               ds_fraction_duplexes_ideal: Double) extends Metric
+  case class DuplexYieldMetric(fraction: Proportion,
+                               read_pairs: Count,
+                               cs_families: Count,
+                               ss_families: Count,
+                               ds_families: Count,
+                               ds_duplexes: Count,
+                               ds_fraction_duplexes: Proportion,
+                               ds_fraction_duplexes_ideal: Proportion) extends Metric
 
   /**
-    * Metrics describing the set of observed UMI sequences and the frequency of their observations.  The UMI
-    * sequences reported may have been corrected using information within a double-stranded tag family.  For
-    * example if a tag family is comprised of three read pairs with UMIs ACGT-TGGT ACGT-TGGT ACGT-TGGG then
-    * a consensus UMI of will be generated ACGT-TGGT will be generated, and three raw observations counted
-    * for each of ACGT and TGGT, and no observations counted for TGGG.
+    * Metrics produced by `CollectDuplexSeqMetrics` describing the set of observed UMI sequences and the
+    * frequency of their observations.  The UMI sequences reported may have been corrected using information
+    * within a double-stranded tag family.  For example if a tag family is comprised of three read pairs with
+    * UMIs `ACGT-TGGT`, `ACGT-TGGT`, and `ACGT-TGGG` then a consensus UMI of `ACGT-TGGT` will be generated,
+    * and three raw observations counted for each of `ACGT` and `TGGT`, and no observations counted for `TGGG`.
     *
-    * @param umi the possibly-corrected UMI sequence
-    * @param raw_observations the number of read pairs in the input BAM that observe the UMI (after correction)
-    * @param raw_observations_with_errors the subset of raw-observations that underwent any correction
-    * @param unique_observations the number of double-stranded tag families (i.e unique double-stranded molecules)
-    *                            that observed the UMI
-    * @param fraction_raw_observations the fraction of all raw observations that the UMI accounts for
-    * @param fraction_unique_observations the fraction of all unique observations that the UMI accounts for
+    * @param umi The UMI sequence, possibly-corrected.
+    * @param raw_observations The number of read pairs in the input BAM that observe the UMI (after correction).
+    * @param raw_observations_with_errors The subset of raw-observations that underwent any correction.
+    * @param unique_observations The number of double-stranded tag families (i.e unique double-stranded molecules)
+    *                            that observed the UMI.
+    * @param fraction_raw_observations The fraction of all raw observations that the UMI accounts for.
+    * @param fraction_unique_observations The fraction of all unique observations that the UMI accounts for.
     */
   case class UmiMetric(umi: String,
-                       var raw_observations: Long = 0,
-                       var raw_observations_with_errors: Long = 0,
-                       var unique_observations: Long = 0,
-                       var fraction_raw_observations: Double = 0,
-                       var fraction_unique_observations: Double = 0
+                       var raw_observations: Count = 0,
+                       var raw_observations_with_errors: Count = 0,
+                       var unique_observations: Count = 0,
+                       var fraction_raw_observations: Proportion = 0,
+                       var fraction_unique_observations: Proportion = 0
                       ) extends Metric
 }
 

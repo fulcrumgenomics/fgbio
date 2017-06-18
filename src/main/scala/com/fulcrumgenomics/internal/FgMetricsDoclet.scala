@@ -31,7 +31,7 @@ import com.fulcrumgenomics.util.Metric
 
 import scala.tools.nsc.doc.base.comment._
 import scala.tools.nsc.doc.html.Doclet
-import scala.tools.nsc.doc.model.{DocTemplateEntity, Val}
+import scala.tools.nsc.doc.model.{DocTemplateEntity}
 
 /** Case class to capture information about a field/column in a metrics class/file. */
 case class ColumnDescription(name: String, typ: String, description: String)
@@ -45,7 +45,7 @@ case class MetricDescription(name: String, description: String, columns: Seq[Col
   * Custom scaladoc Doclet for rendering the documentation for [[Metric]] classes into
   * MarkDown for display on the fgbio website.
   */
-class FgDoclet extends Doclet {
+class FgMetricsDoclet extends Doclet {
   /**
     * Main entry point for the doclet.  Scans for documentation for the metrics classes and
     * renders it into MarkDown.
@@ -59,17 +59,23 @@ class FgDoclet extends Doclet {
       s"""
          |# fgbio Metrics Descriptions
          |
-         |This page contains descriptions of all metrics produced by all fgbio tools.
+         |This page contains descriptions of all metrics produced by all fgbio tools.  Within the descriptions
+         |the type of each field/column is given, including two commonly used types:
+         |
+         |* `Count` is a 64-bit integer representing the count of some item
+         |* `Proportion` is a 64-bit real number with a value between 0 and 1 representing a proportion or fraction
          |
          |## Table of Contents
-        """.stripMargin
+         |
+         ||Metric Type|Description|
+         ||-----------|-----------|""".stripMargin
     )
 
     metrics.foreach { m =>
-      out.println(s"* [${m.name}](${toLinkTarget(m.name)}): ${m.summary}")
+      out.println(s"|[${m.name}](#${toLinkTarget(m.name)})|${m.summary}|")
     }
 
-    out.println("## Metric File Descriptions")
+    out.println("\n## Metric File Descriptions")
 
     metrics.foreach { m =>
       out.println()
@@ -86,6 +92,8 @@ class FgDoclet extends Doclet {
 
   /** Locates the metrics documentation templates and turns them into simple case classes with comments as markdown. */
   private lazy val metrics: Seq[MetricDescription] = {
+    def simplify(name: String) = if (name.indexOf('.') > 0) name.substring(name.lastIndexOf('.') + 1) else name
+
     findMetricsClasses.map{ template =>
       val name        = template.name
       val description = template.comment.map(c => renderBody(c.body)).getOrElse("")
@@ -96,7 +104,7 @@ class FgDoclet extends Doclet {
           constructor.valueParams.flatten.map { param =>
             val d    = comments.get(param.name).map(renderBody).getOrElse("").replace('\n', ' ')
             val desc = d.take(1).toUpperCase + d.drop(1)
-            ColumnDescription(name=param.name, typ=param.resultType.name, description=desc)
+            ColumnDescription(name=param.name, typ=simplify(param.resultType.name), description=desc)
           }
       }
 

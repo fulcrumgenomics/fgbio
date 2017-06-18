@@ -31,6 +31,7 @@ import com.fulcrumgenomics.bam.api.SamSource
 import com.fulcrumgenomics.cmdline.{ClpGroups, FgBioTool}
 import com.fulcrumgenomics.commons.util.LazyLogging
 import com.fulcrumgenomics.sopt.{arg, clp}
+import com.fulcrumgenomics.util.Metric.{Count, Proportion}
 import com.fulcrumgenomics.util.{Io, Metric, Sequences}
 import com.fulcrumgenomics.vcf.ByIntervalListVariantContextIterator
 import htsjdk.samtools.util.SamLocusIterator.LocusInfo
@@ -218,21 +219,22 @@ class EstimatePoolingFractions
 }
 
 /**
-  * Metric to report out the estimated fraction of a pooled sample that comes from a specific sample.
+  * Metrics produced by `EstimatePoolingFractions` to quantify the estimated proportion of a sample
+  * mixture that is attributable to a specific sample with a known set of genotypes.
   *
-  * @param sample the sample within the pool being reported on
-  * @param variant_sites how many sites were examined at which the reported sample is known to be variant
-  * @param singletons how many of the variant sites were sites at which only this sample was variant
-  * @param estimated_fraction the estimated fraction of the pool that comes from this sample
-  * @param standard_error the standard error of the estimated fraction
-  * @param ci99_low  the lower bound of the 99% confidence interval for the estimated fraction
-  * @param ci99_high the upper bound of the 99% confidence interval for the estimated fraction
+  * @param sample The name of the sample within the pool being reported on.
+  * @param variant_sites How many sites were examined at which the reported sample is known to be variant.
+  * @param singletons How many of the variant sites were sites at which only this sample was variant.
+  * @param estimated_fraction The estimated fraction of the pool that comes from this sample.
+  * @param standard_error The standard error of the estimated fraction.
+  * @param ci99_low  The lower bound of the 99% confidence interval for the estimated fraction.
+  * @param ci99_high The upper bound of the 99% confidence interval for the estimated fraction.
   */
 case class PoolingFractionMetric(sample: String,
-                                 variant_sites: Int,
-                                 singletons: Int,
-                                 estimated_fraction: Double,
+                                 variant_sites: Count,
+                                 singletons: Count,
+                                 estimated_fraction: Proportion,
                                  standard_error: Double,
-                                 ci99_low: Double,
-                                 ci99_high: Double
+                                 ci99_low: Proportion,
+                                 ci99_high: Proportion
                                 ) extends Metric

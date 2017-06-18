@@ -33,6 +33,7 @@ import com.fulcrumgenomics.cmdline.{ClpGroups, FgBioTool}
 import com.fulcrumgenomics.commons.io.{Io, PathUtil}
 import com.fulcrumgenomics.commons.util.LazyLogging
 import com.fulcrumgenomics.sopt._
+import com.fulcrumgenomics.util.Metric.Count
 import com.fulcrumgenomics.util.{Metric, ProgressLogger, Rscript}
 import com.fulcrumgenomics.vcf.{ByIntervalListVariantContextIterator, VariantMask}
 import htsjdk.samtools.filter.{DuplicateReadFilter, FailsVendorReadQualityFilter, SamRecordFilter, SecondaryOrSupplementaryFilter}
@@ -246,25 +247,29 @@ object ErrorRateByReadPositionMetric {
 }
 
 /**
-  * Gives the error rate and total number of bases observed for each position within the read.
+  * Metrics produced by `ErrorRateByReadPosition` describing the number of base observations and
+  * substitution errors at each position within each sequencing read.  Error rates are given for
+  * the overall substitution error rate and also for each kind of substitution separately. Instead
+  * of reporting 12 substitution rates, 6 are reported where complementary substitutions are grouped
+  * together, e.g. `T>G` substitutions are reported as `A>C`.
   *
-  * @param read_number the read number (ex. 0 for fragments, 1 for read one of a pair, 2 for read two of a pair)
-  * @param position the position or cycle within the read (1-based).
-  * @param bases_total the total number of bases observed at this position.
-  * @param errors the total number of errors or non-reference basecalls observed at this position
-  * @param error_rate the overall error rate at position
-  * @param a_to_c_error_rate the rate of A>C (and T>G) error at the position
-  * @param a_to_g_error_rate the rate of A>G (and T>C) error at the position
-  * @param a_to_t_error_rate the rate of A>T (and T>A) error at the position
-  * @param c_to_a_error_rate the rate of C>A (and G>T) error at the position
-  * @param c_to_g_error_rate the rate of C>G (and G>C) error at the position
-  * @param c_to_t_error_rate the rate of C>T (and G>A) error at the position
+  * @param read_number The read number (0 for fragments, 1 for first of pair, 2 for second of pair).
+  * @param position The position or cycle within the read (1-based).
+  * @param bases_total The total number of bases observed at this position.
+  * @param errors The total number of errors or non-reference basecalls observed at this position.
+  * @param error_rate The overall error rate at position.
+  * @param a_to_c_error_rate The rate of `A>C` (and `T>G`) errors at the position.
+  * @param a_to_g_error_rate The rate of `A>G` (and `T>C`) errors at the position.
+  * @param a_to_t_error_rate The rate of `A>T` (and `T>A`) errors at the position.
+  * @param c_to_a_error_rate The rate of `C>A` (and `G>T`) errors at the position.
+  * @param c_to_g_error_rate The rate of `C>G` (and `G>C`) errors at the position.
+  * @param c_to_t_error_rate The rate of `C>T` (and `G>A`) errors at the position.
   */
 case class ErrorRateByReadPositionMetric
 ( read_number: Int,
   position: Int,
-  bases_total: Long,
-  errors: Long,
+  bases_total: Count,
+  errors: Count,
   error_rate: Double,
   a_to_c_error_rate: Double,
   a_to_g_error_rate: Double,
