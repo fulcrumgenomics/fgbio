@@ -375,11 +375,12 @@ object PhaseBlockLengthMetric {
   val MetricExtension = PathUtil.replaceExtension(Paths.get(AssessPhasingMetric.MetricExtension), ".block_lengths.txt").toString
 }
 
-/** Provides the number of phased blocks of a given length.
+/** Metrics produced by `AssessPhasing` describing the number of phased blocks of a given length.  The output will have
+  * multiple rows, one for each observed phased block length.
   *
-  * @param dataset the name of the dataset (ex. truth or call)
-  * @param length the length of the phased block
-  * @param count the number of phased blocks of the given length.
+  * @param dataset The name of the dataset being assessed (i.e. "truth" or "called").
+  * param length The length of the phased block.
+  * @param count The number of phased blocks of the given length.
   */
 case class PhaseBlockLengthMetric
 ( dataset: String,
@@ -489,42 +490,54 @@ object AssessPhasingMetric {
   val MetricExtension = ".assess_phasing_metrics.txt"
 }
 
-/** Some counts about phasing
+/** Metrics produced by `AssessPhasing` describing various statistics assessing the performance of phasing variants
+  * relative to a known set of phased variant calls.  Included are methods for assessing sensitivity and accuracy from
+  * a number of previous papers (ex. http://dx.doi.org/10.1038%2Fng.3119).
   *
-  * @param num_called the number of variants called.
-  * @param num_phased the number of variants called with phase.
-  * @param num_truth the number of variants with known truth genotypes.
-  * @param num_truth_phased the number of variants with known truth genotypes with phase.
-  * @param num_called_with_truth_phased the number of variants called that had a known phased genotype.
-  * @param num_phased_with_truth_phased the number of variants called with phase that had a known phased genotype.
-  * @param num_truth_phased_in_called_block the number of known phased variants that were in a called phased block.
-  * @param num_both_phased_in_called_block the number of called phase variants that had a known phased genotype in a called phased block.
-  * @param num_short_switch_errors the number of short switch errors (isolated switch errors).
-  * @param num_long_switch_errors the number of long switch errors (# of runs of consecutive switch errors).
-  * @param num_switch_sites the number of sites that could be (short or long) switch errors (i.e. the # of sites with both known and called phased variants).
-  * @param num_illumina_point_switch_errors the number of point switch errors (defined in http://dx.doi.org/10.1038%2Fng.3119).
-  * @param num_illumina_long_switch_errors the number of long switch errors (defined in http://dx.doi.org/10.1038%2Fng.3119).
-  * @param num_illumina_switch_sites the number of sites that could be (point or long) switch errors (defined in http://dx.doi.org/10.1038%2Fng.3119).
-  * @param frac_phased the fraction of called variants with phase.
-  * @param frac_phased_with_truth_phased the fraction of known phased variants called with phase.
-  * @param frac_truth_phased_in_called_block the fraction of phased known genotypes in a called phased block.
-  * @param frac_phased_with_truth_phased_in_called_block the fraction of called phased variants that had a known phased genotype in a called phased block.
-  * @param short_accuracy 1 - (num_short_switch_errors / num_switch_sites)
-  * @param long_accuracy 1 - (num_long_switch_errors / num_switch_sites)
-  * @param illumina_point_accuracy 1 - (num_illumina_point_switch_errors / num_illumina_switch_sites )
-  * @param illumina_long_accuracy 1 - (num_illumina_long_switch_errors / num_illumina_switch_sites )
-  * @param mean_called_block_length the mean phased block length in the callset.
-  * @param median_called_block_length the median phased block length in the callset.
-  * @param stddev_called_block_length the standard deviation of the phased block length in the callset.
-  * @param n50_called_block_length the N50 of the phased block length in the callset.
-  * @param n90_called_block_length the N90 of the phased block length in the callset.
-  * @param l50_called the L50  of the phased block length in the callset.
-  * @param mean_truth_block_length the mean phased block length in the truth.
-  * @param median_truth_block_length the median phased block length in the truth.
-  * @param stddev_truth_block_length the standard deviation of the phased block length in the truth.
-  * @param n50_truth_block_length the N50 of the phased block length in the truth.
-  * @param n90_truth_block_length the N90 of the phased block length in the callset.
-  * @param l50_truth the L50 of the phased block length in the callset.
+  * The N50, N90, and L50 statistics are defined as follows:
+  * - The N50 is the longest block length such that the bases covered by all blocks this length and longer are at least
+  * 50% of the # of bases covered by all blocks.
+  * - The N90 is the longest block length such that the bases covered by all blocks this length and longer are at least
+  * 90% of the # of bases covered by all blocks.
+  * - The L50 is the smallest number of blocks such that the sum of the lengths of the blocks is `>=` 50% of the sum of
+  * the lengths of all blocks.
+  *
+  * @param num_called The number of variants called.
+  * @param num_phased The number of variants called with phase.
+  * @param num_truth The number of variants with known truth genotypes.
+  * @param num_truth_phased The number of variants with known truth genotypes with phase.
+  * @param num_called_with_truth_phased The number of variants called that had a known phased genotype.
+  * @param num_phased_with_truth_phased The number of variants called with phase that had a known phased genotype.
+  * @param num_truth_phased_in_called_block The number of known phased variants that were in a called phased block.
+  * @param num_both_phased_in_called_block The number of called phase variants that had a known phased genotype in a called phased block.
+  * @param num_short_switch_errors The number of short switch errors (isolated switch errors).
+  * @param num_long_switch_errors The number of long switch errors (# of runs of consecutive switch errors).
+  * @param num_switch_sites The number of sites that could be (short or long) switch errors (i.e. the # of sites with both known and called phased variants).
+  * @param num_illumina_point_switch_errors The number of point switch errors (defined in http://dx.doi.org/10.1038%2Fng.3119).
+  * @param num_illumina_long_switch_errors The number of long switch errors (defined in http://dx.doi.org/10.1038%2Fng.3119).
+  * @param num_illumina_switch_sites The number of sites that could be (point or long) switch errors (defined in http://dx.doi.org/10.1038%2Fng.3119).
+  * @param frac_phased The fraction of called variants with phase.
+  * @param frac_phased_with_truth_phased The fraction of known phased variants called with phase.
+  * @param frac_truth_phased_in_called_block The fraction of phased known genotypes in a called phased block.
+  * @param frac_phased_with_truth_phased_in_called_block The fraction of called phased variants that had a known phased genotype in a called phased block.
+  * @param short_accuracy The fraction of switch sites without short switch errors (`1 - (num_short_switch_errors / num_switch_sites)`).
+  * @param long_accuracy The fraction of switch sites without long switch errors (`1 - (num_long_switch_errors / num_switch_sites)`).
+  * @param illumina_point_accuracy The fraction of switch sites without point switch errors according to the Illumina
+  *                                method defining switch sites and errors (`1 - (num_illumina_point_switch_errors / num_illumina_switch_sites )`).
+  * @param illumina_long_accuracy The fraction of switch sites wihtout long switch errors  according to the Illumina
+  *                               method defining switch sites and errors (`1 - (num_illumina_long_switch_errors / num_illumina_switch_sites )`).
+  * @param mean_called_block_length The mean phased block length in the callset.
+  * @param median_called_block_length The median phased block length in the callset.
+  * @param stddev_called_block_length The standard deviation of the phased block length in the callset.
+  * @param n50_called_block_length The N50 of the phased block length in the callset.
+  * @param n90_called_block_length The N90 of the phased block length in the callset.
+  * @param l50_called The L50  of the phased block length in the callset.
+  * @param mean_truth_block_length The mean phased block length in the truth.
+  * @param median_truth_block_length The median phased block length in the truth.
+  * @param stddev_truth_block_length The standard deviation of the phased block length in the truth.
+  * @param n50_truth_block_length The N50 of the phased block length in the truth.
+  * @param n90_truth_block_length The N90 of the phased block length in the callset.
+  * @param l50_truth The L50 of the phased block length in the callset.
   */
 case class  AssessPhasingMetric
 (
