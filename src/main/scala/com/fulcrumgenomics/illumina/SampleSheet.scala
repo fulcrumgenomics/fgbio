@@ -155,10 +155,10 @@ object SampleSheet {
   private def validateSamples(samples: Seq[Sample]): Unit = {
     // Validate some properties for a sample sheet
     require(samples.map(_.sampleId).toSet.size == samples.length,
-      "Sample identifiers were not unique: " + samples.groupBy(_.sampleId).filter(_._2.length > 2).keys.mkString(", "))
+      "Sample identifiers were not unique: " + samples.groupBy(_.sampleId).filter(_._2.length > 1).keys.mkString(", "))
     require(samples.map(s => s"${s.sampleName} ${s.libraryId}").toSet.size == samples.length,
       "Sample name and library identifier combinations were not unique: " +
-        samples.groupBy(s => s"${s.sampleName} ${s.libraryId}").filter(_._2.length > 2).keys.mkString(", "))
+        samples.groupBy(s => s"${s.sampleName} ${s.libraryId}").filter(_._2.length > 1).keys.mkString(", "))
   }
 }
 

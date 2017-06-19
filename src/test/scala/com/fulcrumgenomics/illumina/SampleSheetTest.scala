@@ -125,7 +125,6 @@ class SampleSheetTest extends FlatSpec with Matchers with OptionValues {
     new SampleSheet(samples).size shouldBe 4
   }
 
-
   "SampleSheet.get" should "get the ith sample" in {
     val sampleSheet = SampleSheet(testDir.resolve("SampleSheet.csv"))
     val samples = sampleSheet.toList
