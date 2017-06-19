@@ -29,6 +29,7 @@ import java.io.StringWriter
 import java.nio.file.Path
 
 import com.fulcrumgenomics.testing.UnitSpec
+import org.scalatest.OptionValues
 
 private case class TestMetric(foo: String, bar: Int, car: String = "default") extends Metric
 
@@ -40,7 +41,7 @@ private case class TestMetricWithIntOption(foo: String, bar: Int, option: Option
 /**
   * Tests for Metric.
   */
-class MetricTest extends UnitSpec {
+class MetricTest extends UnitSpec with OptionValues {
 
   "Metric.header" should "return the header names in order" in {
     val testMetric = TestMetric(foo="fooValue", bar=1)
@@ -158,7 +159,7 @@ class MetricTest extends UnitSpec {
     readMetrics.last shouldBe metricWithNone
   }
 
-  it should "write and read metrics with an interger option" in {
+  it should "write and read metrics with an integer option" in {
     val metricWithSome = TestMetricWithIntOption(foo="fooValue1", bar=1, option=Some(1))
     val metricWithNone = TestMetricWithIntOption(foo="fooValue2", bar=2, option=None)
     val metrics = Seq(metricWithSome, metricWithNone)
@@ -168,5 +169,24 @@ class MetricTest extends UnitSpec {
     readMetrics.length shouldBe 2
     readMetrics.head shouldBe metricWithSome
     readMetrics.last shouldBe metricWithNone
+  }
+
+  it should "get the field by name" in {
+    val testMetric = TestMetric(foo="fooValue", bar=1)
+
+    testMetric("foo") shouldBe "fooValue"
+    testMetric("bar") shouldBe "1"
+    testMetric("car") shouldBe "default"
+    an[NoSuchElementException] should be thrownBy testMetric("dar")
+
+    testMetric.get("foo").value shouldBe "fooValue"
+    testMetric.get("bar").value shouldBe "1"
+    testMetric.get("car").value shouldBe "default"
+    testMetric.get("dar") shouldBe 'empty
+  }
+
+  it should "be iterable over tuples of names and values" in {
+    val testMetric = TestMetric(foo="fooValue", bar=1)
+    testMetric.iterator.toSeq should contain theSameElementsInOrderAs Seq(("foo", "fooValue"), ("bar", "1"), ("car", "default"))
   }
 }

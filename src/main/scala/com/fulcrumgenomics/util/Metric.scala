@@ -158,7 +158,7 @@ object Metric {
   * All classes extending this class should be a case class.  By convention, all fields should be lower case with
   * words separated by underscores.
   */
-trait Metric extends Product {
+trait Metric extends Product with Iterable[(String,String)] {
   private lazy val reflectiveBuilder = new ReflectiveBuilder(this.getClass)
   private val formatter = new FormatUtil {
     override def format(value: Any): String = value match {
@@ -175,6 +175,22 @@ trait Metric extends Product {
 
   /** Get the values of the arguments in the order they were defined. */
   def values: Seq[String] = productIterator.map(formatValues).toSeq
+
+  /** Gets the value of the field by name. */
+  def apply(name: String): String = get(name).getOrElse {
+    throw new NoSuchElementException(s"key not found: $name")
+  }
+
+  /** Gets the value of the field by name, returns None if it does not exist. */
+  def get(name: String): Option[String] = {
+    this.names.indexOf(name) match {
+      case -1   => None
+      case idx  => Some(this.values(idx))
+    }
+  }
+
+  /** Gets an iterator over the fileds of this metric in the order they were defined.  Returns tuples of names and values */
+  override def iterator: Iterator[(String,String)] = this.names.zip(this.values).toIterator
 
   /** Override this method to customize how values are formatted. */
   protected def formatValues(value: Any): String = formatter.format(value)
