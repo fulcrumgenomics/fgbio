@@ -40,7 +40,7 @@ class SampleSheetTest extends FlatSpec with Matchers with OptionValues {
     sampleSheet.foreach { sample =>
       sample.sampleId                    shouldBe "20000101-EXPID-" + sample.sampleOrdinal
       sample.sampleName                  shouldBe "Sample_Name_" + sample.sampleOrdinal
-      sample.libraryId                   shouldBe "Sample_Name_" + sample.sampleOrdinal
+      sample.libraryId                   shouldBe "20000101-EXPID-" + sample.sampleOrdinal
       sample.project.value               shouldBe "Sample_Project_" + sample.sampleOrdinal
       sample.description.value           shouldBe "Description_" + sample.sampleOrdinal
       sample.i7IndexBases.value          shouldBe "GATTACAACGT"
@@ -56,7 +56,7 @@ class SampleSheetTest extends FlatSpec with Matchers with OptionValues {
     sampleSheet.foreach { sample =>
       sample.sampleId             shouldBe "20000101-EXPID-" + sample.sampleOrdinal
       sample.sampleName           shouldBe "Sample_Name_" + sample.sampleOrdinal
-      sample.libraryId            shouldBe "Sample_Name_" + sample.sampleOrdinal
+      sample.libraryId            shouldBe "20000101-EXPID-" + sample.sampleOrdinal
       sample.project.value        shouldBe "Sample_Project_" + sample.sampleOrdinal
       sample.description.value    shouldBe "Description_" + sample.sampleOrdinal
       sample.i7IndexBases         shouldBe None

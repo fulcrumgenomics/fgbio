@@ -60,7 +60,7 @@ object SampleSheet {
   /**
     * Parses an Illumina Experiment Manager Sample Sheet (typically a MiSeq).
     *
-    * If library id is not found, it will be set to the sample name.
+    * If library id is not found, it will be set to the sample identifier.
     *
     * If the lane number is given, returns only the samples that have that lane specified.
     *
@@ -73,7 +73,7 @@ object SampleSheet {
   /**
     * Parses an Illumina Experiment Manager Sample Sheet (typically a MiSeq).
     *
-    * If library id is not found, it will be set to the sample name.
+    * If library id is not found, it will be set to the sample identifier.
     *
     * If the lane number is given, returns only the samples that have that lane specified.
     *
@@ -118,7 +118,7 @@ object SampleSheet {
   protected def makeSample(sampleOrdinal: Int, sampleDatum: Map[String, String]): Sample = {
     val sampleName: String          = SampleSheet.getStringField(sampleDatum, SampleName)    getOrElse (throw new IllegalArgumentException(s"Missing: $SampleName"))
     val sampleId: String            = SampleSheet.getStringField(sampleDatum, SampleId)      getOrElse (throw new IllegalArgumentException(s"Missing: $SampleId"))
-    val libraryId: String           = SampleSheet.getStringField(sampleDatum, LibraryId)     getOrElse sampleName
+    val libraryId: String           = SampleSheet.getStringField(sampleDatum, LibraryId)     getOrElse sampleId
     val project: Option[String]     = SampleSheet.getStringField(sampleDatum, SampleProject)
     val description: Option[String] = SampleSheet.getStringField(sampleDatum, Description)
     val extendedAttributes          = sampleDatum.filterNot { case (columnName, value) =>  HeaderNames.contains(columnName) }
@@ -174,8 +174,6 @@ object SampleSheet {
   *
   * The sample identifier should be unique across samples within the sample sheet, and the combination of sample name
   * and library identifier should also be unique across samples within the sample sheet.
-  *
-  * @author Nils Homer
   */
 class SampleSheet(samples: Seq[Sample]) extends Iterable[Sample] {
 

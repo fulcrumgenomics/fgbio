@@ -124,13 +124,13 @@ class ExtractBasecallingParamsForPicardTest extends UnitSpec with ErrorLogLevel 
     // Check the header, first sample, and last line (last sample)
     val barcodeParams = Io.readLines(param.barcodeFile).toSeq
     barcodeParams.head shouldBe "barcode_sequence_1\tbarcode_name\tlibrary_name"
-    barcodeParams.drop(1).head shouldBe "GATTACAACGT\tGATTACAACGT\tSample_Name_1"
-    barcodeParams.last shouldBe "GATTACAACGT\tGATTACAACGT\tSample_Name_12"
+    barcodeParams.drop(1).head shouldBe "GATTACAACGT\tGATTACAACGT\t20000101-EXPID-1"
+    barcodeParams.last shouldBe "GATTACAACGT\tGATTACAACGT\t20000101-EXPID-12"
 
     // Check the header, first sample, and last line (unmatched sample)
     val libraryParams = Io.readLines(param.libraryParamsFile).toSeq
     libraryParams.head shouldBe "BARCODE_1\tOUTPUT\tSAMPLE_ALIAS\tLIBRARY_NAME\tDS"
-    libraryParams.drop(1).head shouldBe s"GATTACAACGT\t${outputDir.resolve("Sample_Name_1.GATTACAACGT.1.bam")}\tSample_Name_1\tSample_Name_1\tDescription_1"
+    libraryParams.drop(1).head shouldBe s"GATTACAACGT\t${outputDir.resolve("Sample_Name_1.GATTACAACGT.1.bam")}\tSample_Name_1\t20000101-EXPID-1\tDescription_1"
     libraryParams.last shouldBe s"N\t${outputDir.resolve("unmatched.1.bam")}\tunmatched\tunmatched\tunmatched"
   }
 
@@ -147,13 +147,13 @@ class ExtractBasecallingParamsForPicardTest extends UnitSpec with ErrorLogLevel 
     // Check the header, first sample, and last line (last sample)
     val barcodeParams = Io.readLines(param.barcodeFile).toSeq
     barcodeParams.head shouldBe "barcode_sequence_1\tbarcode_name\tlibrary_name"
-    barcodeParams.drop(1).head shouldBe "GATTACAACGT\tGATTACAACGT\tSample_Name_1"
-    barcodeParams.last shouldBe "GATTACAACGT\tGATTACAACGT\tSample_Name_12"
+    barcodeParams.drop(1).head shouldBe "GATTACAACGT\tGATTACAACGT\t20000101-EXPID-1"
+    barcodeParams.last shouldBe "GATTACAACGT\tGATTACAACGT\t20000101-EXPID-12"
 
     // Check the header, first sample, and last line (unmatched sample)
     val libraryParams = Io.readLines(param.libraryParamsFile).toSeq
     libraryParams.head shouldBe "BARCODE_1\tOUTPUT\tSAMPLE_ALIAS\tLIBRARY_NAME\tDS"
-    libraryParams.drop(1).head shouldBe s"GATTACAACGT\t${outputDir.resolve("Sample_Name_1.GATTACAACGT.4.bam")}\tSample_Name_1\tSample_Name_1\tDescription_1"
+    libraryParams.drop(1).head shouldBe s"GATTACAACGT\t${outputDir.resolve("Sample_Name_1.GATTACAACGT.4.bam")}\tSample_Name_1\t20000101-EXPID-1\tDescription_1"
     libraryParams.last shouldBe s"N\t${outputDir.resolve("unmatched.4.bam")}\tunmatched\tunmatched\tunmatched"
   }
 
@@ -170,13 +170,13 @@ class ExtractBasecallingParamsForPicardTest extends UnitSpec with ErrorLogLevel 
     // Check the header, first sample, and last line (last sample)
     val barcodeParams = Io.readLines(param.barcodeFile).toSeq
     barcodeParams.head shouldBe "barcode_sequence_1\tbarcode_sequence_2\tbarcode_name\tlibrary_name"
-    barcodeParams.drop(1).head shouldBe "GATTACAACGT\tGATTACA\tGATTACAACGTGATTACA\tSample_Name_1"
-    barcodeParams.last shouldBe "GATTACAACGT\tGATTACA\tGATTACAACGTGATTACA\tSample_Name_12"
+    barcodeParams.drop(1).head shouldBe "GATTACAACGT\tGATTACA\tGATTACAACGTGATTACA\t20000101-EXPID-1"
+    barcodeParams.last shouldBe "GATTACAACGT\tGATTACA\tGATTACAACGTGATTACA\t20000101-EXPID-12"
 
     // Check the header, first sample, and last line (unmatched sample)
     val libraryParams = Io.readLines(param.libraryParamsFile).toSeq
     libraryParams.head shouldBe "BARCODE_1\tBARCODE_2\tOUTPUT\tSAMPLE_ALIAS\tLIBRARY_NAME\tDS"
-    libraryParams.drop(1).head shouldBe s"GATTACAACGT\tGATTACA\t${outputDir.resolve("Sample_Name_1.GATTACAACGTGATTACA.1.bam")}\tSample_Name_1\tSample_Name_1\tDescription_1"
+    libraryParams.drop(1).head shouldBe s"GATTACAACGT\tGATTACA\t${outputDir.resolve("Sample_Name_1.GATTACAACGTGATTACA.1.bam")}\tSample_Name_1\t20000101-EXPID-1\tDescription_1"
     libraryParams.last shouldBe s"N\tN\t${outputDir.resolve("unmatched.1.bam")}\tunmatched\tunmatched\tunmatched"
   }
 
@@ -193,13 +193,13 @@ class ExtractBasecallingParamsForPicardTest extends UnitSpec with ErrorLogLevel 
     // Check the header, first sample, and last line (last sample)
     val barcodeParams = Io.readLines(param.barcodeFile).toSeq
     barcodeParams.head shouldBe "barcode_sequence_1\tbarcode_sequence_2\tbarcode_name\tlibrary_name"
-    barcodeParams.drop(1).head shouldBe "GATTACAACGT\tGATTACA\tGATTACAACGTGATTACA\tSample_Name_1"
-    barcodeParams.last shouldBe "GATTACAACGT\tGATTACA\tGATTACAACGTGATTACA\tSample_Name_1"
+    barcodeParams.drop(1).head shouldBe "GATTACAACGT\tGATTACA\tGATTACAACGTGATTACA\t20000101-EXPID-1"
+    barcodeParams.last shouldBe "GATTACAACGT\tGATTACA\tGATTACAACGTGATTACA\t20000101-EXPID-1"
 
     // Check the header, first sample, and last line (unmatched sample)
     val libraryParams = Io.readLines(param.libraryParamsFile).toSeq
     libraryParams.head shouldBe "BARCODE_1\tBARCODE_2\tOUTPUT\tSAMPLE_ALIAS\tLIBRARY_NAME"
-    libraryParams.drop(1).head shouldBe s"GATTACAACGT\tGATTACA\t${outputDir.resolve("Sample_Name_1.GATTACAACGTGATTACA.1.bam")}\tSample_Name_1\tSample_Name_1"
+    libraryParams.drop(1).head shouldBe s"GATTACAACGT\tGATTACA\t${outputDir.resolve("Sample_Name_1.GATTACAACGTGATTACA.1.bam")}\tSample_Name_1\t20000101-EXPID-1"
     libraryParams.last shouldBe s"N\tN\t${outputDir.resolve("unmatched.1.bam")}\tunmatched\tunmatched"
   }
 
@@ -214,13 +214,13 @@ class ExtractBasecallingParamsForPicardTest extends UnitSpec with ErrorLogLevel 
     // Check the header, first sample, and last line (last sample)
     val barcodeParams = Io.readLines(barcodeFile).toSeq
     barcodeParams.head shouldBe "barcode_sequence_1\tbarcode_sequence_2\tbarcode_name\tlibrary_name"
-    barcodeParams.drop(1).head shouldBe "GATTACAACGT\tGATTACA\tGATTACAACGTGATTACA\tSample_Name_1"
-    barcodeParams.last shouldBe "GATTACAACGT\tGATTACA\tGATTACAACGTGATTACA\tSample_Name_12"
+    barcodeParams.drop(1).head shouldBe "GATTACAACGT\tGATTACA\tGATTACAACGTGATTACA\t20000101-EXPID-1"
+    barcodeParams.last shouldBe "GATTACAACGT\tGATTACA\tGATTACAACGTGATTACA\t20000101-EXPID-12"
 
     // Check the header, first sample, and last line (unmatched sample)
     val libraryParams = Io.readLines(libraryParamsFile).toSeq
     libraryParams.head shouldBe "BARCODE_1\tBARCODE_2\tOUTPUT\tSAMPLE_ALIAS\tLIBRARY_NAME\tDS"
-    libraryParams.drop(1).head shouldBe s"GATTACAACGT\tGATTACA\t${outputDir.resolve("Sample_Name_1.GATTACAACGTGATTACA.1.bam")}\tSample_Name_1\tSample_Name_1\tDescription_1"
+    libraryParams.drop(1).head shouldBe s"GATTACAACGT\tGATTACA\t${outputDir.resolve("Sample_Name_1.GATTACAACGTGATTACA.1.bam")}\tSample_Name_1\t20000101-EXPID-1\tDescription_1"
     libraryParams.last shouldBe s"N\tN\t${outputDir.resolve("unmatched.1.bam")}\tunmatched\tunmatched\tunmatched"
   }
 }
