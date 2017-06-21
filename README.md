@@ -9,7 +9,8 @@
 fgbio
 ====
 
-A set of tools to analyze genomic data with a focus on Next Generation Sequencing.  This readme documented is mostly for developers/contributors and those attempting to build the project from source.  Detailed user documentation is available on the [project website](http://fulcrumgenomics.github.io/fgbio/).
+A set of tools to analyze genomic data with a focus on Next Generation Sequencing.  This readme document is mostly for developers/contributors and those attempting to build the project from source.
+Detailed user documentation is available on the [project website](http://fulcrumgenomics.github.io/fgbio/) including [tool usage](http://fulcrumgenomics.github.io/fgbio/tools/latest) and [documentation of metrics produced](http://fulcrumgenomics.github.io/fgbio/metrics/latest).
 
 <!---toc start-->
   * [Goals](#goals)
@@ -35,8 +36,8 @@ There are many toolkits available for analyzing genomic data; fgbio does not aim
 
 ## Overview
 
-Fgbio is a command line tool to perform bioinformatic genomic data analysis. 
-The collection of tools within `fgbio` are used by our customers for both ad-hoc data analysis and within their production pipelines.
+Fgbio is a set of command line tools to perform bioinformatic/genomic data analysis. 
+The collection of tools within `fgbio` are used by our customers and others both for ad-hoc data analysis and within production pipelines.
 These tools typically operate on read-level data (ex. FASTQ, SAM, or BAM) or variant-level data (ex. VCF or BCF).
 They range from simple tools to filter reads in a BAM file, to tools to compute consensus reads from reads with the same molecular index/tag.
 See the [list of tools](#list-of-tools) for more detail on the tools
@@ -89,15 +90,23 @@ Java SE 8 is required.
 
 ## Command line
 
-`java -jar target/scala-2.12/fgbio-0.2.0-SNAPSHOT.jar` to see the commands supported.  Use `java -jar target/scala-2.12/fgbio-0.2.0-SNAPSHOT.jar <command>` to see the help message for a particular command.
+`java -jar target/scala-2.12/fgbio-<version>.jar` to see the commands supported.  Use `java -jar target/scala-2.12/fgbio-<version>.jar <command>` to see the help message for a particular command.
 
 ## Include fgbio in your project
 
-You can include `fgbio` in your project:
+You can include `fgbio` in your project using:
+
+```
+"com.fulcrumgenomics" %% "fgbio" % "0.1.4"
+```
+
+for the latest released version or (buyer beware):
 
 ```
 "com.fulcrumgenomics" %% "fgbio" % "0.2.0-SNAPSHOT"
 ```
+
+for the latest development snapshot.
 
 ## Contributing
 
