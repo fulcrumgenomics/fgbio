@@ -9,21 +9,20 @@
 fgbio
 ====
 
-A set of tools to analyze genomic data.
+A set of tools to analyze genomic data with a focus on Next Generation Sequencing.  This readme documented is mostly for developers/contributors and those attempting to build the project from source.  Detailed user documentation is available on the [project website](http://fulcrumgenomics.github.io/fgbio/).
 
 <!---toc start-->
   * [Goals](#goals)
+  * [Overview](#overview)
+  * [List of tools](#list-of-tools)
   * [Building](#building)
   * [Command line](#command-line)
   * [Include fgbio in your project](#include-fgbio-in-your-project)
-  * [Overview](#overview)
-  * [List of tools](#list-of-tools)
   * [Contributing](#contributing)
   * [Authors](#authors)
   * [License](#license)
 
 <!---toc end-->
-
 
 # Goals
 
@@ -31,9 +30,42 @@ There are many toolkits available for analyzing genomic data; fgbio does not aim
 
 * Robust, well-tested tools.
 * An easy to use command-line.
-* Documentation for each tool.
-* Tools not found anywhere else.
+* Clear and thorough documentation for each tool.
 * Open source development for the benefit of the community and our clients.
+
+## Overview
+
+Fgbio is a command line tool to perform bioinformatic genomic data analysis. 
+The collection of tools within `fgbio` are used by our customers for both ad-hoc data analysis and within their production pipelines.
+These tools typically operate on read-level data (ex. FASTQ, SAM, or BAM) or variant-level data (ex. VCF or BCF).
+They range from simple tools to filter reads in a BAM file, to tools to compute consensus reads from reads with the same molecular index/tag.
+See the [list of tools](#list-of-tools) for more detail on the tools
+
+## List of tools
+
+For a full list of available tools please see the [tools section](http://fulcrumgenomics.github.io/fgbio/tools/latest) of the project website.
+
+Below we highlight a few tools that you may find useful.
+
+* Tools for working with Unique Molecular Indexes (UMIs, aka Molecular IDs or MIDs). 
+  * Annotating/Extract Umis from read-level data: `AnnotateBamWithUmis` and `ExtractUmisFromBam`.
+  * Tools to manipulate read-level data containing Umis: `CorrectUmis`, `GroupReadsByUmi`, `CallMolecularConsensusReads` and `CallDuplexConsensusReads`
+* Tools to manipulate read-level data:
+  * FastqManipulation: `DemuxFastqs` and `FastqToBam`
+  * Filter read-level data: `FilterBam`.
+  * Clipping of reads: `ClipBam`.
+  * Randomize the order of read-level data: `RandomizeBam`.
+  * Update read-level metadata: `SetMateInformation` and `UpdateReadGroups`.
+* Quality assessment tools:
+  * Detailed substitution error rate evaluation: `ErrorRateByReadPosition`
+  * Sample pooling QC: `EstimatePoolingFractions`
+  * Splice-aware insert size QC for RNA-seq libraries: `EstimateRnaSeqInsertSize`
+  * Assessment of duplex sequencing experiments: `CollectDuplexSeqMetrics`
+* Miscellaneous tools:
+  * Pick molecular indices (ex. sample barcodes, or molecular indexes): `PickIlluminaIndices` and `PickLongIndices`.
+  * Convert the output of HAPCUT (a tool for phasing variants): `HapCutToVcf`.
+  * Find technical or synthetic sequences in read-level data: `FindTechnicalReads`.
+  * Assess phased variant calls: `AssessPhasing`.
 
 ## Building 
 ### Cloning the Repository
@@ -57,43 +89,15 @@ Java SE 8 is required.
 
 ## Command line
 
-`java -jar target/scala-2.11/fgbio-0.1.3-SNAPSHOT.jar` to see the commands supported.  Use `java -jar target/scala-2.11/fgbio-0.1.3-SNAPSHOT.jar <command>` to see the help message for a particular command.
+`java -jar target/scala-2.12/fgbio-0.2.0-SNAPSHOT.jar` to see the commands supported.  Use `java -jar target/scala-2.12/fgbio-0.2.0-SNAPSHOT.jar <command>` to see the help message for a particular command.
 
 ## Include fgbio in your project
 
 You can include `fgbio` in your project:
 
 ```
-"com.fulcrumgenomics" %% "fgbio" % "0.1.3-SNAPSHOT"
+"com.fulcrumgenomics" %% "fgbio" % "0.2.0-SNAPSHOT"
 ```
-
-## Overview
-
-Fgbio is a command line tool to perform bioinformatic genomic data analysis. 
-The collection of tools within `fgbio` are used by our customers for both ad-hoc data analysis and within their production pipelines.
-These tools typically operate on read-level data (ex. FASTQ, SAM, or BAM) or variant-level data (ex. VCF or BCF).
-They range from simple tools to filter reads in a BAM file, to tools to compute consensus reads from reads with the same molecular index/tag.
-See the [list of tools](#list-of-tools) for more detail on the tools
-
-## List of tools
-
-Below we highlight a few tools that you may find useful.
-Please see the help message for a full list of tools available.
-In no particular order ...
-
-* Tools to work with unique molecular tags/indexes (Umis). 
-  * Annotating/Extract Umis from read-level data: `AnnotateBamWithUmis` and `ExtractUmisFromBam`.
-  * Tools to manipulate read-level data containing Umis: `CallMolecularConsensusReads` and `GroupReadsByUmi`
-* Tools to manipulate read-level data:
-	* Filter read-level data: `FilterBam`.
-	* Randomize the order of read-level data: `RandomizeBam`.
-	* Update read-level metadata: `SetMateInformation` and `UpdateReadGroups`.
-* Miscellaneous tools:
-	* Pick molecular indices (ex. sample barcodes, or molecular indexes): `PickIlluminaIndices`.
-	* Convert the output of HAPCUT (a tool for phasing variants): `HapCutToVcf`.
-	* Find technical or synthetic sequences in read-level data: `FindTechnicalReads`.
-    * Assess phased variant calls: `AssessPhasing`.
-
 
 ## Contributing
 
