@@ -314,9 +314,12 @@ object EstimateRnaSeqInsertSize {
 
 /**
   * Metrics produced by `EstimateRnaSeqInsertSize` to describe the distribution of insert sizes within an
-  * RNA-seq experiment.
+  * RNA-seq experiment.  The insert sizes are computed in "transcript space", accounting for spliced
+  * alignments, in order to get a true estimate of the size of the DNA fragment, not just it's span on
+  * the genome.
   *
   * @param pair_orientation The orientation of the reads within a read-pair relative to each other.
+  *                         Possible values are FR, RF and TANDEM.
   * @param read_pairs The number of read pairs observed with the `pair_orientation`.
   * @param mean The mean insert size of the read pairs.
   * @param standard_deviation The standard deviation of the insert size of the read pairs.

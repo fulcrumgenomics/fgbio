@@ -379,7 +379,7 @@ object PhaseBlockLengthMetric {
   * multiple rows, one for each observed phased block length.
   *
   * @param dataset The name of the dataset being assessed (i.e. "truth" or "called").
-  * param length The length of the phased block.
+  * @param length The length of the phased block.
   * @param count The number of phased blocks of the given length.
   */
 case class PhaseBlockLengthMetric

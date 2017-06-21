@@ -62,24 +62,24 @@ object CollectDuplexSeqMetrics {
     * Metrics produced by `CollectDuplexSeqMetrics` to quantify the distribution of different kinds of read family
     * sizes.  Three kinds of families are described:
     *
-    * 1. _CS_ or _Coordinate & Strand_: families of reads that are grouped together by their 5' genomic
-    *    positions and strands just as they are in traditional PCR duplicate marking
+    * 1. _CS_ or _Coordinate & Strand_: families of reads that are grouped together by their unclipped 5'
+    *    genomic positions and strands just as they are in traditional PCR duplicate marking
     * 2. _SS_ or _Single Strand_: single-strand families that are each subsets of a CS family create by
     *    also using the UMIs to partition the larger family, but not linking up families that are
     *    created from opposing strands of the same source molecule.
     * 3. _DS_ or _Double Strand_: families that are created by combining single-strand families that are from
     *    opposite strands of the same source molecule. This does **not** imply that all DS families are composed
     *    of reads from both strands; where only one strand of a source molecule is observed a DS family is
-    *    still created.
+    *    still counted.
     *
     * @param family_size The family size, i.e. the number of read pairs grouped together into a family.
-    * @param cs_count The count of families, of family size, when grouping just by coordinates and strand information.
+    * @param cs_count The count of families with `size == family_size` when grouping just by coordinates and strand information.
     * @param cs_fraction The fraction of all _CS_ families where `size == family_size`.
     * @param cs_fraction_gt_or_eq_size The fraction of all _CS_ families where `size >= family_size`.
-    * @param ss_count The count of families, of family size, when also grouping by UMI to create single-strand families.
+    * @param ss_count The count of families with `size == family_size` when also grouping by UMI to create single-strand families.
     * @param ss_fraction The fraction of all _SS_ families where `size == family_size`.
     * @param ss_fraction_gt_or_eq_size The fraction of all _SS_ families where `size >= family_size`.
-    * @param ds_count The count of families, of family size, when also grouping by UMI and merging single-strand
+    * @param ds_count The count of families with `size == family_size`when also grouping by UMI and merging single-strand
     *                 families from opposite strands of the same source molecule.
     * @param ds_fraction The fraction of all _DS_ families where `size == family_size`.
     * @param ds_fraction_gt_or_eq_size The fraction of all _DS_ families where `size >= family_size`.
@@ -105,12 +105,12 @@ object CollectDuplexSeqMetrics {
     * to make interpretation of the metrics simpler we use a definition here that for a given tag family
     * `ab` is the sub-family with more reads and `ba` is the tag family with fewer reads.
     *
-    * @param ab_size The number of reads in the larger single-strand tag family for this double-strand tag family.
-    * @param ba_size The number of reads in the smaller single-strand tag family for this double-strand tag family.
-    * @param count The number of families with the A and B single-strand families of size `ab_size` and `ba_size`.
+    * @param ab_size The number of reads in the `ab` sub-family (the larger sub-family) for this double-strand tag family.
+    * @param ba_size The number of reads in the `ba` sub-family (the smaller sub-family) for this double-strand tag family.
+    * @param count The number of families with the `ab` and `ba` single-strand families of size `ab_size` and `ba_size`.
     * @param fraction The fraction of all double-stranded tag families that have `ab_size` and `ba_size`.
     * @param fraction_gt_or_eq_size The fraction of all double-stranded tag families that have
-    *                               `AB reads >= ab_size` and `BA reads >= ba_size`.
+    *                               `ab reads >= ab_size` and `ba reads >= ba_size`.
     */
   case class DuplexFamilySizeMetric(ab_size: Int,
                                     ba_size: Int,
@@ -132,6 +132,8 @@ object CollectDuplexSeqMetrics {
     * downsampling, during the construction of duplex metrics.  The downsampling is done in such a way that the
     * `fraction`s are approximate, and not exact, therefore the `fraction` field should only be interpreted as a guide
     * and the `read_pairs` field used to quantify how much data was used.
+    *
+    * See `FamilySizeMetric` for detailed definitions of `CS`, `SS` and `DS` as used below.
     *
     * @param fraction    The approximate fraction of the full dataset that was used to generate the remaining values.
     * @param read_pairs  The number of read pairs upon which the remaining metrics are based.
