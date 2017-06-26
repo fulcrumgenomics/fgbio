@@ -28,6 +28,7 @@ import java.lang.Math.min
 
 import com.fulcrumgenomics.FgBioDef._
 import com.fulcrumgenomics.bam.api.SamRecord
+import com.fulcrumgenomics.commons.util.LazyLogging
 import com.fulcrumgenomics.umi.DuplexConsensusCaller._
 import com.fulcrumgenomics.umi.UmiConsensusCaller.ReadType.{ReadType, _}
 import com.fulcrumgenomics.umi.UmiConsensusCaller.{SimpleRead, SourceRead}
@@ -48,6 +49,7 @@ object DuplexConsensusCaller {
   val FilterAorBOnly    = "Only Seeing A or B Reads"
   val FilterFragments   = "Being Fragment/Non-Paired Reads"
   val FilterSsConsensus = "Only Generating One Strand Consensus"
+  val FilterCollision   = "Potential collision between independent duplex molecules"
 
   /**
     * Stores information about a consensus read.  Bases, arrays, and the two single
@@ -99,7 +101,7 @@ class DuplexConsensusCaller(override val readNamePrefix: String,
                             val trim: Boolean = false,
                             val errorRatePreUmi: PhredScore     = DuplexConsensusCaller.ErrorRatePreUmi,
                             val errorRatePostUmi: PhredScore    = DuplexConsensusCaller.ErrorRatePostUmi
-                           ) extends UmiConsensusCaller[DuplexConsensusRead] {
+                           ) extends UmiConsensusCaller[DuplexConsensusRead] with LazyLogging {
 
   private val ssCaller = new VanillaUmiConsensusCaller(readNamePrefix="x", options=new VanillaUmiConsensusCallerOptions(
       errorRatePreUmi         = this.errorRatePreUmi,
@@ -161,15 +163,21 @@ class DuplexConsensusCaller(override val readNamePrefix: String,
         // Check for this explicitly here.
         if (singleStrand1.nonEmpty) {
           val ss1Flag = singleStrand1.head.negativeStrand
-          val ss1MI   = singleStrand1.head.apply[String](ConsensusTags.MolecularId)
-          require(singleStrand1.forall(_.negativeStrand == ss1Flag),
-            s"Not all AB-R1s and BA-R2s were on the same strand for molecule with id: $ss1MI")
+          if (singleStrand1.exists(_.negativeStrand != ss1Flag)) {
+            val ss1MI   = singleStrand1.head.apply[String](ConsensusTags.MolecularId)
+            rejectRecords(ab ++ ba, FilterCollision)
+            logger.debug(s"Not all AB-R1s and BA-R2s were on the same strand for molecule with id: $ss1MI")
+            return Nil
+          }
         }
         if (singleStrand2.nonEmpty) {
           val ss2Flag = singleStrand2.head.negativeStrand
-          val ss2MI   = singleStrand2.head.apply[String](ConsensusTags.MolecularId)
-          require(singleStrand2.forall(_.negativeStrand == ss2Flag),
-            s"Not all AB-R2s and BA-R1s were on the same strand for molecule with id: $ss2MI")
+          if (singleStrand2.exists(_.negativeStrand != ss2Flag)) {
+            val ss2MI   = singleStrand2.head.apply[String](ConsensusTags.MolecularId)
+            rejectRecords(ab ++ ba, FilterCollision)
+            logger.debug(s"Not all AB-R2s and BA-R1s were on the same strand for molecule with id: $ss2MI")
+            return Nil
+          }
         }
 
         // Filter by common indel pattern with AB and BA together

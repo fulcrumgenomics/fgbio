@@ -58,14 +58,36 @@ class CallDuplexConsensusReadsTest extends UnitSpec {
     checkClpAnnotations[CallDuplexConsensusReads]
   }
 
-  it should "run fail if AB-R1s are not on the same strand ads BA-R2s" in {
+  it should "not generate a consensus if AB-R1s are not on the same strand ads BA-R2s" in {
     val builder = new SamBuilder(readLength=10)
-    builder.addPair(name="ab1", start1=100, start2=200, attrs=Map(MI -> "1/A"), bases1="AAAAAAAAAA", bases2="AAAAAAAAAA")
-    builder.addPair(name="ba1", start1=200, start2=100, attrs=Map(MI -> "1/B"), bases1="AAAAAAAAAA", bases2="AAAAAAAAAA")
+    builder.addPair(name="ab1", start1=100, start2=200, attrs=Map(MI -> "1/A"), bases1="AAAAAAAAAA", bases2="AAAAAAAAAA", strand1=Plus, strand2=Plus)
+    builder.addPair(name="ba1", start1=200, start2=100, attrs=Map(MI -> "1/B"), bases1="AAAAAAAAAA", bases2="AAAAAAAAAA", strand1=Plus, strand2=Minus)
 
     val in  = builder.toTempFile()
     val out = makeTempFile("duplex.", ".bam")
-    an[Exception] should be thrownBy new CallDuplexConsensusReads(input=in, output=out, readGroupId="ZZ").execute()
+    new CallDuplexConsensusReads(input=in, output=out, readGroupId="ZZ").execute()
+    val reader = SamSource(out)
+    val recs = reader.toSeq
+
+    reader.header.getReadGroups should have size 1
+    reader.header.getReadGroups.iterator().next().getId shouldBe "ZZ"
+    recs should have size 0
+  }
+
+  it should "not generate a consensus if AB-R2s are not on the same strand ads BA-R1s" in {
+    val builder = new SamBuilder(readLength=10)
+    builder.addPair(name="ab1", start1=100, start2=200, attrs=Map(MI -> "1/A"), bases1="AAAAAAAAAA", bases2="AAAAAAAAAA", strand1=Plus, strand2=Minus)
+    builder.addPair(name="ba1", start1=200, start2=100, attrs=Map(MI -> "1/B"), bases1="AAAAAAAAAA", bases2="AAAAAAAAAA", strand1=Plus, strand2=Plus)
+
+    val in  = builder.toTempFile()
+    val out = makeTempFile("duplex.", ".bam")
+    new CallDuplexConsensusReads(input=in, output=out, readGroupId="ZZ").execute()
+    val reader = SamSource(out)
+    val recs = reader.toSeq
+
+    reader.header.getReadGroups should have size 1
+    reader.header.getReadGroups.iterator().next().getId shouldBe "ZZ"
+    recs should have size 0
   }
 
   it should "run successfully and create consensus reads" in {
