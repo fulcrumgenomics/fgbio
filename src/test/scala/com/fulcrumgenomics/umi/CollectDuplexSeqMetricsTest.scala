@@ -30,8 +30,9 @@ import java.util.Random
 import com.fulcrumgenomics.FgBioDef._
 import com.fulcrumgenomics.bam.api.SamOrder
 import com.fulcrumgenomics.commons.util.SimpleCounter
+import com.fulcrumgenomics.testing.SamBuilder.{Minus, Plus}
 import com.fulcrumgenomics.testing.{SamBuilder, UnitSpec}
-import com.fulcrumgenomics.util.Metric
+import com.fulcrumgenomics.util.{Io, Metric}
 import htsjdk.samtools.util.{Interval, IntervalList}
 import org.apache.commons.math3.distribution.NormalDistribution
 
@@ -42,27 +43,32 @@ class CollectDuplexSeqMetricsTest extends UnitSpec {
   private val RX = "RX"
 
   // Case class to hold pointers to all the outputs of CollectDuplexSeqMetrics
-  private case class Outputs(families: Path, duplexFamilies: Path, umis: Path, yields: Path, plots: Path) {
+  private case class Outputs(families: Path, duplexFamilies: Path, umis: Path, duplexUmis: Path, yields: Path, plots: Path) {
     import CollectDuplexSeqMetrics._
-    def familyMetrics:       Seq[FamilySizeMetric]       = Metric.read[FamilySizeMetric](families)
-    def duplexFamilyMetrics: Seq[DuplexFamilySizeMetric] = Metric.read[DuplexFamilySizeMetric](duplexFamilies)
-    def umiMetrics:          Seq[UmiMetric]              = Metric.read[UmiMetric](umis)
-    def yieldMetrics:        Seq[DuplexYieldMetric]      = Metric.read[DuplexYieldMetric](yields)
+    lazy val familyMetrics:       Seq[FamilySizeMetric]       = Metric.read[FamilySizeMetric](families)
+    lazy val duplexFamilyMetrics: Seq[DuplexFamilySizeMetric] = Metric.read[DuplexFamilySizeMetric](duplexFamilies)
+    lazy val umiMetrics:          Seq[UmiMetric]              = Metric.read[UmiMetric](umis)
+    lazy val duplexUmiMetrics:    Seq[DuplexUmiMetric]        = if (duplexUmis.toFile.exists()) Metric.read[DuplexUmiMetric](duplexUmis) else Seq.empty
+    lazy val yieldMetrics:        Seq[DuplexYieldMetric]      = Metric.read[DuplexYieldMetric](yields)
   }
 
   // Executes duplex seq metrics and returns paths to the various metrics
-  private def exec(builder: SamBuilder, intervals: Option[PathToIntervals] = None, ab: Int = 1, ba: Int = 1, plot: Boolean=false): Outputs = {
+  private def exec(builder: SamBuilder, intervals: Option[PathToIntervals] = None, ab: Int = 1, ba: Int = 1, plot: Boolean=false, duplexCounts: Boolean = false): Outputs = {
     val bam = builder.toTempFile()
     val prefix = makeTempFile("duplex.", ".output")
-    new CollectDuplexSeqMetrics(input=bam, output=prefix, intervals=intervals, minAbReads=ab, minBaReads=ba, generatePlots=plot).execute()
+    new CollectDuplexSeqMetrics(input=bam, output=prefix, intervals=intervals, duplexUmiCounts=duplexCounts, minAbReads=ab, minBaReads=ba, generatePlots=plot).execute()
     Outputs(
       families       = Paths.get(prefix.toString + CollectDuplexSeqMetrics.FamilySizeMetricsExt),
       duplexFamilies = Paths.get(prefix.toString + CollectDuplexSeqMetrics.DuplexFamilySizeMetricsExt),
       umis           = Paths.get(prefix.toString + CollectDuplexSeqMetrics.UmiMetricsExt),
+      duplexUmis     = Paths.get(prefix.toString + CollectDuplexSeqMetrics.DuplexUmiMetricsExt),
       yields         = Paths.get(prefix.toString + CollectDuplexSeqMetrics.YieldMetricsExt),
       plots          = Paths.get(prefix.toString + CollectDuplexSeqMetrics.PlotsExt)
     )
   }
+
+  // Returns a collector as an option for easy mapping over
+  private def collector(duplex: Boolean = false) = Some(new CollectDuplexSeqMetrics(input=Io.DevNull, output=Io.DevNull, duplexUmiCounts=duplex))
 
   "CollectDuplexSeqMetrics" should "have acceptable CLP annotations" in {
     checkClpAnnotations[CollectDuplexSeqMetrics]
@@ -72,32 +78,41 @@ class CollectDuplexSeqMetricsTest extends UnitSpec {
     val builder = new SamBuilder(readLength=10, sort=Some(SamOrder.TemplateCoordinate))
     builder.addPair(start1=100, start2=200, attrs=Map(RX -> "AAA-TTT", MI -> "1/A"))
     builder.addPair(start1=100, start2=200, attrs=Map(RX -> "TTT-AAA", MI -> "1/B"))
-    val metrics = exec(builder).umiMetrics
+    val results = exec(builder, duplexCounts=false)
 
-    metrics.size shouldBe 2
-    metrics.foreach { m =>
+    results.umiMetrics.size shouldBe 2
+    results.umiMetrics.foreach { m =>
       m.raw_observations shouldBe 2
       m.unique_observations shouldBe 1
     }
+
+    results.duplexUmiMetrics should have size 0
   }
 
   it should "error-correct UMIs for counting purposes" in {
     val builder = new SamBuilder(readLength=10, sort=Some(SamOrder.TemplateCoordinate))
-    builder.addPair(start1=100, start2=200, attrs=Map(RX -> "AAA-TTT", MI -> "1/A"))
-    builder.addPair(start1=100, start2=200, attrs=Map(RX -> "AAA-TTT", MI -> "1/A"))
-    builder.addPair(start1=100, start2=200, attrs=Map(RX -> "CAA-TTT", MI -> "1/A"))
-    builder.addPair(start1=100, start2=200, attrs=Map(RX -> "TTT-AAA", MI -> "1/B"))
-    builder.addPair(start1=100, start2=200, attrs=Map(RX -> "TTT-AAA", MI -> "1/B"))
-    builder.addPair(start1=100, start2=200, attrs=Map(RX -> "CTT-AAA", MI -> "1/B"))
-    val metrics = exec(builder).umiMetrics
+    builder.addPair(start1=100, start2=200, strand1=Plus , strand2=Minus, attrs=Map(RX -> "AAA-TTT", MI -> "1/A"))
+    builder.addPair(start1=100, start2=200, strand1=Plus , strand2=Minus, attrs=Map(RX -> "AAA-TTT", MI -> "1/A"))
+    builder.addPair(start1=100, start2=200, strand1=Plus , strand2=Minus, attrs=Map(RX -> "CAA-TTT", MI -> "1/A"))
+    builder.addPair(start1=200, start2=100, strand1=Minus, strand2=Plus,  attrs=Map(RX -> "TTT-AAA", MI -> "1/B"))
+    builder.addPair(start1=200, start2=100, strand1=Minus, strand2=Plus,  attrs=Map(RX -> "TTT-AAA", MI -> "1/B"))
+    builder.addPair(start1=200, start2=100, strand1=Minus, strand2=Plus,  attrs=Map(RX -> "CTT-AAA", MI -> "1/B"))
+    val results = exec(builder, duplexCounts=true)
 
-    metrics.size shouldBe 2
-    metrics.foreach { m =>
+    results.umiMetrics.size shouldBe 2
+    results.umiMetrics.foreach { m =>
       m.umi == "AAA" || m.umi == "TTT" shouldBe true
       m.raw_observations shouldBe 6
       m.raw_observations_with_errors shouldBe 1
       m.unique_observations shouldBe 1
     }
+
+    results.duplexUmiMetrics should have size 1
+    results.duplexUmiMetrics.head.umi shouldBe "AAA-TTT"
+    results.duplexUmiMetrics.head.raw_observations    shouldBe 6
+    results.duplexUmiMetrics.head.unique_observations shouldBe 1
+    results.duplexUmiMetrics.head.fraction_unique_observations shouldBe 1.0
+    results.duplexUmiMetrics.head.fraction_unique_observations_expected shouldBe 0.25
   }
 
   it should "count unique UMI observations 1-to-1 with tag families" in {
@@ -296,4 +311,37 @@ class CollectDuplexSeqMetricsTest extends UnitSpec {
     duplexFamilies.find(f => f.ab_size == 5 && f.ba_size == 0).get.count shouldBe 1
     duplexFamilies.find(f => f.ab_size == 6 && f.ba_size == 0).get.count shouldBe 1
   }
+
+  "CollectDuplexSeqMetrics.updateUmiMetrics" should "not count duplex umis" in collector(duplex=false).foreach { c =>
+    val builder = new SamBuilder(readLength=10)
+    builder.addPair(start1=100, start2=200, attrs=Map(RX -> "AAA-CCC", MI -> "1/A"))
+    c.updateUmiMetrics(Seq(builder.toSeq))
+    val metrics = c.duplexUmiMetrics(c.umiMetrics)
+    metrics should have size 0
+  }
+
+  it should "count UMIs as if on F1R2 molecules" in collector(duplex=true).foreach { c =>
+    val builder = new SamBuilder(readLength=10)
+    builder.addPair(start1=100, start2=200, strand1=Plus,  strand2=Minus, attrs=Map(RX -> "AAA-CCC", MI -> "1/A"))
+    builder.addPair(start1=200, start2=100, strand1=Minus, strand2=Plus,  attrs=Map(RX -> "CCC-AAA", MI -> "1/B"))
+    builder.addPair(start1=300, start2=400, strand1=Plus,  strand2=Minus, attrs=Map(RX -> "CCC-GGG", MI -> "2/A"))
+    builder.addPair(start1=900, start2=800, strand1=Minus, strand2=Plus,  attrs=Map(RX -> "TTT-AAA", MI -> "3/A"))
+
+    builder.toSeq.groupBy(r => r[String](MI).takeWhile(_ != '/')).values
+      .map(rs => rs.groupBy(r => r[String](MI)).values.toSeq).toSeq
+      .foreach(group => c.updateUmiMetrics(group))
+
+    val metrics = c.duplexUmiMetrics(c.umiMetrics)
+    metrics should have size 3
+
+    metrics.find(_.umi == "AAA-CCC") shouldBe defined
+    metrics.find(_.umi == "AAA-CCC").foreach(m => m.unique_observations shouldBe 1)
+
+    metrics.find(_.umi == "CCC-GGG") shouldBe defined
+    metrics.find(_.umi == "CCC-GGG").foreach(m => m.unique_observations shouldBe 1)
+
+    metrics.find(_.umi == "AAA-TTT") shouldBe defined
+    metrics.find(_.umi == "AAA-TTT").foreach(m => m.unique_observations shouldBe 1)
+  }
+
 }

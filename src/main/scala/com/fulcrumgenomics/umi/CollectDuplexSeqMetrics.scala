@@ -50,6 +50,7 @@ object CollectDuplexSeqMetrics {
   val FamilySizeMetricsExt: String       = ".family_sizes.txt"
   val DuplexFamilySizeMetricsExt: String = ".duplex_family_sizes.txt"
   val UmiMetricsExt: String              = ".umi_counts.txt"
+  val DuplexUmiMetricsExt: String        = ".duplex_umi_counts.txt"
   val YieldMetricsExt: String            = ".duplex_yield_metrics.txt"
   val PlotsExt: String                   = ".duplex_qc.pdf"
 
@@ -178,6 +179,36 @@ object CollectDuplexSeqMetrics {
                        var fraction_raw_observations: Proportion = 0,
                        var fraction_unique_observations: Proportion = 0
                       ) extends Metric
+
+  /**
+    * Metrics produced by `CollectDuplexSeqMetrics` describing the set of observed duplex UMI sequences and the
+    * frequency of their observations.  The UMI sequences reported may have been corrected using information
+    * within a double-stranded tag family.  For example if a tag family is comprised of three read pairs with
+    * UMIs `ACGT-TGGT`, `ACGT-TGGT`, and `ACGT-TGGG` then a consensus UMI of `ACGT-TGGT` will be generated.
+    *
+    * UMI pairs are normalized within a tag family so that observations are always reported as if they came
+    * from a read pair with read 1 on the positive strand.  E.g. a read pair with UMI AAAA-GGGG and with R1 on
+    * the negative strand and R2 on the positive strand, will be reported as GGGG-AAAA.
+    *
+    * @param umi The duplex UMI sequence, possibly-corrected.
+    * @param raw_observations The number of read pairs in the input BAM that observe the duplex UMI (after correction).
+    * @param raw_observations_with_errors The subset of raw observations that underwent any correction.
+    * @param unique_observations The number of double-stranded tag families (i.e unique double-stranded molecules)
+    *                            that observed the duplex UMI.
+    * @param fraction_raw_observations The fraction of all raw observations that the duplex UMI accounts for.
+    * @param fraction_unique_observations The fraction of all unique observations that the duplex UMI accounts for.
+    * @param fraction_unique_observations_expected The fraction of all unique observations that are expected to be
+    *                                              attributed to the duplex UMI based on the `fraction_unique_observations`
+    *                                              of the two individual UMIs.
+    */
+  case class DuplexUmiMetric(umi: String,
+                             var raw_observations: Count = 0,
+                             var raw_observations_with_errors: Count = 0,
+                             var unique_observations: Count = 0,
+                             var fraction_raw_observations: Proportion = 0,
+                             var fraction_unique_observations: Proportion = 0,
+                             var fraction_unique_observations_expected: Proportion = 0
+                            ) extends Metric
 }
 
 
@@ -205,14 +236,17 @@ object CollectDuplexSeqMetrics {
     |
     |## Outputs
     |
-    |The following output files produced:
+    |The following output files are produced:
     |
-    |1. **<output>.umi_counts.txt**: metrics on the frequency of observations of UMIs within reads and tag families
-    |2. **<output>.family_sizes.txt**: metrics on the frequency of different types of families of different sizes
-    |3. **<output>.duplex_family_sizes.txt**: metrics on the frequency of duplex tag families by the number of
-    |                                         observations from each strand
-    |4. **<output>.duplex_yield_metrics.txt**: summary QC metrics produced using 5%, 10%, 15%...100% of the data
-    |5. **<output>.duplx_qc.pdf**: a series of plots generated from the preceding metrics files for visualization
+    |1. **<output>.family_sizes.txt**: metrics on the frequency of different types of families of different sizes
+    |2. **<output>.duplex_family_sizes.txt**: metrics on the frequency of duplex tag families by the number of
+    |                                        observations from each strand
+    |3. **<output>.duplex_yield_metrics.txt**: summary QC metrics produced using 5%, 10%, 15%...100% of the data
+    |4. **<output>.umi_counts.txt**: metrics on the frequency of observations of UMIs within reads and tag families
+    |5. **<output>.duplex_qc.pdf**: a series of plots generated from the preceding metrics files for visualization
+    |6. **<output>.duplex_umi_counts.txt**: (optional) metrics on the frequency of observations of duplex UMIs within
+    |   reads and tag families. This file is only produced _if_ the `--duplex-umi-counts` option is used as it
+    |   requires significantly more memory to track all pairs of UMIs seen when a large number of UMIs are present.
     |
     |Within the metrics files the prefixes `CS`, `SS` and `DS` are used to mean:
     |
@@ -235,7 +269,8 @@ class CollectDuplexSeqMetrics
 ( @arg(flag='i', doc="Input BAM file generated by GroupReadByUmi.") val input: PathToBam,
   @arg(flag='o', doc="Prefix of output files to write.") val output: PathPrefix,
   @arg(flag='l', doc="Optional set of intervals over which to restrict analysis.") val intervals: Option[PathToIntervals] = None,
-  @arg(flag='d', doc="Description of dataset used to label plots. Defaults to sample/library.") val description: Option[String] = None,
+  @arg(flag='d', doc="Description of data set used to label plots. Defaults to sample/library.") val description: Option[String] = None,
+  @arg(flag='u', doc="If true, produce the .duplex_umi_counts.txt file with counts of duplex UMI observations.") val duplexUmiCounts: Boolean = false,
   @arg(flag='a', doc="Minimum AB reads to call a tag family a 'duplex'.") val minAbReads: Int = 1,
   @arg(flag='b', doc="Minimum BA reads to call a tag family a 'duplex'.") val minBaReads: Int = 1,
   private val generatePlots: Boolean = true // not a CLP arg - here to allow disabling of plots to speed up testing
@@ -255,6 +290,7 @@ class CollectDuplexSeqMetrics
   private val startStopFamilyCounter = dsLevels.map(f => f -> new NumericCounter[Int]).toMap
   private val duplexFamilyCounter    = dsLevels.map(f => f -> new SimpleCounter[Pair]).toMap
   private val umiMetricsMap          = mutable.Map[String,UmiMetric]()
+  private val duplexUmiMetricsMap    = mutable.Map[String,DuplexUmiMetric]()
 
   // A consensus caller used to generate consensus UMI sequences
   private val consensusBuilder = new ConsensusCaller(errorRatePreLabeling=90.toByte, errorRatePostLabeling=90.toByte).builder()
@@ -340,26 +376,48 @@ class CollectDuplexSeqMetrics
     }
   }
 
-  /** Updates all the various metrics for the UMIs contained on the given records. */
-  private def updateUmiMetrics(ssGroups: Seq[Seq[SamRecord]]): Unit = {
+  /**
+    * Updates all the various metrics for the UMIs contained on the given records.
+    *
+    * @param ssGroups a Seq of length one or two containing the one or two single stranded tag families
+    *                 that comprise a single double-stranded tag family.  If there are two single-stranded
+    *                 tag families, there is no guarantee of their ordering within the Seq.
+    */
+  private[umi] def updateUmiMetrics(ssGroups: Seq[Seq[SamRecord]]): Unit = {
+    // ab and ba are just names here and _don't_ imply top/bottom strand, just different strands
     val (ab, ba) = ssGroups match {
       case Seq(a, b) => (a, b)
       case Seq(a)    => (a, Seq.empty)
       case _         => unreachable(s"Found ${ssGroups.size} single strand families in a double strand family!")
     }
 
-    val umi1s = new ArrayBuffer[String]
-    val umi2s = new ArrayBuffer[String]
+    val umi1s = new ArrayBuffer[String] // ab UMI 1 (and ba UMI 2) sequences
+    val umi2s = new ArrayBuffer[String] // ab UMI 2 (and ba UMI 1) sequences
 
     ab.iterator.map(r => r[String](RX).split('-')).foreach { case Array(u1, u2) => umi1s += u1; umi2s += u2 }
     ba.iterator.map(r => r[String](RX).split('-')).foreach { case Array(u1, u2) => umi1s += u2; umi2s += u1 }
 
-    Seq(umi1s, umi2s).foreach { umis =>
+    val Seq(abConsensusUmi, baConsensusUmi) = Seq(umi1s, umi2s).map{ umis =>
       val consensus = callConsensus(umis)
       val metric    = this.umiMetricsMap.getOrElseUpdate(consensus, UmiMetric(umi=consensus))
       metric.raw_observations    += umis.size
       metric.unique_observations += 1
       metric.raw_observations_with_errors += umis.filterNot(_ == consensus).size
+      consensus
+    }
+
+    if (this.duplexUmiCounts) {
+      // Make both possible consensus duplex UMIs.  We want to normalize to the pairing/orientation that we'd
+      // see on an F1R2 read-pair. We can get this either by direct observation in the `ab` set of reads,
+      // or by seeing an F2R1 in the `ba` set of reads.  This logic will pick more or less arbitrarily if the
+      // group of reads doesn't consist of the expected all F1R2s in one set and all F2R1s in the other set.
+      val duplexUmis = Seq(s"$abConsensusUmi-$baConsensusUmi", s"$baConsensusUmi-$abConsensusUmi")
+      val duplexUmi  = if (ab.exists(r => r.firstOfPair && r.positiveStrand) || ba.exists(r => r.secondOfPair && r.positiveStrand)) duplexUmis(0) else duplexUmis(1)
+
+      val metric = this.duplexUmiMetricsMap.getOrElseUpdate(duplexUmi, DuplexUmiMetric(umi=duplexUmi))
+      metric.raw_observations             += ab.size + ba.size
+      metric.unique_observations          += 1
+      metric.raw_observations_with_errors += (ab.iterator ++ ba.iterator).map(r => r[String](RX)).count(umi => !duplexUmis.contains(umi))
     }
   }
 
@@ -458,7 +516,7 @@ class CollectDuplexSeqMetrics
 
       val countOfDuplexesIdeal = duplexCounter.map { case (pair, count) => count * pDuplexIdeal(pair.ab + pair.ba) }.sum
 
-      new DuplexYieldMetric(
+      DuplexYieldMetric(
         fraction                   = fraction,
         read_pairs                 = startStopCounter.totalMass.toLong,
         cs_families                = startStopCounter.total,
@@ -480,6 +538,23 @@ class CollectDuplexSeqMetrics
     metrics.foreach { m =>
       m.fraction_raw_observations    = m.raw_observations / rawTotal
       m.fraction_unique_observations = m.unique_observations / uniqueTotal
+    }
+
+    metrics
+  }
+
+  /** Generates the duplex UMI metrics from the current observations. */
+  def duplexUmiMetrics(umiMetrics: Seq[UmiMetric]): Seq[DuplexUmiMetric] = {
+    val singleUmiMetrics = umiMetrics.map(m => m.umi -> m).toMap
+    val metrics          = this.duplexUmiMetricsMap.values.toIndexedSeq.sortBy(x => - x.unique_observations)
+    val rawTotal         = metrics.map(_.raw_observations).sum.toDouble
+    val uniqueTotal      = metrics.map(_.unique_observations).sum.toDouble
+
+    metrics.foreach { m =>
+      val Array(umi1, umi2)                   = m.umi.split('-')
+      m.fraction_raw_observations             = m.raw_observations / rawTotal
+      m.fraction_unique_observations          = m.unique_observations / uniqueTotal
+      m.fraction_unique_observations_expected = singleUmiMetrics(umi1).fraction_unique_observations * singleUmiMetrics(umi2).fraction_unique_observations
     }
 
     metrics
@@ -521,14 +596,18 @@ class CollectDuplexSeqMetrics
 
   /** Writes out all the metrics and plots. */
   private[umi] def write(description: String): Unit = {
-    val Seq(fsPath, dfsPath, umiPath, yieldPath, pdfPath) = Seq(FamilySizeMetricsExt, DuplexFamilySizeMetricsExt, UmiMetricsExt, YieldMetricsExt, PlotsExt).map { ext =>
-      output.getParent.resolve(output.getFileName + ext)
-    }
+    val Seq(fsPath, dfsPath, umiPath, duplexUmiPath, yieldPath, pdfPath) =
+      Seq(FamilySizeMetricsExt, DuplexFamilySizeMetricsExt, UmiMetricsExt, DuplexUmiMetricsExt, YieldMetricsExt, PlotsExt).map { ext =>
+        output.getParent.resolve(output.getFileName + ext)
+      }
 
     Metric.write(fsPath, familySizeMetrics)
     Metric.write(dfsPath, duplexFamilySizeMetrics)
     Metric.write(yieldPath, yieldMetrics)
-    Metric.write(umiPath, umiMetrics)
+
+    val umiMetricValues = umiMetrics
+    Metric.write(umiPath, umiMetricValues )
+    if (this.duplexUmiCounts) Metric.write(duplexUmiPath, duplexUmiMetrics(umiMetricValues))
 
     if (generatePlots) {
       Rscript.execIfAvailable(PlottingScript, fsPath.toString, dfsPath.toString, yieldPath.toString, umiPath.toString, pdfPath.toString, description) match {
