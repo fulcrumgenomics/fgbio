@@ -343,5 +343,4 @@ class CollectDuplexSeqMetricsTest extends UnitSpec {
     metrics.find(_.umi == "AAA-TTT") shouldBe defined
     metrics.find(_.umi == "AAA-TTT").foreach(m => m.unique_observations shouldBe 1)
   }
-
 }
