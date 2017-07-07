@@ -72,6 +72,11 @@ class ClipBam
   Io.assertReadable(ref)
   Io.assertCanWriteFile(output)
 
+  if (Seq(readOneFivePrime, readOneThreePrime, readTwoFivePrime, readTwoThreePrime).forall(_ == 0) && !overlappingReads) {
+    validate(overlappingReads || Seq(readOneFivePrime, readOneThreePrime, readTwoFivePrime, readTwoThreePrime).exists(_ != 0),
+      "At least one clipping option is required")
+  }
+
   private val clipper = new SamRecordClipper(mode=if (softClip) ClippingMode.Soft else ClippingMode.Hard, autoClipAttributes=autoClipAttributes)
 
   override def execute(): Unit = {
@@ -123,7 +128,7 @@ class ClipBam
     this.clipper.clip5PrimeEndOfRead(r2, readTwoFivePrime)
     this.clipper.clip3PrimeEndOfRead(r2, readTwoThreePrime)
 
-    if (r1.unmapped || r2.unmapped || r1.refIndex != r2.refIndex || r1.pairOrientation != PairOrientation.FR) {
+    if (!overlappingReads || r1.unmapped || r2.unmapped || r1.refIndex != r2.refIndex || r1.pairOrientation != PairOrientation.FR) {
       // Do nothing
     }
     else {
