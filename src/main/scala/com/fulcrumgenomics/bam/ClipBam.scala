@@ -66,16 +66,19 @@ class ClipBam
   @arg(          doc="Require at least this number of bases to be clipped on the 3' end of R1") val readOneThreePrime: Int = 0,
   @arg(          doc="Require at least this number of bases to be clipped on the 5' end of R2") val readTwoFivePrime: Int  = 0,
   @arg(          doc="Require at least this number of bases to be clipped on the 3' end of R2") val readTwoThreePrime: Int = 0,
-  @arg(          doc="Clip overlapping reads.") val overlappingReads: Boolean = false
+  @deprecated("Use clip-overlapping-reads instead.", since="0.2.1")
+  @arg(          doc="Clip overlapping reads.", mutex=Array("clipOverlappingReads")) val overlappingReads: Boolean = false,
+  @arg(          doc="Clip overlapping reads.", mutex=Array("overlappingReads")) var clipOverlappingReads: Boolean = false
 ) extends FgBioTool with LazyLogging {
   Io.assertReadable(input)
   Io.assertReadable(ref)
   Io.assertCanWriteFile(output)
 
-  if (Seq(readOneFivePrime, readOneThreePrime, readTwoFivePrime, readTwoThreePrime).forall(_ == 0) && !overlappingReads) {
-    validate(overlappingReads || Seq(readOneFivePrime, readOneThreePrime, readTwoFivePrime, readTwoThreePrime).exists(_ != 0),
-      "At least one clipping option is required")
-  }
+  validate(overlappingReads || Seq(readOneFivePrime, readOneThreePrime, readTwoFivePrime, readTwoThreePrime).exists(_ != 0),
+    "At least one clipping option is required")
+
+  // Since both are set to false by default
+  clipOverlappingReads = clipOverlappingReads || overlappingReads
 
   private val clipper = new SamRecordClipper(mode=if (softClip) ClippingMode.Soft else ClippingMode.Hard, autoClipAttributes=autoClipAttributes)
 
@@ -117,8 +120,7 @@ class ClipBam
     out.close()
   }
 
-  /** Returns true if the read is from a paired end insert with both reads mapped to the same
-    * chromosome in FR orientation.  Does not check that the reads actually overlap!
+  /** Clips a fixed amount from the reads and then clips overlapping reads.
     */
   private[bam] def clip(r1: SamRecord, r2: SamRecord): Unit = {
 
@@ -128,22 +130,23 @@ class ClipBam
     this.clipper.clip5PrimeEndOfRead(r2, readTwoFivePrime)
     this.clipper.clip3PrimeEndOfRead(r2, readTwoThreePrime)
 
-    if (!overlappingReads || r1.unmapped || r2.unmapped || r1.refIndex != r2.refIndex || r1.pairOrientation != PairOrientation.FR) {
-      // Do nothing
-    }
-    else {
+    if (overlappingReads && r1.mapped && r2.mapped && r1.refIndex == r2.refIndex && r1.pairOrientation == PairOrientation.FR) {
       val (f,r) = if (r1.negativeStrand) (r2, r1) else (r1, r2)
+      clipOverlappingReads(f, r)
+    }
+  }
 
-      // What we really want is to trim by the number of _reference_ bases not read bases,
-      // in order to eliminate overlap.  We could do something very complicated here, or
-      // we could just trim read bases in a loop until the overlap is eliminated!
-      while (f.end >= r.start && f.mapped && r.mapped) {
-        val lengthToClip = f.end - r.start + 1
-        val firstHalf    = lengthToClip / 2
-        val secondHalf   = lengthToClip - firstHalf // safe guard against rounding on odd lengths
-        this.clipper.clip3PrimeEndOfAlignment(r1, firstHalf)
-        this.clipper.clip3PrimeEndOfAlignment(r2, secondHalf)
-      }
+  /** Clips overlapping reads, where both ends of the read pair are mapped to the same chromosome, and in FR orientation. */
+  protected def clipOverlappingReads(f: SamRecord, r: SamRecord): Unit = {
+    // What we really want is to trim by the number of _reference_ bases not read bases,
+    // in order to eliminate overlap.  We could do something very complicated here, or
+    // we could just trim read bases in a loop until the overlap is eliminated!
+    while (f.end >= r.start && f.mapped && r.mapped) {
+      val lengthToClip = f.end - r.start + 1
+      val firstHalf    = lengthToClip / 2
+      val secondHalf   = lengthToClip - firstHalf // safe guard against rounding on odd lengths
+      this.clipper.clip3PrimeEndOfAlignment(f, firstHalf)
+      this.clipper.clip3PrimeEndOfAlignment(r, secondHalf)
     }
   }
 }
