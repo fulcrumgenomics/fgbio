@@ -28,7 +28,7 @@ package com.fulcrumgenomics.fastq
 import java.nio.file.Files
 
 import com.fulcrumgenomics.FgBioDef.{DirPath, FilePath}
-import com.fulcrumgenomics.fastq.FastqDemultiplexer.DemuxResult
+import com.fulcrumgenomics.fastq.FastqDemultiplexer.{DemuxRecord, DemuxResult}
 import com.fulcrumgenomics.illumina.{Sample, SampleSheet}
 import com.fulcrumgenomics.testing.{ErrorLogLevel, UnitSpec}
 import com.fulcrumgenomics.util.{Io, Metric, ReadStructure, SampleBarcodeMetric}
@@ -353,7 +353,7 @@ class DemuxFastqsTest extends UnitSpec with OptionValues with ErrorLogLevel {
           // Check the BAMs
           sampleInfos.foreach { sampleInfo =>
             val sample = sampleInfo.sample
-            val prefix = toSampleOutputPrefix(sample, sampleInfo.isUnmatched, output, UnmatchedSampleId)
+            val prefix = toSampleOutputPrefix(sample, sampleInfo.isUnmatched, false, output, UnmatchedSampleId)
 
             val (names, sampleBarcodes) = if (outputFastqs) {
               val fastq = PathUtil.pathTo(prefix + ".fastq.gz")
@@ -418,6 +418,35 @@ class DemuxFastqsTest extends UnitSpec with OptionValues with ErrorLogLevel {
           }
         }
       }
+    }
+  }
+
+  it should "create the correct output prefix" in {
+    val structures = Seq(ReadStructure("17B100T"))
+    val sampleInfos = toSampleInfos(structures)
+
+    val matchedSampleInfo   = sampleInfos.find(!_.isUnmatched).get
+    val unmatchedSampleInfo = sampleInfos.find(_.isUnmatched).get
+    val output = outputDir()
+
+    {
+      val prefix = toSampleOutputPrefix(matchedSampleInfo.sample, matchedSampleInfo.isUnmatched, false, output, UnmatchedSampleId)
+      prefix.toString shouldBe output.resolve("20000101-EXPID-1-Sample_Name_1-AAAAAAAAGATTACAGA").toString
+    }
+
+    {
+      val prefix = toSampleOutputPrefix(unmatchedSampleInfo.sample, unmatchedSampleInfo.isUnmatched, false, output, UnmatchedSampleId)
+      prefix.toString shouldBe output.resolve("unmatched").toString
+    }
+
+    {
+      val prefix = toSampleOutputPrefix(matchedSampleInfo.sample, matchedSampleInfo.isUnmatched, true, output, UnmatchedSampleId)
+      prefix.toString shouldBe output.resolve("Sample_Name_1_S1_L001").toString
+    }
+
+    {
+      val prefix = toSampleOutputPrefix(unmatchedSampleInfo.sample, unmatchedSampleInfo.isUnmatched, true, output, UnmatchedSampleId)
+      prefix.toString shouldBe output.resolve("unmatched_S4_L001").toString
     }
   }
 
@@ -515,6 +544,69 @@ class DemuxFastqsTest extends UnitSpec with OptionValues with ErrorLogLevel {
       readStructures=structures, metrics=Some(metrics), maxMismatches=2, minMismatchDelta=3)
     throwableMessageShouldInclude("Sample barcode not found in column") {
       demuxFastqs.execute()
+    }
+  }
+
+  "FastqRecordWriter.readName" should "set the read name based if it should follow Illumina standards" in {
+    val output = outputDir()
+    val baseRec = DemuxRecord(name="name", bases="", quals="", molecularBarcode=Some("MB"), sampleBarcode=Some("SB"), readNumber=1, pairedEnd=false, comment=None)
+
+    {
+      val rec    = baseRec.copy(pairedEnd=false, comment=None)
+      val writer = new FastqRecordWriter(output.resolve("prefix"), pairedEnd=false, illuminaStandards=false)
+      writer.readName(rec) shouldBe "name:SB:MB"
+      writer.readName(rec.copy(molecularBarcode=None)) shouldBe "name:SB"
+      writer.readName(rec.copy(sampleBarcode=None)) shouldBe "name:MB"
+      writer.readName(rec.copy(molecularBarcode=None, sampleBarcode=None)) shouldBe "name"
+    }
+
+    {
+      val rec    = baseRec.copy(pairedEnd=true, name="Instrument:RunID:FlowCellID:Lane:Tile:X:Y", comment=Some("ReadNum:FilterFlag:0:SampleNumber"))
+      val writer = new FastqRecordWriter(output.resolve("prefix"), pairedEnd=true, illuminaStandards=true)
+      writer.readName(rec) shouldBe "Instrument:RunID:FlowCellID:Lane:Tile:X:Y ReadNum:FilterFlag:0:SampleNumber"
+    }
+
+    // set the file extension based on paired end and illumina standards
+    // fail if the name/comment are not set appropriately
+  }
+
+  it should "fail if there was no comment in the given record when following Illumina standards" in {
+    val output = outputDir()
+    val baseRec = DemuxRecord(name="name", bases="", quals="", molecularBarcode=Some("MB"), sampleBarcode=Some("SB"), readNumber=1, pairedEnd=false, comment=None)
+
+    {
+      val rec    = baseRec.copy(pairedEnd=true, name="Instrument:RunID:FlowCellID:Lane:Tile:X:Y", comment=None)
+      val writer = new FastqRecordWriter(output.resolve("prefix"), pairedEnd=true, illuminaStandards=true)
+      an[Exception] should be thrownBy writer.readName(rec)
+    }
+  }
+
+  it should "fail if the read name or comment does not follow Illumina standards" in {
+    val output = outputDir()
+    val baseRec = DemuxRecord(name="name", bases="", quals="", molecularBarcode=Some("MB"), sampleBarcode=Some("SB"), readNumber=1, pairedEnd=false, comment=None)
+
+    {
+      val rec    = baseRec.copy(pairedEnd=true, name="RunID:FlowCellID:Lane:Tile:X:Y", comment=Some("ReadNum:FilterFlag:0:SampleNumber"))
+      val writer = new FastqRecordWriter(output.resolve("prefix"), pairedEnd=true, illuminaStandards=true)
+      an[Exception] should be thrownBy writer.readName(rec)
+    }
+
+    {
+      val rec    = baseRec.copy(pairedEnd=true, name="Instrument:RunID:FlowCellID:Lane:Tile:X:Y:Z", comment=Some("ReadNum:FilterFlag:0:SampleNumber"))
+      val writer = new FastqRecordWriter(output.resolve("prefix"), pairedEnd=true, illuminaStandards=true)
+      an[Exception] should be thrownBy writer.readName(rec)
+    }
+
+    {
+      val rec    = baseRec.copy(pairedEnd=true, name="Instrument:RunID:FlowCellID:Lane:Tile:X:Y", comment=Some("FilterFlag:0:SampleNumber"))
+      val writer = new FastqRecordWriter(output.resolve("prefix"), pairedEnd=true, illuminaStandards=true)
+      an[Exception] should be thrownBy writer.readName(rec)
+    }
+
+    {
+      val rec    = baseRec.copy(pairedEnd=true, name="Instrument:RunID:FlowCellID:Lane:Tile:X:Y", comment=Some("ReadNum:FilterFlag:0:SampleNumber:Z"))
+      val writer = new FastqRecordWriter(output.resolve("prefix"), pairedEnd=true, illuminaStandards=true)
+      an[Exception] should be thrownBy writer.readName(rec)
     }
   }
 }
