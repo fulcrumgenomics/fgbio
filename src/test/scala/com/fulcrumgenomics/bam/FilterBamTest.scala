@@ -27,9 +27,11 @@ package com.fulcrumgenomics.bam
 import com.fulcrumgenomics.bam.api.{SamOrder, SamSource}
 import com.fulcrumgenomics.testing.{SamBuilder, UnitSpec}
 import htsjdk.samtools.util.{Interval, IntervalList}
+import com.fulcrumgenomics.commons.CommonsDef._
+import com.fulcrumgenomics.testing.SamBuilder.{Minus, Plus}
 
 class FilterBamTest extends UnitSpec {
-  def newBam = makeTempFile("filter_bam_test.", ".bam")
+  def newBam: PathToBam = makeTempFile("filter_bam_test.", ".bam")
 
   // Make a set of records to run multiple tests on
   val builder = new SamBuilder(sort=Some(SamOrder.Coordinate))
@@ -106,5 +108,72 @@ class FilterBamTest extends UnitSpec {
     new FilterBam(input=builder.toTempFile(), output=out, minMapQ=20, intervals=Some(ilist)).execute()
     val recs = readBamRecs(out)
     recs.map(_.name) should contain theSameElementsAs builder.filter(_.name.startsWith("ok_ontarget")).toSeq.map(_.name)
+  }
+
+  it should "remove reads that are not part of a mapped pair" in {
+    val builder = new SamBuilder(readLength=50)
+    builder.addPair(name="q1", start1=100, start2=200)
+    builder.addFrag(name="q2", start=150)
+    builder.addFrag(name="q3", unmapped=true)
+    builder.addPair(name="q4", start1=200, unmapped2=true)
+    builder.addPair(name="q5", unmapped1=true, start2=300)
+    builder.addPair(name="q6", unmapped1=true, unmapped2=true)
+
+    val out = newBam
+    new FilterBam(input=builder.toTempFile(), output=out, removeUnmappedReads=false, minMapQ=0, removeUnpairedReads=true).execute()
+    val recs = readBamRecs(out)
+    recs should have size 2
+    recs.map(_.name).toSet shouldBe Set("q1")
+  }
+
+  it should "remove reads below the specified insert size" in {
+    val builder = new SamBuilder(readLength=10)
+    builder.addPair("q1", start1=100, start2=589) // isize=499
+    builder.addPair("q2", start1=100, start2=590) // isize=500
+    builder.addPair("q3", start1=100, start2=591) // isize=501
+    builder.addPair("q4", start1=100, start2=120) // isize=30
+    builder.addPair("q5", start1=200, start2=100, strand1=Minus, strand2=Plus) // isize=110
+    builder.addFrag("q6", start=500)
+
+    val out = newBam
+    new FilterBam(input=builder.toTempFile(), output=out, removeUnmappedReads=false, minMapQ=0, minInsertSize=Some(500)).execute()
+    val recs = readBamRecs(out)
+    recs should have size 4
+    recs.map(_.name).toSet shouldBe Set("q2", "q3")
+  }
+
+  it should "remove reads above the specified insert size" in {
+    val builder = new SamBuilder(readLength=10)
+    builder.addPair("q1", start1=100, start2=589) // isize=499
+    builder.addPair("q2", start1=100, start2=590) // isize=500
+    builder.addPair("q3", start1=100, start2=591) // isize=501
+    builder.addPair("q4", start1=100, start2=120) // isize=30
+    builder.addPair("q5", start1=200, start2=100, strand1=Minus, strand2=Plus) // isize=110
+    builder.addFrag("q6", start=500)
+
+    val out = newBam
+    new FilterBam(input=builder.toTempFile(), output=out, removeUnmappedReads=false, minMapQ=0, maxInsertSize=Some(499)).execute()
+    val recs = readBamRecs(out)
+    recs should have size 7
+    recs.map(_.name).toSet shouldBe Set("q1", "q4", "q5", "q6")
+  }
+
+  it should "remove reads with fewer than 50 mapped bases" in {
+    val builder = new SamBuilder(readLength=100)
+    builder.addPair("q01", start1=100, start2=400, cigar1="100M",      cigar2="100M")      // keep both
+    builder.addPair("q02", start1=100, start2=400, cigar1="100=",      cigar2="49=2X49=")  // keep both
+    builder.addPair("q03", start1=100, start2=400, cigar1="40M40I20M", cigar2="40M10D60M") // keep both
+    builder.addPair("q04", start1=100, start2=400, cigar1="80S20M",    cigar2="100M")      // keep R2 only
+    builder.addPair("q05", start1=100, start2=400, cigar1="40S20M40S", cigar2="50S25M25S") // keep neither
+    builder.addPair("q06", start1=100, unmapped2=true, cigar1="100M")                      // keep R1 ony
+    builder.addPair("q07", unmapped1=true, unmapped2=true)                                 // keep neither
+    builder.addFrag("q08", unmapped=true)                                                  // discard fragment
+    builder.addFrag("q09", start=100, cigar="80S20M")                                      // discard fragment
+    builder.addFrag("q10", start=100, cigar="51M49S")                                      // keep fragment
+
+    val out = newBam
+    new FilterBam(input=builder.toTempFile(), output=out, removeUnmappedReads=false, minMapQ=0, minMappedBases=Some(50)).execute()
+    val recs = readBamRecs(out)
+    recs.map(_.id) should contain theSameElementsAs Seq("q01/1", "q01/2", "q02/1", "q02/2", "q03/1", "q03/2", "q04/2", "q06/1", "q10/1")
   }
 }
