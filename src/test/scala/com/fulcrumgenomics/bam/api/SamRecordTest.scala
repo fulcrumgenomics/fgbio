@@ -105,4 +105,13 @@ class SamRecordTest extends UnitSpec {
     rec.asSam.getCigarString shouldBe null
     rec.asSam.getCigar shouldBe       null
   }
+
+  "SamRecord.apply" should "not return values for attributes that exist and not for those that don't exist" in {
+    val builder = new SamBuilder(readLength=50)
+    val rec = builder.addFrag(start=10).get
+    rec("ax") = 10
+
+    rec[Int]("ax") shouldBe 10
+    Option(rec[Int]("bx")) shouldBe None
+  }
 }
