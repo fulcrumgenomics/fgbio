@@ -120,7 +120,7 @@ class FilterBamTest extends UnitSpec {
     builder.addPair(name="q6", unmapped1=true, unmapped2=true)
 
     val out = newBam
-    new FilterBam(input=builder.toTempFile(), output=out, removeUnmappedReads=false, minMapQ=0, removeUnpairedReads=true).execute()
+    new FilterBam(input=builder.toTempFile(), output=out, removeUnmappedReads=true, minMapQ=0, removeSingleEndMappings=true).execute()
     val recs = readBamRecs(out)
     recs should have size 2
     recs.map(_.name).toSet shouldBe Set("q1")
