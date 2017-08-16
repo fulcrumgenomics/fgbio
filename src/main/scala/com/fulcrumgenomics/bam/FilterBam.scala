@@ -55,7 +55,7 @@ import math.abs
      |The `--remove-unpaired-reads`, which removes reads that are not part of a mapped pair will remove
      |unmapped reads when set to true even if `--remove-unmapped-reads` is false.  Similarly if
      |`--min-insert-size` or `--min-mapped-bases` is specified, unmapped reads will also be removed
-     |even if `--remove-unmapped-reads` is false
+     |even if `--remove-unmapped-reads` is false.
      |
      |NOTE: this will usually produce a BAM file in which some mate-pairs are orphaned (i.e. read 1 or
      |read 2 is included, but not both), but does not update any flag fields.
@@ -68,7 +68,13 @@ class FilterBam
   @arg(flag='D', doc="If true remove all reads that are marked as duplicates.")   val removeDuplicates: Boolean = true,
   @arg(flag='U', doc="Remove all unmapped reads.")                                val removeUnmappedReads: Boolean = true,
   @arg(flag='M', doc="Remove all mapped reads with MAPQ lower than this number.") val minMapQ: Int = 1,
-  @arg(flag='P', doc="Remove all reads that are not part of a mapped pair.")      val removeUnpairedReads: Boolean = false,
+  @arg(flag='P', doc=
+    """
+      |Remove all reads that are not part of a mapped pair. This option causes removal of
+      |single-end or unpaired reads, and both R1 and R2 for paired-end reads where one or
+      |both ends are unmapped.
+    """)
+  val removeUnpairedReads: Boolean = false,
   @arg(flag='S', doc="Remove all reads marked as secondary alignments.")          val removeSecondaryAlignments: Boolean = true,
   @arg(          doc="Remove all reads with insert size < this value.")           val minInsertSize: Option[Int] = None,
   @arg(          doc="Remove all reads with insert size > this value.")           val maxInsertSize: Option[Int] = None,
@@ -78,6 +84,10 @@ class FilterBam
   Io.assertReadable(input)
   Io.assertCanWriteFile(output)
   intervals.foreach(Io.assertReadable)
+
+  if (!removeUnmappedReads && (minInsertSize.isDefined || removeUnpairedReads))
+    logger.warning("--remove-unmapped-reads was set to false, but unmapped reads will be removed ",
+      "due to setting either --min-insert-size or --remove-unpaired-reads.")
 
   override def execute(): Unit = {
     val progress = ProgressLogger(logger, verb="written", unit=5e6.toInt)

@@ -134,6 +134,7 @@ class FilterBamTest extends UnitSpec {
     builder.addPair("q4", start1=100, start2=120) // isize=30
     builder.addPair("q5", start1=200, start2=100, strand1=Minus, strand2=Plus) // isize=110
     builder.addFrag("q6", start=500)
+    builder.addPair("q7", start1=100, start2=500).foreach(r => r.refIndex = if (r.firstOfPair) 1 else 2) // isize=0/undefined
 
     val out = newBam
     new FilterBam(input=builder.toTempFile(), output=out, removeUnmappedReads=false, minMapQ=0, minInsertSize=Some(500)).execute()
