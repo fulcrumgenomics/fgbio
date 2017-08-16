@@ -99,7 +99,8 @@ class ErrorRateByReadPosition
   output.foreach(out => Io.assertCanWriteFile(out))
 
   def execute(): Unit = {
-    val metrics     = computeMetrics
+    val in          = SamSource(input, ref=Some(ref))
+    val metrics     = computeMetrics(in)
     val prefix      = output.getOrElse(PathUtil.removeExtension(input))
     val metricsPath = PathUtil.pathTo(prefix + ErrorRateByReadPositionMetric.FileExtension)
     val plotPath    = PathUtil.pathTo(prefix + ErrorRateByReadPositionMetric.PlotExtension)
@@ -110,8 +111,8 @@ class ErrorRateByReadPosition
       logger.warning("No metrics generated (is your BAM empty?). Plots will not be generated.")
     }
     else {
-      val name = PathUtil.basename(input, trimExt=true).toString
-      Rscript.execIfAvailable(ScriptPath, metricsPath.toString, plotPath.toString, name) match {
+      val description = plotDescription(in, input)
+      Rscript.execIfAvailable(ScriptPath, metricsPath.toString, plotPath.toString, description) match {
         case Failure(e) => logger.warning(s"Generation of PDF plots failed: ${e.getMessage}")
         case _ => Unit
       }
@@ -119,9 +120,8 @@ class ErrorRateByReadPosition
   }
 
   /** Computes the metrics from the BAM file. */
-  private[bam] def computeMetrics: Seq[ErrorRateByReadPositionMetric] = {
+  private[bam] def computeMetrics(in: SamSource= SamSource(input, ref=Some(ref))): Seq[ErrorRateByReadPositionMetric] = {
     val progress = ProgressLogger(logger, verb="Processed", noun="loci", unit=50000)
-    val in       = SamSource(input, ref=Some(ref))
     val ilist    = this.intervals.map(p => IntervalList.fromFile(p.toFile).uniqued(false))
 
     val refWalker     = new ReferenceSequenceFileWalker(this.ref.toFile)

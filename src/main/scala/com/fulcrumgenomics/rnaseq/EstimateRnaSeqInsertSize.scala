@@ -1,7 +1,7 @@
 /*
  * The MIT License
  *
- * Copyright (c) 2017 Fulcrum Genomics
+ * Copyright (c) 2017 Fulcrum Genomics LLC
  *
  * Permission is hereby granted, free of charge, to any person obtaining a copy
  * of this software and associated documentation files (the "Software"), to deal
@@ -23,7 +23,7 @@
  *
  */
 
-package com.fulcrumgenomics.bam
+package com.fulcrumgenomics.rnaseq
 
 import com.fulcrumgenomics.FgBioDef._
 import com.fulcrumgenomics.alignment.Cigar
@@ -59,7 +59,7 @@ import scala.collection.JavaConverters._
     |the extension `.rna_seq_insert_size_histogram.txt`.  The histogram file gives for each orientation (`FR`, `RF`, `tandem`),
     |the number of read pairs that had the given insert size.
   """,
-  group = ClpGroups.SamOrBam)
+  group = ClpGroups.RnaSeq)
 class EstimateRnaSeqInsertSize
 (@arg(flag='i', doc="Input BAM file.") val input: PathToBam,
  @arg(flag='r', doc="Input gene annotations in [RefFlat](http://genome.ucsc.edu/goldenPath/gbdDescriptionsOld.html#RefFlat) form")
@@ -179,7 +179,7 @@ object EstimateRnaSeqInsertSize {
   val RnaSeqInsertSizeMetricHistogramExtension: String = ".rnaseq_insert_size_histogram.txt"
 
   private trait SingleEndSamRecordFilter extends SamRecordFilter {
-    override def filterOut(r1: SAMRecord, r2: SAMRecord) = filterOut(r1) || filterOut(r2)
+    override def filterOut(r1: SAMRecord, r2: SAMRecord): Boolean = filterOut(r1) || filterOut(r2)
   }
 
   def filter(f: SamRecord => Boolean): SamRecordFilter = new SingleEndSamRecordFilter {
@@ -197,13 +197,12 @@ object EstimateRnaSeqInsertSize {
     DifferentReferenceIndexFilter
   )
 
-  private def ReadPairedFilter                             = filter(!_.paired)
   private def MateMappedFilter                             = filter(r => !r.paired || r.mateUnmapped)
   private def DuplicatesFilter(includeDuplicates: Boolean) = filter(r => !includeDuplicates && r.duplicate)
   private def FirstOfPairOnlyFilter                        = filter(_.firstOfPair)
   private def DifferentReferenceIndexFilter                = filter(r => r.refIndex != r.mateRefIndex)
 
-  private[bam] def getAndRequireMateCigar(rec: SamRecord): Cigar = {
+  private[rnaseq] def getAndRequireMateCigar(rec: SamRecord): Cigar = {
     rec.get[String](SAMTag.MC.name()) match {
       case None => throw new IllegalStateException(s"Mate CIGAR (Tag MC) not found for $rec, consider using SetMateInformation.")
       case Some(mc) => Cigar(mc)
@@ -213,25 +212,25 @@ object EstimateRnaSeqInsertSize {
   /** Calculates an interval representing the records span.  If mateAlignmentEnd is not given, computes from
     * the mate cigar.
     */
-  private[bam] def intervalFrom(rec: SamRecord, mateAlignmentEnd: Int): Interval = {
+  private[rnaseq] def intervalFrom(rec: SamRecord, mateAlignmentEnd: Int): Interval = {
     val leftMostBase     = Math.min(rec.start, rec.mateStart)
     val rightMostBase    = Math.max(rec.end, mateAlignmentEnd)
     new Interval(rec.refName, leftMostBase, rightMostBase)
   }
 
   /** Gets the mate's alignment end. */
-  private[bam] def mateAlignmentEndFrom(mateCigar: Cigar, mateAlignmentStart: Int): Int = {
+  private[rnaseq] def mateAlignmentEndFrom(mateCigar: Cigar, mateAlignmentStart: Int): Int = {
     CoordMath.getEnd(mateAlignmentStart, mateCigar.lengthOnTarget)
   }
 
   /** Gets the mate's alignment blocks. */
-  private[bam] def mateAlignmentBlocksFrom(mateCigar: Cigar, mateAlignmentStart: Int): List[AlignmentBlock] = {
+  private[rnaseq] def mateAlignmentBlocksFrom(mateCigar: Cigar, mateAlignmentStart: Int): List[AlignmentBlock] = {
     SAMUtils.getAlignmentBlocks(mateCigar.toHtsjdkCigar, mateAlignmentStart, "mate cigar").toList
   }
 
   /** Calculates the insert size from a gene.  Returns None if the record's span is not enclosed in the gene or if
     * the insert size disagree across transcripts.  Assumes the record and gene are mapped to the same chromosome. */
-  private[bam] def insertSizeFromGene(rec: SamRecord,
+  private[rnaseq] def insertSizeFromGene(rec: SamRecord,
                                       gene: Gene,
                                       minimumOverlap: Double,
                                       recInterval: Interval,
@@ -267,7 +266,7 @@ object EstimateRnaSeqInsertSize {
   }
 
   /** Computes the insert size (5' to 5') from a record and transcript, assuming that the record overlaps the transcript. */
-  private[bam] def insertSizeFromTranscript(rec: SamRecord, transcript: Transcript, mateAlignmentEnd: Int): Int = {
+  private[rnaseq] def insertSizeFromTranscript(rec: SamRecord, transcript: Transcript, mateAlignmentEnd: Int): Int = {
     // get the 5' position of the record and its mate
     val rec5Prime   = if (rec.negativeStrand)     rec.end          else rec.start
     val mate5Prime  = if (rec.mateNegativeStrand) mateAlignmentEnd else rec.mateStart
@@ -281,7 +280,7 @@ object EstimateRnaSeqInsertSize {
   }
 
   /** Gets the number of read bases that overlap the exons.  This assumes the read and transcript are on the same chromosome. */
-  private[bam] def numReadBasesOverlappingTranscript(alignmentBlocks: List[AlignmentBlock], transcript: Transcript): Int = {
+  private[rnaseq] def numReadBasesOverlappingTranscript(alignmentBlocks: List[AlignmentBlock], transcript: Transcript): Int = {
     val blocks  = alignmentBlocks.iterator.bufferBetter
     val exons   = transcript.genomicOrder.bufferBetter
     var overlap = 0

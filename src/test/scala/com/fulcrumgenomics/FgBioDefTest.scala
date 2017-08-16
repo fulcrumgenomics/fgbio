@@ -25,7 +25,10 @@
 package com.fulcrumgenomics
 
 import com.fulcrumgenomics.FgBioDef._
-import com.fulcrumgenomics.testing.UnitSpec
+import com.fulcrumgenomics.bam.api.{SamOrder, SamSource, SamWriter}
+import com.fulcrumgenomics.commons.io.PathUtil
+import com.fulcrumgenomics.testing.{SamBuilder, UnitSpec}
+import htsjdk.samtools.{SAMFileHeader, SAMReadGroupRecord}
 
 import scala.collection.mutable.ListBuffer
 import scala.collection.parallel.ForkJoinTaskSupport
@@ -71,5 +74,65 @@ class FgBioDefTest extends UnitSpec {
     val pool2 = ys.tasksupport.asInstanceOf[ForkJoinTaskSupport].forkJoinPool
     pool2.getParallelism shouldBe 5
     pool2.getAsyncMode shouldBe false
+  }
+
+  private case class SampleAndLibrary(sample: String, library: String)
+
+  private def makeEmptyBam(sampleAndLibraries: SampleAndLibrary*): PathToBam = {
+    val path = makeTempFile("tmp", ".bam")
+    val header     = {
+      val h = new SAMFileHeader()
+      sampleAndLibraries.zipWithIndex.foreach { case (sal, idx) =>
+        val rg = new SAMReadGroupRecord(s"$idx")
+        rg.setSample(sal.sample)
+        rg.setLibrary(sal.library)
+        h.addReadGroup(rg)
+      }
+      SamOrder.Unsorted.applyTo(h)
+      h
+    }
+
+    val writer = SamWriter(path, header, sort=Some(SamOrder.Unsorted))
+    writer.close()
+    path
+  }
+
+  "plotDescription" should "return the sample and library name if they are unique in the read groups" in {
+    // one read group
+    {
+      val path   = makeEmptyBam(SampleAndLibrary("S", "L"))
+      val reader = SamSource(path)
+      FgBioDef.plotDescription(reader, path) shouldBe "S / L"
+      reader.close()
+    }
+
+    // three read groups
+    {
+      val path   = makeEmptyBam(SampleAndLibrary("S", "L"), SampleAndLibrary("S", "L"), SampleAndLibrary("S", "L"))
+      val reader = SamSource(path)
+      FgBioDef.plotDescription(reader, path) shouldBe "S / L"
+      reader.close()
+    }
+  }
+
+  it should "return the input name (extension removed) if no read groups are found" in {
+    val path   = makeEmptyBam()
+    val reader = SamSource(path)
+    FgBioDef.plotDescription(reader, path) shouldBe PathUtil.basename(path, trimExt=true).toString
+    reader.close()
+  }
+
+  it should "return the input name (extension removed) if sample name is not unique in the read groups" in {
+    val path   = makeEmptyBam(SampleAndLibrary("S1", "L"), SampleAndLibrary("S2", "L"), SampleAndLibrary("S1", "L"))
+    val reader = SamSource(path)
+    FgBioDef.plotDescription(reader, path) shouldBe PathUtil.basename(path, trimExt=true).toString
+    reader.close()
+  }
+
+  it should "return the input name (extension removed) if library name is not unique in the read groups" in {
+    val path   = makeEmptyBam(SampleAndLibrary("S", "L1"), SampleAndLibrary("S", "L2"), SampleAndLibrary("S", "L1"))
+    val reader = SamSource(path)
+    FgBioDef.plotDescription(reader, path) shouldBe PathUtil.basename(path, trimExt=true).toString
+    reader.close()
   }
 }

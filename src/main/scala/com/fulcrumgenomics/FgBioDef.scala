@@ -24,7 +24,9 @@
 
 package com.fulcrumgenomics
 
+import com.fulcrumgenomics.bam.api.SamSource
 import com.fulcrumgenomics.commons.CommonsDef
+import com.fulcrumgenomics.commons.io.PathUtil
 import enumeratum.{Enum, EnumEntry}
 
 /** FgBioDef that is just an extension of the commons CommonsDef. Here in case
@@ -40,5 +42,16 @@ object FgBioDef extends CommonsDef {
 
     /** The string constructor method that enables us to create the case object instance by name. */
     def apply(name: String): T = withNameInsensitive(name)
+  }
+
+  /** Gets a description for use in a generating a plot.  Returns the `<sample> / <library>` if there is only one
+    * sample and library, otherwise the input file name. */
+  def plotDescription(reader: SamSource, input: FilePath): String = {
+    val samples   = reader.readGroups.map(_.getSample).distinct
+    val libraries = reader.readGroups.map(_.getLibrary).distinct
+    (samples, libraries) match {
+      case (Seq(sample), Seq(library)) => s"$sample / $library"
+      case _                           => PathUtil.basename(input, trimExt=true).toString
+    }
   }
 }

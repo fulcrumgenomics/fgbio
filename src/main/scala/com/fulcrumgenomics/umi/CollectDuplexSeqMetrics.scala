@@ -320,14 +320,7 @@ class CollectDuplexSeqMetrics
     }
 
     // Default the decription to something sensible if one wasn't provided
-    val description = this.description.getOrElse {
-      val samples   = in.readGroups.map(_.getSample).distinct
-      val libraries = in.readGroups.map(_.getLibrary).distinct
-      (samples, libraries) match {
-        case (Seq(sample), Seq(library)) => s"$sample / $library"
-        case _                           => input.getFileName.toString
-      }
-    }
+    val description = this.description.getOrElse { plotDescription(in, input) }
 
     // Do a bunch of metrics collection
     collect(iterator)

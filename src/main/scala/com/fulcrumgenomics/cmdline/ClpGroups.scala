@@ -48,14 +48,19 @@ object ClpGroups {
     override val description: String = "Tools for manipulating FASTQ files."
   }
 
-  class _UtilitiesGroup extends ClpGroup {
-    override val name: String = "Utilities"
-    override val description: String = "Various utility programs."
+  class _RnaSeq extends ClpGroup {
+    override val name: String = "RNA-Seq"
+    override val description: String = "Tools for RNA-Seq data"
   }
 
   class _Umi extends ClpGroup {
     override def name: String = "Unique Molecular Identifiers (UMIs)"
     override def description: String = "Tools for manipulating UMIs & reads tagged with UMIs"
+  }
+
+  class _UtilitiesGroup extends ClpGroup {
+    override val name: String = "Utilities"
+    override val description: String = "Various utility programs."
   }
 
   class _VcfOrBcfGroup extends ClpGroup {
@@ -72,6 +77,7 @@ object ClpGroups {
   final val SamOrBam    = classOf[_SamOrBamGroup]
   final val Fasta       = classOf[_FastaGroup]
   final val Fastq       = classOf[_FastqGroup]
+  final val RnaSeq      = classOf[_RnaSeq]
   final val Umi         = classOf[_Umi]
   final val Utilities   = classOf[_UtilitiesGroup]
   final val VcfOrBcf    = classOf[_VcfOrBcfGroup]

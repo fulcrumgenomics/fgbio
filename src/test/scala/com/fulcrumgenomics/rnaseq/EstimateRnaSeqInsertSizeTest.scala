@@ -23,15 +23,16 @@
  *
  */
 
-package com.fulcrumgenomics.bam
+package com.fulcrumgenomics.rnaseq
+
 import com.fulcrumgenomics.FgBioDef._
-import com.fulcrumgenomics.bam.EstimateRnaSeqInsertSize._
+import EstimateRnaSeqInsertSize._
 import com.fulcrumgenomics.bam.api.SamRecord
+import com.fulcrumgenomics.commons.io.PathUtil
 import com.fulcrumgenomics.testing.SamBuilder._
 import com.fulcrumgenomics.testing.{SamBuilder, UnitSpec}
 import com.fulcrumgenomics.util.GeneAnnotations.{Exon, Gene, Transcript}
 import com.fulcrumgenomics.util.{Io, Metric}
-import com.fulcrumgenomics.commons.io.PathUtil
 import htsjdk.samtools.SamPairUtil.PairOrientation
 import org.scalatest.OptionValues
 
