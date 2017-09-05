@@ -16,7 +16,7 @@ cache:
 addons:
   apt:
     sources:
-      - r-packages-precise
+      - r-packages-trusty
     packages:
       - r-base
       - r-recommended
