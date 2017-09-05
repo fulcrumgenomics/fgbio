@@ -53,8 +53,8 @@ object DemuxFastqs {
   /** The name of the sample for unmatched reads. */
   val UnmatchedSampleId: String = "unmatched"
 
-  /** The maximum # of records in RAM per writer. */
-  private[fastq] val MaxRecordsInRamPerSamFileWriter: Int = 1e6.toInt
+  /** The maximum # of records in RAM per SAM/BAM writer. */
+  private[fastq] val MaxRecordsInRam: Int = 5e6.toInt
 
   /** Decides whether or not to use asynchronous IO for the writers. This has a big performance benefit at the cost of
     * some RAM. RAM may balloon if there is a need to sort the output. */
@@ -318,7 +318,7 @@ val qualityFormat: Option[FastqQualityFormat] = None,
     val samplesFromSampleSheet = sampleSheet.map(s => withCustomSampleBarcode(s, columnForSampleBarcode))
     val samples                = samplesFromSampleSheet.toSeq :+ unmatchedSample(samplesFromSampleSheet.size, this.readStructures)
     val sampleInfos            = samples.map(sample => SampleInfo(sample, sample.sampleName == UnmatchedSampleId))
-    val sampleToWriter         = sampleInfos.map { info => info.sample -> toWriter(info) }.toMap
+    val sampleToWriter         = sampleInfos.map { info => info.sample -> toWriter(info, sampleInfos.length) }.toMap
 
     // Validate that the # of sample barcode bases in the read structure matches the # of sample barcode in the sample sheet.
     {
@@ -372,7 +372,7 @@ val qualityFormat: Option[FastqQualityFormat] = None,
     Metric.write(metricsPath, sampleInfos.map(_.metric))
   }
 
-  private def toWriter(sampleInfo: SampleInfo): DemuxWriter = {
+  private def toWriter(sampleInfo: SampleInfo, numSamples: Int): DemuxWriter = {
     val sample = sampleInfo.sample
     val isUnmatched = sample.sampleName == UnmatchedSampleId
     val prefix = toSampleOutputPrefix(sample, isUnmatched, output, this.unmatched)
@@ -397,7 +397,7 @@ val qualityFormat: Option[FastqQualityFormat] = None,
       header.setSortOrder(sortOrder)
       comments.foreach(header.addComment)
 
-      new SamRecordWriter(PathUtil.pathTo(prefix + ".bam"), header, this.umiTag)
+      new SamRecordWriter(PathUtil.pathTo(prefix + ".bam"), header, this.umiTag, numSamples)
     }
   }
 }
@@ -410,10 +410,12 @@ private trait DemuxWriter extends Closeable {
 /** A writer that writes [[DemuxRecord]]s as [[SamRecord]]s. */
 private class SamRecordWriter(output: PathToBam,
                               val header: SAMFileHeader,
-                              val umiTag: String) extends DemuxWriter {
+                              val umiTag: String,
+                              val numSamples: Int) extends DemuxWriter {
   val order = if (header.getSortOrder == SortOrder.unsorted) None else SamOrder(header)
   private val writer = SamWriter(output, header, sort=order,
-    async = DemuxFastqs.UseAsyncIo, maxRecordsInRam = DemuxFastqs.MaxRecordsInRamPerSamFileWriter)
+    async = DemuxFastqs.UseAsyncIo,
+    maxRecordsInRam = Math.max(10000,  DemuxFastqs.MaxRecordsInRam / numSamples))
 
   private val rgId: String = this.header.getReadGroups.get(0).getId
 
