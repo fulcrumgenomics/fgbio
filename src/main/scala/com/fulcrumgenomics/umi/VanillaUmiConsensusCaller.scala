@@ -125,7 +125,9 @@ class VanillaUmiConsensusCaller(override val readNamePrefix: String,
     val buffer = new ListBuffer[SamRecord]()
 
     // fragment
-    consensusFromSamRecords(records=fragments).map { frag => buffer += createSamRecord(read=frag, readType=Fragment) }
+    consensusFromSamRecords(records=fragments).map { frag =>
+      buffer += createSamRecord(read=frag, readType=Fragment, fragments.flatMap(_.get[String](ConsensusTags.UmiBases)))
+    }
 
     // pairs
     (consensusFromSamRecords(firstOfPair), consensusFromSamRecords(secondOfPair)) match {
@@ -133,8 +135,8 @@ class VanillaUmiConsensusCaller(override val readNamePrefix: String,
       case (Some(r1), None)     => rejectRecords(firstOfPair,  UmiConsensusCaller.FilterOrphan)
       case (None, None)         => rejectRecords(firstOfPair ++ secondOfPair, UmiConsensusCaller.FilterOrphan)
       case (Some(r1), Some(r2)) =>
-        buffer += createSamRecord(r1, FirstOfPair)
-        buffer += createSamRecord(r2, SecondOfPair)
+        buffer += createSamRecord(r1, FirstOfPair, firstOfPair.flatMap(_.get[String](ConsensusTags.UmiBases)))
+        buffer += createSamRecord(r2, SecondOfPair, secondOfPair.flatMap(_.get[String](ConsensusTags.UmiBases)))
     }
 
     buffer
@@ -244,8 +246,8 @@ class VanillaUmiConsensusCaller(override val readNamePrefix: String,
   }
 
   /** Creates a `SamRecord` from the called consensus base and qualities. */
-  override protected def createSamRecord(read: VanillaConsensusRead, readType: ReadType): SamRecord = {
-    val rec = super.createSamRecord(read, readType)
+  override protected def createSamRecord(read: VanillaConsensusRead, readType: ReadType, umis: Seq[String] = Seq.empty): SamRecord = {
+    val rec = super.createSamRecord(read, readType, umis)
     // Set some additional information tags on the read
     rec(ConsensusTags.PerRead.RawReadCount)     = read.depths.max.toInt
     rec(ConsensusTags.PerRead.MinRawReadCount)  = read.depths.min.toInt

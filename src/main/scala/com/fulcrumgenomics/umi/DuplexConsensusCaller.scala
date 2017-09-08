@@ -197,13 +197,18 @@ class DuplexConsensusCaller(override val readNamePrefix: String,
         val baR2Consensus = ssCaller.consensusCall(filteredBaR2s)
 
         // Call the duplex reads
-        val duplexR1 = duplexConsensus(abR1Consensus, baR2Consensus, filteredAbR1s ++ filteredBaR2s)
-        val duplexR2 = duplexConsensus(abR2Consensus, baR1Consensus, filteredAbR2s ++ filteredBaR1s)
+        val duplexR1Sources = filteredAbR1s ++ filteredBaR2s
+        val duplexR2Sources = filteredAbR2s ++ filteredBaR1s
+        val duplexR1 = duplexConsensus(abR1Consensus, baR2Consensus, duplexR1Sources)
+        val duplexR2 = duplexConsensus(abR2Consensus, baR1Consensus, duplexR2Sources)
 
         // Convert to SamRecords and return
         (duplexR1, duplexR2) match {
           case (Some(r1), Some(r2)) =>
-            Seq(createSamRecord(r1, FirstOfPair), createSamRecord(r2, SecondOfPair))
+            Seq(
+              createSamRecord(r1, FirstOfPair, toUmiBases(duplexR1Sources)),
+              createSamRecord(r2, SecondOfPair, toUmiBases(duplexR2Sources))
+            )
           case _                    =>
             // NB: some reads may have been rejected already in filterToMostCommonAlignment, so just
             //     reject those records that survived the initial filtering.
@@ -214,6 +219,14 @@ class DuplexConsensusCaller(override val readNamePrefix: String,
       case _ =>
         unreachable("SamRecords supplied with more than two distinct MI values.")
     }
+  }
+
+  /** Extracts the UMI bases for each source read, ignoring reads without UMI bases */
+  private def toUmiBases(reads: Seq[SourceRead]): Seq[String] = {
+    // The source read may not have the RX tag, and if so, we ignore them through
+    // the use of .flatMap and .get, with the latter returning an `Some(bases)` if the
+    // UMI bases are present, `None` otherwise.
+    reads.flatMap(_.sam).flatMap(_.get[String](ConsensusTags.UmiBases))
   }
 
   /**
@@ -271,8 +284,8 @@ class DuplexConsensusCaller(override val readNamePrefix: String,
   /**
     * Creates a SamRecord with a ton of additional tags annotating the duplex read.
     */
-  override protected def createSamRecord(read: DuplexConsensusRead, readType: ReadType): SamRecord = {
-    val rec = super.createSamRecord(read, readType)
+  override protected def createSamRecord(read: DuplexConsensusRead, readType: ReadType, umis: Seq[String] = Seq.empty): SamRecord = {
+    val rec = super.createSamRecord(read, readType, umis)
     val ab = read.abConsensus
     val ba = read.baConsensus
 

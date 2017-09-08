@@ -36,7 +36,7 @@ import com.fulcrumgenomics.umi.VanillaUmiConsensusCallerOptions._
   */
 class CallMolecularConsensusReadsTest extends UnitSpec {
 
-  def newBam = makeTempFile("call_molecular_consensus_reads_test.", ".bam")
+  private def newBam = makeTempFile("call_molecular_consensus_reads_test.", ".bam")
 
   "CallMolecularConsensusReads" should "run end-to-end" in {
     val rlen    = 100
@@ -46,8 +46,9 @@ class CallMolecularConsensusReadsTest extends UnitSpec {
 
     // Create 2000 paired end reads, where there are two pairs with the same coordinates and have the same group tag.
     Stream.range(0, 1000).foreach { idx =>
-      val firstPair  = builder.addPair(name=s"READ:" + 2*idx,   start1=1+idx, start2=1000000+idx, bases1="A"*rlen, bases2="T"*rlen, attrs=Map(DefaultTag -> ("GATTACA:" + idx)))
-      val secondPair = builder.addPair(name=s"READ:" + 2*idx+1, start1=1+idx, start2=1000000+idx, bases1="A"*rlen, bases2="T"*rlen, attrs=Map(DefaultTag -> ("GATTACA:" + idx)))
+      val attrs = Map(DefaultTag -> ("GATTACA:" + idx), ConsensusTags.UmiBases -> "ACGT-TGCA")
+      builder.addPair(name=s"READ:" + 2*idx,   start1=1+idx, start2=1000000+idx, bases1="A"*rlen, bases2="T"*rlen, attrs=attrs)
+      builder.addPair(name=s"READ:" + 2*idx+1, start1=1+idx, start2=1000000+idx, bases1="A"*rlen, bases2="T"*rlen, attrs=attrs)
     }
 
     // Run the tool
@@ -64,6 +65,8 @@ class CallMolecularConsensusReadsTest extends UnitSpec {
       rec.readGroup.getId shouldBe "ABC"
       rec.basesString shouldBe "A" * 100
       rec.length shouldBe 100
+      rec[String](DefaultTag).startsWith("GATTACA") shouldBe true
+      rec[String](ConsensusTags.UmiBases) shouldBe "ACGT-TGCA"
     }
   }
 }

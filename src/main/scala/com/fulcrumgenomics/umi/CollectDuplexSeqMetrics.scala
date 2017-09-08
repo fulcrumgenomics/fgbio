@@ -295,7 +295,7 @@ class CollectDuplexSeqMetrics
   private val duplexUmiMetricsMap    = mutable.Map[String,DuplexUmiMetric]()
 
   // A consensus caller used to generate consensus UMI sequences
-  private val consensusBuilder = new ConsensusCaller(errorRatePreLabeling=90.toByte, errorRatePostLabeling=90.toByte).builder()
+  private val consensusBuilder = new SimpleConsensusCaller()
 
   // A Murmur3 hash used to do the downsampling of the reads by generating an int hash of the read name
   // scaling it into the range 0-1 and then storing it a a transient attribute on the SAMRecord
@@ -393,7 +393,7 @@ class CollectDuplexSeqMetrics
     ba.iterator.map(r => r[String](RX).split('-')).foreach { case Array(u1, u2) => umi1s += u2; umi2s += u1 }
 
     val Seq(abConsensusUmi, baConsensusUmi) = Seq(umi1s, umi2s).map{ umis =>
-      val consensus = callConsensus(umis)
+      val consensus = this.consensusBuilder.callConsensus(umis)
       val metric    = this.umiMetricsMap.getOrElseUpdate(consensus, UmiMetric(umi=consensus))
       metric.raw_observations    += umis.size
       metric.unique_observations += 1
@@ -414,22 +414,6 @@ class CollectDuplexSeqMetrics
       metric.unique_observations          += 1
       metric.raw_observations_with_errors += (ab.iterator ++ ba.iterator).map(r => r[String](RX)).count(umi => !duplexUmis.contains(umi))
     }
-  }
-
-  /** Calls a simple consensus sequences from a set of sequences all the same length. */
-  private def callConsensus(umis: Seq[String]) = {
-    require(umis.nonEmpty, "Can't call consensus on an empty set of UMIs!")
-    val buffer = new StringBuilder
-
-    forloop(from=0, until=umis.head.length) { i =>
-      this.consensusBuilder.reset()
-      // The actual values for pError and pTruth don't matter since they're constant, but they are ln(0.01) and ln(0.99)
-      umis.foreach(umi => this.consensusBuilder.add(umi.charAt(i).toByte, pError = -4.60517, pTruth = -0.01005034))
-      val (base, qual) = this.consensusBuilder.call()
-      buffer.append(base.toChar)
-    }
-
-    buffer.toString()
   }
 
   /** Generates the family size metrics from the current observations. */

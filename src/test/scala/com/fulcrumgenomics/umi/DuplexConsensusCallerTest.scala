@@ -38,6 +38,8 @@ class DuplexConsensusCallerTest extends UnitSpec {
   private val c = caller()
 
   private val MI = ConsensusTags.MolecularId
+  private val RX = ConsensusTags.UmiBases
+
 
   "DuplexConsensusCaller.sourceMoleculeId" should "strip of that last /suffix" in {
     val builder = new SamBuilder()
@@ -226,6 +228,18 @@ class DuplexConsensusCallerTest extends UnitSpec {
     builder.addPair(name="ba1", start1=200, start2=100, strand1=Minus, strand2=Plus, bases1="CCCCCCCCCC", bases2="AAAAAAAAAA", attrs=Map(MI -> "foo/B"))
     builder.addPair(name="ba2", start1=200, start2=100, strand1=Minus, strand2=Plus, bases1="CCCCCCCCCC", bases2="AAAAAAAAAA", attrs=Map(MI -> "foo/B"))
 
+    // Add the original UMI bases to each read
+    builder.foreach { rec =>
+      val mi = rec[String](MI)
+      // first of pair ABs and second of pair BAs
+      if ((rec.firstOfPair && mi.endsWith("/A")) || (rec.secondOfPair && mi.endsWith("/B"))) {
+        rec(RX) = "AAT-CCG"
+      }
+      else {
+        rec(RX) = "CCG-AAT"
+      }
+    }
+
     val recs = caller(q=20).consensusReadsFromSamRecords(builder.toSeq)
     recs should have size 2
     val r1 = recs.find(_.firstOfPair).getOrElse(fail("R1 missing."))
@@ -242,6 +256,8 @@ class DuplexConsensusCallerTest extends UnitSpec {
       r1[Float](RawReadErrorRate)    shouldBe (1 / 48f) // 50 bases, minus 2 no/low-qual bases = 48
       r1[Float](AbRawReadErrorRate)  shouldBe (1 / 28f)
       r1[Float](BaRawReadErrorRate)  shouldBe 0f
+      r1[String](MI) shouldBe "foo"
+      r1[String](RX) shouldBe "AAT-CCG"
 
       r2[Int](RawReadCount)          shouldBe 5
       r2[Int](AbRawReadCount)        shouldBe 3
@@ -252,6 +268,8 @@ class DuplexConsensusCallerTest extends UnitSpec {
       r2[Float](RawReadErrorRate)    shouldBe (1 / 50f)
       r2[Float](AbRawReadErrorRate)  shouldBe (1 / 30f)
       r2[Float](BaRawReadErrorRate)  shouldBe 0f
+      r2[String](MI) shouldBe "foo"
+      r2[String](RX) shouldBe "CCG-AAT"
     }
 
     { // Check the per-base tags

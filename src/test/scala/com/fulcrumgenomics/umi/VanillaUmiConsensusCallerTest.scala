@@ -77,8 +77,8 @@ class VanillaUmiConsensusCallerTest extends UnitSpec with OptionValues {
     val err = p / 3 // error could be one of three bases
 
     val numerator   = ok.pow(n)
-    val denomenator = numerator + (err.pow(2) * 3)
-    val pError = 1 - (numerator / denomenator)
+    val denominator = numerator + (err.pow(2) * 3)
+    val pError = 1 - (numerator / denominator)
     val phred = -10 * log10(pError.toDouble)
     phred.toByte
   }
@@ -345,10 +345,10 @@ class VanillaUmiConsensusCallerTest extends UnitSpec with OptionValues {
 
   it should "generate accurate per-read and per-base tags on the consensus reads" in {
     val builder = new SamBuilder(readLength=10)
-    builder.addFrag("READ1", start=1, bases="A"*builder.readLength, attrs=Map(DefaultTag -> "AAA"))
-    builder.addFrag("READ2", start=1, bases="A"*builder.readLength, attrs=Map(DefaultTag -> "AAA"))
-    builder.addFrag("READ3", start=1, bases="A"*builder.readLength, attrs=Map(DefaultTag -> "AAA"))
-    builder.addFrag("READ4", start=1, bases="A"*builder.readLength, attrs=Map(DefaultTag -> "AAA"))
+    builder.addFrag("READ1", start=1, bases="A"*builder.readLength, attrs=Map(DefaultTag -> "AAA", ConsensusTags.UmiBases -> "GAT-ACA"))
+    builder.addFrag("READ2", start=1, bases="A"*builder.readLength, attrs=Map(DefaultTag -> "AAA", ConsensusTags.UmiBases -> "GAT-ACA"))
+    builder.addFrag("READ3", start=1, bases="A"*builder.readLength, attrs=Map(DefaultTag -> "AAA", ConsensusTags.UmiBases -> "GAT-ACA"))
+    builder.addFrag("READ4", start=1, bases="A"*builder.readLength, attrs=Map(DefaultTag -> "AAA", ConsensusTags.UmiBases -> "CCC-TTT"))
 
     // Monkey with one of the four reads
     builder.find(_.name == "READ2").foreach { r =>
@@ -367,12 +367,14 @@ class VanillaUmiConsensusCallerTest extends UnitSpec with OptionValues {
     consensus[Int](ConsensusTags.PerRead.RawReadCount)     shouldBe 4
     consensus[Int](ConsensusTags.PerRead.MinRawReadCount)  shouldBe 3
     consensus[Float](ConsensusTags.PerRead.RawReadErrorRate) shouldBe (1 / 39.toFloat)
+    consensus[String](DefaultTag) shouldBe "AAA"
+    consensus[String](ConsensusTags.UmiBases) shouldBe "GAT-ACA"
   }
 
   it should "not generate per-base tags when turned off" in {
     val builder = new SamBuilder(readLength=10)
-    builder.addFrag("READ1", start=1, bases="A"*builder.readLength, attrs=Map(DefaultTag -> "AAA"))
-    builder.addFrag("READ2", start=1, bases="A"*builder.readLength, attrs=Map(DefaultTag -> "AAA"))
+    builder.addFrag("READ1", start=1, bases="A"*builder.readLength, attrs=Map(DefaultTag -> "AAA", ConsensusTags.UmiBases -> "GAT-ACA"))
+    builder.addFrag("READ2", start=1, bases="A"*builder.readLength, attrs=Map(DefaultTag -> "AAA", ConsensusTags.UmiBases -> "GAT-ACA"))
 
     val caller = cc(options=cco(producePerBaseTags=false))
     val consensuses = caller.consensusReadsFromSamRecords(builder.toSeq)
@@ -384,6 +386,8 @@ class VanillaUmiConsensusCallerTest extends UnitSpec with OptionValues {
     consensus[Int](ConsensusTags.PerRead.RawReadCount)     shouldBe 2
     consensus[Int](ConsensusTags.PerRead.MinRawReadCount)  shouldBe 2
     consensus[Float](ConsensusTags.PerRead.RawReadErrorRate) shouldBe 0.toFloat
+    consensus[String](DefaultTag) shouldBe "AAA"
+    consensus[String](ConsensusTags.UmiBases) shouldBe "GAT-ACA"
   }
 
   it should "calculate the # of errors relative to the most likely consensus call, even when the final call is an N" in {

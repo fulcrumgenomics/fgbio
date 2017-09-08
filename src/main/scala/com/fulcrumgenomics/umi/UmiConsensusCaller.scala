@@ -140,6 +140,9 @@ trait UmiConsensusCaller[C <: SimpleRead] {
   protected val NoCall: Byte = 'N'.toByte
   protected val NoCallQual: PhredScore = PhredScore.MinValue
 
+  /** A consensus caller used to generate consensus UMI sequences */
+  private val consensusBuilder = new SimpleConsensusCaller()
+
   /** Returns the total number of input reads examined by the consensus caller so far. */
   def totalReads: Long = _totalReads
 
@@ -333,7 +336,7 @@ trait UmiConsensusCaller[C <: SimpleRead] {
   }
 
   /** Creates a `SamRecord` from the called consensus base and qualities. */
-  protected def createSamRecord(read: C, readType: ReadType): SamRecord = {
+  protected def createSamRecord(read: C, readType: ReadType, umis: Seq[String] = Seq.empty): SamRecord = {
     val rec = SamRecord(null)
     rec.name = this.readNamePrefix + ":" + read.id
     rec.unmapped = true
@@ -352,6 +355,7 @@ trait UmiConsensusCaller[C <: SimpleRead] {
     rec.quals = read.quals
     rec(SAMTag.RG.name()) = readGroupId
     rec(ConsensusTags.MolecularId) = read.id
+    if (umis.nonEmpty) rec(ConsensusTags.UmiBases) = this.consensusBuilder.callConsensus(umis)
 
     rec
   }

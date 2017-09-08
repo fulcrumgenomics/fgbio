@@ -32,6 +32,7 @@ import com.fulcrumgenomics.testing.{SamBuilder, UnitSpec}
 
 class CallDuplexConsensusReadsTest extends UnitSpec {
   private val MI = ConsensusTags.MolecularId
+  private val RX = ConsensusTags.UmiBases
 
   "CallDuplexConsensusReads" should "throw an exception if the input file doesn't exist" in {
     an[Throwable] should be thrownBy {
@@ -99,6 +100,18 @@ class CallDuplexConsensusReadsTest extends UnitSpec {
     builder.addPair(name="ba2", start1=100, start2=100, strand1=Minus, strand2=Plus, attrs=Map(MI -> "1/B"), bases1="AAAAAAAAAA", bases2="AAAAAAAAAA")
     builder.addPair(name="ba3", start1=100, start2=100, strand1=Minus, strand2=Plus, attrs=Map(MI -> "1/B"), bases1="AAAAAAAAAA", bases2="AAAAAAAAAA")
 
+    // Add the original UMI bases to each read
+    builder.foreach { rec =>
+      val mi = rec[String](MI)
+      // first of pair ABs and second of pair BAs
+      if ((rec.firstOfPair && mi.endsWith("/A")) || (rec.secondOfPair && mi.endsWith("/B"))) {
+        rec(RX) = "AAT-CCG"
+      }
+      else {
+        rec(RX) = "CCG-AAT"
+      }
+    }
+
     val in  = builder.toTempFile()
     val out = makeTempFile("duplex.", ".bam")
     new CallDuplexConsensusReads(input=in, output=out, readGroupId="ZZ").execute()
@@ -108,5 +121,9 @@ class CallDuplexConsensusReadsTest extends UnitSpec {
     reader.header.getReadGroups should have size 1
     reader.header.getReadGroups.iterator().next().getId shouldBe "ZZ"
     recs should have size 2
+    recs.foreach { rec =>
+      rec[String](MI) shouldBe "1"
+      rec[String](RX) shouldBe (if (rec.firstOfPair) "AAT-CCG" else "CCG-AAT")
+    }
   }
 }
