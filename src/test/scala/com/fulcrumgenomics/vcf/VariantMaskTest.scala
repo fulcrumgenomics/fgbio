@@ -25,8 +25,7 @@
 package com.fulcrumgenomics.vcf
 
 import com.fulcrumgenomics.FgBioDef._
-import com.fulcrumgenomics.fasta.ReferenceSetBuilder
-import com.fulcrumgenomics.testing.{UnitSpec, VariantContextSetBuilder}
+import com.fulcrumgenomics.testing.{ReferenceSetBuilder, UnitSpec, VariantContextSetBuilder}
 import htsjdk.samtools.SAMSequenceDictionary
 import htsjdk.variant.utils.SAMSequenceDictionaryExtractor
 

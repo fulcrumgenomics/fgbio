@@ -75,11 +75,12 @@ class SamOrderTest extends UnitSpec {
     SamOrder(header) shouldBe Some(SamOrder.Random)
 
     header.setSortOrder(SortOrder.unsorted)
-    header.setAttribute("GO", GroupOrder.query.name())
+    header.setGroupOrder(GroupOrder.query)
     header.setAttribute("SS", "unsorted:random-query")
     SamOrder(header) shouldBe Some(SamOrder.RandomQuery)
 
     header.setSortOrder(SortOrder.unsorted)
+    header.setGroupOrder(GroupOrder.query)
     header.setAttribute("GO", GroupOrder.query.name())
     header.setAttribute("SS", "unsorted:template-coordinate")
     SamOrder(header) shouldBe Some(SamOrder.TemplateCoordinate)

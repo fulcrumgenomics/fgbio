@@ -22,14 +22,14 @@
  * THE SOFTWARE.
  */
 
-package com.fulcrumgenomics.fasta
+package com.fulcrumgenomics.testing
 
 import java.nio.file.{Files, Path}
 
 import com.fulcrumgenomics.FgBioDef._
-import com.fulcrumgenomics.bam.api.SamWriter
 import com.fulcrumgenomics.commons.io.PathUtil
 import com.fulcrumgenomics.util.Io
+import htsjdk.samtools.reference.{FastaSequenceIndexCreator, ReferenceSequenceFileFactory}
 import htsjdk.samtools.{SAMFileHeader, SAMSequenceDictionary, SAMSequenceRecord, SAMTextHeaderCodec}
 
 import scala.collection.mutable.ListBuffer
@@ -62,12 +62,12 @@ class ReferenceSetBuilder {
   def toTempFile(deleteOnExit: Boolean = true): PathToFasta = {
     val path = Files.createTempFile("SamRecordSet.", ".fa")
     if (deleteOnExit) path.toFile.deleteOnExit()
-    toFile(path)
+    toFile(path, deleteOnExit=deleteOnExit)
     path
   }
 
-  /** Writes the fasta out to a file and creates a sequence dictionary. */
-  def toFile(path: Path): Unit = {
+  /** Writes the fasta out to a file, and creates a sequence dictionary and fasta index (FAI) file. */
+  def toFile(path: Path, deleteOnExit: Boolean = true): Unit = {
     val out = Io.toWriter(path)
     val dict = new SAMSequenceDictionary()
     val header = new SAMFileHeader(dict)
@@ -87,8 +87,18 @@ class ReferenceSetBuilder {
 
     out.close()
 
-    val dictOut = Io.toWriter(PathUtil.replaceExtension(path, ".dict"))
-    new SAMTextHeaderCodec().encode(dictOut, header)
-    dictOut.close()
+    // Create the sequence dictionary
+    val dictOut    = PathUtil.replaceExtension(path, ".dict")
+    val dictWriter = Io.toWriter(PathUtil.replaceExtension(path, ".dict"))
+    new SAMTextHeaderCodec().encode(dictWriter, header)
+    dictWriter.close()
+    if (deleteOnExit) dictOut.toFile.deleteOnExit()
+
+    // Create the FAI file
+    val faiOut = ReferenceSequenceFileFactory.getFastaIndexFileName(path)
+    val fai    = FastaSequenceIndexCreator.buildFromFasta(path)
+    fai.write(faiOut)
+    if (deleteOnExit) faiOut.toFile.deleteOnExit()
+
   }
 }

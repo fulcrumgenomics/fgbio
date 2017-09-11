@@ -29,8 +29,7 @@ import java.nio.file.{Files, Path}
 
 import com.fulcrumgenomics.bam.api.SamOrder
 import com.fulcrumgenomics.commons.io.PathUtil
-import com.fulcrumgenomics.fasta.ReferenceSetBuilder
-import com.fulcrumgenomics.testing.{SamBuilder, UnitSpec, VariantContextSetBuilder}
+import com.fulcrumgenomics.testing.{ReferenceSetBuilder, SamBuilder, UnitSpec, VariantContextSetBuilder}
 import com.fulcrumgenomics.util.{Metric, Rscript}
 import htsjdk.samtools.util.{Interval, IntervalList}
 import htsjdk.variant.utils.SAMSequenceDictionaryExtractor

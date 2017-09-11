@@ -25,8 +25,7 @@
 package com.fulcrumgenomics.bam
 
 import com.fulcrumgenomics.FgBioDef._
-import com.fulcrumgenomics.fasta.ReferenceSetBuilder
-import com.fulcrumgenomics.testing.{SamBuilder, UnitSpec}
+import com.fulcrumgenomics.testing.{ReferenceSetBuilder, SamBuilder, UnitSpec}
 import htsjdk.samtools.reference.ReferenceSequenceFileFactory
 
 class PileupTest extends UnitSpec {

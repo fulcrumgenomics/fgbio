@@ -25,12 +25,11 @@
 package com.fulcrumgenomics.bam
 
 import com.fulcrumgenomics.bam.api.{SamRecord, SamSource}
-import com.fulcrumgenomics.fasta.ReferenceSetBuilder
 import com.fulcrumgenomics.testing.SamBuilder._
-import com.fulcrumgenomics.testing.{ErrorLogLevel, SamBuilder, UnitSpec}
+import com.fulcrumgenomics.testing.{ErrorLogLevel, ReferenceSetBuilder, SamBuilder, UnitSpec}
+import htsjdk.samtools.SAMTag
 import htsjdk.samtools.reference.ReferenceSequenceFileFactory
 import htsjdk.samtools.util.SequenceUtil
-import htsjdk.samtools.SAMTag
 
 import scala.util.Random
 
