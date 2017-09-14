@@ -180,7 +180,6 @@ class CollectErccMetricsTest extends UnitSpec with OptionValues {
   it should "require at least two observations to compute correlation coefficients and other metrics" in {
 
     // one transcript
-    /*
     {
       val builder = new SamBuilder(sd=Some(dict))
       builder.addPair(contig=1, start1=1, start2=2) // ERCC-00001 pair
@@ -196,7 +195,6 @@ class CollectErccMetricsTest extends UnitSpec with OptionValues {
       metrics.head.slope shouldBe 'empty
       Files.exists(outputs.plotPath) shouldBe false
     }
-    */
 
     // two different transcripts with counts
     {
@@ -233,6 +231,26 @@ class CollectErccMetricsTest extends UnitSpec with OptionValues {
     metrics.head.ercc_templates shouldBe 3
     metrics.head.total_transcripts shouldBe 2
     metrics.head.passing_filter_transcripts shouldBe 1
+  }
+
+  it should "support single end reads" in {
+    val builder = new SamBuilder(sd=Some(dict))
+    builder.addFrag(contig=0, start=1) // non-ERCC frag
+    builder.addFrag(contig=1, start=1) // ERCC-00001 frag
+    builder.addFrag(contig=1, start=1) // ERCC-00001 frag
+    builder.addFrag(contig=2, start=1) // ERCC-00002 frag
+    builder.addFrag(contig=2, start=1) // ERCC-00002 frag
+    builder.addFrag(contig=2, start=1) // ERCC-00002 frag
+
+    val output = toOutput
+    new CollectErccMetrics(input=builder.toTempFile(), customMixture=Some(metadata), output=output, minTranscriptCount=2).execute()
+    val outputs = Outputs(output)
+    val metrics = Metric.read[ErccSummaryMetrics](outputs.summaryPath)
+    metrics.head.total_reads shouldBe 6
+    metrics.head.ercc_reads shouldBe 5
+    metrics.head.ercc_templates shouldBe 5
+    metrics.head.total_transcripts shouldBe 2
+    metrics.head.passing_filter_transcripts shouldBe 2
   }
 
   it should "support using standard ERCC mixtures" in {
@@ -291,7 +309,7 @@ class CollectErccMetricsTest extends UnitSpec with OptionValues {
     metric.total_reads shouldBe 70 // 2 frags, and 34 pairs (= 2 + 34*2 = 70 reads)
     metric.ercc_reads shouldBe 64 // 2 frags, 2 two ends of pairs, are not ERCC ( = 70 - 2 - 2 = 66)
     metric.fraction_ercc_reads shouldBe 0.914286
-    metric.ercc_templates shouldBe 31 // one pair did not have both ends map to an ERCC, one pair with low mapq, and one pair with ends mapping to different ERCC transcripts ( = 34 - 3 = 31)
+    metric.ercc_templates shouldBe 32 // one frag not mapping to an ERCC, one pair did not have both ends map to an ERCC, one pair with low mapq, and one pair with ends mapping to different ERCC transcripts ( = 36 - 4 = 32)
     metric.total_transcripts shouldBe 5
     metric.passing_filter_transcripts shouldBe 3 // ERCC-00001 and ERCC-00002 do not meet the threshold
     metric.pearsons_correlation.value shouldBe 1

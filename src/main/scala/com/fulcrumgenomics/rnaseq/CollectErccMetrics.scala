@@ -84,7 +84,7 @@ object CollectErccMetrics {
     |  2. <output>.ercc_detailed_metrics.txt - gives a per-ERCC-transcript expected concentration and observed fragment count.
     |  3. <output>.ercc_metrics.pdf - plots the expected concentration versus the observed fragment count.
     |
-    |Secondary, supplementary and fragment reads will be ignored.  A read pair mapping to an ERCC transcript is counted if both
+    |Secondary andsupplementary reads will be ignored.  A read pair mapping to an ERCC transcript is counted only if both
     |ends of the pair map to the same ERCC transcript.  A minimum mapping quality can be required for reads to be
     |counted as mapped to an ERCC transcript.
   """)
@@ -131,10 +131,10 @@ class CollectErccMetrics
       throw new IllegalArgumentException(s"Missing ERCC transcripts in the SAM/BAM header: ${missingErccTranscripts.mkString(", ")}")
     }
 
-    var totalReads: Long    = 0 // the total # of reads in the BAM file
-    var erccReads: Long     = 0 // the total # of reads that are counted as mapped to an ERCC transcript
-    var erccReadPairs: Long = 0 // the total # of read pairs that are counted as mapped to an ERCC transcript
-    val erccReadPairCounter = new SimpleCounter[String]() // the count of read pairs mapped to a given ERCC transcript
+    var totalReads: Long     = 0 // the total # of reads in the BAM file
+    var erccReads: Long      = 0 // the total # of reads that are counted as mapped to an ERCC transcript
+    var erccTemplates: Long  = 0 // the total # of read pairs (or single end reads) that are counted as mapped to an ERCC transcript
+    val erccTemplatesCounter = new SimpleCounter[String]() // the count of read pairs (or single end reads) mapped to a given ERCC transcript
     in.iterator
       .filterNot { r => progress.record(r); r.secondary || r.supplementary } // no secondary or supplementary
       .filter { r =>
@@ -144,12 +144,13 @@ class CollectErccMetrics
       }
       .filter { r =>
         erccReads += 1
-        // consider only paired records where both ends map to the sam ERCC transcript
-        r.paired && r.mapped && r.mateMapped && r.refIndex == r.mateRefIndex && r.firstOfPair
+        // consider only single-end records, or paired records where both ends map to the sam ERCC transcript
+        !r.paired || (r.mateMapped && r.refIndex == r.mateRefIndex && r.firstOfPair)
+
       }
       .foreach { r =>
-        erccReadPairs += 1
-        erccReadPairCounter.count(r.refName)
+        erccTemplates += 1
+        erccTemplatesCounter.count(r.refName)
       }
     in.safelyClose()
 
@@ -159,7 +160,7 @@ class CollectErccMetrics
     val concentrations    = ArrayBuffer[Double]()
     val maximumErccLength = erccData.keys.map { name => in.header.getSequence(name).getSequenceLength }.max
     erccData.iterator.foreach { case (name, concentration) =>
-      val count = erccReadPairCounter.countOf(name)
+      val count = erccTemplatesCounter.countOf(name)
       if (minTranscriptCount <= count) {
         val erccLength = in.header.getSequence(name).getSequenceLength
         counts += log2(count)
@@ -176,9 +177,9 @@ class CollectErccMetrics
       total_reads                = totalReads,
       ercc_reads                 = erccReads,
       fraction_ercc_reads        = if (totalReads == 0) 0 else erccReads / totalReads.toDouble,
-      ercc_templates             = erccReadPairs,
-      total_transcripts          = erccReadPairCounter.iterator.length,
-      passing_filter_transcripts = erccReadPairCounter.iterator.count(_._2 >= minTranscriptCount),
+      ercc_templates             = erccTemplates,
+      total_transcripts          = erccTemplatesCounter.iterator.length,
+      passing_filter_transcripts = erccTemplatesCounter.iterator.count(_._2 >= minTranscriptCount),
       pearsons_correlation       = noneIfNaNOrInsufficientData { new PearsonsCorrelation().correlation(normalizedCounts.toArray, concentrations.toArray) },
       spearmans_correlation      = noneIfNaNOrInsufficientData { new SpearmansCorrelation().correlation(normalizedCounts.toArray, concentrations.toArray) },
       intercept                  = noneIfNaN { simpleRegression.getIntercept },
@@ -203,7 +204,7 @@ class CollectErccMetrics
         .map(_.getSequenceName)
         .filter { name => erccData.contains(name) }
         .map { name =>
-          val count           = erccReadPairCounter.countOf(name)
+          val count           = erccTemplatesCounter.countOf(name)
           val normalizedCount = count / maximumErccLength.toDouble
           val concentration   = erccData(name)
           ErccDetailedMetric(name=name, concentration=concentration, count=count, normalized_count=normalizedCount)
@@ -248,8 +249,8 @@ class CollectErccMetrics
   *
   * @param name the name (or ID) of the ERCC transcript.
   * @param concentration the expected concentration as input to `CollectErccMetrics`.
-  * @param count the observed count of the number of read pairs.
-  * @param normalized_count the observed count of the number of read pairs normalized by the ERCC transcript length.
+  * @param count the observed count of the number of read pairs (or single end reads) .
+  * @param normalized_count the observed count of the number of read pairs (or single end reads) normalized by the ERCC transcript length.
   */
 case class ErccDetailedMetric
 (
@@ -269,7 +270,7 @@ case class ErccDetailedMetric
   * @param total_reads the total number of reads considered.
   * @param ercc_reads the total number of reads mapping to an ERCC transcript.
   * @param fraction_ercc_reads the fraction of total reads that map to an ERCC transcript.
-  * @param ercc_templates the total number of read pairs mapping to an ERCC transcript.
+  * @param ercc_templates the total number of read pairs (or single end reads) mapping to an ERCC transcript.
   * @param total_transcripts the total number of ERCC transcripts with at least one read observed.
   * @param passing_filter_transcripts the total number of ERCC transcripts with at least the user-set minimum # of reads observed.
   * @param pearsons_correlation Pearson's correlation coefficient for correlation of concentration and normalized counts.
