@@ -40,6 +40,12 @@ case class CigarElem(operator: CigarOperator, length: Int) {
 
   /** Returns how this element should be represented in a cigar string. */
   override def toString: String = length + operator.toString
+
+  /** Returns the length of the element on the query sequence. */
+  def lengthOnQuery: Int = if (operator.consumesReadBases()) length else 0
+
+  /** Returns the length of the element on the query sequence. */
+  def lengthOnTarget: Int = if (operator.consumesReferenceBases()) length else 0
 }
 
 /** Companion object for Cigar that offers alternative constructors. */
@@ -107,10 +113,10 @@ case class Cigar(elems: IndexedSeq[CigarElem]) extends Iterable[CigarElem] {
   def reverseIterator: Iterator[CigarElem] = elems.reverseIterator
 
   /** Returns the length of the alignment on the query sequence. */
-  def lengthOnQuery: Int = elems.filter(_.operator.consumesReadBases()).map(_.length).sum
+  def lengthOnQuery: Int = elems.foldLeft(0)((sum, elem) => sum + elem.lengthOnQuery)
 
   /** Returns the length of the alignment on the query sequence. */
-  def lengthOnTarget: Int = elems.filter(_.operator.consumesReferenceBases()).map(_.length).sum
+  def lengthOnTarget: Int = elems.foldLeft(0)((sum, elem) => sum + elem.lengthOnTarget)
 
   /** Yields a new cigar that is truncated to the given ength on the query. */
   def truncateToQueryLength(len: Int): Cigar = truncate(len, e => e.operator.consumesReadBases())
@@ -277,5 +283,94 @@ case class Alignment(query: Array[Byte],
     }
 
     buffers.map(_.toString())
+  }
+
+  /**
+    * Returns a subset of the Alignment representing the region defined by `start` and `end` on the query
+    * sequence. The returned alignment will contain the entire query and target sequences, but will have
+    * adjusted `queryStart` and `targetStart` positions and an updated `cigar`.  The score is set to 0.
+    *
+    * @param start the 1-based inclusive position of the first base on the query sequence to include
+    * @param end   the 1-based inclusive position of the last base on the query sequence to include
+    * @return a new [[Alignment]] with updated coordinates and cigar
+    */
+  def subByQuery(start: Int, end: Int): Alignment = {
+    require(start >= queryStart && start <= queryEnd, "start is outside of aligned region of target sequence")
+    require(end   >= queryStart && end   <= queryEnd, "end is outside of aligned region of target sequence")
+    sub(start, end, this.queryStart, _.operator.consumesReadBases())
+  }
+
+  /**
+    * Returns a subset of the Alignment representing the region defined by `start` and `end` on the target
+    * sequence. The returned alignment will contain the entire query and target sequences, but will have
+    * adjusted `queryStart` and `targetStart` positions and an updated `cigar`.  The score is set to 0.
+    *
+    * @param start the 1-based inclusive position of the first base on the target sequence to include
+    * @param end   the 1-based inclusive position of the last base on the target sequence to include
+    * @return a new [[Alignment]] with updated coordinates and cigar
+    */
+  def subByTarget(start: Int, end: Int): Alignment = {
+    require(start >= targetStart && start <= targetEnd, "start is outside of aligned region of target sequence")
+    require(end   >= targetStart && end   <= targetEnd, "end is outside of aligned region of target sequence")
+    sub(start, end, this.targetStart, _.operator.consumesReferenceBases())
+  }
+
+  /**
+    * Private helper method that helps generate an Alignment that is a subset of the current alignment.
+    *
+    * @param start the start (on either the query or target sequence) of the desired window
+    * @param end the end (on either the query or target sequence) of the desired window
+    * @param initialStart the start position on the relevant sequence (either target OR query)
+    * @param consumes a function that returns true if the cigar element passed as a parameter consumes
+    *                 bases on the sequence on which `start` and `end` are expresssed
+    * @return a new [[Alignment]] with adjusted start, end and cigar, and with score=0
+    */
+  private def sub(start: Int, end: Int, initialStart: Int, consumes: CigarElem => Boolean): Alignment = {
+    val elems = new ArrayBuffer[CigarElem](cigar.size)
+    var (qStart, tStart, currStart) = (queryStart,targetStart,initialStart)
+
+    cigar.foreach { elem =>
+      val currEnd = if (consumes(elem)) currStart + elem.length - 1 else currStart
+
+      if (currEnd < start) {
+        // Element before the desired window, need to bump start positions
+        qStart    += elem.lengthOnQuery
+        tStart    += elem.lengthOnTarget
+        if (consumes(elem)) currStart += elem.length
+      }
+      else if (currStart > end) {
+        // Don't include, beyond the range we're interested
+      }
+      else if (currStart >= start && currEnd <= end) {
+        // Contained within the target region; ignore insertions that are at the end of the desired region
+        if (consumes(elem) || (currStart != start && currStart != end)) {
+          elems     += elem
+          if (consumes(elem)) currStart += elem.length
+        }
+      }
+      else {
+        // Element is overlaps the desired region, may enclose, be enclosed by or straddle
+        var len = elem.length
+
+        if (currStart < start) {
+          // Element is split over the start of the desired region
+          val diff = start - currStart
+          len -= diff
+          if (elem.operator.consumesReadBases())      qStart += diff
+          if (elem.operator.consumesReferenceBases()) tStart += diff
+          currStart += diff
+        }
+
+        if (currEnd > end) {
+          // Element is split over the end of the desired region
+          len -= (currEnd - end)
+        }
+
+        elems += CigarElem(elem.operator, len)
+        currStart += len
+      }
+    }
+
+    copy(queryStart=qStart, targetStart=tStart, cigar=Cigar(elems), score=0)
   }
 }

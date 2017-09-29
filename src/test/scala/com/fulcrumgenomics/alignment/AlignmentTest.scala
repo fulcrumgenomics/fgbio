@@ -173,4 +173,63 @@ class AlignmentTest extends UnitSpec {
     val alignment = Alignment(expected.head.replace(".", ""), expected.last.replace(".", ""), 1, 1, Cigar("2M2D9M1D2M1I3M"), 1)
     alignment.paddedString(matchChar='+', mismatchChar='#', gapChar='-', padChar='.') shouldBe expected
   }
+
+  "Alignment.subByTarget" should "yield appropriate sub-alignment when all bases are aligned" in {
+    val sub = Alignment("AAAAAAAAAA", "AAAAAAAAAA", 1, 1, Cigar("10M"), 10).subByTarget(5, 6)
+    sub.targetStart shouldBe 5
+    sub.queryStart  shouldBe 5
+    sub.cigar.toString() shouldBe "2M"
+  }
+
+  it should "remove cigar elements that are outside of the requested sub-region" in {
+    val sub = Alignment("AAAAAAAAAA", "ATAAAAAATA", 1, 1, Cigar("1=1X6=1X1="), 10).subByTarget(5, 6)
+    sub.targetStart shouldBe 5
+    sub.queryStart  shouldBe 5
+    sub.cigar.toString() shouldBe "2="
+  }
+
+  it should "work correctly when the alignment start and end are not 1" in {
+    val sub = Alignment("AAAAAAAAAA", "ATAAAAAATA", 3, 3, Cigar("6="), 6).subByTarget(5, 6)
+    sub.targetStart shouldBe 5
+    sub.queryStart  shouldBe 5
+    sub.cigar.toString() shouldBe "2="
+  }
+
+  it should "work with insertions (which don't count as consuming target)" in {
+    val sub = Alignment("AAAAATTAAAAA", "AAAAAAAAAA", 1, 1, Cigar("5=2I5="), 10).subByTarget(3, 8)
+    sub.targetStart shouldBe 3
+    sub.queryStart  shouldBe 3
+    sub.cigar.toString() shouldBe "3=2I3="
+  }
+
+  it should "work with deletions (which count as consuming target)" in {
+    val sub = Alignment("AAAAAAAAAA", "AAAAATTAAAAA", 1, 1, Cigar("5=2D5="), 10).subByTarget(3, 8)
+    sub.targetStart shouldBe 3
+    sub.queryStart  shouldBe 3
+    sub.cigar.toString() shouldBe "3=2D1="
+  }
+
+  it should "drop insertions and deletions that are adjacent to the desired region" in {
+    val sub = Alignment("AACCAAAAAAAA", "AAAAAAAATTAA", 1, 1, Cigar("2=2I6=2D2="), 10).subByTarget(3, 8)
+    sub.targetStart shouldBe 3
+    sub.queryStart  shouldBe 3
+    sub.cigar.toString() shouldBe "6="
+  }
+
+  it should "fail if the start or end is outside of the alignment" in {
+    an[Exception] shouldBe thrownBy { Alignment("AAAAA", "TAAAT", 2, 2, Cigar("3="), 0).subByTarget(1, 3) }
+    an[Exception] shouldBe thrownBy { Alignment("AAAAA", "TAAAT", 2, 2, Cigar("3="), 0).subByTarget(2, 5) }
+  }
+
+  "Alignment.subByQuery" should "yield appropriate sub-alignment when all bases are aligned" in {
+    val sub = Alignment("AAAAAAAAAA", "AAAAAAAAAA", 1, 1, Cigar("10M"), 10).subByQuery(5, 6)
+    sub.targetStart shouldBe 5
+    sub.queryStart  shouldBe 5
+    sub.cigar.toString() shouldBe "2M"
+  }
+
+  it should "fail if the start or end is outside of the alignment" in {
+    an[Exception] shouldBe thrownBy { Alignment("TCGAAAAGGA", "AAAA", 4, 1, Cigar("4="), 0).subByQuery(1, 6) }
+    an[Exception] shouldBe thrownBy { Alignment("TCGAAAAGGA", "AAAA", 4, 1, Cigar("4="), 0).subByQuery(5, 9) }
+  }
 }
