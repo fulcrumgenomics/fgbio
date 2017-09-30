@@ -286,7 +286,7 @@ case class Alignment(query: Array[Byte],
   }
 
   /**
-    * Returns a subset of the Alignment representing the region defined by `start` and `end` on the query
+    * Returns a subset of the [[Alignment]] representing the region defined by `start` and `end` on the query
     * sequence. The returned alignment will contain the entire query and target sequences, but will have
     * adjusted `queryStart` and `targetStart` positions and an updated `cigar`.  The score is set to 0.
     *
@@ -327,30 +327,33 @@ case class Alignment(query: Array[Byte],
     */
   private def sub(start: Int, end: Int, initialStart: Int, consumes: CigarElem => Boolean): Alignment = {
     val elems = new ArrayBuffer[CigarElem](cigar.size)
-    var (qStart, tStart, currStart) = (queryStart,targetStart,initialStart)
+    var (qStart, tStart, currStart) = (queryStart, targetStart, initialStart) // currStart = start of current element
 
-    cigar.foreach { elem =>
-      val currEnd = if (consumes(elem)) currStart + elem.length - 1 else currStart
+    this.cigar.foreach { elem =>
+      // If the current element consumes the chosen sequence, calculate the end, else set to the same as start
+
+      val elementConsumes = consumes(elem)
+      val currEnd = if (elementConsumes) currStart + elem.length - 1 else currStart
 
       if (currEnd < start) {
         // Element before the desired window, need to bump start positions
-        qStart    += elem.lengthOnQuery
-        tStart    += elem.lengthOnTarget
-        if (consumes(elem)) currStart += elem.length
+        qStart += elem.lengthOnQuery
+        tStart += elem.lengthOnTarget
+        if (elementConsumes) currStart += elem.length
       }
       else if (currStart > end) {
         // Don't include, beyond the range we're interested
       }
       else if (currStart >= start && currEnd <= end) {
-        // Contained within the target region; ignore insertions that are at the end of the desired region
-        if (consumes(elem) || (currStart != start && currStart != end)) {
-          elems     += elem
-          if (consumes(elem)) currStart += elem.length
+        // Contained within the target region; ignore insertions that are at the ends of the desired region
+        if (elementConsumes || (currStart != start && currStart != end)) {
+          elems += elem
+          if (elementConsumes) currStart += elem.length
         }
       }
       else {
-        // Element is overlaps the desired region, may enclose, be enclosed by or straddle
-        var len = elem.length
+        // Element overlaps the desired region, may enclose, be enclosed by or straddle
+        var len = elem.length // <- the length of the element to be added, after any clipping
 
         if (currStart < start) {
           // Element is split over the start of the desired region
