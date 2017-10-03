@@ -30,12 +30,15 @@ import java.text.DecimalFormat
 
 import com.fulcrumgenomics.bam.api.{SamSource, SamWriter}
 import com.fulcrumgenomics.cmdline.FgBioMain.FailureException
-import com.fulcrumgenomics.commons.util.LazyLogging
+import com.fulcrumgenomics.commons.util.{LazyLogging, LogLevel, Logger}
 import com.fulcrumgenomics.sopt.{Sopt, arg}
 import com.fulcrumgenomics.sopt.cmdline.{CommandLineParser, CommandLineProgramParserStrings}
 import com.fulcrumgenomics.util.Io
 import htsjdk.samtools.util.{BlockCompressedOutputStream, IOUtil, SnappyLoader}
 import com.fulcrumgenomics.commons.CommonsDef._
+
+import scala.reflect.runtime.universe.TypeTag
+import scala.reflect.ClassTag
 
 /**
   * Main program for fgbio that loads everything up and runs the appropriate sub-command
@@ -54,7 +57,8 @@ object FgBioMain {
 class FgBioCommonArgs
 ( @arg(doc="Use asynchronous I/O where possible, e.g. for SAM and BAM files.") val asyncIo: Boolean = false,
   @arg(doc="Default GZIP compression level, BAM compression level.")           val compression: Int = 5,
-  @arg(doc="Directory to use for temporary files.")                            val tmpDir: DirPath  = Paths.get(System.getProperty("java.io.tmpdir"))
+  @arg(doc="Directory to use for temporary files.")                            val tmpDir: DirPath  = Paths.get(System.getProperty("java.io.tmpdir")),
+  @arg(doc="Minimum severity log-level to emit.")                              val logLevel: LogLevel = LogLevel.Info
 ) {
 
   SamSource.DefaultUseAsyncIo = asyncIo
@@ -67,6 +71,8 @@ class FgBioCommonArgs
 
   Io.tmpDir = tmpDir
   System.setProperty("java.io.tmpdir", tmpDir.toAbsolutePath.toString)
+
+  Logger.level = this.logLevel
 }
 
 class FgBioMain extends LazyLogging {
@@ -112,6 +118,7 @@ class FgBioMain extends LazyLogging {
     exit
   }
 
+  /** The name of the toolkit, used in printing usage and status lines. */
   protected def name: String = "fgbio"
 
   /** Prints a line of useful information when a tool starts executing. */
