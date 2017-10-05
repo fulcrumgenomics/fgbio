@@ -333,7 +333,7 @@ case class Alignment(query: Array[Byte],
       // If the current element consumes the chosen sequence, calculate the end, else set to the same as start
 
       val elementConsumes = consumes(elem)
-      val currEnd = if (elementConsumes) currStart + elem.length - 1 else currStart
+      val currEnd = if (elementConsumes) currStart + elem.length - 1 else currStart-1
 
       if (currEnd < start) {
         // Element before the desired window, need to bump start positions

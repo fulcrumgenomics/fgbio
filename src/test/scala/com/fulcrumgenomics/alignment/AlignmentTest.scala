@@ -212,13 +212,23 @@ class AlignmentTest extends UnitSpec {
   it should "drop insertions and deletions that are adjacent to the desired region" in {
     val sub = Alignment("AACCAAAAAAAA", "AAAAAAAATTAA", 1, 1, Cigar("2=2I6=2D2="), 10).subByTarget(3, 8)
     sub.targetStart shouldBe 3
-    sub.queryStart  shouldBe 3
+    sub.queryStart  shouldBe 5
     sub.cigar.toString() shouldBe "6="
   }
 
   it should "fail if the start or end is outside of the alignment" in {
     an[Exception] shouldBe thrownBy { Alignment("AAAAA", "TAAAT", 2, 2, Cigar("3="), 0).subByTarget(1, 3) }
     an[Exception] shouldBe thrownBy { Alignment("AAAAA", "TAAAT", 2, 2, Cigar("3="), 0).subByTarget(2, 5) }
+  }
+
+  it should "handle a real world test case" in {
+    val query  = "GGCCAGAGTCCACAGATTAACCAGGGGATATGCTAGAAA"
+    val target =    "CAGAGGCCACAGATTAACCAGGGGATATGCTAGAAA"
+    val ali = Alignment(query, target, 1, 1, Cigar("3I5=1X30="), 0)
+    val sub = ali.subByTarget(1, 20)
+    sub.queryStart shouldBe 4
+    sub.targetStart shouldBe 1
+    sub.cigar.toString shouldBe "5=1X14="
   }
 
   "Alignment.subByQuery" should "yield appropriate sub-alignment when all bases are aligned" in {
