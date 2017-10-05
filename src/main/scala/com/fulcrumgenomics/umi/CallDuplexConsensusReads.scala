@@ -76,6 +76,17 @@ import com.fulcrumgenomics.util.ProgressLogger
     |
     |The per base depths and errors are both capped at 32,767. In all cases no-calls (Ns) and bases below the
     |min-input-base-quality are not counted in tag value calculations.
+    |
+    |The --min-reads option can take 1-3 values similar to `FilterConsensusReads`. For example:
+    |
+    |```
+    |CallDuplexConsensusReads ... --min-reads 10 5 3
+    |```
+    |
+    |If fewer than three values are supplied, the last value is repeated (i.e. `5 4` -> `5 4 4` and `1` -> `1 1 1`.  The
+    |first value applies to the final consensus read, the second value to one single-strand consensus, and the last
+    |value to the other single-strand consensus. It is required that if values two and three differ,
+    |the _more stringent value comes earlier_.
   """,
   group = ClpGroups.Umi)
 class CallDuplexConsensusReads
@@ -86,8 +97,9 @@ class CallDuplexConsensusReads
  @arg(flag='1', doc="The Phred-scaled error rate for an error prior to the UMIs being integrated.") val errorRatePreUmi: PhredScore = DefaultErrorRatePreUmi,
  @arg(flag='2', doc="The Phred-scaled error rate for an error post the UMIs have been integrated.") val errorRatePostUmi: PhredScore = DefaultErrorRatePostUmi,
  @arg(flag='m', doc="Ignore bases in raw reads that have Q below this value.") val minInputBaseQuality: PhredScore = DefaultMinInputBaseQuality,
- @arg(flag='t', doc="If true quality trim input reads in addition to masking low Q bases.") val trim: Boolean = false,
- @arg(flag='S', doc="The sort order of the output, if `:none:` then the same as the input.") val sortOrder: Option[SamOrder] = Some(SamOrder.Queryname)
+ @arg(flag='t', doc="If true, quality trim input reads in addition to masking low Q bases.") val trim: Boolean = false,
+ @arg(flag='S', doc="The sort order of the output, if `:none:` then the same as the input.") val sortOrder: Option[SamOrder] = Some(SamOrder.Queryname),
+ @arg(flag='M', minElements=1, maxElements=3, doc="The minimum number of input reads to a consensus read.") val minReads: Seq[Int] = Seq(1)
 ) extends FgBioTool with LazyLogging {
 
   Io.assertReadable(input)
@@ -108,7 +120,8 @@ class CallDuplexConsensusReads
       minInputBaseQuality = minInputBaseQuality,
       trim                = trim,
       errorRatePreUmi     = errorRatePreUmi,
-      errorRatePostUmi    = errorRatePostUmi
+      errorRatePostUmi    = errorRatePostUmi,
+      minReads            = minReads
     )
 
     val iterator = new ConsensusCallingIterator(in.toIterator, caller, Some(ProgressLogger(logger)))

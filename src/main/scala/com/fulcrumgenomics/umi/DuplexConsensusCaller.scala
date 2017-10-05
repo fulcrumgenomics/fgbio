@@ -46,31 +46,32 @@ object DuplexConsensusCaller {
   val NoCallQual   = PhredScore.MinValue
 
   /** Additional filter strings used when rejecting reads. */
-  val FilterAorBOnly    = "Only Seeing A or B Reads"
+  val FilterMinReads    = "Not Enough Reads (Either Total, AB, or BA)"
   val FilterFragments   = "Being Fragment/Non-Paired Reads"
   val FilterSsConsensus = "Only Generating One Strand Consensus"
   val FilterCollision   = "Potential collision between independent duplex molecules"
 
   /**
     * Stores information about a consensus read.  Bases, arrays, and the two single
-    * strand consensus reads must all be the same length.
+    * strand consensus reads (when present) must all be the same length.
     *
     * @param bases the base calls of the consensus read
     * @param quals the calculated phred-scaled quality scores of the bases
     * @param errors the total number of raw read errors vs. the final consensus sequence at each base
     * @param abConsensus the AB consensus read from which the duplex was constructed
-    * @param baConsensus the AB consensus read from which the duplex was constructed
+    * @param baConsensus the BA consensus read from which the duplex was constructed, if present. It may not be present
+    *                    if created from the AB strand reads only.
     */
   case class DuplexConsensusRead(id: String,
                                  bases: Array[Byte],
                                  quals: Array[Byte],
                                  errors: Array[Short],
                                  abConsensus: VanillaConsensusRead,
-                                 baConsensus: VanillaConsensusRead) extends SimpleRead {
+                                 baConsensus: Option[VanillaConsensusRead]) extends SimpleRead {
     require(bases.length == quals.length,  "Bases and qualities are not the same length.")
     require(bases.length == errors.length, "Bases and errors are not the same length.")
-    require(bases.length == abConsensus.length, "Bases and AB consensus are not the same length.")
-    require(bases.length == baConsensus.length, "Bases and BA consensus are not the same length.")
+    require(abConsensus.length == bases.length, "Bases and AB consensus are not the same length.")
+    require(baConsensus.forall(_.length == bases.length), "Bases and BA consensus are not the same length.")
   }
 }
 
@@ -94,14 +95,23 @@ object DuplexConsensusCaller {
   * @param trim if true, quality trim reads in addition to masking. If false just mask.
   * @param errorRatePreUmi the estimated rate of errors in the DNA prior to attaching UMIs
   * @param errorRatePostUmi the estimated rate of errors in the DNA post attaching UMIs
-  */
+  * @param minReads the minimum number of input reads to a consensus read (see [[CallDuplexConsensusReads]]).
+  * */
 class DuplexConsensusCaller(override val readNamePrefix: String,
                             override val readGroupId: String    = "A",
                             val minInputBaseQuality: PhredScore = DuplexConsensusCaller.MinInputBaseQuality,
-                            val trim: Boolean = false,
+                            val trim: Boolean                   = false,
                             val errorRatePreUmi: PhredScore     = DuplexConsensusCaller.ErrorRatePreUmi,
-                            val errorRatePostUmi: PhredScore    = DuplexConsensusCaller.ErrorRatePostUmi
+                            val errorRatePostUmi: PhredScore    = DuplexConsensusCaller.ErrorRatePostUmi,
+                            val minReads: Seq[Int]              = Seq(1)
                            ) extends UmiConsensusCaller[DuplexConsensusRead] with LazyLogging {
+
+  private val Seq(minTotalReads, minXyReads, minYxReads) = this.minReads.padTo(3, this.minReads.last)
+
+
+  // For depth thresholds it's required that ba <= ab <= cc
+  require(minXyReads <= minTotalReads, "min-reads values must be specified high to low.")
+  require(minYxReads <= minXyReads, "min-reads values must be specified high to low.")
 
   private val ssCaller = new VanillaUmiConsensusCaller(readNamePrefix="x", options=new VanillaUmiConsensusCallerOptions(
       errorRatePreUmi         = this.errorRatePreUmi,
@@ -121,7 +131,7 @@ class DuplexConsensusCaller(override val readNamePrefix: String,
         throw new IllegalStateException(s"Read ${rec.name} is missing it's ${ConsensusTags.MolecularId} tag.")
       case Some(mi) =>
         val index = mi.lastIndexOf('/')
-        require(index > 0, s"Read ${rec.name}'s ${ConsensusTags} tag doesn't look like a duplex id: ${mi}")
+        require(index > 0, s"Read ${rec.name}'s $ConsensusTags tag doesn't look like a duplex id: $mi")
         mi.substring(0, index)
     }
   }
@@ -137,49 +147,78 @@ class DuplexConsensusCaller(override val readNamePrefix: String,
     val (pairs, frags) = recs.partition(_.paired)
     rejectRecords(frags, FilterFragments)
 
-    // Group the reads by /A vs. /B and ensure that /A is the first group and /B the second
-    val groups = pairs.groupBy(r => r[String](ConsensusTags.MolecularId)).toSeq.sortBy { case (mi, _) => mi }.map(_._2)
+    if (pairs.isEmpty) {
+      Nil
+    }
+    else {
+      // Group the reads by /A vs. /B and ensure that /A is the first group and /B the second
+      val groups = pairs.groupBy(r => r[String](ConsensusTags.MolecularId)).toSeq.sortBy { case (mi, _) => mi }.map(_._2)
 
-    groups match {
-      case Seq() =>
+      require(groups.length <= 2, "SamRecords supplied with more than two distinct MI values.")
+
+      val x = groups.head
+      val y = groups.lift(1).getOrElse(Seq.empty)
+
+      if (hasMinimumNumberOfReads(x, y)) {
+        callDuplexConsensusRead(x, y)
+      }
+      else {
+        rejectRecords(groups.flatten, FilterMinReads)
         Nil
-      case Seq(ab) =>
-        rejectRecords(ab, FilterAorBOnly)
+      }
+    }
+
+  }
+
+  /** Returns true if there enough reads according to the minReads option. */
+  private def hasMinimumNumberOfReads(x: Seq[SamRecord], y: Seq[SamRecord]): Boolean = {
+    // Get the number of reads per strand, in decreasing (more stringent) order.
+    val (numXy: Int, numYx: Int) = {
+      val numAb = x.count(r => r.paired && r.firstOfPair)
+      val numBa = y.count(r => r.paired && r.firstOfPair)
+      if (numAb >= numBa) (numAb, numBa) else (numBa, numAb)
+    }
+    this.minTotalReads <= numXy + numYx && this.minXyReads <= numXy && this.minYxReads <= numYx
+  }
+
+  private def areAllSameStrand(reads: Seq[SamRecord]): Boolean = {
+    if (reads.nonEmpty) {
+      val ss1Flag = reads.head.negativeStrand
+      reads.forall(_.negativeStrand == ss1Flag)
+    }
+    else {
+      true
+    }
+  }
+
+  /** Attempts to call a duplex consensus reads from the two sets of reads, one for each strand. */
+  private def callDuplexConsensusRead(ab: Seq[SamRecord], ba: Seq[SamRecord]): Seq[SamRecord] = {
+    // Fragments have no place in duplex land (and are filtered out previously anyway)!
+    val (_, abR1s, abR2s) = subGroupRecords(ab)
+    val (_, baR1s, baR2s) = subGroupRecords(ba)
+
+    // Get all the alignments to one end of the source molecule
+    val singleStrand1 = abR1s ++ baR2s
+    val singleStrand2 = abR2s ++ baR1s
+
+    // The orientation of AB and BA reads should be:
+    // AB R1: +  AB R2: -
+    // BA R1: -  BA R2: +
+    // or vice versa (AB-R1:-, AB-R2:+, AB-R1:-, AB-R2: +
+    // Therefore, AB-R1s and BA-R2s should be on the same strand, and the same for AB-R2s and BA-R1s
+    // Check for this explicitly here.
+    (areAllSameStrand(singleStrand1), areAllSameStrand(singleStrand2)) match {
+      case (false, _)   =>
+        val ss1Mi   = singleStrand1.head.apply[String](ConsensusTags.MolecularId)
+        rejectRecords(ab ++ ba, FilterCollision)
+        logger.debug(s"Not all AB-R1s and BA-R2s were on the same strand for molecule with id: $ss1Mi")
         Nil
-      case Seq(ab, ba) =>
-        // Fragments have no place in duplex land (and are filtered out previously anyway)!
-        val (_, abR1s, abR2s) = subGroupRecords(ab)
-        val (_, baR1s, baR2s) = subGroupRecords(ba)
-
-        // Get all the alignments to one end of the source molecule
-        val singleStrand1 = abR1s ++ baR2s
-        val singleStrand2 = abR2s ++ baR1s
-
-        // The orientation of AB and BA reads should be:
-        // AB R1: +  AB R2: -
-        // BA R1: -  BA R2: +
-        // or vice versa (AB-R1:-, AB-R2:+, AB-R1:-, AB-R2: +
-        // Therefore, AB-R1s and BA-R2s should be on the same strand, and the same for AB-R2s and BA-R1s
-        // Check for this explicitly here.
-        if (singleStrand1.nonEmpty) {
-          val ss1Flag = singleStrand1.head.negativeStrand
-          if (singleStrand1.exists(_.negativeStrand != ss1Flag)) {
-            val ss1MI   = singleStrand1.head.apply[String](ConsensusTags.MolecularId)
-            rejectRecords(ab ++ ba, FilterCollision)
-            logger.debug(s"Not all AB-R1s and BA-R2s were on the same strand for molecule with id: $ss1MI")
-            return Nil
-          }
-        }
-        if (singleStrand2.nonEmpty) {
-          val ss2Flag = singleStrand2.head.negativeStrand
-          if (singleStrand2.exists(_.negativeStrand != ss2Flag)) {
-            val ss2MI   = singleStrand2.head.apply[String](ConsensusTags.MolecularId)
-            rejectRecords(ab ++ ba, FilterCollision)
-            logger.debug(s"Not all AB-R2s and BA-R1s were on the same strand for molecule with id: $ss2MI")
-            return Nil
-          }
-        }
-
+      case (_, false)   =>
+        val ss2Mi   = singleStrand2.head.apply[String](ConsensusTags.MolecularId)
+        rejectRecords(ab ++ ba, FilterCollision)
+        logger.debug(s"Not all AB-R2s and BA-R1s were on the same strand for molecule with id: $ss2Mi")
+        Nil
+      case (true, true) =>
         // Filter by common indel pattern with AB and BA together
         val filteredXs = filterToMostCommonAlignment((abR1s ++ baR2s).flatMap(toSourceRead(_, this.minInputBaseQuality, this.trim)))
         val filteredYs = filterToMostCommonAlignment((abR2s ++ baR1s).flatMap(toSourceRead(_, this.minInputBaseQuality, this.trim)))
@@ -216,8 +255,6 @@ class DuplexConsensusCaller(override val readNamePrefix: String,
             rejectRecords(remainingRecs.flatMap(_.sam), FilterSsConsensus)
             Nil
         }
-      case _ =>
-        unreachable("SamRecords supplied with more than two distinct MI values.")
     }
   }
 
@@ -241,6 +278,8 @@ class DuplexConsensusCaller(override val readNamePrefix: String,
                                    ba: Option[VanillaConsensusRead],
                                    sourceReads: Seq[SourceRead]): Option[DuplexConsensusRead] = {
     (ab, ba) match {
+      case (Some(a), None)    => Some(DuplexConsensusRead(id=a.id, a.bases, a.quals, a.errors, a, None))
+      case (None, Some(b))    => Some(DuplexConsensusRead(id=b.id, b.bases, b.quals, b.errors, b, None))
       case (Some(a), Some(b)) =>
         val len = min(a.length, b.length)
         val id  = a.id
@@ -272,7 +311,7 @@ class DuplexConsensusCaller(override val readNamePrefix: String,
           errors(i) = min(sourceReads.count(s => s.length > i && isError(s.bases(i), rawBase)), Short.MaxValue).toShort
         }
 
-        Some(DuplexConsensusRead(id=id, bases, quals, errors, a.truncate(bases.length), b.truncate(bases.length)))
+        Some(DuplexConsensusRead(id=id, bases, quals, errors, a.truncate(bases.length), Some(b.truncate(bases.length))))
       case _ =>
         None
     }
@@ -288,29 +327,41 @@ class DuplexConsensusCaller(override val readNamePrefix: String,
     val rec = super.createSamRecord(read, readType, umis)
 
     // Calculate the total depths across both SS consensus reads
-    val totalDepths = read.abConsensus.depths.zip(read.baConsensus.depths).map(x => x._1 + x._2)
+    val totalDepths: Array[Int] = read.baConsensus match {
+      case Some(ba) => read.abConsensus.depths.zip(ba.depths).map(x => x._1 + x._2)
+      case None     => read.abConsensus.depths.map(_.toInt)
+    }
 
     { import ConsensusTags.PerRead._
       rec(RawReadCount)       = totalDepths.max
       rec(MinRawReadCount)    = totalDepths.min
       rec(RawReadErrorRate)   = sum(read.errors) / totalDepths.sum.toFloat
       rec(AbRawReadCount)     = read.abConsensus.depths.max.toInt
-      rec(BaRawReadCount)     = read.baConsensus.depths.max.toInt
       rec(AbMinRawReadCount)  = read.abConsensus.depths.min.toInt
-      rec(BaMinRawReadCount)  = read.baConsensus.depths.min.toInt
       rec(AbRawReadErrorRate) = sum(read.abConsensus.errors) / sum(read.abConsensus.depths).toFloat
-      rec(BaRawReadErrorRate) = sum(read.baConsensus.errors) / sum(read.baConsensus.depths).toFloat
+      read.baConsensus match {
+        case Some(ba) =>
+          rec(BaRawReadCount)     = ba.depths.max.toInt
+          rec(BaMinRawReadCount)  = ba.depths.min.toInt
+          rec(BaRawReadErrorRate) = sum(ba.errors) / sum(ba.depths).toFloat
+        case None =>
+          rec(BaRawReadCount)     = 0
+          rec(BaMinRawReadCount)  = 0
+          rec(BaRawReadErrorRate) = 0.0f
+      }
     }
 
     { import ConsensusTags.PerBase._
       rec(AbRawReadCount)   = read.abConsensus.depths
-      rec(BaRawReadCount)   = read.baConsensus.depths
       rec(AbRawReadErrors)  = read.abConsensus.errors
-      rec(BaRawReadErrors)  = read.baConsensus.errors
       rec(AbConsensusBases) = read.abConsensus.baseString
-      rec(BaConsensusBases) = read.baConsensus.baseString
       rec(AbConsensusQuals) = read.abConsensus.qualString
-      rec(BaConsensusQuals) = read.baConsensus.qualString
+      read.baConsensus.foreach { ab =>
+        rec(BaRawReadCount)   = ab.depths
+        rec(BaRawReadErrors)  = ab.errors
+        rec(BaConsensusBases) = ab.baseString
+        rec(BaConsensusQuals) = ab.qualString
+      }
     }
 
     rec

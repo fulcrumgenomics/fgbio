@@ -52,6 +52,14 @@ object GroupReadsByUmi {
   /** A type to represent a unique ID assigned to a molecule. */
   type MoleculeId = String
 
+  /** The suffix appended to molecular identifier reads from the "top strand" of the duplex molecule. These reads have
+    * 5' coordinate for read 1 less than or equal to the 5' coordinate for read 2. */
+  val TopStrandDuplex = "/A"
+
+  /** The suffix appended to molecular identifier reads from the "bottom strand" of the duplex molecule. These reads have
+    * 5' coordinate for read 1 greater than the 5' coordinate for read 2. */
+  val BottomStrandDuplex = "/B"
+
   private val ReadInfoTempAttributeName = "__GRBU_ReadInfo"
 
   /** A case class to represent all the information we need to order reads for duplicate marking / grouping. */
@@ -267,8 +275,8 @@ object GroupReadsByUmi {
       val mappings = mutable.Buffer[(Umi,MoleculeId)]()
       roots.foreach(root => {
         val id = nextId
-        val ab = id + "/A"
-        val ba = id + "/B"
+        val ab = id + GroupReadsByUmi.TopStrandDuplex
+        val ba = id + GroupReadsByUmi.BottomStrandDuplex
 
         mappings.append((root.umi, ab))
         mappings.append((reverse(root.umi), ba))

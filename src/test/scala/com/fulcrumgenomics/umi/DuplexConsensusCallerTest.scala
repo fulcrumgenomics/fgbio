@@ -31,8 +31,9 @@ import com.fulcrumgenomics.util.NumericTypes.PhredScore
 
 class DuplexConsensusCallerTest extends UnitSpec {
   // Function to create a caller without so much writing
-  def caller(q: Int = 10, pre: Int = DuplexConsensusCaller.ErrorRatePreUmi, post: Int = DuplexConsensusCaller.ErrorRatePostUmi) =
-    new DuplexConsensusCaller(readNamePrefix="test", minInputBaseQuality=q.toByte, errorRatePreUmi=pre.toByte, errorRatePostUmi=post.toByte)
+  def caller(q: Int = 10, pre: Int = DuplexConsensusCaller.ErrorRatePreUmi, post: Int = DuplexConsensusCaller.ErrorRatePostUmi, minReads: Seq[Int] = Seq(1)) =
+    new DuplexConsensusCaller(readNamePrefix="test", minInputBaseQuality=q.toByte, errorRatePreUmi=pre.toByte, errorRatePostUmi=post.toByte,
+      minReads=minReads)
 
   // A default caller that can be used by tests that don't care about the parameters
   private val c = caller()
@@ -86,36 +87,78 @@ class DuplexConsensusCallerTest extends UnitSpec {
     r2.quals(0) > 30 shouldBe true
   }
 
-  it should "not create a a consensus with only A or B reads" in {
-    val builder = new SamBuilder(readLength=10, baseQuality=20)
-    builder.addPair(name="q1", start1=100, start2=200, attrs=Map(MI -> "foo/A"), bases1="AAAAAAAAAA", bases2="AAAAAAAAAA")
-    builder.addPair(name="q2", start1=100, start2=200, attrs=Map(MI -> "foo/A"), bases1="AAAAAAAAAA", bases2="AAAAAAAAAA")
-    builder.addPair(name="q3", start1=100, start2=200, attrs=Map(MI -> "foo/A"), bases1="AAAAAAAAAA", bases2="AAAAAAAAAA")
+  Seq(true).foreach { allowSingleStrand =>
+    val extraName: String = if (allowSingleStrand) "" else "not "
+    Seq("A", "B").foreach { duplexStrand =>
+      it should s"$extraName create a consensus with only $duplexStrand reads" in {
+        val builder = new SamBuilder(readLength=10, baseQuality=20)
+        builder.addPair(name="q1", start1=100, start2=200, attrs=Map(MI -> s"foo/$duplexStrand"), bases1="AAAAAAAAAA", bases2="CCCCCCCCCC")
+        builder.addPair(name="q2", start1=100, start2=200, attrs=Map(MI -> s"foo/$duplexStrand"), bases1="AAAAAAAAAA", bases2="CCCCCCCCCC")
+        builder.addPair(name="q3", start1=100, start2=200, attrs=Map(MI -> s"foo/$duplexStrand"), bases1="AAAAAAAAAA", bases2="CCCCCCCCCC")
 
-    val recs = c.consensusReadsFromSamRecords(builder.toSeq)
-    recs shouldBe empty
+        val minReads = if (allowSingleStrand) Seq(1, 1, 0) else Seq(1, 1, 1)
+        val recs = caller(minReads=minReads).consensusReadsFromSamRecords(builder.toSeq)
+
+        if (allowSingleStrand) {
+          recs should have size 2
+          val r1 = recs.find(_.firstOfPair).getOrElse(fail("No first of pair."))
+          val r2 = recs.find(_.secondOfPair).getOrElse(fail("No second of pair."))
+          r1.basesString shouldBe "AAAAAAAAAA"
+          r2.basesString shouldBe "GGGGGGGGGG" // after un-revcomping
+          r1.quals(0) > 30 shouldBe true
+          r2.quals(0) > 30 shouldBe true
+
+          { // Check a few per-read tags
+            import ConsensusTags.PerRead._
+            r1[Int](AbRawReadCount)        shouldBe 3
+            r1[Int](BaRawReadCount)        shouldBe 0
+            r2[Int](AbRawReadCount)        shouldBe 3
+            r2[Int](BaRawReadCount)        shouldBe 0          }
+
+          { // Check a few per-base tags
+            import ConsensusTags.PerBase._
+            r1[Array[Short]](AbRawReadCount)  shouldBe Array[Byte](3,3,3,3,3,3,3,3,3,3)
+            r1.get[Array[Short]](BaRawReadCount) shouldBe 'empty
+            r2[Array[Short]](AbRawReadCount)  shouldBe Array[Byte](3,3,3,3,3,3,3,3,3,3)
+            r2.get[Array[Short]](BaRawReadCount) shouldBe 'empty
+          }
+        }
+        else {
+          recs shouldBe empty
+        }
+      }
+    }
   }
 
-  it should "generate a sensible consensus from deep data" in {
-    val builder = new SamBuilder(readLength=10, baseQuality=20)
-    Range.inclusive(1, 50) foreach { i =>
-      builder.addPair(name=s"a$i", start1=100, start2=200, strand1=Plus, strand2=Minus, bases1="AAAAAAAAAA", bases2="CCCCCCCCCC", attrs=Map(MI -> "foo/A"))
-      builder.addPair(name=s"b$i", start1=200, start2=100, strand1=Minus, strand2=Plus, bases1="CCCCCCCCCC", bases2="AAAAAAAAAA", attrs=Map(MI -> "foo/B"))
-    }
-    val recs = caller(post=45.toByte).consensusReadsFromSamRecords(builder.toSeq)
-    recs should have size 2
-    val r1 = recs.find(_.firstOfPair).getOrElse(fail("No first of pair."))
-    val r2 = recs.find(_.secondOfPair).getOrElse(fail("No second of pair."))
-    r1.basesString shouldBe "AAAAAAAAAA"
-    r2.basesString shouldBe "GGGGGGGGGG" // after un-revcomping
+  it should "throw validation exceptions if you provide --min-reads in increasing stringency order" in {
+    an[Exception] shouldBe thrownBy { new DuplexConsensusCaller(readNamePrefix="pre", minReads=Seq(1,2,3)) }
+    an[Exception] shouldBe thrownBy { new DuplexConsensusCaller(readNamePrefix="pre", minReads=Seq(9,4,6)) }
+  }
 
-    Seq(r1, r2) foreach { r =>
-      r.quals.forall(_ == 90) shouldBe true
-      r[Int](ConsensusTags.PerRead.RawReadCount) shouldBe 100
-      r[Int](ConsensusTags.PerRead.AbRawReadCount) shouldBe 50
-      r[Int](ConsensusTags.PerRead.BaRawReadCount) shouldBe 50
-      r[Float](ConsensusTags.PerRead.RawReadErrorRate) shouldBe 0.0f
-    }
+  /** A builder where we have one duplex, with five total reads, three on one strand and two on the other. */
+  private val builderForMinReads: SamBuilder = {
+    val builder = new SamBuilder(readLength=10, baseQuality=20)
+    builder.addPair(name="q1", start1=100, start2=200, strand1=Plus, strand2=Minus, bases1="AAAAAAAAAA", bases2="CCCCCCCCCC", attrs=Map(MI -> "foo/A"))
+    builder.addPair(name="q2", start1=100, start2=200, strand1=Plus, strand2=Minus, bases1="AAAAAAAAAA", bases2="CCCCCCCCCC", attrs=Map(MI -> "foo/A"))
+    builder.addPair(name="q3", start1=100, start2=200, strand1=Plus, strand2=Minus, bases1="AAAAAAAAAA", bases2="CCCCCCCCCC", attrs=Map(MI -> "foo/A"))
+    builder.addPair(name="q4", start1=200, start2=100, strand1=Minus, strand2=Plus, bases1="CCCCCCCCCC", bases2="AAAAAAAAAA", attrs=Map(MI -> "foo/B"))
+    builder.addPair(name="q5", start1=200, start2=100, strand1=Minus, strand2=Plus, bases1="CCCCCCCCCC", bases2="AAAAAAAAAA", attrs=Map(MI -> "foo/B"))
+    builder
+  }
+
+  it should "support the --min-reads option when one value is provided" in {
+    caller(minReads=Seq(3)).consensusReadsFromSamRecords(builderForMinReads.toSeq) shouldBe empty
+    caller(minReads=Seq(2)).consensusReadsFromSamRecords(builderForMinReads.toSeq) should have size 2
+  }
+
+  it should "support the --min-reads option when two values are provided" in {
+    caller(minReads=Seq(5, 3)).consensusReadsFromSamRecords(builderForMinReads.toSeq) shouldBe empty
+    caller(minReads=Seq(5, 2)).consensusReadsFromSamRecords(builderForMinReads.toSeq) should have size 2
+  }
+
+  it should "support the --min-reads option when three values are provided" in {
+    caller(minReads=Seq(5, 3, 3)).consensusReadsFromSamRecords(builderForMinReads.toSeq) shouldBe empty
+    caller(minReads=Seq(5, 3, 2)).consensusReadsFromSamRecords(builderForMinReads.toSeq) should have size 2
   }
 
   it should "not saturate the qualities with deep AB and light BA coverage" in {
@@ -290,6 +333,129 @@ class DuplexConsensusCallerTest extends UnitSpec {
       r2[String](BaConsensusBases)   shouldBe "GGGGGGGGGG"
       r2[String](AbConsensusQuals)   shouldBe "NNNNBNNNNN"
       r2[String](BaConsensusQuals)   shouldBe "MMMMMMMMMM"
+    }
+  }
+
+  it should "generate the correct per-base and per-read tags when only one strand is present" in {
+
+    // /A strand
+    {
+      val builder = new SamBuilder(readLength=10, baseQuality=20)
+      builder.addPair(name="q1", start1=100, start2=200, strand1=Plus, strand2=Minus, bases1="AAAAAAAAAA", bases2="CCCCCCCCCC", attrs=Map(MI -> "foo/A"))
+      builder.addPair(name="q2", start1=100, start2=200, strand1=Plus, strand2=Minus, bases1="AAAAAAAAAA", bases2="CCCCCCCCCC", attrs=Map(MI -> "foo/A"))
+      builder.addPair(name="q3", start1=100, start2=200, strand1=Plus, strand2=Minus, bases1="AAAAACAAAA", bases2="CCCCCGCCCC", attrs=Map(MI -> "foo/A"))
+
+      val recs = caller(minReads=Seq(3, 3, 0)).consensusReadsFromSamRecords(builder.toSeq)
+
+      recs should have size 2
+      val r1 = recs.find(_.firstOfPair).getOrElse(fail("R1 missing."))
+      val r2 = recs.find(_.secondOfPair).getOrElse(fail("R2 missing."))
+
+      r1.basesString shouldBe "AAAAAAAAAA"
+      r2.basesString shouldBe "GGGGGGGGGG"
+
+      { // Check the per-read tags
+        import ConsensusTags.PerRead._
+        r1[Int](RawReadCount)          shouldBe 3
+        r1[Int](AbRawReadCount)        shouldBe 3
+        r1[Int](BaRawReadCount)        shouldBe 0
+        r1[Int](MinRawReadCount)       shouldBe 3
+        r1[Int](AbMinRawReadCount)     shouldBe 3
+        r1[Int](BaMinRawReadCount)     shouldBe 0
+        r1[Float](RawReadErrorRate)    shouldBe 1/30f
+        r1[Float](AbRawReadErrorRate)  shouldBe 1/30f
+        r1[Float](BaRawReadErrorRate)  shouldBe 0f
+
+        r2[Int](RawReadCount)          shouldBe 3
+        r2[Int](AbRawReadCount)        shouldBe 3
+        r2[Int](BaRawReadCount)        shouldBe 0
+        r2[Int](MinRawReadCount)       shouldBe 3
+        r2[Int](AbMinRawReadCount)     shouldBe 3
+        r2[Int](BaMinRawReadCount)     shouldBe 0f
+        r2[Float](RawReadErrorRate)    shouldBe 1/30f
+        r2[Float](AbRawReadErrorRate)  shouldBe 1/30f
+        r2[Float](BaRawReadErrorRate)  shouldBe 0f
+      }
+
+      { // Check the per-base tags
+        import ConsensusTags.PerBase._
+        r1[Array[Short]](AbRawReadCount)  shouldBe Array[Byte](3,3,3,3,3,3,3,3,3,3)
+        r1[Array[Short]](AbRawReadErrors) shouldBe Array[Byte](0,0,0,0,0,1,0,0,0,0)
+        r1[String](AbConsensusBases)      shouldBe r1.basesString
+        r1[String](AbConsensusQuals)      shouldBe "MMMMM9MMMM"
+        r2[Array[Short]](AbRawReadCount)  shouldBe Array[Byte](3,3,3,3,3,3,3,3,3,3)
+        r2[Array[Short]](AbRawReadErrors) shouldBe Array[Byte](0,0,0,0,1,0,0,0,0,0)
+        r2[String](AbConsensusBases)      shouldBe r2.basesString
+        r2[String](AbConsensusQuals)      shouldBe "MMMM9MMMMM"
+        r1.get[Array[Short]](BaRawReadCount)  shouldBe 'empty
+        r1.get[Array[Short]](BaRawReadErrors) shouldBe 'empty
+        r1.get[String](BaConsensusBases)      shouldBe 'empty
+        r1.get[String](BaConsensusQuals)      shouldBe 'empty
+        r2.get[Array[Short]](BaRawReadCount)  shouldBe 'empty
+        r2.get[Array[Short]](BaRawReadErrors) shouldBe 'empty
+        r2.get[String](BaConsensusBases)      shouldBe 'empty
+        r2.get[String](BaConsensusQuals)      shouldBe 'empty
+      }
+    }
+
+    // /B strand
+    {
+      val builder = new SamBuilder(readLength=10, baseQuality=20)
+      builder.addPair(name="q1", start1=200, start2=100, strand1=Minus, strand2=Plus, bases1="CCCCCCCCCC", bases2="AAAAAAAAAA", attrs=Map(MI -> "foo/B"))
+      builder.addPair(name="q2", start1=200, start2=100, strand1=Minus, strand2=Plus, bases1="CCCCCCCCCC", bases2="AAAAAAAAAA", attrs=Map(MI -> "foo/B"))
+      builder.addPair(name="q2", start1=200, start2=100, strand1=Minus, strand2=Plus, bases1="CCCCCGCCCC", bases2="AAAAATAAAA", attrs=Map(MI -> "foo/B"))
+
+      val recs = caller(minReads=Seq(3, 3, 0)).consensusReadsFromSamRecords(builder.toSeq)
+
+      recs should have size 2
+      val r1 = recs.find(_.firstOfPair).getOrElse(fail("R1 missing."))
+      val r2 = recs.find(_.secondOfPair).getOrElse(fail("R2 missing."))
+
+      r1.basesString shouldBe "GGGGGGGGGG"
+      r2.basesString shouldBe "AAAAAAAAAA"
+
+      { // Check the per-read tags
+        import ConsensusTags.PerRead._
+        r1[Int](RawReadCount)          shouldBe 3
+        r1[Int](AbRawReadCount)        shouldBe 3
+        r1[Int](BaRawReadCount)        shouldBe 0
+        r1[Int](MinRawReadCount)       shouldBe 3
+        r1[Int](AbMinRawReadCount)     shouldBe 3
+        r1[Int](BaMinRawReadCount)     shouldBe 0
+        r1[Float](RawReadErrorRate)    shouldBe 1/30f
+        r1[Float](AbRawReadErrorRate)  shouldBe 1/30f
+        r1[Float](BaRawReadErrorRate)  shouldBe 0f
+
+        r2[Int](RawReadCount)          shouldBe 3
+        r2[Int](AbRawReadCount)        shouldBe 3
+        r2[Int](BaRawReadCount)        shouldBe 0
+        r2[Int](MinRawReadCount)       shouldBe 3
+        r2[Int](AbMinRawReadCount)     shouldBe 3
+        r2[Int](BaMinRawReadCount)     shouldBe 0f
+        r2[Float](RawReadErrorRate)    shouldBe 1/30f
+        r2[Float](AbRawReadErrorRate)  shouldBe 1/30f
+        r2[Float](BaRawReadErrorRate)  shouldBe 0f
+      }
+
+      { // Check the per-base tags
+        import ConsensusTags.PerBase._
+        r1[Array[Short]](AbRawReadCount)  shouldBe Array[Byte](3,3,3,3,3,3,3,3,3,3)
+        r1[Array[Short]](AbRawReadErrors) shouldBe Array[Byte](0,0,0,0,1,0,0,0,0,0)
+        r1[String](AbConsensusBases)      shouldBe r1.basesString
+        r1[String](AbConsensusQuals)      shouldBe "MMMM9MMMMM"
+        r2[Array[Short]](AbRawReadCount)  shouldBe Array[Byte](3,3,3,3,3,3,3,3,3,3)
+        r2[Array[Short]](AbRawReadErrors) shouldBe Array[Byte](0,0,0,0,0,1,0,0,0,0)
+        r2[String](AbConsensusBases)      shouldBe r2.basesString
+        r2[String](AbConsensusQuals)      shouldBe "MMMMM9MMMM"
+        r1.get[Array[Short]](BaRawReadCount)  shouldBe 'empty
+        r1.get[Array[Short]](BaRawReadErrors) shouldBe 'empty
+        r1.get[String](BaConsensusBases)      shouldBe 'empty
+        r1.get[String](BaConsensusQuals)      shouldBe 'empty
+        r2.get[Array[Short]](BaRawReadCount)  shouldBe 'empty
+        r2.get[Array[Short]](BaRawReadErrors) shouldBe 'empty
+        r2.get[String](BaConsensusBases)      shouldBe 'empty
+        r2.get[String](BaConsensusQuals)      shouldBe 'empty
+      }
     }
   }
 }
