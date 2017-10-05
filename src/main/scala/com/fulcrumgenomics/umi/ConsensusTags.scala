@@ -32,13 +32,14 @@ package com.fulcrumgenomics.umi
   * names for consistency if/when we add duplex calling:
   *     Value                 AB  BA  Final
   *     ===================== ==  ==  =====
-  *     bases                 ac  bc  bases
-  *     quals                 aq  bq  quals
   *     per-read-depth        aD  bD  cD
   *     per-read-min-depth    aM  bM  cM
   *     per-read-error-rate   aE  bE  cE
   *     per-base-depth        ad  bd  cd
   *     per-base-error-count  ae  be  ce
+  *     per-base-bases        ac  bc  bases
+  *     per-base-quals        aq  bq  quals
+  * The second letter in the tag is lower case if it is per-base, upper case if it is per-read.
   */
 object ConsensusTags {
   /** The default field in which to look for UMI sequences. */
@@ -60,8 +61,19 @@ object ConsensusTags {
     val AbRawReadErrors = "ae"
     val BaRawReadErrors = "be"
 
+    // Duplex-specific tags
+    /** The single-stranded consensus from the AB raw reads. */
+    val AbConsensusBases = "ac"
+    /** The single-stranded consensus from the BA raw reads. */
+    val BaConsensusBases = "bc"
+    /** The phred-scaled qualities, as phred-33 ascii values, of the single-stranded consensus from the AB raw reads. */
+    val AbConsensusQuals = "aq"
+    /** The phred-scaled qualities, as phred-33 ascii values, of the single-stranded consensus from the BA raw reads. */
+    val BaConsensusQuals = "bq"
+
     // NOTE: Important that this is updated if any new tags are added!
-    val AllPerBaseTags = Seq(RawReadCount, RawReadErrors, AbRawReadCount, AbRawReadErrors, BaRawReadCount, BaRawReadErrors)
+    val AllPerBaseTags = Seq(RawReadCount, RawReadErrors, AbRawReadCount, AbRawReadErrors, BaRawReadCount, BaRawReadErrors,
+      AbConsensusBases, BaConsensusBases, AbConsensusQuals, BaConsensusQuals)
   }
 
   object PerRead {

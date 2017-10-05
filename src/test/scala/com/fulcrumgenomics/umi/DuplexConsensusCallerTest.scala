@@ -278,10 +278,18 @@ class DuplexConsensusCallerTest extends UnitSpec {
       r1[Array[Short]](AbRawReadErrors) shouldBe Array[Byte](0,0,0,0,1,0,0,0,0,0)
       r1[Array[Short]](BaRawReadCount)  shouldBe Array[Byte](2,2,2,2,2,2,2,2,2,2)
       r1[Array[Short]](BaRawReadErrors) shouldBe Array[Byte](0,0,0,0,0,0,0,0,0,0)
+      r1[String](AbConsensusBases)   shouldBe "AAAAAAAAAA"
+      r1[String](BaConsensusBases)   shouldBe "AAAAAAAAAA"
+      r1[String](AbConsensusQuals)   shouldBe "NNMMBNNNNN"
+      r1[String](BaConsensusQuals)   shouldBe "MMMMMMMMMM"
       r2[Array[Short]](AbRawReadCount)  shouldBe Array[Byte](3,3,3,3,3,3,3,3,3,3)
       r2[Array[Short]](AbRawReadErrors) shouldBe Array[Byte](0,0,0,0,1,0,0,0,0,0)
       r2[Array[Short]](BaRawReadCount)  shouldBe Array[Byte](2,2,2,2,2,2,2,2,2,2)
       r2[Array[Short]](BaRawReadErrors) shouldBe Array[Byte](0,0,0,0,0,0,0,0,0,0)
+      r2[String](AbConsensusBases)   shouldBe "GGGGGGGGGG"
+      r2[String](BaConsensusBases)   shouldBe "GGGGGGGGGG"
+      r2[String](AbConsensusQuals)   shouldBe "NNNNBNNNNN"
+      r2[String](BaConsensusQuals)   shouldBe "MMMMMMMMMM"
     }
   }
 }

@@ -70,6 +70,8 @@ import com.fulcrumgenomics.util.ProgressLogger
     |```
     |consensus depth  [ad,bd] (short[]): the count of bases contributing to each single-strand consensus read at each position
     |consensus errors [ae,be] (short[]): the count of bases from raw reads disagreeing with the final single-strand consensus base
+    |consensus errors [ac,bc] (string): the single-strand consensus bases
+    |consensus errors [aq,bq] (string): the single-strand consensus qualities
     |```
     |
     |The per base depths and errors are both capped at 32,767. In all cases no-calls (Ns) and bases below the

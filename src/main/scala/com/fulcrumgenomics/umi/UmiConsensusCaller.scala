@@ -32,7 +32,7 @@ import com.fulcrumgenomics.umi.UmiConsensusCaller._
 import com.fulcrumgenomics.util.NumericTypes.PhredScore
 import htsjdk.samtools.SAMFileHeader.GroupOrder
 import htsjdk.samtools.util.{Murmur3, SequenceUtil, TrimmingUtil}
-import htsjdk.samtools.{CigarOperator, SAMFileHeader, SAMReadGroupRecord, SAMTag}
+import htsjdk.samtools._
 
 import scala.collection.mutable
 import scala.collection.mutable.ArrayBuffer
@@ -73,6 +73,8 @@ object UmiConsensusCaller {
     def length: Int = bases.length
     /** Returns the consensus read a String - mostly useful for testing. */
     def baseString = new String(bases)
+    /** Retrieves the quals as a phred+33/fastq ascii String. */
+    def qualString = SAMUtils.phredToFastq(this.quals)
   }
 
   /** Stores information about a read to be fed into a consensus. */
@@ -192,13 +194,12 @@ trait UmiConsensusCaller[C <: SimpleRead] {
     */
   protected[umi] def toSourceRead(rec: SamRecord, minBaseQuality: PhredScore, trim: Boolean): Option[SourceRead] = {
     // Extract and possibly RC the source bases and quals from the SamRecord
-    var bases = rec.bases.clone()
-    var quals = rec.quals.clone()
-    var cigar = rec.cigar
-    if (rec.negativeStrand) {
+    val bases = rec.bases.clone()
+    val quals = rec.quals.clone()
+    val cigar = if (rec.positiveStrand) rec.cigar else {
       SequenceUtil.reverseComplement(bases)
       SequenceUtil.reverse(quals, 0, quals.length)
-      cigar = cigar.reverse
+      rec.cigar.reverse
     }
 
     // Quality trim the reads if requested.

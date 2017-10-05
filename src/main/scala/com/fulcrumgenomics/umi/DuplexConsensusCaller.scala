@@ -286,8 +286,6 @@ class DuplexConsensusCaller(override val readNamePrefix: String,
     */
   override protected def createSamRecord(read: DuplexConsensusRead, readType: ReadType, umis: Seq[String] = Seq.empty): SamRecord = {
     val rec = super.createSamRecord(read, readType, umis)
-    val ab = read.abConsensus
-    val ba = read.baConsensus
 
     // Calculate the total depths across both SS consensus reads
     val totalDepths = read.abConsensus.depths.zip(read.baConsensus.depths).map(x => x._1 + x._2)
@@ -305,10 +303,14 @@ class DuplexConsensusCaller(override val readNamePrefix: String,
     }
 
     { import ConsensusTags.PerBase._
-      rec(AbRawReadCount)  = read.abConsensus.depths
-      rec(BaRawReadCount)  = read.baConsensus.depths
-      rec(AbRawReadErrors) = read.abConsensus.errors
-      rec(BaRawReadErrors) = read.baConsensus.errors
+      rec(AbRawReadCount)   = read.abConsensus.depths
+      rec(BaRawReadCount)   = read.baConsensus.depths
+      rec(AbRawReadErrors)  = read.abConsensus.errors
+      rec(BaRawReadErrors)  = read.baConsensus.errors
+      rec(AbConsensusBases) = read.abConsensus.baseString
+      rec(BaConsensusBases) = read.baConsensus.baseString
+      rec(AbConsensusQuals) = read.abConsensus.qualString
+      rec(BaConsensusQuals) = read.baConsensus.qualString
     }
 
     rec
