@@ -39,7 +39,7 @@ case class FastqRecord(name: String, bases: String, quals: String, comment: Opti
     * @return a record with length <= len
     */
   def trimmedTo(len: Int) : FastqRecord = {
-    if (len > this.length) this
+    if (len >= this.length) this
     else copy(bases=this.bases.substring(0, len), quals=this.quals.substring(0, len))
   }
 
