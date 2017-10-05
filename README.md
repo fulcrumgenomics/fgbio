@@ -98,13 +98,13 @@ Java SE 8 is required.
 You can include `fgbio` in your project using:
 
 ```
-"com.fulcrumgenomics" %% "fgbio" % "0.1.4"
+"com.fulcrumgenomics" %% "fgbio" % "0.3.0"
 ```
 
 for the latest released version or (buyer beware):
 
 ```
-"com.fulcrumgenomics" %% "fgbio" % "0.2.0-SNAPSHOT"
+"com.fulcrumgenomics" %% "fgbio" % "0.4.0-SNAPSHOT"
 ```
 
 for the latest development snapshot.
