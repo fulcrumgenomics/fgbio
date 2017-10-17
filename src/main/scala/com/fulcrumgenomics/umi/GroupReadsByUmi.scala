@@ -180,13 +180,26 @@ object GroupReadsByUmi {
       })
 
       override def equals(other: scala.Any): Boolean = other.isInstanceOf[Node] && this.umi == other.asInstanceOf[Node].umi
+
+      override def toString: String = s"$umi [$count]"
     }
 
     /** Returns the count of each raw UMI that was observed. */
     protected def count(umis: Seq[Umi]): Iterator[(Umi,Long)] = SimpleCounter(umis).iterator
 
-    /** Returns the number of differences between a pair of UMIs. */
-    protected def differences(lhs: Umi, rhs: Umi): Int = Sequences.countMismatches(lhs, rhs)
+    /** Returns whether or not a pair of UMIs match closely enough to be considered adjacent in the graph. */
+    protected def matches(lhs: Umi, rhs: Umi): Boolean = {
+      require(lhs.length == rhs.length, s"UMIs of different length detected: $lhs vs. $rhs")
+      var idx = 0
+      var mismatches = 0
+      val len = lhs.length
+      while (idx < len && mismatches <= this.maxMismatches) {
+        if (lhs(idx) != rhs(idx)) mismatches += 1
+        idx += 1
+      }
+
+      mismatches <= maxMismatches
+    }
 
     /** Assigns IDs to each UMI based on the root to which is it mapped. */
     protected def assignIdsToNodes(roots: Seq[Node]): Map[Umi, MoleculeId] = {
@@ -201,31 +214,25 @@ object GroupReadsByUmi {
     }
 
     override def assign(rawUmis: Seq[Umi]): Map[Umi, MoleculeId] = {
-      // Make a list of counts of all UMIs in order from most to least abundant
-      val nodes = count(rawUmis).map{case(umi,count) => new Node(umi, count)}.toBuffer.sortBy((n:Node) => -n.count)
+      // A list of all the root UMIs/Nodes that we find
       val roots = mutable.Buffer[Node]()
 
-      /** Function that takes a root or starting node and finds all children in the "others"
-        * that are within a fixed edit mismatch distance (specified by this.maxMismatches) and
-        * where the child has a count that is more plausibly explained by being an error from
-        * the root than by being a different UMI. The relationship used in UMI tools is:
-        *   count(root) >= 2 * count(child) - 1
-        *
-        * This allows a root with a single observation to have a child with a single observation,
-        * but as counts of the root go up they must be >= approximately twice the child count.
-        */
-      def addChildren(root: Node, others: mutable.Buffer[Node]) : Unit = {
-        val xs = others.filter(other => root.count >= 2 * other.count - 1 && differences(root.umi, other.umi) <= maxMismatches )
-        root.children ++= xs
-        others --= xs
-        root.children.foreach(r => addChildren(r, others))
-      }
+      // Make a list of counts of all UMIs in order from most to least abundant; we'll consume from this buffer
+      var remaining = count(rawUmis).map{ case(umi,count) => new Node(umi, count) }.toBuffer.sortBy((n:Node) => -n.count)
 
       // Now build one or more graphs starting with the most abundant remaining umi
-      while (nodes.nonEmpty) {
-        val root = nodes.remove(0)
-        addChildren(root, nodes)
-        roots += root
+      while (remaining.nonEmpty) {
+        val nextRoot = remaining.remove(0)
+        roots += nextRoot
+        val working = mutable.Buffer[Node](nextRoot)
+
+        while (working.nonEmpty) {
+          val root = working.remove(0)
+          val (hits, misses) = remaining.partition(other => root.count >= 2 * other.count - 1 && matches(root.umi, other.umi))
+          root.children ++= hits
+          working       ++= hits
+          remaining       = misses
+        }
       }
 
       assignIdsToNodes(roots)
@@ -267,8 +274,8 @@ object GroupReadsByUmi {
       counter.iterator
     }
 
-    /** Returns the differences between a pair of UMIs. */
-    override protected def differences(lhs: Umi, rhs: Umi): Int = Math.min(countMismatches(lhs, rhs), countMismatches(reverse(lhs), rhs))
+    /** Returns whether or not a paired-UMI matches within mismatch tolerance. */
+    override protected def matches(lhs: Umi, rhs: Umi): Boolean = super.matches(lhs, rhs) || super.matches(reverse(lhs), rhs)
 
     /** Takes in a map of UMI to "sentinel" UMI, and outputs a map of UMI -> Molecule ID. */
     override protected def assignIdsToNodes(roots: Seq[Node]): Map[Umi, MoleculeId] = {
