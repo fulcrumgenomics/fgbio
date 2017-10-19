@@ -31,10 +31,9 @@ import com.fulcrumgenomics.util.{Io, ProgressLogger, Sorter}
 import com.fulcrumgenomics.commons.util.LazyLogging
 import com.fulcrumgenomics.commons.collection.SelfClosingIterator
 import htsjdk.samtools.SAMFileHeader.{GroupOrder, SortOrder}
-import htsjdk.samtools.SamPairUtil.PairOrientation
 import htsjdk.samtools._
 import htsjdk.samtools.reference.ReferenceSequenceFileWalker
-import htsjdk.samtools.util.{CloserUtil, CoordMath, SequenceUtil, SortingCollection}
+import htsjdk.samtools.util.{CloserUtil, CoordMath, SequenceUtil}
 
 import scala.collection.mutable.ListBuffer
 import scala.math.{max, min}
@@ -125,9 +124,15 @@ object Bams extends LazyLogging {
              header: SAMFileHeader,
              maxRecordsInRam: Int = MaxInMemory,
              tmpDir: DirPath = Io.tmpDir): Sorter[SamRecord,order.A] = {
+    // FIXME: tmpDir not used
     new Sorter(maxRecordsInRam, new SamRecordCodec(header), order.sortkey)
   }
 
+  /** A wrapper to order objects of type [[TagType]] using the ordering given.  Used when sorting by tag where we wish
+    * to sort on the transformed tag value. */
+  private case class SortByTagKey[TagType](value: TagType)(implicit ordering: Ordering[TagType]) extends Ordered[SortByTagKey[TagType]] {
+    override def compare(that: SortByTagKey[TagType]): Int = ordering.compare(this.value, that.value)
+  }
 
   /**
     * Returns an iterator over the records in the given reader in such a way that all
@@ -217,6 +222,66 @@ object Bams extends LazyLogging {
         Template(queryIterator)
       }
     }
+  }
+
+  /** Returns an iterator over the records in the given iterator such that the order of the records returned is
+    * determined by the value of the given SAM tag, which can optionally be transformed.
+    *
+    * @param iterator an iterator from which to consume records
+    * @param header the header to use for the sorted records
+    * @param maxInMemory the maximum number of records to keep and sort in memory if sorting is needed
+    * @param tmpDir the temporary directory to use when spilling to disk
+    * @param tag the SAM tag (two-letter key) to sort by
+    * @param defaultValue the default value, if any, otherwise require all records to have the SAM tag.
+    * @param transform the transform to apply to the value of the SAM tags (default is the identity)
+    * @param ordering the ordering of [[B]].
+    * @tparam A the type of the SAM tag
+    * @tparam B the type of the SAM tag after any transformation, or just [[A]] if no transform is given.
+    * @return an Iterator over records sorted by the given SAM tag, optionally transformed.
+    */
+  def sortByTransformedTag[A, B](iterator: Iterator[SamRecord],
+                                 header: SAMFileHeader,
+                                 maxInMemory: Int = MaxInMemory,
+                                 tmpDir: DirPath = Io.tmpDir,
+                                 tag: String,
+                                 defaultValue: Option[A] = None,
+                                 transform: A => B)
+                                (implicit ordering: Ordering[B]): Iterator[SamRecord] = {
+    val f: SamRecord => SortByTagKey[B] = r => SortByTagKey(
+      transform(
+        r.get[A](tag).orElse(defaultValue).getOrElse {
+          throw new IllegalStateException(s"Missing value for tag '$tag' in record: $r")
+        }
+      )
+    )
+    // FIXME: tmpDir not used
+    val sort = new Sorter(maxInMemory, new SamRecordCodec(header), f)
+    sort ++= iterator
+    new SelfClosingIterator(sort.iterator, () => sort.close())
+  }
+
+  /** Returns an iterator over the records in the given iterator such that the order of the records returned is
+    * determined by the value of the given SAM tag.
+    *
+    * @param iterator an iterator from which to consume records
+    * @param header the header to use for the sorted records
+    * @param maxInMemory the maximum number of records to keep and sort in memory if sorting is needed
+    * @param tmpDir the temporary directory to use when spilling to disk
+    * @param tag the SAM tag (two-letter key) to sort by
+    * @param defaultValue the default value, if any, otherwise require all records to have the SAM tag.
+    * @param ordering the ordering of [[A]].
+    * @tparam A the type of the SAM tag
+    * @return an Iterator over records sorted by the given SAM tag.
+    */
+  def sortByTag[A](iterator: Iterator[SamRecord],
+                   header: SAMFileHeader,
+                   maxInMemory: Int = MaxInMemory,
+                   tmpDir: DirPath = Io.tmpDir,
+                   tag: String,
+                   defaultValue: Option[A] = None)
+                  (implicit ordering: Ordering[A]): Iterator[SamRecord] = {
+    this.sortByTransformedTag[A, A](iterator=iterator, header=header, maxInMemory=maxInMemory, tmpDir=tmpDir,
+      tag=tag, defaultValue=defaultValue, transform = a => a)
   }
 
   /**

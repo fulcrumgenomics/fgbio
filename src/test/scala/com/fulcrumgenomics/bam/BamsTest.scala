@@ -189,4 +189,50 @@ class BamsTest extends UnitSpec {
     Bams.positionFromOtherEndOfTemplate(r2, 150) shouldBe Some( 50)
     Bams.positionFromOtherEndOfTemplate(r2, 101) shouldBe Some(  1)
   }
+
+  "Bams.sorterByTag" should "should sort by a tag" in {
+    val builder = new SamBuilder(sort=Some(SamOrder.Queryname))
+    builder.addFrag(name="q1", start=100).foreach { r => r("ZZ") = 3}
+    builder.addPair(name="p1", start1=100, start2=300).foreach { r => r("ZZ") = 2}
+    builder.addFrag(name="q2", start=200).foreach { r => r("ZZ") = 1}
+    builder.addFrag(name="q2", start=200).foreach { r => r("ZZ") = 4}
+
+    Bams.sortByTag[Int](iterator=builder.iterator, header=builder.header, tag="ZZ")
+      .map(r => r[Int]("ZZ")).toSeq should contain theSameElementsInOrderAs Seq(1, 2, 2, 3, 4)
+  }
+
+  it should "fail if the tag is required (no missing value)" in {
+    val builder = new SamBuilder(sort=Some(SamOrder.Queryname))
+    builder.addFrag(name="q1", start=100).foreach { r => r("ZZ") = 3}
+    builder.addPair(name="p1", start1=100, start2=300) // *** NO TAGS ***
+    builder.addFrag(name="q2", start=200).foreach { r => r("ZZ") = 1}
+    builder.addFrag(name="q2", start=200).foreach { r => r("ZZ") = 4}
+
+    an[IllegalStateException] should be thrownBy Bams.sortByTag[Int](iterator=builder.iterator, header=builder.header, tag="ZZ")
+  }
+
+  it should "handle missing tags when a missing value is given" in {
+    val builder = new SamBuilder(sort=Some(SamOrder.Queryname))
+    builder.addFrag(name="q1", start=100).foreach { r => r("ZZ") = 3}
+    builder.addPair(name="p1", start1=100, start2=300) // *** NO TAGS ***
+    builder.addFrag(name="q2", start=200).foreach { r => r("ZZ") = 1}
+    builder.addFrag(name="q2", start=200).foreach { r => r("ZZ") = 4}
+
+    Bams.sortByTag[Int](iterator=builder.iterator, header=builder.header, tag="ZZ", defaultValue=Some(2))
+      .map(r => r.get[Int]("ZZ").getOrElse(2)).toSeq should contain theSameElementsInOrderAs Seq(1, 2, 2, 3, 4)
+  }
+
+
+  it should "should sort by a tag with a transform applied to the tag" in {
+    val builder = new SamBuilder(sort=Some(SamOrder.Queryname))
+    builder.addFrag(name="q1", start=100).foreach { r => r("ZZ") = 3}
+    builder.addPair(name="p1", start1=100, start2=300).foreach { r => r("ZZ") = 2}
+    builder.addFrag(name="q2", start=200).foreach { r => r("ZZ") = 1}
+    builder.addFrag(name="q2", start=200).foreach { r => r("ZZ") = 4}
+
+    val f: Int => Float = a => -(a/2.0f)
+
+    Bams.sortByTransformedTag[Int,Float](iterator=builder.iterator, header=builder.header, tag="ZZ", transform=f)
+      .map(r => r[Int]("ZZ")).toSeq should contain theSameElementsInOrderAs Seq(4, 3, 2, 2, 1)
+  }
 }
