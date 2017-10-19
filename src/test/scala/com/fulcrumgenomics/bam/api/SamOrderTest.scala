@@ -90,14 +90,14 @@ class SamOrderTest extends UnitSpec {
     val f = SamOrder.Coordinate.sortkey
     val recs = SamOrderTest.builder.iterator.toSeq.sortBy(f(_))
     val comp = new SAMRecordCoordinateComparator()
-    recs.grouped(2).foreach { case Seq(lhs,rhs) => comp.fileOrderCompare(lhs.asSam, rhs.asSam) <= 0 shouldBe true }
+    recs.sliding(2).foreach { case Seq(lhs,rhs) => comp.fileOrderCompare(lhs.asSam, rhs.asSam) <= 0 shouldBe true }
   }
 
   "SamOrder.Queryname" should "sort reads into queryname order" in {
     val f = SamOrder.Queryname.sortkey
     val recs = SamOrderTest.builder.iterator.toSeq.sortBy(f(_))
     val comp = new SAMRecordQueryNameComparator()
-    recs.grouped(2).foreach { case Seq(lhs,rhs) => comp.fileOrderCompare(lhs.asSam, rhs.asSam) <= 0 shouldBe true }
+    recs.sliding(2).foreach { case Seq(lhs,rhs) => comp.fileOrderCompare(lhs.asSam, rhs.asSam) <= 0 shouldBe true }
   }
 
   "SamOrder.Random" should "randomize the order of the reads" in {
@@ -108,7 +108,7 @@ class SamOrderTest extends UnitSpec {
     val counter1 = new SimpleCounter[Int]()
     val counter2 = new SimpleCounter[Int]()
 
-    recs.grouped(2).foreach { case Seq(r1, r2) =>
+    recs.sliding(2).foreach { case Seq(r1, r2) =>
       counter1.count(comp1.fileOrderCompare(r1.asSam, r2.asSam))
       counter2.count(comp2.fileOrderCompare(r1.asSam, r2.asSam))
     }
