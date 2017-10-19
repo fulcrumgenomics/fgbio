@@ -124,8 +124,7 @@ object Bams extends LazyLogging {
              header: SAMFileHeader,
              maxRecordsInRam: Int = MaxInMemory,
              tmpDir: DirPath = Io.tmpDir): Sorter[SamRecord,order.A] = {
-    // FIXME: tmpDir not used
-    new Sorter(maxRecordsInRam, new SamRecordCodec(header), order.sortkey)
+    new Sorter(maxRecordsInRam, new SamRecordCodec(header), order.sortkey, tmpDir=tmpDir)
   }
 
   /** A wrapper to order objects of type [[TagType]] using the ordering given.  Used when sorting by tag where we wish
@@ -254,8 +253,7 @@ object Bams extends LazyLogging {
         }
       )
     )
-    // FIXME: tmpDir not used
-    val sort = new Sorter(maxInMemory, new SamRecordCodec(header), f)
+    val sort = new Sorter(maxInMemory, new SamRecordCodec(header), f, tmpDir=tmpDir)
     sort ++= iterator
     new SelfClosingIterator(sort.iterator, () => sort.close())
   }

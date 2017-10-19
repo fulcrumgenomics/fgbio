@@ -77,7 +77,8 @@ object Sorter {
   */
 class Sorter[A,B <: Ordered[B]](val maxObjectsInRam: Int,
                                 private val codec: Codec[A],
-                                private val keyfunc: A => B) extends Iterable[A] with Writer[A] {
+                                private val keyfunc: A => B,
+                                private val tmpDir: DirPath = Io.tmpDir) extends Iterable[A] with Writer[A] {
   require(maxObjectsInRam > 1, "Max records in RAM must be at least 2, and probably much higher!")
   private val stash = new Array[SortEntry[B]](maxObjectsInRam)
   private val files = new ArrayBuffer[Path]()
@@ -192,7 +193,7 @@ class Sorter[A,B <: Ordered[B]](val maxObjectsInRam: Int,
   private def spill(): Unit = {
     if (recordsInMemory > 0) {
       util.Arrays.parallelSort(stash, 0, recordsInMemory)
-      val path = Io.makeTempFile("sorter.", ".tmp")
+      val path = Io.makeTempFile("sorter.", ".tmp", dir=Some(this.tmpDir))
       val out = new DataOutputStream(_tmpStreamFactory.wrapTempOutputStream(Io.toOutputStream(path), Io.bufferSize))
       forloop(from = 0, until = recordsInMemory) { i =>
         val bytes = stash(i).bytes
