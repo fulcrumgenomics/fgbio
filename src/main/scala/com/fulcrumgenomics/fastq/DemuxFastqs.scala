@@ -364,7 +364,7 @@ val qualityFormat: Option[FastqQualityFormat] = None,
       maxNoCalls       = maxNoCalls
     )
 
-    val progress = new ProgressLogger(this.logger, unit=1e6.toInt)
+    val progress = ProgressLogger(this.logger, unit=1e6.toInt)
 
     // An iterator that uses the given fastq demultiplexer to convert FASTQ records from the same fragment/template to
     // DemuxRecord in parallel
@@ -462,18 +462,20 @@ private class SamRecordWriter(output: PathToBam,
   override def close(): Unit = writer.close()
 }
 
-/** A writer that writes [[DemuxRecord]]s as [[FastqRecord]]s. */
-private[fastq] class FastqRecordWriter(prefix: PathPrefix, val pairedEnd: Boolean, val illuminaStandards: Boolean = false) extends DemuxWriter {
-  private val writers: IndexedSeq[FastqWriter] = extensions.map { ext =>
-    FastqWriter(Io.toWriter(PathUtil.pathTo(prefix + ext)))
-  }.toIndexedSeq
-
-  private[fastq] def extensions: Seq[String] = (pairedEnd, illuminaStandards) match {
+private[fastq] object FastqRecordWriter {
+  private[fastq] def extensions(pairedEnd: Boolean, illuminaStandards: Boolean = false): Seq[String] = (pairedEnd, illuminaStandards) match {
     case (true, true)   => Seq("_R1_001.fastq.gz", "_R2_001.fastq.gz")
     case (true, false)  => Seq("_R1.fastq.gz", "_R2.fastq.gz")
     case (false, true)  => Seq("_R1_001.fastq.gz")
     case (false, false) => Seq(".fastq.gz")
   }
+}
+
+/** A writer that writes [[DemuxRecord]]s as [[FastqRecord]]s. */
+private[fastq] class FastqRecordWriter(prefix: PathPrefix, val pairedEnd: Boolean, val illuminaStandards: Boolean = false) extends DemuxWriter {
+  private val writers: IndexedSeq[FastqWriter] = FastqRecordWriter.extensions(pairedEnd=pairedEnd, illuminaStandards=illuminaStandards).map { ext =>
+    FastqWriter(Io.toWriter(PathUtil.pathTo(prefix + ext)))
+  }.toIndexedSeq
 
   private[fastq] def readName(rec: DemuxRecord): String = {
     if (illuminaStandards) {
@@ -499,12 +501,11 @@ private[fastq] class FastqRecordWriter(prefix: PathPrefix, val pairedEnd: Boolea
       bases      = rec.bases,
       quals      = rec.quals,
       comment    = None,
-      readNumber = Some(rec.readNumber)
+      readNumber = if (illuminaStandards) None else Some(rec.readNumber)
     )
-    val writer = record.readNumber match {
-      case Some(1) | None => writers.head
-      case Some(2)        => writers.last
-      case _              => throw new IllegalStateException(s"Read number was invalid: ${record.readNumber}")
+
+    val writer = this.writers.lift(rec.readNumber-1).getOrElse {
+      throw new IllegalStateException(s"Read number was invalid: ${rec.readNumber}")
     }
     writer.write(record)
   }
