@@ -213,7 +213,7 @@ private class ObsCounter(readNumber: Int, position: Int) {
     case ('A', 'T') => a_to_t_obs += 1
     case ('C', 'A') => c_to_a_obs += 1
     case ('C', 'C') => c_ref_obs  += 1
-    case ('C', 'G') => a_to_g_obs += 1
+    case ('C', 'G') => c_to_g_obs += 1
     case ('C', 'T') => c_to_t_obs += 1
     case _          => unreachable("Should never be invoked with a case other than the above.")
   }
@@ -230,7 +230,7 @@ private class ObsCounter(readNumber: Int, position: Int) {
       position    = position,
       bases_total = total,
       errors      = errors,
-      error_rate  = if (total == 0) 0 else (errors) / total.toDouble,
+      error_rate  = if (total == 0) 0 else errors / total.toDouble,
       a_to_c_error_rate = if (totalA == 0) 0 else a_to_c_obs / totalA.toDouble,
       a_to_g_error_rate = if (totalA == 0) 0 else a_to_g_obs / totalA.toDouble,
       a_to_t_error_rate = if (totalA == 0) 0 else a_to_t_obs / totalA.toDouble,
