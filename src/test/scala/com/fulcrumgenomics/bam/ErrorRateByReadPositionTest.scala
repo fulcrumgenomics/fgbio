@@ -213,4 +213,48 @@ class ErrorRateByReadPositionTest extends UnitSpec {
     metrics.size shouldBe 40
     metrics.map(_.bases_total).sum shouldBe 4000
   }
+
+  it should "count each of the error types correctly" in {
+    val builder = newSamBuilder
+    //                           12345678901234567890
+    builder.addFrag("q1", bases="CGTAAAAAAAAAAAAAAAAA", contig=1, start=100)
+    builder.addFrag("q2", bases="CCCCAGTCCCCCCCCCCCCC", contig=2, start=100)
+    builder.addFrag("q3", bases="GGGGGGGGGACTGGGGGGGG", contig=3, start=100)
+    builder.addFrag("q4", bases="TTTTTTTTTTTTTTACGTTT", contig=4, start=100)
+    val (out, pre) = outputAndPrefix
+    new ErrorRateByReadPosition(input=builder.toTempFile(), output=Some(pre), ref=ref).execute()
+    val metrics = Metric.read[ErrorRateByReadPositionMetric](out)
+    metrics.size shouldBe 20
+
+    // Hack to allow reference by position without offset by 1
+    val ms = metrics.head +: metrics.toIndexedSeq
+
+    ms(1).errors shouldBe 1
+    ms(1).a_to_c_error_rate shouldBe 0.5
+    ms(2).errors shouldBe 1
+    ms(2).a_to_g_error_rate shouldBe 0.5
+    ms(3).errors shouldBe 1
+    ms(3).a_to_t_error_rate shouldBe 0.5
+
+    ms(5).errors shouldBe 1
+    ms(5).c_to_a_error_rate shouldBe 0.5
+    ms(6).errors shouldBe 1
+    ms(6).c_to_g_error_rate shouldBe 0.5
+    ms(7).errors shouldBe 1
+    ms(7).c_to_t_error_rate shouldBe 0.5
+
+    ms(10).errors shouldBe 1
+    ms(10).c_to_t_error_rate shouldBe 0.5
+    ms(11).errors shouldBe 1
+    ms(11).c_to_g_error_rate shouldBe 0.5
+    ms(12).errors shouldBe 1
+    ms(12).c_to_a_error_rate shouldBe 0.5
+
+    ms(15).errors shouldBe 1
+    ms(15).a_to_t_error_rate shouldBe 0.5
+    ms(16).errors shouldBe 1
+    ms(16).a_to_g_error_rate shouldBe 0.5
+    ms(17).errors shouldBe 1
+    ms(17).a_to_c_error_rate shouldBe 0.5
+  }
 }
