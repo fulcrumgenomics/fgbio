@@ -30,6 +30,8 @@ import java.nio.file.Path
 
 import com.fulcrumgenomics.testing.UnitSpec
 import org.scalatest.OptionValues
+import org.scalatest.concurrent.Timeouts
+import org.scalatest.time.SpanSugar._
 
 private case class TestMetric(foo: String, bar: Int, car: String = "default") extends Metric
 
@@ -41,7 +43,7 @@ private case class TestMetricWithIntOption(foo: String, bar: Int, option: Option
 /**
   * Tests for Metric.
   */
-class MetricTest extends UnitSpec with OptionValues {
+class MetricTest extends UnitSpec with OptionValues with Timeouts {
 
   "Metric.header" should "return the header names in order" in {
     val testMetric = TestMetric(foo="fooValue", bar=1)
@@ -54,34 +56,34 @@ class MetricTest extends UnitSpec with OptionValues {
     testMetric.values should contain theSameElementsInOrderAs Seq("fooValue", "1", "default")
   }
 
-  "Metric.build" should "build a metric from the given arguments" in {
-    val testMetric = Metric.build[TestMetric](Seq(("foo", "fooValue"), ("bar", "1"), ("car", "2")))
+  "Metric.read" should "build a metric when all fields are present in the file/lines" in {
+    val testMetric = Metric.read[TestMetric](Iterator("foo\tbar\tcar", "fooValue\t1\t2")).head
     testMetric.foo shouldBe "fooValue"
     testMetric.bar shouldBe 1
     testMetric.car shouldBe "2"
 
   }
 
-  "Metric.build" should "build a metric when omitting a field with a default value" in {
-    val testMetric = Metric.build[TestMetric](Seq(("foo", "fooValue"), ("bar", "1")))
+  it should "build a metric when omitting a field with a default value" in {
+    val testMetric = Metric.read[TestMetric](Iterator("foo\tbar", "fooValue\t1")).head
     testMetric.foo shouldBe "fooValue"
     testMetric.bar shouldBe 1
     testMetric.car shouldBe "default"
   }
 
   it should "fail when an argument is not given and has no default value" in {
-    an[Exception] should be thrownBy Metric.build[TestMetric](Seq(("foo", "fooValue"))) // bar has no default
+    an[Exception] should be thrownBy Metric.read[TestMetric](Iterator("foo", "fooValue")) // bar has no default
   }
 
   it should "fail when an unknown argument is given" in {
-    an[Exception] should be thrownBy Metric.build[TestMetric](Seq(("foo", "fooValue"), ("doh", "1"), ("bar", "1")))
+    an[Exception] should be thrownBy Metric.read[TestMetric](Iterator("foo\tdoh\tbar", "fooValue\t1\t1"))
   }
 
   it should "fail when an argument cannot be built from the given string" in {
-    an[Exception] should be thrownBy Metric.build[TestMetric](Seq(("foo", "fooValue"), ("bar", "bar"))) // bar is an int
+    an[Exception] should be thrownBy Metric.read[TestMetric](Iterator("foo\tbar", "fooValue\tbar")) // bar is an Tnt
   }
 
-  "Metrics.read" should "read metrics from a sequence of lines" in {
+  it should "read metrics from a sequence of lines" in {
     val lines   = Seq("foo\tbar", "fooValue1\t1", "fooValue2\t2")
     val metrics = Metric.read[TestMetric](lines.iterator)
     metrics.zipWithIndex.foreach { case (metric, idx) =>
@@ -105,6 +107,33 @@ class MetricTest extends UnitSpec with OptionValues {
     val lines   = Seq("foo\tbar", "fooValue1\t1", "fooValue2")
     an[Exception] should be thrownBy Metric.read[TestMetric](lines.iterator).toList
   }
+
+  it should "correctly build metrics with alternating present/not-present values" in {
+    val lines = Iterator(
+      "foo\tbar\toption",
+      "one\t1\toneone",
+      "two\t2\t",
+      "three\t3\tthreethree",
+      "four\t4\t"
+    )
+
+    val metrics = Metric.read[TestMetricWithOption](lines)
+    metrics.size shouldBe 4
+    val Seq(one, two, three, four) = metrics
+    one.option   shouldBe Some("oneone")
+    two.option   shouldBe None
+    three.option shouldBe Some("threethree")
+    four.option  shouldBe None
+  }
+
+  it should "read 1000 rows of metrics in under a second" in {
+    val n = 1000
+    val lines = Seq("foo\tbar\tcar") ++ Range(0,n).map(_ => "fooey\t273\tvroomvroom")
+    val metrics = failAfter(1 second) { Metric.read[TestMetric](lines.iterator) }
+    metrics should have size n
+  }
+
+  //////////////////////////////////////////////////////////////////////////////
 
   // Various write methods to test with a writer
   private val writeWithWriters = Seq(
