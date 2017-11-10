@@ -410,15 +410,24 @@ class GroupReadsByUmi
     val sorter = Bams.sorter(SamOrder.TemplateCoordinate, header)
     val sortProgress = ProgressLogger(logger, verb="Sorted")
 
+    // A handful of counters for tracking reads
+    var (filteredNonPf, filteredPoorAlignment, filteredNsInUmi, kept) = (0L, 0L, 0L, 0L)
+
     // Filter and sort the input BAM file
     logger.info("Filtering and sorting input.")
     in.iterator
-      .filter(r => includeNonPfReads || r.pf)
       .filter(r => !r.secondary && !r.supplementary)
-      .filter(r => r.paired && r.mapped && r.mateMapped)
-      .filter(r => r.refIndex == r.mateRefIndex)
-      .filter(r => r.mapq >= this.minMapQ && r.get[Int](SAMTag.MQ.name()).exists(_ >= this.minMapQ))
-      .foreach(r => { sorter += r; sortProgress.record(r) })
+      .filter(r => (includeNonPfReads || r.pf)            || { filteredNonPf += 1; false })
+      .filter(r => (r.paired && r.mapped && r.mateMapped) || { filteredPoorAlignment += 1; false })
+      .filter(r => (r.refIndex == r.mateRefIndex)         || { filteredPoorAlignment += 1; false })
+      .filter(r => (r.mapq >= this.minMapQ && r.get[Int](SAMTag.MQ.name()).exists(_ >= this.minMapQ)) || { filteredPoorAlignment += 1; false })
+      .filter(r => (r[String](rawTag).indexOf('N') < 0)   || { filteredNsInUmi +=1; false })
+      .foreach(r => { sorter += r; kept += 1; sortProgress.record(r) })
+
+    logger.info(f"Accepted $kept%,d reads for grouping.")
+    if (filteredNonPf > 0) logger.info(f"Filtered out $filteredNonPf%,d non-PF reads.")
+    logger.info(f"Filtered out $filteredPoorAlignment%,d reads that were not part of a high confidence FR mapped read pair.")
+    logger.info(f"Filtered out $filteredNsInUmi%,d reads that contained one or more Ns in their UMIs.")
 
     // Output the reads in the new ordering
     logger.info("Assigning reads to UMIs and outputting.")
