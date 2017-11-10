@@ -51,7 +51,8 @@ class SamBuilder(val readLength: Int=100,
                  val baseQuality: Int=30,
                  val sort: Option[SamOrder] = None,
                  val readGroupId: Option[String] = None,
-                 sd: Option[SAMSequenceDictionary] = None
+                 sd: Option[SAMSequenceDictionary] = None,
+                 seed: Int = 42
                 ) extends Iterable[SamRecord] {
 
   // Setup the header, sequence dictionary and read group
@@ -73,7 +74,7 @@ class SamBuilder(val readLength: Int=100,
   rg.setSample("Sample")
   header.addReadGroup(rg)
 
-  private val random  = new Random(42)
+  private val random  = new Random(seed)
   private val bases   = "ACGT".toCharArray
   private val counter = new AtomicLong(0)
   private val format  = new DecimalFormat("0000")
