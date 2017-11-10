@@ -31,6 +31,8 @@ import com.fulcrumgenomics.bam.api.QueryType.QueryType
 import htsjdk.samtools._
 import htsjdk.samtools.util.{Interval, Locatable}
 
+import scala.collection.IterableView
+
 /** Companion to the [[SamSource]] class that provides factory methods for sources. */
 object SamSource {
   var DefaultUseAsyncIo: Boolean = false
@@ -76,9 +78,12 @@ object QueryType extends Enumeration {
   * A source class for reading SAM/BAM/CRAM files and for querying them.
   * @param reader the underlying [[SamReader]]
   */
-class SamSource private(private val reader: SamReader) extends Iterable[SamRecord] with HeaderHelper with Closeable {
+class SamSource private(private val reader: SamReader) extends IterableView[SamRecord, SamSource] with HeaderHelper with Closeable {
   /** The [[htsjdk.samtools.SAMFileHeader]] associated with the source. */
   override val header: SAMFileHeader = reader.getFileHeader
+
+  /** Required method for [[IterableView]]. */
+  override protected def underlying: SamSource = this
 
   /** True if an index exists and query() calls can be made, false otherwise. */
   def indexed: Boolean = reader.hasIndex

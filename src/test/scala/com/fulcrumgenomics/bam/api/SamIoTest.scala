@@ -88,4 +88,27 @@ class SamIoTest extends UnitSpec {
     source.dict shouldBe source.header.getSequenceDictionary
     source.programGroups should contain theSameElementsInOrderAs source.header.getProgramRecords.toSeq
   }
+
+  "SamSource" should "iterate lazily and not suck all records into memory when using filter() or map()" in {
+    val builder = new SamBuilder(readLength=10, baseQuality=20)
+    Range(0, 10).foreach { _ => builder.addFrag(start=100) }
+    val source = builder.toSource
+
+    var filterCount: Int = 0
+    var mapCount: Int = 0
+
+    val xs = source.filter { r =>
+      filterCount += 1
+      true
+    }.map { r =>
+      mapCount += 1
+      r
+    }
+
+    filterCount shouldBe 0
+    mapCount shouldBe 0
+    xs.toList
+    filterCount shouldBe 10
+    mapCount shouldBe 10
+  }
 }
