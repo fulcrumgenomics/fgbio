@@ -33,15 +33,17 @@ import com.fulcrumgenomics.bam.Bams
 import com.fulcrumgenomics.bam.api.{SamOrder, SamRecord, SamSource, SamWriter}
 import com.fulcrumgenomics.cmdline.{ClpGroups, FgBioTool}
 import com.fulcrumgenomics.commons.util.{LazyLogging, NumericCounter, SimpleCounter}
-import com.fulcrumgenomics.sopt.cmdline.ValidationException
 import com.fulcrumgenomics.sopt.{arg, clp}
+import com.fulcrumgenomics.umi.GroupReadsByUmi._
 import com.fulcrumgenomics.util.Metric.{Count, Proportion}
 import com.fulcrumgenomics.util.Sequences.countMismatches
 import com.fulcrumgenomics.util._
+import enumeratum.EnumEntry
 import htsjdk.samtools.SAMFileHeader.{GroupOrder, SortOrder}
 import htsjdk.samtools._
-import htsjdk.samtools.util.StringUtil
+import htsjdk.samtools.util.SequenceUtil
 
+import scala.collection.immutable.IndexedSeq
 import scala.collection.mutable
 import scala.collection.mutable.ListBuffer
 
@@ -255,7 +257,7 @@ object GroupReadsByUmi {
 
     /** Takes a UMI of the form "A-B" and returns "B-A". */
     def reverse(umi: Umi): Umi = umi.indexOf('-') match {
-      case -1 => throw new IllegalStateException(s"UMI ${umi} is not a paired UMI.")
+      case -1 => throw new IllegalStateException(s"UMI $umi is not a paired UMI.")
       case i  =>
         val first  = umi.substring(0, i)
         val second = umi.substring(i+1, umi.length)
@@ -331,6 +333,31 @@ case class TagFamilySizeMetric(family_size: Int,
                                var fraction: Proportion = 0,
                                var fraction_gt_or_eq_family_size: Proportion = 0) extends Metric
 
+/** The strategies implemented by [[GroupReadsByUmi]] to identify reads from the same source molecule.*/
+sealed trait Strategy extends EnumEntry {
+  def newStrategy(edits: Int): UmiAssigner
+}
+object Strategy extends FgBioEnum[Strategy] {
+  def values: IndexedSeq[Strategy] = findValues
+  /** Strategy to only reads with identical UMI sequences are grouped together. */
+  case object Identity extends Strategy {
+    def newStrategy(edits: Int = 0): UmiAssigner = {
+      require(edits == 0, "Edits should be zero when using the identity UMI assigner.")
+      new IdentityUmiAssigner
+    }
+  }
+  /** Strategy to cluster reads into groups based on mismatches between reads in clusters. */
+  case object Edit extends Strategy { def newStrategy(edits: Int): UmiAssigner = new SimpleErrorUmiAssigner(edits) }
+  /** Strategy based on the directed adjacency method described in [umi_tools](http://dx.doi.org/10.1101/051755)
+    * that allows for errors between UMIs but only when there is a count gradient.
+    */
+  case object Adjacency extends Strategy { def newStrategy(edits: Int): UmiAssigner = new AdjacencyUmiAssigner(edits) }
+  /** Strategy similar to the [[Adjacency]] strategy similar to adjacency but for methods that produce template with a
+    * pair of UMIs such that a read with A-B is related to but not identical to a read with B-A.
+    */
+  case object Paired extends Strategy { def newStrategy(edits: Int): UmiAssigner = new PairedUmiAssigner(edits)}
+}
+
 @clp(group=ClpGroups.Umi, description =
   """
     |Groups reads together that appear to have come from the same original molecule. Reads
@@ -375,6 +402,12 @@ case class TagFamilySizeMetric(family_size: Int,
     |
     |`edit`, `adjacency` and `paired` make use of the `--edits` parameter to control the matching of
     |non-identical UMIs.
+    |
+    |By default, all UMIs must be the same length. If `--min-umi-length=len` is specified then reads that have a UMI
+    |shorter than `len` will be discarded, and when comparing UMIs of different lengths, the first len bases will be
+    |compared, where `len` is the length of the shortest UMI. The UMI length is the number of [ACGT] bases in the UMI
+    |(i.e. does not count dashes and other non-ACGT characters). This option is not implemented for reads with UMI pairs
+    |(i.e. using the paired assigner).
   """
 )
 class GroupReadsByUmi
@@ -385,18 +418,18 @@ class GroupReadsByUmi
   @arg(flag='T', doc="The output tag for UMI grouping.") val assignTag: String = "MI",
   @arg(flag='m', doc="Minimum mapping quality.")         val minMapQ: Int      = 30,
   @arg(flag='n', doc="Include non-PF reads.")            val includeNonPfReads: Boolean = false,
-  @arg(flag='s', doc="The UMI assignment strategy; one of 'identity', 'edit', 'adjacency' or 'paired'.") val strategy: String,
-  @arg(flag='e', doc="The allowable number of edits between UMIs.") val edits: Int = 1
+  @arg(flag='s', doc="The UMI assignment strategy.") val strategy: Strategy,
+  @arg(flag='e', doc="The allowable number of edits between UMIs.") val edits: Int = 1,
+  @arg(flag='l', doc= """The minimum UMI length. If not specified then all UMIs must have the same length,
+                       |otherwise discard reads with UMIs shorter than this length and allow for differing UMI lengths.
+                       |""")
+  val minUmiLength: Option[Int] = None
 )extends FgBioTool with LazyLogging {
   import GroupReadsByUmi._
 
-  private val assigner = strategy match {
-    case "identity"  => new IdentityUmiAssigner
-    case "edit"      => new SimpleErrorUmiAssigner(edits)
-    case "adjacency" => new AdjacencyUmiAssigner(edits)
-    case "paired"    => new PairedUmiAssigner(edits)
-    case other       => throw new ValidationException(s"Unknown strategy: $other")
-  }
+  require(this.minUmiLength.forall(_ => this.strategy != Strategy.Paired), "Paired strategy cannot be used with --min-umi-length")
+
+  private val assigner = strategy.newStrategy(this.edits)
 
   type ReadPair = (SamRecord, SamRecord)
 
@@ -411,7 +444,7 @@ class GroupReadsByUmi
     val sortProgress = ProgressLogger(logger, verb="Sorted")
 
     // A handful of counters for tracking reads
-    var (filteredNonPf, filteredPoorAlignment, filteredNsInUmi, kept) = (0L, 0L, 0L, 0L)
+    var (filteredNonPf, filteredPoorAlignment, filteredNsInUmi, filterUmisTooShort, kept) = (0L, 0L, 0L, 0L, 0L)
 
     // Filter and sort the input BAM file
     logger.info("Filtering and sorting input.")
@@ -422,12 +455,20 @@ class GroupReadsByUmi
       .filter(r => (r.refIndex == r.mateRefIndex)         || { filteredPoorAlignment += 1; false })
       .filter(r => (r.mapq >= this.minMapQ && r.get[Int](SAMTag.MQ.name()).exists(_ >= this.minMapQ)) || { filteredPoorAlignment += 1; false })
       .filter(r => (r[String](rawTag).indexOf('N') < 0)   || { filteredNsInUmi +=1; false })
+      .filter { r =>
+        this.minUmiLength.forall { l =>
+          r.get[String](this.rawTag).forall { umi =>
+            l <= umi.toUpperCase.count(c => SequenceUtil.isUpperACGTN(c.toByte))
+          }
+        } || { filterUmisTooShort += 1; false}
+      }
       .foreach(r => { sorter += r; kept += 1; sortProgress.record(r) })
 
     logger.info(f"Accepted $kept%,d reads for grouping.")
     if (filteredNonPf > 0) logger.info(f"Filtered out $filteredNonPf%,d non-PF reads.")
     logger.info(f"Filtered out $filteredPoorAlignment%,d reads that were not part of a high confidence FR mapped read pair.")
     logger.info(f"Filtered out $filteredNsInUmi%,d reads that contained one or more Ns in their UMIs.")
+    this.minUmiLength.foreach { _ => logger.info(f"Filtered out $filterUmisTooShort%,d reads that contained UMIs that were too short.") }
 
     // Output the reads in the new ordering
     logger.info("Assigning reads to UMIs and outputting.")
@@ -488,7 +529,7 @@ class GroupReadsByUmi
     * sub-grouping into UMI groups by original molecule.
     */
   def assignUmiGroups(pairs: Seq[ReadPair]): Unit = {
-    val umis    = pairs.map { case (r1, r2) => umiForRead(r1, r2) }
+    val umis    = truncateUmis(pairs.map { case (r1, r2) => umiForRead(r1, r2) })
     val rawToId = this.assigner.assign(umis)
 
     pairs.iterator.zip(umis.iterator).foreach { case ((r1, r2), umi) =>
@@ -496,6 +537,21 @@ class GroupReadsByUmi
       r1(this.assignTag) = id
       r2(this.assignTag) = id
     }
+  }
+
+  /** When a minimum UMI length is specified, truncates all the UMIs to the length of the shortest UMI.  For the paired
+    * assigner, truncates the first UMI and second UMI sepeartely.*/
+  private def truncateUmis(umis: Seq[Umi]): Seq[Umi] = this.minUmiLength match {
+    case None => umis
+    case Some(length) =>
+      this.assigner match {
+        case _: PairedUmiAssigner =>
+          throw new IllegalStateException("Cannot used the paired umi assigner when min-umi-length is defined.")
+        case _ =>
+          val minLength = umis.map(_.length).min
+          require(length <= minLength, s"Bug: UMI found that had shorter length than expected ($minLength < $length)")
+          umis.map(_.substring(0, minLength))
+      }
   }
 
   /**

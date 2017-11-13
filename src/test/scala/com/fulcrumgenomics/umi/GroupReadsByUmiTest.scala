@@ -204,7 +204,7 @@ class GroupReadsByUmiTest extends UnitSpec {
     val in  = builder.toTempFile()
     val out = Files.createTempFile("umi_grouped.", ".sam")
     val hist = Files.createTempFile("umi_grouped.", ".histogram.txt")
-    new GroupReadsByUmi(input=in, output=out, familySizeHistogram=Some(hist), rawTag="RX", assignTag="MI", strategy="edit", edits=1).execute()
+    new GroupReadsByUmi(input=in, output=out, familySizeHistogram=Some(hist), rawTag="RX", assignTag="MI", strategy=Strategy.Edit, edits=1).execute()
 
     val groups = readBamRecs(out).groupBy(_.name.charAt(0))
 
@@ -230,7 +230,7 @@ class GroupReadsByUmiTest extends UnitSpec {
     val in  = builder.toTempFile()
     val out = Files.createTempFile("umi_grouped.", ".sam")
     val hist = Files.createTempFile("umi_grouped.", ".histogram.txt")
-    new GroupReadsByUmi(input=in, output=out, familySizeHistogram=Some(hist), rawTag="RX", assignTag="MI", strategy="paired", edits=1).execute()
+    new GroupReadsByUmi(input=in, output=out, familySizeHistogram=Some(hist), rawTag="RX", assignTag="MI", strategy=Strategy.Paired, edits=1).execute()
 
     val recs = readBamRecs(out)
 
@@ -252,8 +252,53 @@ class GroupReadsByUmiTest extends UnitSpec {
 
     val in  = builder.toTempFile()
     val out = Files.createTempFile("umi_grouped.", ".bam")
-    new GroupReadsByUmi(input=in, output=out, rawTag="RX", assignTag="MI", strategy="paired", edits=2).execute()
+    new GroupReadsByUmi(input=in, output=out, rawTag="RX", assignTag="MI", strategy=Strategy.Paired, edits=2).execute()
 
     readBamRecs(out).map(_.name).distinct shouldBe Seq("a01", "a02")
+  }
+
+  it should "fail when umis have different length" in {
+    val builder = new SamBuilder(readLength=100, sort=Some(SamOrder.Coordinate))
+    builder.addPair(name="a01", start1=100, start2=300, strand1=Plus,  strand2=Minus, attrs=Map("RX" -> "ACT-ACT"))
+    builder.addPair(name="a02", start1=100, start2=300, strand1=Plus,  strand2=Minus, attrs=Map("RX" -> "ACT-AC"))
+
+    val in   = builder.toTempFile()
+    val out  = Files.createTempFile("umi_grouped.", ".sam")
+    val tool = new GroupReadsByUmi(input=in, output=out, familySizeHistogram=None, rawTag="RX", assignTag="MI", strategy=Strategy.Paired, edits=1)
+
+    an[Exception] should be thrownBy tool.execute()
+  }
+
+  Strategy.values.filterNot(_ == Strategy.Paired).foreach { strategy =>
+    it should s"reject records with UMIs that are shorter than the specified minimum length with the $strategy strategy" in {
+      val builder = new SamBuilder(readLength=100, sort=Some(SamOrder.Coordinate))
+
+      builder.addPair(name="a01", start1=100, start2=300, strand1=Plus,  strand2=Minus, attrs=Map("RX" -> "ACTACT"))
+      builder.addPair(name="a02", start1=100, start2=300, strand1=Plus,  strand2=Minus, attrs=Map("RX" -> "ACTAC"))
+
+      val in   = builder.toTempFile()
+      val out  = Files.createTempFile("umi_grouped.", ".sam")
+      new GroupReadsByUmi(input=in, output=out, familySizeHistogram=None, rawTag="RX", assignTag="MI", strategy=Strategy.Identity, edits=0, minUmiLength=Some(6)).execute()
+
+      val recs = readBamRecs(out)
+      recs should have length 2
+      recs.map(_.name) should contain theSameElementsInOrderAs Seq("a01", "a01")
+      recs.map(r => r[String]("MI")).distinct should have length 1
+    }
+
+    it should s"truncate to the specified minimum length with the $strategy strategy" in {
+      val builder = new SamBuilder(readLength=100, sort=Some(SamOrder.Coordinate))
+      builder.addPair(name="a01", start1=100, start2=300, strand1=Plus,  strand2=Minus, attrs=Map("RX" -> "ACTACT"))
+      builder.addPair(name="a02", start1=100, start2=300, strand1=Plus,  strand2=Minus, attrs=Map("RX" -> "ACTAC"))
+
+      val in   = builder.toTempFile()
+      val out  = Files.createTempFile("umi_grouped.", ".sam")
+      new GroupReadsByUmi(input=in, output=out, familySizeHistogram=None, rawTag="RX", assignTag="MI", strategy=Strategy.Identity, edits=0, minUmiLength=Some(5)).execute()
+
+      val recs = readBamRecs(out)
+      recs should have length 4
+      recs.map(_.name) should contain theSameElementsInOrderAs Seq("a01", "a01", "a02", "a02")
+      recs.map(r => r[String]("MI")).distinct should have length 1 // all should be assigned to one molecule
+    }
   }
 }
