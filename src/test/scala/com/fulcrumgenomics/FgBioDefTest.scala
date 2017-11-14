@@ -28,7 +28,10 @@ import com.fulcrumgenomics.FgBioDef._
 import com.fulcrumgenomics.bam.api.{SamOrder, SamSource, SamWriter}
 import com.fulcrumgenomics.commons.io.PathUtil
 import com.fulcrumgenomics.testing.UnitSpec
+import enumeratum.EnumEntry
 import htsjdk.samtools.{SAMFileHeader, SAMReadGroupRecord}
+
+import scala.collection.immutable.IndexedSeq
 
 class FgBioDefTest extends UnitSpec {
   private case class SampleAndLibrary(sample: String, library: String)
@@ -89,5 +92,19 @@ class FgBioDefTest extends UnitSpec {
     val reader = SamSource(path)
     FgBioDef.plotDescription(reader, path) shouldBe PathUtil.basename(path, trimExt=true).toString
     reader.close()
+  }
+
+  sealed trait CustomEnum extends EnumEntry
+  object CustomEnum extends FgBioEnum[CustomEnum] {
+    def values: IndexedSeq[CustomEnum] = findValues
+    case object Foo extends CustomEnum
+    case object Bar extends CustomEnum
+  }
+
+  "FgbioDef.FgBioEnum" should "return the correct enum by name" in {
+    CustomEnum("Foo") shouldBe CustomEnum.Foo
+    CustomEnum("foo") shouldBe CustomEnum.Foo
+    CustomEnum("fOO") shouldBe CustomEnum.Foo
+    CustomEnum("bar") shouldBe CustomEnum.Bar
   }
 }
