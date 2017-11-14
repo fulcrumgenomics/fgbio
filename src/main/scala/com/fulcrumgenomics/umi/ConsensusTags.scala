@@ -71,9 +71,16 @@ object ConsensusTags {
     /** The phred-scaled qualities, as phred-33 ascii values, of the single-stranded consensus from the BA raw reads. */
     val BaConsensusQuals = "bq"
 
+    /** The set of the per-base tags produced by the consensus caller that need to be reversed after alignment. */
+    val TagsToReverse = Seq(RawReadCount, RawReadErrors, AbRawReadCount, AbRawReadErrors, BaRawReadCount, BaRawReadErrors,
+      AbConsensusQuals, BaConsensusQuals)
+
+    /** The set of the per-base tags produced by the consensus caller that need to be reverse complemented after alignment. */
+    val TagsToReverseComplement = Seq(AbConsensusBases, BaConsensusBases)
+
     // NOTE: Important that this is updated if any new tags are added!
-    val AllPerBaseTags = Seq(RawReadCount, RawReadErrors, AbRawReadCount, AbRawReadErrors, BaRawReadCount, BaRawReadErrors,
-      AbConsensusBases, BaConsensusBases, AbConsensusQuals, BaConsensusQuals)
+    /** The set of all per-base tags. */
+    val AllPerBaseTags = TagsToReverse ++ TagsToReverseComplement
   }
 
   object PerRead {

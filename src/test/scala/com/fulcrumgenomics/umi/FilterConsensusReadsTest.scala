@@ -24,6 +24,7 @@
 
 package com.fulcrumgenomics.umi
 
+import java.nio.file.Files
 import java.util
 
 import com.fulcrumgenomics.FgBioDef._
@@ -32,7 +33,7 @@ import com.fulcrumgenomics.commons.io.PathUtil
 import com.fulcrumgenomics.testing.{SamBuilder, UnitSpec}
 import com.fulcrumgenomics.util.Io
 import com.fulcrumgenomics.util.NumericTypes.PhredScore
-import htsjdk.samtools.{SAMFileHeader, SAMSequenceDictionary, SAMSequenceRecord}
+import htsjdk.samtools.{SAMFileHeader, SAMSequenceDictionary, SAMSequenceRecord, SAMUtils, SamPairUtil}
 
 import scala.collection.mutable.ListBuffer
 
@@ -262,6 +263,49 @@ class FilterConsensusReadsTest extends UnitSpec {
     }
   }
 
+  it should "reverse the per-base duplex tags only when requested" in {
+    val path = Files.createTempFile("SamRecordSet.", ".bam")
+
+    {
+      val good1 = DuplexBuilder.add(abDp=100, baDp=100, abErr=0.01f, baErr=0.01f, err=0.01f,
+      abBases="A"*5 + "C"*5, baBases="A"*5 + "C"*5, abQuals="I"*5 + "H"*5, baQuals="I"*5 + "H"*5)
+      val good2 = DuplexBuilder.add(abDp=100, baDp=100, abErr=0.01f, baErr=0.01f, err=0.01f,
+        abBases="A"*5 + "C"*5, baBases="A"*5 + "C"*5, abQuals="I"*5 + "H"*5, baQuals="I"*5 + "H"*5)
+      good1.paired = true
+      good1.firstOfPair = true
+      good1.secondOfPair = false
+      good2.paired = true
+      good2.firstOfPair = false
+      good2.secondOfPair = true
+      good2.negativeStrand = true
+      good2.name = good1.name
+      SamPairUtil.setMateInfo(good1.asSam, good2.asSam)
+      path.toFile.deleteOnExit()
+      val writer = SamWriter(path, DuplexBuilder.header, sort=DuplexBuilder.sort)
+      writer += good1
+      writer += good2
+      writer.close()
+    }
+
+    Seq(true, false) foreach { reverseTags =>
+      val out = makeTempFile("filtered.", ".bam")
+      new FilterConsensusReads(input=path, output=out, ref=ref, reversePerBaseTags=reverseTags,
+        minBaseQuality=2.toByte, minReads=Seq(0), maxReadErrorRate=Seq(1), maxBaseErrorRate=Seq(1), maxNoCallFraction=1).execute()
+
+      val recs = SamSource(out).toSeq
+      recs.size shouldBe 2
+      recs.exists(_.negativeStrand) shouldBe true
+      recs.foreach { rec =>
+        if (reverseTags && rec.negativeStrand) {
+          val abBases = rec[String](ConsensusTags.PerBase.AbConsensusBases)
+          val abQuals = rec[String](ConsensusTags.PerBase.AbConsensusQuals)
+          abBases shouldBe ("G"*5 + "T"*5)
+          abQuals shouldBe ("H"*5 + "I"*5)
+        }
+      }
+    }
+  }
+
   //////////////////////////////////////////////////////////////////////////////
   // Below this line are tests for filtering of duplex consensus reads.
   //////////////////////////////////////////////////////////////////////////////
@@ -282,7 +326,8 @@ class FilterConsensusReadsTest extends UnitSpec {
     def add(name:String=nextName,
             dp: Int=10, minDp:Int=10, abDp:Int=5, baDp:Int=5, abMinDp:Int=5, baMinDp:Int=5,
             err: Float=0, abErr:Float=0, baErr:Float=0,
-            abDps:Arr=ss(5), baDps:Arr=ss(5), abErrs:Arr=ss(0), baErrs:Arr=ss(0)) = {
+            abDps:Arr=ss(5), baDps:Arr=ss(5), abErrs:Arr=ss(0), baErrs:Arr=ss(0),
+            abBases: String="A"*10, baBases: String="A"*10, abQuals:String="I"*10, baQuals:String="I"*10) = {
 
       val r1 = addFrag(name = name, start=100).get
       r1.bases = "AAAAAAAAAA"
@@ -301,6 +346,10 @@ class FilterConsensusReadsTest extends UnitSpec {
       r1(ConsensusTags.PerBase.BaRawReadCount) = baDps
       r1(ConsensusTags.PerBase.AbRawReadErrors) = abErrs
       r1(ConsensusTags.PerBase.BaRawReadErrors) = baErrs
+      r1(ConsensusTags.PerBase.AbConsensusBases) = abBases
+      r1(ConsensusTags.PerBase.BaConsensusBases) = baBases
+      r1(ConsensusTags.PerBase.AbConsensusQuals) = abQuals
+      r1(ConsensusTags.PerBase.BaConsensusQuals) = baQuals
       r1
     }
 

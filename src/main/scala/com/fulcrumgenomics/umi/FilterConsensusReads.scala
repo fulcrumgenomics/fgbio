@@ -36,6 +36,7 @@ import com.fulcrumgenomics.util.NumericTypes.PhredScore
 import com.fulcrumgenomics.util.{Io, ProgressLogger}
 import htsjdk.samtools.SAMFileHeader.SortOrder
 import htsjdk.samtools.reference.ReferenceSequenceFileWalker
+import htsjdk.samtools.util.SequenceUtil
 
 
 @clp(
@@ -183,7 +184,12 @@ class FilterConsensusReads
       totalReads += primaryReadCount
 
       // Reverse the tags on the reads if needs be
-      if (reversePerBaseTags) template.allReads.foreach(reverseConsensusTagsIfNeeded)
+      if (reversePerBaseTags) {
+        template.allReads.foreach { rec =>
+          reverseConsensusTagsIfNeeded(rec)
+          reverseComplementConsensusTagsIfNeeded(rec)
+        }
+      }
 
       // Filter and mask
       val r1Result = filterRecord(r1)
@@ -346,22 +352,32 @@ class FilterConsensusReads
 
   /** Reverses all the consensus tags if the right conditions are set. */
   private def reverseConsensusTagsIfNeeded(rec: SamRecord): Unit = if (reversePerBaseTags && rec.negativeStrand) {
-    ConsensusTags.PerBase.AllPerBaseTags.foreach { tag =>
-      val value = rec[Array[Short]](tag)
-      if (value != null) {
-        reverse(value)
-        rec(tag) =  value
+    ConsensusTags.PerBase.TagsToReverse.foreach { tag =>
+      rec.get[Any](tag).foreach {
+        case short: Array[Short] => rec(tag) = reverse(short)
+        case string: String      => rec(tag) = string.reverse
+        case _ => throw new IllegalArgumentException(s"Tag '$tag' must be of type Array[Short] or String, was ${tag.getClass.getSimpleName}")
       }
     }
   }
 
-  /** Reverses a short[]. */
-  private def reverse(arr: Array[Short]): Unit = if (arr != null) {
+  /** Reverse complements all the consensus tags if the right conditions are set. */
+  private def reverseComplementConsensusTagsIfNeeded(rec: SamRecord): Unit = if (reversePerBaseTags && rec.negativeStrand) {
+    ConsensusTags.PerBase.TagsToReverseComplement.foreach { tag =>
+      rec.get[String](tag).foreach { value =>
+        rec(tag) = SequenceUtil.reverseComplement(value)
+      }
+    }
+  }
+
+  /** Reverses an short[]. */
+  private def reverse(arr: Array[Short]): Array[Short] = if (arr != null) {
     val lastIndex = arr.length - 1
     forloop (from=0, until=lastIndex/2) { i =>
       val tmp = arr(i)
       arr(i) = arr(lastIndex - i)
       arr(lastIndex - i) = tmp
     }
-  }
+    arr
+  } else { arr }
 }
