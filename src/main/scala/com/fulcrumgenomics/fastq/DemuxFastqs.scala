@@ -112,7 +112,7 @@ object DemuxFastqs {
     require(barcodeSegments.nonEmpty, "No sample barcodes found in read structures: " + readStructures.mkString(", "))
     require(barcodeSegments.forall(_.hasFixedLength), "Barcode segments must have fixed lengths in: " + readStructures.mkString(", "))
 
-    val noMatchBarcode: String = barcodeSegments.map("N" * _.fixedLength).mkString("-")
+    val noMatchBarcode: String = barcodeSegments.map("N" * _.fixedLength).mkString
     Sample(sampleOrdinal=sampleOrdinal, sampleId=UnmatchedSampleId, sampleName=UnmatchedSampleId, libraryId=UnmatchedSampleId, i7IndexBases=Some(noMatchBarcode))
   }
 
@@ -455,7 +455,7 @@ private class SamRecordWriter(output: PathToBam,
     }
     rec.sampleBarcode.foreach(bc => record("BC") = bc)
     record(ReservedTagConstants.READ_GROUP_ID) =  rgId
-    rec.molecularBarcode.foreach(mb => record(umiTag) =  mb)
+    rec.molecularBarcode.foreach(mb => record(umiTag) = mb)
     writer += record
   }
 

@@ -27,7 +27,7 @@ package com.fulcrumgenomics.fastq
 
 import java.nio.file.Files
 
-import com.fulcrumgenomics.FgBioDef.{DirPath, FilePath}
+import com.fulcrumgenomics.FgBioDef.{DirPath, FilePath, PathToFastq}
 import com.fulcrumgenomics.fastq.FastqDemultiplexer.{DemuxRecord, DemuxResult}
 import com.fulcrumgenomics.illumina.{Sample, SampleSheet}
 import com.fulcrumgenomics.testing.{ErrorLogLevel, UnitSpec}
@@ -611,6 +611,62 @@ class DemuxFastqsTest extends UnitSpec with OptionValues with ErrorLogLevel {
       readStructures=structures, metrics=Some(metrics), maxMismatches=2, minMismatchDelta=3)
     throwableMessageShouldInclude("Sample barcode not found in column") {
       demuxFastqs.execute()
+    }
+  }
+
+  it should "demux dual-indexed paired end reads" in {
+    def write(rec: FastqRecord): PathToFastq = {
+      val path = makeTempFile("fastq", ".fastq")
+      val writer = FastqWriter(path)
+      writer.write(rec)
+      writer.close()
+      path
+    }
+
+    val fq1 = write(fq(name="frag", bases="AAAAAAAA"))
+    val fq2 = write(fq(name="frag", bases="A"*100))
+    val fq3 = write(fq(name="frag", bases="T"*100))
+    val fq4 = write(fq(name="frag", bases="GATTACAGA"))
+    val structures = Seq(ReadStructure("8B"), ReadStructure("100T"), ReadStructure("100T"), ReadStructure("9B"))
+
+    val output: DirPath = outputDir()
+    val metrics = makeTempFile("metrics", ".txt")
+    
+    new DemuxFastqs(inputs=Seq(fq1, fq2, fq3, fq4), output=output, metadata=sampleSheetPath,
+      readStructures=structures, metrics=Some(metrics), maxMismatches=2, minMismatchDelta=3).execute()
+
+    val sampleBarcodMetrics = Metric.read[SampleBarcodeMetric](metrics)
+    val sampleInfos = toSampleInfos(structures)
+    val samples: Seq[Sample] = sampleInfos.map(_.sample)
+
+    sampleBarcodMetrics.zip(samples).foreach { case (metric, sample) =>
+      metric.barcode_name shouldBe sample.sampleName
+      metric.barcode      shouldBe sample.sampleBarcodeString
+      metric.library_name shouldBe sample.libraryId
+      if (sample.sampleOrdinal == 1) {
+        metric.reads                   shouldBe 1
+        metric.pf_reads                shouldBe 1
+        metric.perfect_matches         shouldBe 1
+        metric.one_mismatch_matches    shouldBe 0
+        metric.pf_perfect_matches      shouldBe 1
+        metric.pf_one_mismatch_matches shouldBe 0
+      }
+      else if (sample.sampleId == UnmatchedSampleId) {
+        metric.reads                   shouldBe 0
+        metric.pf_reads                shouldBe 0
+        metric.perfect_matches         shouldBe 0
+        metric.one_mismatch_matches    shouldBe 0
+        metric.pf_perfect_matches      shouldBe 0
+        metric.pf_one_mismatch_matches shouldBe 0
+      }
+      else {
+        metric.reads                   shouldBe 0
+        metric.pf_reads                shouldBe 0
+        metric.perfect_matches         shouldBe 0
+        metric.one_mismatch_matches    shouldBe 0
+        metric.pf_perfect_matches      shouldBe 0
+        metric.pf_one_mismatch_matches shouldBe 0
+      }
     }
   }
 
