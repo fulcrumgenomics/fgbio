@@ -39,7 +39,7 @@ private case class TestMetricWithOption(foo: String, bar: Int, option: Option[St
 
 private case class TestMetricWithIntOption(foo: String, bar: Int, option: Option[Int]) extends Metric
 
-private case class TestMetricWithDouble(foo: String, bar: Double, option: Option[Double]) extends Metric
+private case class TestMetricWithDouble(foo: String, bar: Double, option: Option[Float]) extends Metric
 
 /**
   * Tests for Metric.
@@ -203,9 +203,9 @@ class MetricTest extends UnitSpec with OptionValues with Timeouts {
 
   it should "write and read metrics with doubles without loosing too much precision" in {
     val expected = Seq(
-      TestMetricWithDouble(foo="foo1", bar=123.0, option=Some(0.12345)),
-      TestMetricWithDouble(foo="foo1", bar=0.0001, option=Some(0.00000001)),
-      TestMetricWithDouble(foo="foo1", bar=0.0000099121, option=Some(1.7123E-47))
+      TestMetricWithDouble(foo="foo1", bar=123.0, option=Some(0.12345f)),
+      TestMetricWithDouble(foo="foo1", bar=0.0001, option=Some(0.00000001f)),
+      TestMetricWithDouble(foo="foo1", bar=0.0000099121, option=Some(1.7123E-31f))
     )
 
     val output = makeTempFile("MetricTest", ".txt")

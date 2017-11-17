@@ -237,15 +237,15 @@ trait Metric extends Product with Iterable[(String,String)] {
 
   /** Override this method to customize how values are formatted. */
   protected def formatValue(value: Any): String = value match {
-    case null      => ""
-    case None      => ""
-    case Some(x)   => formatValue(x)
+    case null           => ""
+    case None           => ""
+    case Some(x)        => formatValue(x)
     case d: Iso8601Date => d.toString
-    case d: Date   => Metric.DateFormat.synchronized { Metric.DateFormat.format(d) }
-    case f: Float  => formatValue(f.toDouble)
+    case d: Date        => Metric.DateFormat.synchronized { Metric.DateFormat.format(d) }
+    case f: Float       => formatValue(f.toDouble)
     case d: Double if d < 0.00001 => Metric.SmallDoubleFormat.synchronized { Metric.SmallDoubleFormat.format(d) }
     case d: Double                => Metric.BigDoubleFormat.synchronized { Metric.BigDoubleFormat.format(d) }
-    case other     => other.toString
+    case other          => other.toString
   }
 
   override def toString: String = names.zip(values).toMap.toString
