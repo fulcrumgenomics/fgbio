@@ -205,7 +205,7 @@ class MetricTest extends UnitSpec with OptionValues with Timeouts {
     val expected = Seq(
       TestMetricWithDouble(foo="foo1", bar=123.0, option=Some(0.12345)),
       TestMetricWithDouble(foo="foo1", bar=0.0001, option=Some(0.00000001)),
-      TestMetricWithDouble(foo="foo1", bar=0.0000099121, option=Some(1.7123E-47)),
+      TestMetricWithDouble(foo="foo1", bar=0.0000099121, option=Some(1.7123E-47))
     )
 
     val output = makeTempFile("MetricTest", ".txt")

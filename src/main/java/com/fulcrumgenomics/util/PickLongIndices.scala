@@ -88,14 +88,7 @@ case class IndexMetric(index: String,
                        longest_homopolymer: Int,
                        worst_structure_seq: Option[String],
                        worst_structure_dbn: Option[String],
-                       worst_structure_delta_g: Option[Double]) extends Metric {
-
-  override protected def formatValues(value: Any): String = value match {
-    case None    => ""
-    case Some(x) => super.formatValues(x)
-    case x       => super.formatValues(x)
-  }
-}
+                       worst_structure_delta_g: Option[Double]) extends Metric
 
 @clp(group=ClpGroups.Utilities, description =
     """
