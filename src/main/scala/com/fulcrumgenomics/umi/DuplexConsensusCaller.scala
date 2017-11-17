@@ -296,9 +296,9 @@ class DuplexConsensusCaller(override val readNamePrefix: String,
           // Capture the raw consensus base prior to masking it to N, so that we can compute
           // errors vs. the actually called base.
           val (rawBase, rawQual) = {
-            if      (aBase == bBase) (aBase, (aQual + bQual).toByte)
-            else if (aQual > bQual)  (aBase, (aQual - bQual).toByte)
-            else if (bQual > aQual)  (bBase, (bQual - aQual).toByte)
+            if      (aBase == bBase) (aBase, PhredScore.cap(aQual + bQual))
+            else if (aQual > bQual)  (aBase, PhredScore.cap(aQual - bQual))
+            else if (bQual > aQual)  (bBase, PhredScore.cap(bQual - aQual))
             else                     (aBase, PhredScore.MinValue)
           }
 

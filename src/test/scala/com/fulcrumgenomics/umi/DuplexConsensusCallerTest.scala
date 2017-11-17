@@ -233,6 +233,21 @@ class DuplexConsensusCallerTest extends UnitSpec {
     r1.quals(0).toInt shouldBe 15 +- 5
   }
 
+  Seq.range(1, PhredScore.MinValue+1).foreach { qualDiff =>
+    it should s"emit a the min qual call when there are conflicting SS consensus bases when they differ by $qualDiff" in {
+      val builder = new SamBuilder(readLength=10, baseQuality=30)
+      builder.addPair(name="q1", start1=100, start2=200, strand1=Plus, strand2=Minus, bases1="AAAAAAAAAA", bases2="CCCCCCCCCC", attrs=Map(MI -> "foo/A"))
+      builder.addPair(name="q2", start1=200, start2=100, strand1=Minus, strand2=Plus, bases1="CCCCCCCCCC", bases2="TAAAAAAAAA", attrs=Map(MI -> "foo/B"))
+      builder.find(r => r.name == "q2" && r.secondOfPair).foreach(_.quals(0) = (30-qualDiff).toByte)
+
+      val recs = c.consensusReadsFromSamRecords(builder.toSeq)
+      recs should have size 2
+      val r1 = recs.find(_.firstOfPair).getOrElse(fail("Missing R1"))
+      r1.basesString shouldBe "NAAAAAAAAA"
+      r1.quals(0).toInt shouldBe PhredScore.MinValue
+    }
+  }
+
   it should "count errors against the actual consensus base, before it is masked to N" in {
     val builder = new SamBuilder(readLength=10, baseQuality=30)
     builder.addPair(name="q1", start1=100, start2=200, strand1=Plus, strand2=Minus, bases1="ANAAAAAAAA", bases2="CCNCCCCCCC", attrs=Map(MI -> "foo/A"))
