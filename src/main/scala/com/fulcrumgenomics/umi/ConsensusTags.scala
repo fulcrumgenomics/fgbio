@@ -45,6 +45,9 @@ object ConsensusTags {
   /** The default field in which to look for UMI sequences. */
   val UmiBases    = "RX"
 
+  /** The field in which the original UMI bases are stored post-correction. */
+  val OriginalUmiBases = "OX"
+
   /** Post-grouping ID that is file-wide unique per source molecule. */
   val MolecularId = "MI"
 

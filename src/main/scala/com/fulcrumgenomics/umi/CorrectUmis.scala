@@ -113,6 +113,10 @@ object CorrectUmis {
     |more files of UMIs with a single sequence per line using `--umi-files umis.txt more_umis.txt`.  If there
     |are multiple UMIs per template, leading to hyphenated UMI tags, the values for the fixed UMIs should
     |be single, non-hyphenated UMIs (e.g. if a record has `RX:Z:ACGT-GGCA`, you would use `--umis ACGT GGCA`).
+    |
+    |Records which have their UMIs corrected (i.e. the UMI is not identical to one of the expected UMIs but is
+    |close enough to be corrected) will by default have their original UMI stored in the `OX` tag. This can be
+    |disabled with the `--dont-store-original-umis` option.
   """)
 class CorrectUmis
 ( @arg(flag='i', doc="Input SAM or BAM file.")  val input: PathToBam,
@@ -123,7 +127,8 @@ class CorrectUmis
   @arg(flag='d', doc="Minimum distance (in mismatches) to next best UMI.") val minDistance: Int,
   @arg(flag='u', doc="Expected UMI sequences.", minElements=0) val umis: Seq[String] = Seq.empty,
   @arg(flag='U', doc="File of UMI sequences, one per line.", minElements=0) val umiFiles: Seq[FilePath] = Seq.empty,
-  @arg(flag='t', doc="Tag in which UMIs are stored.") val umiTag: String = ConsensusTags.UmiBases
+  @arg(flag='t', doc="Tag in which UMIs are stored.") val umiTag: String = ConsensusTags.UmiBases,
+  @arg(flag='x', doc="If specified, don't store original UMIs upon correction.") val dontStoreOriginalUmis: Boolean = false
 ) extends FgBioTool with LazyLogging {
 
   validate(umis.nonEmpty || umiFiles.nonEmpty, "At least one UMI or UMI file must be provided.")
@@ -198,6 +203,11 @@ class CorrectUmis
 
             // Output the corrected read
             if (matches.forall(_.matched)) {
+              // Store the original UMI if requested, and there are mismatches
+              if (!dontStoreOriginalUmis && !matches.forall(_.mismatches == 0)) {
+                rec(ConsensusTags.OriginalUmiBases) = rec(this.umiTag)
+              }
+
               val correctedUmi = matches.map(_.umi).mkString("-")
               rec(this.umiTag) = correctedUmi
               out += rec

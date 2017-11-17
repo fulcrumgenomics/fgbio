@@ -209,4 +209,28 @@ class CorrectUmisTest extends UnitSpec {
     val m2 = Metric.read[UmiCorrectionMetrics](metrics2)
     m1 shouldBe m2
   }
+
+  it should "store the original UMI only when the UMI is corrected, and only when requested" in {
+    val expectedUmis = Seq("AAAAAA", "TTTTTT", "CCCCCC")
+    val builder = new SamBuilder()
+    builder.addFrag(name="exact",       start=100, attrs=Map(ConsensusTags.UmiBases -> "AAAAAA"))
+    builder.addFrag(name="correctable", start=101, attrs=Map(ConsensusTags.UmiBases -> "AAAAGA"))
+    builder.addFrag(name="reject",      start=102, attrs=Map(ConsensusTags.UmiBases -> "GGGGGG"))
+
+    val output = makeTempFile("corrected.", ".bam")
+
+    // Should store original UMI on corrected records
+    new CorrectUmis(input=builder.toTempFile(), output=output, umis=expectedUmis, maxMismatches=2, minDistance=2).execute()
+    readBamRecs(output).foreach { rec =>
+      if (rec.name == "exact")       rec.get(ConsensusTags.OriginalUmiBases) shouldBe None
+      if (rec.name == "correctable") rec.get(ConsensusTags.OriginalUmiBases) shouldBe Some("AAAAGA")
+      if (rec.name == "reject")      fail("reject record should not have made it into the output.")
+    }
+
+    // Should not store original UMIs on any records
+    new CorrectUmis(input=builder.toTempFile(), output=output, umis=expectedUmis, maxMismatches=2, minDistance=2, dontStoreOriginalUmis=true).execute()
+    readBamRecs(output).foreach { rec =>
+      rec.get(ConsensusTags.OriginalUmiBases) shouldBe None
+    }
+  }
 }
