@@ -128,7 +128,7 @@ class CorrectUmis
   @arg(flag='u', doc="Expected UMI sequences.", minElements=0) val umis: Seq[String] = Seq.empty,
   @arg(flag='U', doc="File of UMI sequences, one per line.", minElements=0) val umiFiles: Seq[FilePath] = Seq.empty,
   @arg(flag='t', doc="Tag in which UMIs are stored.") val umiTag: String = ConsensusTags.UmiBases,
-  @arg(flag='x', doc="If specified, don't store original UMIs upon correction.") val dontStoreOriginalUmis: Boolean = false
+  @arg(flag='x', doc="Don't store original UMIs upon correction.") val dontStoreOriginalUmis: Boolean = false
 ) extends FgBioTool with LazyLogging {
 
   validate(umis.nonEmpty || umiFiles.nonEmpty, "At least one UMI or UMI file must be provided.")
@@ -203,7 +203,7 @@ class CorrectUmis
 
             // Output the corrected read
             if (matches.forall(_.matched)) {
-              // Store the original UMI if requested, and there are mismatches
+              // Store the original UMI if enabled and there are mismatches
               if (!dontStoreOriginalUmis && !matches.forall(_.mismatches == 0)) {
                 rec(ConsensusTags.OriginalUmiBases) = rec(this.umiTag)
               }
