@@ -5,6 +5,7 @@ scala:
 jdk:
 - oraclejdk8
 script:
+- sudo chmod 0777 "$HOME/.gitconfig"
 - sbt +clean coverage +test && sbt coverageReport coverageAggregate
 - find $HOME/.sbt -name "*.lock" | xargs rm
 - find $HOME/.ivy2 -name "ivydata-*.properties" | xargs rm
