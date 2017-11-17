@@ -27,11 +27,13 @@ package com.fulcrumgenomics.util
 
 import java.io.{Closeable, Writer}
 import java.nio.file.Path
+import java.text.{DecimalFormat, NumberFormat, SimpleDateFormat}
+import java.util.Date
 
 import com.fulcrumgenomics.commons.CommonsDef._
 import com.fulcrumgenomics.commons.reflect.{ReflectionUtil, ReflectiveBuilder}
 import com.fulcrumgenomics.commons.util.DelimitedDataParser
-import htsjdk.samtools.util.FormatUtil
+import htsjdk.samtools.util.{FormatUtil, Iso8601Date}
 
 import scala.reflect.runtime.{universe => ru}
 import scala.util.{Failure, Success}
@@ -45,6 +47,15 @@ object Metric {
 
   /** A typedef for [[Double]] to be used when representing values between 0 and 1. */
   type Proportion = Double
+
+  /** A format object for Doubles that outputs with limited precision. Should be synchronized over. */
+  private val BigDoubleFormat: NumberFormat = new DecimalFormat("0.######")
+
+  /** A format object for Doubles that are very small and require scientific notation. Should be sync'd over. */
+  private val SmallDoubleFormat: NumberFormat = new DecimalFormat("0.#####E0")
+
+  /** A format object for Dates. Should be sync'd over. */
+  private val DateFormat = new SimpleDateFormat("yyyy-MM-dd")
 
   /** A class that provides streaming writing capability for metrics. */
   class MetricWriter[T <: Metric] private[Metric](val writer: Writer)(implicit tt: ru.TypeTag[T]) extends Closeable {
@@ -194,15 +205,7 @@ object Metric {
   * words separated by underscores.
   */
 trait Metric extends Product with Iterable[(String,String)] {
-  type Proportion = Double
   private lazy val reflectiveBuilder = new ReflectiveBuilder(this.getClass)
-  private val formatter = new FormatUtil {
-    override def format(value: Any): String = value match {
-      case None              => ""
-      case Some(x)           => super.format(x)
-      case y                 => super.format(y)
-    }
-  }
 
   /** Get the names of the arguments in the order they were defined. */
   def names: Seq[String] = {
@@ -210,7 +213,7 @@ trait Metric extends Product with Iterable[(String,String)] {
   }
 
   /** Get the values of the arguments in the order they were defined. */
-  def values: Seq[String] = productIterator.map(formatValues).toSeq
+  def values: Seq[String] = productIterator.map(formatValue).toSeq
 
   /** Gets the value of the field by name. */
   def apply(name: String): String = get(name).getOrElse {
@@ -225,11 +228,25 @@ trait Metric extends Product with Iterable[(String,String)] {
     }
   }
 
-  /** Gets an iterator over the fileds of this metric in the order they were defined.  Returns tuples of names and values */
+  /** Gets an iterator over the fields of this metric in the order they were defined.  Returns tuples of names and values */
   override def iterator: Iterator[(String,String)] = this.names.zip(this.values).toIterator
 
+  /** @deprecated use [[formatValue]] instead. */
+  @deprecated("Use formatValue instead.", since="0.5.0")
+  protected def formatValues(value: Any): String = formatValue(value)
+
   /** Override this method to customize how values are formatted. */
-  protected def formatValues(value: Any): String = formatter.format(value)
+  protected def formatValue(value: Any): String = value match {
+    case null      => ""
+    case None      => ""
+    case Some(x)   => formatValue(x)
+    case d: Iso8601Date => d.toString
+    case d: Date   => Metric.DateFormat.synchronized { Metric.DateFormat.format(d) }
+    case f: Float  => formatValue(f.toDouble)
+    case d: Double if d < 0.00001 => Metric.SmallDoubleFormat.synchronized { Metric.SmallDoubleFormat.format(d) }
+    case d: Double                => Metric.BigDoubleFormat.synchronized { Metric.BigDoubleFormat.format(d) }
+    case other     => other.toString
+  }
 
   override def toString: String = names.zip(values).toMap.toString
 }
