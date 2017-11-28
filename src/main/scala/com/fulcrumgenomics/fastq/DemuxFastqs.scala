@@ -41,9 +41,9 @@ import com.fulcrumgenomics.util.ReadStructure.SubRead
 import com.fulcrumgenomics.util.{ReadStructure, SampleBarcodeMetric, _}
 import htsjdk.samtools.SAMFileHeader.SortOrder
 import htsjdk.samtools._
-import scala.concurrent.forkjoin.ForkJoinPool
-import htsjdk.samtools.util.{ProgressLogger => _, _}
+import htsjdk.samtools.util.{Iso8601Date, SequenceUtil}
 
+import scala.concurrent.forkjoin.ForkJoinPool
 
 object DemuxFastqs {
 
@@ -70,14 +70,20 @@ object DemuxFastqs {
     output.resolve(PathUtil.sanitizeFileName(s"${sample.sampleId}-${sample.sampleName}-$sampleBarcode"))
   }
 
-  /** Gets the quality format of the FASTQs. */
-  private def determineQualityFormat(fastqs: Seq[PathToFastq], logger: Option[Logger] = None): QualityEncoding = {
+  /** Gets the quality format of the FASTQs. If a format is given, checks that the given format is compatible. */
+  private def determineQualityFormat(fastqs: Seq[PathToFastq],
+                                     format: Option[QualityEncoding] = None,
+                                     logger: Option[Logger] = None): QualityEncoding = {
     val detector = new QualityEncodingDetector
-    detector.sample(fastqs.iterator.flatMap(FastqSource(_)).map(_.bases))
-    detector.rankedCompatibleEncodings(q=30) match {
-      case Seq() =>
-        throw new IllegalStateException("Could not determine quality score encoding in fastq. No known encodings are valid for all observed qualities.")
-      case encs =>
+    detector.sample(fastqs.iterator.flatMap(FastqSource(_)).map(_.quals))
+
+    format match {
+      case Some(f) =>
+        require(detector.isCompatible(f), s"Fastq is not compatible with provided quality encoding: $f")
+        f
+      case None =>
+        val encs = detector.rankedCompatibleEncodings(q=30)
+        require(encs.nonEmpty, "Could not determine quality score encoding in fastq. No known encodings are valid for all observed qualities.")
         if (encs.size > 1) logger.foreach(_.warning(s"Making ambiguous determination about fastq's quality encoding; possible encodings: ${encs.mkString(", ")}."))
         logger.foreach(_.info(s"Auto-detected quality format as: ${encs.head}"))
         encs.head
@@ -275,7 +281,7 @@ class DemuxFastqs
       |for phred scaled scores with a character shift of 33.  If this value
       |is not specified, the quality format will be detected automatically.
   """)
-val qualityFormat: Option[FastqQualityFormat] = None,
+ val qualityFormat: Option[QualityEncoding] = None,
  @arg(flag='t', doc="The number of threads to use while de-multiplexing. The performance does not increase linearly with the # of threads and seems not to improve beyond 2-4 threads.") val threads: Int = 1,
  @arg(doc="Maximum mismatches for a barcode to be considered a match.") val maxMismatches: Int = 1,
  @arg(doc="Minimum difference between number of mismatches in the best and second best barcodes for a barcode to be considered a match.") val minMismatchDelta: Int = 2,
@@ -314,9 +320,6 @@ val qualityFormat: Option[FastqQualityFormat] = None,
   Io.assertReadable(inputs)
   Io.assertReadable(metadata)
 
-  /** The quality format converter. */
-  private val solexaQualityConverter: SolexaQualityConverter = SolexaQualityConverter.getSingleton
-
   /** Create a sample sheet from either the input sample sheet path or the metadata CSV. */
   private val sampleSheet: SampleSheet = {
     val lines = Io.readLines(metadata).toSeq
@@ -335,7 +338,7 @@ val qualityFormat: Option[FastqQualityFormat] = None,
     Io.assertCanWriteFile(this.metricsPath)
 
     // Get the FASTQ quality encoding format
-    val qualityEncoding = determineQualityFormat(inputs, Some(this.logger))
+    val qualityEncoding: QualityEncoding = determineQualityFormat(fastqs=inputs, format=this.qualityFormat, logger=Some(this.logger))
 
     // Read in the sample sheet and create the sample information
     val samplesFromSampleSheet = sampleSheet.map(s => withCustomSampleBarcode(s, columnForSampleBarcode))
@@ -435,7 +438,7 @@ private class SamRecordWriter(output: PathToBam,
                               val header: SAMFileHeader,
                               val umiTag: String,
                               val numSamples: Int) extends DemuxWriter {
-  val order = if (header.getSortOrder == SortOrder.unsorted) None else SamOrder(header)
+  val order: Option[SamOrder] = if (header.getSortOrder == SortOrder.unsorted) None else SamOrder(header)
   private val writer = SamWriter(output, header, sort=order,
     async = DemuxFastqs.UseAsyncIo,
     maxRecordsInRam = Math.max(10000,  DemuxFastqs.MaxRecordsInRam / numSamples))
@@ -446,7 +449,7 @@ private class SamRecordWriter(output: PathToBam,
     val record = SamRecord(header)
     record.name     = rec.name
     record.bases    = rec.bases
-    record.quals    = rec.quals.getBytes
+    record.quals    = rec.quals
     record.unmapped = true
     if (rec.pairedEnd) {
       record.paired = true
