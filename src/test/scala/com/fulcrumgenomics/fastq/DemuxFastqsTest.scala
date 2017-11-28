@@ -110,8 +110,8 @@ class DemuxFastqsTest extends UnitSpec with OptionValues with ErrorLogLevel {
       maxMismatches=mm, minMismatchDelta=md, maxNoCalls=mn)
   }
 
-  private def fq(name: String, bases: String, comment: Option[String] = None, readNumber: Option[Int]=None): FastqRecord =
-    FastqRecord(name=name, bases=bases, quals="I"*bases.length, comment=comment, readNumber=readNumber)
+  private def fq(name: String, bases: String, quals: Option[String]=None, comment: Option[String] = None, readNumber: Option[Int]=None): FastqRecord =
+    FastqRecord(name=name, bases=bases, quals=quals.getOrElse("I"*bases.length), comment=comment, readNumber=readNumber)
 
   private def verifyFragUnmatchedSample(demuxRecord: DemuxResult): Unit = {
     demuxRecord.records.length shouldBe 1
@@ -486,6 +486,37 @@ class DemuxFastqsTest extends UnitSpec with OptionValues with ErrorLogLevel {
         }
       }
     }
+  }
+
+  it should "demultiplex fragment reads with standard qualities" in {
+    val output     = outputDir()
+    val metrics    = makeTempFile("metrics", ".txt")
+
+    val structures=Seq(ReadStructure("4B+T"))
+    val fastqRecord = fq(name="frag", bases="TCGTGACAGGAATCAAATGAAAACACTTGGT", quals=Some("1>1>11AFF?FFGGGGGGCBDGBGCFGH11B"))
+    val illuminaReadNamesFastqPath = {
+      val fastqs = Seq(fastqRecord)
+      val path = makeTempFile("test", ".fastq")
+      Io.writeLines(path, fastqs.map(_.toString))
+      path
+    }
+
+    val metadata = {
+      val data = "Sample_Barcode,Sample_ID,Sample_Name,Library_ID,Description\nTCGT,foo,S1,,"
+      val path = makeTempFile("test", ".fastq")
+      Io.writeLines(path, data.split("\n"))
+      path
+    }
+
+    new DemuxFastqs(inputs=Seq(illuminaReadNamesFastqPath), output=output, metadata=metadata,
+      readStructures=structures, metrics=Some(metrics), maxMismatches=2, minMismatchDelta=3,
+      outputFastqs=false).execute()
+
+    val record = readBamRecs(output.resolve("foo-S1-TCGT.bam")).head
+
+    record.name shouldBe "frag"
+    record.basesString shouldBe fastqRecord.bases.drop(4)
+    record.qualsString shouldBe fastqRecord.quals.drop(4)
   }
 
   it should "create the correct output prefix" in {
