@@ -80,36 +80,6 @@ object Metric {
   }
 
 
-  /** Construct a metric of the given type.  The arguments given should be a sequence of tuples: the name of the field
-    * and value as a string.
-    * @deprecated This method is very slow since it inspects the target type via reflection for each instance
-    *             created.  Use [[read()]] instead.
-    *
-    * */
-  @deprecated("Very slow.  Use read() instead.", since="0.3.1")
-  def build[T <: Metric](args: Seq[(String, String)])(implicit tt: ru.TypeTag[T]): T = {
-    val clazz             = ReflectionUtil.typeTagToClass[T]
-    val reflectiveBuilder = new ReflectiveBuilder(clazz)
-    // set the arguments
-    args.foreach { case (name, value) =>
-      reflectiveBuilder.argumentLookup.forField(name) match {
-        case Some(arg) =>
-          val argumentValue = ReflectionUtil.constructFromString(arg.argumentType, arg.unitType, value) match {
-            case Success(v) => v
-            case Failure(thr) => throw thr
-          }
-          arg.value_=(argumentValue)
-        case None =>
-          throw new IllegalArgumentException(s"The class '${clazz.getSimpleName}' did not have a field with name '$name'.")
-      }
-    }
-    // build it.  NB: if arguments are missing values, then an exception will be thrown here
-    // Also, we don't use the default "build()" method since if a collection or option is empty, it will be treated as
-    // missing.
-    reflectiveBuilder.build(reflectiveBuilder.argumentLookup.ordered.map(arg => arg.value getOrElse unreachable(s"Arguments not set: ${arg.name}")))
-  }
-
-
   /** Reads metrics from a set of lines.  The first line should be the header with the field names.  Each subsequent
     * line should be a single metric. */
   def read[T <: Metric](lines: Iterator[String], source: Option[String] = None)(implicit tt: ru.TypeTag[T]): Seq[T] = {
