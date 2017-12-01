@@ -178,21 +178,6 @@ object Metric {
     */
   def write[T <: Metric](path: Path, metrics: TraversableOnce[T])(implicit tt: ru.TypeTag[T]): Unit = write(Io.toWriter(path), metrics)
 
-  /** Writes a metric to the given writer.  The first line will be a header with the field names.  Each subsequent
-    * line is a single metric.
-    */
-  @deprecated(message="Use `write[T <: Metric](writer: Writer, metric: T*): Unit` instead.", since="2017-01-16")
-  def write[T <: Metric](metrics: Seq[T], writer: Writer)(implicit tt: ru.TypeTag[T]): Unit = {
-    val out = new MetricWriter[T](writer)
-    out.write(metrics:_*)
-    out.close()
-  }
-
-  /** Writes metrics to the given path.  The first line will be a header with the field names.  Each subsequent
-    * line is a single metric.
-    */
-  @deprecated(message="Use `write[T <: Metric](path: Path, metric: T*): Unit` instead.", since="2017-01-16")
-  def write[T <: Metric](metrics: Seq[T], path: Path)(implicit tt: ru.TypeTag[T]): Unit = write(Io.toWriter(path), metrics:_*)
 
   /** Returns a MetricWriter that can be used to stream metrics out to a file. */
   def writer[T <: Metric](path: Path)(implicit tt: ru.TypeTag[T]): MetricWriter[T] = new MetricWriter[T](Io.toWriter(path))
