@@ -66,16 +66,11 @@ class ClipBam
   @arg(          doc="Require at least this number of bases to be clipped on the 3' end of R1") val readOneThreePrime: Int = 0,
   @arg(          doc="Require at least this number of bases to be clipped on the 5' end of R2") val readTwoFivePrime: Int  = 0,
   @arg(          doc="Require at least this number of bases to be clipped on the 3' end of R2") val readTwoThreePrime: Int = 0,
-  @deprecated("Use clip-overlapping-reads instead.", since="0.2.1")
-  @arg(          doc="Clip overlapping reads.", mutex=Array("clipOverlappingReads")) val overlappingReads: Boolean = false,
-  @arg(          doc="Clip overlapping reads.", mutex=Array("overlappingReads")) var clipOverlappingReads: Boolean = false
+  @arg(          doc="Clip overlapping reads.") val clipOverlappingReads: Boolean = false
 ) extends FgBioTool with LazyLogging {
   Io.assertReadable(input)
   Io.assertReadable(ref)
   Io.assertCanWriteFile(output)
-
-  // Since both are set to false by default
-  clipOverlappingReads = clipOverlappingReads || overlappingReads
 
   validate(clipOverlappingReads || Seq(readOneFivePrime, readOneThreePrime, readTwoFivePrime, readTwoThreePrime).exists(_ != 0),
     "At least one clipping option is required")

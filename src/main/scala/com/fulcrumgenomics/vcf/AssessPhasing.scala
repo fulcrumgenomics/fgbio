@@ -310,7 +310,7 @@ object AssessPhasing {
   val PhaseConcordanceFormatHeaderLine = new VCFFormatHeaderLine(PhaseConcordanceFormatTag, 1, VCFHeaderLineType.Integer, PhaseConcordanceFormatDescription)
 
   def getPhasingSetId(ctx: VariantContext): Int = {
-    ctx.getGenotype(0).getAttributeAsInt("PS", -1) // Integer.valueOf(ctx.getGenotype(0).getExtendedAttribute("PS", -1).toString)
+    Integer.valueOf(ctx.getGenotype(0).getExtendedAttribute("PS", "-1").toString)
   }
 }
 

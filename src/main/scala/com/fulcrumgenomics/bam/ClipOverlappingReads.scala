@@ -58,4 +58,4 @@ class ClipOverlappingReads
   @arg(flag='r', doc="Reference sequence fasta file.") ref: PathToFasta,
   @arg(flag='s', doc="Soft clip reads instead of hard clipping.") softClip: Boolean = false,
   @arg(flag='a', doc="Automatically clip extended attributes that are the same length as bases.") autoClipAttributes: Boolean = false
-) extends ClipBam(input=input, output=output, ref=ref, softClip=softClip, autoClipAttributes=autoClipAttributes, overlappingReads=true)
+) extends ClipBam(input=input, output=output, ref=ref, softClip=softClip, autoClipAttributes=autoClipAttributes, clipOverlappingReads=true)

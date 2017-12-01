@@ -79,7 +79,7 @@ class ClipBamTest extends UnitSpec with ErrorLogLevel {
 
   it should "not clip reads where either read is unaligned" in {
     val builder = new SamBuilder(readLength=50)
-    val clipper = new ClipBam(input=dummyBam, output=dummyBam, ref=ref, overlappingReads=true)
+    val clipper = new ClipBam(input=dummyBam, output=dummyBam, ref=ref, clipOverlappingReads=true)
     val Seq(r1, r2) = builder.addPair(start1=100, start2=100, unmapped2=true)
     val expected = r1.cigar
     clipper.clip(r1, r2)
@@ -88,7 +88,7 @@ class ClipBamTest extends UnitSpec with ErrorLogLevel {
 
   it should "not clip reads that are on different chromosomes" in {
     val builder = new SamBuilder(readLength=50)
-    val clipper = new ClipBam(input=dummyBam, output=dummyBam, ref=ref, overlappingReads=true)
+    val clipper = new ClipBam(input=dummyBam, output=dummyBam, ref=ref, clipOverlappingReads=true)
     val Seq(r1, r2) = builder.addPair(start1=100, start2=100)
     r2.refIndex = 1
 
@@ -100,7 +100,7 @@ class ClipBamTest extends UnitSpec with ErrorLogLevel {
 
   it should "not clip reads that are abutting but not overlapped" in {
     val builder = new SamBuilder(readLength=50)
-    val clipper = new ClipBam(input=dummyBam, output=dummyBam, ref=ref, overlappingReads=true)
+    val clipper = new ClipBam(input=dummyBam, output=dummyBam, ref=ref, clipOverlappingReads=true)
     val Seq(r1, r2) = builder.addPair(start1=100, start2=150)
 
     val (r1Exp, r2Exp) = (r1.cigar, r2.cigar)
@@ -111,7 +111,7 @@ class ClipBamTest extends UnitSpec with ErrorLogLevel {
 
   it should "not clip non-FR reads " in {
     val builder = new SamBuilder(readLength=50)
-    val clipper = new ClipBam(input=dummyBam, output=dummyBam, ref=ref, overlappingReads=true)
+    val clipper = new ClipBam(input=dummyBam, output=dummyBam, ref=ref, clipOverlappingReads=true)
     val Seq(r1, r2) = builder.addPair(start1=100, start2=100, strand2=Plus)
 
     val (r1Exp, r2Exp) = (r1.cigar, r2.cigar)
@@ -122,7 +122,7 @@ class ClipBamTest extends UnitSpec with ErrorLogLevel {
 
   it should "clip reads that are fully overlapped" in {
     val builder = new SamBuilder(readLength=50)
-    val clipper = new ClipBam(input=dummyBam, output=dummyBam, ref=ref, overlappingReads=true)
+    val clipper = new ClipBam(input=dummyBam, output=dummyBam, ref=ref, clipOverlappingReads=true)
     val Seq(r1, r2) = builder.addPair(start1=100, start2=100)
 
     clipper.clip(r1, r2)
@@ -132,7 +132,7 @@ class ClipBamTest extends UnitSpec with ErrorLogLevel {
 
   it should "clip reads that are overlapped by just one base" in {
     val builder = new SamBuilder(readLength=50)
-    val clipper = new ClipBam(input=dummyBam, output=dummyBam, ref=ref, overlappingReads=true)
+    val clipper = new ClipBam(input=dummyBam, output=dummyBam, ref=ref, clipOverlappingReads=true)
     val Seq(r1, r2) = builder.addPair(start1=100, start2=149)
 
     r1.end shouldBe r2.start
@@ -142,7 +142,7 @@ class ClipBamTest extends UnitSpec with ErrorLogLevel {
 
   it should "handle reads that contain insertions" in {
     val builder = new SamBuilder(readLength=50)
-    val clipper = new ClipBam(input=dummyBam, output=dummyBam, ref=ref, overlappingReads=true)
+    val clipper = new ClipBam(input=dummyBam, output=dummyBam, ref=ref, clipOverlappingReads=true)
     val Seq(r1, r2) = builder.addPair(start1=100, start2=130, cigar1="40M2I8M", cigar2="10M2I38M")
 
     r1.end >= r2.start shouldBe true
@@ -152,7 +152,7 @@ class ClipBamTest extends UnitSpec with ErrorLogLevel {
 
   it should "handle reads that contain deletions" in {
     val builder = new SamBuilder(readLength=50)
-    val clipper = new ClipBam(input=dummyBam, output=dummyBam, ref=ref, overlappingReads=true)
+    val clipper = new ClipBam(input=dummyBam, output=dummyBam, ref=ref, clipOverlappingReads=true)
     val Seq(r1, r2) = builder.addPair(start1=100, start2=130, cigar1="40M2D10M", cigar2="10M2D40M")
 
     r1.end >= r2.start shouldBe true
@@ -164,7 +164,7 @@ class ClipBamTest extends UnitSpec with ErrorLogLevel {
   // input reads, one of the reads becomes unmapped during clipping
   it should "handle reads that get unmapped because they are fully overlapped" in {
     val builder = new SamBuilder(readLength=50)
-    val clipper = new ClipBam(input=dummyBam, output=dummyBam, ref=ref, overlappingReads=true)
+    val clipper = new ClipBam(input=dummyBam, output=dummyBam, ref=ref, clipOverlappingReads=true)
     val Seq(r1a, r2a) = builder.addPair(name="q1", start1=100, start2=100, cigar1="3M47S", cigar2="48S2M")
     val Seq(r1b, r2b) = builder.addPair(name="q2", start1=100, start2=100, cigar1="2M48S", cigar2="47S3M")
 
@@ -209,7 +209,7 @@ class ClipBamTest extends UnitSpec with ErrorLogLevel {
   it should "clip a fixed amount on the ends of the reads then clip overlapping reads" in {
     val builder = new SamBuilder(readLength=50)
     val clipper = new ClipBam(input=dummyBam, output=dummyBam, ref=ref,
-      readOneFivePrime=0, readOneThreePrime=1, readTwoFivePrime=0, readTwoThreePrime=1, overlappingReads=true)
+      readOneFivePrime=0, readOneThreePrime=1, readTwoFivePrime=0, readTwoThreePrime=1, clipOverlappingReads=true)
     val Seq(r1, r2) = builder.addPair(start1=100, start2=146)
 
     val prior = StartsAndEnds(r1, r2)
@@ -260,7 +260,7 @@ class ClipBamTest extends UnitSpec with ErrorLogLevel {
     new ClipBam(
       input=builder.toTempFile(), output=out, ref=ref,
       readOneFivePrime=2, readOneThreePrime=0, readTwoFivePrime=2, readTwoThreePrime=0,
-      overlappingReads=true
+      clipOverlappingReads=true
     ).execute()
     val clipped = SamSource(out).toSeq
 

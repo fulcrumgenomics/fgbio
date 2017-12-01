@@ -114,8 +114,8 @@ trait SamRecord {
   @inline final def secondOfPair: Boolean = getSecondOfPairFlag
   @inline final def secondOfPair_=(second: Boolean):Unit = setSecondOfPairFlag(second)
 
-  @inline final def secondary: Boolean = getNotPrimaryAlignmentFlag
-  @inline final def secondary_=(secondary: Boolean):Unit = setNotPrimaryAlignmentFlag(secondary)
+  @inline final def secondary: Boolean = isSecondaryAlignment
+  @inline final def secondary_=(secondary: Boolean):Unit = setSecondaryAlignment(secondary)
 
   @inline final def pf: Boolean = !getReadFailsVendorQualityCheckFlag
   @inline final def pf_=(pf: Boolean):Unit = setReadFailsVendorQualityCheckFlag(!pf)

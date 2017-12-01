@@ -80,11 +80,7 @@ class ExtractUmisFromBam
 ( @arg(flag='i', doc = "Input BAM file.")                                      val input: PathToBam,
   @arg(flag='o', doc = "Output BAM file.")                                     val output: PathToBam,
   @arg(flag='r', doc = "The read structure, one per read in a template.")      val readStructure: Seq[ReadStructure],
-  @deprecated("Use molecular-index-tags instead.", since="0.1.3")
-  @arg(flag='b', doc = "**[DEPRECATED]** SAM tags in which to store the molecular barcodes (one-per segment).",
-    mutex=Array("molecularIndexTags"), minElements=0) val molecularBarcodeTags: Seq[String] = Seq.empty,
-  @arg(flag='t', doc = "SAM tag(s) in which to store the molecular indices.", mutex=Array("molecularBarcodeTags"), minElements=0)
-                                                                                 val molecularIndexTags: Seq[String] = Seq.empty,
+  @arg(flag='t', doc = "SAM tag(s) in which to store the molecular indices.", minElements=0) val molecularIndexTags: Seq[String] = Seq.empty,
   @arg(flag='s', doc = "Single tag into which to concatenate all molecular indices.") val singleTag: Option[String] = None,
   @arg(flag='a', doc = "Annotate the read names with the molecular indices. See usage for more details.") val annotateReadNames: Boolean = false,
   @arg(flag='c', doc = "The SAM tag with the position in read to clip adapters (e.g. `XT` as produced by Picard's `MarkIlluminaAdapters`).") val clippingAttribute: Option[String] = None
@@ -102,23 +98,22 @@ class ExtractUmisFromBam
   }
 
   // This can be removed once the @deprecated molecularBarcodeTags is removed
-  private val perIndexTags = if (molecularIndexTags.nonEmpty) molecularIndexTags else molecularBarcodeTags
-  if (perIndexTags.isEmpty) invalid("At least one molecular-index-tag must be specified.")
+  if (molecularIndexTags.isEmpty) invalid("At least one molecular-index-tag must be specified.")
 
   // validate the read structure versus the molecular index tags
   {
     // create a read structure for the entire template
     val rsMolecularBarcodeSegmentCount = readStructure.map(_.molecularBarcodeSegments.size).sum
     // make sure each tag is of length 2
-    perIndexTags.foreach(tag => if (tag.length != 2) invalid("SAM tags must be of length two: " + tag))
+    molecularIndexTags.foreach(tag => if (tag.length != 2) invalid("SAM tags must be of length two: " + tag))
     // ensure we either have one tag, or we have the same # of tags as molecular indices in the read structure.
-    if (perIndexTags.size > 1 && rsMolecularBarcodeSegmentCount != perIndexTags.size) {
+    if (molecularIndexTags.size > 1 && rsMolecularBarcodeSegmentCount != molecularIndexTags.size) {
       invalid("Either a single SAM tag, or the same # of SAM tags as molecular indices in the read structure,  must be given.")
     }
   }
 
   // split them into to tags for segments in read 1 vs read 2
-  private val (molecularIndexTags1, molecularIndexTags2) = perIndexTags match {
+  private val (molecularIndexTags1, molecularIndexTags2) = molecularIndexTags match {
     case Seq(tag) => (Seq[String](tag), Seq[String](tag))
     case tags =>
       val numMolecularIndicesRead1 = rs1.molecularBarcodeSegments.length
@@ -128,7 +123,7 @@ class ExtractUmisFromBam
   // Verify that if a single tag was specified that it is valid and not also contained in the per-index tags
   singleTag.foreach { tag =>
     if (tag.length != 2) invalid(s"All tags must be two characters: ${tag}")
-    if (perIndexTags.contains(tag)) invalid(s"$tag specified as single-tag and also per-index tag")
+    if (molecularIndexTags.contains(tag)) invalid(s"$tag specified as single-tag and also per-index tag")
   }
 
   override def execute(): Unit = {

@@ -30,7 +30,7 @@ import java.nio.file.Path
 
 import com.fulcrumgenomics.testing.UnitSpec
 import org.scalatest.OptionValues
-import org.scalatest.concurrent.Timeouts
+import org.scalatest.concurrent.TimeLimits
 import org.scalatest.time.SpanSugar._
 
 private case class TestMetric(foo: String, bar: Int, car: String = "default") extends Metric
@@ -44,7 +44,7 @@ private case class TestMetricWithDouble(foo: String, bar: Double, option: Option
 /**
   * Tests for Metric.
   */
-class MetricTest extends UnitSpec with OptionValues with Timeouts {
+class MetricTest extends UnitSpec with OptionValues with TimeLimits {
 
   "Metric.header" should "return the header names in order" in {
     val testMetric = TestMetric(foo="fooValue", bar=1)
