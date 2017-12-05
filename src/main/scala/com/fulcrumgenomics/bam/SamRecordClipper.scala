@@ -73,7 +73,7 @@ object SamRecordClipper {
 class SamRecordClipper(val mode: ClippingMode, val autoClipAttributes: Boolean) {
   import SamRecordClipper._
 
-    /**
+  /**
     * Adds clipping of _at least_ numberOfBasesToClip to the start (left hand end)
     * of an alignment. If clipping already exists at the start of the read it is
     * preserved, and numberOfBasesToClip more clipping is added.
@@ -93,13 +93,16 @@ class SamRecordClipper(val mode: ClippingMode, val autoClipAttributes: Boolean) 
     * @param rec the record to be clipped
     * @param numberOfBasesToClip the number of additional bases to clip beyond any clipping
     *                            already applied to the read
+    * @return the additional number bases clipped, not including bases already clipped
     */
-  def clipStartOfAlignment(rec: SamRecord, numberOfBasesToClip: Int) : Unit = {
+  def clipStartOfAlignment(rec: SamRecord, numberOfBasesToClip: Int) : Int = {
+    val numClippable = numberOfClippableBases(rec)
     if (rec.unmapped || numberOfBasesToClip < 1) {
-      Unit
+      0
     }
-    else if (numberOfClippableBases(rec) <= numberOfBasesToClip) {
+    else if (numClippable <= numberOfBasesToClip) {
       SAMUtils.makeReadUnmapped(rec.asSam)
+      numClippable
     }
     else {
       val oldElems = rec.cigar.elems
@@ -121,6 +124,7 @@ class SamRecordClipper(val mode: ClippingMode, val autoClipAttributes: Boolean) 
           case _ => Unit
         }
       }
+      readBasesClipped
     }
   }
 
@@ -144,13 +148,16 @@ class SamRecordClipper(val mode: ClippingMode, val autoClipAttributes: Boolean) 
     * @param rec the record to be clipped
     * @param numberOfBasesToClip the number of additional bases to clip beyond any clipping
     *                            already applied to the read
+    * @return the additional number bases clipped, not including bases already clipped
     */
-  def clipEndOfAlignment(rec: SamRecord, numberOfBasesToClip: Int) : Unit = {
+  def clipEndOfAlignment(rec: SamRecord, numberOfBasesToClip: Int) : Int = {
+    val numClippable = numberOfClippableBases(rec)
     if (rec.unmapped || numberOfBasesToClip < 1) {
-      Unit
+      0
     }
-    else if (numberOfClippableBases(rec) <= numberOfBasesToClip) {
+    else if (numClippable <= numberOfBasesToClip) {
       SAMUtils.makeReadUnmapped(rec.asSam)
+      numClippable
     }
     else {
       val oldElems = rec.cigar.elems.reverse
@@ -171,6 +178,7 @@ class SamRecordClipper(val mode: ClippingMode, val autoClipAttributes: Boolean) 
             case _  => Unit
         }
       }
+      readBasesClipped
     }
   }
 
@@ -180,8 +188,9 @@ class SamRecordClipper(val mode: ClippingMode, val autoClipAttributes: Boolean) 
     *
     * @param rec the record to be clipped
     * @param numberOfBasesToClip the number of additional bases to be clipped
+    * @return the additional number bases clipped, not including bases already clipped
     */
-  def clip5PrimeEndOfAlignment(rec: SamRecord, numberOfBasesToClip: Int): Unit = {
+  def clip5PrimeEndOfAlignment(rec: SamRecord, numberOfBasesToClip: Int): Int = {
     if (rec.negativeStrand) clipEndOfAlignment(rec, numberOfBasesToClip)
     else clipStartOfAlignment(rec, numberOfBasesToClip)
   }
@@ -192,8 +201,9 @@ class SamRecordClipper(val mode: ClippingMode, val autoClipAttributes: Boolean) 
     *
     * @param rec the record to be clipped
     * @param numberOfBasesToClip the number of additional bases to be clipped
+    * @return the additional number bases clipped, not including bases already clipped
     */
-  def clip3PrimeEndOfAlignment(rec: SamRecord, numberOfBasesToClip: Int): Unit = {
+  def clip3PrimeEndOfAlignment(rec: SamRecord, numberOfBasesToClip: Int): Int = {
     if (rec.negativeStrand) clipStartOfAlignment(rec, numberOfBasesToClip)
     else clipEndOfAlignment(rec, numberOfBasesToClip)
   }
@@ -205,10 +215,11 @@ class SamRecordClipper(val mode: ClippingMode, val autoClipAttributes: Boolean) 
     *
     * @param rec the record to be clipped
     * @param clipLength the total amount of clipping desired, including any existing clipping
+    * @return the additional number bases clipped, not including bases already clipped
     */
-  def clipStartOfRead(rec: SamRecord, clipLength: Int): Unit = {
+  def clipStartOfRead(rec: SamRecord, clipLength: Int): Int = {
     val existingClipping = rec.cigar.takeWhile(_.operator.isClipping).map(_.length).sum
-    if (clipLength > existingClipping) clipStartOfAlignment(rec, clipLength - existingClipping)
+    if (clipLength > existingClipping) clipStartOfAlignment(rec, clipLength - existingClipping) else 0
   }
 
   /**
@@ -218,10 +229,11 @@ class SamRecordClipper(val mode: ClippingMode, val autoClipAttributes: Boolean) 
     *
     * @param rec the record to be clipped
     * @param clipLength the total amount of clipping desired, including any existing clipping
+    * @return the additional number bases clipped, not including bases already clipped
     */
-  def clipEndOfRead(rec: SamRecord, clipLength: Int): Unit = {
+  def clipEndOfRead(rec: SamRecord, clipLength: Int): Int = {
     val existingClipping = rec.cigar.reverseIterator.takeWhile(_.operator.isClipping).map(_.length).sum
-    if (clipLength > existingClipping) clipEndOfAlignment(rec, clipLength - existingClipping)
+    if (clipLength > existingClipping) clipEndOfAlignment(rec, clipLength - existingClipping) else 0
   }
 
   /**
@@ -231,8 +243,9 @@ class SamRecordClipper(val mode: ClippingMode, val autoClipAttributes: Boolean) 
     *
     * @param rec the record to be clipped
     * @param numberOfBasesToClip the number of additional bases to be clipped
+    * @return the additional number bases clipped, not including bases already clipped
     */
-  def clip5PrimeEndOfRead(rec: SamRecord, numberOfBasesToClip: Int): Unit = {
+  def clip5PrimeEndOfRead(rec: SamRecord, numberOfBasesToClip: Int): Int = {
     if (rec.mapped && rec.negativeStrand) clipEndOfRead(rec, numberOfBasesToClip)
     else clipStartOfRead(rec, numberOfBasesToClip)
   }
@@ -244,8 +257,9 @@ class SamRecordClipper(val mode: ClippingMode, val autoClipAttributes: Boolean) 
     *
     * @param rec the record to be clipped
     * @param numberOfBasesToClip the number of additional bases to be clipped
+    * @return the additional number bases clipped, not including bases already clipped
     */
-  def clip3PrimeEndOfRead(rec: SamRecord, numberOfBasesToClip: Int): Unit = {
+  def clip3PrimeEndOfRead(rec: SamRecord, numberOfBasesToClip: Int): Int = {
     if (rec.mapped && rec.negativeStrand) clipStartOfRead(rec, numberOfBasesToClip)
     else clipEndOfRead(rec, numberOfBasesToClip)
   }
@@ -325,7 +339,7 @@ class SamRecordClipper(val mode: ClippingMode, val autoClipAttributes: Boolean) 
     }
     else {
       val addedSoftClip = readBasesClipped
-      val totalSoftClip = existingSoftClip + readBasesClipped
+      val totalSoftClip = existingSoftClip + addedSoftClip
       newElems.prepend(CigarElem(Op.SOFT_CLIP, totalSoftClip))
       if (existingHardClip > 0) newElems.prepend(CigarElem(Op.HARD_CLIP, existingHardClip))
       if (mode == ClippingMode.SoftWithMask) hardMaskStartOfRead(bases, quals, totalSoftClip)
