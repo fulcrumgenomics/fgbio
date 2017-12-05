@@ -319,7 +319,7 @@ class CollectDuplexSeqMetrics
         }
     }
 
-    // Default the decription to something sensible if one wasn't provided
+    // Default the description to something sensible if one wasn't provided
     val description = this.description.getOrElse { plotDescription(in, input) }
 
     // Do a bunch of metrics collection

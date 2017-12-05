@@ -61,8 +61,15 @@ object UmiConsensusCaller {
   /** Filter reason for when reads are rejected due creation of orphaned consensus (i.e. R1 or R2 failed). */
   val FilterOrphan = "Orphan Consensus Created"
 
+  object SimpleRead {
+    val NoCall: Byte = 'N'.toByte
+    val NoCallQual: PhredScore = PhredScore.MinValue
+  }
+
   /** A trait that consensus reads must implement. */
   trait SimpleRead {
+    import SimpleRead._
+
     /** The ID of the molecule that generated the consensus read. */
     def id: String
     /** The bases of the consensus read. */
@@ -75,6 +82,41 @@ object UmiConsensusCaller {
     def baseString = new String(bases)
     /** Retrieves the quals as a phred+33/fastq ascii String. */
     def qualString = SAMUtils.phredToFastq(this.quals)
+
+    def qualityTrim(minMeanBaseQuality: PhredScore): (Array[Byte], Array[Byte]) = {
+      // Quality trim the reads if requested.
+      var qualSum: Int = 0
+      var qualityTrimPoint: Int = length
+      forloop (from=0, until=length) { i =>
+        qualSum += quals(i)
+        val meanQual = qualSum.toDouble / (i+1)
+        if (minMeanBaseQuality <= meanQual) {
+          qualityTrimPoint = i
+        }
+      }
+
+      var noCallSum: Int = 0
+      var noCallTrimPoint: Int = length
+      var minNoCallSum = 0
+      forloop (from=length-1, until=(-1), by=(-1)) { i =>
+        noCallSum += (if (bases(i) == NoCall) -1 else 1)
+        if (noCallSum < minNoCallSum) {
+          minNoCallSum = noCallSum
+          noCallTrimPoint = i
+        }
+
+      }
+
+      val trimToLength = Math.min(qualityTrimPoint, noCallTrimPoint)
+
+      //System.err.println(s"trimToLength: $trimToLength actualLength: ${quals.length} qualityTrimPoint: $qualityTrimPoint noCallTrimPoint: $noCallTrimPoint")
+
+      val trimmedBases = new Array[Byte](trimToLength)
+      val trimmedQuals = new Array[Byte](trimToLength)
+      System.arraycopy(bases, 0, trimmedBases, 0, trimToLength)
+      System.arraycopy(quals, 0, trimmedQuals, 0, trimToLength)
+      (trimmedBases, trimmedQuals)
+    }
   }
 
   /** Stores information about a read to be fed into a consensus. */
@@ -156,14 +198,12 @@ object UmiConsensusCaller {
   */
 trait UmiConsensusCaller[C <: SimpleRead] {
   import com.fulcrumgenomics.umi.UmiConsensusCaller.ReadType._
+  import SimpleRead._
 
   // vars to track how many reads meet various fates
   private var _totalReads: Long = 0
   private val filteredReads = new SimpleCounter[String]()
   private var _consensusReadsConstructed: Long = 0
-
-  protected val NoCall: Byte = 'N'.toByte
-  protected val NoCallQual: PhredScore = PhredScore.MinValue
 
   /** A consensus caller used to generate consensus UMI sequences */
   private val consensusBuilder = new SimpleConsensusCaller()
@@ -312,7 +352,7 @@ trait UmiConsensusCaller[C <: SimpleRead] {
     *
     * NOTE: filtered out reads are sent to the [[rejectRecords()]] method and do not need further handling
     */
-  protected[umi] def filterToMostCommonAlignment(recs: Seq[SourceRead]): Seq[SourceRead] = {
+  protected[umi] def filterToMostCommonAlignment(recs: Seq[SourceRead], reject: Boolean = true): Seq[SourceRead] = {
     val groups = new ArrayBuffer[mutable.Buffer[SourceRead]]
     val cigars = new ArrayBuffer[Cigar]
 
@@ -340,7 +380,7 @@ trait UmiConsensusCaller[C <: SimpleRead] {
       val sorted  = groups.sortBy(g => - g.size)
       val keepers = sorted.head
       val rejects = recs.filter(r => !keepers.contains(r))
-      rejectRecords(rejects.flatMap(_.sam), FilterMinorityAlignment)
+      if (reject) rejectRecords(rejects.flatMap(_.sam), FilterMinorityAlignment)
 
       keepers
     }

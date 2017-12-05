@@ -118,7 +118,7 @@ case class Cigar(elems: IndexedSeq[CigarElem]) extends Iterable[CigarElem] {
   /** Returns the length of the alignment on the query sequence. */
   def lengthOnTarget: Int = elems.foldLeft(0)((sum, elem) => sum + elem.lengthOnTarget)
 
-  /** Yields a new cigar that is truncated to the given ength on the query. */
+  /** Yields a new cigar that is truncated to the given length on the query. */
   def truncateToQueryLength(len: Int): Cigar = truncate(len, e => e.operator.consumesReadBases())
 
   /** Yields a new cigar that is truncated to the given length on the target. */

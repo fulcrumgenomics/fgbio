@@ -28,7 +28,7 @@ import java.lang.Math.min
 
 import com.fulcrumgenomics.FgBioDef._
 import com.fulcrumgenomics.bam.api.SamRecord
-import com.fulcrumgenomics.commons.util.LazyLogging
+import com.fulcrumgenomics.commons.util.{LazyLogging, Logger}
 import com.fulcrumgenomics.umi.DuplexConsensusCaller._
 import com.fulcrumgenomics.umi.UmiConsensusCaller.ReadType.{ReadType, _}
 import com.fulcrumgenomics.umi.UmiConsensusCaller.{SimpleRead, SourceRead}
@@ -43,7 +43,8 @@ object DuplexConsensusCaller {
   val ErrorRatePostUmi: PhredScore        = 40.toByte
   val MinInputBaseQuality: PhredScore     = 15.toByte
   val NoCall: Byte = 'N'.toByte
-  val NoCallQual   = PhredScore.MinValue
+  val NoCallQual: PhredScore = PhredScore.MinValue
+  val MsaCommand = s"/Users/nhomer/git/nh13/callerpp/bin/callerpp"
 
   /** Additional filter strings used when rejecting reads. */
   val FilterMinReads    = "Not Enough Reads (Either Total, AB, or BA)"
@@ -70,8 +71,9 @@ object DuplexConsensusCaller {
                                  baConsensus: Option[VanillaConsensusRead]) extends SimpleRead {
     require(bases.length == quals.length,  "Bases and qualities are not the same length.")
     require(bases.length == errors.length, "Bases and errors are not the same length.")
-    require(abConsensus.length == bases.length, "Bases and AB consensus are not the same length.")
-    require(baConsensus.forall(_.length == bases.length), "Bases and BA consensus are not the same length.")
+    // FIXME
+    //require(abConsensus.length == bases.length, "Bases and AB consensus are not the same length.")
+    //require(baConsensus.forall(_.length == bases.length), "Bases and BA consensus are not the same length.")
   }
 }
 
@@ -98,29 +100,58 @@ object DuplexConsensusCaller {
   * @param minReads the minimum number of input reads to a consensus read (see [[CallDuplexConsensusReads]]).
   * */
 class DuplexConsensusCaller(override val readNamePrefix: String,
-                            override val readGroupId: String    = "A",
-                            val minInputBaseQuality: PhredScore = DuplexConsensusCaller.MinInputBaseQuality,
-                            val trim: Boolean                   = false,
-                            val errorRatePreUmi: PhredScore     = DuplexConsensusCaller.ErrorRatePreUmi,
-                            val errorRatePostUmi: PhredScore    = DuplexConsensusCaller.ErrorRatePostUmi,
-                            val minReads: Seq[Int]              = Seq(1)
+                            override val readGroupId: String      = "A",
+                            val minInputBaseQuality: PhredScore   = DuplexConsensusCaller.MinInputBaseQuality,
+                            val trim: Boolean                     = false,
+                            val errorRatePreUmi: PhredScore       = DuplexConsensusCaller.ErrorRatePreUmi,
+                            val errorRatePostUmi: PhredScore      = DuplexConsensusCaller.ErrorRatePostUmi,
+                            val minReads: Seq[Int]                = Seq(1),
+                            val useMsa: Boolean                   = false,
+                            val msaCommand: String                = DuplexConsensusCaller.MsaCommand,
+                            val maxFilterMinorityFraction: Double = 0.05
                            ) extends UmiConsensusCaller[DuplexConsensusRead] with LazyLogging {
 
   private val Seq(minTotalReads, minXyReads, minYxReads) = this.minReads.padTo(3, this.minReads.last)
 
 
+  private var numR1sUsingMsa: Long = 0
+  private var numR2sUsingMsa: Long = 0
+
   // For depth thresholds it's required that ba <= ab <= cc
   require(minXyReads <= minTotalReads, "min-reads values must be specified high to low.")
   require(minYxReads <= minXyReads, "min-reads values must be specified high to low.")
 
-  private val ssCaller = new VanillaUmiConsensusCaller(readNamePrefix="x", options=new VanillaUmiConsensusCallerOptions(
-      errorRatePreUmi         = this.errorRatePreUmi,
-      errorRatePostUmi        = this.errorRatePostUmi,
-      minReads                = 1,
-      minInputBaseQuality     = this.minInputBaseQuality,
-      minConsensusBaseQuality = PhredScore.MinValue,
-      producePerBaseTags      = true
-    ))
+  private val options = new VanillaUmiConsensusCallerOptions(
+    errorRatePreUmi         = this.errorRatePreUmi,
+    errorRatePostUmi        = this.errorRatePostUmi,
+    minReads                = 1,
+    minInputBaseQuality     = this.minInputBaseQuality,
+    minConsensusBaseQuality = PhredScore.MinValue,
+    producePerBaseTags      = true
+  )
+
+  private val minMeanBaseQuality: PhredScore = Math.min(this.errorRatePreUmi, this.errorRatePostUmi).toByte
+
+  private val ssVanillaCaller = new VanillaUmiConsensusCaller(readNamePrefix="x", options=this.options)
+  private val ssMsaCaller     = new CallerPlusPlusConsensusCaller(options=this.options)
+
+  private def callSingleStrandConsensusCall(forceMsa: Boolean, reads: Seq[SourceRead]): Option[VanillaConsensusRead] = {
+    if (1 < reads.length && forceMsa) {
+      this.ssMsaCaller.consensusCall(reads).flatMap { call =>
+        val (bases, quals) = call.qualityTrim(minMeanBaseQuality=minMeanBaseQuality)
+        /*
+        System.err.println("min qual: " + minMeanBaseQuality)
+        System.err.println("quality trim prior: " + call.baseString)
+        System.err.println("quality trim prior: " + call.qualString)
+        System.err.println("quality trim post : " + new String(bases))
+        System.err.println("quality trim post : " + SAMUtils.phredToFastq(quals))
+        */
+        if (bases.isEmpty) None
+        else Some(call.copy(bases=bases, quals=quals, depths=call.depths.take(bases.length), errors=call.errors.take(bases.length)))
+      }
+    }
+    else this.ssVanillaCaller.consensusCall(reads)
+  }
 
   /**
     * Returns the MI tag minus the trailing suffix that identifies /A vs /B
@@ -191,6 +222,27 @@ class DuplexConsensusCaller(override val readNamePrefix: String,
     }
   }
 
+  private def maybeFilterToMostCommonAlignment(records: Seq[SamRecord]): (Seq[SourceRead], Boolean) = {
+    val reads = records.flatMap(toSourceRead(_, this.minInputBaseQuality, this.trim))
+    //logger.info("Cigars: " + reads.map(_.cigar.toString()).mkString(","))
+    if (!useMsa) (filterToMostCommonAlignment(reads), false)
+    else {
+      //val mid = records.head.apply[String](ConsensusTags.MolecularId)
+      // Check if we filtered out too many reads, and if so, use the MST caller.
+      val filtered = filterToMostCommonAlignment(reads, reject=false)
+      if (this.maxFilterMinorityFraction < (reads.length - filtered.length) / reads.length.toDouble) {
+        //logger.info(f"Forcing MSA [$mid]: ${reads.length - filtered.length} / ${reads.length} = ${(reads.length - filtered.length) / reads.length.toDouble * 100}%.2f")
+        (reads, true)
+      }
+      else {
+        val rejects = reads.filter(r => !filtered.contains(r))
+        //logger.info(f"Not forcing MSA [$mid]: ${reads.length - filtered.length} / ${reads.length} = ${(reads.length - filtered.length) / reads.length.toDouble * 100}%.2f")
+        rejectRecords(rejects.flatMap(_.sam), UmiConsensusCaller.FilterMinorityAlignment)
+        (filtered, false)
+      }
+    }
+  }
+
   /** Attempts to call a duplex consensus reads from the two sets of reads, one for each strand. */
   private def callDuplexConsensusRead(ab: Seq[SamRecord], ba: Seq[SamRecord]): Seq[SamRecord] = {
     // Fragments have no place in duplex land (and are filtered out previously anyway)!
@@ -219,9 +271,9 @@ class DuplexConsensusCaller(override val readNamePrefix: String,
         logger.debug(s"Not all AB-R2s and BA-R1s were on the same strand for molecule with id: $ss2Mi")
         Nil
       case (true, true) =>
-        // Filter by common indel pattern with AB and BA together
-        val filteredXs = filterToMostCommonAlignment((abR1s ++ baR2s).flatMap(toSourceRead(_, this.minInputBaseQuality, this.trim)))
-        val filteredYs = filterToMostCommonAlignment((abR2s ++ baR1s).flatMap(toSourceRead(_, this.minInputBaseQuality, this.trim)))
+        // Filter by common indel pattern with AB and BA together, when not using MAFFT
+        val (filteredXs, useMsaXs) = maybeFilterToMostCommonAlignment(abR1s ++ baR2s)
+        val (filteredYs, useMsaYs) = maybeFilterToMostCommonAlignment(abR2s ++ baR1s)
 
         // Then split then back apart for SS calling
         val filteredAbR1s = filteredXs.filter(_.sam.exists(_.firstOfPair))
@@ -230,16 +282,24 @@ class DuplexConsensusCaller(override val readNamePrefix: String,
         val filteredBaR2s = filteredXs.filter(_.sam.exists(_.secondOfPair))
 
         // Call the single-stranded consensus reads
-        val abR1Consensus = ssCaller.consensusCall(filteredAbR1s)
-        val abR2Consensus = ssCaller.consensusCall(filteredAbR2s)
-        val baR1Consensus = ssCaller.consensusCall(filteredBaR1s)
-        val baR2Consensus = ssCaller.consensusCall(filteredBaR2s)
+        val abR1Consensus = callSingleStrandConsensusCall(useMsaXs, filteredAbR1s)
+        val abR2Consensus = callSingleStrandConsensusCall(useMsaYs, filteredAbR2s)
+        val baR1Consensus = callSingleStrandConsensusCall(useMsaYs, filteredBaR1s)
+        val baR2Consensus = callSingleStrandConsensusCall(useMsaXs, filteredBaR2s)
 
         // Call the duplex reads
         val duplexR1Sources = filteredAbR1s ++ filteredBaR2s
         val duplexR2Sources = filteredAbR2s ++ filteredBaR1s
-        val duplexR1 = duplexConsensus(abR1Consensus, baR2Consensus, duplexR1Sources)
-        val duplexR2 = duplexConsensus(abR2Consensus, baR1Consensus, duplexR2Sources)
+        val duplexR1 = duplexConsensus(abR1Consensus, baR2Consensus, duplexR1Sources, useMsaXs)
+        val duplexR2 = duplexConsensus(abR2Consensus, baR1Consensus, duplexR2Sources, useMsaYs)
+        if (useMsaXs) {
+          numR1sUsingMsa +=1
+          //logger.info(s"duplexR1: ${duplexR1.map(_.baseString).getOrElse("None")}")
+        }
+        if (useMsaYs) {
+          numR2sUsingMsa += 1
+          //logger.info(s"duplexR2: ${duplexR2.map(_.baseString).getOrElse("None")}")
+        }
 
         // Convert to SamRecords and return
         (duplexR1, duplexR2) match {
@@ -276,10 +336,28 @@ class DuplexConsensusCaller(override val readNamePrefix: String,
     */
   private[umi] def duplexConsensus(ab: Option[VanillaConsensusRead],
                                    ba: Option[VanillaConsensusRead],
-                                   sourceReads: Seq[SourceRead]): Option[DuplexConsensusRead] = {
+                                   sourceReads: Seq[SourceRead],
+                                   useMsa: Boolean): Option[DuplexConsensusRead] = {
     (ab, ba) match {
       case (Some(a), None)    => Some(DuplexConsensusRead(id=a.id, a.bases, a.quals, a.errors, a, None))
       case (None, Some(b))    => Some(DuplexConsensusRead(id=b.id, b.bases, b.quals, b.errors, b, None))
+      case (Some(a), Some(b)) if useMsa =>
+        val sourceA = SourceRead(id=a.id, bases=a.bases, quals=a.quals, cigar=null)
+        val sourceB = SourceRead(id=b.id, bases=b.bases, quals=b.quals, cigar=null)
+        this.ssMsaCaller.consensusCall(Seq(sourceA, sourceB)).flatMap { consensusCall =>
+          val (bases, quals) = consensusCall.qualityTrim(minMeanBaseQuality=minMeanBaseQuality)
+          /*
+          System.err.println("min qual: " + minMeanBaseQuality)
+          System.err.println("quality trim prior: " + consensusCall.baseString)
+          System.err.println("quality trim prior: " + consensusCall.qualString)
+          System.err.println("quality trim post : " + new String(bases))
+          System.err.println("quality trim post : " + SAMUtils.phredToFastq(quals))
+          */
+          if (bases.isEmpty) None
+          else {
+            Some(DuplexConsensusRead(id=a.id.drop(1), bases=bases, quals=quals, errors=consensusCall.errors.take(bases.length), a.truncate(bases.length), Some(b.truncate(bases.length))))
+          }
+        }
       case (Some(a), Some(b)) =>
         val len = min(a.length, b.length)
         val id  = a.id
@@ -365,5 +443,15 @@ class DuplexConsensusCaller(override val readNamePrefix: String,
     }
 
     rec
+  }
+
+  override def logStatistics(logger: Logger): Unit = {
+    def logit(label: String, numerator: Long, denominator: Long): Unit = {
+      logger.info(f"Total Consensus $label Generated with MSA: ${numerator}%,d. (${numerator / denominator.toDouble}%.4f)")
+    }
+    logit(label="R1s", numerator=this.numR1sUsingMsa, denominator=consensusReadsConstructed)
+    logit(label="R2s", numerator=this.numR2sUsingMsa, denominator=consensusReadsConstructed)
+    logit(label="R1s or R2s", numerator=this.numR1sUsingMsa+this.numR2sUsingMsa, denominator=2*consensusReadsConstructed)
+    super.logStatistics(logger=logger)
   }
 }
