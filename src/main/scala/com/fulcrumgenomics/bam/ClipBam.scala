@@ -30,11 +30,14 @@ import com.fulcrumgenomics.bam.api.{SamOrder, SamRecord, SamSource, SamWriter}
 import com.fulcrumgenomics.cmdline.{ClpGroups, FgBioTool}
 import com.fulcrumgenomics.commons.util.LazyLogging
 import com.fulcrumgenomics.sopt.{arg, clp}
-import com.fulcrumgenomics.util.{Io, ProgressLogger}
+import com.fulcrumgenomics.util.{Io, Metric, ProgressLogger}
+import enumeratum.EnumEntry
 import htsjdk.samtools.SAMFileHeader.SortOrder
+import htsjdk.samtools.SamPairUtil
 import htsjdk.samtools.SamPairUtil.PairOrientation
-import htsjdk.samtools._
 import htsjdk.samtools.reference.ReferenceSequenceFileWalker
+
+import scala.collection.immutable.IndexedSeq
 
 @clp(group = ClpGroups.SamOrBam, description=
   """
@@ -59,6 +62,7 @@ import htsjdk.samtools.reference.ReferenceSequenceFileWalker
 class ClipBam
 ( @arg(flag='i', doc="Input SAM or BAM file of aligned reads in coordinate order.") val input: PathToBam,
   @arg(flag='o', doc="Output SAM or BAM file.") val output: PathToBam,
+  @arg(flag='m', doc="Optional output of clipping metrics.") val metrics: Option[FilePath] = None,
   @arg(flag='r', doc="Reference sequence fasta file.") val ref: PathToFasta,
   @arg(flag='s', doc="Soft clip reads instead of hard clipping.") val softClip: Boolean = false,
   @arg(flag='a', doc="Automatically clip extended attributes that are the same length as bases.") val autoClipAttributes: Boolean = false,
@@ -78,18 +82,23 @@ class ClipBam
   private val clipper = new SamRecordClipper(mode=if (softClip) ClippingMode.Soft else ClippingMode.Hard, autoClipAttributes=autoClipAttributes)
 
   override def execute(): Unit = {
-    val in       = SamSource(input)
-    val progress = ProgressLogger(logger)
-    val sorter   = Bams.sorter(SamOrder.Coordinate, in.header)
+    val in         = SamSource(input)
+    val progress   = ProgressLogger(logger)
+    val sorter     = Bams.sorter(SamOrder.Coordinate, in.header)
+    val metricsMap = this.metrics.map { _ =>
+      ReadType.values.map { readType => readType -> ClippingMetrics(read_type=readType) }.toMap
+    }
 
     // Go through and clip reads and fix their mate information
     Bams.templateIterator(in).foreach { template =>
       (template.r1, template.r2) match {
         case (Some(r1), Some(r2)) =>
-          clip(r1, r2)
+          clipPair(r1=r1, r2=r2, r1Metric=metricsMap.map(_.apply(ReadType.ReadOne)), r2Metric=metricsMap.map(_.apply(ReadType.ReadTwo)))
           SamPairUtil.setMateInfo(r1.asSam, r2.asSam, true)
           template.r1Supplementals.foreach(s => SamPairUtil.setMateInformationOnSupplementalAlignment(s.asSam, r2.asSam, true))
           template.r2Supplementals.foreach(s => SamPairUtil.setMateInformationOnSupplementalAlignment(s.asSam, r1.asSam, true))
+        case (Some(frag), None) =>
+          clipFragment(frag=frag, metric=metricsMap.map(_.apply(ReadType.Fragment)))
         case _ => Unit
       }
 
@@ -112,27 +121,77 @@ class ClipBam
       out += rec
     }
 
+    (this.metrics, metricsMap) match {
+      case (Some(path), Some(ms)) => Metric.write(path, ReadType.values.map { readType => ms(readType)})
+      case _                      => Unit
+    }
     out.close()
   }
 
   /** Clips a fixed amount from the reads and then clips overlapping reads.
     */
-  private[bam] def clip(r1: SamRecord, r2: SamRecord): Unit = {
+  private[bam] def clipFragment(frag: SamRecord, metric: Option[ClippingMetrics] = None): Unit = {
+    val priorBasesClipped = frag.cigar.clippedBases
 
     // Clip the read!
-    this.clipper.clip5PrimeEndOfRead(r1, readOneFivePrime)
-    this.clipper.clip3PrimeEndOfRead(r1, readOneThreePrime)
-    this.clipper.clip5PrimeEndOfRead(r2, readTwoFivePrime)
-    this.clipper.clip3PrimeEndOfRead(r2, readTwoThreePrime)
+    val numFivePrime  = this.clipper.clip5PrimeEndOfRead(frag, readOneFivePrime)
+    val numThreePrime = this.clipper.clip3PrimeEndOfRead(frag, readOneThreePrime)
 
-    if (clipOverlappingReads && r1.mapped && r2.mapped && r1.refIndex == r2.refIndex && r1.pairOrientation == PairOrientation.FR) {
-      val (f,r) = if (r1.negativeStrand) (r2, r1) else (r1, r2)
-      clipOverlappingReads(f, r)
+    // Update metrics
+    metric.foreach { m =>
+      m.update(
+        rec                 = frag,
+        priorBasesClipped   = priorBasesClipped,
+        numFivePrime        = numFivePrime,
+        numThreePrime       = numThreePrime,
+        numOverlappingBases = 0
+      )
+    }
+  }
+
+  /** Clips a fixed amount from the reads and then clips overlapping reads.
+    */
+  private[bam] def clipPair(r1: SamRecord, r2: SamRecord, r1Metric: Option[ClippingMetrics] = None, r2Metric: Option[ClippingMetrics] = None): Unit = {
+    val priorBasesClippedReadOne = r1.cigar.clippedBases
+    val priorBasesClippedReadTwo = r2.cigar.clippedBases
+
+    // Clip the read!
+    val numReadOneFivePrime  = this.clipper.clip5PrimeEndOfRead(r1, readOneFivePrime)
+    val numReadOneThreePrime = this.clipper.clip3PrimeEndOfRead(r1, readOneThreePrime)
+    val numReadTwoFivePrime  = this.clipper.clip5PrimeEndOfRead(r2, readTwoFivePrime)
+    val numReadTwoThreePrime = this.clipper.clip3PrimeEndOfRead(r2, readTwoThreePrime)
+
+    val (numOverlappingBasesReadOne, numOverlappingBasesReadTwo) = {
+      if (clipOverlappingReads && r1.isFrPair) {
+        if (r1.positiveStrand) clipOverlappingReads(r1, r2) else clipOverlappingReads(r2, r1)
+      } else (0, 0)
+    }
+
+    r1Metric.foreach { m =>
+      m.update(
+        rec                 = r1,
+        priorBasesClipped   = priorBasesClippedReadOne,
+        numFivePrime        = numReadOneFivePrime,
+        numThreePrime       = numReadOneThreePrime,
+        numOverlappingBases = numOverlappingBasesReadOne
+      )
+    }
+
+    r2Metric.foreach { m =>
+      m.update(
+        rec                 = r2,
+        priorBasesClipped   = priorBasesClippedReadTwo,
+        numFivePrime        = numReadTwoFivePrime,
+        numThreePrime       = numReadTwoThreePrime,
+        numOverlappingBases = numOverlappingBasesReadTwo
+      )
     }
   }
 
   /** Clips overlapping reads, where both ends of the read pair are mapped to the same chromosome, and in FR orientation. */
-  protected def clipOverlappingReads(f: SamRecord, r: SamRecord): Unit = {
+  protected def clipOverlappingReads(f: SamRecord, r: SamRecord): (Int, Int) = {
+    var numOverlappingBasesReadOne: Int = 0
+    var numOverlappingBasesReadTwo: Int = 0
     // What we really want is to trim by the number of _reference_ bases not read bases,
     // in order to eliminate overlap.  We could do something very complicated here, or
     // we could just trim read bases in a loop until the overlap is eliminated!
@@ -140,8 +199,80 @@ class ClipBam
       val lengthToClip = f.end - r.start + 1
       val firstHalf    = lengthToClip / 2
       val secondHalf   = lengthToClip - firstHalf // safe guard against rounding on odd lengths
-      this.clipper.clip3PrimeEndOfAlignment(f, firstHalf)
-      this.clipper.clip3PrimeEndOfAlignment(r, secondHalf)
+      numOverlappingBasesReadOne += this.clipper.clip3PrimeEndOfAlignment(f, firstHalf)
+      numOverlappingBasesReadTwo += this.clipper.clip3PrimeEndOfAlignment(r, secondHalf)
+    }
+    (numOverlappingBasesReadOne, numOverlappingBasesReadTwo)
+  }
+}
+
+sealed trait ReadType extends EnumEntry
+object ReadType extends FgBioEnum[ReadType] {
+  def values: IndexedSeq[ReadType] = findValues
+  case object Fragment extends ReadType
+  case object ReadOne extends ReadType
+  case object ReadTwo extends ReadType
+}
+
+
+/** Metrics produced by [[ClipBam]] that detail how many reads and bases are clipped respectively.
+  *
+  * @param read_type The type of read (i.e. Fragment, ReadOne, ReadTwo).
+  * @param reads The number of reads examined.
+  * @param reads_clipped_pre The number of reads with any type of clipping prior to clipping with [[ClipBam]].
+  * @param reads_clipped_post The number of reads with any type of clipping after clipping with [[ClipBam]], including reads that became unmapped.
+  * @param reads_clipped_five_prime The number of reads with the 5' end clipped.
+  * @param reads_clipped_three_prime The number of reads with the 3' end clipped.
+  * @param reads_clipped_overlapping The number of reads clipped due to overlapping reads.
+  * @param reads_unmapped The number of reads that became unmapped due to clipping.
+  * @param bases The number of aligned bases after clipping.
+  * @param bases_clipped_pre The number of bases clipped prior to clipping with [[ClipBam]].
+  * @param bases_clipped_post The number of bases clipped after clipping with [[ClipBam]], including bases from reads that became unmapped.
+  * @param bases_clipped_five_prime The number of bases clipped on the 5' end of the read.
+  * @param bases_clipped_three_prime The number of bases clipped on the 3 end of the read.
+  * @param bases_clipped_overlapping The number of bases clipped due to overlapping reads.
+  */
+case class ClippingMetrics
+(read_type: ReadType,
+ var reads: Long = 0,
+ var reads_unmapped: Long = 0,
+ var reads_clipped_pre: Long = 0,
+ var reads_clipped_post: Long = 0,
+ var reads_clipped_five_prime: Long = 0,
+ var reads_clipped_three_prime: Long = 0,
+ var reads_clipped_overlapping: Long = 0,
+ var bases: Long = 0,
+ var bases_clipped_pre: Long = 0,
+ var bases_clipped_post: Long = 0,
+ var bases_clipped_five_prime: Long = 0,
+ var bases_clipped_three_prime: Long = 0,
+ var bases_clipped_overlapping: Long = 0
+) extends Metric {
+  def update(rec: SamRecord, priorBasesClipped: Int, numFivePrime: Int, numThreePrime: Int, numOverlappingBases: Int): Unit = {
+    this.reads                      += 1
+    this.bases                      += rec.cigar.alignedBases
+    if (priorBasesClipped > 0) {
+      this.reads_clipped_pre        += 1
+      this.bases_clipped_pre        += priorBasesClipped
+    }
+    if (numFivePrime > 0) {
+      this.reads_clipped_five_prime += 1
+      this.bases_clipped_five_prime += numFivePrime
+    }
+    if (numThreePrime > 0) {
+      this.reads_clipped_three_prime += 1
+      this.bases_clipped_three_prime += numThreePrime
+    }
+    if (numOverlappingBases > 0) {
+      this.reads_clipped_overlapping += 1
+      this.bases_clipped_overlapping += numOverlappingBases
+    }
+    val additionalClippedBases = numFivePrime + numThreePrime + numOverlappingBases
+    val totalClippedBasees = additionalClippedBases + priorBasesClipped
+    if (totalClippedBasees > 0) {
+      this.reads_clipped_post        += 1
+      this.bases_clipped_post        += totalClippedBasees
+      if (rec.unmapped && additionalClippedBases > 0) this.reads_unmapped += 1
     }
   }
 }

@@ -27,6 +27,7 @@ package com.fulcrumgenomics.bam
 import com.fulcrumgenomics.bam.api.{SamRecord, SamSource}
 import com.fulcrumgenomics.testing.SamBuilder._
 import com.fulcrumgenomics.testing.{ErrorLogLevel, ReferenceSetBuilder, SamBuilder, UnitSpec}
+import com.fulcrumgenomics.util.Metric
 import htsjdk.samtools.SAMTag
 import htsjdk.samtools.reference.ReferenceSequenceFileFactory
 import htsjdk.samtools.util.SequenceUtil
@@ -82,7 +83,7 @@ class ClipBamTest extends UnitSpec with ErrorLogLevel {
     val clipper = new ClipBam(input=dummyBam, output=dummyBam, ref=ref, clipOverlappingReads=true)
     val Seq(r1, r2) = builder.addPair(start1=100, start2=100, unmapped2=true)
     val expected = r1.cigar
-    clipper.clip(r1, r2)
+    clipper.clipPair(r1, r2)
     r1.cigar shouldBe expected
   }
 
@@ -91,9 +92,10 @@ class ClipBamTest extends UnitSpec with ErrorLogLevel {
     val clipper = new ClipBam(input=dummyBam, output=dummyBam, ref=ref, clipOverlappingReads=true)
     val Seq(r1, r2) = builder.addPair(start1=100, start2=100)
     r2.refIndex = 1
+    r1.mateRefIndex = 1
 
     val (r1Exp, r2Exp) = (r1.cigar, r2.cigar)
-    clipper.clip(r1, r2)
+    clipper.clipPair(r1, r2)
     r1.cigar shouldBe r1Exp
     r2.cigar shouldBe r2Exp
   }
@@ -104,7 +106,7 @@ class ClipBamTest extends UnitSpec with ErrorLogLevel {
     val Seq(r1, r2) = builder.addPair(start1=100, start2=150)
 
     val (r1Exp, r2Exp) = (r1.cigar, r2.cigar)
-    clipper.clip(r1, r2)
+    clipper.clipPair(r1, r2)
     r1.cigar shouldBe r1Exp
     r2.cigar shouldBe r2Exp
   }
@@ -115,7 +117,7 @@ class ClipBamTest extends UnitSpec with ErrorLogLevel {
     val Seq(r1, r2) = builder.addPair(start1=100, start2=100, strand2=Plus)
 
     val (r1Exp, r2Exp) = (r1.cigar, r2.cigar)
-    clipper.clip(r1, r2)
+    clipper.clipPair(r1, r2)
     r1.cigar shouldBe r1Exp
     r2.cigar shouldBe r2Exp
   }
@@ -125,7 +127,7 @@ class ClipBamTest extends UnitSpec with ErrorLogLevel {
     val clipper = new ClipBam(input=dummyBam, output=dummyBam, ref=ref, clipOverlappingReads=true)
     val Seq(r1, r2) = builder.addPair(start1=100, start2=100)
 
-    clipper.clip(r1, r2)
+    clipper.clipPair(r1, r2)
     r1.cigar.toString shouldBe "25M25H"
     r2.cigar.toString shouldBe "25H25M"
   }
@@ -136,7 +138,7 @@ class ClipBamTest extends UnitSpec with ErrorLogLevel {
     val Seq(r1, r2) = builder.addPair(start1=100, start2=149)
 
     r1.end shouldBe r2.start
-    clipper.clip(r1, r2)
+    clipper.clipPair(r1, r2)
     r1.end shouldBe (r2.start - 1)
   }
 
@@ -146,7 +148,7 @@ class ClipBamTest extends UnitSpec with ErrorLogLevel {
     val Seq(r1, r2) = builder.addPair(start1=100, start2=130, cigar1="40M2I8M", cigar2="10M2I38M")
 
     r1.end >= r2.start shouldBe true
-    clipper.clip(r1, r2)
+    clipper.clipPair(r1, r2)
     r1.end >= r2.start shouldBe false
   }
 
@@ -156,7 +158,7 @@ class ClipBamTest extends UnitSpec with ErrorLogLevel {
     val Seq(r1, r2) = builder.addPair(start1=100, start2=130, cigar1="40M2D10M", cigar2="10M2D40M")
 
     r1.end >= r2.start shouldBe true
-    clipper.clip(r1, r2)
+    clipper.clipPair(r1, r2)
     r1.end >= r2.start shouldBe false
   }
 
@@ -169,7 +171,7 @@ class ClipBamTest extends UnitSpec with ErrorLogLevel {
     val Seq(r1b, r2b) = builder.addPair(name="q2", start1=100, start2=100, cigar1="2M48S", cigar2="47S3M")
 
     for ((r1, r2) <- Seq((r1a, r2a), (r1b, r2b))) {
-      clipper.clip(r1, r2)
+      clipper.clipPair(r1, r2)
       val ok = r1.unmapped || r2.unmapped || r1.end < r2.start
       ok shouldBe true
     }
@@ -183,7 +185,7 @@ class ClipBamTest extends UnitSpec with ErrorLogLevel {
 
     val prior = StartsAndEnds(r1, r2)
     r1.end shouldBe (r2.start - 1)
-    clipper.clip(r1, r2)
+    clipper.clipPair(r1, r2)
     prior.checkClipping(r1, r2, 1, 2, 3, 4)
   }
 
@@ -198,7 +200,7 @@ class ClipBamTest extends UnitSpec with ErrorLogLevel {
 
     val prior = StartsAndEnds(r1, r2)
     r1.end shouldBe (r2.start - 1)
-    clipper.clip(r1, r2)
+    clipper.clipPair(r1, r2)
     // R1 5' end has one more base clipped
     // R1 3' end has two bases clipped
     // R2 5' end has has no more bases clipped
@@ -214,7 +216,7 @@ class ClipBamTest extends UnitSpec with ErrorLogLevel {
 
     val prior = StartsAndEnds(r1, r2)
     r1.end shouldBe (r2.start + 3) // four bases overlap!
-    clipper.clip(r1, r2)
+    clipper.clipPair(r1, r2)
     prior.checkClipping(r1, r2, 0, 2, 0, 2) // clipping due to overlapping reads
   }
 
@@ -228,7 +230,7 @@ class ClipBamTest extends UnitSpec with ErrorLogLevel {
 
         val prior = StartsAndEnds(r1, r2)
         r1.end shouldBe (r2.start - 1)
-        clipper.clip(r1, r2)
+        clipper.clipPair(r1, r2)
         prior.checkClipping(r1, r2, 1, 2, 3, 4)
       }
     }
@@ -237,12 +239,12 @@ class ClipBamTest extends UnitSpec with ErrorLogLevel {
   "ClipBam" should "clip overlapping reads, update mate info, and reset NM, UQ & MD" in {
     val random = new Random(1)
     val builder = new SamBuilder(readLength=50)
-    builder.addPair(name="q1", start1=100, start2=140)
-    builder.addPair(name="q2", start1=200, start2=242)
-    builder.addPair(name="q3", start1=300, start2=344)
-    builder.addPair(name="q4", start1=400, start2=446)
-    builder.addPair(name="q5", start1=500, start2=548)
-    builder.addPair(name="q6", start1=600, start2=650)
+    builder.addPair(name="q1", start1=100, start2=140) // overlaps by ten
+    builder.addPair(name="q2", start1=200, start2=242) // overlaps by eight
+    builder.addPair(name="q3", start1=300, start2=344) // overlaps by six
+    builder.addPair(name="q4", start1=400, start2=446) // overlaps by four
+    builder.addPair(name="q5", start1=500, start2=548) // overlaps by two
+    builder.addPair(name="q6", start1=600, start2=650) // does not overlap
 
     // Set appropriate bases and tags on each read
     val refFile = ReferenceSequenceFileFactory.getReferenceSequenceFile(ref)
@@ -256,10 +258,11 @@ class ClipBamTest extends UnitSpec with ErrorLogLevel {
       r(SAMTag.UQ.name) = SequenceUtil.sumQualitiesOfMismatches(r.asSam, chr1, 0)
     }
 
-    val out = makeTempFile("out.", ".bam")
+    val out     = makeTempFile("out.", ".bam")
+    val metrics = makeTempFile("out.", ".txt")
     new ClipBam(
-      input=builder.toTempFile(), output=out, ref=ref,
-      readOneFivePrime=2, readOneThreePrime=0, readTwoFivePrime=2, readTwoThreePrime=0,
+      input=builder.toTempFile(), output=out, metrics=Some(metrics), ref=ref,
+      readOneFivePrime=2, readOneThreePrime=0, readTwoFivePrime=3, readTwoThreePrime=0,
       clipOverlappingReads=true
     ).execute()
     val clipped = SamSource(out).toSeq
@@ -269,7 +272,7 @@ class ClipBamTest extends UnitSpec with ErrorLogLevel {
     clipped.filterNot(_.negativeStrand).count(_.cigar.last.operator.toString == "H") shouldBe 5
 
     // Check that all reads got clipped due to the fixed clipping
-    clipped.filter(_.negativeStrand).count(_.cigar.last.toString == "2H") shouldBe 6
+    clipped.filter(_.negativeStrand).count(_.cigar.last.toString == "3H") shouldBe 6
     clipped.filterNot(_.negativeStrand).count(_.cigar.head.toString == "2H") shouldBe 6
 
     // Check that everything is in coordinate order
@@ -294,6 +297,109 @@ class ClipBamTest extends UnitSpec with ErrorLogLevel {
       nm shouldBe expNm
       uq shouldBe expUq
       md shouldBe expMd
+    }
+
+    Metric.read[ClippingMetrics](metrics).foreach {
+      case metric if metric.read_type == ReadType.Fragment =>
+        metric shouldBe ClippingMetrics(read_type=ReadType.Fragment)
+      case metric if metric.read_type == ReadType.ReadOne =>
+        metric.reads shouldBe 6
+        metric.reads_unmapped shouldBe 0
+        metric.reads_clipped_pre shouldBe 0
+        metric.reads_clipped_post shouldBe 6
+        metric.reads_clipped_five_prime shouldBe 6
+        metric.reads_clipped_three_prime shouldBe 0
+        metric.reads_clipped_overlapping shouldBe 5 // all but q6
+        metric.bases shouldBe 273 // 50*6 - (2+4+6+8+10)/2 - (2*6)
+        metric.bases_clipped_pre shouldBe 0
+        metric.bases_clipped_post shouldBe 27 // (2+4+6+8+10)/2 + (2*6)
+        metric.bases_clipped_five_prime shouldBe 12 // 2*6
+        metric.bases_clipped_three_prime shouldBe 0
+        metric.bases_clipped_overlapping shouldBe 15 // (2+4+6+8+10)/2
+      case metric if metric.read_type == ReadType.ReadTwo =>
+        metric.reads shouldBe 6
+        metric.reads_unmapped shouldBe 0
+        metric.reads_clipped_pre shouldBe 0
+        metric.reads_clipped_post shouldBe 6
+        metric.reads_clipped_five_prime shouldBe 6
+        metric.reads_clipped_three_prime shouldBe 0
+        metric.reads_clipped_overlapping shouldBe 5 // all but q6
+        metric.bases shouldBe 267 // 50*6 - (2+4+6+8+10)/2 - (3*6)
+        metric.bases_clipped_pre shouldBe 0
+        metric.bases_clipped_post shouldBe 33 // (2+4+6+8+10)/2 + (3*6)
+        metric.bases_clipped_five_prime shouldBe 18 // 3*6
+        metric.bases_clipped_three_prime shouldBe 0
+        metric.bases_clipped_overlapping shouldBe 15 // (2+4+6+8+10)/2
+    }
+  }
+
+  it should "clip fragment reads, and reset NM, UQ & MD" in {
+    val random = new Random(1)
+    val builder = new SamBuilder(readLength=50)
+    builder.addFrag(start=100)
+    builder.addFrag(start=200, strand=Minus)
+    builder.addFrag(start=300, cigar="40S10M") // should be fully clipped
+
+    // Set appropriate bases and tags on each read
+    val refFile = ReferenceSequenceFileFactory.getReferenceSequenceFile(ref)
+    val chr1    = refFile.nextSequence().getBases
+    builder.iterator.foreach { r =>
+      val bases = ("A" * 50).getBytes
+      val n     = random.nextInt(50)
+      bases(n)  = 'C'
+      r.bases = bases
+      SequenceUtil.calculateMdAndNmTags(r.asSam, chr1, true, true)
+      r(SAMTag.UQ.name) = SequenceUtil.sumQualitiesOfMismatches(r.asSam, chr1, 0)
+    }
+
+    val out     = makeTempFile("out.", ".bam")
+    val metrics = makeTempFile("out.", ".txt")
+    new ClipBam(
+      input=builder.toTempFile(), output=out, metrics=Some(metrics), ref=ref,
+      readOneFivePrime=2, readOneThreePrime=10, readTwoFivePrime=5, readTwoThreePrime=5, // read two info will be ignored
+      clipOverlappingReads=true // overlapping will be ignored
+    ).execute()
+    val clipped = SamSource(out).toSeq
+
+    // Check that all reads got clipped due to the fixed clipping
+    clipped.filter(_.mapped).filter(_.negativeStrand).count(_.cigar.last.toString == "2H") shouldBe 1
+    clipped.filter(_.mapped).filterNot(_.negativeStrand).count(_.cigar.head.toString == "2H") shouldBe 1
+
+    // Check that everything is in coordinate order
+    clipped.sliding(2).foreach { case Seq(lhs, rhs) =>
+      if (lhs.mapped && rhs.mapped) lhs.start <= rhs.start shouldBe true
+      else if (lhs.unmapped) rhs.unmapped shouldBe true
+    }
+
+    // Validate that the NM/UQ/MD tags got re-calculated
+    clipped.filter(_.mapped).foreach { r =>
+      val Seq(nm, uq, md) = Seq("NM", "UQ", "MD").map(t => r[AnyRef](t))
+      SequenceUtil.calculateMdAndNmTags(r.asSam, chr1, true, true)
+      r(SAMTag.UQ.name) = SequenceUtil.sumQualitiesOfMismatches(r.asSam, chr1, 0)
+      val Seq(expNm, expUq, expMd) = Seq("NM", "UQ", "MD").map(t => r[AnyRef](t))
+
+      nm shouldBe expNm
+      uq shouldBe expUq
+      md shouldBe expMd
+    }
+
+    Metric.read[ClippingMetrics](metrics).foreach {
+      case metric if metric.read_type == ReadType.Fragment =>
+        metric.reads shouldBe 3
+        metric.reads_unmapped shouldBe 1
+        metric.reads_clipped_pre shouldBe 1
+        metric.reads_clipped_post shouldBe 3
+        metric.reads_clipped_five_prime shouldBe 2
+        metric.reads_clipped_three_prime shouldBe 3
+        metric.reads_clipped_overlapping shouldBe 0
+        metric.bases shouldBe 76 // 50*2 - 12*2
+        metric.bases_clipped_pre shouldBe 40 // from frag 3
+        metric.bases_clipped_post shouldBe 74 // 12*2 + 50
+        metric.bases_clipped_five_prime shouldBe 4
+        metric.bases_clipped_three_prime shouldBe 30 // 10*3
+        metric.bases_clipped_overlapping shouldBe 0
+      case metric =>
+        metric shouldBe ClippingMetrics(read_type=metric.read_type)
     }
   }
 }
