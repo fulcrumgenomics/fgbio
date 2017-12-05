@@ -44,6 +44,7 @@ object DuplexConsensusCaller {
   val MinInputBaseQuality: PhredScore     = 15.toByte
   val NoCall: Byte = 'N'.toByte
   val NoCallQual   = PhredScore.MinValue
+  val MsaCommand = s"mafft --thread 8 --anysymbol --clustalout --bl 62 --op 1.53 --ep 0.123 --reorder --retree 2 --treeout --maxiterate 2"
 
   /** Additional filter strings used when rejecting reads. */
   val FilterMinReads    = "Not Enough Reads (Either Total, AB, or BA)"
@@ -98,12 +99,15 @@ object DuplexConsensusCaller {
   * @param minReads the minimum number of input reads to a consensus read (see [[CallDuplexConsensusReads]]).
   * */
 class DuplexConsensusCaller(override val readNamePrefix: String,
-                            override val readGroupId: String    = "A",
-                            val minInputBaseQuality: PhredScore = DuplexConsensusCaller.MinInputBaseQuality,
-                            val trim: Boolean                   = false,
-                            val errorRatePreUmi: PhredScore     = DuplexConsensusCaller.ErrorRatePreUmi,
-                            val errorRatePostUmi: PhredScore    = DuplexConsensusCaller.ErrorRatePostUmi,
-                            val minReads: Seq[Int]              = Seq(1)
+                            override val readGroupId: String      = "A",
+                            val minInputBaseQuality: PhredScore   = DuplexConsensusCaller.MinInputBaseQuality,
+                            val trim: Boolean                     = false,
+                            val errorRatePreUmi: PhredScore       = DuplexConsensusCaller.ErrorRatePreUmi,
+                            val errorRatePostUmi: PhredScore      = DuplexConsensusCaller.ErrorRatePostUmi,
+                            val minReads: Seq[Int]                = Seq(1),
+                            val useMsa: Boolean                   = false,
+                            val msaCommand: String                = DuplexConsensusCaller.MsaCommand,
+                            val maxFilterMinorityFraction: Double = 0.05
                            ) extends UmiConsensusCaller[DuplexConsensusRead] with LazyLogging {
 
   private val Seq(minTotalReads, minXyReads, minYxReads) = this.minReads.padTo(3, this.minReads.last)
@@ -113,14 +117,19 @@ class DuplexConsensusCaller(override val readNamePrefix: String,
   require(minXyReads <= minTotalReads, "min-reads values must be specified high to low.")
   require(minYxReads <= minXyReads, "min-reads values must be specified high to low.")
 
-  private val ssCaller = new VanillaUmiConsensusCaller(readNamePrefix="x", options=new VanillaUmiConsensusCallerOptions(
-      errorRatePreUmi         = this.errorRatePreUmi,
-      errorRatePostUmi        = this.errorRatePostUmi,
-      minReads                = 1,
-      minInputBaseQuality     = this.minInputBaseQuality,
-      minConsensusBaseQuality = PhredScore.MinValue,
-      producePerBaseTags      = true
-    ))
+  private val options = new VanillaUmiConsensusCallerOptions(
+    errorRatePreUmi         = this.errorRatePreUmi,
+    errorRatePostUmi        = this.errorRatePostUmi,
+    minReads                = 1,
+    minInputBaseQuality     = this.minInputBaseQuality,
+    minConsensusBaseQuality = PhredScore.MinValue,
+    producePerBaseTags      = true
+  )
+
+  private val ssVanillaCaller = new VanillaUmiConsensusCaller(readNamePrefix="x", options=this.options)
+  private val ssMsaCaller     = new MultipleSequenceAlignmentConsensusCaller(msaCommand=msaCommand, options=options)
+
+  def ssCaller(useMsa: Boolean): ConsensusCallerTrait = if (useMsa) this.ssMsaCaller else this.ssVanillaCaller
 
   /**
     * Returns the MI tag minus the trailing suffix that identifies /A vs /B
@@ -191,6 +200,25 @@ class DuplexConsensusCaller(override val readNamePrefix: String,
     }
   }
 
+  private def maybeFilterToMostCommonAlignment(records: Seq[SamRecord]): (Seq[SourceRead], Boolean) = {
+    val reads = records.flatMap(toSourceRead(_, this.minInputBaseQuality, this.trim))
+    if (!useMsa) (filterToMostCommonAlignment(reads), false)
+    else {
+      // Check if we filtered out too many reads, and if so, use the MST caller.
+      val filtered = filterToMostCommonAlignment(reads, reject=false)
+      if (this.maxFilterMinorityFraction < (reads.length - filtered.length) / reads.length.toDouble) {
+        logger.info(f"Using MSA: ${reads.length - filtered.length} / ${reads.length} = ${(reads.length - filtered.length) / reads.length.toDouble * 100}%.2f")
+        (reads, true)
+      }
+      else {
+        val rejects = reads.filter(r => !filtered.contains(r))
+        logger.info(f"Not using MSA: ${reads.length - filtered.length} / ${reads.length} = ${(reads.length - filtered.length) / reads.length.toDouble * 100}%.2f")
+        rejectRecords(rejects.flatMap(_.sam), UmiConsensusCaller.FilterMinorityAlignment)
+        (filtered, false)
+      }
+    }
+  }
+
   /** Attempts to call a duplex consensus reads from the two sets of reads, one for each strand. */
   private def callDuplexConsensusRead(ab: Seq[SamRecord], ba: Seq[SamRecord]): Seq[SamRecord] = {
     // Fragments have no place in duplex land (and are filtered out previously anyway)!
@@ -219,9 +247,9 @@ class DuplexConsensusCaller(override val readNamePrefix: String,
         logger.debug(s"Not all AB-R2s and BA-R1s were on the same strand for molecule with id: $ss2Mi")
         Nil
       case (true, true) =>
-        // Filter by common indel pattern with AB and BA together
-        val filteredXs = filterToMostCommonAlignment((abR1s ++ baR2s).flatMap(toSourceRead(_, this.minInputBaseQuality, this.trim)))
-        val filteredYs = filterToMostCommonAlignment((abR2s ++ baR1s).flatMap(toSourceRead(_, this.minInputBaseQuality, this.trim)))
+        // Filter by common indel pattern with AB and BA together, when not using MAFFT
+        val (filteredXs, useMsaXs) = maybeFilterToMostCommonAlignment(abR1s ++ baR2s)
+        val (filteredYs, useMsaYs) = maybeFilterToMostCommonAlignment(abR2s ++ baR1s)
 
         // Then split then back apart for SS calling
         val filteredAbR1s = filteredXs.filter(_.sam.exists(_.firstOfPair))
@@ -230,10 +258,10 @@ class DuplexConsensusCaller(override val readNamePrefix: String,
         val filteredBaR2s = filteredXs.filter(_.sam.exists(_.secondOfPair))
 
         // Call the single-stranded consensus reads
-        val abR1Consensus = ssCaller.consensusCall(filteredAbR1s)
-        val abR2Consensus = ssCaller.consensusCall(filteredAbR2s)
-        val baR1Consensus = ssCaller.consensusCall(filteredBaR1s)
-        val baR2Consensus = ssCaller.consensusCall(filteredBaR2s)
+        val abR1Consensus = ssCaller(useMsaXs).consensusCall(filteredAbR1s)
+        val abR2Consensus = ssCaller(useMsaYs).consensusCall(filteredAbR2s)
+        val baR1Consensus = ssCaller(useMsaYs).consensusCall(filteredBaR1s)
+        val baR2Consensus = ssCaller(useMsaXs).consensusCall(filteredBaR2s)
 
         // Call the duplex reads
         val duplexR1Sources = filteredAbR1s ++ filteredBaR2s
