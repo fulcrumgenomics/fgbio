@@ -124,6 +124,12 @@ case class Cigar(elems: IndexedSeq[CigarElem]) extends Iterable[CigarElem] {
   /** Yields a new cigar that is truncated to the given length on the target. */
   def truncateToTargetLength(len: Int): Cigar = truncate(len, e => e.operator.consumesReferenceBases())
 
+  /** Returns the number of bases that are directly aligned between the two sequences. */
+  def alignedBases: Int = elems.filter(_.operator.isAlignment).foldLeft(0)((sum,elem) => sum + elem.length)
+
+  /** Returns the number of bases that are clipped between the two sequences. */
+  def clippedBases: Int = elems.filter(_.operator.isClipping).foldLeft(0)((sum,elem) => sum + elem.length)
+
   /** Truncates the cigar based on either query or target length cutoff. */
   private def truncate(len: Int, shouldCount: CigarElem => Boolean): Cigar = {
     var pos = 1

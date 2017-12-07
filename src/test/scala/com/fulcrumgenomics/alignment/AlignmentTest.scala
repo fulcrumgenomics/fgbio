@@ -75,6 +75,26 @@ class AlignmentTest extends UnitSpec {
       it should s"truncate $raw to $expected" in { Cigar(raw).truncateToTargetLength(50).toString() shouldBe expected}
   }
 
+  "Cigar.alignedBases" should "return 100 for cigar 100M" in {
+    Cigar("100M").alignedBases shouldBe 100
+  }
+
+  Seq("100M50S", "50S100M", "25S100M25S", "50H100M", "100M50H", "25S25H100M", "100M25S25H", "10H15S100M15S10H").foreach { cigar =>
+    it should s"return 100 bases for cigars with clipping: $cigar" in { Cigar(cigar).alignedBases shouldBe 100 }
+  }
+
+  Seq("25M10I25M", "25M10D25M", "10I50M", "50M10I", "10I20M10I30M10I", "10I20M10D30M10I").foreach { cigar =>
+    it should s"return 50 bases for cigars with indels: $cigar" in { Cigar(cigar).alignedBases shouldBe 50 }
+  }
+
+  "Cigar.clippedBases" should "return 0 if not bases are clipped" in {
+    Cigar("100M").clippedBases shouldBe 0
+  }
+
+  Seq("100M50S", "50S100M", "25S100M25S", "50H100M", "100M50H", "25S25H100M", "100M25S25H", "10H15S100M15S10H").foreach { cigar =>
+      it should s"return 50 bases for cigar $cigar" in { Cigar(cigar).clippedBases shouldBe 50 }
+  }
+
   "Cigar.apply(HtsJdkCigar)" should "translate cigars" in {
     val text = "10H10S30M5I30M5D40M10S10S10H"
     val htsjdkCigar = TextCigarCodec.decode("10H10S30M5I30M5D40M10S10S10H")
