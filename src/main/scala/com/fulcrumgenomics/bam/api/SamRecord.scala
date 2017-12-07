@@ -218,10 +218,10 @@ trait SamRecord {
 
   /** Returns true if the read is mapped in an FR pair, false otherwise. */
   def isFrPair: Boolean = {
-    getReadPairedFlag &&
-      !getReadUnmappedFlag &&
-      !getMateUnmappedFlag &&
-      getReferenceIndex == getMateReferenceIndex &&
+    paired &&
+      mapped &&
+      mateMapped &&
+      refIndex == mateRefIndex &&
       SamPairUtil.getPairOrientation(this) == PairOrientation.FR
   }
 }
