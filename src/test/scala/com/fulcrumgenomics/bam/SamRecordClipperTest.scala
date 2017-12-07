@@ -35,10 +35,10 @@ import htsjdk.samtools.TextCigarCodec
 
 class SamRecordClipperTest extends UnitSpec {
   /** Returns a fragment SAM record with the start / cigar / strand requested. */
-  def r(start: Int, cigar: String, strand: Strand = Plus): SamRecord = {
+  def r(start: Int, cigar: String, strand: Strand = Plus, attrs:Map[String,Any] = Map.empty): SamRecord = {
     val cig = TextCigarCodec.decode(cigar)
     val len = cig.getReadLength
-    new SamBuilder(readLength=len).addFrag(start=start, cigar = cigar, strand=strand).get
+    new SamBuilder(readLength=len).addFrag(start=start, cigar = cigar, strand=strand, attrs=attrs).get
   }
 
   def clipper(mode: ClippingMode, autoClip: Boolean=false) = new SamRecordClipper(mode, autoClip)
@@ -329,7 +329,7 @@ class SamRecordClipperTest extends UnitSpec {
 
 
   //////////////////////////////////////////////////////////////////////////////
-  // One test each for all the derived methods.
+  // One or two test each for all the derived methods.
   //////////////////////////////////////////////////////////////////////////////
 
   "SamRecordClipper.clipStartOfRead" should "expand existing clipping" in {
@@ -350,6 +350,21 @@ class SamRecordClipperTest extends UnitSpec {
     rec4.cigar.toString shouldBe "20H30M"
   }
 
+  it should "convert soft-clipping to hard clipping or masked clipping" in {
+    val hard = r(10, "10S40M", attrs=Map("az" -> "12345678901234567890123456789012345678901234567890"))
+    val mask = r(10, "10S40M", attrs=Map("az" -> "12345678901234567890123456789012345678901234567890"))
+    clipper(Hard, autoClip=true).clipStartOfRead(hard, 5)
+    clipper(SoftWithMask, autoClip=true).clipStartOfRead(mask, 5)
+
+    hard.cigar.toString shouldBe "5H5S40M"
+    hard.bases.length   shouldBe 45
+    hard[String]("az")  shouldBe "678901234567890123456789012345678901234567890"
+
+    mask.cigar.toString shouldBe "10S40M"
+    mask.basesString.take(5) shouldBe "NNNNN"
+    mask[String]("az") shouldBe "12345678901234567890123456789012345678901234567890"
+  }
+
   "SamRecordClipper.clipEndOfRead" should "expand existing clipping" in {
     val rec1 = r(10, "50M")
     clipper(Soft).clipEndOfRead(rec1, 10) shouldBe 10
@@ -366,6 +381,21 @@ class SamRecordClipperTest extends UnitSpec {
     val rec4 = r(10, "30M20H")
     clipper(Soft).clipEndOfRead(rec4, 10) shouldBe 0
     rec4.cigar.toString shouldBe "30M20H"
+  }
+
+  it should "convert soft-clipping to hard clipping or masked clipping" in {
+    val hard = r(10, "40M10S", attrs=Map("az" -> "12345678901234567890123456789012345678901234567890"))
+    val mask = r(10, "40M10S", attrs=Map("az" -> "12345678901234567890123456789012345678901234567890"))
+    clipper(Hard, autoClip=true).clipEndOfRead(hard, 5)
+    clipper(SoftWithMask, autoClip=true).clipEndOfRead(mask, 5)
+
+    hard.cigar.toString shouldBe "40M5S5H"
+    hard.bases.length   shouldBe 45
+    hard[String]("az")  shouldBe "123456789012345678901234567890123456789012345"
+
+    mask.cigar.toString shouldBe "40M10S"
+    mask.basesString.drop(45) shouldBe "NNNNN"
+    mask[String]("az") shouldBe "12345678901234567890123456789012345678901234567890"
   }
 
   "SamRecordClipper.clip5PrimeEndOfAlignment" should "add more clipping to the 5' end" in {
@@ -422,6 +452,21 @@ class SamRecordClipperTest extends UnitSpec {
     rec4.cigar.toString shouldBe "40M10S"
   }
 
+  it should "convert soft-clipping to hard clipping or masked clipping" in {
+    val hard = r(10, "10S40M", attrs=Map("az" -> "12345678901234567890123456789012345678901234567890"))
+    val mask = r(10, "10S40M", attrs=Map("az" -> "12345678901234567890123456789012345678901234567890"))
+    clipper(Hard, autoClip=true).clip5PrimeEndOfRead(hard, 5)
+    clipper(SoftWithMask, autoClip=true).clip5PrimeEndOfRead(mask, 5)
+
+    hard.cigar.toString shouldBe "5H5S40M"
+    hard.bases.length   shouldBe 45
+    hard[String]("az")  shouldBe "678901234567890123456789012345678901234567890"
+
+    mask.cigar.toString shouldBe "10S40M"
+    mask.basesString.take(5) shouldBe "NNNNN"
+    mask[String]("az") shouldBe "12345678901234567890123456789012345678901234567890"
+  }
+
   "SamRecordClipper.clip3PrimeEndOfRead" should "expand existing clipping at the 3' end" in {
     val rec1 = r(10, "50M", strand=Minus)
     clipper(Soft).clip3PrimeEndOfRead(rec1, 10) shouldBe 10
@@ -438,5 +483,20 @@ class SamRecordClipperTest extends UnitSpec {
     val rec4 = r(10, "40M10S", strand=Plus)
     clipper(Soft).clip3PrimeEndOfRead(rec4, 10) shouldBe 0
     rec4.cigar.toString shouldBe "40M10S"
+  }
+
+  it should "convert soft-clipping to hard clipping or masked clipping" in {
+    val hard = r(10, "40M10S", attrs=Map("az" -> "12345678901234567890123456789012345678901234567890"))
+    val mask = r(10, "40M10S", attrs=Map("az" -> "12345678901234567890123456789012345678901234567890"))
+    clipper(Hard, autoClip=true).clip3PrimeEndOfRead(hard, 5)
+    clipper(SoftWithMask, autoClip=true).clip3PrimeEndOfRead(mask, 5)
+
+    hard.cigar.toString shouldBe "40M5S5H"
+    hard.bases.length   shouldBe 45
+    hard[String]("az")  shouldBe "123456789012345678901234567890123456789012345"
+
+    mask.cigar.toString shouldBe "40M10S"
+    mask.basesString.drop(45) shouldBe "NNNNN"
+    mask[String]("az") shouldBe "12345678901234567890123456789012345678901234567890"
   }
 }

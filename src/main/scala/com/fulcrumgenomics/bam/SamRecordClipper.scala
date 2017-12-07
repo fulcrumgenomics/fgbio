@@ -114,16 +114,7 @@ class SamRecordClipper(val mode: ClippingMode, val autoClipAttributes: Boolean) 
       rec.bases = bases
       rec.quals = quals
       cleanupClippedRecord(rec)
-
-      if (mode == ClippingMode.Hard && readBasesClipped > 0 && autoClipAttributes) {
-        val oldLength = oldBases.length
-        val shortenBy = oldLength - bases.length
-        rec.attributes.foreach { 
-          case (tag, s: String)   if s.length == oldLength => rec(tag) =  s.drop(shortenBy)
-          case (tag, a: Array[_]) if a.length == oldLength => rec(tag) =  a.drop(shortenBy)
-          case _ => Unit
-        }
-      }
+      clipExtendedAttributes(rec, oldBases.length - rec.bases.length, fromStart=true)
       readBasesClipped
     }
   }
@@ -168,16 +159,7 @@ class SamRecordClipper(val mode: ClippingMode, val autoClipAttributes: Boolean) 
       rec.bases = bases.reverse
       rec.quals = quals.reverse
       cleanupClippedRecord(rec)
-
-      if (mode == ClippingMode.Hard && readBasesClipped > 0 && autoClipAttributes) {
-        val oldLength = oldBases.length
-        val newLength = bases.length
-        rec.attributes.foreach {
-            case (tag, s: String)   if s.length == oldLength => rec(tag) = s.take(newLength)
-            case (tag, a: Array[_]) if a.length == oldLength => rec(tag) = a.take(newLength)
-            case _  => Unit
-        }
-      }
+      clipExtendedAttributes(rec, oldBases.length - rec.bases.length, fromStart=false)
       readBasesClipped
     }
   }
@@ -219,7 +201,8 @@ class SamRecordClipper(val mode: ClippingMode, val autoClipAttributes: Boolean) 
     */
   def clipStartOfRead(rec: SamRecord, clipLength: Int): Int = {
     val existingClipping = rec.cigar.takeWhile(_.operator.isClipping).map(_.length).sum
-    if (clipLength > existingClipping) clipStartOfAlignment(rec, clipLength - existingClipping) else 0
+    if (clipLength > existingClipping) clipStartOfAlignment(rec, clipLength - existingClipping)
+    else { upgradeClipping(rec, clipLength, fromStart=true); 0 }
   }
 
   /**
@@ -233,7 +216,8 @@ class SamRecordClipper(val mode: ClippingMode, val autoClipAttributes: Boolean) 
     */
   def clipEndOfRead(rec: SamRecord, clipLength: Int): Int = {
     val existingClipping = rec.cigar.reverseIterator.takeWhile(_.operator.isClipping).map(_.length).sum
-    if (clipLength > existingClipping) clipEndOfAlignment(rec, clipLength - existingClipping) else 0
+    if (clipLength > existingClipping) clipEndOfAlignment(rec, clipLength - existingClipping)
+    else { upgradeClipping(rec, clipLength, fromStart=false); 0 }
   }
 
   /**
@@ -352,6 +336,84 @@ class SamRecordClipper(val mode: ClippingMode, val autoClipAttributes: Boolean) 
     forloop (from=0, until=maskBases) { i =>
       bases(i) = NoCallBase
       quals(i) = NoCallQual
+    }
+  }
+
+  /** Clips extended attributes that are the same length as the bases were prior to clipping. */
+  protected def clipExtendedAttributes(rec: SamRecord, remove: Int, fromStart: Boolean): Unit = {
+    if (mode == ClippingMode.Hard && remove > 0 && autoClipAttributes) {
+      val newLength = rec.length
+      val oldLength = newLength + remove
+      rec.attributes.foreach {
+        case (tag, s: String)   if s.length == oldLength => rec(tag) = if (fromStart) s.drop(remove) else s.take(newLength)
+        case (tag, a: Array[_]) if a.length == oldLength => rec(tag) = if (fromStart) a.drop(remove) else a.take(newLength)
+        case _  => Unit
+      }
+    }
+  }
+
+  /**
+    * Ensures sufficient masking or hard clipping exists on reads that may have soft-clipping. The read will
+    * only be altered if:
+    *   1. ClippingMode is Hard of SoftWithMask
+    *   2. The read is already clipped at the appropriate end
+    *   3. Soft-clipping exist within the first `length` bases of the appropriate end
+    *
+    * If all of those conditions are met, the soft-clipping will be upgraded to masking or hard clipping
+    * up until length bases are clipped or masked. E.g. if the incoming cigar is `10H10S80M` and `length` is
+    * 15, the resulting cigar will be `15H5S80M`.
+    */
+  protected def upgradeClipping(rec: SamRecord, length: Int, fromStart: Boolean): Unit = if (mode != ClippingMode.Soft) {
+    require(length > 0, "Length must be >= 0")
+    def iter = if (fromStart) rec.cigar.iterator else rec.cigar.reverseIterator
+    val hardClipped = iter.takeWhile(_.operator == Op.H).map(_.length).sum
+    val softClipped = iter.dropWhile(_.operator == Op.H).takeWhile(_.operator == Op.S).map(_.length).sum
+
+    if (hardClipped < length && softClipped > 0) {
+      val lengthToUpgrade = math.min(softClipped, length - hardClipped)
+      var (elems, bases, quals) = {
+        if (fromStart) (rec.cigar.coalesce.elems, rec.bases, rec.quals)
+        else (rec.cigar.coalesce.elems.reverse, rec.bases.reverse, rec.quals.reverse)
+      }
+
+      mode match {
+        case ClippingMode.Soft =>
+          unreachable("Should never reach here when mode == Soft")
+        case ClippingMode.SoftWithMask =>
+          hardMaskStartOfRead(bases, quals, lengthToUpgrade)
+        case ClippingMode.Hard =>
+          bases = bases.drop(lengthToUpgrade)
+          quals = quals.drop(lengthToUpgrade)
+          val newElems = ArrayBuffer[CigarElem]()
+
+          elems match {
+            case CigarElem(Op.H, h) +: CigarElem(Op.S, s) +: remaining =>
+              newElems += CigarElem(Op.H, h+lengthToUpgrade)
+              if (s > lengthToUpgrade) newElems += CigarElem(Op.S, s-lengthToUpgrade)
+              newElems ++= remaining
+            case CigarElem(Op.S, s) +: remaining =>
+              newElems += CigarElem(Op.H, lengthToUpgrade)
+              if (s > lengthToUpgrade) newElems += CigarElem(Op.S, s-lengthToUpgrade)
+              newElems ++= remaining
+            case es =>
+              unreachable(s"Cigar $es doesn't contain soft clipping at the start")
+          }
+
+          elems = newElems
+      }
+
+      if (fromStart) {
+        rec.cigar = Cigar(elems)
+        rec.bases = bases
+        rec.quals = quals
+      }
+      else {
+        rec.cigar = Cigar(elems.reverse)
+        rec.bases = bases.reverse
+        rec.quals = quals.reverse
+      }
+
+      clipExtendedAttributes(rec, lengthToUpgrade, fromStart=fromStart)
     }
   }
 

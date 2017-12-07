@@ -116,7 +116,7 @@ class SamBuilder(val readLength: Int=100,
               mapq2: Int = 60,
               strand1: Strand = Plus,
               strand2: Strand = Minus,
-              attrs: Map[String,AnyRef] = Map.empty
+              attrs: Map[String,Any] = Map.empty
              ): Seq[SamRecord] = {
 
     require(bases1.length == quals1.length, "bases1 and quals1 were different lengths.")
@@ -178,7 +178,7 @@ class SamBuilder(val readLength: Int=100,
               cigar: String = readLength + "M",
               mapq: Int = 60,
               strand: Strand = Plus,
-              attrs: Map[String,AnyRef] = Map.empty) : Option[SamRecord] = {
+              attrs: Map[String,Any] = Map.empty) : Option[SamRecord] = {
 
     val cig = Cigar.fromSam(cigar)
     require(bases.length == quals.length, "bases and quals must be same length.")
