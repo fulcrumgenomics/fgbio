@@ -127,7 +127,7 @@ class DuplexConsensusCaller(override val readNamePrefix: String,
   )
 
   private val ssVanillaCaller = new VanillaUmiConsensusCaller(readNamePrefix="x", options=this.options)
-  private val ssMsaCaller     = new MultipleSequenceAlignmentConsensusCaller(msaCommand=msaCommand, options=options)
+  private val ssMsaCaller     = new GraphBaseConsensusCaller(msaCommand=msaCommand, options=options)
 
   def ssCaller(useMsa: Boolean): ConsensusCallerTrait = if (useMsa) this.ssMsaCaller else this.ssVanillaCaller
 
@@ -204,15 +204,16 @@ class DuplexConsensusCaller(override val readNamePrefix: String,
     val reads = records.flatMap(toSourceRead(_, this.minInputBaseQuality, this.trim))
     if (!useMsa) (filterToMostCommonAlignment(reads), false)
     else {
+      val mid = records.head.apply[String](ConsensusTags.MolecularId)
       // Check if we filtered out too many reads, and if so, use the MST caller.
       val filtered = filterToMostCommonAlignment(reads, reject=false)
       if (this.maxFilterMinorityFraction < (reads.length - filtered.length) / reads.length.toDouble) {
-        logger.info(f"Using MSA: ${reads.length - filtered.length} / ${reads.length} = ${(reads.length - filtered.length) / reads.length.toDouble * 100}%.2f")
+        logger.info(f"Using MSA [$mid]: ${reads.length - filtered.length} / ${reads.length} = ${(reads.length - filtered.length) / reads.length.toDouble * 100}%.2f")
         (reads, true)
       }
       else {
         val rejects = reads.filter(r => !filtered.contains(r))
-        logger.info(f"Not using MSA: ${reads.length - filtered.length} / ${reads.length} = ${(reads.length - filtered.length) / reads.length.toDouble * 100}%.2f")
+        logger.info(f"Not using MSA [$mid]: ${reads.length - filtered.length} / ${reads.length} = ${(reads.length - filtered.length) / reads.length.toDouble * 100}%.2f")
         rejectRecords(rejects.flatMap(_.sam), UmiConsensusCaller.FilterMinorityAlignment)
         (filtered, false)
       }

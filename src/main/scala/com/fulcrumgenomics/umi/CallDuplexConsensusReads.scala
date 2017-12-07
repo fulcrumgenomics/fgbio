@@ -139,7 +139,7 @@ class CallDuplexConsensusReads
       maxFilterMinorityFraction = maxFilterMinorityFraction
     )
 
-    out ++= new ConsensusCallingIterator(inIterator, caller, Some(ProgressLogger(logger)))
+    out ++= new ConsensusCallingIterator(inIterator, caller, Some(ProgressLogger(logger))).take(100)
 
     in.safelyClose()
     out.close()

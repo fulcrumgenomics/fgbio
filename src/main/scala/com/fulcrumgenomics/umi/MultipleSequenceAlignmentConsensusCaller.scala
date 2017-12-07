@@ -41,15 +41,15 @@ class MultipleSequenceAlignmentConsensusCaller(val msaCommand: String = DuplexCo
                                                val fallbackToVanillaCaller: Boolean = false,
                                                val options: VanillaUmiConsensusCallerOptions = new VanillaUmiConsensusCallerOptions()) extends ConsensusCallerTrait {
 
-  private val NoCall: Byte                   = 'N'.toByte
-  private val Gap: Byte                      = '-'.toByte
-  private val GapQual: PhredScore            = 30.toByte
-  private val NotEnoughReadsQual: PhredScore = 0.toByte // Score output when masking to N due to insufficient input reads
-  private val TooLowQualityQual: PhredScore  = 2.toByte  // Score output when masking to N due to too low consensus quality
-  private val vanillaCaller = new VanillaUmiConsensusCaller(readNamePrefix="x", options=options)
+  protected val NoCall: Byte                   = 'N'.toByte
+  protected val Gap: Byte                      = '-'.toByte
+  protected val GapQual: PhredScore            = 30.toByte
+  protected val NotEnoughReadsQual: PhredScore = 0.toByte // Score output when masking to N due to insufficient input reads
+  protected val TooLowQualityQual: PhredScore  = 2.toByte  // Score output when masking to N due to too low consensus quality
+  protected val vanillaCaller = new VanillaUmiConsensusCaller(readNamePrefix="x", options=options)
 
-  private val random = new Random(42)
-  private val caller = new ConsensusCaller(errorRatePreLabeling=options.errorRatePreUmi, errorRatePostLabeling=options.errorRatePostUmi)
+  protected val random = new Random(42)
+  protected val caller = new ConsensusCaller(errorRatePreLabeling=options.errorRatePreUmi, errorRatePostLabeling=options.errorRatePostUmi)
 
   private var numMsaFailures: Long = 0
 
@@ -62,9 +62,9 @@ class MultipleSequenceAlignmentConsensusCaller(val msaCommand: String = DuplexCo
       .drop(3)
       .filterNot { line => line.startsWith(" ") || line.startsWith("*") || line.isEmpty }
       .zipWithIndex.foreach { case (line, i) =>
-        val Seq(id, bases) = line.split("[ ]+").toSeq
-        basesBuilders(id.toInt) ++= bases.map(_.toByte)
-      }
+      val Seq(id, bases) = line.split("[ ]+").toSeq
+      basesBuilders(id.toInt) ++= bases.map(_.toByte)
+    }
 
     val expectedLength = basesBuilders.head.length
     require(basesBuilders.forall(_.length == expectedLength))
@@ -111,7 +111,7 @@ class MultipleSequenceAlignmentConsensusCaller(val msaCommand: String = DuplexCo
     Try { s"$msaCommand $fastaPath" !! ProcessLogger(_ => ()) split '\n' }.map { result => updateReads(capped, result) }
   }
 
-  private def call(aligned: Seq[SourceRead]): VanillaConsensusRead = {
+  protected def call(aligned: Seq[SourceRead]): VanillaConsensusRead = {
     // get the most likely consensus bases and qualities
     val consensusLength = consensusReadLength(aligned, this.options.minReads)
     val consensusBases  = new Array[Base](consensusLength)
@@ -201,7 +201,6 @@ class MultipleSequenceAlignmentConsensusCaller(val msaCommand: String = DuplexCo
         case Success(aligned) =>
           fastaPath.toFile.delete()
           Some(call(aligned))
-
       }
     }
   }
