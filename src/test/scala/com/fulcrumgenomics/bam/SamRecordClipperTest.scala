@@ -351,7 +351,7 @@ class SamRecordClipperTest extends UnitSpec {
   }
 
   it should "convert soft-clipping to hard clipping or masked clipping" in {
-    val hard = r(10, "10S40M", attrs=Map("az" -> "12345678901234567890123456789012345678901234567890"))
+    val hard = r(10, "2H8S40M", attrs=Map("az" -> "345678901234567890123456789012345678901234567890"))
     val mask = r(10, "10S40M", attrs=Map("az" -> "12345678901234567890123456789012345678901234567890"))
     clipper(Hard, autoClip=true).clipStartOfRead(hard, 5)
     clipper(SoftWithMask, autoClip=true).clipStartOfRead(mask, 5)
