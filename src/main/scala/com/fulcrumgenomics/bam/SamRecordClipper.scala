@@ -355,7 +355,7 @@ class SamRecordClipper(val mode: ClippingMode, val autoClipAttributes: Boolean) 
   /**
     * Ensures sufficient masking or hard clipping exists on reads that may have soft-clipping. The read will
     * only be altered if:
-    *   1. ClippingMode is Hard of SoftWithMask
+    *   1. ClippingMode is Hard or SoftWithMask
     *   2. The read is already clipped at the appropriate end
     *   3. Soft-clipping exist within the first `length` bases of the appropriate end
     *
@@ -363,12 +363,12 @@ class SamRecordClipper(val mode: ClippingMode, val autoClipAttributes: Boolean) 
     * up until length bases are clipped or masked. E.g. if the incoming cigar is `10H10S80M` and `length` is
     * 15, the resulting cigar will be `15H5S80M`.
     */
-  protected def upgradeClipping(rec: SamRecord, length: Int, fromStart: Boolean): Unit = if (mode != ClippingMode.Soft) {
-    require(length > 0, "Length must be >= 0")
+  protected def upgradeClipping(rec: SamRecord, length: Int, fromStart: Boolean): Unit = if (mode != ClippingMode.Soft && length > 0) {
     def iter = if (fromStart) rec.cigar.iterator else rec.cigar.reverseIterator
     val hardClipped = iter.takeWhile(_.operator == Op.H).map(_.length).sum
     val softClipped = iter.dropWhile(_.operator == Op.H).takeWhile(_.operator == Op.S).map(_.length).sum
 
+    // If the requested length isn't all hard-clipped, and some of it's soft-clipped, then do the thing!
     if (hardClipped < length && softClipped > 0) {
       val lengthToUpgrade = math.min(softClipped, length - hardClipped)
       var (elems, bases, quals) = {
