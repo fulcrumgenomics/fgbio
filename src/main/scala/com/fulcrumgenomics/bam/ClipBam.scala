@@ -206,14 +206,6 @@ class ClipBam
   }
 }
 
-sealed trait ReadType extends EnumEntry
-object ReadType extends FgBioEnum[ReadType] {
-  def values: IndexedSeq[ReadType] = findValues
-  case object Fragment extends ReadType
-  case object ReadOne extends ReadType
-  case object ReadTwo extends ReadType
-}
-
 
 /** Metrics produced by [[ClipBam]] that detail how many reads and bases are clipped respectively.
   *

@@ -24,6 +24,7 @@
 
 package com.fulcrumgenomics.bam
 
+import com.fulcrumgenomics.FgBioDef.ReadType
 import com.fulcrumgenomics.bam.api.{SamRecord, SamSource}
 import com.fulcrumgenomics.testing.SamBuilder._
 import com.fulcrumgenomics.testing.{ErrorLogLevel, ReferenceSetBuilder, SamBuilder, UnitSpec}
