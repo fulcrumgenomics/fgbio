@@ -24,10 +24,12 @@
 
 package com.fulcrumgenomics
 
-import com.fulcrumgenomics.bam.api.SamSource
+import com.fulcrumgenomics.bam.api.{SamRecord, SamSource}
 import com.fulcrumgenomics.commons.CommonsDef
 import com.fulcrumgenomics.commons.io.PathUtil
 import enumeratum.{Enum, EnumEntry}
+
+import scala.collection.immutable.IndexedSeq
 
 /** FgBioDef that is just an extension of the commons CommonsDef. Here in case
   * there's a need for FgBio specific defs later.
@@ -52,6 +54,23 @@ object FgBioDef extends CommonsDef {
     (samples, libraries) match {
       case (Seq(sample), Seq(library)) => s"$sample / $library"
       case _                           => PathUtil.basename(input, trimExt=true).toString
+    }
+  }
+
+  sealed trait ReadType extends EnumEntry
+  object ReadType extends FgBioEnum[ReadType] {
+    def values: IndexedSeq[ReadType] = findValues
+    case object Fragment extends ReadType
+    case object ReadOne extends ReadType
+    case object ReadTwo extends ReadType
+
+    def from(rec: SamRecord): ReadType = {
+      if (!rec.paired) Fragment
+      else if (rec.firstOfPair) ReadOne
+      else {
+        require(rec.secondOfPair, s"Read was paired, but neither first nor second of pair: $rec")
+        ReadTwo
+      }
     }
   }
 }
