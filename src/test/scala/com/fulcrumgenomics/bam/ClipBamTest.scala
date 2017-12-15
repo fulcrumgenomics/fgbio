@@ -24,6 +24,8 @@
 
 package com.fulcrumgenomics.bam
 
+import com.fulcrumgenomics.FgBioDef.unreachable
+import com.fulcrumgenomics.bam.ClippingMode.{Hard, Soft, SoftWithMask}
 import com.fulcrumgenomics.bam.api.{SamRecord, SamSource}
 import com.fulcrumgenomics.testing.SamBuilder._
 import com.fulcrumgenomics.testing.{ErrorLogLevel, ReferenceSetBuilder, SamBuilder, UnitSpec}
@@ -31,10 +33,11 @@ import com.fulcrumgenomics.util.Metric
 import htsjdk.samtools.SAMTag
 import htsjdk.samtools.reference.ReferenceSequenceFileFactory
 import htsjdk.samtools.util.SequenceUtil
+import org.scalatest.OptionValues
 
 import scala.util.Random
 
-class ClipBamTest extends UnitSpec with ErrorLogLevel {
+class ClipBamTest extends UnitSpec with ErrorLogLevel with OptionValues {
   private val ref = {
     val builder = new ReferenceSetBuilder
     builder.add("chr1").add("AAAAAAAAAA", 500) // 5000 bases
@@ -400,6 +403,102 @@ class ClipBamTest extends UnitSpec with ErrorLogLevel {
         metric.bases_clipped_overlapping shouldBe 0
       case metric =>
         metric shouldBe ClippingMetrics(read_type=metric.read_type)
+    }
+  }
+
+  private def clipBases(rec: SamRecord, left: Int, right: Int): String = rec.basesString.slice(left, rec.length-right)
+  private def clipQuals(rec: SamRecord, left: Int, right: Int): String = rec.qualsString.slice(left, rec.length-right)
+  private def maskBases(rec: SamRecord, left: Int, right: Int): String = "N"*left + clipBases(rec, left, right) + "N"*right
+  private def maskQuals(rec: SamRecord, left: Int, right: Int): String = "#"*left + clipQuals(rec, left, right) + "#"*right
+
+  Seq((Soft, SoftWithMask), (Soft, Hard), (SoftWithMask, Hard)).foreach { case (prior, mode) =>
+    it should s"upgrade existing clipping from $prior to $mode with --upgrade-clipping" in {
+      val builder = new SamBuilder(readLength=50)
+      val frag1 = builder.addFrag(name="q1", start=100).value
+      val frag2 = builder.addFrag(name="q2", start=200, strand=Minus).value
+
+      // clip them
+      val softClipper = new SamRecordClipper(mode=prior, autoClipAttributes=true)
+      val priorClipper = new SamRecordClipper(mode=prior, autoClipAttributes=true)
+      Seq(frag1, frag2).foreach { frag =>
+        // always soft-clip bases of soft at the start and end
+        softClipper.clip5PrimeEndOfRead(frag, 10) shouldBe 10
+        softClipper.clip3PrimeEndOfRead(frag, 4) shouldBe 4
+        // now do some more clipping based on the "prior" mode
+        priorClipper.clip5PrimeEndOfRead(frag, 5) shouldBe 0
+        priorClipper.clip3PrimeEndOfRead(frag, 2) shouldBe 0
+      }
+
+      val out     = makeTempFile("out.", ".bam")
+      val metrics = makeTempFile("out.", ".txt")
+      new ClipBam(input=builder.toTempFile(), output=out, metrics=Some(metrics), ref=ref, clippingMode=Some(mode), upgradeClipping=true).execute()
+      val clipped = SamSource(out).toSeq
+
+      clipped.length shouldBe 2
+
+      (prior, mode) match {
+        case (Soft, SoftWithMask) =>
+          clipped.head.cigar.toString shouldBe "10S36M4S"
+          clipped.head.basesString shouldBe maskBases(frag1, 10, 4)
+          clipped.head.qualsString shouldBe maskQuals(frag1, 10, 4)
+          clipped.last.cigar.toString shouldBe "4S36M10S"
+          clipped.last.basesString shouldBe maskBases(frag2, 4, 10)
+          clipped.last.qualsString shouldBe maskQuals(frag2, 4, 10)
+        case (_, Hard) =>
+          clipped.head.cigar.toString shouldBe "10H36M4H"
+          clipped.head.basesString shouldBe clipBases(frag1, 10, 4)
+          clipped.head.qualsString shouldBe clipQuals(frag1, 10, 4)
+          clipped.last.cigar.toString shouldBe "4H36M10H"
+          clipped.last.basesString shouldBe clipBases(frag2, 4, 10)
+          clipped.last.qualsString shouldBe clipQuals(frag2, 4, 10)
+        case _ => unreachable(s"Bug: $prior $mode")
+      }
+    }
+  }
+
+  Seq((Soft, Soft), (SoftWithMask, Soft), (SoftWithMask, SoftWithMask), (Hard, Hard), (Hard, SoftWithMask), (Hard, Soft)).foreach { case (prior, mode) =>
+    it should s"not upgrade existing clipping from $prior to $mode with --upgrade-clipping" in {
+      val builder = new SamBuilder(readLength=50)
+      val frag1 = builder.addFrag(name="q1", start=100).value
+      val frag2 = builder.addFrag(name="q2", start=200, strand=Minus).value
+
+      // Clip some bases based on the "prior" mode
+      val priorClipper = new SamRecordClipper(mode=prior, autoClipAttributes=true)
+      Seq(frag1, frag2).foreach { frag =>
+        priorClipper.clip5PrimeEndOfRead(frag, 10) shouldBe 10
+        priorClipper.clip3PrimeEndOfRead(frag, 4) shouldBe 4
+      }
+
+      val out     = makeTempFile("out.", ".bam")
+      val metrics = makeTempFile("out.", ".txt")
+      new ClipBam(input=builder.toTempFile(), output=out, metrics=Some(metrics), ref=ref, clippingMode=Some(mode), upgradeClipping=true).execute()
+      val clipped = SamSource(out).toSeq
+
+      clipped.length shouldBe 2
+
+      prior match {
+        case Soft =>
+          clipped.head.cigar.toString shouldBe "10S36M4S"
+          clipped.head.basesString shouldBe frag1.basesString
+          clipped.head.qualsString shouldBe frag1.qualsString
+          clipped.last.cigar.toString shouldBe "4S36M10S"
+          clipped.last.basesString shouldBe frag2.basesString
+          clipped.last.qualsString shouldBe frag2.qualsString
+        case SoftWithMask =>
+          clipped.head.cigar.toString shouldBe "10S36M4S"
+          clipped.head.basesString shouldBe maskBases(frag1, 10, 4)
+          clipped.head.qualsString shouldBe maskQuals(frag1, 10, 4)
+          clipped.last.cigar.toString shouldBe "4S36M10S"
+          clipped.last.basesString shouldBe maskBases(frag2, 4, 10)
+          clipped.last.qualsString shouldBe maskQuals(frag2, 4, 10)
+        case Hard =>
+          clipped.head.cigar.toString shouldBe "10H36M4H"
+          clipped.head.basesString shouldBe frag1.basesString
+          clipped.head.qualsString shouldBe frag1.qualsString
+          clipped.last.cigar.toString shouldBe "4H36M10H"
+          clipped.last.basesString shouldBe frag2.basesString
+          clipped.last.qualsString shouldBe frag2.qualsString
+      }
     }
   }
 }

@@ -25,7 +25,6 @@
 package com.fulcrumgenomics.bam
 
 import com.fulcrumgenomics.FgBioDef._
-import com.fulcrumgenomics.bam.SamRecordClipper.ClippingMode
 import com.fulcrumgenomics.bam.api.{SamOrder, SamRecord, SamSource, SamWriter}
 import com.fulcrumgenomics.cmdline.{ClpGroups, FgBioTool}
 import com.fulcrumgenomics.commons.util.LazyLogging
@@ -34,7 +33,6 @@ import com.fulcrumgenomics.util.{Io, Metric, ProgressLogger}
 import enumeratum.EnumEntry
 import htsjdk.samtools.SAMFileHeader.SortOrder
 import htsjdk.samtools.SamPairUtil
-import htsjdk.samtools.SamPairUtil.PairOrientation
 import htsjdk.samtools.reference.ReferenceSequenceFileWalker
 
 import scala.collection.immutable.IndexedSeq
@@ -58,14 +56,26 @@ import scala.collection.immutable.IndexedSeq
     |pair information can be reset across all reads for the template.  Post-clipping the reads are
     |resorted into coordinate order, any existing `NM`, `UQ` and `MD` tags are repaired, and the output is
     |written in coordinate order.
+    |
+    |Three clipping modes are supported:
+    |1. `Soft` - soft-clip the bases and qualities.
+    |2. `SoftWithMask` - soft-clip and mask the bases and qualities (make bases Ns and qualities the minimum).
+    |3. `Hard` - hard-clip the bases and qualities.
+    |
+    |The `--upgrade-clipping` parameter will convert all existing clipping in the input to the given more stringent mode:
+    |from `Soft` to either `SoftWithMask` or `Hard`, and `SoftWithMask` to `Hard`. In all other cases, clipping remains
+    |the same prior to applying any other clipping criteria.
   """)
 class ClipBam
 ( @arg(flag='i', doc="Input SAM or BAM file of aligned reads in coordinate order.") val input: PathToBam,
   @arg(flag='o', doc="Output SAM or BAM file.") val output: PathToBam,
   @arg(flag='m', doc="Optional output of clipping metrics.") val metrics: Option[FilePath] = None,
   @arg(flag='r', doc="Reference sequence fasta file.") val ref: PathToFasta,
-  @arg(flag='s', doc="Soft clip reads instead of hard clipping.") val softClip: Boolean = false,
+  @deprecated("Use clipping-mode instead.", since="0.4.0")
+  @arg(flag='s', doc="Soft clip reads instead of hard clipping.", mutex=Array("clippingMode")) val softClip: Boolean = false,
+  @arg(flag='c', doc="The type of clipping to perform.", mutex=Array("softClip")) val clippingMode: Option[ClippingMode] = None,
   @arg(flag='a', doc="Automatically clip extended attributes that are the same length as bases.") val autoClipAttributes: Boolean = false,
+  @arg(flag='H', doc="Upgrade all existing clipping in the input to the given clipping mode prior to applying any other clipping criteria.") val upgradeClipping: Boolean = false,
   @arg(          doc="Require at least this number of bases to be clipped on the 5' end of R1") val readOneFivePrime: Int  = 0,
   @arg(          doc="Require at least this number of bases to be clipped on the 3' end of R1") val readOneThreePrime: Int = 0,
   @arg(          doc="Require at least this number of bases to be clipped on the 5' end of R2") val readTwoFivePrime: Int  = 0,
@@ -76,10 +86,12 @@ class ClipBam
   Io.assertReadable(ref)
   Io.assertCanWriteFile(output)
 
-  validate(clipOverlappingReads || Seq(readOneFivePrime, readOneThreePrime, readTwoFivePrime, readTwoThreePrime).exists(_ != 0),
+  private val mode = this.clippingMode.getOrElse { if (this.softClip) ClippingMode.Soft else ClippingMode.Hard }
+
+  validate(upgradeClipping || clipOverlappingReads || Seq(readOneFivePrime, readOneThreePrime, readTwoFivePrime, readTwoThreePrime).exists(_ != 0),
     "At least one clipping option is required")
 
-  private val clipper = new SamRecordClipper(mode=if (softClip) ClippingMode.Soft else ClippingMode.Hard, autoClipAttributes=autoClipAttributes)
+  private val clipper = new SamRecordClipper(mode=this.mode, autoClipAttributes=autoClipAttributes)
 
   override def execute(): Unit = {
     val in         = SamSource(input)
@@ -91,6 +103,8 @@ class ClipBam
 
     // Go through and clip reads and fix their mate information
     Bams.templateIterator(in).foreach { template =>
+      if (this.upgradeClipping) template.allReads.foreach { r => this.clipper.upgradeAllClipping(r) }
+
       (template.r1, template.r2) match {
         case (Some(r1), Some(r2)) =>
           clipPair(r1=r1, r2=r2, r1Metric=metricsMap.map(_.apply(ReadType.ReadOne)), r2Metric=metricsMap.map(_.apply(ReadType.ReadTwo)))
