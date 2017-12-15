@@ -26,22 +26,30 @@ package com.fulcrumgenomics.bam
 
 import com.fulcrumgenomics.FgBioDef._
 import com.fulcrumgenomics.alignment.{Cigar, CigarElem}
-import com.fulcrumgenomics.bam.SamRecordClipper.ClippingMode
 import com.fulcrumgenomics.bam.api.SamRecord
+import enumeratum.EnumEntry
 import htsjdk.samtools.{SAMUtils, CigarOperator => Op}
 
 import scala.collection.mutable.ArrayBuffer
+
+/** The base trait for all clipping modes. */
+sealed trait ClippingMode extends EnumEntry
+
+/** An enumeration representing the various ways to clip bases within a read. */
+object ClippingMode extends FgBioEnum[ClippingMode] {
+  def values: scala.collection.immutable.IndexedSeq[ClippingMode] = findValues
+  /** Soft-clip the read. */
+  case object Soft extends ClippingMode
+  /** Soft-clip the read and mask the bases and qualities. */
+  case object SoftWithMask extends ClippingMode
+  /** Hard-clip the read. */
+  case object Hard extends ClippingMode
+}
 
 /**
   * Holds types and constants related to SamRecord clipping.
   */
 object SamRecordClipper {
-  /** An enumeration representing the various ways to clip bases within a read. */
-  object ClippingMode extends Enumeration {
-    val Soft, Hard, SoftWithMask = Value
-  }
-
-  type ClippingMode = ClippingMode.Value
 
   /** The set of tags that should be invalidated if a read undergoes clipping. */
   val TagsToInvalidate = Seq("MD", "NM", "UQ")
@@ -246,6 +254,36 @@ class SamRecordClipper(val mode: ClippingMode, val autoClipAttributes: Boolean) 
   def clip3PrimeEndOfRead(rec: SamRecord, numberOfBasesToClip: Int): Int = {
     if (rec.mapped && rec.negativeStrand) clipStartOfRead(rec, numberOfBasesToClip)
     else clipEndOfRead(rec, numberOfBasesToClip)
+  }
+
+  /** Converts all clipping to the current mode.
+    * Can convert:
+    * 1. From [[ClippingMode.Soft]] to [[ClippingMode.SoftWithMask]]
+    * 2. From [[ClippingMode.Soft]] to [[ClippingMode.Hard]]
+    * 3. From [[ClippingMode.SoftWithMask]] to [[ClippingMode.Hard]]
+    * In all other cases, clipping remains the same.
+    *
+    * Calculates any clipping required and delegates to [[clipStartOfRead()]] and [[clipEndOfRead()]].
+    * @param rec the record to be clipped
+    * @return the number of bases converted at the start and end of the read respectively.  For [[ClippingMode.SoftWithMask]],
+    *         any existing masked bases that would be converted will be counted.
+    */
+  def upgradeAllClipping(rec: SamRecord): (Int, Int) = {
+    if (rec.unmapped || this.mode == ClippingMode.Soft) (0, 0) else {
+      val numBasesClippedStart = {
+        val clippingElems = rec.cigar.elems.takeWhile(_.operator.isClipping)
+        val numSoft = clippingElems.filter(_.operator == Op.S).map(_.length).sum
+        if (numSoft > 0) this.clipStartOfRead(rec, clippingElems.map(_.length).sum)
+        numSoft
+      }
+      val numBasesClippedEnd = {
+        val clippingElems = rec.cigar.reverseIterator.takeWhile(_.operator.isClipping).toSeq
+        val numSoft       = clippingElems.filter(_.operator == Op.S).map(_.length).sum
+        if (numSoft > 0) this.clipEndOfRead(rec, clippingElems.map(_.length).sum)
+        numSoft
+      }
+      (numBasesClippedStart, numBasesClippedEnd)
+    }
   }
 
   /** Computes the number of bases that are available to be clipped in a mapped SamRecord. */

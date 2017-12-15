@@ -27,7 +27,6 @@ package com.fulcrumgenomics.bam
 import java.lang.Math.abs
 
 import com.fulcrumgenomics.FgBioDef._
-import com.fulcrumgenomics.bam.SamRecordClipper.ClippingMode
 import com.fulcrumgenomics.bam.api.{SamOrder, SamRecord, SamSource, SamWriter}
 import com.fulcrumgenomics.cmdline.{ClpGroups, FgBioTool}
 import com.fulcrumgenomics.commons.util.{DelimitedDataParser, LazyLogging}

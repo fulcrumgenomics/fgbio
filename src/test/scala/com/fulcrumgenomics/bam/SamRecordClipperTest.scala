@@ -25,8 +25,7 @@
 package com.fulcrumgenomics.bam
 
 import com.fulcrumgenomics.alignment.Cigar
-import com.fulcrumgenomics.bam.SamRecordClipper.ClippingMode
-import com.fulcrumgenomics.bam.SamRecordClipper.ClippingMode._
+import com.fulcrumgenomics.bam.ClippingMode._
 import com.fulcrumgenomics.bam.api.SamRecord
 import com.fulcrumgenomics.testing.SamBuilder.{Minus, Plus, Strand}
 import com.fulcrumgenomics.testing.{SamBuilder, UnitSpec}
@@ -498,5 +497,58 @@ class SamRecordClipperTest extends UnitSpec {
     mask.cigar.toString shouldBe "40M10S"
     mask.basesString.drop(45) shouldBe "NNNNN"
     mask[String]("az") shouldBe "12345678901234567890123456789012345678901234567890"
+  }
+
+  "SamRecordClipper.upgradeAllClipping" should "convert leading and trailing soft clips" in {
+    val noAuto   = r(10, "5S35M10S", attrs=Map("az" -> "12345678901234567890123456789012345678901234567890"))
+    val withAuto = r(10, "5S35M10S", attrs=Map("az" -> "12345678901234567890123456789012345678901234567890"))
+
+    clipper(Hard).upgradeAllClipping(noAuto) shouldBe (5, 10)
+    noAuto.cigar.toString shouldBe "5H35M10H"
+    noAuto.bases.length   shouldBe 35
+    noAuto[String]("az")  shouldBe "12345678901234567890123456789012345678901234567890"
+
+    clipper(Hard, autoClip=true).upgradeAllClipping(withAuto) shouldBe (5, 10)
+    withAuto.cigar.toString shouldBe "5H35M10H"
+    withAuto.bases.length   shouldBe 35
+    withAuto[String]("az")  shouldBe "67890123456789012345678901234567890"
+  }
+
+  it should "convert soft clips that follow hard clips" in {
+    val noAuto   = r(10, "5H5S35M10S5H", attrs=Map("az" -> "12345678901234567890123456789012345678901234567890"))
+    val withAuto = r(10, "5H5S35M10S5H", attrs=Map("az" -> "12345678901234567890123456789012345678901234567890"))
+
+    clipper(Hard).upgradeAllClipping(noAuto) shouldBe (5, 10)
+    noAuto.cigar.toString shouldBe "10H35M15H"
+    noAuto.bases.length   shouldBe 35
+    noAuto[String]("az")  shouldBe "12345678901234567890123456789012345678901234567890"
+
+    clipper(Hard, autoClip=true).upgradeAllClipping(withAuto) shouldBe (5, 10)
+    withAuto.cigar.toString shouldBe "10H35M15H"
+    withAuto.bases.length   shouldBe 35
+    withAuto[String]("az")  shouldBe "67890123456789012345678901234567890"
+  }
+
+  it should "not convert reads that have no soft-clipping" in {
+    val noSoft = r(10, "55M", attrs=Map("az" -> "12345678901234567890123456789012345678901234567890"))
+    val hard   = r(10, "5H55M10H", attrs=Map("az" -> "12345678901234567890123456789012345678901234567890"))
+
+    Seq(noSoft, hard).foreach { rec =>
+      val cigar = rec.cigar.toString
+      clipper(Hard).upgradeAllClipping(rec) shouldBe (0, 0)
+      rec.cigar.toString shouldBe cigar
+      rec.bases.length   shouldBe 55
+      rec[String]("az")  shouldBe "12345678901234567890123456789012345678901234567890"
+    }
+  }
+
+  it should "not convert reads if they are unmapped or if the clipping mode is not Hard" in {
+    val mapped   = r(10, "55M", attrs=Map("az" -> "12345678901234567890123456789012345678901234567890"))
+    val unmapped = r(10, "55M", attrs=Map("az" -> "12345678901234567890123456789012345678901234567890"))
+    unmapped.unmapped = true
+
+    clipper(Soft).upgradeAllClipping(mapped) shouldBe (0, 0)
+    clipper(SoftWithMask).upgradeAllClipping(mapped) shouldBe (0, 0)
+    clipper(Hard).upgradeAllClipping(unmapped) shouldBe (0, 0)
   }
 }
