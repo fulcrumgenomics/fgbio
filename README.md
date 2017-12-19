@@ -84,8 +84,10 @@ To clone the repository: `git clone https://github.com/fulcrumgenomics/fgbio.git
 ### Running the build
 fgbio is built using [sbt](http://www.scala-sbt.org/).
 
-Use ```sbt assembly``` to build an executable jar in ```target/scala-2.11/```.  
-Tests may be run with ```sbt test```.
+Use ```sbt assembly``` to build an executable jar in ```target/scala-2.11/```.
+
+Tests may be run with ```sbt test```. `R` and `ggplot2` are test dependencies.
+
 Java SE 8 is required.
 
 
