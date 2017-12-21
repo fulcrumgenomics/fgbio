@@ -105,7 +105,7 @@ class FgBioMain extends LazyLogging {
             val banner = "#" * ex.message.map(_.length).getOrElse(80)
             logger.fatal(banner)
             logger.fatal("Execution failed!")
-            ex.message.foreach(logger.fatal)
+            ex.message.foreach(msg => msg.lines.foreach(logger.fatal))
             logger.fatal(banner)
             printEndingLines(startTime, name, false)
             ex.exit
