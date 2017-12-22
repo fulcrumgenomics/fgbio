@@ -345,7 +345,7 @@ class DemuxFastqsTest extends UnitSpec with OptionValues with ErrorLogLevel {
 
           new DemuxFastqs(inputs=Seq(fastqPath), output=output, metadata=metadata,
             readStructures=structures, metrics=Some(metrics), maxMismatches=2, minMismatchDelta=3,
-            threads=threads, outputType=outputType).execute()
+            threads=threads, outputType=Some(outputType)).execute()
 
           val sampleInfos = toSampleInfos(structures)
           val samples: Seq[Sample] = sampleInfos.map(_.sample)
@@ -372,12 +372,12 @@ class DemuxFastqsTest extends UnitSpec with OptionValues with ErrorLogLevel {
               }
             }
 
-            if (outputType == OutputType.FastqOnly || outputType == OutputType.Both) {
+            if (outputType.producesFastq) {
               val fastq = PathUtil.pathTo(prefix + ".fastq.gz")
               val records = FastqSource(fastq).toSeq
               checkOutput(records.map(_.name.replaceAll(":.*", "")), records.map(_.name.replaceAll(".*:", "")))
             }
-            if (outputType == OutputType.BamOnly || outputType == OutputType.Both) {
+            if (outputType.producesBam) {
               val bam = PathUtil.pathTo(prefix + ".bam")
               val records = readBamRecs(bam)
               checkOutput(records.map(_.name), records.map(_[String]("BC")))
@@ -444,7 +444,7 @@ class DemuxFastqsTest extends UnitSpec with OptionValues with ErrorLogLevel {
       val structures = Seq(ReadStructure("17B100T"), ReadStructure("117T"))
       new DemuxFastqs(inputs=Seq(illuminaReadNamesFastqPath, illuminaReadNamesFastqPath), output=output, metadata=sampleSheetPath,
         readStructures=structures, metrics=Some(metrics), maxMismatches=2, minMismatchDelta=3,
-        outputFastqs=true, illuminaStandards=illuminaStandards).execute()
+        outputType=Some(OutputType.Fastq), illuminaStandards=illuminaStandards).execute()
 
       val sampleInfos = toSampleInfos(structures)
 
@@ -511,7 +511,7 @@ class DemuxFastqsTest extends UnitSpec with OptionValues with ErrorLogLevel {
 
     new DemuxFastqs(inputs=Seq(illuminaReadNamesFastqPath), output=output, metadata=metadata,
       readStructures=structures, metrics=Some(metrics), maxMismatches=2, minMismatchDelta=3,
-      outputFastqs=false).execute()
+      outputType=Some(OutputType.Bam)).execute()
 
     val record = readBamRecs(output.resolve("foo-S1-TCGT.bam")).head
 
