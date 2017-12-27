@@ -28,6 +28,7 @@ package com.fulcrumgenomics.fastq
 import java.nio.file.Files
 
 import com.fulcrumgenomics.FgBioDef.{DirPath, FilePath, PathToFastq}
+import com.fulcrumgenomics.bam.api.SamSource
 import com.fulcrumgenomics.fastq.FastqDemultiplexer.{DemuxRecord, DemuxResult}
 import com.fulcrumgenomics.illumina.{Sample, SampleSheet}
 import com.fulcrumgenomics.testing.{ErrorLogLevel, UnitSpec}
@@ -646,15 +647,15 @@ class DemuxFastqsTest extends UnitSpec with OptionValues with ErrorLogLevel {
     }
   }
 
-  it should "demux dual-indexed paired end reads" in {
-    def write(rec: FastqRecord): PathToFastq = {
-      val path = makeTempFile("fastq", ".fastq")
-      val writer = FastqWriter(path)
-      writer.write(rec)
-      writer.close()
-      path
-    }
+  private def write(rec: FastqRecord): PathToFastq = {
+    val path = makeTempFile("fastq", ".fastq")
+    val writer = FastqWriter(path)
+    writer.write(rec)
+    writer.close()
+    path
+  }
 
+  it should "demux dual-indexed paired end reads" in {
     val fq1 = write(fq(name="frag", bases="AAAAAAAA"))
     val fq2 = write(fq(name="frag", bases="A"*100))
     val fq3 = write(fq(name="frag", bases="T"*100))
@@ -700,6 +701,47 @@ class DemuxFastqsTest extends UnitSpec with OptionValues with ErrorLogLevel {
         metric.pf_one_mismatch_matches shouldBe 0
       }
     }
+  }
+
+  it should "include all bases if the include-all-bases-in-fastqs option is used" in {
+    val fq1 = write(fq(name="frag", bases="AAAAAAAA"))
+    val fq2 = write(fq(name="frag", bases="A"*100))
+    val fq3 = write(fq(name="frag", bases="T"*100))
+    val fq4 = write(fq(name="frag", bases="GATTACAGA"))
+    val structures = Seq(ReadStructure("8B"), ReadStructure("5M10S5M10S70T"), ReadStructure("10S90T"), ReadStructure("9B"))
+
+    val output: DirPath = outputDir()
+    val metrics = makeTempFile("metrics", ".txt")
+
+    new DemuxFastqs(inputs=Seq(fq1, fq2, fq3, fq4), output=output, metadata=sampleSheetPath,
+      readStructures=structures, metrics=Some(metrics), maxMismatches=2, minMismatchDelta=3,
+      outputType=Some(OutputType.BamAndFastq), includeAllBasesInFastqs=true).execute()
+
+    val sampleInfos         = toSampleInfos(structures)
+    val matchedSampleInfo   = sampleInfos.find(!_.isUnmatched).get
+
+    matchedSampleInfo.sample.sampleOrdinal shouldBe 1
+
+    val prefix = toSampleOutputPrefix(matchedSampleInfo.sample, matchedSampleInfo.isUnmatched, false, output, UnmatchedSampleId)
+    prefix.toString shouldBe output.resolve("20000101-EXPID-1-Sample_Name_1-AAAAAAAAGATTACAGA").toString
+
+    val extensions = FastqRecordWriter.extensions(pairedEnd=true, illuminaStandards=false)
+    def fastqRecord(which: Int): FastqRecord = {
+      val path = PathUtil.pathTo(prefix + extensions(which-1))
+      FastqSource(path).toSeq.headOption.value
+    }
+
+    val fastqR1    = fastqRecord(1)
+    val fastqR2    = fastqRecord(2)
+    val records    = readBamRecs(output.resolve(prefix + ".bam"))
+    val recR1      = records.find(_.firstOfPair).value
+    val recR2      = records.find(_.secondOfPair).value
+
+    fastqR1.bases shouldBe "A"*100
+    fastqR2.bases shouldBe "T"*100
+
+    recR1.basesString shouldBe "A"*70
+    recR2.basesString shouldBe "T"*90
   }
 
   "FastqRecordWriter.readName" should "set the read name based if it should follow Illumina standards" in {

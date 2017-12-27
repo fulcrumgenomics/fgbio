@@ -287,7 +287,7 @@ class DemuxFastqs
       |Illumina for pipeline 1.3 and above (phred scaling + 64) or Standard
       |for phred scaled scores with a character shift of 33.  If this value
       |is not specified, the quality format will be detected automatically.
-  """)
+    """)
  val qualityFormat: Option[QualityEncoding] = None,
  @arg(flag='t', doc="The number of threads to use while de-multiplexing. The performance does not increase linearly with the # of threads and seems not to improve beyond 2-4 threads.") val threads: Int = 1,
  @arg(doc="Maximum mismatches for a barcode to be considered a match.") val maxMismatches: Int = 1,
@@ -304,7 +304,14 @@ class DemuxFastqs
  @arg(doc="The type of outputs to produce.", mutex=Array("outputFastqs")) var outputType: Option[OutputType] = None,
  @deprecated("Use outputType instead.", since="0.5.0")
  @arg(doc="*** Deprecated: use --output-type instead ***. Output gzipped FASTQs (`.fastq.gz`) instead of BAM files", mutex=Array("outputType")) val outputFastqs: Option[Boolean] = None,
- @arg(doc="Output FASTQs according to Illumina naming standards, for example, for upload to the BaseSpace Sequence Hub") val illuminaStandards: Boolean = false
+ @arg(doc="Output FASTQs according to Illumina naming standards, for example, for upload to the BaseSpace Sequence Hub") val illuminaStandards: Boolean = false,
+ @arg(
+   doc=
+     """Output all bases (i.e. all sample barcode, molecular barcode, skipped,
+        and template bases) for every read with template bases (ex. read one
+        and read two) as defined by the corresponding read structure(s).
+     """)
+ val includeAllBasesInFastqs: Boolean = false
 ) extends FgBioTool with LazyLogging {
 
   import DemuxFastqs._
@@ -380,7 +387,8 @@ class DemuxFastqs
       umiTag           = umiTag,
       maxMismatches    = maxMismatches,
       minMismatchDelta = minMismatchDelta,
-      maxNoCalls       = maxNoCalls
+      maxNoCalls       = maxNoCalls,
+      includeOriginal  = this.includeAllBasesInFastqs
     )
 
     val progress = ProgressLogger(this.logger, unit=1e6.toInt)
@@ -395,10 +403,10 @@ class DemuxFastqs
     )
 
     // Write the records out in its own thread
-    iterator.foreach { demuxRecord =>
-      demuxRecord.sampleInfo.metric.increment(numMismatches=demuxRecord.numMismatches)
-      val writer = sampleToWriter(demuxRecord.sampleInfo.sample)
-      demuxRecord.records.foreach { rec =>
+    iterator.foreach { demuxResult =>
+      demuxResult.sampleInfo.metric.increment(numMismatches=demuxResult.numMismatches)
+      val writer = sampleToWriter(demuxResult.sampleInfo.sample)
+      demuxResult.records.foreach { rec =>
         writer.add(rec.copy(quals=qualityEncoding.toStandardAscii(rec.quals)))
         progress.record()
       }
@@ -422,7 +430,7 @@ class DemuxFastqs
     val writers = new ListBuffer[DemuxWriter]()
 
     if (this._outputType.producesFastq) {
-      writers += new FastqRecordWriter(prefix, pairedEnd, illuminaStandards)
+      writers += new FastqRecordWriter(prefix, this.pairedEnd, illuminaStandards)
     }
 
     if (this._outputType.producesBam) {
@@ -525,8 +533,8 @@ private[fastq] class FastqRecordWriter(prefix: PathPrefix, val pairedEnd: Boolea
   def add(rec: DemuxRecord): Unit = {
     val record = FastqRecord(
       name       = readName(rec),
-      bases      = rec.bases,
-      quals      = rec.quals,
+      bases      = rec.originalBases.getOrElse(rec.bases),
+      quals      = rec.originalQuals.getOrElse(rec.quals),
       comment    = None,
       readNumber = if (illuminaStandards) None else Some(rec.readNumber)
     )
@@ -554,7 +562,8 @@ private[fastq] object FastqDemultiplexer {
 
   /** Stores the minimal information for a single template read. */
   case class DemuxRecord(name: String, bases: String, quals: String, molecularBarcode: Option[String],
-                         sampleBarcode: Option[String], readNumber: Int, pairedEnd: Boolean, comment: Option[String])
+                         sampleBarcode: Option[String], readNumber: Int, pairedEnd: Boolean, comment: Option[String],
+                         originalBases: Option[String] = None, originalQuals: Option[String] = None)
 
   /** A class to store the [[SampleInfo]] and associated demultiplexed [[DemuxRecord]]s.
     * @param sampleInfo the [[SampleInfo]] for the matched sample.
@@ -600,7 +609,8 @@ private class FastqDemultiplexer(val sampleInfos: Seq[SampleInfo],
                                  val umiTag: String = ConsensusTags.UmiBases,
                                  val maxMismatches: Int = 2,
                                  val minMismatchDelta: Int = 1,
-                                 val maxNoCalls: Int = 2) {
+                                 val maxNoCalls: Int = 2,
+                                 val includeOriginal: Boolean = false) {
   import FastqDemultiplexer._
 
   require(readStructures.nonEmpty, "No read structures were given")
@@ -675,21 +685,43 @@ private class FastqDemultiplexer(val sampleInfos: Seq[SampleInfo],
     // Get the sample
     val (sampleInfo, numMismatches) = matchSampleBarcode(subReads)
 
-    // Create the [[DemuxRecord]]s.
-    def opt(s: String): Option[String] = if (s.isEmpty) None else Some(s)
-    val molecularBarcode = subReads.filter(_.kind == SegmentType.MolecularBarcode).map(_.bases).mkString("-")
-    val sampleBarcode    = subReads.filter(_.kind == SegmentType.SampleBarcode).map(_.bases).mkString("-")
-    val readName         = reads.head.name
-    var readNumber       = 0
+    // Get all the comments
     val comments = reads.flatMap(_.comment)
-    val records          = subReads.filter(_.kind == SegmentType.Template).map { read =>
-      val comment = if (comments.isEmpty) None else Some(comments(readNumber))
-      readNumber += 1
-      DemuxRecord(readName, read.bases, read.quals, opt(molecularBarcode), opt(sampleBarcode), readNumber, pairedEnd, comment)
+
+    // Method to get all the bases of a given type
+    def bases(segmentType: SegmentType): Option[String] = {
+      val b = subReads.filter(_.kind == segmentType).map(_.bases).mkString("-")
+      if (b.isEmpty) None else Some(b)
     }
 
+    // Get the molecular and sample barcodes
+    val molecularBarcode = bases(SegmentType.MolecularBarcode)
+    val sampleBarcode    = bases(SegmentType.SampleBarcode)
 
-    DemuxResult(sampleInfo=sampleInfo, numMismatches=numMismatches, records=records)
+    val demuxRecords = reads.zip(this.variableReadStructures)
+      .map { case (read, rs) => rs.extract(read.bases, read.quals) }
+      .filter { segments => segments.exists(_.kind == SegmentType.Template) }
+      .zipWithIndex
+      .map { case (segments, readIndex) =>
+        val readNumber = readIndex + 1
+        val comment    = if (comments.isEmpty) None else Some(comments(readIndex))
+        val read       = segments.find(_.kind == SegmentType.Template).getOrElse(unreachable("Bug: should contain a template segment"))
+
+        DemuxRecord(
+          name             = reads.head.name,
+          bases            = read.bases,
+          quals            = read.quals,
+          molecularBarcode = molecularBarcode,
+          sampleBarcode    = sampleBarcode,
+          readNumber       = readNumber,
+          pairedEnd        = this.pairedEnd,
+          comment          = comment,
+          originalBases    = if (this.includeOriginal) Some(segments.map(_.bases).mkString) else None,
+          originalQuals    = if (this.includeOriginal) Some(segments.map(_.quals).mkString) else None
+        )
+      }
+
+    DemuxResult(sampleInfo=sampleInfo, numMismatches=numMismatches, records=demuxRecords)
   }
 }
 
