@@ -603,6 +603,9 @@ private[fastq] object FastqDemultiplexer {
   * @param minMismatchDelta the minimum difference between number of mismatches in the best and second best barcodes for
   *                         a barcode to be considered a match.
   * @param maxNoCalls the maximum number of no calls in the sample barcode bases allowed for matching.
+  * @param includeOriginal true if to provide set the values for `originaBases` and `originalQuals` in [[DemuxResult]],
+  *                        namely the bases and qualities FOR ALL bases, including molecular barcode, sample barcode,
+  *                        and skipped bases.
   */
 private class FastqDemultiplexer(val sampleInfos: Seq[SampleInfo],
                                  readStructures: Seq[ReadStructure],
@@ -628,7 +631,7 @@ private class FastqDemultiplexer(val sampleInfos: Seq[SampleInfo],
   def expectedNumberOfReads: Int = this.variableReadStructures.length
 
   /** True if the read structure implies paired end reads will be produced, false otherwise. */
-  val pairedEnd: Boolean = this.variableReadStructures.flatMap(_.templateSegments).size match {
+  val pairedEnd: Boolean = this.variableReadStructures.count(_.templateSegments.nonEmpty) match {
     case 0 => throw new IllegalArgumentException("No template reads in any read structure.")
     case 1 => false
     case 2 => true
@@ -685,9 +688,6 @@ private class FastqDemultiplexer(val sampleInfos: Seq[SampleInfo],
     // Get the sample
     val (sampleInfo, numMismatches) = matchSampleBarcode(subReads)
 
-    // Get all the comments
-    val comments = reads.flatMap(_.comment)
-
     // Method to get all the bases of a given type
     def bases(segmentType: SegmentType): Option[String] = {
       val b = subReads.filter(_.kind == segmentType).map(_.bases).mkString("-")
@@ -699,25 +699,24 @@ private class FastqDemultiplexer(val sampleInfos: Seq[SampleInfo],
     val sampleBarcode    = bases(SegmentType.SampleBarcode)
 
     val demuxRecords = reads.zip(this.variableReadStructures)
-      .map { case (read, rs) => rs.extract(read.bases, read.quals) }
-      .filter { segments => segments.exists(_.kind == SegmentType.Template) }
+      .filter { case (_, rs) => rs.exists(_.kind == SegmentType.Template) }
       .zipWithIndex
-      .map { case (segments, readIndex) =>
+      .map { case ((read, rs), readIndex) =>
+        val segments   = rs.extract(read.bases, read.quals)
         val readNumber = readIndex + 1
-        val comment    = if (comments.isEmpty) None else Some(comments(readIndex))
-        val read       = segments.find(_.kind == SegmentType.Template).getOrElse(unreachable("Bug: should contain a template segment"))
-
+        val templates  = segments.filter(_.kind == SegmentType.Template)
+        require(templates.nonEmpty, s"Bug: require at least one template in read $readIndex; read structure was ${segments.mkString}")
         DemuxRecord(
-          name             = reads.head.name,
-          bases            = read.bases,
-          quals            = read.quals,
+          name             = read.name,
+          bases            = templates.map(_.bases).mkString,
+          quals            = templates.map(_.quals).mkString,
           molecularBarcode = molecularBarcode,
           sampleBarcode    = sampleBarcode,
           readNumber       = readNumber,
           pairedEnd        = this.pairedEnd,
-          comment          = comment,
-          originalBases    = if (this.includeOriginal) Some(segments.map(_.bases).mkString) else None,
-          originalQuals    = if (this.includeOriginal) Some(segments.map(_.quals).mkString) else None
+          comment          = read.comment,
+          originalBases    = if (this.includeOriginal) Some(read.bases) else None,
+          originalQuals    = if (this.includeOriginal) Some(read.quals) else None
         )
       }
 
