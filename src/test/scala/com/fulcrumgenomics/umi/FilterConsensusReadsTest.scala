@@ -327,19 +327,25 @@ class FilterConsensusReadsTest extends UnitSpec {
       r1(ConsensusTags.PerRead.AbRawReadErrorRate) = abErr
       r1(ConsensusTags.PerRead.BaRawReadErrorRate) = baErr
       r1(ConsensusTags.PerBase.AbRawReadCount) = abDps
-      r1(ConsensusTags.PerBase.BaRawReadCount) = baDps
+      if (baDp > 0) r1(ConsensusTags.PerBase.BaRawReadCount) = baDps
       r1(ConsensusTags.PerBase.AbRawReadErrors) = abErrs
-      r1(ConsensusTags.PerBase.BaRawReadErrors) = baErrs
+      if (baDp > 0) r1(ConsensusTags.PerBase.BaRawReadErrors) = baErrs
       r1(ConsensusTags.PerBase.AbConsensusBases) = abBases
-      r1(ConsensusTags.PerBase.BaConsensusBases) = baBases
+      if (baDp > 0) r1(ConsensusTags.PerBase.BaConsensusBases) = baBases
       r1(ConsensusTags.PerBase.AbConsensusQuals) = abQuals
-      r1(ConsensusTags.PerBase.BaConsensusQuals) = baQuals
+      if (baDp > 0) r1(ConsensusTags.PerBase.BaConsensusQuals) = baQuals
       r1
     }
 
     /** Simpler method that adds a duplex read where all bases have the same depth and no errors. */
     def addSimple(name:String=nextName, abDp:Int=5, baDp:Int=5): SamRecord = {
-      add(name=name, dp=abDp+baDp, abDp=abDp, baDp=baDp, abDps=ss(abDp.toShort), baDps=ss(baDp.toShort))
+      if (baDp > 0) {
+        add(name=name, dp=abDp+baDp, abDp=abDp, baDp=baDp, abDps=ss(abDp.toShort), baDps=ss(baDp.toShort))
+      }
+      else {
+        add(name=name, dp=abDp+baDp, abDp=abDp, baDp=baDp, abDps=ss(abDp.toShort),
+          baDps=Array.empty, baErrs=Array.empty, baBases="", baQuals="")
+      }
     }
   }
 
@@ -608,6 +614,23 @@ class FilterConsensusReadsTest extends UnitSpec {
 
     val filter = fv(q=50, d=Seq(1,1,1), mq=None, readErr=Seq(1.0,1.0,1.0), baseErr=Seq(1.0, 1.0, 1.0), nf=0.2, ss=false)
     filter.filterRecord(good).keepRead shouldBe true
+    filter.filterRecord(bad1).keepRead shouldBe false
+    filter.filterRecord(bad2).keepRead shouldBe false
+  }
+
+  it should "keep duplex reads that come from only one strand when min-reads is 1,1,0" in {
+    val good = DuplexBuilder.addSimple(abDp=3, baDp=0)
+    val bad = DuplexBuilder.addSimple(abDp=1, baDp=0)
+
+    val filter = fv(q=50, d=Seq(2,1,0), mq=None, readErr=Seq(1.0,1.0,1.0), baseErr=Seq(1.0, 1.0, 1.0), nf=0.2, ss=false)
+    filter.filterRecord(good).keepRead shouldBe true
+    filter.filterRecord(bad).keepRead shouldBe false
+  }
+
+  it should "not keep duplex reads that come from only one strand when min-reads is 1,1,1" in {
+    val bad1 = DuplexBuilder.addSimple(abDp=3, baDp=0)
+    val bad2 = DuplexBuilder.addSimple(abDp=1, baDp=0)
+    val filter = fv(q=50, d=Seq(3,2,1), mq=None, readErr=Seq(1.0,1.0,1.0), baseErr=Seq(1.0, 1.0, 1.0), nf=0.2, ss=false)
     filter.filterRecord(bad1).keepRead shouldBe false
     filter.filterRecord(bad2).keepRead shouldBe false
   }

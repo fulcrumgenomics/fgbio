@@ -38,6 +38,9 @@ import htsjdk.samtools.SAMFileHeader.SortOrder
 import htsjdk.samtools.reference.ReferenceSequenceFileWalker
 import htsjdk.samtools.util.SequenceUtil
 
+/** Filter values for filtering consensus reads */
+private[umi] case class ConsensusReadFilter(minReads: Int, maxReadErrorRate: Double, maxBaseErrorRate: Double)
+
 
 @clp(
   group = ClpGroups.Umi, description =
@@ -130,18 +133,17 @@ class FilterConsensusReads
   //   - The first value is always used for the main read values (Vanilla or Duplex)
   //   - The second value is used for AB filtering if provided, otherwise the first value
   //   - The third value is used for BA filtering if provided, otherwise the second value, otherwise the first
-  private[umi] case class Filters(minReads: Int, maxReadErrorRate: Double, maxBaseErrorRate: Double)
-  private[umi] val ccFilters = Filters( // For the final Consensus Calls
+  private[umi] val ccFilters = ConsensusReadFilter( // For the final Consensus Calls
     minReads         = minReads.head,
     maxReadErrorRate = maxReadErrorRate.head,
     maxBaseErrorRate = maxBaseErrorRate.head
   )
-  private[umi] val abFilters = Filters(
+  private[umi] val abFilters = ConsensusReadFilter(
     minReads         = minReads.take(2).last,
     maxReadErrorRate = maxReadErrorRate.take(2).last,
     maxBaseErrorRate = maxBaseErrorRate.take(2).last
   )
-  private[umi] val baFilters = Filters(
+  private[umi] val baFilters = ConsensusReadFilter(
     minReads         = minReads.last,
     maxReadErrorRate = maxReadErrorRate.last,
     maxBaseErrorRate = maxBaseErrorRate.last
@@ -304,36 +306,18 @@ class FilterConsensusReads
       FilterResult(keepRead=false, maskedBases=0)
     }
     else {
-      import ConsensusTags.PerBase._
       val bases   = rec.bases
       val quals   = rec.quals
-      val depths1 = rec[Array[Short]](AbRawReadCount)
-      val depths2 = rec[Array[Short]](BaRawReadCount)
-      val errors1 = rec[Array[Short]](AbRawReadErrors)
-      val errors2 = rec[Array[Short]](BaRawReadErrors)
-      val bases1  = rec.get[String](AbConsensusBases)
-      val bases2  = rec.get[String](BaConsensusBases)
 
-      def ssAgrees: Int => Boolean = (bases1, bases2) match {
-        case (Some(s1), Some(s2)) => (idx) => s1(idx) == s2(idx)
-        case _                    => (_) => true
-      }
+      // NB: per-base values may not exist for the BA-strand if the consensus was generated from a single-strand.
+      val (abValues, baValues) = DuplexConsensusPerBaseValues.getPerBaseValues(rec)
 
       var maskedBases = 0
       forloop(from=0, until=bases.length) { i =>
         if (bases(i) != NoCall) {
-          val abDepth = max(depths1(i), depths2(i))
-          val baDepth = min(depths1(i), depths2(i))
-          val abError = min(errors1(i)/depths1(i).toDouble, errors2(i) / depths2(i).toDouble)
-          val baError = max(errors1(i)/depths1(i).toDouble, errors2(i) / depths2(i).toDouble)
-          val totalDepth = abDepth + baDepth
-          val totalError = (errors1(i) + errors2(i)) / totalDepth.toDouble
-          val singleStrandDisagree = this.requireSingleStrandAgreement && !ssAgrees(i)
-
-          if (totalDepth < ccFilters.minReads || totalError > ccFilters.maxBaseErrorRate ||
-              abDepth    < abFilters.minReads || abError    > abFilters.maxBaseErrorRate ||
-              baDepth    < baFilters.minReads || baError    > baFilters.maxBaseErrorRate ||
-              singleStrandDisagree || quals(i) < this.minBaseQuality) {
+          val maskBase = DuplexConsensusPerBaseValues.maskBaseAt(abValues, baValues, idx=i, ccFilters=this.ccFilters, abFilters=this.abFilters, baFilters=this.baFilters)
+          val singleStrandDisagree = this.requireSingleStrandAgreement && !DuplexConsensusPerBaseValues.ssAgrees(idx=i, abValues=abValues, baValues=baValues)
+          if (maskBase || singleStrandDisagree || quals(i) < this.minBaseQuality) {
             bases(i) = NoCall
             quals(i) = PhredScore.MinValue
             maskedBases += 1
@@ -381,3 +365,71 @@ class FilterConsensusReads
     arr
   } else { arr }
 }
+
+object DuplexConsensusPerBaseValues {
+  import ConsensusTags.{PerBase, PerRead}
+
+  /** Gets the per-base values for the ab and ba strand respectively.  If the duplex consensus was created from a single
+    * strand, the record should have values for only the ab-strand.  In this case, the values for the ba strand are set
+    * as follows: the bases are set to "N", the depths and errors are set to 0. */
+  def getPerBaseValues(rec: SamRecord): (DuplexConsensusPerBaseValues, DuplexConsensusPerBaseValues) = {
+    /** Gets the value of the given tag, ensuring that it exists. */
+    def getAndRequire[A](tag: String): A = rec.get[A](tag).getOrElse {
+      throw new IllegalStateException(s"Expected tag '$tag' to exists for record: $rec")
+    }
+
+    // The AB-strand should always have values
+    val abValues = {
+      require(rec[Int](PerRead.AbRawReadCount) > 0, s"Expected the AB-strand to have depth > 0 for read: $rec")
+      DuplexConsensusPerBaseValues(
+        abStrand = true,
+        bases    = getAndRequire[String](PerBase.AbConsensusBases),
+        depths   = getAndRequire[Array[Short]](PerBase.AbRawReadCount),
+        errors   = getAndRequire[Array[Short]](PerBase.AbRawReadErrors)
+      )
+    }
+
+    // The BA-strand should have values if the depth was > 0 for some position in the read (i.e. a single-strand
+    // consensus was generated for the BA-strand).
+    val baValues = if (rec[Int](PerRead.BaRawReadCount) > 0) {
+      DuplexConsensusPerBaseValues(
+        abStrand = false,
+        bases    = getAndRequire[String](PerBase.BaConsensusBases),
+        depths   = getAndRequire[Array[Short]](PerBase.BaRawReadCount),
+        errors   = getAndRequire[Array[Short]](PerBase.BaRawReadErrors)
+      )
+    }
+    else {
+      DuplexConsensusPerBaseValues(
+        abStrand = !abValues.abStrand,
+        bases    = "N" * abValues.bases.length,
+        depths   = Array.range(start=0, end=abValues.bases.length).map(_ => 0.toShort),
+        errors   = Array.range(start=0, end=abValues.bases.length).map(_ => 0.toShort)
+      )
+    }
+    (abValues, baValues)
+  }
+
+  /** Returns false if both the ab and ba strand had depth > 0 at the given position and their base call disagreed, otherwise true */
+  def ssAgrees(idx: Int, abValues: DuplexConsensusPerBaseValues, baValues: DuplexConsensusPerBaseValues): Boolean = {
+    abValues.depths(idx) == 0 || baValues.depths(idx) == 0 || abValues.bases(idx) == baValues.bases(idx)
+  }
+
+  /** Returns true if the base at the given index should be masked. */
+  def maskBaseAt(abValues: DuplexConsensusPerBaseValues, baValues: DuplexConsensusPerBaseValues, idx: Int,
+                 ccFilters: ConsensusReadFilter, abFilters: ConsensusReadFilter, baFilters: ConsensusReadFilter): Boolean = {
+    val abDepth    = max(abValues.depths(idx), baValues.depths(idx))
+    val baDepth    = min(abValues.depths(idx), baValues.depths(idx))
+    val abError    = min(abValues.errors(idx)/abValues.depths(idx).toDouble, baValues.errors(idx) / baValues.depths(idx).toDouble)
+    val baError    = max(abValues.errors(idx)/abValues.depths(idx).toDouble, baValues.errors(idx) / baValues.depths(idx).toDouble)
+    val totalDepth = abDepth + baDepth
+    val totalError = (abValues.errors(idx) + baValues.errors(idx)) / totalDepth.toDouble
+
+    totalDepth < ccFilters.minReads || totalError > ccFilters.maxBaseErrorRate ||
+      abDepth  < abFilters.minReads || abError    > abFilters.maxBaseErrorRate ||
+      baDepth  < baFilters.minReads || baError    > baFilters.maxBaseErrorRate
+  }
+}
+
+/** A little class to store the per-base values for ab and ba-strand*/
+case class DuplexConsensusPerBaseValues(abStrand: Boolean, bases: String, depths: Array[Short], errors: Array[Short])
