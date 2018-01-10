@@ -25,17 +25,12 @@
 package com.fulcrumgenomics.umi
 
 import java.nio.file.Files
-import java.util
 
 import com.fulcrumgenomics.FgBioDef._
 import com.fulcrumgenomics.bam.api.{SamOrder, SamRecord, SamSource, SamWriter}
-import com.fulcrumgenomics.commons.io.PathUtil
-import com.fulcrumgenomics.testing.{SamBuilder, UnitSpec}
-import com.fulcrumgenomics.util.Io
+import com.fulcrumgenomics.testing.{ReferenceSetBuilder, SamBuilder, UnitSpec}
 import com.fulcrumgenomics.util.NumericTypes.PhredScore
-import htsjdk.samtools.{SAMFileHeader, SAMSequenceDictionary, SAMSequenceRecord, SAMUtils, SamPairUtil}
-
-import scala.collection.mutable.ListBuffer
+import htsjdk.samtools.SamPairUtil
 
 class FilterConsensusReadsTest extends UnitSpec {
   private val temp = makeTempFile("meh.", ".bam")
@@ -43,20 +38,9 @@ class FilterConsensusReadsTest extends UnitSpec {
 
   /** Make a reference file that is 100 lines of 100 As. */
   private val ref = {
-    val fa   = makeTempFile("ref.", ".fa")
-    val dict = PathUtil.replaceExtension(fa, ".dict")
-
-    val lines = new ListBuffer[String]()
-    lines += ">chr1"
-    Range.inclusive(1, 100).foreach(i => lines += ("A" * 100))
-    Io.writeLines(fa, lines)
-
-    val header = new SAMFileHeader
-    header.setSequenceDictionary(new SAMSequenceDictionary(util.Arrays.asList(new SAMSequenceRecord("chr1", 100*100))))
-    SamWriter(dict, header).close()
-    dict.toFile.deleteOnExit()
-
-    fa
+    val builder = new ReferenceSetBuilder
+    builder.add("chr1").add("AAAAAAAAAA", 10 * 100) // 5000 bases
+    builder.toTempFile()
   }
 
   /** Generates a FilterConsensusReads instance for testing non-end-to-end methods on vanilla reads. */
