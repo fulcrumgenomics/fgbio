@@ -47,7 +47,7 @@ object Matrix {
 
 /**
   * Defines methods applicable to a 2D matrix.  Matrix cells are accessed with a pair of
-  * coordiantes, the first of which is the row offset starting at 0, and the second of
+  * coordinates, the first of which is the row offset starting at 0, and the second of
   * which is the column offset, starting at 0.
   * */
 trait Matrix[A] {

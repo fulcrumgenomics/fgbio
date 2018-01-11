@@ -25,6 +25,7 @@
 package com.fulcrumgenomics.alignment
 
 import com.fulcrumgenomics.FgBioDef._
+import com.fulcrumgenomics.alignment.NeedlemanWunschAligner.Mode.Glocal
 import com.fulcrumgenomics.testing.UnitSpec
 
 class NeedlemanWunschAlignerTest extends UnitSpec {
@@ -35,9 +36,16 @@ class NeedlemanWunschAlignerTest extends UnitSpec {
   def assertValidGlobalAlignment(alignment: Alignment): Unit = {
     alignment.queryStart shouldBe 1
     alignment.queryEnd   shouldBe  alignment.query.length
-
     alignment.targetStart shouldBe 1
     alignment.targetEnd   shouldBe alignment.target.length
+  }
+
+  /** Asserts a couple of things about an alignment that should be constant for glocal alignments. */
+  def assertValidGlocalAlignment(alignment: Alignment): Unit = {
+    alignment.queryStart shouldBe 1
+    alignment.queryEnd   shouldBe  alignment.query.length
+    alignment.targetStart should be >= 1
+    alignment.targetEnd   should be <= alignment.target.length
   }
 
   "NeedlemanWunschAligner.align" should "align two identical sequences with all matches" in {
@@ -234,5 +242,40 @@ class NeedlemanWunschAlignerTest extends UnitSpec {
     assertValidGlobalAlignment(result)
     result.cigar.toString() shouldBe "1I11=1I"
     result.score shouldBe 11 - 100 - 1 - 100 - 1
+  }
+
+  // Glocal alignment tests
+  "NeedlemanWunschAligner.align(Glocal)" should "align two identical sequences with all matches" in {
+    val result = NeedlemanWunschAligner(1, -1, -3, -1, mode=Glocal).align(s("ACGTAACC"), s("ACGTAACC"))
+    assertValidGlocalAlignment(result)
+    result.cigar.toString() shouldBe "8="
+    result.score shouldBe 8
+  }
+
+  it should "correctly align an identical subsequence" in {
+    val result = NeedlemanWunschAligner(1, -1, -3, -1, mode=Glocal).align(s("CCGG"), s("AACCGGTT"))
+    assertValidGlocalAlignment(result)
+    result.queryStart shouldBe 1
+    result.targetStart shouldBe 3
+    result.cigar.toString() shouldBe "4="
+    result.score shouldBe 4
+  }
+
+  it should "correctly align an a sub-sequence with a mismatch" in {
+    val result = NeedlemanWunschAligner(1, -1, -3, -1, mode=Glocal).align(s("-------CGCGTCGTATACGTCGTT"), s("AAGATATCGCGTCGTATACGTCGTA"))
+    assertValidGlocalAlignment(result)
+    result.queryStart shouldBe 1
+    result.targetStart shouldBe 8
+    result.cigar.toString() shouldBe "17=1X"
+    result.score shouldBe 16
+  }
+
+  it should "correctly align an a sub-sequence with a gap" in {
+    val result = NeedlemanWunschAligner(1, -1, -3, -1, mode=Glocal).align(s("CGCGCGCG"), s("AACGCGACGCGTT"))
+    assertValidGlocalAlignment(result)
+    result.queryStart shouldBe 1
+    result.targetStart shouldBe 3
+    result.cigar.toString() shouldBe "4=1D4="
+    result.score shouldBe 4
   }
 }

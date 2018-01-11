@@ -25,21 +25,36 @@
 package com.fulcrumgenomics.alignment
 
 import com.fulcrumgenomics.FgBioDef._
+import com.fulcrumgenomics.alignment.NeedlemanWunschAligner.Mode.{Global, Glocal}
 import com.fulcrumgenomics.alignment.NeedlemanWunschAligner._
+import enumeratum.EnumEntry
 import htsjdk.samtools.CigarOperator
 
-import scala.collection.mutable
+import scala.collection.{immutable, mutable}
 import scala.math.max
 
 object NeedlemanWunschAligner {
+
+  sealed trait Mode extends EnumEntry
+
+  /** Enum to represent alignment modes supported by the NeedlenameWunschAligner */
+  object Mode extends FgBioEnum[Mode] {
+    /** Alignment mode for global pairwise alignment. */
+    case object Global extends Mode
+    /** Alignment mode for global alignment of query sequence to local region of target sequence. */
+    case object Glocal extends Mode
+
+    override def values: immutable.IndexedSeq[Mode] = findValues
+  }
+
   /** Generates a simple scoring function using the match and mismatch scores. */
   def simpleScoringFunction(matchScore: Int, mismatchScore: Int): (Byte, Byte) => Int = {
     (lhs: Byte, rhs: Byte) => if (lhs == rhs) matchScore else mismatchScore
   }
 
   /** Creates a NW aligner with fixed match and mismatch scores. */
-  def apply(matchScore: Int, mismatchScore: Int, gapOpen: Int, gapExtend: Int): NeedlemanWunschAligner = {
-    new NeedlemanWunschAligner(scoringFunction=simpleScoringFunction(matchScore, mismatchScore), gapOpen, gapExtend)
+  def apply(matchScore: Int, mismatchScore: Int, gapOpen: Int, gapExtend: Int, mode: Mode = Global): NeedlemanWunschAligner = {
+    new NeedlemanWunschAligner(scoringFunction=simpleScoringFunction(matchScore, mismatchScore), gapOpen, gapExtend, mode=mode)
   }
 
   /** Directions within the trace back matrix. */
@@ -59,11 +74,13 @@ object NeedlemanWunschAligner {
   * @param gapExtend the gap extension penalty
   * @param useEqualsAndX if true use the = and X cigar operators for matches and mismatches,
   *                      else use the M operator for both.
+  * @param mode alignment mode to use when generating alignments
   */
 class NeedlemanWunschAligner(val scoringFunction: (Byte,Byte) => Int,
                              val gapOpen: Int,
                              val gapExtend: Int,
-                             useEqualsAndX: Boolean = true) {
+                             useEqualsAndX: Boolean = true,
+                             val mode: Mode = Global) {
 
   private val (matchOp, mismatchOp) = if (useEqualsAndX) (CigarOperator.EQ, CigarOperator.X) else (CigarOperator.M, CigarOperator.M)
 
@@ -77,6 +94,7 @@ class NeedlemanWunschAligner(val scoringFunction: (Byte,Byte) => Int,
     * @return an [[Alignment]] object describing the optimal global alignment of the two sequences
     */
   def align(query: Array[Byte], target: Array[Byte]): Alignment = {
+    require(query.length <= target.length || this.mode == Mode.Global, "For glocal, query length must be <= target length.")
     val (scoring, trace) = buildMatrices(query, target)
     generateAlignment(query, target, scoring, trace)
   }
@@ -111,10 +129,18 @@ class NeedlemanWunschAligner(val scoringFunction: (Byte,Byte) => Int,
       scoring(i, 0) = scoring(i-1, 0) + gapExtend + (if (i == 1) gapOpen else 0)
     }
 
-    // Along the top
-    forloop(from=1, until=target.length+1) { j =>
-      trace(0, j)   = Left
-      scoring(0, j) = scoring(0, j-1) + gapExtend + (if (j == 1) gapOpen else 0)
+    // Along the top - for global we have to keep going left, for glocal we're done
+    mode match {
+      case Global =>
+        forloop(from=1, until=target.length+1) { j =>
+          trace(0, j)   = Left
+          scoring(0, j) = scoring(0, j-1) + gapExtend + (if (j == 1) gapOpen else 0)
+        }
+      case Glocal =>
+        forloop(from=1, until=target.length+1) { j =>
+          trace(0, j)   = Done
+          scoring(0, j) = 0
+        }
     }
 
     // The interior of the matrix
@@ -147,13 +173,40 @@ class NeedlemanWunschAligner(val scoringFunction: (Byte,Byte) => Int,
     * @return an [[Alignment]] object representing the alignment
     */
   protected def generateAlignment(query: Array[Byte], target: Array[Byte], scoring: Matrix[Int], trace: Matrix[Direction]): Alignment = {
-    var i = query.length
-    var j = target.length
     var currOperator: CigarOperator = null
     var currLength: Int = 0
     val elems = new mutable.ArrayBuffer[CigarElem]()
 
-    while (i != 0 || j != 0) {
+    // Always start at the end of the query
+    var i = query.length
+
+    // For the target sequence, start at the end for Global, or the highest scoring cell in the last row for Glocal
+    var j = this.mode match {
+      case Global =>
+        target.length
+      case Glocal =>
+        var (maxScore, maxIndex) = (Int.MinValue, -1)
+        forloop(from=0, until=target.length) { i =>
+          val score = scoring(query.length-1, i)
+          if (score > maxScore) {
+            maxScore = score
+            maxIndex = i
+          }
+        }
+
+        maxIndex + 1
+    }
+
+    // The score is always the score from the starting cell
+    val score = scoring(i,j)
+
+    // For global we have to reach the origin, for glocal we just have to reach the top row
+    val done = this.mode match {
+      case Global => () => i == 0 && j == 0
+      case Glocal => () => i == 0
+    }
+
+    while (!done()) {
       val op = trace(i,j) match {
         case Up       =>
           i -= 1
@@ -178,9 +231,9 @@ class NeedlemanWunschAligner(val scoringFunction: (Byte,Byte) => Int,
         currLength   = 1
       }
 
-      if (i == 0 && j == 0) elems += CigarElem(currOperator, currLength)
+      if (done()) elems += CigarElem(currOperator, currLength)
     }
 
-    Alignment(query=query, target=target, queryStart=1, targetStart=1, cigar=Cigar(elems.reverse), score=scoring(query.length, target.length))
+    Alignment(query=query, target=target, queryStart=1, targetStart=j+1, cigar=Cigar(elems.reverse), score=score)
   }
 }
