@@ -25,7 +25,7 @@
 package com.fulcrumgenomics.alignment
 
 import com.fulcrumgenomics.FgBioDef._
-import com.fulcrumgenomics.alignment.NeedlemanWunschAligner.Mode.{Global, Glocal}
+import com.fulcrumgenomics.alignment.Mode.{Global, Glocal}
 import com.fulcrumgenomics.alignment.NeedlemanWunschAligner._
 import enumeratum.EnumEntry
 import htsjdk.samtools.CigarOperator
@@ -33,20 +33,21 @@ import htsjdk.samtools.CigarOperator
 import scala.collection.{immutable, mutable}
 import scala.math.max
 
+/** Trait that entires in Mode will extend. */
+sealed trait Mode extends EnumEntry
+
+/** Enum to represent alignment modes supported by the NeedlenameWunschAligner */
+object Mode extends FgBioEnum[Mode] {
+  /** Alignment mode for global pairwise alignment. */
+  case object Global extends Mode
+  /** Alignment mode for global alignment of query sequence to local region of target sequence. */
+  case object Glocal extends Mode
+
+  override def values: immutable.IndexedSeq[Mode] = findValues
+}
+
+
 object NeedlemanWunschAligner {
-
-  sealed trait Mode extends EnumEntry
-
-  /** Enum to represent alignment modes supported by the NeedlenameWunschAligner */
-  object Mode extends FgBioEnum[Mode] {
-    /** Alignment mode for global pairwise alignment. */
-    case object Global extends Mode
-    /** Alignment mode for global alignment of query sequence to local region of target sequence. */
-    case object Glocal extends Mode
-
-    override def values: immutable.IndexedSeq[Mode] = findValues
-  }
-
   /** Generates a simple scoring function using the match and mismatch scores. */
   def simpleScoringFunction(matchScore: Int, mismatchScore: Int): (Byte, Byte) => Int = {
     (lhs: Byte, rhs: Byte) => if (lhs == rhs) matchScore else mismatchScore
@@ -88,7 +89,9 @@ class NeedlemanWunschAligner(val scoringFunction: (Byte,Byte) => Int,
   def align(query: String, target: String): Alignment = align(query.getBytes, target.getBytes)
 
   /**
-    * Align two sequences with the current scoring system.
+    * Align two sequences with the current scoring system.  If the [[Mode]] is `Global` the query and target
+    * may be of any length.  If the [[Mode]] is Glocal then the target must be at least as long as the query.
+    *
     * @param query the query sequence
     * @param target the target sequence
     * @return an [[Alignment]] object describing the optimal global alignment of the two sequences
@@ -182,8 +185,7 @@ class NeedlemanWunschAligner(val scoringFunction: (Byte,Byte) => Int,
 
     // For the target sequence, start at the end for Global, or the highest scoring cell in the last row for Glocal
     var j = this.mode match {
-      case Global =>
-        target.length
+      case Global => target.length
       case Glocal =>
         var (maxScore, maxIndex) = (Int.MinValue, -1)
         forloop(from=0, until=target.length) { i =>

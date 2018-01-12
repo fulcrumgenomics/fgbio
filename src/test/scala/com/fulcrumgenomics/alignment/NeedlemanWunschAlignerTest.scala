@@ -24,8 +24,7 @@
 
 package com.fulcrumgenomics.alignment
 
-import com.fulcrumgenomics.FgBioDef._
-import com.fulcrumgenomics.alignment.NeedlemanWunschAligner.Mode.Glocal
+import com.fulcrumgenomics.alignment.Mode.Glocal
 import com.fulcrumgenomics.testing.UnitSpec
 
 class NeedlemanWunschAlignerTest extends UnitSpec {
@@ -48,7 +47,7 @@ class NeedlemanWunschAlignerTest extends UnitSpec {
     alignment.targetEnd   should be <= alignment.target.length
   }
 
-  "NeedlemanWunschAligner.align" should "align two identical sequences with all matches" in {
+  "NeedlemanWunschAligner.align(Global)" should "align two identical sequences with all matches" in {
     val result = NeedlemanWunschAligner(1, -1, -3, -1).align(s("ACGTAACC"), s("ACGTAACC"))
     assertValidGlobalAlignment(result)
     result.cigar.toString() shouldBe "8="
@@ -277,5 +276,9 @@ class NeedlemanWunschAlignerTest extends UnitSpec {
     result.targetStart shouldBe 3
     result.cigar.toString() shouldBe "4=1D4="
     result.score shouldBe 4
+  }
+
+  it should "fail if the target sequence is shorter than the query sequence" in {
+    an[Exception] shouldBe thrownBy { NeedlemanWunschAligner(1, -1, -3, -1, mode=Glocal).align("ACGTACGTACGT", "ACGT") }
   }
 }
