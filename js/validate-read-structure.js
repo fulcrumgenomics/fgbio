@@ -21,7 +21,7 @@ function validateReadStructure(readStructureString) {
 	if (typeof(readStructureString) === "undefined" || readStructureString === null) {
 		return {"message" : 'Read structure was empty'};
 	} 
-	var rs = readStructureString.replace(/^\\s*|\\s*$/g,'').toUpperCase(); // trim() not available on BaseSpace
+	var rs = readStructureString.trim().toUpperCase();
 		
 	if (rs.length == 0) {
 		return {"message" : 'Read structure was empty'};
@@ -40,26 +40,37 @@ function validateReadStructure(readStructureString) {
 			i += 1;
 			segLength = null;
 		}
-		else if (isDigit(c)) {
+		else if (isDigit(c) || c === '-') {
+			var sign = 1;
+			if (c === '-') {
+				var sign = -1;
+				i++;
+			}
+
 			segLength = 0;
 			while (i < rs.length && isDigit(rs.charAt(i))) { segLength = (segLength*10) + toInt(rs.charAt(i)); i += 1; }
+			segLength *= sign;
+			
+			if (segLength < 0) {
+				return {"message" : invalid('Read structure contained a negative length segment', rs, parsePosition, i)};
+			}
+			else if (segLength == 0) {
+				return {"message" : invalid('Read structure contained a zero length segment', rs, parsePosition, i)};
+			}
 		}
 		else {
-			return {"message" : invalid('Read structure missing length information', rs, parsePosition, parsePosition+1)};
+			return {"message" : invalid('Read structure segment missing length information', rs, parsePosition, parsePosition+1)};
 		}
 
 		// Parse out the operator and make a segment
 		if (i === rs.length) {
-			return {"message" : invalid('Read structure with invalid segment', rs, parsePosition, i)};
+			return {"message" : invalid('Read structure had an invalid segment', rs, parsePosition, i)};
 		}
 		else {
 			var code = rs.charAt(i);
 			i += 1;
 			if (code !== 'T' && code !== 'B' && code !== 'M' && code !== 'S') {
 				return {"message" : invalid('Read structure segment had unknown type', rs, parsePosition, i)};
-			}
-			else if (segLength !== null && segLength <= 0) {
-				return {"message" : 'Read structure contained zero length segments: ' + readStructureString};
 			}
 			else {
 				var segment = [segLength, code];
@@ -78,41 +89,66 @@ function validateReadStructure(readStructureString) {
 		}
 	}
 
-	var table = "<table><tr><th>Length</th><th>Read Type</th></tr>";
-	for (i = 0; i < segmentsLength; i++) {
-		var segLength = segments[i][0];
-		var code = segments[i][1];
+	return {"message" : null, "segments" : segments};
+}
 
-		table += "<tr>";
-		if (segLength === null) {
-			table += "<td>Remaining</td>";
-		}
-		else {
-			table += "<td>" + segLength.toString() + "</td>";
+function validateReadStructures(readStructuresString) {
+	var readStructures = readStructuresString.trim().split(" ");
+	var i = 0;
+	var table = "";
+	if (readStructures.length == 1) {
+		table = "<table><tr><th>Length</th><th>Read Type</th></tr>";
+	}
+	else {
+		table = "<table><tr><th>Read Structure</th><th>Length</th><th>Read Type</th></tr>";
+	}
+	for (i = 0; i < readStructures.length; i++) {
+		var result = validateReadStructure(readStructures[i]);
+		if (result["message"] !== null) {
+			return result;
 		}
 
-		table += "<td>";
-		switch(code) {
-			case 'T':
-				table += "Template";
-				break;
-			case 'B':
-				table += "Sample Barcode";
-				break;
-			case 'M':
-				table += "Molecular Barcode";
-				break;
-			case 'S':
-				table += "Skipped Bases";
-				break;
-			default:
-				table += "Bug: Unknown Read Type '" + code + "'";
+		var segments = result["segments"];
+		var segmentsLength = segments.length;
+		var j = 0;
+		for (j = 0; j < segmentsLength; j++) {
+			var segLength = segments[j][0];
+			var code = segments[j][1];
+
+			table += "<tr>";
+			if (readStructures.length > 1) {
+				table += "<td>" + (i+1) + "</td>";
+			}
+			if (segLength === null) {
+				table += "<td>Remaining</td>";
+			}
+			else {
+				table += "<td>" + segLength.toString() + "</td>";
+			}
+
+			table += "<td>";
+			switch(code) {
+				case 'T':
+					table += "Template";
+					break;
+				case 'B':
+					table += "Sample Barcode";
+					break;
+				case 'M':
+					table += "Molecular Barcode";
+					break;
+				case 'S':
+					table += "Skipped Bases";
+					break;
+				default:
+					table += "Bug: Unknown Read Type '" + code + "'";
+			}
+			table += "</td>";
+			table += "</tr>";
 		}
-		table += "</td>";
-		table += "</tr>";
 	}
 
 	table += "</table>";
 
-	return {"message" : null, "table" : table};
+	return {"message": null, "table" : table};
 }

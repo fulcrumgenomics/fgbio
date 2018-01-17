@@ -14,11 +14,11 @@
 	<body>
 		<div class="wrapper">
 			{% include header.html %}
-			<h2>Validate Read Structures</h2>
 			<section>
+				<h2>Validate Read Structures</h2>
 				<p>This utility validates one or more <a href="https://github.com/fulcrumgenomics/fgbio/wiki/Read-Structures">Read Structures</a> for use with <a href="http://fulcrumgenomics.github.io/fgbio/">fgbio</a>.</p>
 
-				<p>Enter in a read structure below. Multiple read structures can be entered separated by a space.</p>
+				<p>Enter in a read structure below. Multiple read structures can be entered separated by spaces.</p>
 
 				<table>
 					<col align="left" width="20%">
@@ -42,9 +42,10 @@
 		</div>
 		{% include footer.html %}
 		<script type="text/javascript">
-$( "#submit-read-structure" ).click(function() {
+
+function validate() {
 	var readStructure = $( "#read-structure-input" ).val();
-	var result        = validateReadStructure(readStructure);
+	var result        = validateReadStructures(readStructure);
 	var message       = result['message'];
 	var table         = result['table'];
 	var targetMessage = "div#read-structure-result";
@@ -61,6 +62,16 @@ $( "#submit-read-structure" ).click(function() {
 	}
 	$( targetMessage ).css("font-weight","Bold");
 	$( targetMessage ).attr('size', $( targetMessage ).val().length);
+}
+
+$("input#read-structure-input").keypress(function (e) {
+	if(e.which == 13) {
+		validate();
+		e.preventDefault();
+	}
+});
+$( "#submit-read-structure" ).click(function() {
+	validate();
 });
 		</script>
 	</body>
