@@ -97,9 +97,10 @@ class ClipBam
     val in         = SamSource(input)
     val progress   = ProgressLogger(logger)
     val sorter     = Bams.sorter(SamOrder.Coordinate, in.header)
-    val metricsMap = this.metrics.map { _ =>
+
+    val metricsMap: Map[ReadType, ClippingMetrics] = this.metrics.map { _ =>
       ReadType.values.map { readType => readType -> ClippingMetrics(read_type=readType) }.toMap
-    }
+    }.getOrElse(Map.empty)
 
     // Go through and clip reads and fix their mate information
     Bams.templateIterator(in).foreach { template =>
@@ -107,12 +108,12 @@ class ClipBam
 
       (template.r1, template.r2) match {
         case (Some(r1), Some(r2)) =>
-          clipPair(r1=r1, r2=r2, r1Metric=metricsMap.map(_.apply(ReadType.ReadOne)), r2Metric=metricsMap.map(_.apply(ReadType.ReadTwo)))
+          clipPair(r1=r1, r2=r2, r1Metric=metricsMap.get(ReadType.ReadOne), r2Metric=metricsMap.get(ReadType.ReadTwo))
           SamPairUtil.setMateInfo(r1.asSam, r2.asSam, true)
           template.r1Supplementals.foreach(s => SamPairUtil.setMateInformationOnSupplementalAlignment(s.asSam, r2.asSam, true))
           template.r2Supplementals.foreach(s => SamPairUtil.setMateInformationOnSupplementalAlignment(s.asSam, r1.asSam, true))
         case (Some(frag), None) =>
-          clipFragment(frag=frag, metric=metricsMap.map(_.apply(ReadType.Fragment)))
+          clipFragment(frag=frag, metric=metricsMap.get(ReadType.Fragment))
         case _ => Unit
       }
 
@@ -135,10 +136,19 @@ class ClipBam
       out += rec
     }
 
-    (this.metrics, metricsMap) match {
-      case (Some(path), Some(ms)) => Metric.write(path, ReadType.values.map { readType => ms(readType)})
-      case _                      => Unit
+
+    this.metrics.foreach { path =>
+      // Update the metrics for "All" and "Pair" read types
+      import ReadType._
+      metricsMap.foreach {
+        case (Fragment, metric)          => metricsMap(All).add(metric)
+        case (ReadOne | ReadTwo, metric) => Seq(Pair, All).foreach { r => metricsMap(r).add(metric) }
+        case _                           => Unit
+      }
+      // Write it!
+      Metric.write(path, ReadType.values.map { readType => metricsMap(readType)})
     }
+
     out.close()
   }
 
@@ -226,6 +236,8 @@ object ReadType extends FgBioEnum[ReadType] {
   case object Fragment extends ReadType
   case object ReadOne extends ReadType
   case object ReadTwo extends ReadType
+  case object Pair extends ReadType
+  case object All extends ReadType
 }
 
 
@@ -288,5 +300,21 @@ case class ClippingMetrics
       this.bases_clipped_post        += totalClippedBasees
       if (rec.unmapped && additionalClippedBases > 0) this.reads_unmapped += 1
     }
+  }
+  
+  def add(metric: ClippingMetrics*): Unit = {
+    this.reads                     += metric.sumBy(_.reads)
+    this.reads_unmapped            += metric.sumBy(_.reads_unmapped)
+    this.reads_clipped_pre         += metric.sumBy(_.reads_clipped_pre)
+    this.reads_clipped_post        += metric.sumBy(_.reads_clipped_post)
+    this.reads_clipped_five_prime  += metric.sumBy(_.reads_clipped_five_prime)
+    this.reads_clipped_three_prime += metric.sumBy(_.reads_clipped_three_prime)
+    this.reads_clipped_overlapping += metric.sumBy(_.reads_clipped_overlapping)
+    this.bases                     += metric.sumBy(_.bases)
+    this.bases_clipped_pre         += metric.sumBy(_.bases_clipped_pre)
+    this.bases_clipped_post        += metric.sumBy(_.bases_clipped_post)
+    this.bases_clipped_five_prime  += metric.sumBy(_.bases_clipped_five_prime)
+    this.bases_clipped_three_prime += metric.sumBy(_.bases_clipped_three_prime)
+    this.bases_clipped_overlapping += metric.sumBy(_.bases_clipped_overlapping)
   }
 }

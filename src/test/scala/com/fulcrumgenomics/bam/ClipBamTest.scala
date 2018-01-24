@@ -239,6 +239,21 @@ class ClipBamTest extends UnitSpec with ErrorLogLevel with OptionValues {
     }
   }
 
+  "ClippingMetrics.add" should "add two metrics" in {
+    val fragment = ClippingMetrics(ReadType.Fragment, 1, 2,  3,  4,  5,  6, 7,  8,   9, 10, 11, 12, 13)
+    val readOne  = ClippingMetrics(ReadType.ReadTwo,  2, 3,  4,  5,  6,  7, 8,  9,  10, 11, 12, 13, 14)
+    val readTwo  = ClippingMetrics(ReadType.ReadTwo,  3, 4,  5,  6,  7,  8, 9,  10, 11, 12, 13, 14, 15)
+    val all      = ClippingMetrics(ReadType.All,      6, 9, 12, 15, 18, 21, 24, 27, 30, 33, 36, 39, 42)
+
+    // Check that adding fragment, readOne, and readTwo is correct
+    val added    = ClippingMetrics(ReadType.All)
+    added.add(fragment, readOne, readTwo)
+    added.productIterator.toSeq should contain theSameElementsInOrderAs all.productIterator.toSeq
+
+    // Check that two different metrics have all different values
+    added.productIterator.zip(fragment.productIterator).count { case (left, right) => left != right } shouldBe added.productIterator.length
+  }
+
   "ClipBam" should "clip overlapping reads, update mate info, and reset NM, UQ & MD" in {
     val random = new Random(1)
     val builder = new SamBuilder(readLength=50)
@@ -261,10 +276,10 @@ class ClipBamTest extends UnitSpec with ErrorLogLevel with OptionValues {
       r(SAMTag.UQ.name) = SequenceUtil.sumQualitiesOfMismatches(r.asSam, chr1, 0)
     }
 
-    val out     = makeTempFile("out.", ".bam")
-    val metrics = makeTempFile("out.", ".txt")
+    val out        = makeTempFile("out.", ".bam")
+    val metricsOut = makeTempFile("out.", ".txt")
     new ClipBam(
-      input=builder.toTempFile(), output=out, metrics=Some(metrics), ref=ref,
+      input=builder.toTempFile(), output=out, metrics=Some(metricsOut), ref=ref,
       readOneFivePrime=2, readOneThreePrime=0, readTwoFivePrime=3, readTwoThreePrime=0,
       clipOverlappingReads=true
     ).execute()
@@ -302,7 +317,11 @@ class ClipBamTest extends UnitSpec with ErrorLogLevel with OptionValues {
       md shouldBe expMd
     }
 
-    Metric.read[ClippingMetrics](metrics).foreach {
+    val metrics = Metric.read[ClippingMetrics](metricsOut)
+    val pair = ClippingMetrics(read_type=ReadType.Pair)
+    pair.add(metrics.filter(m => m.read_type == ReadType.ReadOne || m.read_type == ReadType.ReadTwo):_*)
+    val all = pair.copy(read_type=ReadType.All)
+    metrics.foreach {
       case metric if metric.read_type == ReadType.Fragment =>
         metric shouldBe ClippingMetrics(read_type=ReadType.Fragment)
       case metric if metric.read_type == ReadType.ReadOne =>
@@ -333,6 +352,10 @@ class ClipBamTest extends UnitSpec with ErrorLogLevel with OptionValues {
         metric.bases_clipped_five_prime shouldBe 18 // 3*6
         metric.bases_clipped_three_prime shouldBe 0
         metric.bases_clipped_overlapping shouldBe 15 // (2+4+6+8+10)/2
+      case metric if metric.read_type == ReadType.Pair =>
+        metric.productIterator.toSeq should contain theSameElementsInOrderAs pair.productIterator.toSeq
+      case metric if metric.read_type == ReadType.All =>
+        metric.productIterator.toSeq should contain theSameElementsInOrderAs all.productIterator.toSeq
     }
   }
 
@@ -387,7 +410,7 @@ class ClipBamTest extends UnitSpec with ErrorLogLevel with OptionValues {
     }
 
     Metric.read[ClippingMetrics](metrics).foreach {
-      case metric if metric.read_type == ReadType.Fragment =>
+      case metric if metric.read_type == ReadType.Fragment | metric.read_type == ReadType.All =>
         metric.reads shouldBe 3
         metric.reads_unmapped shouldBe 1
         metric.reads_clipped_pre shouldBe 1
@@ -401,7 +424,7 @@ class ClipBamTest extends UnitSpec with ErrorLogLevel with OptionValues {
         metric.bases_clipped_five_prime shouldBe 4
         metric.bases_clipped_three_prime shouldBe 30 // 10*3
         metric.bases_clipped_overlapping shouldBe 0
-      case metric =>
+      case metric if metric.read_type == ReadType.ReadOne | metric.read_type == ReadType.ReadTwo | metric.read_type == ReadType.Pair =>
         metric shouldBe ClippingMetrics(read_type=metric.read_type)
     }
   }
