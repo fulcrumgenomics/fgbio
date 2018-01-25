@@ -93,7 +93,7 @@ function validateReadStructure(readStructureString) {
 }
 
 function validateReadStructures(readStructuresString) {
-	var readStructures = readStructuresString.trim().split(" ");
+	var readStructures = readStructuresString.trim().split(/\s+/);
 	var i = 0;
 	var table = "";
 	if (readStructures.length == 1) {
