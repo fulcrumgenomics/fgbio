@@ -231,19 +231,17 @@ object DemuxFastqs {
       |The sample section of the sample sheet should contain information related to each sample with the following columns:
       |
       |```
-      |  * Sample_ID:   The sample identifier unique to the sample in the sample sheet.
-      |  * Sample_Name: The sample name.
-      |  * Library_ID:  The library Identifier.  The combination sample name and library identifier should be unique
-      |                 across the samples in the sample sheet.
-      |  * Description: The description of the sample, which will be placed in the description field in the output BAM's
-      |                 read group.  This column may be omitted.
-      |```
-      |
-      |Additionally, the sample barcode should be specified in a column named `Sample_Barcode`.  The name of the column
-      |containing the sample barcode can be changed using the `--column-for-sample-barcode` option.  If the sample barcode
-      |is present across multiple reads (ex. dual-index, or inline in both reads of a pair), then the expected barcode
-      |bases from each read should be concatenated and placed in the `Sample_Barcode` column.  The concatenation should
-      |be in the same order as the order of the reads' FASTQs and read structures given to this tool.
+      |  * Sample_ID:      The sample identifier unique to the sample in the sample sheet.
+      |  * Sample_Name:    The sample name.
+      |  * Library_ID:     The library Identifier.  The combination sample name and library identifier should be unique
+      |                    across the samples in the sample sheet.
+      |  * Description:    The description of the sample, which will be placed in the description field in the output BAM's
+      |                    read group.  This column may be omitted.
+      |  * Sample_Barcode: The sample barcode bases unique to each sample. The name of the column containing the sample barcode 
+      |                    can be changed using the `--column-for-sample-barcode` option.  If the sample barcode is present 
+      |                    across multiple reads (ex. dual-index, or inline in both reads of a pair), then the expected
+      |                    barcode bases from each read should be concatenated in the same order as the order of the reads'
+      |                    FASTQs and read structures given to this tool.
       |
       |## Metadata CSV
       |
