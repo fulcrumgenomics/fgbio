@@ -55,4 +55,18 @@ class ReferenceSetBuilderTest extends UnitSpec {
     ref.getSequenceDictionary.assertSameDictionary(dict)
     ref.close()
   }
+
+  it should "write an assembly name into the dictionary if given one" in {
+    val Seq(plus, minus) = Seq(Some("hg19"), None).map { assembly =>
+      val builder = new ReferenceSetBuilder(assembly=assembly)
+      builder.add("chr1").add("A", 100)
+      val path = builder.toTempFile()
+      val dict = SAMSequenceDictionaryExtractor.extractDictionary(path.toFile)
+      dict.size() shouldBe 1
+      dict
+    }
+
+    plus.getSequence("chr1").getAssembly shouldBe "hg19"
+    minus.getSequence("chr1").getAssembly shouldBe null
+  }
 }

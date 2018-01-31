@@ -35,7 +35,7 @@ import htsjdk.samtools.{SAMFileHeader, SAMSequenceDictionary, SAMSequenceRecord,
 import scala.collection.mutable.ListBuffer
 
 /** Class to programatically build up a reference sequence. */
-class ReferenceSetBuilder {
+class ReferenceSetBuilder(assembly: Option[String] = Some("testassembly")) {
   private val LineLength = 80
 
   // Class to build up a single reference sequence
@@ -82,7 +82,9 @@ class ReferenceSetBuilder {
         out.newLine()
       }
 
-      dict.addSequence(new SAMSequenceRecord(ref.name, bases.length))
+      val rec = new SAMSequenceRecord(ref.name, bases.length)
+      this.assembly.foreach(rec.setAssembly)
+      dict.addSequence(rec)
     }
 
     out.close()
