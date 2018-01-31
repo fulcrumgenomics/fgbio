@@ -39,7 +39,7 @@ class ReferenceSetBuilder(assembly: Option[String] = Some("testassembly")) {
   private val LineLength = 80
 
   // Class to build up a single reference sequence
-  class ReferenceBuilder private[ReferenceSetBuilder](val name: String) {
+  class ReferenceBuilder private[ReferenceSetBuilder](val name: String, val assembly: Option[String]) {
     private[ReferenceSetBuilder] val bases = new StringBuilder
 
     /** Adds bases to the reference. */
@@ -53,8 +53,8 @@ class ReferenceSetBuilder(assembly: Option[String] = Some("testassembly")) {
   private val refs = new ListBuffer[ReferenceBuilder]()
 
   /** Generates a new ReferenceBuilder object in order and returns it. */
-  def add(name: String): ReferenceBuilder = {
-    this.refs += new ReferenceBuilder(name)
+  def add(name: String, assembly: Option[String] = this.assembly): ReferenceBuilder = {
+    this.refs += new ReferenceBuilder(name, assembly)
     this.refs.last
   }
 
@@ -83,7 +83,7 @@ class ReferenceSetBuilder(assembly: Option[String] = Some("testassembly")) {
       }
 
       val rec = new SAMSequenceRecord(ref.name, bases.length)
-      this.assembly.foreach(rec.setAssembly)
+      ref.assembly.foreach(rec.setAssembly)
       dict.addSequence(rec)
     }
 
