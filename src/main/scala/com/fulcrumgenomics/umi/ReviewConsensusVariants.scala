@@ -176,7 +176,7 @@ class ReviewConsensusVariants
     val consensusIn  = SamSource(consensusBam)
     val groupedIn    = SamSource(groupedBam)
     val consensusOut = SamWriter(f(".consensus.bam"), consensusIn.header, ref=Some(ref))
-    val groupedOut   = SamWriter(f(".grouped.bam"),   consensusIn.header, ref=Some(ref))
+    val groupedOut   = SamWriter(f(".grouped.bam"),   groupedIn.header, ref=Some(ref))
 
     // Pull out the consensus reads
     logger.info(s"Loading variants from ${input.toAbsolutePath}")
@@ -215,7 +215,7 @@ class ReviewConsensusVariants
   private def generateDetailsFile(consensusBam: PathToBam, groupedBam: PathToBam, variants: Seq[Variant], output: FilePath): Unit = {
     val consensusReader = SamSource(consensusBam)
     val groupedReader   = SamSource(groupedBam)
-    val intervals = new IntervalList(consensusReader.header)
+    val intervals = new IntervalList(consensusReader.header.getSequenceDictionary)
     variants.foreach (v => intervals.add(v.toInterval))
 
     // Make locus iterators for both the consensus and grouped BAMs
