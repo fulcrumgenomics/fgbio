@@ -215,7 +215,7 @@ class ReviewConsensusVariants
   private def generateDetailsFile(consensusBam: PathToBam, groupedBam: PathToBam, variants: Seq[Variant], output: FilePath): Unit = {
     val consensusReader = SamSource(consensusBam)
     val groupedReader   = SamSource(groupedBam)
-    val intervals = new IntervalList(consensusReader.header.getSequenceDictionary)
+    val intervals = new IntervalList(this.dict)
     variants.foreach (v => intervals.add(v.toInterval))
 
     // Make locus iterators for both the consensus and grouped BAMs
