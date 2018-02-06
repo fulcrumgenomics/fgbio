@@ -491,6 +491,56 @@ class VanillaUmiConsensusCallerTest extends UnitSpec with OptionValues {
     source.cigar.toString() shouldBe "5M1D1M"
   }
 
+  it should "trim the source read when the read length is shorter than the insert size" in {
+    val builder     = new SamBuilder(readLength=50)
+    val Seq(r1, r2) = builder.addPair(start1=11, start2=1, strand1=Plus, strand2=Minus).map { r => r.bases = "A"*10 + "C"*30 + "G"*10; r }
+    val s1          = cc().toSourceRead(r1, minBaseQuality=2.toByte, trim=false).value
+    val s2          = cc().toSourceRead(r2, minBaseQuality=2.toByte, trim=false).value
+
+    s1.baseString shouldBe "A"*10 + "C"*30 // the first ten bases should be trimmed
+    s1.cigar.toString shouldBe "40M"
+    s2.baseString shouldBe "C"*10 + "G"*30 // the last ten bases should be trimmed
+    s2.cigar.toString shouldBe "40M"
+  }
+
+  it should "trim based on insert size in the presence of soft-clipping" in {
+    val builder     = new SamBuilder(readLength=50)
+    val Seq(r1, r2) = builder.addPair(start1=20, start2=20, strand1=Plus, strand2=Minus, cigar1="10S35M5S", cigar2="12S30M8S")
+      .map { r => r.bases = "A"*2 + "C"*46 + "G"*2; r }
+    val s1          = cc().toSourceRead(r1, minBaseQuality=2.toByte, trim=false).value
+    val s2          = cc().toSourceRead(r2, minBaseQuality=2.toByte, trim=false).value
+
+    s1.baseString shouldBe "A"*2 + "C"*38 // trimmed by ten bases at the 3' end
+    s1.cigar.toString shouldBe "10S30M"
+    s2.baseString shouldBe "C"*2 + "G"*36 // trimmed by twelve bases at the 3' end
+    s2.cigar.toString shouldBe "8S30M" // NB: cigar is reversed in toSourceRead
+  }
+
+  it should "not to trim based on insert size in the presence of soft-clipping" in {
+    val builder     = new SamBuilder(readLength=142)
+    val Seq(r1, r2) = builder.addPair(start1=545, start2=493, strand1=Minus, strand2=Plus, cigar1="47S72M23S", cigar2="46S96M")
+      .map { r => r.bases = "A"*142; r }
+    val s1          = cc().toSourceRead(r1, minBaseQuality=2.toByte, trim=false).value
+    val s2          = cc().toSourceRead(r2, minBaseQuality=2.toByte, trim=false).value
+
+    s1.baseString shouldBe "T"*142
+    s1.cigar.toString shouldBe "23S72M47S"  // NB: cigar is reversed in toSourceRead
+    s2.baseString shouldBe "A"*142
+    s2.cigar.toString shouldBe "46S96M"
+  }
+
+  it should "not trim the source read based on insert size if the read is not an FR pair" in {
+    val builder     = new SamBuilder(readLength=50)
+    val Seq(r1, r2) = builder.addPair(start1=11, start2=1, strand1=Plus, strand2=Plus).map { r => r.bases = "A"*50; r }
+    val s1          = cc().toSourceRead(r1, minBaseQuality=2.toByte, trim=false).value
+    val s2          = cc().toSourceRead(r2, minBaseQuality=2.toByte, trim=false).value
+
+    s1.baseString shouldBe "A"*50
+    s1.cigar.toString shouldBe "50M"
+    s2.baseString shouldBe "A"*50
+    s2.cigar.toString shouldBe "50M"
+  }
+
   it should "return None if the read is all low-quality or Ns" in {
     val builder = new SamBuilder(readLength=10)
     val rec     = builder.addFrag(start=1, bases="NANANANANA").map { r => r.quals = Array[Byte](30,2,30,2,30,2,30,2,30,2); r}.get

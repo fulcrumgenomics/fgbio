@@ -216,7 +216,13 @@ trait UmiConsensusCaller[C <: SimpleRead] {
     // Find the last non-N base of sufficient quality in the record, starting from either the
     // end of the read, or the end of the insert, whichever is shorter!
     val len = {
-      var index = if (rec.isFrPair) min(abs(rec.insertSize), trimToLength) - 1 else trimToLength - 1
+      var index = if (!rec.isFrPair) trimToLength - 1 else {
+        // Adjust the insert size based on clipping on the 5' end of the given read.
+        // This *does not* consider any clipping on the 5' end of its mate.
+        val fivePrimeClipping  = cigar.takeWhile(_.operator.isClipping).filter(_.operator == CigarOperator.S).sumBy(_.length)
+        val adjustedInsertSize = abs(rec.insertSize) + fivePrimeClipping
+        min(adjustedInsertSize, trimToLength) - 1
+      }
       while (index >= 0 && (bases(index) == NoCall)) index -= 1
       index + 1
     }
@@ -228,11 +234,11 @@ trait UmiConsensusCaller[C <: SimpleRead] {
       case n if n == bases.length =>
         Some(SourceRead(sourceMoleculeId(rec), bases, quals, cigar, Some(rec)))
       case n                         =>
-        val trimmedBases = new Array[Byte](len)
-        val trimmedQuals = new Array[Byte](len)
-        System.arraycopy(bases, 0, trimmedBases, 0, len)
-        System.arraycopy(quals, 0, trimmedQuals, 0, len)
-        Some(SourceRead(sourceMoleculeId(rec), trimmedBases, trimmedQuals, cigar.truncateToQueryLength(len), Some(rec)))
+        val trimmedBases = new Array[Byte](n)
+        val trimmedQuals = new Array[Byte](n)
+        System.arraycopy(bases, 0, trimmedBases, 0, n)
+        System.arraycopy(quals, 0, trimmedQuals, 0, n)
+        Some(SourceRead(sourceMoleculeId(rec), trimmedBases, trimmedQuals, cigar.truncateToQueryLength(n), Some(rec)))
     }
   }
 
