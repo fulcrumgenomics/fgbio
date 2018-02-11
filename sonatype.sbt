@@ -7,10 +7,6 @@ pomExtra in Global := {
         <url>http://www.opensource.org/licenses/mit-license.html</url>
       </license>
     </licenses>
-    <scm>
-      <url>git@github.com:fulcrumgenomics/fgbio</url>
-      <connection>scm:git:git@github.com:fulcrumgenomics/fgbio.git</connection>
-    </scm>
     <developers>
       <developer>
         <id>nh13</id>

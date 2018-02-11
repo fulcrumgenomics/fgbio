@@ -28,10 +28,12 @@
 # Simple shell script to generate metrics documentation with scaladoc
 ###############################################################################
 
+set -euo pipefail
+
 # Uncomment the following line to turn on debugging when running scaladoc
 # JAVA_OPTS="-agentlib:jdwp=transport=dt_socket,server=y,suspend=y,address=7777"
 
 sources=$(find src/main/scala -name \*.scala)
-cp=$(sbt -Dsbt.log.noformat=true "export runtime:fullClasspath" 2> /dev/null | fgrep -v '[info]')
+cp=$(sbt -Dsbt.log.noformat=true "export runtime:fullClasspath" 2> /dev/null | tail -n 1)
 
 scaladoc -toolcp $cp -d target -doc-generator com.fulcrumgenomics.internal.FgMetricsDoclet $sources
