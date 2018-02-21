@@ -126,10 +126,19 @@ class ExtractUmisFromBam
     if (molecularIndexTags.contains(tag)) invalid(s"$tag specified as single-tag and also per-index tag")
   }
 
-  override def execute(): Unit = {
-    assert(molecularIndexTags1.length == rs1.molecularBarcodeSegments.length)
-    rs2.foreach(rs => assert(molecularIndexTags2.length == rs.molecularBarcodeSegments.length))
+  // Validate that the # of molecular barcodes in the read structure matches the tags
+  {
+    def validateMolecularBarcodesInReadStructureAndTag(rs: ReadStructure, tags: Seq[String]): Unit = {
+      validate(molecularIndexTags1.length == rs.molecularBarcodeSegments.length,
+        s"Read structure '$rs' had '${rs.molecularBarcodeSegments.length}' molecular barcodes" +
+          s"but '${tags.length}' molecular barcode tags expected (${tags.mkString(", ")}")
+    }
 
+    validateMolecularBarcodesInReadStructureAndTag(rs1, molecularIndexTags1)
+    rs2.foreach(rs => validateMolecularBarcodesInReadStructureAndTag(rs, molecularIndexTags2))
+  }
+
+  override def execute(): Unit = {
     val in       = SamSource(input)
     val iterator = in.iterator.buffered
     val out      = SamWriter(output, in.header)
@@ -161,7 +170,7 @@ class ExtractUmisFromBam
           r1.name = r1.name + "+" + bases1 + bases2
           r2.name = r2.name + "+" + bases1 + bases2
         }
-        assert(r1.name.equals(r2.name))
+        assert(r1.name.equals(r2.name), s"Mismatching read name.  R1: '$r1' R2: '$r2'")
 
         // If we have duplicate tags, then concatenate them in the same order across the read pair.
         val tagAndValues = (molecularIndexTags1.map { tag => (tag, r1[String](tag)) } ++ molecularIndexTags2.map { tag => (tag, r2[String](tag)) }).toList
