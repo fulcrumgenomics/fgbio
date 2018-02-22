@@ -283,6 +283,17 @@ class ExtractUmisFromBamTest extends UnitSpec with OptionValues {
     }
   }
 
+  it should "extract two molecular indices into a single tag" in {
+    val output  = newBam
+    val builder = new SamBuilder(readLength=100)
+    builder.addFrag(name="q", start=1, unmapped=true).foreach(r => r.bases = "A" * 100)
+    new ExtractUmisFromBam(input=builder.toTempFile(), output=output, readStructure=Seq("4M2S4M90T", "6M94T"), molecularIndexTags=Seq("ZA")).execute()
+    val recs = readBamRecs(output)
+    recs.foreach { rec =>
+      rec[String]("ZA") shouldBe "AAAA-AAAA"
+    }
+  }
+
   it should "not allow invalid usages of the single-tag option" in {
     val (in, out) = (newBam, newBam)
 
@@ -300,6 +311,14 @@ class ExtractUmisFromBamTest extends UnitSpec with OptionValues {
 
     an[ValidationException] shouldBe thrownBy {
       new ExtractUmisFromBam(input=in, output=out, molecularIndexTags=Seq("RX", "RZ"), singleTag=Some("RXX"), readStructure=Seq("5M5T", "5M5T"))
+    }
+
+    an[ValidationException] shouldBe thrownBy {
+      new ExtractUmisFromBam(input=in, output=out, molecularIndexTags=Seq("RX", "RZ"), readStructure=Seq("5M5T"))
+    }
+
+    an[ValidationException] shouldBe thrownBy {
+      new ExtractUmisFromBam(input=in, output=out, molecularIndexTags=Seq("RX", "RY", "RZ"), readStructure=Seq("5M5T", "5M5T"))
     }
   }
 
