@@ -25,7 +25,6 @@
 
 package com.fulcrumgenomics.util
 
-import scala.collection.mutable
 
 object SampleBarcodeMetric {
   def apply(barcodeName: String, libraryName: String, barcode: String): SampleBarcodeMetric = {
@@ -41,9 +40,9 @@ object SampleBarcodeMetric {
                       noMatchBarcode: String): Unit = {
     val noMatchMetric = barcodeToMetrics(noMatchBarcode)
 
-    var totalReads: Int           = 0
-    var totalPfReads: Int         = 0
-    var totalPfReadsAssigned: Int = 0
+    var totalReads: Long           = 0
+    var totalPfReads: Long         = 0
+    var totalPfReadsAssigned: Long = 0
 
     barcodeToMetrics.foreach { case (barcode, metric) =>
       totalReads           += metric.reads
@@ -98,20 +97,20 @@ object SampleBarcodeMetric {
   * Metrics for matching reads to sample barcodes.
   */
 case class SampleBarcodeMetric(
-  var barcode_name: String                              = "",
-  var library_name: String                              = "",
-  var barcode: String                                   = "",
-  var reads: Int                                        = 0,
-  var pf_reads: Int                                     = 0,
-  var perfect_matches: Int                              = 0,
-  var pf_perfect_matches: Int                           = 0,
-  var one_mismatch_matches: Int                         = 0,
-  var pf_one_mismatch_matches: Int                      = 0,
-  var pct_matches: Double                               = 0d,
-  var ratio_this_barcode_to_best_barcode_pct: Double    = 0d,
-  var pf_pct_matches: Double                            = 0d,
-  var pf_ratio_this_barcode_to_best_barcode_pct: Double = 0d,
-  var pf_normalized_matches: Double                     = 0d
+  var barcode_name: String                                         = "",
+  var library_name: String                                         = "",
+  var barcode: String                                              = "",
+  var reads: Metric.Count                                          = 0,
+  var pf_reads: Metric.Count                                       = 0,
+  var perfect_matches: Metric.Count                                = 0,
+  var pf_perfect_matches: Metric.Count                             = 0,
+  var one_mismatch_matches: Metric.Count                           = 0,
+  var pf_one_mismatch_matches: Metric.Count                        = 0,
+  var pct_matches: Metric.Proportion                               = 0d,
+  var ratio_this_barcode_to_best_barcode_pct: Metric.Proportion    = 0d,
+  var pf_pct_matches: Metric.Proportion                            = 0d,
+  var pf_ratio_this_barcode_to_best_barcode_pct: Metric.Proportion = 0d,
+  var pf_normalized_matches: Metric.Proportion                     = 0d
 ) extends Metric {
 
   /** Increments the counts for the metric. */
