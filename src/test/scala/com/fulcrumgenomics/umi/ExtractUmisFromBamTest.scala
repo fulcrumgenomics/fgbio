@@ -29,7 +29,6 @@ import com.fulcrumgenomics.bam.api.{SamRecord, SamWriter}
 import com.fulcrumgenomics.sopt.cmdline.ValidationException
 import com.fulcrumgenomics.testing.{SamBuilder, UnitSpec}
 import com.fulcrumgenomics.util.ReadStructure
-import htsjdk.samtools.SAMRecord
 import org.scalatest.OptionValues
 
 /**
@@ -397,8 +396,8 @@ class ExtractUmisFromBamTest extends UnitSpec with OptionValues {
     val r2Out = recs.find(_.secondOfPair).getOrElse(fail("Couldnt find R2 in the output"))
     r1Out.length shouldBe 42
     r2Out.length shouldBe 50
-    r1Out.get("A1") shouldBe Some(umi)
-    r2Out.get("A1") shouldBe Some(umi)
+    r1Out.get("A1").value shouldBe umi
+    r2Out.get("A1").value shouldBe umi
   }
 
   "ExtractUmisFromBam.updateClippingInformation" should "update the clipping information for non-template bases" in {
