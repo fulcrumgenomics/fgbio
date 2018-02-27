@@ -109,6 +109,7 @@ class CallDuplexConsensusReads
 
   override def execute(): Unit = {
     val in  = SamSource(input)
+    UmiConsensusCaller.checkSortOrder(in.header, input, logger.warning, fail)
 
     // The output file is unmapped, so for now let's clear out the sequence dictionary & PGs
     val outHeader = UmiConsensusCaller.outputHeader(in.header, readGroupId, sortOrder)

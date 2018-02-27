@@ -25,6 +25,7 @@
 
 package com.fulcrumgenomics.umi
 
+import com.fulcrumgenomics.bam.api.SamOrder
 import com.fulcrumgenomics.testing.{SamBuilder, UnitSpec}
 import com.fulcrumgenomics.umi.VanillaUmiConsensusCallerOptions._
 
@@ -40,7 +41,7 @@ class CallMolecularConsensusReadsTest extends UnitSpec {
 
   "CallMolecularConsensusReads" should "run end-to-end" in {
     val rlen    = 100
-    val builder = new SamBuilder(baseQuality=30, readLength=rlen, readGroupId=Some("ABC"))
+    val builder = new SamBuilder(baseQuality=30, readLength=rlen, readGroupId=Some("ABC"), sort=Some(SamOrder.TemplateCoordinate))
     val output  = newBam
     val rejects = newBam
 

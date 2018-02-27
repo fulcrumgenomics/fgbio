@@ -26,7 +26,7 @@ package com.fulcrumgenomics.umi
 
 import java.nio.file.Paths
 
-import com.fulcrumgenomics.bam.api.SamSource
+import com.fulcrumgenomics.bam.api.{SamOrder, SamSource}
 import com.fulcrumgenomics.testing.SamBuilder.{Minus, Plus}
 import com.fulcrumgenomics.testing.{SamBuilder, UnitSpec}
 
@@ -60,7 +60,7 @@ class CallDuplexConsensusReadsTest extends UnitSpec {
   }
 
   it should "not generate a consensus if AB-R1s are not on the same strand ads BA-R2s" in {
-    val builder = new SamBuilder(readLength=10)
+    val builder = new SamBuilder(readLength=10, sort=Some(SamOrder.TemplateCoordinate))
     builder.addPair(name="ab1", start1=100, start2=200, attrs=Map(MI -> "1/A"), bases1="AAAAAAAAAA", bases2="AAAAAAAAAA", strand1=Plus, strand2=Plus)
     builder.addPair(name="ba1", start1=200, start2=100, attrs=Map(MI -> "1/B"), bases1="AAAAAAAAAA", bases2="AAAAAAAAAA", strand1=Plus, strand2=Minus)
 
@@ -76,7 +76,7 @@ class CallDuplexConsensusReadsTest extends UnitSpec {
   }
 
   it should "not generate a consensus if AB-R2s are not on the same strand ads BA-R1s" in {
-    val builder = new SamBuilder(readLength=10)
+    val builder = new SamBuilder(readLength=10, sort=Some(SamOrder.TemplateCoordinate))
     builder.addPair(name="ab1", start1=100, start2=200, attrs=Map(MI -> "1/A"), bases1="AAAAAAAAAA", bases2="AAAAAAAAAA", strand1=Plus, strand2=Minus)
     builder.addPair(name="ba1", start1=200, start2=100, attrs=Map(MI -> "1/B"), bases1="AAAAAAAAAA", bases2="AAAAAAAAAA", strand1=Plus, strand2=Plus)
 
@@ -92,7 +92,7 @@ class CallDuplexConsensusReadsTest extends UnitSpec {
   }
 
   it should "run successfully and create consensus reads" in {
-    val builder = new SamBuilder(readLength=10)
+    val builder = new SamBuilder(readLength=10, sort=Some(SamOrder.TemplateCoordinate))
     builder.addPair(name="ab1", start1=100, start2=100, attrs=Map(MI -> "1/A"), bases1="AAAAAAAAAA", bases2="AAAAAAAAAA")
     builder.addPair(name="ab2", start1=100, start2=100, attrs=Map(MI -> "1/A"), bases1="AAAAAAAAAA", bases2="AAAAAAAAAA")
     builder.addPair(name="ab3", start1=100, start2=100, attrs=Map(MI -> "1/A"), bases1="AAAAAAAAAA", bases2="AAAAAAAAAA")

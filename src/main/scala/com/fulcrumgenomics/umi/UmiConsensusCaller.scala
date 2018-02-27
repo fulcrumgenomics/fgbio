@@ -30,7 +30,7 @@ import com.fulcrumgenomics.bam.api.{SamOrder, SamRecord}
 import com.fulcrumgenomics.commons.util.{Logger, SimpleCounter}
 import com.fulcrumgenomics.umi.UmiConsensusCaller._
 import com.fulcrumgenomics.util.NumericTypes.PhredScore
-import htsjdk.samtools.SAMFileHeader.GroupOrder
+import htsjdk.samtools.SAMFileHeader.{GroupOrder, SortOrder}
 import htsjdk.samtools.util.{Murmur3, SequenceUtil, TrimmingUtil}
 import htsjdk.samtools._
 
@@ -120,6 +120,27 @@ object UmiConsensusCaller {
 
     outHeader.addComment(s"Read group ${rg.getId} contains consensus reads generated from ${oldRgs.size} input read groups.")
     outHeader
+  }
+
+  /**
+    * Helper method to check that the input BAM is in the correct order for consensus calling.
+    *
+    * @param header the header of the BAM file to be used for consensus calling
+    * @param source a path or string representing the source of the header
+    * @param warn a function to be called when any warnings are detected/emitted
+    * @param error a function to be called when any errors are encountered
+    */
+  def checkSortOrder(header: SAMFileHeader, source: Any, warn: String => Unit, error: String => Unit): Unit = {
+    // Check that the SAM file is sorted appropriately
+    if (!SamOrder(header).contains(SamOrder.TemplateCoordinate)) {
+      // Group reads used to output the header without the sub-sort, so allow this for now
+      if (header.getSortOrder == SortOrder.unsorted && header.getGroupOrder == GroupOrder.query) {
+        warn(s"File $source may not be sorted correctly for consensus read generation.")
+      }
+      else {
+        error(s"File $source is not sorted correctly. Please sort with fgbio SortBam -s TemplateCoordinate.")
+      }
+    }
   }
 }
 

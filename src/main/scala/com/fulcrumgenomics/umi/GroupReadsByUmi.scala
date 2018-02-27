@@ -473,8 +473,7 @@ class GroupReadsByUmi
     // Output the reads in the new ordering
     logger.info("Assigning reads to UMIs and outputting.")
     val outHeader = header.clone()
-    outHeader.setSortOrder(SortOrder.unsorted)
-    outHeader.setGroupOrder(GroupOrder.query)
+    SamOrder.TemplateCoordinate.applyTo(outHeader)
     val out = SamWriter(output, outHeader)
 
     val iterator = sorter.iterator.grouped(2).map { case Seq(x,y) => if (x.firstOfPair) (x, y) else (y, x) }.buffered // consume in pairs

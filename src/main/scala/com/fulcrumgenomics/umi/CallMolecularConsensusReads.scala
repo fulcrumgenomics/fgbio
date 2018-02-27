@@ -35,6 +35,7 @@ import com.fulcrumgenomics.sopt.cmdline.ValidationException
 import com.fulcrumgenomics.umi.VanillaUmiConsensusCallerOptions._
 import com.fulcrumgenomics.util.NumericTypes.PhredScore
 import com.fulcrumgenomics.util.ProgressLogger
+import htsjdk.samtools.SAMFileHeader.{GroupOrder, SortOrder}
 
 @clp(description =
   """
@@ -137,6 +138,7 @@ class CallMolecularConsensusReads
   /** Main method that does the work of reading input files, creating the consensus reads, and writing the output file. */
   override def execute(): Unit = {
     val in  = SamSource(input)
+    UmiConsensusCaller.checkSortOrder(in.header, input, logger.warning, fail)
     val rej = rejects.map(r => SamWriter(r, in.header))
 
     // The output file is unmapped, so for now let's clear out the sequence dictionary & PGs
@@ -161,7 +163,7 @@ class CallMolecularConsensusReads
       rejects        = rej
     )
 
-    val iterator = new ConsensusCallingIterator(in.toIterator, caller, Some(new ProgressLogger(logger, unit=5e5.toInt)))
+    val iterator = new ConsensusCallingIterator(in.toIterator, caller, Some(ProgressLogger(logger, unit=5e5.toInt)))
     out ++= iterator
 
     in.safelyClose()
