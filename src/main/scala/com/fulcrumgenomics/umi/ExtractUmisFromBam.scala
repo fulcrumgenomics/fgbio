@@ -112,25 +112,23 @@ class ExtractUmisFromBam
     }
   }
 
-  // split them into to tags for segments in read 1 vs read 2
-  private val (molecularIndexTags1, molecularIndexTags2) = molecularIndexTags match {
-    case Seq(tag) => (Seq[String](tag), Seq[String](tag))
-    case tags =>
-      val numMolecularIndicesRead1 = rs1.molecularBarcodeSegments.length
-      (tags.slice(0, numMolecularIndicesRead1), tags.slice(numMolecularIndicesRead1, tags.length))
-  }
-
   // Verify that if a single tag was specified that it is valid and not also contained in the per-index tags
   singleTag.foreach { tag =>
     if (tag.length != 2) invalid(s"All tags must be two characters: ${tag}")
     if (molecularIndexTags.contains(tag)) invalid(s"$tag specified as single-tag and also per-index tag")
   }
 
-  // Validate that the # of molecular barcodes in the read structure matches the tags
-  for (stuff <- Seq(Some(rs1, molecularIndexTags1), rs2.map(r => (r, molecularIndexTags2))); (rs, tags) <- stuff) {
-    validate(tags.length == rs.molecularBarcodeSegments.length || tags.length == 1,
-      s"Read structure '$rs' had '${rs.molecularBarcodeSegments.length}' molecular barcodes" +
-        s"but '${tags.length}' molecular barcode tags expected (${tags.mkString(", ")}")
+  // Validate the molecular index tags against the read structures and then split them out
+  private val (molecularIndexTags1, molecularIndexTags2) = molecularIndexTags match {
+    case Seq(one) =>
+      val t1 = Seq.fill(rs1.molecularBarcodeSegments.length)(one)
+      val t2 = Seq.fill(rs2.map(_.molecularBarcodeSegments.length).getOrElse(0))(one)
+      (t1, t2)
+    case tags =>
+      // Validate that the # of molecular barcodes in the read structure matches the tags
+      val total = rs1.molecularBarcodeSegments.length + rs2.map(_.molecularBarcodeSegments.length).getOrElse(0)
+      validate(tags.length == total, s"Read structures contains $total molecular barcode segments, but ${tags.length} tags provided.")
+      (tags.take(rs1.molecularBarcodeSegments.length), tags.drop(rs1.molecularBarcodeSegments.length))
   }
 
   override def execute(): Unit = {

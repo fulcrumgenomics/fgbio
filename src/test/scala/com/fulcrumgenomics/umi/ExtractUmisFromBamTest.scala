@@ -29,6 +29,7 @@ import com.fulcrumgenomics.bam.api.{SamRecord, SamWriter}
 import com.fulcrumgenomics.sopt.cmdline.ValidationException
 import com.fulcrumgenomics.testing.{SamBuilder, UnitSpec}
 import com.fulcrumgenomics.util.ReadStructure
+import htsjdk.samtools.SAMRecord
 import org.scalatest.OptionValues
 
 /**
@@ -381,6 +382,23 @@ class ExtractUmisFromBamTest extends UnitSpec with OptionValues {
       if (rec.firstOfPair) rec[Int]("XT") shouldBe 10
       else rec.get("XT") shouldBe None
     }
+  }
+
+  it should "extract a single UMI from read one and leave read two untouched" in {
+    val builder = new SamBuilder(readLength=50)
+    val Seq(r1In, r2In) = builder.addPair(name="q1", unmapped1=true, unmapped2=true, start1=0, start2=0)
+    val output = newBam
+    val umi = r1In.basesString.substring(0, 8)
+
+    new ExtractUmisFromBam(input=builder.toTempFile(), output=output, readStructure=Seq("8M+T", "+T"), molecularIndexTags=Seq("A1")).execute()
+    val recs = readBamRecs(output)
+    recs should have size 2
+    val r1Out = recs.find(_.firstOfPair).getOrElse(fail("Couldnt find R1 in the output"))
+    val r2Out = recs.find(_.secondOfPair).getOrElse(fail("Couldnt find R2 in the output"))
+    r1Out.length shouldBe 42
+    r2Out.length shouldBe 50
+    r1Out.get("A1") shouldBe Some(umi)
+    r2Out.get("A1") shouldBe Some(umi)
   }
 
   "ExtractUmisFromBam.updateClippingInformation" should "update the clipping information for non-template bases" in {
