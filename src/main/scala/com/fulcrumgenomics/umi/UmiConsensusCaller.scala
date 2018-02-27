@@ -123,12 +123,14 @@ object UmiConsensusCaller {
   }
 
   /**
-    * Helper method to check that the input BAM is in the correct order for consensus calling.
+    * Helper method to check that the input BAM is in the correct order for consensus calling. Will call
+    * the warn function if the sort order looks like it's probably compatible but it's not 100% sure.
+    * Will invoke the error function in cases where the sort order is definitely incompatible.
     *
     * @param header the header of the BAM file to be used for consensus calling
     * @param source a path or string representing the source of the header
     * @param warn a function to be called when any warnings are detected/emitted
-    * @param error a function to be called when any errors are encountered
+    * @param error a function to be called when any errors are encountered; should probably throw an exception!
     */
   def checkSortOrder(header: SAMFileHeader, source: Any, warn: String => Unit, error: String => Unit): Unit = {
     // Check that the SAM file is sorted appropriately
