@@ -101,5 +101,19 @@ object ConsensusTags {
     val BaMinRawReadCount  = "bM"
     val AbRawReadErrorRate = "aE"
     val BaRawReadErrorRate = "bE"
+
+    // NOTE: Important that this is updated if any new tags are added!
+    /** The set of all per-read tags. */
+    val AllPerReadTags = Seq(
+      RawReadCount,
+      MinRawReadCount,
+      RawReadErrorRate,
+      AbRawReadCount,
+      BaRawReadCount,
+      AbMinRawReadCount,
+      BaMinRawReadCount,
+      AbRawReadErrorRate,
+      BaRawReadErrorRate
+    )
   }
 }
