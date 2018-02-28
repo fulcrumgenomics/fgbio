@@ -227,6 +227,34 @@ trait SamRecord {
 }
 
 object SamRecord {
+
+  /** The mapping quality when not available. */
+  val UnknownMappingQuality: Int = SAMRecord.UNKNOWN_MAPPING_QUALITY
+
+  /** The mapping quality for an unmapped or multi-mapped read */
+  val ZeroMappingQuality: Int = SAMRecord.NO_MAPPING_QUALITY
+
+  /** The reference name for an unmapped read. */
+  val UnmappedReferenceName: String = SAMRecord.NO_ALIGNMENT_REFERENCE_NAME
+
+  /** The reference index for an unmapped read. */
+  val UnmappedReferenceIndex: Int = SAMRecord.NO_ALIGNMENT_REFERENCE_INDEX
+
+  /** The cigar string for an unmapped read. */
+  val UnmappedCigarString: String = SAMRecord.NO_ALIGNMENT_CIGAR
+
+  /** The reference position for an unmapped read. */
+  val UnmappedStart: Int = SAMRecord.NO_ALIGNMENT_START
+
+  /** The value for the base string when no bases are present. */
+  val MissingBases: String = SAMRecord.NULL_SEQUENCE_STRING
+
+  /** The value for the base quality string when no base qualities are present. */
+  val MissingQuals: String = SAMRecord.NULL_QUALS_STRING
+
+  /** The maximum insert size that can be stored in a [[SamRecord]]. */
+  val MaximumInsertSize: Int = SAMRecord.MAX_INSERT_SIZE
+
   /** SAMRecord with mixin to add behaviour. */
   private final class EnhancedSamRecord(header: SAMFileHeader) extends SAMRecord(header) with SamRecordIntermediate with SamRecord
 
