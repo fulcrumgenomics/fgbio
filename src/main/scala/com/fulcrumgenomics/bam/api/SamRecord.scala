@@ -184,10 +184,13 @@ trait SamRecord {
   @inline final def readGroup: SAMReadGroupRecord = getReadGroup
 
   // Use apply/update for tag attributes
-  @inline final def apply[A](name: String): A              = getAttribute(name).asInstanceOf[A]
-  @inline final def get[A](name: String): Option[A]        = Option(apply(name))
-  @inline final def update(name: String, value: Any): Unit = setAttribute(name, value)
-  @inline final def attributes: Map[String,Any] = getAttributes.map(x => x.tag -> x.value).toMap
+  @inline final def apply[A](name: String): A                    = getAttribute(name).asInstanceOf[A]
+  @inline final def get[A](name: String): Option[A]              = Option(apply(name))
+  @inline final def update(name: String, value: Any): Unit       = setAttribute(name, value)
+  @inline final def attributes: Map[String,Any]                  = getAttributes.map(x => x.tag -> x.value).toMap
+  @inline final def getOrElse[A](name: String, default: => A): A = get(name).getOrElse(default)
+  @inline final def contains(name: String): Boolean              = hasAttribute(name)
+  @inline final def remove(name: String): Unit                   = setAttribute(name, null)
 
   // transient attributes
   @inline final def transientAttrs: TransientAttrs = new TransientAttrs(this)

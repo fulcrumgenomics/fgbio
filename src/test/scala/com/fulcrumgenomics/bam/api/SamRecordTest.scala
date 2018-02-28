@@ -27,9 +27,10 @@ package com.fulcrumgenomics.bam.api
 import com.fulcrumgenomics.alignment.Cigar
 import com.fulcrumgenomics.testing.SamBuilder.{Minus, Plus}
 import com.fulcrumgenomics.testing.{SamBuilder, UnitSpec}
-import htsjdk.samtools.{SAMRecord, TextCigarCodec}
+import htsjdk.samtools.TextCigarCodec
+import org.scalatest.OptionValues
 
-class SamRecordTest extends UnitSpec {
+class SamRecordTest extends UnitSpec with OptionValues {
   "SamRecord.isFrPair" should "return false for reads that are not part of a mapped pair" in {
     val builder = new SamBuilder(sort=Some(SamOrder.Coordinate), readLength=10, baseQuality=20)
     builder.addFrag(start=100).exists(_.isFrPair) shouldBe false
@@ -106,12 +107,34 @@ class SamRecordTest extends UnitSpec {
     rec.asSam.getCigar shouldBe       null
   }
 
-  "SamRecord.apply" should "not return values for attributes that exist and not for those that don't exist" in {
+  "SamRecord" should "provide easy and safe access to extended attributes" in {
     val builder = new SamBuilder(readLength=50)
     val rec = builder.addFrag(start=10).get
     rec("ax") = 10
 
+    // apply
     rec[Int]("ax") shouldBe 10
-    Option(rec[Int]("bx")) shouldBe None
+    Option(rec[Int]("bx")) shouldBe 'empty
+
+    // get
+    rec.get[Int]("ax").value shouldBe 10
+    rec.get[Int]("bx") shouldBe 'empty
+
+    // attributes
+    rec.attributes.toList should contain theSameElementsAs Seq(("RG", "A"), ("ax", 10))
+
+    // getOrElse
+    rec.getOrElse[Int]("ax", 5) shouldBe 10
+    rec.getOrElse[Int]("bx", 5) shouldBe 5
+
+    // contains
+    rec.contains("ax") shouldBe true
+    rec.contains("bx") shouldBe false
+
+    // update
+    rec("ax") = 5
+    rec[Int]("ax") shouldBe 5
+    rec("bx") = 10
+    rec[Int]("bx") shouldBe 10
   }
 }
