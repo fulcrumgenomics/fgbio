@@ -30,8 +30,10 @@ import java.util.concurrent.atomic.AtomicLong
 
 import com.fulcrumgenomics.FgBioDef._
 import com.fulcrumgenomics.bam.Bams
-import com.fulcrumgenomics.bam.api.{SamOrder, SamRecord, SamSource, SamWriter}
+import com.fulcrumgenomics.bam.Bams.MaxInMemory
+import com.fulcrumgenomics.bam.api._
 import com.fulcrumgenomics.cmdline.{ClpGroups, FgBioTool}
+import com.fulcrumgenomics.commons.collection.SelfClosingIterator
 import com.fulcrumgenomics.commons.util.{LazyLogging, NumericCounter, SimpleCounter}
 import com.fulcrumgenomics.sopt.{arg, clp}
 import com.fulcrumgenomics.umi.GroupReadsByUmi._
@@ -39,7 +41,6 @@ import com.fulcrumgenomics.util.Metric.{Count, Proportion}
 import com.fulcrumgenomics.util.Sequences.countMismatches
 import com.fulcrumgenomics.util._
 import enumeratum.EnumEntry
-import htsjdk.samtools.SAMFileHeader.{GroupOrder, SortOrder}
 import htsjdk.samtools._
 import htsjdk.samtools.util.SequenceUtil
 
@@ -66,8 +67,13 @@ object GroupReadsByUmi {
 
   /** A case class to represent all the information we need to order reads for duplicate marking / grouping. */
   case class ReadInfo(refIndex: Int, start1: Int, start2: Int, strand1: Boolean, strand2: Boolean, library: String)
+                     (implicit ordering: Ordering[ReadInfo]) extends Ordered[ReadInfo] {
+    def compare(that: ReadInfo): Int = ordering.compare(this, that)
+  }
 
   object ReadInfo {
+    implicit val ordering: Ordering[ReadInfo] = Ordering.by(ReadInfo.unapply)
+
     /** Looks in all the places the library name can be hiding. Returns the library name
       * if one is found, otherwise returns "unknown".
       */
@@ -102,6 +108,45 @@ object GroupReadsByUmi {
         result
       }
     }
+  }
+
+  /** Sort the records so they are in the same order as the output of [[GroupReadsByUmi]].
+    *
+    * @param iterator an iterator from which to consume records
+    * @param header the header associated with the records.
+    * @param maxInMemory the maximum number of records to keep and sort in memory if sorting is needed
+    * @param tmpDir an optional temp directory to use for temporary sorting files if needed
+    * @return an Iterator with reads from the same query grouped together
+    */
+  def groupReadsByUmiSort(iterator: Iterator[SamRecord],
+                          header: SAMFileHeader,
+                          maxInMemory: Int = MaxInMemory,
+                          tmpDir: DirPath = Io.tmpDir): Iterator[SamRecord] = {
+    val sort = new Sorter[SamRecord, GroupReadsByUmiSortKey](maxInMemory, new SamRecordCodec(header), GroupReadsByUmiSortKey.apply, tmpDir=tmpDir)
+    sort ++= iterator
+    new SelfClosingIterator(sort.iterator, () => sort.close())
+  }
+
+  private object GroupReadsByUmiSortKey {
+    /** Defines the ordering as the tuple of elements in the order defined in [[GroupReadsByUmiSortKey]]. */
+    implicit val ord: Ordering[GroupReadsByUmiSortKey] = Ordering.by(GroupReadsByUmiSortKey.unapply)
+
+    def apply(rec: SamRecord): GroupReadsByUmiSortKey = {
+      GroupReadsByUmiSortKey(key=ReadInfo(rec), mid=rec(ConsensusTags.MolecularId), name=rec.name, secondOfPair=rec.secondOfPair)
+    }
+  }
+
+  // NB: use secondOfPair since false sorts before true
+  /** The sort key for [[GroupReadsByUmi]].
+    *
+    * @param key the key used by [[GroupReadsByUmi]] to group reads for assigning molecular identifiers
+    * @param mid the molecular identifier
+    * @param name the read name
+    * @param secondOfPair true if the read is the second-of-the-pair, false otherwise (first-of-the-pair).
+    */
+  private case class GroupReadsByUmiSortKey(key: ReadInfo, mid: String, name: String, secondOfPair: Boolean)
+                                           (implicit ordering: Ordering[GroupReadsByUmiSortKey]) extends Ordered[GroupReadsByUmiSortKey] {
+    override def compare(that: GroupReadsByUmiSortKey): Int = ordering.compare(this, that)
   }
 
   /** Trait that can be implemented to provide a UMI assignment strategy. */

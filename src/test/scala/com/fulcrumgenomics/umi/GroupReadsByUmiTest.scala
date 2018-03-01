@@ -280,4 +280,38 @@ class GroupReadsByUmiTest extends UnitSpec {
       recs.map(r => r[String]("MI")).distinct should have length 1 // all should be assigned to one molecule
     }
   }
+
+  "GroupReadsByUmi.groupReadsByUmiSort" should "sort into the output order of GroupReadsByUmi" in {
+    // NB: sorts by ReadInfo, MI, read name, first of pair
+
+    val addFuncs: Seq[SamBuilder => Unit] = Seq(
+      b => b.addPair(name="ab0", start1=200, start2=200, attrs=Map("MI" -> "0/A"), bases1="AAAAAAAAAA", bases2="AAAAAAAAAA"),
+      b => b.addPair(name="ab1", start1=100, start2=100, attrs=Map("MI" -> "1/A"), bases1="AAAAAAAAAA", bases2="AAAAAAAAAA"),
+      b => b.addPair(name="ab2", start1=100, start2=100, attrs=Map("MI" -> "1/A"), bases1="AAAAAAAAAA", bases2="AAAAAAAAAA"),
+      b => b.addPair(name="ab3", start1=100, start2=100, attrs=Map("MI" -> "2/A"), bases1="AAAAAAAAAA", bases2="AAAAAAAAAA"),
+      b => b.addPair(name="ba0", start1=200, start2=200, strand1=Minus, strand2=Plus, attrs=Map("MI" -> "0/B"), bases1="AAAAAAAAAA", bases2="AAAAAAAAAA"),
+      b => b.addPair(name="ba1", start1=100, start2=100, strand1=Minus, strand2=Plus, attrs=Map("MI" -> "1/B"), bases1="AAAAAAAAAA", bases2="AAAAAAAAAA"),
+      b => b.addPair(name="ba2", start1=100, start2=100, strand1=Minus, strand2=Plus, attrs=Map("MI" -> "1/B"), bases1="AAAAAAAAAA", bases2="AAAAAAAAAA"),
+      b => b.addPair(name="ba3", start1=100, start2=100, strand1=Minus, strand2=Plus, attrs=Map("MI" -> "2/B"), bases1="AAAAAAAAAA", bases2="AAAAAAAAAA")
+    )
+
+    def seq(n: Int, str: String): Seq[String] = Array.fill[String](n)(str)
+
+    Range.inclusive(start=1, end=10).foreach { _ =>
+      val builder = new SamBuilder(readLength=10)
+      scala.util.Random.shuffle(addFuncs).foreach { func => func(builder) }
+      val recs = GroupReadsByUmi.groupReadsByUmiSort(builder.iterator, builder.header).toList
+      recs should have length 16
+      val moleclarIdentifiers = seq(4, "1/A") ++ seq(4, "1/B") ++ seq(2, "2/A") ++ seq(2, "2/B") ++ seq(2, "0/A") ++ seq(2, "0/B")
+      recs.map(_.apply[String]("MI")) should contain theSameElementsInOrderAs moleclarIdentifiers
+      val names = Seq("ab1", "ab2", "ba1", "ba2", "ab3", "ba3", "ab0", "ba0").flatMap { name => seq(2, name)}
+      recs.map(_.name) should contain theSameElementsInOrderAs names
+      recs.grouped(2).foreach { case Seq(first, second) =>
+          first.firstOfPair shouldBe true
+          second.secondOfPair shouldBe true
+          first.name shouldBe second.name
+      }
+
+    }
+  }
 }
