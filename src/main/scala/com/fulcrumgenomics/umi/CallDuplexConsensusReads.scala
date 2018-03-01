@@ -25,17 +25,16 @@
 package com.fulcrumgenomics.umi
 
 import com.fulcrumgenomics.FgBioDef._
-import com.fulcrumgenomics.bam.Bams
-import com.fulcrumgenomics.bam.api.{SamOrder, SamSource, SamWriter}
+import com.fulcrumgenomics.bam.Bams.MaxInMemory
+import com.fulcrumgenomics.bam.api.{SamOrder, SamSource, SamWriter, _}
 import com.fulcrumgenomics.cmdline.{ClpGroups, FgBioTool}
-import com.fulcrumgenomics.sopt.clp
-import com.fulcrumgenomics.commons.io.Io
+import com.fulcrumgenomics.commons.collection.SelfClosingIterator
 import com.fulcrumgenomics.commons.util.LazyLogging
-import com.fulcrumgenomics.sopt._
+import com.fulcrumgenomics.sopt.{clp, _}
 import com.fulcrumgenomics.umi.VanillaUmiConsensusCallerOptions._
 import com.fulcrumgenomics.util.NumericTypes.PhredScore
-import com.fulcrumgenomics.util.ProgressLogger
-import htsjdk.samtools.SAMFileHeader.{GroupOrder, SortOrder}
+import com.fulcrumgenomics.util.{Io, ProgressLogger, Sorter}
+import htsjdk.samtools.SAMFileHeader
 
 @clp(description =
   """
@@ -105,7 +104,8 @@ class CallDuplexConsensusReads
  @arg(flag='X', doc="Use the multiple sequence alignment (SSSSLLLLOOOOWWWW).") val useMsa: Boolean = false,
  @arg(flag='x', doc="The multiple sequence alignment command to use; the input file (FASTA) will be appended.") val msaCommand: String = DuplexConsensusCaller.MsaCommand,
  @arg(flag='C', doc="Maximum fraction of reads filtered due to minority cigar before using multiple sequence alignment.") val maxFilterMinorityFraction: Double = 0.05,
- @arg(doc="Stop after calling this # of consensus reads (for debugging)") val stopAfter: Option[Int] = None
+ @arg(doc="Stop after calling this # of consensus reads (for debugging)") val stopAfter: Option[Int] = None,
+ @arg(doc="Force resorting of the input reads by molecular identifier") val reSort: Boolean = false
 ) extends FgBioTool with LazyLogging {
 
   Io.assertReadable(input)
@@ -114,8 +114,14 @@ class CallDuplexConsensusReads
   validate(errorRatePostUmi > 0, "Phred-scaled error rate post UMI must be > 0")
 
   override def execute(): Unit = {
-    val in  = SamSource(input)
-    UmiConsensusCaller.checkSortOrder(in.header, input, logger.warning, fail)
+    val in         = SamSource(input)
+    val inIterator = if (reSort) {
+      GroupReadsByUmi.groupReadsByUmiSort(in.iterator, in.header)
+    }
+    else {
+      UmiConsensusCaller.checkSortOrder(in.header, input, logger.warning, fail)
+      in.iterator
+    }
 
     // The output file is unmapped, so for now let's clear out the sequence dictionary & PGs
     val outHeader = UmiConsensusCaller.outputHeader(in.header, readGroupId, sortOrder)
@@ -134,7 +140,7 @@ class CallDuplexConsensusReads
       maxFilterMinorityFraction = maxFilterMinorityFraction
     )
 
-    val iter = new ConsensusCallingIterator(in.iterator, caller, Some(ProgressLogger(logger)))
+    val iter = new ConsensusCallingIterator(inIterator, caller, Some(ProgressLogger(logger)))
     stopAfter match {
       case Some(num) => out ++= iter.take(num)
       case None      => out ++= iter

@@ -99,12 +99,13 @@ class CallerPlusPlus(val callerpp: FilePath = Paths.get("callerpp"),
     // read the results
     queries.map { query =>
       // Read the name
-      val name = this.fromCallerpp.readLine()
-      if (name == null) {
-        throw new IllegalStateException(s"callerpp failed on:\n${query.sequences.mkString("\n")}")
+      val name = this.fromCallerpp.readLine() match {
+        case null  => throw new IllegalStateException(s"callerpp failed on:\n${query.sequences.mkString("\n")}")
+        case _name =>
+          assert(_name.startsWith(">"), s"Invalid name: ${_name}")
+          _name.drop(1)
       }
-
-      assert(name.drop(1) == query.name, s"Query and Result are out of order: Query=${query.name} Result=${name.drop(1)}")
+      assert(name == query.name, s"Query and Result are out of order: Query=${query.name} Result=$name")
 
       // Read the consensus
       val consensus = this.fromCallerpp.readLine()

@@ -68,7 +68,8 @@ object DuplexConsensusCaller {
                                  quals: Array[Byte],
                                  errors: Array[Short],
                                  abConsensus: VanillaConsensusRead,
-                                 baConsensus: Option[VanillaConsensusRead]) extends SimpleRead {
+                                 baConsensus: Option[VanillaConsensusRead],
+                                 fromMsa: Boolean = false) extends SimpleRead {
     require(bases.length == quals.length,  "Bases and qualities are not the same length.")
     require(bases.length == errors.length, "Bases and errors are not the same length.")
     // FIXME
@@ -355,7 +356,7 @@ class DuplexConsensusCaller(override val readNamePrefix: String,
           */
           if (bases.isEmpty) None
           else {
-            Some(DuplexConsensusRead(id=a.id.drop(1), bases=bases, quals=quals, errors=consensusCall.errors.take(bases.length), a.truncate(bases.length), Some(b.truncate(bases.length))))
+            Some(DuplexConsensusRead(id=a.id, bases=bases, quals=quals, errors=consensusCall.errors.take(bases.length), a.truncate(bases.length), Some(b.truncate(bases.length)), fromMsa=true))
           }
         }
       case (Some(a), Some(b)) =>
@@ -427,6 +428,7 @@ class DuplexConsensusCaller(override val readNamePrefix: String,
           rec(BaMinRawReadCount)  = 0
           rec(BaRawReadErrorRate) = 0.0f
       }
+      if (read.fromMsa) rec("ma") = 1
     }
 
     { import ConsensusTags.PerBase._
