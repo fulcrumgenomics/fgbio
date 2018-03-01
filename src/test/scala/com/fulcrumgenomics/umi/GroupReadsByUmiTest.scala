@@ -170,27 +170,6 @@ class GroupReadsByUmiTest extends UnitSpec {
     }
   }
 
-  {
-    "TemplateCoordinate SamOrder" should "sort pairs by the 'lower' 5' position of the pair" in {
-      val builder = new SamBuilder(readLength=100, sort=Some(SamOrder.Coordinate))
-      val exp = ListBuffer[SamRecord]()
-      // Records are added to the builder in the order that we expect them to be sorted, but the builder
-      // will coordinate sort them for us, so we can re-sort them and test the results
-      exp ++= builder.addPair("q1", contig=0, start1=100, start2=300)
-      exp ++= builder.addPair("q2", contig=0, start1=106, start2=300, cigar1="5S95M") // effective=101
-      exp ++= builder.addPair("q3", contig=0, start1=102, start2=299)
-      exp ++= builder.addPair("q4", contig=0, start1=300, start2=110, strand1=Minus, strand2=Plus)
-      exp ++= builder.addPair("q5", contig=0, start1=120, start2=320)
-      exp ++= builder.addPair("q6", contig=1, start1=1,   start2=200)
-
-      // Order they are added in except for q4 gets it's mate's flipped because of strand order
-      val expected = List("q1/1", "q1/2", "q2/1", "q2/2", "q3/1", "q3/2", "q4/2", "q4/1", "q5/1", "q5/2", "q6/1", "q6/2")
-      val actual   = builder.toList.sortBy(r => SamOrder.TemplateCoordinate.sortkey(r)).map(_.id)
-
-      actual should contain theSameElementsInOrderAs expected
-    }
-  }
-
   // Test for running the GroupReadsByUmi command line program with some sample input
   "GroupReadsByUmi" should "group reads correctly" in {
     val builder = new SamBuilder(readLength=100, sort=Some(SamOrder.Coordinate))

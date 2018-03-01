@@ -24,6 +24,7 @@
 
 package com.fulcrumgenomics.bam.api
 
+import com.fulcrumgenomics.umi.ConsensusTags
 import htsjdk.samtools.SAMFileHeader.{GroupOrder, SortOrder}
 import htsjdk.samtools.util.Murmur3
 import htsjdk.samtools.{SAMFileHeader, SAMUtils}
@@ -153,7 +154,8 @@ object SamOrder {
 
   /**
     * The sort order used by GroupReadByUmi. Sorts reads by the earlier unclipped 5' coordinate of the read
-    * pair, followed by the higher unclipped 5' coordinate of the read pair.
+    * pair, the higher unclipped 5' coordinate of the read pair, library, the molecular identifier (see
+    * [[ConsensusTags.MolecularId]]), read name, and if R1 has the lower coordinates of the pair.
     */
   case object TemplateCoordinate extends SamOrder {
     override type A = TemplateCoordinateKey
@@ -168,13 +170,17 @@ object SamOrder {
       val readPos   = if (rec.unmapped)     Int.MaxValue else if (readNeg) rec.unclippedEnd else rec.unclippedStart
       val matePos   = if (rec.mateUnmapped) Int.MaxValue else if (mateNeg) SAMUtils.getMateUnclippedEnd(rec.asSam) else SAMUtils.getMateUnclippedStart(rec.asSam)
       val lib       = Option(rec.readGroup).flatMap(rg => Option(rg.getLibrary)).getOrElse("Unknown")
+      val mid       = rec.get[String](ConsensusTags.MolecularId).map { m =>
+        val index: Int = m.lastIndexOf('/')
+        if (index >= 0) m.substring(0, index) else m
+      }.getOrElse("")
 
       if (readChrom < mateChrom || (readChrom == mateChrom && readPos < matePos) ||
            (readChrom == mateChrom && readPos == matePos && !readNeg)) {
-        TemplateCoordinateKey(readChrom, mateChrom, readPos, matePos, readNeg, mateNeg, rec.name, true, lib)
+        TemplateCoordinateKey(readChrom, mateChrom, readPos, matePos, readNeg, mateNeg, lib, mid, rec.name, false)
       }
       else {
-        TemplateCoordinateKey(mateChrom, readChrom, matePos, readPos, mateNeg, readNeg, rec.name, false, lib)
+        TemplateCoordinateKey(mateChrom, readChrom, matePos, readPos, mateNeg, readNeg, lib, mid, rec.name, true)
       }
     }
   }
@@ -186,9 +192,10 @@ object SamOrder {
                                    pos2: Int,
                                    neg1: Boolean,
                                    neg2: Boolean,
+                                   library: String,
+                                   mid: String,
                                    name : String,
-                                   isLowerOfPair: Boolean,
-                                   library: String) extends Ordered[TemplateCoordinateKey] {
+                                   isUpperOfPair: Boolean) extends Ordered[TemplateCoordinateKey] {
     override def compare(that: TemplateCoordinateKey): Int = {
       var retval = Integer.compare(this.refIndex1, that.refIndex1)
       if (retval == 0) retval = Integer.compare(this.refIndex2, that.refIndex2)
@@ -196,9 +203,11 @@ object SamOrder {
       if (retval == 0) retval = Integer.compare(this.pos2, that.pos2)
       if (retval == 0) retval = this.neg1.compare(that.neg1)
       if (retval == 0) retval = this.neg2.compare(that.neg2)
+      if (retval == 0) retval = this.mid.length.compareTo(that.mid.length)
+      if (retval == 0) retval = this.mid.compare(that.mid)
       if (retval == 0) retval = this.name.compareTo(that.name)
-      if (retval == 0) retval = that.isLowerOfPair.compare(this.isLowerOfPair) // reversed on purpose!
       if (retval == 0) retval = this.library.compareTo(that.library)
+      if (retval == 0) retval = this.isUpperOfPair.compareTo(that.isUpperOfPair)
       retval
     }
   }
