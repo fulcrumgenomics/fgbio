@@ -67,13 +67,8 @@ object GroupReadsByUmi {
 
   /** A case class to represent all the information we need to order reads for duplicate marking / grouping. */
   case class ReadInfo(refIndex: Int, start1: Int, start2: Int, strand1: Boolean, strand2: Boolean, library: String)
-                     (implicit ordering: Ordering[ReadInfo]) extends Ordered[ReadInfo] {
-    def compare(that: ReadInfo): Int = ordering.compare(this, that)
-  }
 
   object ReadInfo {
-    implicit val ordering: Ordering[ReadInfo] = Ordering.by(ReadInfo.unapply)
-
     /** Looks in all the places the library name can be hiding. Returns the library name
       * if one is found, otherwise returns "unknown".
       */
@@ -132,19 +127,16 @@ object GroupReadsByUmi {
     implicit val ord: Ordering[GroupReadsByUmiSortKey] = Ordering.by(GroupReadsByUmiSortKey.unapply)
 
     def apply(rec: SamRecord): GroupReadsByUmiSortKey = {
-      GroupReadsByUmiSortKey(key=ReadInfo(rec), mid=rec(ConsensusTags.MolecularId), name=rec.name, secondOfPair=rec.secondOfPair)
+      val r = ReadInfo(rec)
+      GroupReadsByUmiSortKey(refIndex=r.refIndex, start1=r.start1, start2=r.start2, strand1=r.strand1, strand2=r.strand2, library=r.library,
+        mid=rec(ConsensusTags.MolecularId), name=rec.name, secondOfPair=rec.secondOfPair)
     }
   }
 
   // NB: use secondOfPair since false sorts before true
-  /** The sort key for [[GroupReadsByUmi]].
-    *
-    * @param key the key used by [[GroupReadsByUmi]] to group reads for assigning molecular identifiers
-    * @param mid the molecular identifier
-    * @param name the read name
-    * @param secondOfPair true if the read is the second-of-the-pair, false otherwise (first-of-the-pair).
-    */
-  private case class GroupReadsByUmiSortKey(key: ReadInfo, mid: String, name: String, secondOfPair: Boolean)
+  /** The sort key for [[GroupReadsByUmi]]. */
+  private case class GroupReadsByUmiSortKey(refIndex: Int, start1: Int, start2: Int, strand1: Boolean, strand2: Boolean, library: String,
+                                            mid: String, name: String, secondOfPair: Boolean)
                                            (implicit ordering: Ordering[GroupReadsByUmiSortKey]) extends Ordered[GroupReadsByUmiSortKey] {
     override def compare(that: GroupReadsByUmiSortKey): Int = ordering.compare(this, that)
   }
