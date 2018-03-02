@@ -487,24 +487,24 @@ class DemuxFastqsTest extends UnitSpec with OptionValues with ErrorLogLevel {
             metric.barcode      shouldBe sample.sampleBarcodeString
             metric.library_name shouldBe sample.libraryId
             if (sample.sampleOrdinal == 1) {
-              metric.reads                   shouldBe 2
-              metric.pf_reads                shouldBe 2
+              metric.templates                   shouldBe 2
+              metric.pf_templates                shouldBe 2
               metric.perfect_matches         shouldBe 1
               metric.one_mismatch_matches    shouldBe 1
               metric.pf_perfect_matches      shouldBe 1
               metric.pf_one_mismatch_matches shouldBe 1
             }
             else if (sample.sampleId == UnmatchedSampleId) {
-              metric.reads                   shouldBe 3
-              metric.pf_reads                shouldBe 3
+              metric.templates                   shouldBe 3
+              metric.pf_templates                shouldBe 3
               metric.perfect_matches         shouldBe 0
               metric.one_mismatch_matches    shouldBe 0
               metric.pf_perfect_matches      shouldBe 0
               metric.pf_one_mismatch_matches shouldBe 0
             }
             else {
-              metric.reads                   shouldBe 0
-              metric.pf_reads                shouldBe 0
+              metric.templates                   shouldBe 0
+              metric.pf_templates                shouldBe 0
               metric.perfect_matches         shouldBe 0
               metric.one_mismatch_matches    shouldBe 0
               metric.pf_perfect_matches      shouldBe 0
@@ -693,24 +693,24 @@ class DemuxFastqsTest extends UnitSpec with OptionValues with ErrorLogLevel {
       metric.barcode      shouldBe sample.sampleBarcodeString
       metric.library_name shouldBe sample.libraryId
       if (sample.sampleOrdinal == 1) {
-        metric.reads                   shouldBe 1
-        metric.pf_reads                shouldBe 1
+        metric.templates                   shouldBe 1
+        metric.pf_templates                shouldBe 1
         metric.perfect_matches         shouldBe 1
         metric.one_mismatch_matches    shouldBe 0
         metric.pf_perfect_matches      shouldBe 1
         metric.pf_one_mismatch_matches shouldBe 0
       }
       else if (sample.sampleId == UnmatchedSampleId) {
-        metric.reads                   shouldBe 0
-        metric.pf_reads                shouldBe 0
+        metric.templates                   shouldBe 0
+        metric.pf_templates                shouldBe 0
         metric.perfect_matches         shouldBe 0
         metric.one_mismatch_matches    shouldBe 0
         metric.pf_perfect_matches      shouldBe 0
         metric.pf_one_mismatch_matches shouldBe 0
       }
       else {
-        metric.reads                   shouldBe 0
-        metric.pf_reads                shouldBe 0
+        metric.templates                   shouldBe 0
+        metric.pf_templates                shouldBe 0
         metric.perfect_matches         shouldBe 0
         metric.one_mismatch_matches    shouldBe 0
         metric.pf_perfect_matches      shouldBe 0

@@ -40,22 +40,22 @@ class SampleBarcodeMetricTest extends UnitSpec {
     val barcodeToMetrics = Seq(metricOne, metricTwo, noMatch).map { metric => (metric.barcode, metric) }.toMap
     SampleBarcodeMetric.finalizeMetrics(barcodeToMetrics, noMatch.barcode)
 
-    metricOne.pct_matches shouldBe 10/60d
-    metricOne.ratio_this_barcode_to_best_barcode_pct shouldBe 5/15d
-    metricOne.pf_pct_matches shouldBe 5/35d
-    metricOne.pf_ratio_this_barcode_to_best_barcode_pct shouldBe 5/20d
+    metricOne.frac_matches shouldBe 10/60d
+    metricOne.ratio_this_barcode_to_best_barcode_frac shouldBe 5/15d
+    metricOne.pf_frac_matches shouldBe 5/35d
+    metricOne.pf_ratio_this_barcode_to_best_barcode_frac shouldBe 5/20d
     metricOne.pf_normalized_matches shouldBe 3/7d +- 0.00001
 
-    metricTwo.pct_matches shouldBe 20/60d
-    metricTwo.ratio_this_barcode_to_best_barcode_pct shouldBe 10/15d
-    metricTwo.pf_pct_matches shouldBe 10/35d
-    metricTwo.pf_ratio_this_barcode_to_best_barcode_pct shouldBe 10/20d
+    metricTwo.frac_matches shouldBe 20/60d
+    metricTwo.ratio_this_barcode_to_best_barcode_frac shouldBe 10/15d
+    metricTwo.pf_frac_matches shouldBe 10/35d
+    metricTwo.pf_ratio_this_barcode_to_best_barcode_frac shouldBe 10/20d
     metricTwo.pf_normalized_matches shouldBe 6/7d +- 0.00001
 
-    noMatch.pct_matches shouldBe 30/60d
-    noMatch.ratio_this_barcode_to_best_barcode_pct shouldBe 1d
-    noMatch.pf_pct_matches shouldBe 20/35d
-    noMatch.pf_ratio_this_barcode_to_best_barcode_pct shouldBe 1d
+    noMatch.frac_matches shouldBe 30/60d
+    noMatch.ratio_this_barcode_to_best_barcode_frac shouldBe 1d
+    noMatch.pf_frac_matches shouldBe 20/35d
+    noMatch.pf_ratio_this_barcode_to_best_barcode_frac shouldBe 1d
     noMatch.pf_normalized_matches shouldBe 12/7d +- 0.00001
   }
 }
