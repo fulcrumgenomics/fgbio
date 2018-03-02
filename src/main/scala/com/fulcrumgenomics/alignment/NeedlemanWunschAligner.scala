@@ -89,15 +89,13 @@ class NeedlemanWunschAligner(val scoringFunction: (Byte,Byte) => Int,
   def align(query: String, target: String): Alignment = align(query.getBytes, target.getBytes)
 
   /**
-    * Align two sequences with the current scoring system.  If the [[Mode]] is `Global` the query and target
-    * may be of any length.  If the [[Mode]] is Glocal then the target must be at least as long as the query.
+    * Align two sequences with the current scoring system and mode.
     *
     * @param query the query sequence
     * @param target the target sequence
     * @return an [[Alignment]] object describing the optimal global alignment of the two sequences
     */
   def align(query: Array[Byte], target: Array[Byte]): Alignment = {
-    require(query.length <= target.length || this.mode == Mode.Global, "For glocal, query length must be <= target length.")
     val (scoring, trace) = buildMatrices(query, target)
     generateAlignment(query, target, scoring, trace)
   }

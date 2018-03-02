@@ -278,7 +278,10 @@ class NeedlemanWunschAlignerTest extends UnitSpec {
     result.score shouldBe 4
   }
 
-  it should "fail if the target sequence is shorter than the query sequence" in {
-    an[Exception] shouldBe thrownBy { NeedlemanWunschAligner(1, -1, -3, -1, mode=Glocal).align("ACGTACGTACGT", "ACGT") }
+  it should "align a query that is longer than the target, creating an insertino" in {
+    val result = NeedlemanWunschAligner(1, -1, -3, -1, mode=Glocal).align("AAAAGGGGTTTT", "AAAATTTT")
+    result.queryStart shouldBe 1
+    result.targetStart shouldBe 1
+    result.cigar.toString shouldBe "4=4I4="
   }
 }
