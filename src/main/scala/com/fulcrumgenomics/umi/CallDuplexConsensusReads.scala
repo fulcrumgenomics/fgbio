@@ -104,8 +104,10 @@ class CallDuplexConsensusReads
  @arg(flag='X', doc="Use the multiple sequence alignment (SSSSLLLLOOOOWWWW).") val useMsa: Boolean = false,
  @arg(flag='x', doc="The multiple sequence alignment command to use; the input file (FASTA) will be appended.") val msaCommand: String = DuplexConsensusCaller.MsaCommand,
  @arg(flag='C', doc="Maximum fraction of reads filtered due to minority cigar before using multiple sequence alignment.") val maxFilterMinorityFraction: Double = 0.05,
+ @arg(flag='T', doc="Apply quality trimming to the consensus calls.") val qualityTrimConsensus: Boolean = false,
  @arg(doc="Stop after calling this # of consensus reads (for debugging)") val stopAfter: Option[Int] = None,
- @arg(doc="Force resorting of the input reads by molecular identifier") val reSort: Boolean = false
+ @arg(doc="Force resorting of the input reads by molecular identifier") val reSort: Boolean = false,
+ @arg(doc="Debug multiple sequence alignment") val msaDebug: Boolean = false
 ) extends FgBioTool with LazyLogging {
 
   Io.assertReadable(input)
@@ -137,7 +139,9 @@ class CallDuplexConsensusReads
       minReads                  = minReads,
       useMsa                    = useMsa,
       msaCommand                = msaCommand,
-      maxFilterMinorityFraction = maxFilterMinorityFraction
+      maxFilterMinorityFraction = maxFilterMinorityFraction,
+      qualityTrimConsensus      = qualityTrimConsensus,
+      msaDebug                  = msaDebug
     )
 
     val iter = new ConsensusCallingIterator(inIterator, caller, Some(ProgressLogger(logger)))

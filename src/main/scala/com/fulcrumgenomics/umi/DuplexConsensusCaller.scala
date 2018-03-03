@@ -109,7 +109,9 @@ class DuplexConsensusCaller(override val readNamePrefix: String,
                             val minReads: Seq[Int]                = Seq(1),
                             val useMsa: Boolean                   = false,
                             val msaCommand: String                = DuplexConsensusCaller.MsaCommand,
-                            val maxFilterMinorityFraction: Double = 0.05
+                            val maxFilterMinorityFraction: Double = 0.05,
+                            val qualityTrimConsensus: Boolean     = false,
+                            val msaDebug: Boolean                 = false
                            ) extends UmiConsensusCaller[DuplexConsensusRead] with LazyLogging {
 
   private val Seq(minTotalReads, minXyReads, minYxReads) = this.minReads.padTo(3, this.minReads.last)
@@ -134,21 +136,24 @@ class DuplexConsensusCaller(override val readNamePrefix: String,
   private val minMeanBaseQuality: PhredScore = Math.min(this.errorRatePreUmi, this.errorRatePostUmi).toByte
 
   private val ssVanillaCaller = new VanillaUmiConsensusCaller(readNamePrefix="x", options=this.options)
-  private val ssMsaCaller     = new CallerPlusPlusConsensusCaller(options=this.options)
+  private val ssMsaCaller     = new CallerPlusPlusConsensusCaller(options=this.options, msaDebug=this.msaDebug)
 
   private def callSingleStrandConsensusCall(forceMsa: Boolean, reads: Seq[SourceRead]): Option[VanillaConsensusRead] = {
     if (1 < reads.length && forceMsa) {
-      this.ssMsaCaller.consensusCall(reads).flatMap { call =>
-        val (bases, quals) = call.qualityTrim(minMeanBaseQuality=minMeanBaseQuality)
-        /*
-        System.err.println("min qual: " + minMeanBaseQuality)
-        System.err.println("quality trim prior: " + call.baseString)
-        System.err.println("quality trim prior: " + call.qualString)
-        System.err.println("quality trim post : " + new String(bases))
-        System.err.println("quality trim post : " + SAMUtils.phredToFastq(quals))
-        */
-        if (bases.isEmpty) None
-        else Some(call.copy(bases=bases, quals=quals, depths=call.depths.take(bases.length), errors=call.errors.take(bases.length)))
+      val consensusCall = this.ssMsaCaller.consensusCall(reads)
+      if (!this.qualityTrimConsensus) consensusCall else {
+        consensusCall.flatMap { call =>
+          val (bases, quals) = call.qualityTrim(minMeanBaseQuality=minMeanBaseQuality)
+          /*
+          System.err.println("min qual: " + minMeanBaseQuality)
+          System.err.println("quality trim prior: " + call.baseString)
+          System.err.println("quality trim prior: " + call.qualString)
+          System.err.println("quality trim post : " + new String(bases))
+          System.err.println("quality trim post : " + SAMUtils.phredToFastq(quals))
+          */
+          if (bases.isEmpty) None
+          else Some(call.copy(bases=bases, quals=quals, depths=call.depths.take(bases.length), errors=call.errors.take(bases.length)))
+        }
       }
     }
     else this.ssVanillaCaller.consensusCall(reads)
@@ -345,18 +350,23 @@ class DuplexConsensusCaller(override val readNamePrefix: String,
       case (Some(a), Some(b)) if useMsa =>
         val sourceA = SourceRead(id=a.id, bases=a.bases, quals=a.quals, cigar=null)
         val sourceB = SourceRead(id=b.id, bases=b.bases, quals=b.quals, cigar=null)
-        this.ssMsaCaller.consensusCall(Seq(sourceA, sourceB)).flatMap { consensusCall =>
-          val (bases, quals) = consensusCall.qualityTrim(minMeanBaseQuality=minMeanBaseQuality)
-          /*
-          System.err.println("min qual: " + minMeanBaseQuality)
-          System.err.println("quality trim prior: " + consensusCall.baseString)
-          System.err.println("quality trim prior: " + consensusCall.qualString)
-          System.err.println("quality trim post : " + new String(bases))
-          System.err.println("quality trim post : " + SAMUtils.phredToFastq(quals))
-          */
-          if (bases.isEmpty) None
+        this.ssMsaCaller.consensusCall(Seq(sourceA, sourceB)).flatMap { call =>
+          if (this.qualityTrimConsensus) {
+            val (bases, quals) = call.qualityTrim(minMeanBaseQuality=minMeanBaseQuality)
+            /*
+            System.err.println("min qual: " + minMeanBaseQuality)
+            System.err.println("quality trim prior: " + consensusCall.baseString)
+            System.err.println("quality trim prior: " + consensusCall.qualString)
+            System.err.println("quality trim post : " + new String(bases))
+            System.err.println("quality trim post : " + SAMUtils.phredToFastq(quals))
+            */
+            if (bases.isEmpty) None
+            else {
+              Some(DuplexConsensusRead(id=a.id, bases=bases, quals=quals, errors=call.errors.take(bases.length), a.truncate(bases.length), Some(b.truncate(bases.length)), fromMsa=true))
+            }
+          }
           else {
-            Some(DuplexConsensusRead(id=a.id, bases=bases, quals=quals, errors=consensusCall.errors.take(bases.length), a.truncate(bases.length), Some(b.truncate(bases.length)), fromMsa=true))
+            Some(DuplexConsensusRead(id=a.id, bases=call.bases, quals=call.quals, errors=call.errors, a.truncate(call.length), Some(b.truncate(call.length)), fromMsa=true))
           }
         }
       case (Some(a), Some(b)) =>

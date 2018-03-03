@@ -29,12 +29,14 @@ import java.io.{BufferedReader, BufferedWriter, InputStreamReader, OutputStreamW
 import java.nio.file.Paths
 
 import com.fulcrumgenomics.FgBioDef.{FgBioEnum, FilePath, forloop}
-import com.fulcrumgenomics.commons.util.LazyLogging
+import com.fulcrumgenomics.commons.util.{LazyLogging, SimpleCounter}
+import com.fulcrumgenomics.sopt.util._
 import com.fulcrumgenomics.umi.ConsensusCaller.Base
 import com.fulcrumgenomics.umi.UmiConsensusCaller.SourceRead
 import com.fulcrumgenomics.util.Io
 import com.fulcrumgenomics.util.NumericTypes.PhredScore
 import enumeratum.EnumEntry
+import htsjdk.samtools.SAMUtils
 
 import scala.collection.immutable.IndexedSeq
 import scala.collection.mutable.ListBuffer
@@ -149,7 +151,22 @@ class CallerPlusPlus(val callerpp: FilePath = Paths.get("callerpp"),
 }
 
 
-class CallerPlusPlusConsensusCaller(val options: VanillaUmiConsensusCallerOptions = new VanillaUmiConsensusCallerOptions()
+private case class ConsensusMsaInfo(consensusMsaBase: Char, consensusBase: Base, consensusQual: PhredScore, baseCounter: SimpleCounter[Char] = new SimpleCounter[Char]()) {
+
+  private def toChar(count: Long): Char = if (count < 10) s"$count".head else '+'
+
+  val depth: Char  = toChar(baseCounter.map { case (b, count) => if (b == '-') 0 else count }.sum)
+  val errors: Char = toChar(baseCounter.map { case (b, count) => if (b == consensusMsaBase || b == '-') 0 else count }.sum)
+  def countOf(base: Char): Char = toChar(this.baseCounter.countOf(base))
+}
+
+
+case object KBLDGRN extends TermCode {
+  override val code: String = "\u001B[1m\u001B[32m"
+}
+
+class CallerPlusPlusConsensusCaller(val options: VanillaUmiConsensusCallerOptions = new VanillaUmiConsensusCallerOptions(),
+                                    msaDebug: Boolean = false
                                    ) extends ConsensusCallerTrait with LazyLogging {
   import CallerPlusPlus._
 
@@ -227,6 +244,71 @@ class CallerPlusPlusConsensusCaller(val options: VanillaUmiConsensusCallerOption
     logger.info(s"errors: " + consensusErrors.map(_.toString).mkString(","))
     result.msa.foreach { msaLine => logger.info("msa: " + msaLine) }
     */
+    if (msaDebug) {
+      println(KBLD(KGRN(s">${result.name}")))
+
+      var consensusIndex = 0
+      val trimmedMsas = result.msa.drop(1).map { msa =>
+        msa.reverseIterator.dropWhile(_ == '-').mkString.reverse
+      }
+      val infos = consensusMsa.indices.map { idx =>
+        consensusMsa(idx) match {
+          case '-' =>
+            ConsensusMsaInfo(consensusMsaBase='-', consensusBase='-'.toByte, consensusQual='-'.toByte)
+          case base =>
+            val consensusBase  = consensusBases(consensusIndex)
+            val consensusQual  = consensusQuals(consensusIndex)
+            val baseCounter    = SimpleCounter[Char](trimmedMsas.flatMap(m => if (idx < m.length) Some(m(idx)) else None))
+            consensusIndex += 1
+            ConsensusMsaInfo(consensusMsaBase=base, consensusBase=consensusBase, consensusQual=consensusQual, baseCounter=baseCounter)
+        }
+      }
+      val defaultPadding = 30
+      def printlnPad(str: String, padding: Int): Unit = println((" " * padding) + str)
+      // called consensus base
+      print(KBLDGRN("[bases]"))
+      printlnPad(KBLDGRN(infos.map(_.consensusBase.toChar).mkString), padding=defaultPadding-7)
+      // called consensus quality
+      print(KBLDGRN("[quals]"))
+      printlnPad(KBLDGRN(infos.map(info => SAMUtils.phredToFastq(info.consensusQual.toInt)).mkString), padding=defaultPadding-7)
+      // counts of ACGTN-s
+      "ACGTN-".foreach { base: Char =>
+        val colorMap = infos.map(info => if (info.consensusBase == base) KBLDGRN else KBLDRED)
+        val label    = s"[$base]"
+        val bases    = infos.zip(colorMap).map { case (info, colorFn) =>
+          info.countOf(base).toString match {
+            case "0"   => KGRN("-")
+            case count => colorFn(count)
+          }
+        }.mkString
+        print(KGRN(label))
+        printlnPad(bases, padding=defaultPadding-label.length)
+      }
+      def colorDepth(count: Char): String = if (count == '0') KBLDRED("0") else KBLDGRN(count.toString)
+      def colorError(count: Char): String = if (count == '0') KBLDGRN("0") else KBLDRED(count.toString)
+      // depths ('+' means > 9)
+      print(KBLDGRN("[depth]"))
+      printlnPad(infos.map(_.depth).map(colorDepth).mkString, padding=defaultPadding-7)
+      // errors ('+' means > 9)
+      print(KBLDGRN("[errors]"))
+      printlnPad(infos.map(_.errors).map(colorError).mkString, padding=defaultPadding-8)
+
+      // MSA
+      val sequences: Seq[String] = result.consensus +: query.sequences
+      forloop(from=0, until=sequences.length) { idx =>
+        val name      = KCYN(f"type=${if (0 == idx) "C" else s"$idx"}%-3s")
+        val inLength  = sequences(idx).length
+        val msa       = colorMsa(result.msa(idx), consensusMsa)
+        val outLength = result.msa(idx).count(_ != '-')
+        val lengthCode: String => String = str => if (inLength == outLength) KBLDGRN(str) else KBLDRED(str)
+        val inLengthStr  = lengthCode(f"in=$inLength%3d")
+        val outLengthStr = lengthCode(f"out=$outLength%3d")
+        val remaining    = KBLDRED(sequences(idx).substring(outLength))
+        println(f"[$inLengthStr] [$outLengthStr] [$name] $msa$remaining")
+      }
+      //print("Waiting on <enter>...")
+      //scala.io.StdIn.readLine()
+    }
 
     val read = VanillaConsensusRead(
       id     = result.name,
@@ -236,5 +318,46 @@ class CallerPlusPlusConsensusCaller(val options: VanillaUmiConsensusCallerOption
       errors = consensusErrors
     )
     Some(read)
+  }
+
+  private def colorMsa(msa: String, consensusMsa: String): String = {
+    var startIdx = 0
+    val buffer = new ListBuffer[(Int, String)]()
+
+    // 0 - match
+    // 1 - mismatch
+    // 2 - dash
+    var state = 0
+    forloop(from=0, until=msa.length) { endIndex =>
+      (msa(endIndex), consensusMsa(endIndex)) match {
+        case ('-', _) =>
+          if (state != 2) {
+            buffer += ((state, msa.substring(startIdx, endIndex)))
+            state = 2
+            startIdx = endIndex
+          }
+        case (m, c) if m != c =>
+          if (state != 1) {
+            buffer += ((state, msa.substring(startIdx, endIndex)))
+            state = 1
+            startIdx = endIndex
+          }
+        case (_, _) =>
+          if (state != 0) {
+            buffer += ((state, msa.substring(startIdx, endIndex)))
+            state = 0
+            startIdx = endIndex
+          }
+      }
+    }
+    buffer += ((state, msa.substring(startIdx)))
+
+    assert(msa.length == buffer.map(_._2.length).sum, s"buffer: ${buffer.toList}")
+    buffer.map { case (st, subMsa) =>
+      st match {
+        case 0     => KBLDGRN(subMsa)
+        case 1 | 2 => KBLDRED(subMsa)
+      }
+    }.mkString
   }
 }

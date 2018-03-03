@@ -104,18 +104,18 @@ object UmiConsensusCaller {
           minNoCallSum = noCallSum
           noCallTrimPoint = i
         }
-
       }
 
       val trimToLength = Math.min(qualityTrimPoint, noCallTrimPoint)
 
-      //System.err.println(s"trimToLength: $trimToLength actualLength: ${quals.length} qualityTrimPoint: $qualityTrimPoint noCallTrimPoint: $noCallTrimPoint")
-
-      val trimmedBases = new Array[Byte](trimToLength)
-      val trimmedQuals = new Array[Byte](trimToLength)
-      System.arraycopy(bases, 0, trimmedBases, 0, trimToLength)
-      System.arraycopy(quals, 0, trimmedQuals, 0, trimToLength)
-      (trimmedBases, trimmedQuals)
+      if (trimToLength == length) (bases, quals) else {
+        //System.err.println(s"trimToLength: $trimToLength actualLength: ${quals.length} qualityTrimPoint: $qualityTrimPoint noCallTrimPoint: $noCallTrimPoint")
+        val trimmedBases = new Array[Byte](trimToLength)
+        val trimmedQuals = new Array[Byte](trimToLength)
+        System.arraycopy(bases, 0, trimmedBases, 0, trimToLength)
+        System.arraycopy(quals, 0, trimmedQuals, 0, trimToLength)
+        (trimmedBases, trimmedQuals)
+      }
     }
   }
 
