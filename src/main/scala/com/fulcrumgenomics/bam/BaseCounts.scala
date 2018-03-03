@@ -24,7 +24,6 @@
 
 package com.fulcrumgenomics.bam
 
-import com.fulcrumgenomics.FgBioDef._
 import htsjdk.samtools.util.SamLocusIterator
 import htsjdk.samtools.util.SamLocusIterator.LocusInfo
 import scala.collection.JavaConverters._
