@@ -25,7 +25,7 @@
 package com.fulcrumgenomics.alignment
 
 import com.fulcrumgenomics.FgBioDef._
-import com.fulcrumgenomics.alignment.Mode.{Global, Glocal}
+import com.fulcrumgenomics.alignment.Mode.{Global, Glocal, Local}
 import com.fulcrumgenomics.alignment.NeedlemanWunschAligner._
 import enumeratum.EnumEntry
 import htsjdk.samtools.CigarOperator
@@ -42,6 +42,8 @@ object Mode extends FgBioEnum[Mode] {
   case object Global extends Mode
   /** Alignment mode for global alignment of query sequence to local region of target sequence. */
   case object Glocal extends Mode
+  /** Alignment mode for local pairwise alignment. */
+  case object Local extends Mode
 
   override def values: immutable.IndexedSeq[Mode] = findValues
 }
@@ -124,20 +126,28 @@ class NeedlemanWunschAligner(val scoringFunction: (Byte,Byte) => Int,
     scoring(0,0) = 0
     trace(0,0)   = Done
 
-    // Down the left hand side
-    forloop(from=1, until=query.length+1) { i =>
-      trace(i, 0)   = Up
-      scoring(i, 0) = scoring(i-1, 0) + gapExtend + (if (i == 1) gapOpen else 0)
+    // Down the left hand side - for global/glocal we have to keep going up, for local we're done
+    mode match {
+      case Global | Glocal =>
+        forloop(from=1, until=query.length+1) { i =>
+          trace(i, 0)   = Up
+          scoring(i, 0) = scoring(i-1, 0) + gapExtend + (if (i == 1) gapOpen else 0)
+        }
+      case Local =>
+        forloop(from=1, until=query.length+1) { i =>
+          trace(i, 0)   = Done
+          scoring(i, 0) = 0
+        }
     }
 
-    // Along the top - for global we have to keep going left, for glocal we're done
+    // Along the top - for global we have to keep going left, for glocal/local we're done
     mode match {
       case Global =>
         forloop(from=1, until=target.length+1) { j =>
           trace(0, j)   = Left
           scoring(0, j) = scoring(0, j-1) + gapExtend + (if (j == 1) gapOpen else 0)
         }
-      case Glocal =>
+      case Glocal | Local =>
         forloop(from=1, until=target.length+1) { j =>
           trace(0, j)   = Done
           scoring(0, j) = 0
@@ -157,6 +167,11 @@ class NeedlemanWunschAligner(val scoringFunction: (Byte,Byte) => Int,
         // Prefer mismatches first when back-tracing so as to push indels to the left of the alignment
         // The choice to prefer deletions before insertions is largely arbitrary!
         trace(i,j)   = if (maxScore == diagonalScore) Diagonal else if (maxScore == leftScore) Left else Up
+        // For local mode, we can start anywhere
+        if (mode == Local && scoring(i,j) < 0) {
+          scoring(i,j) = 0
+          trace(i,j)   = Done
+        }
       }
     }
 
@@ -178,33 +193,41 @@ class NeedlemanWunschAligner(val scoringFunction: (Byte,Byte) => Int,
     var currLength: Int = 0
     val elems = new mutable.ArrayBuffer[CigarElem]()
 
-    // Always start at the end of the query
-    var i = query.length
-
-    // For the target sequence, start at the end for Global, or the highest scoring cell in the last row for Glocal
-    var j = this.mode match {
-      case Global => target.length
+    // For the target sequence, start at the end for Global, or the highest scoring cell in the last row for Glocal, or
+    // the highest scoring cell anywhere in the matrix
+    var (i, j) = this.mode match {
+      case Global => (query.length, target.length)
       case Glocal =>
-        var (maxScore, maxIndex) = (Int.MinValue, -1)
-        forloop(from=0, until=target.length) { i =>
-          val score = scoring(query.length-1, i)
+        var (maxScore, maxJ) = (Int.MinValue, -1)
+        forloop(from=1, until=target.length+1) { j =>
+          val score = scoring(query.length, j)
           if (score > maxScore) {
             maxScore = score
-            maxIndex = i
+            maxJ = j
           }
         }
-
-        maxIndex + 1
-    }
+        (query.length, maxJ)
+      case Local =>
+        var (maxScore, maxI, maxJ) = (Int.MinValue, -1, -1)
+        forloop(from=1, until=query.length+1) { i =>
+          forloop(from=1, until=target.length+1) { j =>
+            val score = scoring(i, j)
+            if (score > maxScore) {
+              maxScore = score
+              maxI = i
+              maxJ = j
+            }
+          }
+        }
+        (maxI, maxJ)
+      }
 
     // The score is always the score from the starting cell
     val score = scoring(i,j)
 
-    // For global we have to reach the origin, for glocal we just have to reach the top row
-    val done = this.mode match {
-      case Global => () => i == 0 && j == 0
-      case Glocal => () => i == 0
-    }
+    // For global we have to reach the origin, for glocal we just have to reach the top row, and for local we can stop
+    // anywhere.  Fortunately, we have initialized the appropriate cells to "Done"
+    val done = () => trace(i,j) == Done
 
     while (!done()) {
       val op = trace(i,j) match {
@@ -234,6 +257,6 @@ class NeedlemanWunschAligner(val scoringFunction: (Byte,Byte) => Int,
       if (done()) elems += CigarElem(currOperator, currLength)
     }
 
-    Alignment(query=query, target=target, queryStart=1, targetStart=j+1, cigar=Cigar(elems.reverse), score=score)
+    Alignment(query=query, target=target, queryStart=i+1, targetStart=j+1, cigar=Cigar(elems.reverse), score=score)
   }
 }
