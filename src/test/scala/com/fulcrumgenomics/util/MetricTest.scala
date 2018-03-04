@@ -39,7 +39,9 @@ private case class TestMetricWithOption(foo: String, bar: Int, option: Option[St
 
 private case class TestMetricWithIntOption(foo: String, bar: Int, option: Option[Int]) extends Metric
 
-private case class TestMetricWithDouble(foo: String, bar: Double, option: Option[Float]) extends Metric
+private case class TestMetricWithDouble(foo: String, bar: Double, option: Option[Float]) extends Metric {
+  def formatted(x: Any): String = formatValue(x)
+}
 
 /**
   * Tests for Metric.
@@ -216,6 +218,12 @@ class MetricTest extends UnitSpec with OptionValues with TimeLimits {
     expected.zip(actual).foreach { case (exp, act) =>
       act.bar shouldBe exp.bar
     }
+  }
+
+  it should "format doubles and floats of 0.0 as 0" in {
+    val m = TestMetricWithDouble("foo", bar=0.0, option=Some(0.0f))
+    m.formatted(m.bar)    shouldBe "0"
+    m.formatted(m.option) shouldBe "0"
   }
 
   it should "get the field by name" in {

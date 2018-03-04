@@ -198,7 +198,8 @@ trait Metric extends Product with Iterable[(String,String)] {
     case d: Iso8601Date => d.toString
     case d: Date        => Metric.DateFormat.synchronized { Metric.DateFormat.format(d) }
     case f: Float       => formatValue(f.toDouble)
-    case d: Double if d < 0.00001 => Metric.SmallDoubleFormat.synchronized { Metric.SmallDoubleFormat.format(d) }
+    case d: Double if d != 0.0 && d < 0.00001 && d > -0.00001 =>
+      Metric.SmallDoubleFormat.synchronized { Metric.SmallDoubleFormat.format(d) }
     case d: Double                => Metric.BigDoubleFormat.synchronized { Metric.BigDoubleFormat.format(d) }
     case other          => other.toString
   }
