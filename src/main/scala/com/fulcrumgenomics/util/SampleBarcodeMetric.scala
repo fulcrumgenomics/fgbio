@@ -51,19 +51,19 @@ object SampleBarcodeMetric {
     }
 
     if (totalReads > 0) {
-      noMatchMetric.frac_matches = noMatchMetric.templates / totalReads.toDouble
+      noMatchMetric.fraction_matches = noMatchMetric.templates / totalReads.toDouble
       var bestPctOfAllBarcodeMatches: Double = 0
       barcodeToMetrics.foreach { case (_, metric) =>
         val fracMatches =  metric.templates / totalReads.toDouble
         if (fracMatches > bestPctOfAllBarcodeMatches) {
           bestPctOfAllBarcodeMatches = fracMatches
         }
-        metric.frac_matches = fracMatches
+        metric.fraction_matches = fracMatches
       }
       if (bestPctOfAllBarcodeMatches > 0) {
-        noMatchMetric.ratio_this_barcode_to_best_barcode_frac = noMatchMetric.frac_matches / bestPctOfAllBarcodeMatches
+        noMatchMetric.ratio_this_barcode_to_best_barcode = noMatchMetric.fraction_matches / bestPctOfAllBarcodeMatches
         barcodeToMetrics.foreach { case (_, metric) =>
-          metric.ratio_this_barcode_to_best_barcode_frac = metric.frac_matches / bestPctOfAllBarcodeMatches
+          metric.ratio_this_barcode_to_best_barcode = metric.fraction_matches / bestPctOfAllBarcodeMatches
         }
       }
     }
@@ -74,12 +74,12 @@ object SampleBarcodeMetric {
         if (fracPfMatches > bestPfPctOfAllBarcodeMatches) {
           bestPfPctOfAllBarcodeMatches = fracPfMatches
         }
-        metric.pf_frac_matches = fracPfMatches
+        metric.pf_fraction_matches = fracPfMatches
       }
       if (bestPfPctOfAllBarcodeMatches > 0) {
-        noMatchMetric.pf_ratio_this_barcode_to_best_barcode_frac = noMatchMetric.pf_frac_matches / bestPfPctOfAllBarcodeMatches
+        noMatchMetric.pf_ratio_this_barcode_to_best_barcode = noMatchMetric.pf_fraction_matches / bestPfPctOfAllBarcodeMatches
         barcodeToMetrics.foreach { case (_, metric) =>
-          metric.pf_ratio_this_barcode_to_best_barcode_frac = metric.pf_frac_matches / bestPfPctOfAllBarcodeMatches
+          metric.pf_ratio_this_barcode_to_best_barcode = metric.pf_fraction_matches / bestPfPctOfAllBarcodeMatches
         }
       }
 
@@ -112,15 +112,16 @@ object SampleBarcodeMetric {
   *                             mismatch.
   * @param pf_one_mismatch_matches the number of pass-filter templates that match the given barcode with exactly
   *                                one mismatch.
-  * @param frac_matches the fraction of all templates that match the given barcode.
-  * @param ratio_this_barcode_to_best_barcode_frac the rate of all templates matching this barcode to all template
+  * @param fraction_matches the fraction of all templates that match the given barcode.
+  * @param ratio_this_barcode_to_best_barcode the rate of all templates matching this barcode to all template
   *                                               reads matching the most prevalent barcode. For the most prevalent
   *                                               barcode this will be 1, for all others it will be less than 1 (except
-  *                                               for the possible barcode, in which case the value may be arbitrarily
+  *                                               for the possible exception of when there are more unmatched templates
+  *                                               than for any other barcode, in which case the value may be arbitrarily
   *                                               large).  One over the lowest number in this column gives you the
   *                                               fold-difference in representation between barcodes.
-  * @param pf_frac_matches the fraction of all pass-filter templates that match the given barcode.
-  * @param pf_ratio_this_barcode_to_best_barcode_frac the rate of all pass-filter templates matching this barcode to
+  * @param pf_fraction_matches the fraction of all pass-filter templates that match the given barcode.
+  * @param pf_ratio_this_barcode_to_best_barcode the rate of all pass-filter templates matching this barcode to
   *                                                  all templates matching the most prevalent barcode. For the
   *                                                  most prevalent barcode this will be 1, for all others it will be
   *                                                  less than 1 (except for the possible exception of when there are
@@ -129,26 +130,26 @@ object SampleBarcodeMetric {
   *                                                  number in this column gives you the fold-difference in
   *                                                  representation between barcodes.
   * @param pf_normalized_matches The "normalized" matches to each barcode. This is calculated as the number of
-  *                              pass-filter templates matching this barcode over the mean of all pass-filter 
-  *                              templates matching any barcode (excluding unmatched). If all barcodes are 
+  *                              pass-filter templates matching this barcode over the mean of all pass-filter
+  *                              templates matching any barcode (excluding unmatched). If all barcodes are
   *                              represented equally this will be
   *                              1.
   */
-case class SampleBarcodeMetric(
-                                var barcode_name: String                                          = "",
-                                var library_name: String                                          = "",
-                                var barcode: String                                               = "",
-                                var templates: Metric.Count                                       = 0,
-                                var pf_templates: Metric.Count                                    = 0,
-                                var perfect_matches: Metric.Count                                 = 0,
-                                var pf_perfect_matches: Metric.Count                              = 0,
-                                var one_mismatch_matches: Metric.Count                            = 0,
-                                var pf_one_mismatch_matches: Metric.Count                         = 0,
-                                var frac_matches: Metric.Proportion                               = 0d,
-                                var ratio_this_barcode_to_best_barcode_frac: Metric.Proportion    = 0d,
-                                var pf_frac_matches: Metric.Proportion                            = 0d,
-                                var pf_ratio_this_barcode_to_best_barcode_frac: Metric.Proportion = 0d,
-                                var pf_normalized_matches: Metric.Proportion                      = 0d
+case class SampleBarcodeMetric
+( var barcode_name: String                                     = "",
+  var library_name: String                                     = "",
+  var barcode: String                                          = "",
+  var templates: Metric.Count                                  = 0,
+  var pf_templates: Metric.Count                               = 0,
+  var perfect_matches: Metric.Count                            = 0,
+  var pf_perfect_matches: Metric.Count                         = 0,
+  var one_mismatch_matches: Metric.Count                       = 0,
+  var pf_one_mismatch_matches: Metric.Count                    = 0,
+  var fraction_matches: Metric.Proportion                      = 0d,
+  var ratio_this_barcode_to_best_barcode: Metric.Proportion    = 0d,
+  var pf_fraction_matches: Metric.Proportion                   = 0d,
+  var pf_ratio_this_barcode_to_best_barcode: Metric.Proportion = 0d,
+  var pf_normalized_matches: Metric.Proportion                 = 0d
 ) extends Metric {
 
   /** Increments the counts for the metric. */
