@@ -253,19 +253,13 @@ class ReviewConsensusVariants
           val mi = toMi(rec)
           val consensusReadName = c.getRecord.getReadName + readNumberSuffix(rec)
           val rawCounts = BaseCounts(rawByMiAndReadNum(mi + readNumberSuffix(rec)))
-          val filters = {
-            variant.filters.getOrElse("") match {
-              case "" => "NA"
-              case f  => f
-            }
-          }
 
           val m = ConsensusVariantReviewInfo(
             chrom = variant.chrom,
             pos   = variant.start,
             ref   = variant.refBase.toString,
             genotype = variant.genotype.getOrElse("NA"),
-            filters  = filters,
+            filters  = variant.filters.getOrElse("PASS"),
             A = consensusCounts.a,
             C = consensusCounts.c,
             G = consensusCounts.g,
@@ -306,7 +300,7 @@ class ReviewConsensusVariants
         start    = v.getStart,
         refBase  = v.getReference.getBases()(0).toChar.toUpper,
         genotype = sample.map(v.getGenotype(_).getGenotypeString),
-        filters  = Some(v.getFilters.toSeq.sorted.mkString(","))
+        filters  = if (v.isFiltered) Some(v.getFilters.toSeq.sorted.mkString(",")) else None
       )}
     }
     else {
