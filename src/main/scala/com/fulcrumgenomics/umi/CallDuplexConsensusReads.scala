@@ -25,15 +25,16 @@
 package com.fulcrumgenomics.umi
 
 import com.fulcrumgenomics.FgBioDef._
-import com.fulcrumgenomics.bam.api.{SamOrder, SamSource, SamWriter}
+import com.fulcrumgenomics.bam.Bams.MaxInMemory
+import com.fulcrumgenomics.bam.api.{SamOrder, SamSource, SamWriter, _}
 import com.fulcrumgenomics.cmdline.{ClpGroups, FgBioTool}
-import com.fulcrumgenomics.sopt.clp
-import com.fulcrumgenomics.commons.io.Io
+import com.fulcrumgenomics.commons.collection.SelfClosingIterator
 import com.fulcrumgenomics.commons.util.LazyLogging
-import com.fulcrumgenomics.sopt._
+import com.fulcrumgenomics.sopt.{clp, _}
 import com.fulcrumgenomics.umi.VanillaUmiConsensusCallerOptions._
 import com.fulcrumgenomics.util.NumericTypes.PhredScore
-import com.fulcrumgenomics.util.ProgressLogger
+import com.fulcrumgenomics.util.{Io, ProgressLogger, Sorter}
+import htsjdk.samtools.SAMFileHeader
 
 @clp(description =
   """
@@ -99,7 +100,14 @@ class CallDuplexConsensusReads
  @arg(flag='m', doc="Ignore bases in raw reads that have Q below this value.") val minInputBaseQuality: PhredScore = DefaultMinInputBaseQuality,
  @arg(flag='t', doc="If true, quality trim input reads in addition to masking low Q bases.") val trim: Boolean = false,
  @arg(flag='S', doc="The sort order of the output, if `:none:` then the same as the input.") val sortOrder: Option[SamOrder] = Some(SamOrder.Queryname),
- @arg(flag='M', minElements=1, maxElements=3, doc="The minimum number of input reads to a consensus read.") val minReads: Seq[Int] = Seq(1)
+ @arg(flag='M', minElements=1, maxElements=3, doc="The minimum number of input reads to a consensus read.") val minReads: Seq[Int] = Seq(1),
+ @arg(flag='X', doc="Use the multiple sequence alignment (SSSSLLLLOOOOWWWW).") val useMsa: Boolean = false,
+ @arg(flag='x', doc="The multiple sequence alignment command to use; the input file (FASTA) will be appended.") val msaCommand: String = DuplexConsensusCaller.MsaCommand,
+ @arg(flag='C', doc="Maximum fraction of reads filtered due to minority cigar before using multiple sequence alignment.") val maxFilterMinorityFraction: Double = 0.05,
+ @arg(flag='T', doc="Apply quality trimming to the consensus calls.") val qualityTrimConsensus: Boolean = false,
+ @arg(doc="Stop after calling this # of consensus reads (for debugging)") val stopAfter: Option[Int] = None,
+ @arg(doc="Force resorting of the input reads by molecular identifier") val reSort: Boolean = false,
+ @arg(doc="Debug multiple sequence alignment") val msaDebug: Boolean = false
 ) extends FgBioTool with LazyLogging {
 
   Io.assertReadable(input)
@@ -108,25 +116,39 @@ class CallDuplexConsensusReads
   validate(errorRatePostUmi > 0, "Phred-scaled error rate post UMI must be > 0")
 
   override def execute(): Unit = {
-    val in  = SamSource(input)
-    UmiConsensusCaller.checkSortOrder(in.header, input, logger.warning, fail)
+    val in         = SamSource(input)
+    val inIterator = if (reSort) {
+      GroupReadsByUmi.groupReadsByUmiSort(in.iterator, in.header)
+    }
+    else {
+      UmiConsensusCaller.checkSortOrder(in.header, input, logger.warning, fail)
+      in.iterator
+    }
 
     // The output file is unmapped, so for now let's clear out the sequence dictionary & PGs
     val outHeader = UmiConsensusCaller.outputHeader(in.header, readGroupId, sortOrder)
     val out = SamWriter(output, outHeader, sort=sortOrder)
 
     val caller = new DuplexConsensusCaller(
-      readNamePrefix      = readNamePrefix.getOrElse(UmiConsensusCaller.makePrefixFromSamHeader(in.header)),
-      readGroupId         = readGroupId,
-      minInputBaseQuality = minInputBaseQuality,
-      trim                = trim,
-      errorRatePreUmi     = errorRatePreUmi,
-      errorRatePostUmi    = errorRatePostUmi,
-      minReads            = minReads
+      readNamePrefix            = readNamePrefix.getOrElse(UmiConsensusCaller.makePrefixFromSamHeader(in.header)),
+      readGroupId               = readGroupId,
+      minInputBaseQuality       = minInputBaseQuality,
+      trim                      = trim,
+      errorRatePreUmi           = errorRatePreUmi,
+      errorRatePostUmi          = errorRatePostUmi,
+      minReads                  = minReads,
+      useMsa                    = useMsa,
+      msaCommand                = msaCommand,
+      maxFilterMinorityFraction = maxFilterMinorityFraction,
+      qualityTrimConsensus      = qualityTrimConsensus,
+      msaDebug                  = msaDebug
     )
 
-    val iterator = new ConsensusCallingIterator(in.toIterator, caller, Some(ProgressLogger(logger)))
-    out ++= iterator
+    val iter = new ConsensusCallingIterator(inIterator, caller, Some(ProgressLogger(logger)))
+    stopAfter match {
+      case Some(num) => out ++= iter.take(num)
+      case None      => out ++= iter
+    }
 
     in.safelyClose()
     out.close()

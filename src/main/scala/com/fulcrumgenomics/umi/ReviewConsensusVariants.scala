@@ -80,7 +80,7 @@ object ReviewConsensusVariants {
   ( // First set is all the same for each variant
     chrom: String, pos: Int, ref: String, genotype: String, filters: String, A: Int, C: Int, G: Int, T: Int, N: Int,
     // Second set is per-consensus reads
-    consensus_read: String, consensus_insert: String, consensus_call: String, consensus_qual: Int, a: Int, c: Int, g: Int, t: Int, n: Int
+    consensus_read: String, consensus_insert: String, consensus_call: Char, consensus_qual: Int, a: Int, c: Int, g: Int, t: Int, n: Int
   ) extends Metric
 
   /** Extracts the molecular identifier minus any trailing /A etc. */
@@ -253,13 +253,19 @@ class ReviewConsensusVariants
           val mi = toMi(rec)
           val consensusReadName = c.getRecord.getReadName + readNumberSuffix(rec)
           val rawCounts = BaseCounts(rawByMiAndReadNum(mi + readNumberSuffix(rec)))
+          val filters = {
+            variant.filters.getOrElse("") match {
+              case "" => "NA"
+              case f  => f
+            }
+          }
 
-          val m =  ConsensusVariantReviewInfo(
+          val m = ConsensusVariantReviewInfo(
             chrom = variant.chrom,
             pos   = variant.start,
             ref   = variant.refBase.toString,
             genotype = variant.genotype.getOrElse("NA"),
-            filters  = variant.filters.getOrElse(""),
+            filters  = filters,
             A = consensusCounts.a,
             C = consensusCounts.c,
             G = consensusCounts.g,
@@ -267,7 +273,7 @@ class ReviewConsensusVariants
             N = consensusCounts.n,
             consensus_read = consensusReadName,
             consensus_insert = toInsertString(rec),
-            consensus_call = c.getReadBase.toString.toUpperCase,
+            consensus_call = c.getReadBase.toChar.toUpper,
             consensus_qual = c.getBaseQuality,
             a = rawCounts.a,
             c = rawCounts.c,
