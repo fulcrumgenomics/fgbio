@@ -269,5 +269,15 @@ class AlignmentTest extends UnitSpec {
     alignment.subByQuery(1,  6).cigar.toString() shouldBe "5=5D1="
     alignment.subByQuery(5, 10).cigar.toString() shouldBe "1=5D5="
     alignment.subByQuery(6, 10).cigar.toString() shouldBe "5="
+
+    // Sub-by target sees deltions as consuming, so they should always be included
+    alignment.subByTarget(1,  5).cigar.toString() shouldBe "5="
+    alignment.subByTarget(1,  6).cigar.toString() shouldBe "5=1D"
+    alignment.subByTarget(5, 10).cigar.toString() shouldBe "1=5D"
+    alignment.subByTarget(6, 11).cigar.toString() shouldBe "5D1="
+    alignment.subByTarget(5, 10).cigar.toString() shouldBe "1=5D"
+    alignment.subByTarget(5, 11).cigar.toString() shouldBe "1=5D1="
+    alignment.subByTarget(6, 10).cigar.toString() shouldBe "5D"
+    alignment.subByTarget(6, 11).cigar.toString() shouldBe "5D1="
   }
 }
