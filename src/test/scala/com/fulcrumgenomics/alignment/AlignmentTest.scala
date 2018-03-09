@@ -262,4 +262,12 @@ class AlignmentTest extends UnitSpec {
     an[Exception] shouldBe thrownBy { Alignment("TCGAAAAGGA", "AAAA", 4, 1, Cigar("4="), 0).subByQuery(1, 6) }
     an[Exception] shouldBe thrownBy { Alignment("TCGAAAAGGA", "AAAA", 4, 1, Cigar("4="), 0).subByQuery(5, 9) }
   }
+
+  it should "not remove deletions that are 1bp away from the desired end of the sub-region" in {
+    val alignment = Alignment("AAAAAAAAAA", "AAAAATTTTTAAAAA", 1, 1, Cigar("5=5D5="), 0)
+    alignment.subByQuery(1,  5).cigar.toString() shouldBe "5="
+    alignment.subByQuery(1,  6).cigar.toString() shouldBe "5=5D1="
+    alignment.subByQuery(5, 10).cigar.toString() shouldBe "1=5D5="
+    alignment.subByQuery(6, 10).cigar.toString() shouldBe "5="
+  }
 }

@@ -351,8 +351,8 @@ case class Alignment(query: Array[Byte],
         // Don't include, beyond the range we're interested
       }
       else if (currStart >= start && currEnd <= end) {
-        // Contained within the target region; ignore insertions that are at the ends of the desired region
-        if (elementConsumes || (currStart != start && currStart != end)) {
+        // Contained within the target region; ignore insertions at the boundaries
+        if (elementConsumes || currStart != start) {
           elems += elem
           if (elementConsumes) currStart += elem.length
         }
