@@ -26,17 +26,16 @@ package com.fulcrumgenomics.alignment
 
 import com.fulcrumgenomics.FgBioDef._
 import com.fulcrumgenomics.alignment.Mode.{Global, Glocal, Local}
-import com.fulcrumgenomics.alignment.NeedlemanWunschAligner._
+import com.fulcrumgenomics.alignment.Aligner._
 import enumeratum.EnumEntry
 import htsjdk.samtools.CigarOperator
 
 import scala.collection.{immutable, mutable}
-import scala.math.max
 
-/** Trait that entires in Mode will extend. */
+/** Trait that entries in Mode will extend. */
 sealed trait Mode extends EnumEntry
 
-/** Enum to represent alignment modes supported by the NeedlenameWunschAligner */
+/** Enum to represent alignment modes supported by the Aligner. */
 object Mode extends FgBioEnum[Mode] {
   /** Alignment mode for global pairwise alignment. */
   case object Global extends Mode
@@ -49,61 +48,65 @@ object Mode extends FgBioEnum[Mode] {
 }
 
 
-object NeedlemanWunschAligner {
+object Aligner {
   /** Generates a simple scoring function using the match and mismatch scores. */
   def simpleScoringFunction(matchScore: Int, mismatchScore: Int): (Byte, Byte) => Int = {
     (lhs: Byte, rhs: Byte) => if (lhs == rhs) matchScore else mismatchScore
   }
 
   /** Creates a NW aligner with fixed match and mismatch scores. */
-  def apply(matchScore: Int, mismatchScore: Int, gapOpen: Int, gapExtend: Int, mode: Mode = Global): NeedlemanWunschAligner = {
-    new NeedlemanWunschAligner(scoringFunction=simpleScoringFunction(matchScore, mismatchScore), gapOpen, gapExtend, mode=mode)
+  def apply(matchScore: Int, mismatchScore: Int, gapOpen: Int, gapExtend: Int, mode: Mode = Global): Aligner = {
+    new Aligner(scoringFunction=simpleScoringFunction(matchScore, mismatchScore), gapOpen, gapExtend, mode=mode)
   }
 
   /** Directions within the trace back matrix. */
-  type Direction = Byte
-  val Left: Direction     = 0.toByte
-  val Up  : Direction     = 1.toByte
-  val Diagonal: Direction = 2.toByte
-  val Done: Direction     = 3.toByte
+  private type Direction = Byte
+  private val Left: Direction     = 0.toByte
+  private val Up  : Direction     = 1.toByte
+  private val Diagonal: Direction = 2.toByte
+  private val Done: Direction     = 3.toByte
 
   // NB: the order of LeftAndDiagonal and UpAndDiagonal matters when breaking ties!
-  val AllDirections: Seq[Direction]   = Seq(Diagonal, Left, Up)
-  val LeftAndUp: Seq[Direction]       = Seq(Left, Up)
-  val LeftAndDiagonal: Seq[Direction] = Seq(Diagonal, Left)
-  val UpAndDiagonal: Seq[Direction]   = Seq(Diagonal, Up)
+  private val AllDirections: Seq[Direction]   = Seq(Diagonal, Left, Up)
+  private val LeftAndUp: Seq[Direction]       = Seq(Left, Up)
+  private val LeftAndDiagonal: Seq[Direction] = Seq(Diagonal, Left)
+  private val UpAndDiagonal: Seq[Direction]   = Seq(Diagonal, Up)
 
   /** The minimum score allowed to start an alignment.  This prevents underflow. */
   val MinStartScore: Int = Int.MinValue / 2
-}
 
-
-object AlignmentMatrix {
-  def apply(direction: Direction, queryLength: Int, targetLength: Int): AlignmentMatrix = {
-    AlignmentMatrix(direction=direction, scoring=Matrix[Int](queryLength+1, targetLength+1), trace=Matrix[Direction](queryLength+1, targetLength+1))
+  object AlignmentMatrix {
+    def apply(direction: Direction, queryLength: Int, targetLength: Int): AlignmentMatrix = {
+      AlignmentMatrix(direction=direction, scoring=Matrix[Int](queryLength+1, targetLength+1), trace=Matrix[Direction](queryLength+1, targetLength+1))
+    }
   }
-}
 
-/** A single alignment matrix for a given [[Direction]] storing both the scoring and traceback matrices produce by the aligner. */
-case class AlignmentMatrix(direction: Direction, scoring: Matrix[Int], trace: Matrix[Direction])
+  /** A single alignment matrix for a given [[Direction]] storing both the scoring and traceback matrices produce by the aligner. */
+  case class AlignmentMatrix(direction: Direction, scoring: Matrix[Int], trace: Matrix[Direction])
+}
 
 
 /**
-  * Implementation of the Needleman-Wunsch algorithm for global alignment of two sequences with support for an
-  * affine gap penalty.
+  * Implementation of an aligner with generic scoring function and affine gap penalty support.
+  * Supports multiple alignment [[Mode]]s for global, semi-global and local alignment.
   *
-  * @param scoringFunction a function to score the alignment of a pair of bases
-  * @param gapOpen the gap opening penalty
-  * @param gapExtend the gap extension penalty
+  * A scoring function (`scoringFunction`) is taken to score pair-wise aligned bases. A default
+  * implementation is supplied via the companion [[Aligner]] object which uses a fixed match
+  * score and mismatch penalty.
+  *
+  * @param scoringFunction a function to score the alignment of a pair of bases. Parameters
+  *                        are the query and target bases as bytes, in that order.
+  * @param gapOpen the gap opening penalty, should generally be negative or zero
+  * @param gapExtend the gap extension penalty, should generally be negative or zero
   * @param useEqualsAndX if true use the = and X cigar operators for matches and mismatches,
   *                      else use the M operator for both.
   * @param mode alignment mode to use when generating alignments
   */
-class NeedlemanWunschAligner(val scoringFunction: (Byte,Byte) => Int,
-                             val gapOpen: Int,
-                             val gapExtend: Int,
-                             useEqualsAndX: Boolean = true,
-                             val mode: Mode = Global) {
+class Aligner(val scoringFunction: (Byte,Byte) => Int,
+              val gapOpen: Int,
+              val gapExtend: Int,
+              useEqualsAndX: Boolean = true,
+              val mode: Mode = Global) {
 
   private val (matchOp, mismatchOp) = if (useEqualsAndX) (CigarOperator.EQ, CigarOperator.X) else (CigarOperator.M, CigarOperator.M)
 

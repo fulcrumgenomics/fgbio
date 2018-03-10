@@ -27,7 +27,7 @@ package com.fulcrumgenomics.alignment
 import com.fulcrumgenomics.alignment.Mode.{Glocal, Local}
 import com.fulcrumgenomics.testing.UnitSpec
 
-class NeedlemanWunschAlignerTest extends UnitSpec {
+class AlignerTest extends UnitSpec {
   /** Upper-cases and remove display-related characters from a string. */
   def s(str: String): String = str.filterNot(ch => ch == '-').toUpperCase
 
@@ -56,8 +56,8 @@ class NeedlemanWunschAlignerTest extends UnitSpec {
     alignment.score       should be >= 0
   }
 
-  "NeedlemanWunschAligner.align(Global)" should "align two identical sequences with all matches" in {
-    val result = NeedlemanWunschAligner(1, -1, -3, -1).align(s("ACGTAACC"), s("ACGTAACC"))
+  "Aligner.align(Global)" should "align two identical sequences with all matches" in {
+    val result = Aligner(1, -1, -3, -1).align(s("ACGTAACC"), s("ACGTAACC"))
     assertValidGlobalAlignment(result)
     result.cigar.toString() shouldBe "8="
     result.score shouldBe 8
@@ -66,7 +66,7 @@ class NeedlemanWunschAlignerTest extends UnitSpec {
   it should "align two sequences with a single mismatch in them" in {
     val q = s("AACCGGTT")
     val t = s("AACCGtTT")
-    val result = NeedlemanWunschAligner(1, -1, -3, -1).align(q, t)
+    val result = Aligner(1, -1, -3, -1).align(q, t)
     assertValidGlobalAlignment(result)
     result.cigar.toString() shouldBe "5=1X2="
     result.score shouldBe 6
@@ -75,7 +75,7 @@ class NeedlemanWunschAlignerTest extends UnitSpec {
   it should "align two sequences with a single small deletion in the query sequence" in {
     val q = s("AACC-GTT")
     val t = s("AACCGGTT")
-    val result = NeedlemanWunschAligner(1, -1, -3, -1).align(q, t)
+    val result = Aligner(1, -1, -3, -1).align(q, t)
     assertValidGlobalAlignment(result)
     result.cigar.toString() shouldBe "4=1D3="
     result.score shouldBe 7 - 4
@@ -84,7 +84,7 @@ class NeedlemanWunschAlignerTest extends UnitSpec {
   it should "align two sequences with a single small insertion in the query sequence" in {
     val q = s("AACCGGGTT")
     val t = s("AACC-GGTT")
-    val result = NeedlemanWunschAligner(1, -1, -3, -1).align(q, t)
+    val result = Aligner(1, -1, -3, -1).align(q, t)
     assertValidGlobalAlignment(result)
     result.cigar.toString() shouldBe "4=1I4="
     result.score shouldBe 8 - 4
@@ -93,7 +93,7 @@ class NeedlemanWunschAlignerTest extends UnitSpec {
   it should "align two sequences with compensating insertions and deletions" in {
     val q = s("AAACGCGCGCGCG-TT")
     val t = s("-AACGCGCGCGCGTTT")
-    val result = NeedlemanWunschAligner(1, -1, -3, -1).align(q, t)
+    val result = Aligner(1, -1, -3, -1).align(q, t)
     assertValidGlobalAlignment(result)
     result.cigar.toString() shouldBe "1I12=1D2="
     result.score shouldBe 14 - 4 - 4
@@ -102,7 +102,7 @@ class NeedlemanWunschAlignerTest extends UnitSpec {
   it should "align two sequences with a leading insertion" in {
     val q = s("ATTTTTTTTTTT")
     val t = s( "TTTTTTTTTTT")
-    val result = NeedlemanWunschAligner(1, -1, -3, -1).align(q, t)
+    val result = Aligner(1, -1, -3, -1).align(q, t)
     assertValidGlobalAlignment(result)
     result.cigar.toString() shouldBe "1I11="
     result.score shouldBe 11 - 4
@@ -111,7 +111,7 @@ class NeedlemanWunschAlignerTest extends UnitSpec {
   it should "align two sequences with a trailing insertion" in {
     val q = s("TTTTTTTTTTTA")
     val t = s("TTTTTTTTTTT")
-    val result = NeedlemanWunschAligner(1, -1, -3, -1).align(q, t)
+    val result = Aligner(1, -1, -3, -1).align(q, t)
     assertValidGlobalAlignment(result)
     result.cigar.toString() shouldBe "11=1I"
     result.score shouldBe 11 - 4
@@ -120,7 +120,7 @@ class NeedlemanWunschAlignerTest extends UnitSpec {
   it should "align two sequences with a leading deletion" in {
     val q = s( "TTTTTTTTTTT")
     val t = s("ATTTTTTTTTTT")
-    val result = NeedlemanWunschAligner(1, -1, -3, -1).align(q, t)
+    val result = Aligner(1, -1, -3, -1).align(q, t)
     assertValidGlobalAlignment(result)
     result.cigar.toString() shouldBe "1D11="
     result.score shouldBe 11 - 4
@@ -129,7 +129,7 @@ class NeedlemanWunschAlignerTest extends UnitSpec {
   it should "align two sequences with a trailing deletion" in {
     val q = s("TTTTTTTTTTT")
     val t = s("TTTTTTTTTTTA")
-    val result = NeedlemanWunschAligner(1, -1, -3, -1).align(q, t)
+    val result = Aligner(1, -1, -3, -1).align(q, t)
     assertValidGlobalAlignment(result)
     result.cigar.toString() shouldBe "11=1D"
     result.score shouldBe 11 - 4
@@ -140,7 +140,7 @@ class NeedlemanWunschAlignerTest extends UnitSpec {
     val t = s( "TTTTTTTTTTT")
     // NB: a leading and trailing 1b insertion ("1I11=1I") has score: 11 - 4 - 4 = 3, where as a leading 2bp
     // insertion with the last base a mismatch ("2I10=1X") has score: 10 - 4 - 1 - 1 = 4.
-    val result = NeedlemanWunschAligner(1, -1, -3, -1).align(q, t)
+    val result = Aligner(1, -1, -3, -1).align(q, t)
     assertValidGlobalAlignment(result)
     result.cigar.toString() shouldBe "2I10=1X"
     result.score shouldBe 10 - 4 - 1 - 1
@@ -151,7 +151,7 @@ class NeedlemanWunschAlignerTest extends UnitSpec {
     val t = s( "TTTTTTTTTTT")
     // NB: a leading 2bp insertion with the last base a mismatch ("2I10=1X") has score: 10 - 4 - 1 - 2 = 3, whereas a
     // leading and trailing 1b insertion ("1I11=1I") has score: 11 - 4 - 4 = 3
-    val result = NeedlemanWunschAligner(1, -3, -3, -1).align(q, t)
+    val result = Aligner(1, -3, -3, -1).align(q, t)
     assertValidGlobalAlignment(result)
     result.cigar.toString() shouldBe "1I11=1I"
     result.score shouldBe 11 - 4 - 4
@@ -161,7 +161,7 @@ class NeedlemanWunschAlignerTest extends UnitSpec {
     val q = s("ATTTTTTTTTTTA")
     val t = s( "TTTTTTTTTTT")
     // NB: both have the same score, but we must consistently choose one over the other.
-    val result = NeedlemanWunschAligner(1, -1, -3, -1).align(q, t)
+    val result = Aligner(1, -1, -3, -1).align(q, t)
     assertValidGlobalAlignment(result)
     result.cigar.toString() shouldBe "2I10=1X"
     result.score shouldBe 10 - 4 - 1 - 1
@@ -171,7 +171,7 @@ class NeedlemanWunschAlignerTest extends UnitSpec {
     val q = s("GTTTTTTTTTTA")
     val t = s("GTTTTTTTTTA")
     // NB: both have the same score, but we must consistently choose one over the other.
-    val result = NeedlemanWunschAligner(1, -1, -3, -1).align(q, t)
+    val result = Aligner(1, -1, -3, -1).align(q, t)
     assertValidGlobalAlignment(result)
     result.cigar.toString() shouldBe "1=1I10="
     result.score shouldBe 11 - 4
@@ -180,7 +180,7 @@ class NeedlemanWunschAlignerTest extends UnitSpec {
   it should "align a simple triplet insertion and left-justify the insertion" in {
     val q = s("GACGACGACGACGA")
     val t = s("GACGACGACGA")
-    val result = NeedlemanWunschAligner(1, -1, -3, -1).align(q, t)
+    val result = Aligner(1, -1, -3, -1).align(q, t)
     assertValidGlobalAlignment(result)
     result.cigar.toString() shouldBe "3I11="
     result.score shouldBe 11 - 4 - 1 - 1
@@ -189,7 +189,7 @@ class NeedlemanWunschAlignerTest extends UnitSpec {
   it should "align a simple triplet insertion with leading matches and left-justify the insertion" in {
     val q = s("TTTGACGACGACGACGA")
     val t = s("TTTGACGACGACGA")
-    val result = NeedlemanWunschAligner(1, -1, -3, -1).align(q, t)
+    val result = Aligner(1, -1, -3, -1).align(q, t)
     assertValidGlobalAlignment(result)
     result.cigar.toString() shouldBe "3=3I11="
     result.score shouldBe 14 - 4 - 1 - 1
@@ -198,7 +198,7 @@ class NeedlemanWunschAlignerTest extends UnitSpec {
   it should "align a simple triplet deletion with leading matches and left-justify the deletion" in {
     val q = s("TTTGACGACGACGA")
     val t = s("TTTGACGACGACGACGA")
-    val result = NeedlemanWunschAligner(1, -1, -3, -1).align(q, t)
+    val result = Aligner(1, -1, -3, -1).align(q, t)
     assertValidGlobalAlignment(result)
     result.cigar.toString() shouldBe "3=3D11="
     result.score shouldBe 14 - 4 - 1 - 1
@@ -208,7 +208,7 @@ class NeedlemanWunschAlignerTest extends UnitSpec {
     val q = s("AAACCC")
     val t = s("AACCCC")
     // NB: could be either "1I2=1D3=" or "2=1X3="
-    val result = NeedlemanWunschAligner(1, -3, -1, -1).align(q, t)
+    val result = Aligner(1, -3, -1, -1).align(q, t)
     assertValidGlobalAlignment(result)
     result.cigar.toString() shouldBe "2=1X3="
     result.score shouldBe 5 - 3
@@ -218,7 +218,7 @@ class NeedlemanWunschAlignerTest extends UnitSpec {
     val q = s("AAACCC")
     val t = s("AACCCC")
     // NB: could be either "1I2=1D3=" or "2=1X3="
-    val result = NeedlemanWunschAligner(1, -4, -1, -1).align(q, t)
+    val result = Aligner(1, -4, -1, -1).align(q, t)
     assertValidGlobalAlignment(result)
     result.cigar.toString() shouldBe "2=1X3="
     result.score shouldBe 5 - 4
@@ -228,7 +228,7 @@ class NeedlemanWunschAlignerTest extends UnitSpec {
     val q = s("AAACCC")
     val t = s("AACCCC")
     // NB: could be either "1I2=1D3=" or "2=1X3="
-    val result = NeedlemanWunschAligner(1, -5, -1, -1).align(q, t)
+    val result = Aligner(1, -5, -1, -1).align(q, t)
     assertValidGlobalAlignment(result)
     result.cigar.toString() shouldBe "1I2=1D3="
     result.score shouldBe 5 - 2 - 2
@@ -237,7 +237,7 @@ class NeedlemanWunschAlignerTest extends UnitSpec {
   it should "prefer one insertion when the gap open penalty is much larger than the gap extend penalty" in {
     val q = s("ATTTTTTTTTTTA")
     val t = s( "TTTTTTTTTTT")
-    val result = NeedlemanWunschAligner(1, -5, -100, -1).align(q, t)
+    val result = Aligner(1, -5, -100, -1).align(q, t)
     assertValidGlobalAlignment(result)
     result.cigar.toString() shouldBe "2I10=1X"
     result.score shouldBe 10 - 100 - 1 - 1 - 5
@@ -246,22 +246,22 @@ class NeedlemanWunschAlignerTest extends UnitSpec {
   it should "prefer two small insertions when the gap open penalty is much less than the gap extend penalty" in {
     val q = s("ATTTTTTTTTTTA")
     val t = s( "TTTTTTTTTTT")
-    val result = NeedlemanWunschAligner(1, -5, -1, -100).align(q, t)
+    val result = Aligner(1, -5, -1, -100).align(q, t)
     assertValidGlobalAlignment(result)
     result.cigar.toString() shouldBe "1I11=1I"
     result.score shouldBe 11 - 100 - 1 - 100 - 1
   }
 
   // Glocal alignment tests
-  "NeedlemanWunschAligner.align(Glocal)" should "align two identical sequences with all matches" in {
-    val result = NeedlemanWunschAligner(1, -1, -3, -1, mode=Glocal).align(s("ACGTAACC"), s("ACGTAACC"))
+  "Aligner.align(Glocal)" should "align two identical sequences with all matches" in {
+    val result = Aligner(1, -1, -3, -1, mode=Glocal).align(s("ACGTAACC"), s("ACGTAACC"))
     assertValidGlocalAlignment(result)
     result.cigar.toString() shouldBe "8="
     result.score shouldBe 8
   }
 
   it should "correctly align an identical subsequence" in {
-    val result = NeedlemanWunschAligner(1, -1, -3, -1, mode=Glocal).align(s("CCGG"), s("AACCGGTT"))
+    val result = Aligner(1, -1, -3, -1, mode=Glocal).align(s("CCGG"), s("AACCGGTT"))
     assertValidGlocalAlignment(result)
     result.queryStart shouldBe 1
     result.targetStart shouldBe 3
@@ -270,7 +270,7 @@ class NeedlemanWunschAlignerTest extends UnitSpec {
   }
 
   it should "correctly align a sub-sequence with a mismatch" in {
-    val result = NeedlemanWunschAligner(1, -1, -3, -1, mode=Glocal).align(s("-------CGCGTCGTATACGTCGTT"), s("AAGATATCGCGTCGTATACGTCGTA"))
+    val result = Aligner(1, -1, -3, -1, mode=Glocal).align(s("-------CGCGTCGTATACGTCGTT"), s("AAGATATCGCGTCGTATACGTCGTA"))
     assertValidGlocalAlignment(result)
     result.queryStart shouldBe 1
     result.targetStart shouldBe 8
@@ -279,7 +279,7 @@ class NeedlemanWunschAlignerTest extends UnitSpec {
   }
 
   it should "correctly align a sub-sequence with a gap" in {
-    val result = NeedlemanWunschAligner(1, -1, -3, -1, mode=Glocal).align(s("CGCGCGCG"), s("AACGCGACGCGTT"))
+    val result = Aligner(1, -1, -3, -1, mode=Glocal).align(s("CGCGCGCG"), s("AACGCGACGCGTT"))
     assertValidGlocalAlignment(result)
     result.queryStart shouldBe 1
     result.targetStart shouldBe 3
@@ -288,7 +288,7 @@ class NeedlemanWunschAlignerTest extends UnitSpec {
   }
 
   it should "align a query that is longer than the target, creating an insertion" in {
-    val result = NeedlemanWunschAligner(1, -1, -3, -1, mode=Glocal).align("AAAAGGGGTTTT", "AAAATTTT")
+    val result = Aligner(1, -1, -3, -1, mode=Glocal).align("AAAAGGGGTTTT", "AAAATTTT")
     assertValidGlocalAlignment(result)
     result.queryStart shouldBe 1
     result.targetStart shouldBe 1
@@ -298,21 +298,21 @@ class NeedlemanWunschAlignerTest extends UnitSpec {
   it should "align a query with leading and trailing gaps" in {
     val q = s("-------------------GGTTTTAGAGCTAGAAATAGCAAGTTAAAATAAGGCTAGTCCGTTATCAACTTG---------------------------")
     val t = s("AGGGCTATAGACTGCTAGAGGTTTTAGAGCTAGAAATAGCAAGTTAAAATAAGGCTAGTCCGTTATCAACTTGAAATGAGCTATTAGTCATGACGCTTTT")
-    val result = NeedlemanWunschAligner(1, -3, -3, -1).align(q, t)
+    val result = Aligner(1, -3, -3, -1).align(q, t)
     assertValidGlobalAlignment(result)
     result.cigar.toString() shouldBe "19D54=27D"
     result.score shouldBe 54 - (1*19 + 3) - (1*27 + 3)
   }
 
-  "NeedlemanWunschAligner.align(Local)" should "align two identical sequences with all matches" in {
-    val result = NeedlemanWunschAligner(1, -1, -3, -1, mode=Local).align(s("ACGTAACC"), s("ACGTAACC"))
+  "Aligner.align(Local)" should "align two identical sequences with all matches" in {
+    val result = Aligner(1, -1, -3, -1, mode=Local).align(s("ACGTAACC"), s("ACGTAACC"))
     assertValidLocalAlignment(result)
     result.cigar.toString() shouldBe "8="
     result.score shouldBe 8
   }
 
   it should "correctly align an identical subsequence (query in target)" in {
-    val result = NeedlemanWunschAligner(1, -1, -3, -1, mode=Local).align(s("CCGG"), s("AACCGGTT"))
+    val result = Aligner(1, -1, -3, -1, mode=Local).align(s("CCGG"), s("AACCGGTT"))
     assertValidLocalAlignment(result)
     result.queryStart shouldBe 1
     result.targetStart shouldBe 3
@@ -323,7 +323,7 @@ class NeedlemanWunschAlignerTest extends UnitSpec {
   }
 
   it should "correctly align an identical subsequence (target in query)" in {
-    val result = NeedlemanWunschAligner(1, -1, -3, -1, mode=Local).align(s("AACCGGTT"), s("CCGG"))
+    val result = Aligner(1, -1, -3, -1, mode=Local).align(s("AACCGGTT"), s("CCGG"))
     assertValidLocalAlignment(result)
     result.queryStart shouldBe 3
     result.targetStart shouldBe 1
@@ -332,7 +332,7 @@ class NeedlemanWunschAlignerTest extends UnitSpec {
   }
 
   it should "correctly align a sub-sequence with a leading mismatch" in {
-    val result = NeedlemanWunschAligner(1, -1, -3, -1, mode=Local).align(s("AGCGTCGTATACGTCGTA-------"), s("CGCGTCGTATACGTCGTAAAGATAT"))
+    val result = Aligner(1, -1, -3, -1, mode=Local).align(s("AGCGTCGTATACGTCGTA-------"), s("CGCGTCGTATACGTCGTAAAGATAT"))
     assertValidLocalAlignment(result)
     result.queryStart shouldBe 2
     result.targetStart shouldBe 2
@@ -344,7 +344,7 @@ class NeedlemanWunschAlignerTest extends UnitSpec {
 
 
   it should "correctly align a sub-sequence with a trailing mismatch" in {
-    val result = NeedlemanWunschAligner(1, -1, -3, -1, mode=Local).align(s("-------CGCGTCGTATACGTCGTT"), s("AAGATATCGCGTCGTATACGTCGTA"))
+    val result = Aligner(1, -1, -3, -1, mode=Local).align(s("-------CGCGTCGTATACGTCGTT"), s("AAGATATCGCGTCGTATACGTCGTA"))
     assertValidLocalAlignment(result)
     result.queryStart shouldBe 1
     result.targetStart shouldBe 8
@@ -355,7 +355,7 @@ class NeedlemanWunschAlignerTest extends UnitSpec {
   }
 
   it should "correctly align a sub-sequence with a gap in the query" in {
-    val result = NeedlemanWunschAligner(1, -1, -3, -1, mode=Local).align(s("CCGCGCGCGC"), s("AACCGCGACGCGCTT"))
+    val result = Aligner(1, -1, -3, -1, mode=Local).align(s("CCGCGCGCGC"), s("AACCGCGACGCGCTT"))
     assertValidLocalAlignment(result)
     result.queryStart shouldBe 1
     result.targetStart shouldBe 3
@@ -366,7 +366,7 @@ class NeedlemanWunschAlignerTest extends UnitSpec {
   }
 
   it should "correctly align a sub-sequence with a gap in the target" in {
-    val result = NeedlemanWunschAligner(1, -1, -3, -1, mode=Local).align(s("AACCGCGACGCGCTT"), s("CCGCGCGCGC"))
+    val result = Aligner(1, -1, -3, -1, mode=Local).align(s("AACCGCGACGCGCTT"), s("CCGCGCGCGC"))
     assertValidLocalAlignment(result)
     result.queryStart shouldBe 3
     result.targetStart shouldBe 1
@@ -377,7 +377,7 @@ class NeedlemanWunschAlignerTest extends UnitSpec {
   }
 
   it should "prefer a match over an indel" in {
-    val result = NeedlemanWunschAligner(1, -1, -3, -1, mode=Local).align(s("CGCGCGCG"), s("AACGCGACGCGTT"))
+    val result = Aligner(1, -1, -3, -1, mode=Local).align(s("CGCGCGCG"), s("AACGCGACGCGTT"))
     assertValidLocalAlignment(result)
     result.queryStart shouldBe 1
     result.targetStart shouldBe 3
