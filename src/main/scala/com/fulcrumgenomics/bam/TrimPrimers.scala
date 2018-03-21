@@ -38,12 +38,22 @@ import htsjdk.samtools._
 import htsjdk.samtools.reference.ReferenceSequenceFileWalker
 import htsjdk.samtools.util._
 
+object TrimPrimers {
+  val Headers = Seq("chrom","left_start", "left_end", "right_start", "right_end")
+  val Seq(hdChrom, hdleftStart, hdLeftEnd, hdRightStart, hdRightEnd) = Headers
+}
+
 @clp(group=ClpGroups.SamOrBam, description=
   """
     |Trims primers from reads post-alignment.  Takes in a BAM file of aligned reads
     |and a tab-delimited file with five columns (`chrom`, `left_start`, `left_end`,
     |`right_start`, and `right_end`) which provide the 1-based inclusive start and end
-    |positions of the primers for each amplicon.
+    |positions of the primers for each amplicon.  The primer file must include headers, e.g:
+    |
+    |```
+    |chrom  left_start  left_end  right_start right_end
+    |chr1   1010873     1010894   1011118     1011137
+    |```
     |
     |Paired end reads that map to a given amplicon position are trimmed so that the
     |alignment no-longer includes the primer sequences. All other aligned reads have the
@@ -221,14 +231,18 @@ class TrimPrimers
   /** Creates an overlap detector for all the amplicons from the input file. */
   private def loadPrimerFile(path: FilePath): OverlapDetector[Amplicon] = {
     val parser = DelimitedDataParser(path, '\t')
+    TrimPrimers.Headers.foreach { h => require(parser.headers.contains(h), s"Could not find column header '$h' in $path.") }
+    require(parser.hasNext, "Primer file contained no data.")
+
+    require(parser.headers.contains("chrom"), "Could not find column header 'chrom'")
     val detector = new OverlapDetector[Amplicon](0,0)
     parser.foreach { row =>
       val amp = Amplicon(
-        chrom      = row[String]("chrom"),
-        leftStart  = row[Int]("left_start"),
-        leftEnd    = row[Int]("left_end"),
-        rightStart = row[Int]("right_start"),
-        rightEnd   = row[Int]("right_end")
+        chrom      = row[String](TrimPrimers.hdChrom),
+        leftStart  = row[Int](TrimPrimers.hdleftStart),
+        leftEnd    = row[Int](TrimPrimers.hdLeftEnd),
+        rightStart = row[Int](TrimPrimers.hdRightStart),
+        rightEnd   = row[Int](TrimPrimers.hdRightEnd)
       )
 
       detector.addLhs(amp, amp)

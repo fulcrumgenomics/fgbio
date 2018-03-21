@@ -182,4 +182,22 @@ class TrimPrimersTest extends UnitSpec {
       }
     }
   }
+
+  it should "fail if no primers are given in the primer file" in {
+    val primerFile = makeTempFile("primers.", ".txt")
+    val bam = new SamBuilder().toTempFile()
+    Io.writeLines(primerFile, Seq(TrimPrimers.Headers.mkString("\t")))
+    an[Exception] shouldBe thrownBy {
+      new TrimPrimers(input=bam, output=bam, primers=primerFile, hardClip=false).execute()
+    }
+  }
+
+  it should "fail if the headers are missing from the primer file" in {
+    val primerFile = makeTempFile("primers.", ".txt")
+    val bam = new SamBuilder().toTempFile()
+    Io.writeLines(primerFile, Seq(Seq("chr1", 1000, 1020, 1200, 1220).mkString("\t")))
+    an[Exception] shouldBe thrownBy {
+      new TrimPrimers(input=bam, output=bam, primers=primerFile, hardClip=false).execute()
+    }
+  }
 }
