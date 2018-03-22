@@ -39,7 +39,7 @@ import htsjdk.samtools.reference.ReferenceSequenceFileWalker
 import htsjdk.samtools.util._
 
 object TrimPrimers {
-  val Headers = Seq("chrom","left_start", "left_end", "right_start", "right_end")
+  val Headers: Seq[String] = Seq("chrom", "left_start", "left_end", "right_start", "right_end")
   val Seq(hdChrom, hdleftStart, hdLeftEnd, hdRightStart, hdRightEnd) = Headers
 }
 
@@ -233,8 +233,8 @@ class TrimPrimers
     val parser = DelimitedDataParser(path, '\t')
     TrimPrimers.Headers.foreach { h => require(parser.headers.contains(h), s"Could not find column header '$h' in $path.") }
     require(parser.hasNext, "Primer file contained no data.")
-
     require(parser.headers.contains("chrom"), "Could not find column header 'chrom'")
+    
     val detector = new OverlapDetector[Amplicon](0,0)
     parser.foreach { row =>
       val amp = Amplicon(
