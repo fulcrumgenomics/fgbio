@@ -122,7 +122,7 @@ lazy val root = Project(id="fgbio", base=file("."))
       "org.scala-lang"            %  "scala-reflect"  % scalaVersion.value,
       "org.scala-lang"            %  "scala-compiler" % scalaVersion.value,
       "org.scala-lang.modules"    %% "scala-xml"      % "1.0.6",
-      "com.fulcrumgenomics"       %% "commons"        % "0.4.0",
+      "com.fulcrumgenomics"       %% "commons"        % "0.5.0-a1f084e-SNAPSHOT",
       "com.fulcrumgenomics"       %% "sopt"           % "0.4.0",
       "com.github.samtools"       %  "htsjdk"         % "2.13.0" excludeAll(htsjdkExcludes: _*),
       "net.jafama"                %  "jafama"         % "2.1.0",

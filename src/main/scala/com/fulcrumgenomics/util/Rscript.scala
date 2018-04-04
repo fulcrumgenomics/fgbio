@@ -79,15 +79,10 @@ object Rscript extends LazyLogging {
 
   /** Extracts a resource from the classpath and writes it to a temp file on disk. */
   private def writeResourceToTempFile(resource: String): Path = {
-    val in = getClass.getClassLoader.getResourceAsStream(resource)
-    if (in == null) throw new IllegalArgumentException(s"Resource '${resource} not found in classpath")
+    val lines = Io.readLinesFromResource(resource).toSeq
     val path = Io.makeTempFile("script.", ".R")
     path.toFile.deleteOnExit()
-    val out = Io.toWriter(path)
-
-    Source.fromInputStream(in).getLines().foreach { l => out.write(l); out.newLine() }
-    in.close()
-    out.close()
+    Io.writeLines(path, lines)
     path
   }
 }
