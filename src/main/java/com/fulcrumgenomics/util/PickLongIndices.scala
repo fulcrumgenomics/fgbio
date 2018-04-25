@@ -193,54 +193,58 @@ class PickLongIndices
     val indices = new IndexSet
     existingIndices.foreach(i => indices += i)
 
-    var ok = true
     var startTime = System.currentTimeMillis()
-    while (ok && indices.size < numberOfIndices) {
-      val pick = nextIndex(indices, this.length, this.editDistance, this.attempts)
-      pick.foreach(p => indices += p)
-      ok = pick.nonEmpty
-
+    while (indices.size < numberOfIndices && addIndex(indices)) {
       if (System.currentTimeMillis() - startTime > 30000) {
         logger.info(s"Picked ${indices.size} indices so far.")
         startTime = System.currentTimeMillis()
       }
     }
+    logger.info(s"Picked ${indices.size} indices.")
 
     indices
+  }
+
+  /** Determines if the given index should be added to the set of already picked indices.
+    *
+    * @param index the next index to consider.
+    * @param picks the set of indices already picked.
+    * @return True if the index is acceptable, False otherwise.
+    */
+  protected def shouldAddIndexIntoSet(index: Index, picks: IndexSet): Boolean = {
+    val string = new String(index)
+    // structure checking (worstDeltaG) is done here instead of in nextRandomIndependentIndex because,
+    // even though it's a per-index property, it's much slower than all the other checks, and
+    // when making many attempts to find a suitable next index, the time spent structure checking
+    // all the indices we're going to discard for too-few-edits anyway explodes.
+    !picks.contains(string) &&
+      (this.allowReverses || !picks.contains(string.reverse)) &&
+      (this.allowReverseComplements || !picks.contains(SequenceUtil.reverseComplement(string))) &&
+      picks.forall(p => mismatches(index, p) >= this.editDistance) &&
+      worstStructure(index).forall(_.deltaG >= this.minDeltaG)
   }
 
   /**
     * Attempts to generate the next index that can be added to the set without violating any
     * of the constraints.  Will evaluate 'attempts' indices which would be acceptable independently
-    * to see if they can be added.
+    * to see if they can be added.  If an index is found, it will be added to the index set.
     *
-    * @return Some(Index) if an index can be found within the number of attempts, otherwise None
+    * @return True if an index was found within the number of attempts, otherwise False
     */
-  private def nextIndex(picks: IndexSet, length: Int, minEdits: Int, attempts: Int): Option[Index] = {
+  private def addIndex(picks: IndexSet): Boolean = {
     var pick: Option[Index] = None
-    var attempt = 0
     forloop (0)(_ < attempts && pick.isEmpty)(_ + 1) { attempt =>
-      val index = randomAcceptableIndex(length)
-      val string = new String(index)
-
-      // structure checking (worstDeltaG) is done here instead of in randomAcceptableIndex because,
-      // even though it's a per-index property, it's much slower than all the other checks, and
-      // when making many attempts to find a suitable next index, the time spent structure checking
-      // all the indices we're going to discard for too-few-edits anyway explodes.
-      if ( !picks.contains(string) &&
-           (allowReverses || !picks.contains(string.reverse)) &&
-           (allowReverseComplements || !picks.contains(SequenceUtil.reverseComplement(string))) &&
-           picks.forall(p => mismatches(index, p) >= minEdits) &&
-           worstStructure(index).forall(_.deltaG >= minDeltaG)) {
-        pick = Some(index)
-      }
+      val index = nextRandomIndependentIndex(length)
+      if (shouldAddIndexIntoSet(index, picks)) pick = Some(index)
     }
 
-    pick
+    pick.foreach { p => picks += p }
+    pick.nonEmpty
   }
 
-  /** Generates the next random index which is acceptable as a standalone index, prior to any secondary structure checking. */
-  @tailrec private def randomAcceptableIndex(length: Int): Index = {
+  /** Generates the next random index which is acceptable as a standalone index, prior to any secondary structure
+    * checking. */
+  @tailrec private def nextRandomIndependentIndex(length: Int): Index = {
     val index  = randomIndex(length)
     val string = new String(index)
     val gc     = SequenceUtil.calculateGc(index)
@@ -253,7 +257,7 @@ class PickLongIndices
       index
     }
     else {
-      randomAcceptableIndex(length)
+      nextRandomIndependentIndex(length)
     }
   }
 
