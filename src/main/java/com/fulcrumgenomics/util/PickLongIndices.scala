@@ -33,6 +33,7 @@ import com.fulcrumgenomics.util.PickLongIndices.Index
 import com.fulcrumgenomics.commons.util.{LazyLogging, NumericCounter}
 import com.fulcrumgenomics.sopt._
 import com.fulcrumgenomics.util.Metric.{Count, Proportion}
+import com.fulcrumgenomics.util.PickLongIndices.IndexSet
 import htsjdk.samtools.util.SequenceUtil
 
 import scala.annotation.tailrec
@@ -42,27 +43,28 @@ import scala.collection.mutable.ListBuffer
 
 object PickLongIndices {
   type Index = Array[Byte]
-}
 
-/** A set of indices that maintains things as both Strings and byte[]s. */
-private class IndexSet extends Iterable[Index] {
-  private val arrays = ListBuffer[Array[Byte]]()
-  private val set    = mutable.HashSet[String]()
+  /** A set of indices that maintains things as both Strings and byte[]s. */
+  class IndexSet extends Iterable[Index] {
+    private val arrays = ListBuffer[Array[Byte]]()
+    private val set    = mutable.HashSet[String]()
 
-  override def iterator: Iterator[Array[Byte]] = this.arrays.iterator
+    override def iterator: Iterator[Array[Byte]] = this.arrays.iterator
 
-  /** Add an index to the set. */
-  def +=(index : Array[Byte]): Unit = {
-    this.arrays += index
-    this.set.add(new String(index))
+    /** Add an index to the set. */
+    def +=(index : Array[Byte]): Unit = {
+      this.arrays += index
+      this.set.add(new String(index))
+    }
+
+    /** Checks to see whether an index is contained in the set. */
+    def contains(index: Array[Byte]): Boolean = contains(new String(index))
+
+    /** Checks to see whether an index is contained in the set. */
+    def contains(index: String): Boolean = this.set.contains(index)
   }
-
-  /** Checks to see whether an index is contained in the set. */
-  def contains(index: Array[Byte]): Boolean = contains(new String(index))
-
-  /** Checks to see whether an index is contained in the set. */
-  def contains(index: String): Boolean = this.set.contains(index)
 }
+
 
 /**
   * Output produced by `PickLongIndices` to describe the set of molecular indices picked by the program.
