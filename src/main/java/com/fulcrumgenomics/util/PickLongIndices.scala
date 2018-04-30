@@ -128,16 +128,16 @@ class PickLongIndices
   @arg(flag='o', doc="File to write indices to.")                                      val output: FilePath,
   @arg(          doc="Allow indices that are lexical reverses of one another")         val allowReverses: Boolean = false,
   @arg(          doc="Allow indices that are reverse complements of one another")      val allowReverseComplements: Boolean = false,
-  @arg(          doc="Allow indices that are palindromic (`index == revcomp(index)`).")  val allowPalindromes: Boolean = false,
+  @arg(          doc="Allow indices that are palindromic (`index == revcomp(index)`).") val allowPalindromes: Boolean = false,
   @arg(          doc="Reject indices with a homopolymer of greater than this length.") val maxHomopolymer: Int = 2,
   @arg(flag='g', doc="The minimum GC fraction for an index to be accepted.")           val minGc: Double = 0.2,
   @arg(flag='G', doc="The maximum GC fraction for an index to be accepted.")           val maxGc: Double = 0.8,
   @arg(          doc="File of existing index sequences to integrate, one per line.")   val existing: Option[FilePath] = None,
   @arg(flag='s', doc="Random seed value.")                                             val seed: Int = 1,
   @arg(flag='a', doc="Attempts to pick the next index before quitting.")               val attempts: Int = 1e5.toInt,
-  @arg(          doc="The installation directory for `ViennaRNA`.")                      val viennaRnaDir: Option[DirPath] = None,
+  @arg(          doc="The installation directory for `ViennaRNA`.")                    val viennaRnaDir: Option[DirPath] = None,
   @arg(flag='t', doc="The temperature at which to predict secondary structure.")       val temperature: Double = 25d,
-  @arg(          doc="The lowest acceptable secondary structure `deltaG`.")              val minDeltaG: Double = -10,
+  @arg(          doc="The lowest acceptable secondary structure `deltaG`.")            val minDeltaG: Double = -10,
   @arg(          doc="Adapter sequence(s) into which indices will be inserted.", minElements=0) val adapters: Seq[String] = Seq(),
   @arg(          doc="Any index sequence that appears in an avoid sequence or its reverse complement will be discarded.")
   val avoidSequence: Seq[String] = IlluminaAdapters.all.flatMap(_.both)
@@ -342,11 +342,11 @@ class PickLongIndices
         index                     = new String(ann.index),
         source                    = if (ann.existing) "existing" else "novel",
         min_mismatches            = ann.distances.headOption.map { case (distance, count) => distance }.getOrElse(ann.index.length),
-        indices_at_min_mismatches = ann.distances.headOption.map { case (distance, count) => count }.getOrElse(0L),
+        indices_at_min_mismatches = ann.distances.headOption.map { case (_, count) => count }.getOrElse(0L),
         gc                        = SequenceUtil.calculateGc(ann.index),
         longest_homopolymer       = Sequences.longestHomopolymer(new String(ann.index))._2,
         worst_structure_seq       = structure.map(_.sequence()),
-        worst_structure_dbn           = structure.map(_.structure()),
+        worst_structure_dbn       = structure.map(_.structure()),
         worst_structure_delta_g   = structure.map(_.deltaG)
       )
     }
