@@ -24,6 +24,9 @@
 
 package com.fulcrumgenomics.bam.api
 
+import java.nio.file.Files
+import java.util.concurrent.{Callable, Executors, TimeUnit}
+
 import com.fulcrumgenomics.FgBioDef._
 import com.fulcrumgenomics.testing.{SamBuilder, UnitSpec}
 import com.fulcrumgenomics.util.Io
@@ -79,6 +82,40 @@ class SamIoTest extends UnitSpec {
     val recs = SamSource(tmp).iterator.toSeq
     recs.size shouldBe builder.size
     recs.grouped(2).foreach { case Seq(r1, r2) => r1.refIndex < r2.refIndex || r1.start <= r2.start shouldBe true }
+  }
+
+  it should "support streaming through named pipes" in {
+    // Make a named pipe
+    val pipe = makeTempFile("pipey.", ".mcpiperton")
+    Files.delete(pipe)
+    val mkfifo = new ProcessBuilder("mkfifo", pipe.toAbsolutePath.toString).start()
+    mkfifo.waitFor(2, TimeUnit.SECONDS) shouldBe true
+    mkfifo.exitValue() shouldBe 0
+
+    val builder = new SamBuilder(readLength=100)
+    forloop (from=1, until=5001) { i => builder.addFrag(name=s"q$i", contig=0, start=i) }
+
+    // Figure up an executor to pump data into the pipe
+    val exec = Executors.newSingleThreadExecutor()
+    val future = exec.submit(new Callable[Int] {
+      override def call(): Int = {
+        val out = SamWriter(pipe, header=builder.header)
+        out ++= builder
+        out.close()
+        builder.size
+      }
+    })
+
+    // Then try reading from the pipe
+    val in  = SamSource(pipe)
+    var count = 0
+    in.foreach { rec =>
+      rec.name shouldBe s"q${rec.start}"
+      count += 1
+    }
+
+    in.safelyClose()
+    count shouldBe future.get()
   }
 
   "HeaderHelper" should "provide tidy access to things in the header" in {
