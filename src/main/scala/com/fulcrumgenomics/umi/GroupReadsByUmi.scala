@@ -454,7 +454,7 @@ class GroupReadsByUmi
       .filter(r => (r.paired && r.mapped && r.mateMapped) || { filteredPoorAlignment += 1; false })
       .filter(r => (r.refIndex == r.mateRefIndex)         || { filteredPoorAlignment += 1; false })
       .filter(r => (r.mapq >= this.minMapQ && r.get[Int](SAMTag.MQ.name()).exists(_ >= this.minMapQ)) || { filteredPoorAlignment += 1; false })
-      .filter(r => (r[String](rawTag).indexOf('N') < 0)   || { filteredNsInUmi +=1; false })
+      .filter(r => (r[String](rawTag).indexOf('N') < 0)   || { filteredNsInUmi += 1; false })
       .filter { r =>
         this.minUmiLength.forall { l =>
           r.get[String](this.rawTag).forall { umi =>

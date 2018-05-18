@@ -28,13 +28,13 @@ package com.fulcrumgenomics.umi
 
 import java.nio.file.Files
 
-import com.fulcrumgenomics.bam.api.{SamOrder, SamRecord}
+import com.fulcrumgenomics.bam.api.SamOrder
+import com.fulcrumgenomics.cmdline.FgBioMain.FailureException
 import com.fulcrumgenomics.testing.SamBuilder.{Minus, Plus}
 import com.fulcrumgenomics.testing.{SamBuilder, UnitSpec}
 import com.fulcrumgenomics.umi.GroupReadsByUmi._
 
 import scala.collection.mutable
-import scala.collection.mutable.ListBuffer
 
 /**
   * Tests for the tool that groups reads by position and UMI to attempt to identify
@@ -246,6 +246,17 @@ class GroupReadsByUmiTest extends UnitSpec {
     val tool = new GroupReadsByUmi(input=in, output=out, familySizeHistogram=None, rawTag="RX", assignTag="MI", strategy=Strategy.Paired, edits=1)
 
     an[Exception] should be thrownBy tool.execute()
+  }
+
+  it should "fail when the raw tag is not present" in {
+    val builder = new SamBuilder(readLength=100, sort=Some(SamOrder.Coordinate))
+    builder.addPair(name="a01", start1=100, start2=300, strand1=Plus, strand2=Minus)
+    val in   = builder.toTempFile()
+    val out  = Files.createTempFile("umi_grouped.", ".sam")
+    val exception = intercept[FailureException] {
+      new GroupReadsByUmi(input=in, output=out, familySizeHistogram=None, rawTag="RX", assignTag="MI", strategy=Strategy.Paired, edits=1).execute()
+    }
+    exception.getMessage should include ("was missing the raw UMI tag")
   }
 
   Strategy.values.filterNot(_ == Strategy.Paired).foreach { strategy =>
