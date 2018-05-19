@@ -33,6 +33,7 @@ import com.fulcrumgenomics.cmdline.FgBioMain.FailureException
 import com.fulcrumgenomics.testing.SamBuilder.{Minus, Plus}
 import com.fulcrumgenomics.testing.{SamBuilder, UnitSpec}
 import com.fulcrumgenomics.umi.GroupReadsByUmi._
+import org.scalatest.OptionValues
 
 import scala.collection.mutable
 
@@ -40,7 +41,7 @@ import scala.collection.mutable
   * Tests for the tool that groups reads by position and UMI to attempt to identify
   * read pairs that arose from the same original molecule.
   */
-class GroupReadsByUmiTest extends UnitSpec {
+class GroupReadsByUmiTest extends UnitSpec with OptionValues {
   // Returns a List of the element 't' repeated 'n' times
   private def n[T](t: T, n:Int =1): List[T] = List.tabulate(n)(x => t)
 
@@ -256,7 +257,7 @@ class GroupReadsByUmiTest extends UnitSpec {
     val exception = intercept[FailureException] {
       new GroupReadsByUmi(input=in, output=out, familySizeHistogram=None, rawTag="RX", assignTag="MI", strategy=Strategy.Paired, edits=1).execute()
     }
-    exception.getMessage should include ("was missing the raw UMI tag")
+    exception.message.value should include ("was missing the raw UMI tag")
   }
 
   Strategy.values.filterNot(_ == Strategy.Paired).foreach { strategy =>
