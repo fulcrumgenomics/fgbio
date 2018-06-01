@@ -112,7 +112,8 @@ class FastqSource private(val lines: Iterator[String],
           case i  => (header.substring(1, i), Some(header.substring(i+1)))
         }
 
-        val (name, readNumber) = fullName.endsWith("/1") || fullName.endsWith("/2") match {
+        val suffix = fullName.takeRight(2)
+        val (name, readNumber) = suffix.length == 2 && suffix(0) == '/' && suffix(1).isDigit match {
           case true  => (fullName.dropRight(2), Some(fullName.last.asDigit))
           case false => (fullName, None)
         }

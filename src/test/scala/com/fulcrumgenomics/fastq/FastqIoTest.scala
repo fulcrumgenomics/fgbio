@@ -94,6 +94,21 @@ class FastqIoTest extends UnitSpec {
     an[IllegalStateException] shouldBe thrownBy { FastqSource(fq) }
   }
 
+  it should "handle fastq that has read numbers greater than 2" in {
+    val fq = makeTempFile("some.", ".fq")
+    val out = FastqWriter(fq)
+    Range.inclusive(1, 9).foreach { n =>
+      out += FastqRecord(name=s"q$n", bases="ACGT", quals="####", comment=Some("Y"), readNumber=Some(n))
+    }
+    out.close()
+
+    FastqSource(fq).zipWithIndex.foreach { case (rec, index) =>
+      rec.readNumber shouldBe Some(index+1)
+      rec.comment shouldBe Some("Y")
+      rec.name.contains("/") shouldBe false
+    }
+  }
+
   "FastqWriter" should "write valid records to a file" in {
     val files = Seq(makeTempFile("some", ".fq"), makeTempFile("some", ".fq.gz"))
     files.foreach(fq => {
