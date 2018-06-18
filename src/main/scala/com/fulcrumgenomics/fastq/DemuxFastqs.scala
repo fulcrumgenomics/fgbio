@@ -230,7 +230,6 @@ object DemuxFastqs {
       |
       |The sample section of the sample sheet should contain information related to each sample with the following columns:
       |
-      |```
       |  * Sample_ID:      The sample identifier unique to the sample in the sample sheet.
       |  * Sample_Name:    The sample name.
       |  * Library_ID:     The library Identifier.  The combination sample name and library identifier should be unique
