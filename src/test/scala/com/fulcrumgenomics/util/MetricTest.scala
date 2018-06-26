@@ -43,6 +43,9 @@ private case class TestMetricWithDouble(foo: String, bar: Double, option: Option
   def formatted(x: Any): String = formatValue(x)
 }
 
+private case class TestDoubleMetric(d: Double) extends Metric
+private case class TestFloatMetric(f: Float) extends Metric
+
 /**
   * Tests for Metric.
   */
@@ -243,5 +246,25 @@ class MetricTest extends UnitSpec with OptionValues with TimeLimits {
   it should "be iterable over tuples of names and values" in {
     val testMetric = TestMetric(foo="fooValue", bar=1)
     testMetric.iterator.toSeq should contain theSameElementsInOrderAs Seq(("foo", "fooValue"), ("bar", "1"), ("car", "default"))
+  }
+
+  it should "write and read special values for Double and Float" in {
+    val path = makeTempFile("test.", ".txt")
+
+    Seq(Double.PositiveInfinity, Double.NegativeInfinity, Double.NaN).foreach { d =>
+      val expected = TestDoubleMetric(d=d)
+      Metric.write(path, expected)
+      val actual = Metric.read[TestDoubleMetric](path)
+      actual should have size 1
+      if (d.isNaN) actual.head.d.isNaN shouldBe true else actual.head.d shouldBe d
+    }
+
+    Seq(Float.PositiveInfinity, Float.NegativeInfinity, Float.NaN).foreach { f =>
+      val expected = TestFloatMetric(f=f)
+      Metric.write(path, expected)
+      val actual = Metric.read[TestFloatMetric](path)
+      actual should have size 1
+      if (f.isNaN) actual.head.f.isNaN shouldBe true else actual.head.f shouldBe f
+    }
   }
 }

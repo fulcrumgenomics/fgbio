@@ -200,6 +200,7 @@ trait Metric extends Product with Iterable[(String,String)] {
     case f: Float       => formatValue(f.toDouble)
     case d: Double if d != 0.0 && d < 0.00001 && d > -0.00001 =>
       Metric.SmallDoubleFormat.synchronized { Metric.SmallDoubleFormat.format(d) }
+    case d: Double if d.isNaN || d.isInfinity => d.toString
     case d: Double      => Metric.BigDoubleFormat.synchronized { Metric.BigDoubleFormat.format(d) }
     case other          => other.toString
   }
