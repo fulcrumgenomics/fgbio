@@ -152,13 +152,18 @@ object SampleSheet {
   protected[illumina] val SplitRegex = ",(?=(?:[^\"]*\"[^\"]*\")*[^\"]*$)"
 
   /** Validate that the sample ids are unique, and that the combination of sample name and library id are unique. */
-  private def validateSamples(samples: Seq[Sample]): Unit = {
+  private def validateSamplesFromTheSameLane(samples: Seq[Sample]): Unit = {
+    // All samples should either be from the same lane or have no lane
+    require(samples.flatMap(_.lane).distinct.lengthCompare(1) <= 0)
+    /** We include the lane if present in the sample key for debugging purposes*/
+    def sampleKey(s: Sample): String = s"${s.sampleName} ${s.libraryId}" + s.lane.map(" " + _).getOrElse("")
+
     // Validate some properties for a sample sheet
     require(samples.map(_.sampleId).toSet.size == samples.length,
-      "Sample identifiers were not unique: " + samples.groupBy(_.sampleId).filter(_._2.length > 1).keys.mkString(", "))
-    require(samples.map(s => s"${s.sampleName} ${s.libraryId}").toSet.size == samples.length,
+      "Sample identifiers were not unique: " + samples.groupBy(_.sampleId).filter(_._2.lengthCompare(1) > 0).keys.mkString(", "))
+    require(samples.map(sampleKey).toSet.size == samples.length,
       "Sample name and library identifier combinations were not unique: " +
-        samples.groupBy(s => s"${s.sampleName} ${s.libraryId}").filter(_._2.length > 1).keys.mkString(", "))
+        samples.groupBy(sampleKey).filter(_._2.lengthCompare(1) > 0).keys.mkString(", "))
   }
 }
 
@@ -179,9 +184,9 @@ class SampleSheet(samples: Seq[Sample]) extends Iterable[Sample] {
 
   // Validate samples
   samples.flatMap(_.lane).toSet[Int].toList.foreach { lane =>
-    SampleSheet.validateSamples(samples.filter(_.lane.contains(lane)))
+    SampleSheet.validateSamplesFromTheSameLane(samples.filter(_.lane.contains(lane)))
   }
-  SampleSheet.validateSamples(samples.filter(_.lane.isEmpty))
+  SampleSheet.validateSamplesFromTheSameLane(samples.filter(_.lane.isEmpty))
 
   def iterator: Iterator[Sample] = this.samples.iterator
 

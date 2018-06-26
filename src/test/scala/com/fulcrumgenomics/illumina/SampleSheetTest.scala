@@ -94,25 +94,43 @@ class SampleSheetTest extends FlatSpec with Matchers with OptionValues {
   }
 
   it should "throw an exception if the combination of sample name and library id are not unique" in {
+    // Different sample ID, same sample name and library ID, lane is None
     val sample = Sample(sampleOrdinal=0, sampleId="ID1", sampleName="NAME", libraryId="LIBRARY")
     an[IllegalArgumentException] should be thrownBy new SampleSheet(Seq(sample, sample.copy(sampleId="ID2")))
 
-    // within a lane
+    // Different sample ID, same sample name and library ID, lane is 1
     val sampleForLane = Sample(sampleOrdinal=0, sampleId="ID1", sampleName="NAME", libraryId="LIBRARY", lane=Some(1))
     an[IllegalArgumentException] should be thrownBy new SampleSheet(Seq(sampleForLane, sampleForLane.copy(sampleId="ID2")))
   }
 
   it should "not throw an exception if sample ids are unique and if the combination of sample name and library id are unique" in {
-    val sample = Sample(sampleOrdinal=0, sampleId="IDA", sampleName="NAMEA", libraryId="LIBRARY")
-    new SampleSheet(Seq(sample, sample.copy(sampleId="IDB", sampleName="NAMEB"))).size shouldBe 2
+    // Different sample ID, different sample name, same library ID, no lane
+    {
+      val sample = Sample(sampleOrdinal = 0, sampleId = "IDA", sampleName = "NAMEA", libraryId = "LIBRARYA")
+      new SampleSheet(Seq(sample, sample.copy(sampleId = "IDB", sampleName = "NAMEB"))).size shouldBe 2
+    }
 
-    // within lane
-    val sampleForLane = Sample(sampleOrdinal=0, sampleId="IDA", sampleName="NAMEA", libraryId="LIBRARY", lane=Some(1))
-    new SampleSheet(Seq(sampleForLane, sampleForLane.copy(sampleId="IDB", sampleName="NAMEB"))).size shouldBe 2
+    // Different sample ID, different sample name, same library ID, same lane
+    {
+      val sample = Sample(sampleOrdinal = 0, sampleId = "IDA", sampleName = "NAMEA", libraryId = "LIBRARYA", lane = Some(1))
+      new SampleSheet(Seq(sample, sample.copy(sampleId = "IDB", sampleName = "NAMEB"))).size shouldBe 2
+    }
+
+    // Different sample ID, same sample name, different library ID, same lane
+    {
+      val sample = Sample(sampleOrdinal = 0, sampleId = "IDA", sampleName = "NAMEA", libraryId = "LIBRARYA", lane = Some(1))
+      new SampleSheet(Seq(sample, sample.copy(sampleId = "IDB", libraryId = "LIBRARYB"))).size shouldBe 2
+    }
+
+    // Different sample ID, same sample name, same library ID, different lane
+    {
+      val sample = Sample(sampleOrdinal = 0, sampleId = "IDA", sampleName = "NAMEA", libraryId = "LIBRARY", lane = Some(1))
+      new SampleSheet(Seq(sample, sample.copy(sampleId = "IDB", lane = Some(2)))).size shouldBe 2
+    }
   }
 
   it should "not throw an exception if samples are replicated across lanes" in {
-    val sample1= Sample(sampleOrdinal=0, sampleId="ID1", sampleName="NAME1", libraryId="LIBRARY1", lane=Some(1))
+    val sample1 = Sample(sampleOrdinal=0, sampleId="ID1", sampleName="NAME1", libraryId="LIBRARY1", lane=Some(1))
     val sample2 = Sample(sampleOrdinal=1, sampleId="ID2", sampleName="NAME2", libraryId="LIBRARY2", lane=Some(1))
 
     val samples = Seq(
