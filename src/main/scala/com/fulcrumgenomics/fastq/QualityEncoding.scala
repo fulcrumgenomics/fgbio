@@ -25,10 +25,15 @@
 package com.fulcrumgenomics.fastq
 
 import com.fulcrumgenomics.FgBioDef._
+import com.fulcrumgenomics.alignment.Mode
+import com.fulcrumgenomics.alignment.Mode.findValues
 import com.fulcrumgenomics.commons.util.{NumericCounter, SimpleCounter}
+import enumeratum.EnumEntry
+
+import scala.collection.immutable
 
 /** Trait for describing quality score encoding systems. */
-sealed trait QualityEncoding {
+sealed trait QualityEncoding extends EnumEntry {
   /** The valid numeric range of the quality scores, prior to any ascii encoding. */
   def numericRange: Range
 
@@ -60,7 +65,7 @@ sealed trait QualityEncoding {
   def toStandardAscii(qs: String): String = qs.map(toStandardAscii)
 }
 
-object QualityEncoding {
+object QualityEncoding extends FgBioEnum[QualityEncoding] {
   /** Quality encoding for the legacy Solexa scores used pre version 1.3.
     * Q[Solexa] = −10 * log10[(P/1-P)]
     */
@@ -87,8 +92,10 @@ object QualityEncoding {
     override def toStandardAscii(qs: String): String = qs
   }
 
+  override def values: immutable.IndexedSeq[QualityEncoding] = findValues
+
   /** All possible values of quality encoding. */
-  val all: List[QualityEncoding] = Standard :: Illumina :: Solexa :: Nil
+  val all: List[QualityEncoding] = this.values.toList
 }
 
 /**
