@@ -427,7 +427,8 @@ class GroupReadsByUmi
 )extends FgBioTool with LazyLogging {
   import GroupReadsByUmi._
 
-  require(this.minUmiLength.forall(_ => this.strategy != Strategy.Paired), "Paired strategy cannot be used with --min-umi-length")
+  validate(this.minUmiLength.forall(_ => this.strategy != Strategy.Paired), "Paired strategy cannot be used with --min-umi-length")
+  validate(this.rawTag != this.assignTag, s"The input raw UMI tag '$rawTag' cannot be the same as the output assigned UMI TAG")
 
   private val assigner = strategy.newStrategy(this.edits)
 
@@ -482,8 +483,19 @@ class GroupReadsByUmi
     while (iterator.hasNext) {
       // Take the next set of pairs by position and assign UMIs
       val pairs = takeNextGroup(iterator)
+      // Validate that read pair:
+      // - reads in the pair have the same name
+      // - r1 is the first of pair and r2 is the second of the pair
+      // - if MI is already set, they have the same value (since we sorted by [[ConsensusTags.MolecularId] using
+      //   [[SamOrder.TemplateCoordinate]] order.
       pairs.foreach { case(r1, r2) =>
-        assert(r1.name == r2.name && r1.firstOfPair && r2.secondOfPair, s"Reads out of order @ ${r1.id} + ${r2.id}")
+        assert(r1.name == r2.name && r1.firstOfPair && r2.secondOfPair,
+          s"Reads out of order @ ${r1.id} + ${r2.id}\nAre you sure the raw tag ('$rawTag') is correct?")
+        assert(r1.get(ConsensusTags.MolecularId) == r2.get(ConsensusTags.MolecularId),
+          s"Reads do not have the same MI value @ ${r1.id} + ${r2.id}" +
+          s"\nr1 MI:" + r1.get(ConsensusTags.MolecularId).getOrElse("None") +
+            s"\nr2 MI:" + r2.get(ConsensusTags.MolecularId).getOrElse("None")
+        )
       }
       assignUmiGroups(pairs)
 
