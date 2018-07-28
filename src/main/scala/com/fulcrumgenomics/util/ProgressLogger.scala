@@ -43,4 +43,8 @@ case class ProgressLogger(logger: Logger,
   def record(): Boolean = record(null, -1)
 
   def record(rec: SamRecord): Boolean = record(rec.asSam)
+
+  /** Logs the last record if it wasn't already logged. */
+  def logLast(): Boolean = super.log() // Calls the super's log() method, not log(message: String*)
+
 }
