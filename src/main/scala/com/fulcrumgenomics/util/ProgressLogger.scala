@@ -40,7 +40,7 @@ case class ProgressLogger(logger: Logger,
   }
 
   /** Method to use to record progress when genome location isn't available or relevant. */
-  def record(): Unit = record(null, -1)
+  def record(): Boolean = record(null, -1)
 
-  def record(rec: SamRecord): Unit = record(rec.asSam)
+  def record(rec: SamRecord): Boolean = record(rec.asSam)
 }
