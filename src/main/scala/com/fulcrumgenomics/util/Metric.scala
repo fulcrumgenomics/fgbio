@@ -146,7 +146,11 @@ object Metric {
   /** Writes metrics to the given path.  The first line will be a header with the field names.  Each subsequent
     * line is a single metric.
     */
-  def write[T <: Metric](path: Path, metrics: TraversableOnce[T])(implicit tt: ru.TypeTag[T]): Unit = write(Io.toWriter(path), metrics)
+  def write[T <: Metric](path: Path, metrics: TraversableOnce[T])(implicit tt: ru.TypeTag[T]): Unit = {
+    val writer = Io.toWriter(path)
+    write(writer, metrics)
+    writer.close()
+  }
 
 
   /** Returns a MetricWriter that can be used to stream metrics out to a file. */
