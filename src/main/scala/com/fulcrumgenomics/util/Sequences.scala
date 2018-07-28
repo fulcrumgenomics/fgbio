@@ -27,6 +27,9 @@
 package com.fulcrumgenomics.util
 
 import com.fulcrumgenomics.FgBioDef._
+import htsjdk.samtools.util.SequenceUtil
+
+
 /**
   * Utility methods for working with DNA or RNA sequences
   */
@@ -48,32 +51,67 @@ object Sequences {
     count
   }
 
+  /** Class to store the zero-based offset and length of match for various properties of a sequence.  For example, see
+    * [[longestHomopolymer()]] and [[longestDinuc()]]. */
+  case class OffsetAndLength(offset: Int, length: Int)
+
   /**
-    * Returns the 0-based index of, and the length of, the longest homopolymer in a non-empty string.
-    * If there are multiple homopolymers of the same length the _first_ one is returned.
+    * Returns the offset (0-based) and length of the longest homopolymer in the sequence. In the case
+    * that there are multiple homopolymers of the same length, the earliest one is returned.
     *
-    * @param s a sequence
-    * @return a tuple of (0-based index, length) of the longest homopolymer in the string
+    * @param s a DNA or RNA sequence
+    * @return the offset and length of the longest homopolymer
     */
-  def longestHomopolymer(s: String): (Int, Int) = {
-    val xs = s.toUpperCase
-    val len = xs.length
-    assert(len > 0, "Cannot compute longest homopolymer of a zero length string")
-
-    var foundIndex = 0
-    var foundLength = 1
-
-    forloop (from=0, until=len) { i =>
-      val x = xs.charAt(i)
-      var j = i+1
-      while (j < len && xs.charAt(j) == x) j += 1
-      val newLength = j - i
-      if (newLength > foundLength) {
-        foundIndex = i
-        foundLength = newLength
+  def longestHomopolymer(s: String) : OffsetAndLength = {
+    var (bestStart, bestLength) = (0,0)
+    forloop(0, s.length) { start =>
+      val firstBase = s.charAt(start).toByte
+      var i = start
+      while (i < s.length && basesEqual(firstBase, s.charAt(i))) i += 1
+      val length = i - start
+      if (length > bestLength) {
+        bestStart = start
+        bestLength = length
       }
     }
 
-    (foundIndex, foundLength)
+    OffsetAndLength(bestStart, bestLength)
   }
+
+  /**
+    * Returns the offset (0-based) and length of the longest dinucleotide run in the sequence. In the case
+    * that there are multiple dinucleotide runs of the same length, the earliest one is returned.
+    *
+    * @param s a DNA or RNA sequence
+    * @return the offset and length of the longest dinucleotide sequence
+    */
+  def longestDinuc(s: String) : OffsetAndLength = {
+    var (bestStart, bestLength) = (0,0)
+    forloop(0, s.length-1) { start =>
+      val (b1, b2) = (s.charAt(start).toByte, s.charAt(start+1).toByte)
+      var i = start
+      while (i < s.length-1 && basesEqual(b1, s.charAt(i)) && basesEqual(b2, s.charAt(i+1))) i += 2
+      val length = i - start
+      if (length > bestLength) {
+        bestStart = start
+        bestLength = length
+      }
+    }
+
+    OffsetAndLength(bestStart, bestLength)
+  }
+
+  /** Reverse complements a string of bases. */
+  def revcomp(s: String): String = SequenceUtil.reverseComplement(s)
+
+  /** Returns the sequence that is the complement of the provided sequence. */
+  def complement(s: String): String = {
+    val bs = s.getBytes
+    forloop(from=0, until=bs.length) { i =>  bs(i) = SequenceUtil.complement(bs(i)) }
+    new String(bs)
+  }
+
+  /** Compares if two bases are equal ignoring case.  The bases may be IUPAC codes, but their relationships are not
+    * considered. */
+  @inline private def basesEqual(b1: Byte, b2: Char): Boolean = SequenceUtil.basesEqual(b1, b2.toByte)
 }

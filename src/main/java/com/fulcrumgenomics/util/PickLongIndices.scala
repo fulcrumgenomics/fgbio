@@ -344,7 +344,7 @@ class PickLongIndices
         min_mismatches            = ann.distances.headOption.map { case (distance, count) => distance }.getOrElse(ann.index.length),
         indices_at_min_mismatches = ann.distances.headOption.map { case (_, count) => count }.getOrElse(0L),
         gc                        = SequenceUtil.calculateGc(ann.index),
-        longest_homopolymer       = Sequences.longestHomopolymer(new String(ann.index))._2,
+        longest_homopolymer       = Sequences.longestHomopolymer(new String(ann.index)).length,
         worst_structure_seq       = structure.map(_.sequence()),
         worst_structure_dbn       = structure.map(_.structure()),
         worst_structure_delta_g   = structure.map(_.deltaG)
