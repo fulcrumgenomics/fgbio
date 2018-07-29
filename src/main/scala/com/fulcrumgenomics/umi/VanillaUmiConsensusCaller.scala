@@ -92,6 +92,11 @@ case class VanillaConsensusRead(id: String, bases: Array[Byte], quals: Array[Byt
   }
 }
 
+// FIXME
+trait ConsensusCallerTrait {
+  def consensusCall(reads: Seq[SourceRead]): Option[VanillaConsensusRead]
+}
+
 /** Calls consensus reads by grouping consecutive reads with the same SAM tag.
   *
   * Consecutive reads with the SAM tag are partitioned into fragments, first of pair, and
@@ -103,7 +108,7 @@ class VanillaUmiConsensusCaller(override val readNamePrefix: String,
                                 override val readGroupId: String = "A",
                                 val options: VanillaUmiConsensusCallerOptions = new VanillaUmiConsensusCallerOptions(),
                                 val rejects: Option[SamWriter] = None
-                               ) extends UmiConsensusCaller[VanillaConsensusRead] with LazyLogging {
+                               ) extends UmiConsensusCaller[VanillaConsensusRead] with ConsensusCallerTrait with LazyLogging {
 
   private val NotEnoughReadsQual: PhredScore = 0.toByte // Score output when masking to N due to insufficient input reads
   private val TooLowQualityQual: PhredScore = 2.toByte  // Score output when masking to N due to too low consensus quality
@@ -172,7 +177,7 @@ class VanillaUmiConsensusCaller(override val readNamePrefix: String,
     *
     * The same number of base sequences and quality sequences should be given.
     * */
-  private[umi] def consensusCall(reads: Seq[SourceRead]): Option[VanillaConsensusRead] = {
+  def consensusCall(reads: Seq[SourceRead]): Option[VanillaConsensusRead] = {
     // check to see if we have enough reads.
     if (reads.size < this.options.minReads) {
       None

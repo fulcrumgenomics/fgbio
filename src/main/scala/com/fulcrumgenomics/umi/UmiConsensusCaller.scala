@@ -312,7 +312,7 @@ trait UmiConsensusCaller[C <: SimpleRead] {
     *
     * NOTE: filtered out reads are sent to the [[rejectRecords()]] method and do not need further handling
     */
-  protected[umi] def filterToMostCommonAlignment(recs: Seq[SourceRead]): Seq[SourceRead] = {
+  protected[umi] def filterToMostCommonAlignment(recs: Seq[SourceRead], reject: Boolean = true): Seq[SourceRead] = {
     val groups = new ArrayBuffer[mutable.Buffer[SourceRead]]
     val cigars = new ArrayBuffer[Cigar]
 
@@ -340,7 +340,7 @@ trait UmiConsensusCaller[C <: SimpleRead] {
       val sorted  = groups.sortBy(g => - g.size)
       val keepers = sorted.head
       val rejects = recs.filter(r => !keepers.contains(r))
-      rejectRecords(rejects.flatMap(_.sam), FilterMinorityAlignment)
+      if (reject) rejectRecords(rejects.flatMap(_.sam), FilterMinorityAlignment)
 
       keepers
     }
