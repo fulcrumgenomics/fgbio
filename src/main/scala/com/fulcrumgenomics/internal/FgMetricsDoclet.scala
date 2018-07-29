@@ -33,19 +33,11 @@ import scala.tools.nsc.doc.base.comment._
 import scala.tools.nsc.doc.html.Doclet
 import scala.tools.nsc.doc.model.{DocTemplateEntity}
 
-/** Case class to capture information about a field/column in a metrics class/file. */
-case class ColumnDescription(name: String, typ: String, description: String)
-
-/** Case class to capture information about a metrics class/file. */
-case class MetricDescription(name: String, description: String, columns: Seq[ColumnDescription]) {
-  def summary: String = description.takeWhile(_ != '.').replace('\n', ' ')
-}
-
 /**
   * Custom scaladoc Doclet for rendering the documentation for [[Metric]] classes into
   * MarkDown for display on the fgbio website.
   */
-class FgMetricsDoclet extends Doclet {
+class FgMetricsDoclet extends FgBioDoclet {
   /**
     * Main entry point for the doclet.  Scans for documentation for the metrics classes and
     * renders it into MarkDown.
@@ -92,8 +84,6 @@ class FgMetricsDoclet extends Doclet {
 
   /** Locates the metrics documentation templates and turns them into simple case classes with comments as markdown. */
   private lazy val metrics: Seq[MetricDescription] = {
-    def simplify(name: String) = if (name.indexOf('.') > 0) name.substring(name.lastIndexOf('.') + 1) else name
-
     findMetricsClasses.map{ template =>
       val name        = template.name
       val description = template.comment.map(c => renderBody(c.body)).getOrElse("")
@@ -122,43 +112,4 @@ class FgMetricsDoclet extends Doclet {
       .filter(d => d.isClass && !d.isAbstract)
       .filter(d => d.parentTypes.exists { case (template, typ) => template.toString == classOf[Metric].getName })
   }
-
-  /** Take the body of a scaladoc comment and renders it into MarkDown. */
-  private def renderBody(body: Body): String = {
-    val buffer = new StringBuilder
-
-    // Takes a block element and renders it into MarkDown and writes it into the buffer
-    def renderBlock(block: Block, indent: String): Unit = {
-      block match {
-        case para:  Paragraph      => render(para.text)
-        case dlist: DefinitionList => Unit // TODO
-        case hr:    HorizontalRule => Unit // TODO
-        case olist: OrderedList    => Unit // TODO
-        case title: Title          => buffer.append("#" * title.level).append(" "); render(title.text); buffer.append("\n\n")
-        case ulist: UnorderedList  => Unit // TODO
-      }
-    }
-
-    // Takes an inline element and renders it into MarkDown and writes it into the buffer
-    def render(inline: Inline): Unit = inline match {
-      case bold:    Bold        => buffer.append("**"); render(bold.text); buffer.append("**")
-      case chain:   Chain       => chain.items.foreach(render)
-      case link:    EntityLink  => render(link.title) // TODO: better handling of entity links?
-      case tag:     HtmlTag     => buffer.append(tag.data)
-      case italic:  Italic      => buffer.append("*"); render(italic.text); buffer.append("__")
-      case link:    Link        => buffer.append("[").append(link.target).append("]("); render(link.title); buffer.append(")")
-      case mono:    Monospace   => buffer.append("`"); render(mono.text); buffer.append("`")
-      case sub:     Subscript   =>buffer.append("<sub>"); render(sub.text); buffer.append("</sub>")
-      case summary: Summary     => render(summary.text)
-      case supe:    Superscript => buffer.append("<sup>"); render(supe.text); buffer.append("</sup>")
-      case text:    Text        => buffer.append(text.text)
-      case under:   Underline   => buffer.append("__"); render(under.text); buffer.append("__")
-    }
-
-    body.blocks.foreach(renderBlock(_, ""))
-    buffer.toString()
-  }
-
-  /** Turns the text from a heading into the text to use as a link target. */
-  private def toLinkTarget(heading: String): String = heading.toLowerCase.replace(' ', '-')
 }

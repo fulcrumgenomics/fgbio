@@ -25,20 +25,22 @@
 package com.fulcrumgenomics.umi
 
 /**
-  * Object that encapsulates the various consensus related tags that are added to consensus reads
-  * at both the per-read and per-base level.
+  * Describes the various consensus related tags that are added to consensus reads at both the per-read and per-base level.
   *
-  * Currently only contains tags for single-strand consensus reads, but with a view to using the following
-  * names for consistency if/when we add duplex calling:
-  *     Value                 AB  BA  Final
-  *     ===================== ==  ==  =====
-  *     per-read-depth        aD  bD  cD
-  *     per-read-min-depth    aM  bM  cM
-  *     per-read-error-rate   aE  bE  cE
-  *     per-base-depth        ad  bd  cd
-  *     per-base-error-count  ae  be  ce
-  *     per-base-bases        ac  bc  bases
-  *     per-base-quals        aq  bq  quals
+  * Contains tags for single-strand consensus reads and duplex consensus reads, with a view to having a consistent naming
+  * convention across both.
+  *
+  *
+  *| Value                 | AB  | BA  | Final |
+  *| --------------------- | --- | --- | ----- |
+  *| per-read-depth        | aD  | bD  | cD    |
+  *| per-read-min-depth    | aM  | bM  | cM    |
+  *| per-read-error-rate   | aE  | bE  | cE    |
+  *| per-base-depth        | ad  | bd  | cd    |
+  *| per-base-error-count  | ae  | be  | ce    |
+  *| per-base-bases        | ac  | bc  | bases |
+  *| per-base-quals        | aq  | bq  | quals |
+  *
   * The second letter in the tag is lower case if it is per-base, upper case if it is per-read.
   */
 object ConsensusTags {
@@ -51,6 +53,7 @@ object ConsensusTags {
   /** Post-grouping ID that is file-wide unique per source molecule. */
   val MolecularId = "MI"
 
+  /** Tags that store information per-base in the consensus read. */
   object PerBase {
     /** The per-base number of raw-reads contributing to the consensus (stored as a short[]). */
     val RawReadCount    = "cd" // consensus depth
@@ -86,6 +89,7 @@ object ConsensusTags {
     val AllPerBaseTags = TagsToReverse ++ TagsToReverseComplement
   }
 
+  /** Tags that store information per-consensus-read. */
   object PerRead {
     /** The number of raw reads that contributed to the consensus. I.e. the maximum of the per-base raw-read counts. */
     val RawReadCount    = "cD" // consensus Depth
