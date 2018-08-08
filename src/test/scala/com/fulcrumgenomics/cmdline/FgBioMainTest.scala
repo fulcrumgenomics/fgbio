@@ -24,11 +24,9 @@
 
 package com.fulcrumgenomics.cmdline
 
-import java.io.{ByteArrayOutputStream, PrintStream}
-
+import com.fulcrumgenomics.sopt.util.ParsingUtil
+import com.fulcrumgenomics.sopt.{Sopt, arg, clp}
 import com.fulcrumgenomics.testing.UnitSpec
-import com.fulcrumgenomics.commons.util.Logger
-import com.fulcrumgenomics.sopt.{arg, clp}
 
 /* Tis a silly CLP. */
 @clp(group=ClpGroups.Utilities, description="A test class")
@@ -49,7 +47,7 @@ class TestClp
 }
 
 /** Some basic test for the CLP classes. */
-class ClpTests extends UnitSpec {
+class FgBioMainTest extends UnitSpec {
   "FgBioMain" should "find a CLP and successfully set it up and execute it" in {
     new FgBioMain().makeItSo("TestClp --print-me=hello".split(' ')) shouldBe 0
   }
@@ -63,5 +61,14 @@ class ClpTests extends UnitSpec {
 
   it should "fail and print usage" in {
     new FgBioMain().makeItSo("SomeProgram --with-args=that-dont-exist".split(' ')) should not be 0
+  }
+
+  it should "have valid argument annotations for every tool" in {
+    val tools: Seq[Class[_ <: FgBioTool]] = Sopt.find[FgBioTool](List[String]("com.fulcrumgenomics"))
+    tools shouldBe 'nonEmpty
+    tools.foreach { cl =>
+      val name = cl.getName
+      ParsingUtil.findClpAnnotation(cl).getOrElse(fail(s"$name is missing the clp annotation."))
+    }
   }
 }
