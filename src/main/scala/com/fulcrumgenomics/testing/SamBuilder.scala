@@ -31,6 +31,7 @@ import java.util.concurrent.atomic.AtomicLong
 import com.fulcrumgenomics.FgBioDef._
 import com.fulcrumgenomics.alignment.Cigar
 import com.fulcrumgenomics.bam.api.{SamOrder, SamRecord, SamSource, SamWriter}
+import com.fulcrumgenomics.bam.api.SamRecord.{MissingBases, MissingQuals}
 import com.fulcrumgenomics.testing.SamBuilder._
 import htsjdk.samtools._
 
@@ -121,10 +122,14 @@ class SamBuilder(val readLength: Int=100,
 
     require(bases1.length == quals1.length, "bases1 and quals1 were different lengths.")
     require(bases2.length == quals2.length, "bases2 and quals2 were different lengths.")
+    require((bases1 == MissingBases && quals1 == MissingQuals) || (bases1 != MissingBases && quals1 != MissingQuals),
+      s"bases1 and quals1 must both either be missing or not missing: bases1=$bases1 quals1=$quals1")
+    require((bases2 == MissingBases && quals2 == MissingQuals) || (bases2 != MissingBases && quals2 != MissingQuals),
+      s"bases2 and quals2 must both either be missing or not missing: bases2=$bases2 quals2=$quals2")
     val cig1 = Cigar(cigar1)
     val cig2 = Cigar(cigar2)
-    require(unmapped1 || bases1.length == cig1.lengthOnQuery, "bases1 doesn't agree with cigar on length.")
-    require(unmapped2 || bases2.length == cig2.lengthOnQuery, "bases2 doesn't agree with cigar on length.")
+    require(unmapped1 || bases1 == MissingBases || bases1.length == cig1.lengthOnQuery, "bases1 doesn't agree with cigar on length.")
+    require(unmapped2 || bases2 == MissingBases || bases2.length == cig2.lengthOnQuery, "bases2 doesn't agree with cigar on length.")
 
     val r1            = SamRecord(header)
     r1.pf             = true
@@ -182,7 +187,9 @@ class SamBuilder(val readLength: Int=100,
 
     val cig = Cigar.fromSam(cigar)
     require(bases.length == quals.length, "bases and quals must be same length.")
-    require(unmapped || bases.length == cig.lengthOnQuery, "bases and cigar disagree on length")
+    require((bases == MissingBases && quals == MissingQuals) || (bases != MissingBases && quals != MissingQuals),
+      s"Bases and quals must both either be missing or not missing: bases=$bases quals=$quals")
+    require(unmapped || bases == SamRecord.MissingBases || bases.length == cig.lengthOnQuery, "bases and cigar disagree on length")
 
     val r1            = SamRecord(header)
     r1.pf             = true
