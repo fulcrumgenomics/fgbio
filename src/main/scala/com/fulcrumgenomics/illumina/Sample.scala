@@ -58,7 +58,9 @@ case class Sample(sampleOrdinal: Int,
                   i7IndexBases: Option[String] = None,
                   i5IndexBases: Option[String] = None,
                   extendedAttributes: Map[String, String] = Map.empty) {
-  extendedAttributes.keysIterator.foreach { key => require(key == key.toUpperCase) }
+  extendedAttributes.keysIterator.foreach {
+    key => require(key == key.toUpperCase, s"Extended attribute key is not all upper case: $key")
+  }
 
   import Sample.SampleBarcodeDelimiter
 
