@@ -24,6 +24,9 @@
 
 package com.fulcrumgenomics.bam
 
+import java.io.File
+import java.nio.file.{Files, Paths}
+
 import com.fulcrumgenomics.FgBioDef.{FgBioEnum, FilePath, PathToBam, forloop}
 import com.fulcrumgenomics.alignment.{Alignable, Aligner, Alignment, AlignmentTask, InteractiveAlignmentScorer, Mode => AlignmentMode}
 import com.fulcrumgenomics.bam.api.{SamOrder, SamRecord, SamSource, SamWriter}
@@ -31,6 +34,7 @@ import com.fulcrumgenomics.cmdline.{ClpGroups, FgBioTool}
 import com.fulcrumgenomics.commons.CommonsDef.{javaIteratorAsScalaIterator, unreachable, _}
 import com.fulcrumgenomics.commons.io.PathUtil
 import com.fulcrumgenomics.commons.util.{DelimitedDataParser, LazyLogging, SimpleCounter}
+import com.fulcrumgenomics.sopt.cmdline.ValidationException
 import com.fulcrumgenomics.sopt.{arg, clp}
 import com.fulcrumgenomics.util.{Io, Metric, ProgressLogger}
 import enumeratum.EnumEntry
@@ -112,7 +116,7 @@ import scala.reflect.runtime.{universe => ru}
     |
     |## Speeding Up Alignment
     |
-    |Install [the custom version of ksw](https://github.com/nh13/klib/tree/fgbio_ksw) using `gcc -o ksw -lz ksw.c main.c`
+    |Install [the ksw executable](https://github.com/nh13/ksw) manually or via conda (`conda install -c bioconda ksw`)
     |and supply the path to the `ksw` executable via `--ksw`.
   """)
 class IdentifyPrimers
@@ -132,17 +136,29 @@ class IdentifyPrimers
  @arg(flag='t', doc="The number of threads to use.") val threads: Int = 1,
  @arg(flag='n', doc="Examine the first N templates.") val numTemplates: Option[Int] = None,
  @arg(          doc="Skip full-alignment matching") val skipFullAlignment: Boolean = false,
- @arg(          doc="Path to the custom-ksw from klib (https://github.com/nh13/klib/tree/fgbio_ksw)") val ksw: Option[FilePath] = None,
+ @arg(          doc="Path to the ksw aligner.") val ksw: Option[String] = None,
  @arg(          doc="The maximum number of templates in memory.") val maxTemplatesInRam: Option[Int] = None,
  @arg(          doc="The number of templates to process at a time per thread.") val templatesPerThread: Int = 1000
 ) extends FgBioTool with LazyLogging {
 
   import IdentifyPrimers._
 
+  private val kswExecutable: Option[FilePath] = this.ksw.map(Paths.get(_)).flatMap {
+    case p if Files.exists(p) => Some(p)
+    case name =>
+      val path = System.getenv("PATH")
+      validate(path != null, "PATH environment variable was not found; required for --ksw")
+      val systemPath = path.split(File.pathSeparatorChar).view.map(PathUtil.pathTo(_))
+      systemPath.map(p => p.resolve(name)).find(ex => Files.exists(ex))
+        .orElse {
+          throw new ValidationException(s"Could not find ksw executable ${ksw} in PATH: $path")
+        }
+  }
+
   Io.assertReadable(input)
   Io.assertCanWriteFile(output)
   Io.assertCanWriteFile(metrics)
-  ksw.foreach(Io.assertReadable)
+  kswExecutable.foreach(Io.assertReadable)
 
   validate(maxMismatches >= 0,   "--max-mismatches must be >= 0")
   validate(minMismatchDelta > 0, "--min-mismatch-delta must be > 0")
@@ -181,7 +197,7 @@ class IdentifyPrimers
   }
 
   override def execute(): Unit = {
-    ksw match {
+    this.kswExecutable match {
       case Some(p) => logger.info(s"Using ksw aligner: $p")
       case None    => logger.info("Using the scala aligner.")
     }
@@ -240,8 +256,8 @@ class IdentifyPrimers
           processBatch(templates, out, metricCounter, progress)
         }
     }
-    val rate = numAlignments / progress.getCount.toDouble
-    logger.info(f"Performed $numAlignments%,d full alignments in total ($rate alignments/read).")
+    val rate = numAlignments / progress.getElapsedSeconds.toDouble
+    logger.info(f"Performed $numAlignments%,df full alignments in total ($rate%,.2f alignments/second).")
     logger.info(f"Wrote ${progress.getCount}%,d records.")
 
     in.safelyClose()
@@ -263,7 +279,7 @@ class IdentifyPrimers
 
   /** Creates a new [[InteractiveAlignmentScorer]]. */
   private def newAligner: InteractiveAlignmentScorer[Primer, SamRecordAlignable] = {
-    InteractiveAlignmentScorer(matchScore, mismatchScore, gapOpen, gapExtend, AlignmentMode.Glocal, this.ksw)
+    InteractiveAlignmentScorer(matchScore, mismatchScore, gapOpen, gapExtend, AlignmentMode.Glocal, this.kswExecutable)
   }
 
   // NB: batching alignment inputs to the aligner (i.e. ksw) is empirically faster than given them all or just one at a time.
@@ -355,8 +371,8 @@ class IdentifyPrimers
       numAlignments += aligner.numAligned
       templates.flatMap(_.allReads).foreach { rec =>
         if (progress.record(rec)) {
-          val rate = numAlignments / progress.getCount.toDouble
-          logger.info(f"Performed $numAlignments%,d full alignments so far ($rate alignments/read).")
+          val rate = numAlignments / progress.getElapsedSeconds.toDouble
+          logger.info(f"Performed $numAlignments%,d full alignments so far ($rate%,.2f alignments/second).")
         }
         out += rec
       }

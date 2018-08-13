@@ -232,7 +232,7 @@ private class Ksw[A <: Alignable, B <: Alignable](executable: FilePath,
 {
   /** The ksw process. */
   private val process   = {
-    val mode = this.mode match {
+    val alignmentMode = this.mode match {
       case Mode.Local  => 0
       case Mode.Glocal => 1
       case Mode.Global => 3
@@ -240,12 +240,11 @@ private class Ksw[A <: Alignable, B <: Alignable](executable: FilePath,
 
     val args = Seq(
       executable,
-      "-a", matchScore,
-      "-b", mismatchScore,
-      "-q", gapOpen,
-      "-r", gapExtend,
-      "-t", 0,
-      "-M", mode
+      "-a", math.abs(matchScore),
+      "-b", math.abs(mismatchScore),
+      "-q", math.abs(gapOpen),
+      "-r", math.abs(gapExtend),
+      "-M", alignmentMode
     ).map(_.toString)
     new ProcessBuilder(args:_*).redirectErrorStream(true).start()
   }
