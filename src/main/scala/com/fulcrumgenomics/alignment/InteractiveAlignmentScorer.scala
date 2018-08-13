@@ -205,7 +205,7 @@ object Ksw {
 
       i += 1
     }
-    require(count == 5, s"Could not parse line into three values: $line.")
+    require(count == 5, s"Could not parse line into five values: $line.")
     PartialAlignment(tmp(0), tmp(1), tmp(2), tmp(3), tmp(4))
   }
 }

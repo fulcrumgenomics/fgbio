@@ -26,6 +26,7 @@ package com.fulcrumgenomics.bam
 
 import java.io.File
 import java.nio.file.{Files, Paths}
+import java.util.concurrent.atomic.AtomicLong
 
 import com.fulcrumgenomics.FgBioDef.{FgBioEnum, FilePath, PathToBam, forloop}
 import com.fulcrumgenomics.alignment.{Alignable, Aligner, Alignment, AlignmentTask, InteractiveAlignmentScorer, Mode => AlignmentMode}
@@ -181,7 +182,7 @@ class IdentifyPrimers
     revComp           = true
   )
 
-  var numAlignments: Long = 0L
+  var numAlignments: AtomicLong = new AtomicLong(0)
 
   private val PrimerPairMatchTypeTag: String = "pp"
   private val PrimerInfoForwardTag: String   = "pf"
@@ -226,11 +227,11 @@ class IdentifyPrimers
       case Some(n) => math.max(1, math.min(n, templatesPerThread))
     }
     // The number of templates to batch across threads
-    val majorBatchSize = math.min(batchSize * threads * 4, maxTemplatesInRam.getOrElse(Int.MaxValue))
-    val progress       = ProgressLogger(this.logger, "Read", unit=batchSize*threads*2)
+    val majorBatchSize  = math.min(batchSize * threads * 4, maxTemplatesInRam.getOrElse(Int.MaxValue))
+    val readingProgress = ProgressLogger(this.logger, verb="read", unit=batchSize*threads*2)
 
     // Batch templates to process them in individual threads.
-    if (threads > 1) {
+    val outputIterator: Iterator[Seq[Template]] = if (threads > 1) {
       logger.info(f"Batching $majorBatchSize%,d templates with $batchSize%,d templates per thread.")
 
       import com.fulcrumgenomics.commons.CommonsDef.ParSupport
@@ -238,27 +239,35 @@ class IdentifyPrimers
       // [[List]] or [[Seq]].  A fixed number of records are grouped to reduce memory overhead.
       iterator
         .grouped(majorBatchSize)
-        .foreach { templates =>
+        .flatMap { templates =>
           templates
             .grouped(batchSize)
             .toStream
             .parWith(threads, fifo = false)
-            .foreach { templates =>
-              processBatch(templates, out, metricCounter, progress)
-            }
+            .map { templates => processBatch(templates, metricCounter, readingProgress) }
+            .seq // ensures that the only parallelism is processBatch
+            .toIterator
         }
     }
     else {
       logger.info(f"Batching $batchSize%,d templates.")
       iterator
         .grouped(batchSize)
-        .foreach { templates =>
-          processBatch(templates, out, metricCounter, progress)
-        }
+        .map { templates => processBatch(templates, metricCounter, readingProgress) }
     }
-    val rate = numAlignments / progress.getElapsedSeconds.toDouble
-    logger.info(f"Performed $numAlignments%,df full alignments in total ($rate%,.2f alignments/second).")
-    logger.info(f"Wrote ${progress.getCount}%,d records.")
+
+    // Write the results
+    val writingProgress = ProgressLogger(this.logger, "written", unit=1000000)
+    outputIterator
+      .flatMap(_.flatMap(_.allReads))
+      .foreach { rec =>
+        writingProgress.record(rec)
+        out += rec
+      }
+
+    val rate = numAlignments.get() / readingProgress.getElapsedSeconds.toDouble
+    logger.info(f"Performed ${numAlignments.get()}%,df full alignments in total ($rate%,.2f alignments/second).")
+    logger.info(f"Wrote ${readingProgress.getCount}%,d records.")
 
     in.safelyClose()
     out.close()
@@ -318,9 +327,8 @@ class IdentifyPrimers
 
   /** Processes a single batch of templates. */
   def processBatch(templates: Seq[Template],
-                   out: SamWriter,
                    metricCounter: SimpleCounter[TemplateTypeMetric],
-                   progress: ProgressLogger): Long = {
+                   progress: ProgressLogger): Seq[Template] = {
 
     val counter = new SimpleCounter[TemplateTypeMetric]()
     val aligner  = newAligner
@@ -365,21 +373,18 @@ class IdentifyPrimers
 
     aligner.close()
 
-    // Update the global output and counters
-    logger.debug("Writing output.")
-    out.synchronized {
-      numAlignments += aligner.numAligned
+    numAlignments.addAndGet(aligner.numAligned)
+    metricCounter.synchronized {
+      addToSimpleCounter(src = counter, dest = metricCounter)
       templates.flatMap(_.allReads).foreach { rec =>
         if (progress.record(rec)) {
-          val rate = numAlignments / progress.getElapsedSeconds.toDouble
-          logger.info(f"Performed $numAlignments%,d full alignments so far ($rate%,.2f alignments/second).")
+          val rate = numAlignments.get() / progress.getElapsedSeconds.toDouble
+          logger.info(f"Performed ${numAlignments.get()}%,d full alignments so far ($rate%,.2f alignments/second).")
         }
-        out += rec
       }
-      addToSimpleCounter(src = counter, dest = metricCounter)
     }
 
-    aligner.numAdded
+    templates
   }
 
   // FIXME: add to SimpleCounter in commons
