@@ -269,9 +269,9 @@ final class IdentifyPrimersTest extends UnitSpec with OptionValues with PrimerMa
       }
 
       // relationships across metric groups
-      actual.templates shouldBe actual.total_types
-      actual.total_types   shouldBe (actual.canonical + actual.non_canonical + actual.single + actual.no_match)
-      actual.total_matches  shouldBe (actual.location + actual.mismatch + actual.full_alignment)
+      actual.templates shouldBe actual.total_primer_pair_types
+      actual.total_primer_pair_types   shouldBe (actual.canonical_primer_pair + actual.non_canonical_primer_pair + actual.single_primer_pair + actual.no_primer_pair)
+      actual.match_attempts  shouldBe (actual.location + actual.mismatch + actual.full_alignment + actual.no_match)
 
       val expected = new IdentifyPrimersMetric(
         // template types
@@ -280,16 +280,17 @@ final class IdentifyPrimersTest extends UnitSpec with OptionValues with PrimerMa
         mapped_pairs   = 62,
         unmapped_pairs = 1,
         // primer pair match types
-        total_types    = 63,
-        canonical      = 41,
-        non_canonical  = 1,
-        single         = 4,
-        no_match       = 17,
+        total_primer_pair_types    = 63,
+        canonical_primer_pair      = 41,
+        non_canonical_primer_pair  = 1,
+        single_primer_pair         = 4,
+        no_primer_pair             = 17,
         // primer match types
+        match_attempts = 92,
         location       = 14,
         mismatch       = 68,
         full_alignment = 6,
-        total_matches  = 88
+        no_match       = 4
       )
 
       actual.zip(expected).foreach { case (act, exp) => act shouldBe exp }  // NB: this helps show **which** metric is different

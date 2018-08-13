@@ -501,12 +501,16 @@ object IdentifyPrimers {
       val matchTypeCounter   = new SimpleCounter[PrimerPairMatchType]()
       val primerMatchCounter = new SimpleCounter[Class[_ <: PrimerMatch]]()
 
+      var no_match = 0L
       templateTypesCounter.foreach { case (templateTypes, count) =>
         readTypeCounter.count(templateTypes.template_type, count)
         matchTypeCounter.count(templateTypes.primer_pair_match_type, count)
-        Seq(templateTypes.r1_primer_match_type, templateTypes.r2_primer_match_type).flatten.foreach { primerMatchType =>
+
+        val primer_match_types = Seq(templateTypes.r1_primer_match_type, templateTypes.r2_primer_match_type)
+        primer_match_types.flatten.foreach { primerMatchType =>
           primerMatchCounter.count(primerMatchType, count)
         }
+        no_match += primer_match_types.count(_.isEmpty)
       }
 
       val mapped_pairs       = readTypeCounter.countOf(MappedPair)
@@ -516,23 +520,24 @@ object IdentifyPrimers {
       val unmapped_fragments = readTypeCounter.countOf(UnmappedFragment)
 
       new IdentifyPrimersMetric(
-        templates          = readTypeCounter.total,
-        pairs              = mapped_pairs + unpaired + unmapped_pairs,
-        fragments          = mapped_fragments + unmapped_fragments,
-        mapped_pairs       = mapped_pairs,
-        unpaired           = unpaired,
-        unmapped_pairs     = unmapped_pairs,
-        mapped_fragments   = mapped_fragments,
-        unmapped_fragments = unmapped_fragments,
-        total_types        = matchTypeCounter.total,
-        canonical          = matchTypeCounter.countOf(Canonical),
-        non_canonical      = matchTypeCounter.countOf(NonCanonical),
-        single             = matchTypeCounter.countOf(Single),
-        no_match           = matchTypeCounter.countOf(NoMatch),
-        total_matches      = primerMatchCounter.total,
-        location           = primerMatchCounter.countOf(classOf[LocationBasedPrimerMatch]),
-        mismatch           = primerMatchCounter.countOf(classOf[MismatchAlignmentPrimerMatch]),
-        full_alignment     = primerMatchCounter.countOf(classOf[FullAlignmentPrimerMatch])
+        templates                 = readTypeCounter.total,
+        pairs                     = mapped_pairs + unpaired + unmapped_pairs,
+        fragments                 = mapped_fragments + unmapped_fragments,
+        mapped_pairs              = mapped_pairs,
+        unpaired                  = unpaired,
+        unmapped_pairs            = unmapped_pairs,
+        mapped_fragments          = mapped_fragments,
+        unmapped_fragments        = unmapped_fragments,
+        total_primer_pair_types   = matchTypeCounter.total,
+        canonical_primer_pair     = matchTypeCounter.countOf(Canonical),
+        non_canonical_primer_pair = matchTypeCounter.countOf(NonCanonical),
+        single_primer_pair        = matchTypeCounter.countOf(Single),
+        no_primer_pair            = matchTypeCounter.countOf(NoMatch),
+        match_attempts            = primerMatchCounter.total + no_match,
+        location                  = primerMatchCounter.countOf(classOf[LocationBasedPrimerMatch]),
+        mismatch                  = primerMatchCounter.countOf(classOf[MismatchAlignmentPrimerMatch]),
+        full_alignment            = primerMatchCounter.countOf(classOf[FullAlignmentPrimerMatch]),
+        no_match                  = no_match
       )
     }
   }
@@ -548,34 +553,35 @@ object IdentifyPrimers {
     * @param unmapped_pairs
     * @param mapped_fragments
     * @param unmapped_fragments
-    * @param total_types
-    * @param canonical
-    * @param non_canonical
-    * @param single
+    * @param total_primer_pair_types
+    * @param canonical_primer_pair
+    * @param non_canonical_primer_pair
+    * @param single_primer_pair
     * @param no_match
-    * @param total_matches
+    * @param match_attempts
     * @param location
     * @param mismatch
     * @param full_alignment
     */
   case class IdentifyPrimersMetric
-  ( templates: Long = 0,
-    pairs: Long = 0,
-    fragments: Long = 0,
-    mapped_pairs: Long = 0,
-    unpaired: Long = 0,
-    unmapped_pairs: Long = 0,
-    mapped_fragments: Long = 0,
-    unmapped_fragments: Long = 0,
-    total_types: Long = 0,
-    canonical: Long = 0,
-    non_canonical: Long = 0,
-    single: Long = 0,
-    no_match: Long = 0,
-    total_matches: Long = 0,
-    location: Long = 0,
-    mismatch: Long = 0,
-    full_alignment: Long = 0
+  (templates: Long = 0,
+   pairs: Long = 0,
+   fragments: Long = 0,
+   mapped_pairs: Long = 0,
+   unpaired: Long = 0,
+   unmapped_pairs: Long = 0,
+   mapped_fragments: Long = 0,
+   unmapped_fragments: Long = 0,
+   total_primer_pair_types: Long = 0,
+   canonical_primer_pair: Long = 0,
+   non_canonical_primer_pair: Long = 0,
+   single_primer_pair: Long = 0,
+   no_primer_pair: Long = 0,
+   match_attempts: Long = 0,
+   location: Long = 0,
+   mismatch: Long = 0,
+   full_alignment: Long = 0,
+   no_match: Long = 0
   ) extends Metric
 
   object TemplateTypeMetric {
