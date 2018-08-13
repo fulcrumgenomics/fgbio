@@ -61,6 +61,11 @@ class ReadStructureTest extends UnitSpec with OptionValues {
     compareReadStructures(ReadStructure("10T10B10B10S10M"), Seq(T(0, 10), B(10, 10), B(20, 10), S(30, 10), M(40, 10)))
   }
 
+  it should "allow whitespace within the read structure and strip it" in {
+    ReadStructure("75T 8B 8B 75T").toString shouldBe "75T8B8B75T"
+    ReadStructure(" 75T  8B   8B     75T  ").toString shouldBe "75T8B8B75T"
+  }
+
   it should "allow + only once and only for the last segment of the read" in {
     import SegmentType._
     ReadStructure("5M+T") shouldBe Seq(ReadSegment(0, Some(5), MolecularBarcode), ReadSegment(5, None, Template))

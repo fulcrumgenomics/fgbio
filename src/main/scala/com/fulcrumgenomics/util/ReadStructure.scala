@@ -67,7 +67,8 @@ object ReadStructure {
 
   /** Creates a read structure from a string */
   def apply(readStructure: String): ReadStructure = {
-    ReadStructure(segments=segments(rs=readStructure.trim.toUpperCase), resetOffsets=true)
+    val tidied = readStructure.toUpperCase.filterNot(Character.isWhitespace)
+    ReadStructure(segments=segments(rs=tidied), resetOffsets=true)
   }
 
   /** Creates a sequence of read segments from a string. */
