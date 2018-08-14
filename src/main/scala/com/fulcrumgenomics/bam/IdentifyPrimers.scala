@@ -34,6 +34,7 @@ import com.fulcrumgenomics.bam.api.{SamOrder, SamRecord, SamSource, SamWriter}
 import com.fulcrumgenomics.cmdline.{ClpGroups, FgBioTool}
 import com.fulcrumgenomics.commons.CommonsDef.{javaIteratorAsScalaIterator, unreachable, _}
 import com.fulcrumgenomics.commons.io.PathUtil
+import com.fulcrumgenomics.commons.reflect.ReflectionUtil
 import com.fulcrumgenomics.commons.util.{DelimitedDataParser, LazyLogging, SimpleCounter}
 import com.fulcrumgenomics.sopt.cmdline.ValidationException
 import com.fulcrumgenomics.sopt.{arg, clp}
@@ -42,6 +43,8 @@ import enumeratum.EnumEntry
 import htsjdk.samtools.util.{Interval, Locatable, OverlapDetector, SequenceUtil}
 
 import scala.collection.immutable
+import scala.reflect._
+import scala.reflect.runtime.universe._
 import scala.reflect.runtime.{universe => ru}
 
 @clp(group=ClpGroups.SamOrBam, description=
@@ -266,7 +269,7 @@ class IdentifyPrimers
       }
 
     val rate = numAlignments.get() / readingProgress.getElapsedSeconds.toDouble
-    logger.info(f"Performed ${numAlignments.get()}%,df full alignments in total ($rate%,.2f alignments/second).")
+    logger.info(f"Performed ${numAlignments.get()}%,d full alignments in total ($rate%,.2f alignments/second).")
     logger.info(f"Wrote ${readingProgress.getCount}%,d records.")
 
     in.safelyClose()
@@ -499,7 +502,7 @@ object IdentifyPrimers {
 
       val readTypeCounter    = new SimpleCounter[TemplateType]()
       val matchTypeCounter   = new SimpleCounter[PrimerPairMatchType]()
-      val primerMatchCounter = new SimpleCounter[Class[_ <: PrimerMatch]]()
+      val primerMatchCounter = new SimpleCounter[String]()
 
       var no_match = 0L
       templateTypesCounter.foreach { case (templateTypes, count) =>
@@ -507,7 +510,7 @@ object IdentifyPrimers {
         matchTypeCounter.count(templateTypes.primer_pair_match_type, count)
 
         val primer_match_types = Seq(templateTypes.r1_primer_match_type, templateTypes.r2_primer_match_type)
-        primer_match_types.flatten.foreach { primerMatchType =>
+        primer_match_types.foreach { primerMatchType =>
           primerMatchCounter.count(primerMatchType, count)
         }
         no_match += primer_match_types.count(_.isEmpty)
@@ -518,6 +521,7 @@ object IdentifyPrimers {
       val unmapped_pairs     = readTypeCounter.countOf(UnmappedPair)
       val mapped_fragments   = readTypeCounter.countOf(MappedFragment)
       val unmapped_fragments = readTypeCounter.countOf(UnmappedFragment)
+
 
       new IdentifyPrimersMetric(
         templates                 = readTypeCounter.total,
@@ -533,10 +537,10 @@ object IdentifyPrimers {
         non_canonical_primer_pair = matchTypeCounter.countOf(NonCanonical),
         single_primer_pair        = matchTypeCounter.countOf(Single),
         no_primer_pair            = matchTypeCounter.countOf(NoMatch),
-        match_attempts            = primerMatchCounter.total + no_match,
-        location                  = primerMatchCounter.countOf(classOf[LocationBasedPrimerMatch]),
-        mismatch                  = primerMatchCounter.countOf(classOf[MismatchAlignmentPrimerMatch]),
-        full_alignment            = primerMatchCounter.countOf(classOf[FullAlignmentPrimerMatch]),
+        match_attempts            = primerMatchCounter.total,
+        location                  = primerMatchCounter.countOf(PrimerMatch.toName[LocationBasedPrimerMatch]),
+        mismatch                  = primerMatchCounter.countOf(PrimerMatch.toName[MismatchAlignmentPrimerMatch]),
+        full_alignment            = primerMatchCounter.countOf(PrimerMatch.toName[FullAlignmentPrimerMatch]),
         no_match                  = no_match
       )
     }
@@ -585,18 +589,21 @@ object IdentifyPrimers {
   ) extends Metric
 
   object TemplateTypeMetric {
+
     def apply(readType: TemplateType,
               primerPairMatchType: PrimerPairMatchType,
               r1PrimerMatchType: Option[PrimerMatch],
               r2PrimerMatchType: Option[PrimerMatch]
              ): TemplateTypeMetric = {
       TemplateTypeMetric(
-        template_type              = readType,
+        template_type          = readType,
         primer_pair_match_type = primerPairMatchType,
-        r1_primer_match_type   = r1PrimerMatchType.map(_.getClass),
-        r2_primer_match_type   = r2PrimerMatchType.map(_.getClass)
+        r1_primer_match_type   = toName(r1PrimerMatchType),
+        r2_primer_match_type   = toName(r2PrimerMatchType)
       )
     }
+
+    private def toName[T <: PrimerMatch](primerMatch: Option[T]): String = primerMatch.map(_.toName).getOrElse(PrimerMatch.NoPrimerMatchName)
   }
 
 
@@ -613,8 +620,8 @@ object IdentifyPrimers {
   case class TemplateTypeMetric
   (template_type: TemplateType,
    primer_pair_match_type: PrimerPairMatchType,
-   r1_primer_match_type: Option[Class[_ <: PrimerMatch]],
-   r2_primer_match_type: Option[Class[_ <: PrimerMatch]],
+   r1_primer_match_type: String,
+   r2_primer_match_type: String,
    count: Long = 0,
    frac: Double = 0d
   ) extends Metric
@@ -645,7 +652,15 @@ object IdentifyPrimers {
   }
 
   object PrimerMatch {
-    val InfoDelimiter: String = ","
+    val InfoDelimiter: String     = ","
+    val NoPrimerMatchName: String = "NoPrimerMatch"
+
+    def toName[T <: PrimerMatch : TypeTag]: String =  typeOf[T] match {
+      case t if t =:= typeOf[LocationBasedPrimerMatch]     => "Location"
+      case t if t =:= typeOf[MismatchAlignmentPrimerMatch] => "Mismatch"
+      case t if t =:= typeOf[FullAlignmentPrimerMatch]     => "Alignment"
+      case _ => unreachable(s"Unknown primer match type: ${this.getClass.getSimpleName}.")
+    }
   }
 
   // TODO: document
@@ -659,23 +674,19 @@ object IdentifyPrimers {
         primer.ref_name + ":" + primer.start + "-" + primer.end,
         if (forward) "+" else "-",
         0, // TODO: offset from the 5' end,
-        this.toName
+        this.toName,
       ).map(_.toString)
       (baseInfo ++ this._info(rec, forward)).mkString(PrimerMatch.InfoDelimiter)
     }
 
     protected def _info(rec: SamRecord, forward: Boolean): Seq[Any]
 
-    private def toName: String = this match {
-      case _: LocationBasedPrimerMatch     => "location"
-      case _: MismatchAlignmentPrimerMatch => "mismatch"
-      case _: FullAlignmentPrimerMatch     => "alignment"
-      case _                               => unreachable(s"Unknown primer match type: ${this.getClass.getSimpleName}.")
-    }
+    def toName: String
   }
   // TODO: document
   case class LocationBasedPrimerMatch(primer: Primer, numMismatches: Int) extends PrimerMatch {
     protected def _info(rec: SamRecord, forward: Boolean): Seq[Any] = Seq(numMismatches)
+    def toName: String = PrimerMatch.toName[LocationBasedPrimerMatch]
   }
 
   // TODO: document
@@ -684,11 +695,14 @@ object IdentifyPrimers {
       val nextOrNa = if (nextNumMismatches == Int.MaxValue) "na" else nextNumMismatches
       Seq(numMismatches, nextOrNa)
     }
+    def toName: String = PrimerMatch.toName[MismatchAlignmentPrimerMatch]
   }
 
   // TODO: document
   case class FullAlignmentPrimerMatch(primer: Primer, score: Int, secondBestScore: Int) extends PrimerMatch {
     protected def _info(rec: SamRecord, forward: Boolean): Seq[Any] = Seq(score, secondBestScore)
+    def toName: String = PrimerMatch.toName[FullAlignmentPrimerMatch]
+
   }
 
   object Primer {
