@@ -41,6 +41,7 @@ import com.fulcrumgenomics.sopt.cmdline.ValidationException
 import com.fulcrumgenomics.sopt.{arg, clp}
 import com.fulcrumgenomics.util.{Io, Metric, ProgressLogger}
 
+
 @clp(group=ClpGroups.SamOrBam, description=
   """
     |
@@ -134,7 +135,8 @@ class IdentifyPrimers
  @arg(flag='t', doc="The number of threads to use.") val threads: Int = 1,
  @arg(          doc="Skip gapped-alignment matching") val skipGappedAlignment: Boolean = false,
  @arg(          doc="Path to the ksw aligner.") val ksw: Option[String] = None,
- @arg(          doc="Skip gapped alignment if no kmer of this length is common between any primer and a given read.") val kmerLength: Option[Int] = None,
+ @arg(flag='k', doc="Skip ungapped alignment if no kmer of this length is common between any primer and a given read.") val ungappedKmerLength: Option[Int] = None,
+ @arg(flag='K', doc="Skip gapped alignment if no kmer of this length is common between any primer and a given read.") val gappedKmerLength: Option[Int] = None,
  @arg(          doc="Allow multiple primers on the same strand to have the same `pair_id`.") val multiPrimerPairs: Boolean = false
 ) extends FgBioTool with LazyLogging {
 
@@ -179,12 +181,12 @@ class IdentifyPrimers
   private val requireSameStrand: Boolean = false // FIXME: command line option
 
   private val (locationBasedMatcher, ungappedBasedMatcher, gappedBasedMatcher) = {
-    val primers  = Primer.read(this.primerPairs, multiPrimerPairs = multiPrimerPairs)
+    val primers  = Primer.read(this.primerPairs, multiPrimerPairs = multiPrimerPairs).toIndexedSeq
     val location = new LocationBasedPrimerMatcher(primers.filter(_.positiveStrand), slop, requireSameStrand, maxMismatchRate)
-    val ungapped = new UngappedAlignmentBasedPrimerMatcher(primers, slop, requireSameStrand, maxMismatchRate)
+    val ungapped = new UngappedAlignmentBasedPrimerMatcher(primers, slop, requireSameStrand, maxMismatchRate, ungappedKmerLength)
     val gapped   = {
       val aligner: Aligner = Aligner(matchScore = matchScore, mismatchScore = mismatchScore, gapOpen = gapOpen, gapExtend = gapExtend, mode = AlignmentMode.Glocal)
-      new GappedAlignmentBasedPrimerMatcher(primers, slop, requireSameStrand, aligner, minAlignmentScoreRate, kmerLength)
+      new GappedAlignmentBasedPrimerMatcher(primers, slop, requireSameStrand, aligner, minAlignmentScoreRate, gappedKmerLength)
     }
     (location, ungapped, gapped)
   }
@@ -216,13 +218,15 @@ class IdentifyPrimers
     val iterator: Iterator[Template] = Bams.templateIterator(in)
 
     // NB: Add comments explaining tags in the output writer
-    val out: SamWriter = {
+    val (out: SamWriter, programGroupId: Option[String]) = {
       val header = {
         val h = in.header.clone()
         comments.foreach { comment => h.addComment(comment) }
         h
       }
-      SamWriter(path = output, header = header, sort = SamOrder(in.header))
+      val pgId   = this.toolInfo.map { info => info.applyTo(header) }
+      val writer = SamWriter(path = output, header = header, sort = SamOrder(in.header))
+      (writer, pgId)
     }
 
     // We take the input records, and batch them into `majorBatchSize` number of records.  For each major-batch, we
@@ -266,6 +270,7 @@ class IdentifyPrimers
     outputIterator
       .flatMap(_.flatMap(_.allReads))
       .foreach { rec =>
+        programGroupId.foreach { pgId => rec("PG") = pgId }
         writingProgress.record(rec)
         out += rec
       }
@@ -344,8 +349,8 @@ class IdentifyPrimers
     val templateMatchOptions = templates.toIterator.map { template =>
 
       // match based on location, then ungapped alignment, and if no match was found, then return the alignment tasks
-      val r1MatchOrTasks = template.r2.map { r => toPrimerMatchOrAlignmentTasks(r) }
-      val r2MatchOrTasks = template.r1.map { r => toPrimerMatchOrAlignmentTasks(r) }
+      val r1MatchOrTasks = template.r1.map { r => toPrimerMatchOrAlignmentTasks(r) }
+      val r2MatchOrTasks = template.r2.map { r => toPrimerMatchOrAlignmentTasks(r) }
 
       // add any alignment tasks
       Seq(r1MatchOrTasks, r2MatchOrTasks).flatten.foreach {

@@ -54,7 +54,6 @@ private[identifyprimers] object TemplateTypeMetric {
       metric.copy(count = count, frac = count / total)
     }.toSeq.sortBy(-_.count)
   }
-
 }
 
 
