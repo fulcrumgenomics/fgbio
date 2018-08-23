@@ -48,32 +48,32 @@ private[identifyprimers] object PrimerMatch {
 private[identifyprimers] sealed trait PrimerMatch {
   def primer: Primer
 
-  final def info(rec: SamRecord, forward: Boolean): String = {
+  final def info(rec: SamRecord): String = {
     val baseInfo = Seq(
       primer.pair_id,
       primer.primer_id,
       primer.ref_name + ":" + primer.start + "-" + primer.end,
-      if (forward) "+" else "-",
+      if (primer.positiveStrand) "+" else "-",
       0, // TODO: offset from the 5' end,
       this.toName,
     ).map(_.toString)
-    (baseInfo ++ this._info(rec, forward)).mkString(PrimerMatch.InfoDelimiter)
+    (baseInfo ++ this._info(rec)).mkString(PrimerMatch.InfoDelimiter)
   }
 
-  protected def _info(rec: SamRecord, forward: Boolean): Seq[Any]
+  protected def _info(rec: SamRecord): Seq[Any]
 
   def toName: String
 }
 
 // TODO: document
 private[identifyprimers] case class LocationBasedPrimerMatch(primer: Primer, numMismatches: Int) extends PrimerMatch {
-  protected def _info(rec: SamRecord, forward: Boolean): Seq[Any] = Seq(numMismatches)
+  protected def _info(rec: SamRecord): Seq[Any] = Seq(numMismatches)
   def toName: String = PrimerMatch.toName[LocationBasedPrimerMatch]
 }
 
 // TODO: document
 private[identifyprimers] case class UngappedAlignmentPrimerMatch(primer: Primer, numMismatches: Int, nextNumMismatches: Int) extends PrimerMatch {
-  protected def _info(rec: SamRecord, forward: Boolean): Seq[Any] = {
+  protected def _info(rec: SamRecord): Seq[Any] = {
     val nextOrNa = if (nextNumMismatches == Int.MaxValue) "na" else nextNumMismatches
     Seq(numMismatches, nextOrNa)
   }
@@ -82,6 +82,6 @@ private[identifyprimers] case class UngappedAlignmentPrimerMatch(primer: Primer,
 
 // TODO: document
 private[identifyprimers] case class GappedAlignmentPrimerMatch(primer: Primer, score: Int, secondBestScore: Int) extends PrimerMatch {
-  protected def _info(rec: SamRecord, forward: Boolean): Seq[Any] = Seq(score, secondBestScore)
+  protected def _info(rec: SamRecord): Seq[Any] = Seq(score, secondBestScore)
   def toName: String = PrimerMatch.toName[GappedAlignmentPrimerMatch]
 }

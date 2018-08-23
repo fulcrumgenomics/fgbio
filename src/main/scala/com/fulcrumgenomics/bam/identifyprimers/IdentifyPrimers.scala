@@ -182,7 +182,7 @@ class IdentifyPrimers
 
   private val (locationBasedMatcher, ungappedBasedMatcher, gappedBasedMatcher) = {
     val primers  = Primer.read(this.primerPairs, multiPrimerPairs = multiPrimerPairs).toIndexedSeq
-    val location = new LocationBasedPrimerMatcher(primers.filter(_.positiveStrand), slop, requireSameStrand, maxMismatchRate)
+    val location = new LocationBasedPrimerMatcher(primers, slop, requireSameStrand, maxMismatchRate)
     val ungapped = new UngappedAlignmentBasedPrimerMatcher(primers, slop, requireSameStrand, maxMismatchRate, ungappedKmerLength)
     val gapped   = {
       val aligner: Aligner = Aligner(matchScore = matchScore, mismatchScore = mismatchScore, gapOpen = gapOpen, gapExtend = gapExtend, mode = AlignmentMode.Glocal)
@@ -425,6 +425,8 @@ class IdentifyPrimers
     throw new NotImplementedError("Three-prime matching currently not supported, but is planned.")
   }
 
+  private case class PrimerMatches(rec: SamRecord, fivePrimeMatch: Option[PrimerMatch], threePrimeMatch: Option[PrimerMatch], positiveStrand: Boolean)
+
   /** Adds tags to the records based on the primer matching results. */
   private def formatPair(r1: SamRecord,
                          r2: SamRecord,
@@ -434,24 +436,46 @@ class IdentifyPrimers
                          r2ThreePrimeMatch: Option[PrimerMatch]): PrimerPairMatchType = {
     import PrimerPairMatchType._
 
-    // Set the primer pair match type
-    val matchType: PrimerPairMatchType = (r1FivePrimeMatch, r2FivePrimeMatch) match {
-      case (Some(fwd), Some(rev))            =>
-        if (fwd.primer.pair_id == rev.primer.pair_id && fwd.primer.positiveStrand == rev.primer.negativeStrand) Canonical else NonCanonical
-      case (Some(_), None) | (None, Some(_)) => Single
-      case _                                 => NoMatch
-    }
-    r1(PrimerPairMatchTypeTag) = matchType.toString
+    // FIXME
+    /*
+    println("r1: " + r1.asSam.getSAMString.trim)
+    println("r2: " + r2.asSam.getSAMString.trim)
+    println("r1 5': " + r1FivePrimeMatch.toString)
+    println("r2 5': " + r2FivePrimeMatch.toString)
+    */
 
-    // Set the per-primer/per-read match metadata
-    val forwardInfo = r1FivePrimeMatch.map(_.info(r1, forward = true)).getOrElse(NoPrimerMatchInfo)
-    val reverseInfo = r2FivePrimeMatch.map(_.info(r2, forward = false)).getOrElse(NoPrimerMatchInfo)
+    // Get which rec is on the forward strand, and which is reverse.  First looks at the primer match for r1, then the
+    // primer match for r2, otherwise r1 is forward.
+    val (forwardPrimerMatch, reversePrimerMatch) = {
+      val r1PrimerMatch = PrimerMatches(r1, r1FivePrimeMatch, r1ThreePrimeMatch, positiveStrand=true)
+      val r2PrimerMatch = PrimerMatches(r2, r2FivePrimeMatch, r2ThreePrimeMatch, positiveStrand=false)
+      (r1FivePrimeMatch, r2FivePrimeMatch) match {
+        case (Some(m), _)    =>
+          if (m.primer.positiveStrand) (r1PrimerMatch, r2PrimerMatch) else  (r2PrimerMatch.copy(positiveStrand=true), r1PrimerMatch.copy(positiveStrand=false))
+        case (None, Some(m)) =>
+          if (m.primer.negativeStrand) (r1PrimerMatch, r2PrimerMatch) else  (r2PrimerMatch.copy(positiveStrand=true), r1PrimerMatch.copy(positiveStrand=false))
+        case _               => (r1PrimerMatch, r2PrimerMatch)
+      }
+    }
+    require(forwardPrimerMatch.positiveStrand && !reversePrimerMatch.positiveStrand)
+
+    // Set the primer pair match type
+    val matchType: PrimerPairMatchType = (forwardPrimerMatch.fivePrimeMatch, reversePrimerMatch.fivePrimeMatch) match {
+      case (Some(fwd), Some(rev)) if fwd.primer.pair_id != rev.primer.pair_id               => NonCanonical // not from the same primer pair
+      case (Some(fwd), Some(rev)) if fwd.primer.positiveStrand == rev.primer.positiveStrand => Dimer        // same primer pair, but same primer!
+      case (Some(_),   Some(_))                                                             => Canonical    // same primer pair, different primers
+      case (Some(_), None) | (None, Some(_))                                                => Single       // only one primer match
+      case _                                                                                => NoMatch      // no primer matches
+    }
+    Seq(r1, r2).foreach { rec => rec(PrimerPairMatchTypeTag) = matchType.toString }
+
+    // Set the primer match info to place in the forward/reverse primer match tags
+    val forwardInfo = forwardPrimerMatch.fivePrimeMatch.map(_.info(forwardPrimerMatch.rec)).getOrElse(NoPrimerMatchInfo)
+    val reverseInfo = reversePrimerMatch.fivePrimeMatch.map(_.info(reversePrimerMatch.rec)).getOrElse(NoPrimerMatchInfo)
     Seq(r1, r2).foreach { rec =>
       rec(PrimerInfoForwardTag) = forwardInfo
       rec(PrimerInfoReverseTag) = reverseInfo
     }
-
-    // TODO: three prime
 
     matchType
   }
@@ -459,7 +483,7 @@ class IdentifyPrimers
   /** Adds tags to the record based on the primer matching results. */
   private def formatFragment(frag: SamRecord, fragFivePrimeMatch: Option[PrimerMatch], fragThreePrimeMatch: Option[PrimerMatch]): PrimerPairMatchType = {
     import PrimerPairMatchType._
-    val forwardInfo = fragFivePrimeMatch.map(_.info(frag, forward = true)).getOrElse(NoPrimerMatchInfo)
+    val forwardInfo = fragFivePrimeMatch.map(_.info(frag)).getOrElse(NoPrimerMatchInfo)
 
     val matchType: PrimerPairMatchType = fragFivePrimeMatch match {
       case Some(_) => Single
