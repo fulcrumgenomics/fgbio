@@ -46,8 +46,11 @@ private[identifyprimers] sealed trait _PrimerMatcher {
   def find(rec: SamRecord): Option[PrimerMatch]
 }
 
-private[identifyprimers] sealed trait _PrimerMatcherWithCache extends _PrimerMatcher {
+/** A trait that can be mixed into [[_PrimerMatcher]]s that provides a method [[_PrimerMatcherWithKmerFilter.getPrimersForAlignmentTasks()]]
+  * that returns only primers that share a kmer with the corresponding bases in the read. */
+private[identifyprimers] sealed trait _PrimerMatcherWithKmerFilter extends _PrimerMatcher {
 
+  /** The maximum primer length across all primers.  This is the width of the search window in the read. */
   private val maxPrimerLength: Int = this.primers.map(_.length).max
 
   /** A map from a kmer to the list of primers that contain that kmer. */
@@ -56,9 +59,12 @@ private[identifyprimers] sealed trait _PrimerMatcherWithCache extends _PrimerMat
     case Some(len) =>
       val kmers = new mutable.TreeMap[ByteBuffer,mutable.HashSet[Primer]]()
       primers.foreach { primer =>
+        // create all possible kmers from the primer
         val until = primer.length - len
         forloop (from = 0, until = until) { from =>
+          // extract the kmer
           val kmer = ByteBuffer.wrap(primer.bases.slice(from = from, until = from + len))
+          // add the primer to that the list for that kmer if the kmer is already in the map, otherwise, create a new entry
           kmers.get(kmer) match {
             case Some(b) => b.add(primer)
             case None    =>
@@ -69,33 +75,16 @@ private[identifyprimers] sealed trait _PrimerMatcherWithCache extends _PrimerMat
           }
         }
       }
+      // convert to an immutable interface
       kmers.iterator.map { case (bytes, _primers) => bytes -> _primers.toSet }.toMap
   }
 
+  /** The kmer-length for the cache. */
   def kmerLength: Option[Int]
 
+  /** Returns true to require that returned primers should match the same mapped strand as the read, false otherwise.
+    * Unmapped reads are not considered in this requirement. */
   def requireSameStrand: Boolean
-
-  /** Creates a list of [[AlignmentTask]]s. */
-  def toAlignmentTasks(rec: SamRecord): Seq[AlignmentTask[Primer, SamRecordAlignable]] = {
-    // NB: we are aligning the full query to a sub-sequence of the record
-    val samRecordAlignable = scala.collection.mutable.HashMap[(Int,Int), SamRecordAlignable]()
-    val primersToCheck = getPrimersForAlignmentTasks(rec)
-    primersToCheck.map { primer =>
-      if (primer.positiveStrand) {
-        val targetOffset = 0
-        val targetLength = math.min(primer.sequence.length + slop, rec.length) - targetOffset
-        val target       = samRecordAlignable.getOrElseUpdate((targetOffset, targetLength), SamRecordAlignable(rec, targetOffset, targetLength))
-        AlignmentTask(query = primer, target = target)
-      }
-      else {
-        val targetOffset = math.max(0, rec.length - primer.length - slop)
-        val targetLength = rec.length - targetOffset
-        val target       = samRecordAlignable.getOrElseUpdate((targetOffset, targetLength), SamRecordAlignable(rec, targetOffset, targetLength))
-        AlignmentTask(query=primer, target=target)
-      }
-    }
-  }
 
   /** Finds all [[Primer]]s containing any kmer from the 5' end of the read. */
   protected def getPrimersForAlignmentTasks(rec: SamRecord): Seq[Primer] = {
@@ -104,12 +93,15 @@ private[identifyprimers] sealed trait _PrimerMatcherWithCache extends _PrimerMat
       case Some(length) =>
         val _primers = mutable.HashSet[Primer]()
         if (rec.unmapped) {
+          // We don't know if the read maps to the forward or reverse genomic strand, so we need to check both the
+          // sequence and it's reverse complement for kmer matches.  We need to ensure that for the primers matching the
+          // reverse complement, we also reverse complement the primers bases for ungapped/gapped alignment.
           val forward = rec.bases
-          val reverse = SequenceUtil.reverseComplement(rec.basesString).getBytes
-          val both    = Seq(forward, reverse)
-          both.foreach { bases =>
-            getPrimersFrom(bases = bases, matchStart = true, matchEnd = true, kmerLength = length).foreach(_primers.add)
-          }
+          val revcomp = SequenceUtil.reverseComplement(rec.basesString).getBytes
+          getPrimersFrom(bases = forward, matchStart = true, kmerLength = length).foreach(_primers.add)
+          getPrimersFrom(bases = revcomp, matchStart = false, kmerLength = length)
+            .map { primer => primer.copy(reverseComplementBases=true) }
+            .foreach(_primers.add)
         }
         else {
           // Reads mapped to the positive strand should match primers at the start of the read, while negative strand
@@ -118,7 +110,6 @@ private[identifyprimers] sealed trait _PrimerMatcherWithCache extends _PrimerMat
           val primers = getPrimersFrom(
             bases      = rec.bases,
             matchStart = rec.positiveStrand,
-            matchEnd   = rec.negativeStrand,
             kmerLength = length
           )
           (if (requireSameStrand) primers.filter(_.positiveStrand == rec.positiveStrand) else primers).foreach(_primers.add)
@@ -139,34 +130,35 @@ private[identifyprimers] sealed trait _PrimerMatcherWithCache extends _PrimerMat
   /** Finds all primers that share a kmer with of the bases.
     *
     * @param bases the read bases
-    * @param matchStart true if we are to search the start of the read, false otherwise
-    * @param matchEnd true if we are to search the end of hte read, false otherwise
+    * @param matchStart true if we are to search the start of the read, false to search the end
     * @param kmerLength the kmer length
     */
-  private def getPrimersFrom(bases: Array[Byte], matchStart: Boolean, matchEnd: Boolean, kmerLength: Int): Seq[Primer] = {
-    val startPrimers = if (matchStart) {
+  private def getPrimersFrom(bases: Array[Byte], matchStart: Boolean, kmerLength: Int): Seq[Primer] = {
+    if (matchStart) {
       val start = 0
       val end   = math.min(maxPrimerLength, bases.length) - kmerLength
       getPrimersFrom(bases, start, end, kmerLength)
-    } else Seq.empty
-    val endPrimers = if (matchEnd) {
+    }
+    else {
       val start = math.max(0, bases.length - maxPrimerLength)
       val end   = math.max(0, bases.length - kmerLength)
       getPrimersFrom(bases, start, end, kmerLength)
-    } else Seq.empty
-    startPrimers ++ endPrimers
+    }
   }
 }
 
-trait _MismatchAlign {
+/** A little trait to facilitate ungapped alignment. */
+private trait UngappedAlignment {
   /** The maximum per-base mismatch rate allowed for a [[PrimerMatch]]. */
   def maxMismatchRate: Double
 
   /** Returns a mismatch-based alignment match, otherwise None */
-  protected[identifyprimers] def mismatchAlign(bases: Array[Byte], primer: Primer): Option[UngappedAlignmentPrimerMatch] = {
-    val maxMismatches = math.min(bases.length, primer.length) * this.maxMismatchRate
-    val mm = {
-      if (primer.positiveStrand) numMismatches(bases, primer.bases, 0, maxMismatches)
+  protected[identifyprimers] def mismatchAlign(rec: SamRecord, primer: Primer): Option[UngappedAlignmentPrimerMatch] = {
+    val bases          = rec.bases
+    val maxMismatches  = math.min(bases.length, primer.length) * this.maxMismatchRate
+    val matchReadStart = rec.unmapped || rec.positiveStrand
+    val mm             = {
+      if (matchReadStart) numMismatches(bases, primer.bases, 0, maxMismatches)
       else numMismatches(bases, primer.bases, math.max(0, bases.length - primer.length), maxMismatches)
     }
     if (mm <= maxMismatches) Some(UngappedAlignmentPrimerMatch(primer, mm, Int.MaxValue)) else None
@@ -182,7 +174,6 @@ trait _MismatchAlign {
       primerIndex += 1
     }
     count
-    //bases.zip(primer).count { case (l, r) => !SequenceUtil.readBaseMatchesRefBaseWithAmbiguity(l.toByte, r.toByte) }
   }
 }
 
@@ -197,7 +188,7 @@ private[identifyprimers] class LocationBasedPrimerMatcher
 (val primers: Seq[Primer],
  val slop: Int,
  val requireSameStrand: Boolean,
- val maxMismatchRate: Double) extends _PrimerMatcher with _MismatchAlign with LazyLogging {
+ val maxMismatchRate: Double) extends _PrimerMatcher with UngappedAlignment with LazyLogging {
   import com.fulcrumgenomics.FgBioDef.javaIteratorAsScalaIterator
 
   private val fwdDetector: OverlapDetector[Primer] = {
@@ -218,13 +209,13 @@ private[identifyprimers] class LocationBasedPrimerMatcher
   private def getOverlaps(rec: SamRecord): Iterator[Primer] = {
     val fwdOverlaps: Iterator[Primer] = if (!requireSameStrand || rec.positiveStrand) {
       val pos = rec.unclippedStart
-      val interval = new Interval(rec.refName, math.max(1, pos-slop), pos+slop) // TODO: off the end of the refNameosome?
+      val interval = new Interval(rec.refName, math.max(1, pos-slop), pos+slop) // TODO: off the end of the chromosome?
       fwdDetector.getOverlaps(interval).iterator()
         .filter(primer => math.abs(primer.start - pos) <= slop)
     } else Iterator.empty
     val revOverlaps: Iterator[Primer] = if (!requireSameStrand || rec.negativeStrand) {
       val pos = rec.unclippedEnd
-      val interval = new Interval(rec.refName, math.max(1, pos-slop), pos+slop) // TODO: off the end of the refNameosome?
+      val interval = new Interval(rec.refName, math.max(1, pos-slop), pos+slop) // TODO: off the end of the chromosome?
       revDetector.getOverlaps(interval).iterator()
         .filter(primer => math.abs(primer.end - pos) <= slop)
     } else Iterator.empty
@@ -248,10 +239,11 @@ private[identifyprimers] class LocationBasedPrimerMatcher
           case ssPrimers   => unreachable(s"Found multiple primers on the same strand for $rec\n${ssPrimers.mkString("\n")}")
         }
     }
+
     primerMatches
       .flatMap { p =>
         // Check the # of mismatches is OK
-        mismatchAlign(rec.bases, p).map { m =>
+        mismatchAlign(rec, p).map { m =>
           // Convert to a [[LocationBasedPrimerMatch]]
           LocationBasedPrimerMatch(primer = m.primer, numMismatches = m.numMismatches)
         }
@@ -272,24 +264,17 @@ private[identifyprimers] class UngappedAlignmentBasedPrimerMatcher
  val requireSameStrand: Boolean,
  val maxMismatchRate: Double,
  val kmerLength: Option[Int] = None
- ) extends _PrimerMatcherWithCache with _MismatchAlign with LazyLogging {
+ ) extends _PrimerMatcherWithKmerFilter with UngappedAlignment with LazyLogging {
 
   /** Examines all primers to find the best mismatch-based alignment match. */
   def find(rec: SamRecord): Option[UngappedAlignmentPrimerMatch] = {
     val primersToCheck = getPrimersForAlignmentTasks(rec)
     val alignments = if (rec.unmapped) {
-      val forward = rec.bases
-      val reverse = SequenceUtil.reverseComplement(rec.basesString).getBytes
-      val both    = Seq(forward, reverse)
-
-      primersToCheck.flatMap { primer: Primer =>
-        both.flatMap { bases => mismatchAlign(bases, primer) }
-      }
+      primersToCheck.flatMap { primer: Primer => mismatchAlign(rec, primer) }
     }
     else {
-      val bases = rec.bases
       primersToCheck.flatMap { primer: Primer =>
-        if (!requireSameStrand || rec.positiveStrand == primer.positiveStrand) mismatchAlign(bases, primer)
+        if (!requireSameStrand || rec.positiveStrand == primer.positiveStrand) mismatchAlign(rec, primer)
         else None
       }
     }
@@ -332,7 +317,7 @@ private[identifyprimers] class GappedAlignmentBasedPrimerMatcher
  val requireSameStrand: Boolean,
  val aligner: Aligner,
  val minAlignmentScoreRate: Double,
- val kmerLength: Option[Int] = None) extends _PrimerMatcherWithCache with LazyLogging {
+ val kmerLength: Option[Int] = None) extends _PrimerMatcherWithKmerFilter with LazyLogging {
 
   /** A map from a kmer to the list of primers that contain that kmer. */
   private val kmerToPrimers: Map[ByteBuffer, Set[Primer]] = kmerLength match {
@@ -370,6 +355,27 @@ private[identifyprimers] class GappedAlignmentBasedPrimerMatcher
       alignments.filter(_.alignment.score != best.alignment.score) match {
         case Seq() => toGappedAlignmentPrimerMatch(best, None)
         case alns => toGappedAlignmentPrimerMatch(best, Some(alns.maxBy(_.alignment.score).alignment.score))
+      }
+    }
+  }
+
+  /** Creates a list of [[AlignmentTask]]s. */
+  def toAlignmentTasks(rec: SamRecord): Seq[AlignmentTask[Primer, SamRecordAlignable]] = {
+    // NB: we are aligning the full query to a sub-sequence of the record
+    val samRecordAlignable = scala.collection.mutable.HashMap[(Int,Int), SamRecordAlignable]()
+    val primersToCheck = getPrimersForAlignmentTasks(rec)
+    primersToCheck.map { primer =>
+      if (primer.positiveStrand) {
+        val targetOffset = 0
+        val targetLength = math.min(primer.sequence.length + slop, rec.length) - targetOffset
+        val target       = samRecordAlignable.getOrElseUpdate((targetOffset, targetLength), SamRecordAlignable(rec, targetOffset, targetLength))
+        AlignmentTask(query = primer, target = target)
+      }
+      else {
+        val targetOffset = math.max(0, rec.length - primer.length - slop)
+        val targetLength = rec.length - targetOffset
+        val target       = samRecordAlignable.getOrElseUpdate((targetOffset, targetLength), SamRecordAlignable(rec, targetOffset, targetLength))
+        AlignmentTask(query=primer, target=target)
       }
     }
   }

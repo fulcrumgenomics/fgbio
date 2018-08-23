@@ -39,8 +39,10 @@ private[identifyprimers] object PrimerPairMatchType extends FgBioEnum[PrimerPair
   /** Two primer matches that are from the same "canonical" pair, with one match to the forward and one to the reverse. */
   case object Canonical extends PrimerPairMatchType
   /** Two primer matches that are from the same "canonical" pair, but both matches are to the same primer in the pair. */
-  case object Dimer extends PrimerPairMatchType
-  /** Two primers that are not from the same "canonical" pair. */
+  case object SelfDimer extends PrimerPairMatchType
+  /** Two primers that are not from the same "canonical" pair and are called cross dimers due to their short template/product size. */
+  case object CrossDimer extends PrimerPairMatchType
+  /** Two primers that are not from the same "canonical" pair but are not [[CrossDimer]]s. */
   case object NonCanonical extends PrimerPairMatchType
   /** Only primer match. */
   case object Single extends PrimerPairMatchType

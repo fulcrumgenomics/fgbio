@@ -139,6 +139,8 @@ class IdentifyPrimers
  @arg(flag='K', doc="Skip gapped alignment if no kmer of this length is common between any primer and a given read.") val gappedKmerLength: Option[Int] = None,
  @arg(          doc="Allow multiple primers on the same strand to have the same `pair_id`.") val multiPrimerPairs: Boolean = false
 ) extends FgBioTool with LazyLogging {
+  private val requireSameStrand: Boolean = false // FIXME: command line option
+  private val maxDimerInsertSize: Int = 50
 
   /** The maximum number of templates in memory. */
   private val maxTemplatesInRam: Option[Int] = None
@@ -146,7 +148,6 @@ class IdentifyPrimers
   /** The number of templates to process at a time per thread. */
   private val templatesPerThread: Int = 5000
 
-  // TODO: tim: this branch will also get triggered if the user typos, e.g. /usr/locla/bin/ksw, and that's going to be very confusing. Could you instead just try executing the executable given and see if it works?
   private val kswExecutable: Option[FilePath] = this.ksw.map(Paths.get(_)).flatMap {
     case p if Files.exists(p)                  => Some(p)
     case name if name.contains(File.separator) =>
@@ -176,9 +177,6 @@ class IdentifyPrimers
   validate(gapExtend <= 0,        "--gap-extend must be <= 0")
   validate(minAlignmentScoreRate >= 0, "--min-alignment-score-rate must be >= 0")
   maxTemplatesInRam.foreach { m => validate(templatesPerThread < m, "--max-templates-in-ram must be greater than or equal to --templates-per-thread")}
-
-
-  private val requireSameStrand: Boolean = false // FIXME: command line option
 
   private val (locationBasedMatcher, ungappedBasedMatcher, gappedBasedMatcher) = {
     val primers  = Primer.read(this.primerPairs, multiPrimerPairs = multiPrimerPairs).toIndexedSeq
@@ -352,6 +350,12 @@ class IdentifyPrimers
       val r1MatchOrTasks = template.r1.map { r => toPrimerMatchOrAlignmentTasks(r) }
       val r2MatchOrTasks = template.r2.map { r => toPrimerMatchOrAlignmentTasks(r) }
 
+      // FIXME
+      /*
+      println("r1MatchOrTasks: "  + r1MatchOrTasks)
+      println("r2MatchOrTasks: "  + r2MatchOrTasks)
+      */
+
       // add any alignment tasks
       Seq(r1MatchOrTasks, r2MatchOrTasks).flatten.foreach {
         case Right(alignmentTasks) => alignmentTasks.foreach(t => aligner.append(t))
@@ -461,8 +465,15 @@ class IdentifyPrimers
 
     // Set the primer pair match type
     val matchType: PrimerPairMatchType = (forwardPrimerMatch.fivePrimeMatch, reversePrimerMatch.fivePrimeMatch) match {
-      case (Some(fwd), Some(rev)) if fwd.primer.pair_id != rev.primer.pair_id               => NonCanonical // not from the same primer pair
-      case (Some(fwd), Some(rev)) if fwd.primer.positiveStrand == rev.primer.positiveStrand => Dimer        // same primer pair, but same primer!
+      case (Some(fwd), Some(rev)) if fwd.primer.pair_id != rev.primer.pair_id               =>
+        // not from the same pair; cross-dimer if the template/product size is too small, non-canonical otherwise
+      val templateLength = if (r1.mapped && r2.mapped && r1.refIndex == r2.refIndex) {
+          val minStart = math.min(r1.unclippedStart, r2.unclippedStart)
+          val maxEnd   = math.max(r1.unclippedEnd, r2.unclippedEnd)
+          maxEnd - minStart + 1
+        } else Int.MaxValue
+        if (templateLength <= maxDimerInsertSize) CrossDimer else NonCanonical
+      case (Some(fwd), Some(rev)) if fwd.primer.positiveStrand == rev.primer.positiveStrand => SelfDimer    // same primer pair, but same primer!
       case (Some(_),   Some(_))                                                             => Canonical    // same primer pair, different primers
       case (Some(_), None) | (None, Some(_))                                                => Single       // only one primer match
       case _                                                                                => NoMatch      // no primer matches

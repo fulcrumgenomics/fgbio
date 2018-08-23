@@ -47,7 +47,7 @@ private[identifyprimers] object Primer {
     val parser  = DelimitedDataParser(path, '\t')
     val primers = parser.map { row =>
       val forward  = strandToForward(row.apply[String]("strand"))
-      val sequence = row.apply[String]("sequence")
+      val sequence = row.apply[String]("sequence").toUpperCase
       Primer(
         pair_id   = row.apply[String]("pair_id"),
         primer_id = row.apply[String]("primer_id"),
@@ -148,7 +148,8 @@ private[identifyprimers] case class Primer(pair_id: String,
                                            ref_name: String,
                                            start: Int,
                                            end: Int,
-                                           positiveStrand: Boolean) extends Locatable with Alignable with Metric {
+                                           positiveStrand: Boolean,
+                                           private val reverseComplementBases: Boolean = false) extends Locatable with Alignable with Metric {
   override def getContig: String = ref_name
   override def getStart: Int = start
   override def getEnd: Int = end
@@ -158,7 +159,7 @@ private[identifyprimers] case class Primer(pair_id: String,
   /** Returns true if the primer has a mapping to the reference, false otherwise. */
   def mapped: Boolean = this.ref_name.nonEmpty
 
-  val bases: Array[Byte] = sequence.getBytes
+  val bases: Array[Byte] = if (reverseComplementBases) SequenceUtil.reverseComplement(sequence).getBytes else sequence.getBytes
 
   this.sequence.zipWithIndex.foreach { case (base, index) =>
     if (!SequenceUtil.isValidBase(base.toByte) && !SequenceUtil.isIUPAC(base.toByte)) {

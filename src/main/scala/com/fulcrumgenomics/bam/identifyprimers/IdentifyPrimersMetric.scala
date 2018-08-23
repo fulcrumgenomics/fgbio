@@ -70,7 +70,8 @@ private[identifyprimers] object IdentifyPrimersMetric {
       mapped_fragments          = mapped_fragments,
       unmapped_fragments        = unmapped_fragments,
       canonical_primer_pair     = matchTypeCounter.countOf(Canonical),
-      dimer_primer_pair         = matchTypeCounter.countOf(Dimer),
+      self_dimer_primer_pair    = matchTypeCounter.countOf(SelfDimer),
+      cross_dimer_primer_pair   = matchTypeCounter.countOf(CrossDimer),
       non_canonical_primer_pair = matchTypeCounter.countOf(NonCanonical),
       single_primer_pair        = matchTypeCounter.countOf(Single),
       no_primer_pair            = matchTypeCounter.countOf(NoMatch),
@@ -83,7 +84,6 @@ private[identifyprimers] object IdentifyPrimersMetric {
   }
 }
 
-// TODO: document
 /** Provides summary information on the counts of templates, [[TemplateType]]s, [[PrimerPairMatchType]]s, and
   * [[PrimerMatch]] types.
   *
@@ -97,7 +97,11 @@ private[identifyprimers] object IdentifyPrimersMetric {
   * @param mapped_fragments the number of mapped fragment reads examined.
   * @param unmapped_fragments the number of unmapped fragment reads examined.
   * @param canonical_primer_pair the number of templates with two reads matching primers from the same primer pair.
-  * @param non_canonical_primer_pair the number of templates with two reads matching primers from different primer pair.
+  * @param self_dimer_primer_pair the number of templates with two reads matching the same primer.
+  * @param cross_dimer_primer_pair the number of templates with two reads matching primers from different primer pairs
+  *                                and are called cross dimers due to their short template/product size.
+  * @param non_canonical_primer_pair the number of templates with two reads matching primers from different primer pairs
+  *                                  and are not cross dimers.
   * @param single_primer_pair the number of templates with exactly one read matching a primer.
   * @param no_primer_pair the number of templates having no reads matching a primer.
   * @param match_attempts the number of attempts at primer match (i.e. `(2 * pairs) + fragments`).
@@ -117,7 +121,8 @@ case class IdentifyPrimersMetric
  mapped_fragments: Long = 0,
  unmapped_fragments: Long = 0,
  canonical_primer_pair: Long = 0,
- dimer_primer_pair: Long = 0,
+ self_dimer_primer_pair: Long = 0,
+ cross_dimer_primer_pair: Long = 0,
  non_canonical_primer_pair: Long = 0,
  single_primer_pair: Long = 0,
  no_primer_pair: Long = 0,
