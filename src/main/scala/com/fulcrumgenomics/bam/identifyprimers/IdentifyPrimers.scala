@@ -140,7 +140,10 @@ class IdentifyPrimers
  @arg(          doc="Allow multiple primers on the same strand to have the same `pair_id`.") val multiPrimerPairs: Boolean = false
 ) extends FgBioTool with LazyLogging {
   private val requireSameStrand: Boolean = false // FIXME: command line option
-  private val maxDimerInsertSize: Int = 50
+  private val minInsertLength: Int = 50 // FIXME: command line option (insert?)
+  private val maxInsertLength: Int = 250 // FIXME: command line option (insert length?)
+
+  // TODO: support interval lists
 
   /** The maximum number of templates in memory. */
   private val maxTemplatesInRam: Option[Int] = None
@@ -350,12 +353,6 @@ class IdentifyPrimers
       val r1MatchOrTasks = template.r1.map { r => toPrimerMatchOrAlignmentTasks(r) }
       val r2MatchOrTasks = template.r2.map { r => toPrimerMatchOrAlignmentTasks(r) }
 
-      // FIXME
-      /*
-      println("r1MatchOrTasks: "  + r1MatchOrTasks)
-      println("r2MatchOrTasks: "  + r2MatchOrTasks)
-      */
-
       // add any alignment tasks
       Seq(r1MatchOrTasks, r2MatchOrTasks).flatten.foreach {
         case Right(alignmentTasks) => alignmentTasks.foreach(t => aligner.append(t))
@@ -459,7 +456,8 @@ class IdentifyPrimers
     val matchType: PrimerPairMatchType = (forwardPrimerMatch.fivePrimeMatch, reversePrimerMatch.fivePrimeMatch) match {
       case (Some(fwd), Some(rev)) if fwd.primer.pair_id != rev.primer.pair_id               =>
         // not from the same pair; cross-dimer if the template/product size is too small, non-canonical otherwise
-        if (templateLength(r1, r2, fwd, rev) <= maxDimerInsertSize) CrossDimer else NonCanonical
+        val insertLength = this.insertLength(fwd, rev)
+        if (fwd.primer.ref_name != rev.primer.ref_name || insertLength < minInsertLength || maxInsertLength < insertLength ) CrossDimer else NonCanonical
       case (Some(fwd), Some(rev)) if fwd.primer.positiveStrand == rev.primer.positiveStrand => SelfDimer    // same primer pair, but same primer!
       case (Some(_),   Some(_))                                                             => Canonical    // same primer pair, different primers
       case (Some(_), None) | (None, Some(_))                                                => Single       // only one primer match
@@ -497,28 +495,13 @@ class IdentifyPrimers
     matchType
   }
 
-  private def templateLength(r1: SamRecord, r2: SamRecord, fwd: PrimerMatch, rev: PrimerMatch): Int = {
+  private def insertLength(fwd: PrimerMatch, rev: PrimerMatch): Int = {
     // not from the same pair; cross-dimer if the template/product size is too small, non-canonical otherwise
-    if (r1.mapped && r2.mapped && r1.refIndex == r2.refIndex) {
-      // check the product size using the read mapping
-      val minStart = math.min(r1.unclippedStart, r2.unclippedStart)
-      val maxEnd   = math.max(r1.unclippedEnd, r2.unclippedEnd)
-      maxEnd - minStart + 1
-    }
-    else if (fwd.primer.ref_name == rev.primer.ref_name) {
-      // check the product size using the primer mapping
-      val minStart = math.min(fwd.primer.start, rev.primer.end)
-      val maxEnd   = math.max(fwd.primer.end, rev.primer.end)
-      maxEnd - minStart + 1
-    }
-    else {
-      // Either:
-      // 1. both reads map to different chromosomes
-      // 2. both primers map to different chromosomes
-      // So call it a dimer
-      // Note: we could perform gapped alignment to see if they overlap, and get the template size that way
-      0
-    }
+    require(fwd.primer.ref_name == rev.primer.ref_name, "Primers must be mapped to the same reference.")
+    // check the product size using the primer mapping
+    val minStart = math.min(fwd.primer.start, rev.primer.end)
+    val maxEnd   = math.max(fwd.primer.end, rev.primer.end)
+    maxEnd - minStart + 1
   }
 }
 
