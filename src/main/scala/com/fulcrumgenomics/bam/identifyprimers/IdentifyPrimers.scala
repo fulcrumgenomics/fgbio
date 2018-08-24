@@ -440,14 +440,6 @@ class IdentifyPrimers
                          r2ThreePrimeMatch: Option[PrimerMatch]): PrimerPairMatchType = {
     import PrimerPairMatchType._
 
-    // FIXME
-    /*
-    println("r1: " + r1.asSam.getSAMString.trim)
-    println("r2: " + r2.asSam.getSAMString.trim)
-    println("r1 5': " + r1FivePrimeMatch.toString)
-    println("r2 5': " + r2FivePrimeMatch.toString)
-    */
-
     // Get which rec is on the forward strand, and which is reverse.  First looks at the primer match for r1, then the
     // primer match for r2, otherwise r1 is forward.
     val (forwardPrimerMatch, reversePrimerMatch) = {
@@ -467,12 +459,7 @@ class IdentifyPrimers
     val matchType: PrimerPairMatchType = (forwardPrimerMatch.fivePrimeMatch, reversePrimerMatch.fivePrimeMatch) match {
       case (Some(fwd), Some(rev)) if fwd.primer.pair_id != rev.primer.pair_id               =>
         // not from the same pair; cross-dimer if the template/product size is too small, non-canonical otherwise
-      val templateLength = if (r1.mapped && r2.mapped && r1.refIndex == r2.refIndex) {
-          val minStart = math.min(r1.unclippedStart, r2.unclippedStart)
-          val maxEnd   = math.max(r1.unclippedEnd, r2.unclippedEnd)
-          maxEnd - minStart + 1
-        } else Int.MaxValue
-        if (templateLength <= maxDimerInsertSize) CrossDimer else NonCanonical
+        if (templateLength(r1, r2, fwd, rev) <= maxDimerInsertSize) CrossDimer else NonCanonical
       case (Some(fwd), Some(rev)) if fwd.primer.positiveStrand == rev.primer.positiveStrand => SelfDimer    // same primer pair, but same primer!
       case (Some(_),   Some(_))                                                             => Canonical    // same primer pair, different primers
       case (Some(_), None) | (None, Some(_))                                                => Single       // only one primer match
@@ -508,6 +495,30 @@ class IdentifyPrimers
     // TODO: three prime
 
     matchType
+  }
+
+  private def templateLength(r1: SamRecord, r2: SamRecord, fwd: PrimerMatch, rev: PrimerMatch): Int = {
+    // not from the same pair; cross-dimer if the template/product size is too small, non-canonical otherwise
+    if (r1.mapped && r2.mapped && r1.refIndex == r2.refIndex) {
+      // check the product size using the read mapping
+      val minStart = math.min(r1.unclippedStart, r2.unclippedStart)
+      val maxEnd   = math.max(r1.unclippedEnd, r2.unclippedEnd)
+      maxEnd - minStart + 1
+    }
+    else if (fwd.primer.ref_name == rev.primer.ref_name) {
+      // check the product size using the primer mapping
+      val minStart = math.min(fwd.primer.start, rev.primer.end)
+      val maxEnd   = math.max(fwd.primer.end, rev.primer.end)
+      maxEnd - minStart + 1
+    }
+    else {
+      // Either:
+      // 1. both reads map to different chromosomes
+      // 2. both primers map to different chromosomes
+      // So call it a dimer
+      // Note: we could perform gapped alignment to see if they overlap, and get the template size that way
+      0
+    }
   }
 }
 

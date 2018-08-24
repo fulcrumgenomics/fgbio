@@ -54,8 +54,9 @@ private[identifyprimers] sealed trait PrimerMatch {
       primer.primer_id,
       primer.ref_name + ":" + primer.start + "-" + primer.end,
       if (primer.positiveStrand) "+" else "-",
+      !rec.paired || rec.firstOfPair,
       0, // TODO: offset from the 5' end,
-      this.toName,
+      this.toName
     ).map(_.toString)
     (baseInfo ++ this._info(rec)).mkString(PrimerMatch.InfoDelimiter)
   }
