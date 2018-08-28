@@ -49,5 +49,43 @@ private[identifyprimers] object PrimerPairMatchType extends FgBioEnum[PrimerPair
   /** No primer matches. */
   case object NoMatch extends PrimerPairMatchType
 
+  /** Returns all the types of primer matches. */
   override def values: immutable.IndexedSeq[PrimerPairMatchType] = findValues
+
+  /** Creates a [[PrimerPairMatchType]] based on the [[PrimerMatch]]es for the forward and reverse primer respectively. */
+  def apply(forwardFivePrimeMatch: Option[PrimerMatch],
+            reverseFivePrimeMatch: Option[PrimerMatch]): PrimerPairMatchType = {
+    this.apply(forwardFivePrimeMatch, reverseFivePrimeMatch, Int.MinValue, Int.MaxValue)
+  }
+
+  /** Creates a [[PrimerPairMatchType]] based on the [[PrimerMatch]]es for the forward and reverse primer respectively. */
+  def apply(forwardFivePrimeMatch: Option[PrimerMatch],
+            reverseFivePrimeMatch: Option[PrimerMatch],
+            minInsertLength: Int,
+            maxInsertLength: Int) : PrimerPairMatchType = {
+    (forwardFivePrimeMatch, reverseFivePrimeMatch) match {
+      case (Some(fwd), Some(rev)) if fwd.primer.pair_id != rev.primer.pair_id               =>
+        // not from the same pair; cross-dimer if the template/product size is too small, non-canonical otherwise
+      if (fwd.primer.ref_name != rev.primer.ref_name) CrossDimer
+      else {
+        val insertLength = this.insertLength(fwd, rev)
+        if (insertLength < minInsertLength || maxInsertLength < insertLength ) CrossDimer else NonCanonical
+      }
+      case (Some(fwd), Some(rev)) if fwd.primer == rev.primer                               => SelfDimer    // same primer pair, but same primer!
+      case (Some(fwd), Some(rev)) if fwd.primer.positive_strand == rev.primer.positive_strand => NonCanonical // same primer pair, but same strand!
+      case (Some(_),   Some(_))                                                             => Canonical    // same primer pair, different primers
+      case (Some(_), None) | (None, Some(_))                                                => Single       // only one primer match
+      case _                                                                                => NoMatch      // no primer matches
+    }
+  }
+
+  /** Returns the insert length for a given primer pair. The primer pair must map to the same chromosome. */
+  def insertLength(fwd: PrimerMatch, rev: PrimerMatch): Int = {
+    // not from the same pair; cross-dimer if the template/product size is too small, non-canonical otherwise
+    require(fwd.primer.ref_name == rev.primer.ref_name, "Primers must be mapped to the same reference.")
+    // check the product size using the primer mapping
+    val minStart = math.min(fwd.primer.start, rev.primer.end)
+    val maxEnd   = math.max(fwd.primer.end, rev.primer.end)
+    maxEnd - minStart + 1
+  }
 }

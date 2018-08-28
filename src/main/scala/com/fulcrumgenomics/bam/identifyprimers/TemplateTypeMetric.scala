@@ -45,12 +45,13 @@ private[identifyprimers] object TemplateTypeMetric {
     )
   }
 
-  /** Creates a sequence of [[TemplateTypeMetric]] from a counter.  The metrics stored in the counter should each have
-    * `metric.count == 0`.
+  /** Creates a sequence of [[TemplateTypeMetric]] from a counter.  The metrics stored in the counter must each have
+    * `metric.count == 0`.  The returned sequence will be ordered by most frequent template type (i.e. highest count).
     */
   def metricsFrom(counter: SimpleCounter[TemplateTypeMetric]): Seq[TemplateTypeMetric] = {
     val total   = counter.total.toDouble
     counter.map { case (metric, count) =>
+      require(metric.count == 0)
       metric.copy(count = count, frac = count / total)
     }.toSeq.sortBy(-_.count)
   }

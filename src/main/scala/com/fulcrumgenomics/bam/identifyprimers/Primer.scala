@@ -36,26 +36,30 @@ private[identifyprimers] object Primer {
   /** Writes the given primers to file.  Reverse strand primers are written with their sequence reverse complemented. */
   def write(path: FilePath, primers: TraversableOnce[Primer]): Unit = {
     val newPrimers = primers.map { primer =>
-      if (primer.positiveStrand) primer
+      if (primer.positive_strand) primer
       else primer.copy(sequence = SequenceUtil.reverseComplement(primer.sequence))
     }
     Metric.write(path, newPrimers)
   }
 
-  /** Reads primers from a given path and validates the primers (see [[validatePrimers()]]). */
+  /** Reads primers from a given path and validates the primers (see [[validatePrimers()]]).
+    *
+    * NB: the reverse strand primers stored at the path are assumed to have sequence in the primer order (i.e. not the
+    * genomic top strand), so they will be reverse complemented here to have them all on the top genomic strand.
+    * */
   def read(path: FilePath, multiPrimerPairs: Boolean = false): Seq[Primer] = {
     val parser  = DelimitedDataParser(path, '\t')
     val primers = parser.map { row =>
-      val forward  = strandToForward(row.apply[String]("strand"))
-      val sequence = row.apply[String]("sequence").toUpperCase
+      val positive_strand = isPositiveStrand(row.get[String]("positive_strand", true).getOrElse(row.apply[String]("strand")))
+      val sequence       = row.apply[String]("sequence").toUpperCase
       Primer(
-        pair_id   = row.apply[String]("pair_id"),
-        primer_id = row.apply[String]("primer_id"),
-        sequence  = if (forward) sequence else SequenceUtil.reverseComplement(sequence),
-        ref_name  = row.apply[String]("ref_name"),
-        start     = row.apply[Int]("start"),
-        end       = row.apply[Int]("end"),
-        positiveStrand   = forward
+        pair_id        = row.apply[String]("pair_id"),
+        primer_id      = row.apply[String]("primer_id"),
+        sequence       = if (positive_strand) sequence else SequenceUtil.reverseComplement(sequence),
+        ref_name       = row.apply[String]("ref_name"),
+        start          = row.apply[Int]("start"),
+        end            = row.apply[Int]("end"),
+        positive_strand = positive_strand
       )
     }.toSeq
     validatePrimers(primers, multiPrimerPairs)
@@ -63,7 +67,7 @@ private[identifyprimers] object Primer {
   }
 
   /** Converts strand to a True if forward, false if reverse. */
-  private def strandToForward(strand: String): Boolean = strand.toLowerCase match {
+  def isPositiveStrand(strand: String): Boolean = strand.toLowerCase match {
     case "+" | "f" | "fwd" | "for" | "forward" | "positive" | "true" => true
     case "-" | "r" | "rev" | "reverse" | "negative" | "false"        => false
     case _ => throw new IllegalArgumentException(s"Could not parse strand: $strand")
@@ -82,12 +86,12 @@ private[identifyprimers] object Primer {
 
     val fwdDetector = {
       val detector = new OverlapDetector[Primer](0, 0)
-      primers.filter(_.positiveStrand).foreach { p => detector.addLhs(p, p) }
+      primers.filter(_.positive_strand).foreach { p => detector.addLhs(p, p) }
       detector
     }
     val revDetector = {
       val detector = new OverlapDetector[Primer](0, 0)
-      primers.filterNot(_.positiveStrand).foreach { p => detector.addLhs(p, p) }
+      primers.filterNot(_.positive_strand).foreach { p => detector.addLhs(p, p) }
       detector
     }
 
@@ -95,8 +99,8 @@ private[identifyprimers] object Primer {
       // Validate that there is at least one forward and one reverse primer for each pair
       primers.groupBy(_.pair_id).foreach {
         case (pairId, primersForPair) if primersForPair.length >= 2 =>
-          if (!primersForPair.exists(p => p.positiveStrand) || primersForPair.forall(p => p.positiveStrand)) {
-            val tpe = if (!primersForPair.exists(p => p.positiveStrand)) "forward" else "reverse"
+          if (!primersForPair.exists(p => p.positive_strand) || primersForPair.forall(p => p.positive_strand)) {
+            val tpe = if (!primersForPair.exists(p => p.positive_strand)) "forward" else "reverse"
             throw new IllegalArgumentException(s"Found two $tpe primers for pair with id '$pairId': " + primersForPair.map(_.primer_id).mkString(", "))
           }
         case (pairId, primersForPair) =>
@@ -107,8 +111,8 @@ private[identifyprimers] object Primer {
       // Validate that two primers exist for each pair, and that one is forward and the other is reverse
       primers.groupBy(_.pair_id).foreach {
         case (pairId, Seq(first, second)) =>
-          if (first.positiveStrand == second.positiveStrand) {
-            val tpe = if (first.positiveStrand) "forward" else "reverse"
+          if (first.positive_strand == second.positive_strand) {
+            val tpe = if (first.positive_strand) "forward" else "reverse"
             throw new IllegalArgumentException(s"Found two $tpe primers for pair with id '$pairId': " + Seq(first, second).map(_.primer_id).mkString(", "))
           }
         case (pairId, primersForPair) =>
@@ -116,11 +120,11 @@ private[identifyprimers] object Primer {
       }
     }
 
-    // Validate we do not have forward primers that have the same refName/start or reverse primers with the same refName/end
+    // Validate we do not have the same refName/start/end for primers
     primers.foreach { primer =>
       val overlaps = (fwdDetector.getOverlaps(primer).iterator() ++ revDetector.getOverlaps(primer).iterator())
-        .filter { overlap => primer != overlap && overlap.positiveStrand == primer.positiveStrand && overlap.ref_name == primer.ref_name }
-        .filter { overlap => if (primer.positiveStrand) overlap.start == primer.start else overlap.end == primer.end }
+        .filter { overlap => primer != overlap && overlap.positive_strand == primer.positive_strand && overlap.ref_name == primer.ref_name }
+        .filter { overlap => overlap.start == primer.start &&  overlap.end == primer.end }
       if (overlaps.nonEmpty) {
         throw new IllegalArgumentException(s"Found primers had the same location:\n$primer\n" + overlaps.map(_.toString).mkString("\n"))
       }
@@ -138,7 +142,7 @@ private[identifyprimers] object Primer {
   * @param ref_name the reference name to which this primer targets.
   * @param start the reference start position at which this primer starts.
   * @param end the reference end position at which this primer starts.
-  * @param positiveStrand true if the primer maps to the forward genomic strand, false otherwise.
+  * @param positive_strand true if the primer maps to the forward genomic strand, false otherwise.
   *
   * Primers without a mapping to the reference should have an empty `ref_name`.
   */
@@ -148,13 +152,14 @@ private[identifyprimers] case class Primer(pair_id: String,
                                            ref_name: String,
                                            start: Int,
                                            end: Int,
-                                           positiveStrand: Boolean,
+                                           positive_strand: Boolean,
                                            private val reverseComplementBases: Boolean = false) extends Locatable with Alignable with Metric {
   override def getContig: String = ref_name
   override def getStart: Int = start
   override def getEnd: Int = end
   override def length: Int = end - start + 1
-  def negativeStrand: Boolean = !this.positiveStrand
+  def positiveStrand: Boolean = this.positive_strand
+  def negativeStrand: Boolean = !this.positive_strand
 
   /** Returns true if the primer has a mapping to the reference, false otherwise. */
   def mapped: Boolean = this.ref_name.nonEmpty

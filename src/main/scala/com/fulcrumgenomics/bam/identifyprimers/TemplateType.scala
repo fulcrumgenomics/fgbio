@@ -25,9 +25,11 @@
 package com.fulcrumgenomics.bam.identifyprimers
 
 import com.fulcrumgenomics.FgBioDef.FgBioEnum
+import com.fulcrumgenomics.bam.api.SamRecord
 import enumeratum.EnumEntry
 
 import scala.collection.immutable
+
 
 private[identifyprimers] sealed trait TemplateType extends EnumEntry
 
@@ -45,4 +47,18 @@ private[identifyprimers] object TemplateType extends FgBioEnum[TemplateType] {
   case object UnmappedFragment extends TemplateType
 
   override def values: immutable.IndexedSeq[TemplateType] = findValues
+
+  /** Builds a [[TemplateType]] from a fragment read or paired reads. */
+  def apply(r1: SamRecord, r2: Option[SamRecord]): TemplateType = {
+    r2 match {
+      case None     => if (r1.mapped) MappedFragment else UnmappedFragment
+      case Some(_r2) =>
+        (r1.mapped, _r2.mapped) match {
+          case (true, true)   => MappedPair
+          case (true, false)  => Unpaired
+          case (false, true)  => Unpaired
+          case (false, false) => UnmappedPair
+        }
+    }
+  }
 }

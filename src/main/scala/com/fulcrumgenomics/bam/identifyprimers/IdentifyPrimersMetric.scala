@@ -78,7 +78,7 @@ private[identifyprimers] object IdentifyPrimersMetric {
       match_attempts            = primerMatchCounter.total,
       location                  = primerMatchCounter.countOf(PrimerMatch.toName[LocationBasedPrimerMatch]),
       mismatch                  = primerMatchCounter.countOf(PrimerMatch.toName[UngappedAlignmentPrimerMatch]),
-      gapped_alignment            = primerMatchCounter.countOf(PrimerMatch.toName[GappedAlignmentPrimerMatch]),
+      gapped_alignment          = primerMatchCounter.countOf(PrimerMatch.toName[GappedAlignmentPrimerMatch]),
       no_match                  = primerMatchCounter.countOf(PrimerMatch.NoPrimerMatchName)
     )
   }

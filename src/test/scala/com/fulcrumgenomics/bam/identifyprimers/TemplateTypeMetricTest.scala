@@ -22,35 +22,28 @@
  * THE SOFTWARE.
  */
 
-package com.fulcrumgenomics.alignment
+package com.fulcrumgenomics.bam.identifyprimers
 
+import com.fulcrumgenomics.commons.util.SimpleCounter
 import com.fulcrumgenomics.testing.UnitSpec
 
-class BatchAlignerTest extends UnitSpec {
+class TemplateTypeMetricTest extends UnitSpec {
 
-  private case class Bases(seq: String) extends Alignable {
-    val bases: Array[Byte] = seq.getBytes
-  }
+  "TemplateTypeMetric" should "be built from primer matches and be collatable" in {
+    // build a couple
+    val primer = new Primer("pair1", "primer1+", "GATTACA", "chr1", 1, 7, true)
+    val metrics = Seq(
+      TemplateTypeMetric(TemplateType.MappedPair, true, PrimerPairMatchType.Canonical, Some(LocationBasedPrimerMatch(primer, 1)), None),
+      TemplateTypeMetric(TemplateType.MappedPair, true, PrimerPairMatchType.Canonical, Some(LocationBasedPrimerMatch(primer, 2)), None),
+      TemplateTypeMetric(TemplateType.MappedFragment, false, PrimerPairMatchType.Single, Some(LocationBasedPrimerMatch(primer, 3)), None)
+    )
 
-  private def f(query: String, target: String): AlignmentTask[Bases, Bases] = AlignmentTask(Bases(seq = query), Bases(seq = target))
-
-  private val testTasks =  Seq(f("ACGTAACC", "ACGTAACC"), f("CCGG", "AACCGGTT"), f("AAAATTTT", "AAAATTTTGGGG"))
-
-  Seq(Mode.Local, Mode.Glocal, Mode.Global).foreach { mode =>
-    "InteractiveAlignmentScorer" should s"align in $mode mode" in {
-      val iAligner = BatchAligner[Bases, Bases](1, -4, -6, -1, mode=mode)
-      val aligner  = Aligner(1, -4, -6, -1, mode=mode)
-
-      // Add the tasks to the interactive aligner
-      testTasks.foreach { task => iAligner.append(task) }
-
-      // Compare the results
-      testTasks.zip(iAligner.iterator.toSeq).foreach { case (task, actualAlignment) =>
-        val expectedAlignment: Alignment = aligner.align(task.query.bases, task.target.bases)
-        actualAlignment shouldBe expectedAlignment
-      }
-      iAligner.numAdded shouldBe testTasks.length
-      iAligner.numRetrieved shouldBe testTasks.length
-    }
+    // collate
+    val counter = new SimpleCounter[TemplateTypeMetric]()
+    metrics.foreach { m => counter.count(m) }
+    val newMetrics = TemplateTypeMetric.metricsFrom(counter)
+    newMetrics should have length 2
+    newMetrics.head shouldBe metrics.head.copy(count = 2, frac = 2/3.toDouble)
+    newMetrics.last shouldBe metrics.last.copy(count = 1, frac = 1/3.toDouble)
   }
 }

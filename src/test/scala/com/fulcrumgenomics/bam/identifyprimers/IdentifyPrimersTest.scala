@@ -22,7 +22,7 @@
  * THE SOFTWARE.
  */
 
-package com.fulcrumgenomics.bam
+package com.fulcrumgenomics.bam.identifyprimers
 
 import java.nio.file.Path
 
@@ -34,7 +34,8 @@ import com.fulcrumgenomics.testing.{SamBuilder, UnitSpec}
 import htsjdk.samtools.util.SequenceUtil
 import org.scalatest.OptionValues
 import com.fulcrumgenomics.FgBioDef.unreachable
-import com.fulcrumgenomics.bam.IdentifyPrimers._
+import com.fulcrumgenomics.bam.identifyprimers.IdentifyPrimersMetric
+//import com.fulcrumgenomics.bam.IdentifyPrimers._
 import com.fulcrumgenomics.bam.identifyprimers.IdentifyPrimers
 import com.fulcrumgenomics.commons.io.PathUtil
 import com.fulcrumgenomics.util.Metric
@@ -42,10 +43,9 @@ import htsjdk.samtools.SamPairUtil
 
 trait PrimerMatcherTestData {
   // Defaults for all tests
-  protected val slop              = 1
-  protected val maxMismatches     = 3
-  protected val minMismatchDelta  = 2
-  protected val minAlignmentScore = 5
+  protected val slop                  = 1
+  protected val maxMismatcheRate      = 3/10d
+  protected val minAlignmentScoreRate = 5/10d
 
   // The default aligner
   protected val matchScore    = 1
@@ -247,18 +247,17 @@ final class IdentifyPrimersTest extends UnitSpec with OptionValues with PrimerMa
     Primer.write(primers, this.primers)
 
     val tool = new IdentifyPrimers(
-      input             = input,
-      primers           = primers,
-      metrics           = metrics,
-      output            = output,
-      slop              = slop,
-      maxMismatches     = maxMismatches,
-      minAlignmentScore = minAlignmentScore,
-      matchScore        = matchScore,
-      mismatchScore     = mismatchScore,
-      gapOpen           = gapOpen,
-      gapExtend         = gapExtend,
-      minMismatchDelta  = minMismatchDelta
+      input                 = input,
+      primerPairs           = primers,
+      metrics               = metrics,
+      output                = output,
+      slop                  = slop,
+      maxMismatchRate       = maxMismatcheRate,
+      minAlignmentScoreRate = minAlignmentScoreRate,
+      matchScore            = matchScore,
+      mismatchScore         = mismatchScore,
+      gapOpen               = gapOpen,
+      gapExtend             = gapExtend
     )
 
     executeFgbioTool(tool)
@@ -299,232 +298,4 @@ final class IdentifyPrimersTest extends UnitSpec with OptionValues with PrimerMa
   }
 
   // TODO: a few more tests, including but not limited to fragment reads.
-}
-
-final class PrimerMatcherTest extends UnitSpec with OptionValues with PrimerMatcherTestData {
-
-  private val (fwdMatcher, revMatcher) = PrimerMatcher.build(primers, aligner, slop = slop, maxMismatches = maxMismatches, minMismatchDelta = minMismatchDelta, minAlignmentScore = minAlignmentScore, withFullAlignment = true)
-
-  "PrimerMatcher" should "construct matchers out of valid primers" in {
-    PrimerMatcher.build(primers, aligner, slop = 1, maxMismatches = 0, minMismatchDelta = 1, minAlignmentScore = 0, withFullAlignment = true)
-  }
-
-  it should "get the mismatch alignment with the fewest mismatches" in {
-    val alignments = Seq(
-      MismatchAlignmentPrimerMatch(null, 5, 0),
-      MismatchAlignmentPrimerMatch(null, 1, 0),
-      MismatchAlignmentPrimerMatch(null, 3, 0)
-    )
-
-    Seq(fwdMatcher, revMatcher).foreach { primerMatcher =>
-      // from the list above
-      primerMatcher.getBestMismatchAlignment(alignments).value shouldBe alignments(1).copy(nextNumMismatches = 3)
-      // no alignments
-      primerMatcher.getBestMismatchAlignment(Seq.empty) shouldBe 'isEmpty
-      // from the list above, with one more to make it within the mismatch delta
-      primerMatcher.getBestMismatchAlignment(alignments :+ MismatchAlignmentPrimerMatch(null, 2, 0)) shouldBe 'isEmpty
-    }
-  }
-
-  private def getMatchCounts(recs: Seq[SamRecord]): (SimpleCounter[String], SimpleCounter[String]) = {
-    val matchItCounter             = new SimpleCounter[String]()
-    val matchUntilAlignmentCounter = new SimpleCounter[String]()
-
-    recs.foreach { rec =>
-      val primerMatcher              = if (rec.positiveStrand) fwdMatcher else revMatcher
-      val matchOnLocation            = primerMatcher.matchOnLocation(rec)
-      val matchWithMismatchAlignment = primerMatcher.matchWithMismatchAlignment(rec)
-      val matchWithFullAlignment     = primerMatcher.matchWithFullAlignment(rec)
-      val matchIt                    = primerMatcher.matchIt(rec)
-      val matchUntilAlignment        = primerMatcher.matchUntilAlignment(rec)
-
-      matchIt match {
-        case None                                         =>
-          matchOnLocation            shouldBe 'empty
-          matchWithMismatchAlignment shouldBe 'empty
-          matchWithFullAlignment     shouldBe 'empty
-          matchItCounter.count("none")
-        case Some(location: LocationBasedPrimerMatch)     =>
-          location                   shouldBe matchOnLocation.value
-          matchItCounter.count("location")
-        case Some(mismatch: MismatchAlignmentPrimerMatch) =>
-          matchOnLocation            shouldBe 'empty
-          mismatch                   shouldBe matchWithMismatchAlignment.value
-          matchItCounter.count("mismatch")
-        case Some(alignment: FullAlignmentPrimerMatch)    =>
-          matchOnLocation            shouldBe 'empty
-          matchWithMismatchAlignment shouldBe 'empty
-          alignment                  shouldBe matchWithFullAlignment.value
-          matchItCounter.count("alignment")
-      }
-
-      matchUntilAlignment match {
-        case Left(location: LocationBasedPrimerMatch)     =>
-          location                   shouldBe matchOnLocation.value
-          matchUntilAlignmentCounter.count("location")
-        case Left(mismatch: MismatchAlignmentPrimerMatch) =>
-          matchOnLocation            shouldBe 'empty
-          mismatch                   shouldBe matchWithMismatchAlignment.value
-          matchUntilAlignmentCounter.count("mismatch")
-        case Left(primerMatch)                            =>
-          fail(s"Wrong type of PrimerMatch: ${primerMatch.getClass.getSimpleName}")
-        case Right(tasks)                                 =>
-          matchUntilAlignmentCounter.count("tasks")
-          tasks.length shouldBe primerMatcher.length
-          val alignments = tasks.zip(primerMatcher.primers).map { case (task, primer) =>
-            task.query shouldBe primer
-            task.target.rec.bases shouldBe rec.bases
-            task.target.length shouldBe (task.target.end - task.target.start)
-
-            if (primer.forward) {
-              task.target.start shouldBe 0
-              task.target.end shouldBe math.min(primer.sequence.length + primerMatcher.slop, rec.length)
-            }
-            else {
-              task.target.start shouldBe math.max(0, rec.length - primer.length - primerMatcher.slop)
-              task.target.end shouldBe rec.length
-            }
-
-            // complete the alignment manually
-            aligner.align(task.queryBytes, task.targetBytes).score >= primerMatcher.minAlignmentScore
-          }
-
-          // check to see if any alignment exists above the minimum score
-          val counterValue = if (alignments.contains(true)) "alignment" else "none"
-          matchUntilAlignmentCounter.count(counterValue)
-      }
-    }
-
-    (matchItCounter, matchUntilAlignmentCounter)
-  }
-
-  // tests matchIt
-  it should s"find a primer matches" in {
-    Seq(this.fragBuilder.toSeq, this.pairs).foreach { records =>
-      val (matchItCounter, matchUntilAlignmentCounter) = getMatchCounts(records)
-
-      matchItCounter.countOf("none")      shouldBe 38
-      matchItCounter.countOf("location")  shouldBe 14 // all primers with no edits (14x)
-      matchItCounter.countOf("mismatch")  shouldBe 68
-      matchItCounter.countOf("alignment") shouldBe 6
-      matchItCounter.total                shouldBe 126
-
-      matchUntilAlignmentCounter.countOf("location")  shouldBe 14
-      matchUntilAlignmentCounter.countOf("mismatch")  shouldBe 68
-      matchUntilAlignmentCounter.countOf("tasks")     shouldBe 44
-      matchUntilAlignmentCounter.countOf("alignment") shouldBe 6
-      matchUntilAlignmentCounter.countOf("none")      shouldBe 38
-
-      Seq("none", "location", "mismatch", "alignment").foreach { matchType =>
-        matchUntilAlignmentCounter.countOf(matchType) shouldBe matchItCounter.countOf(matchType)
-      }
-
-      //"tasks" here equals "none" plus "alignment" in matchItCounter
-      matchUntilAlignmentCounter.countOf("tasks") shouldBe (matchItCounter.countOf("none") + matchItCounter.countOf("alignment"))
-    }
-  }
-
-  {
-    // Setup
-    val builder = new SamBuilder(readLength=10)
-    val inputs  = this.primers.zipWithIndex.map { case (primer, index) =>
-      val rec = fromPrimer(builder, primer) // no differences
-      (primer, index, rec)
-    }
-
-    inputs.foreach { case (primer, index, rec) =>
-      val primerMatcher = if (primer.forward) fwdMatcher else revMatcher
-
-      // tests mismatchAlign
-      it should s"find a mismatch alignment if there are not too many mismatches (primer ${index+1}/${primers.length})" in {
-        rec.foreach { r =>
-          def c(b: Char): Char = SequenceUtil.complement(b.toByte).toChar
-          Range.inclusive(0, primerMatcher.maxMismatches + 2).foreach { numMismatches =>
-            val newPrimer = primer.copy(sequence = primer.sequence.zipWithIndex.map { case (b, i) => if (i < numMismatches) c(b) else b }.mkString)
-            if (numMismatches <= primerMatcher.maxMismatches) {
-              primerMatcher.mismatchAlign(r, newPrimer).value shouldBe MismatchAlignmentPrimerMatch(newPrimer, numMismatches, Int.MaxValue)
-            }
-            else {
-              primerMatcher.mismatchAlign(r, newPrimer) shouldBe 'empty
-            }
-          }
-        }
-      }
-
-      // tests locationCloseEnough and matchOnLocation(refName: String, pos: Int)
-      it should s"find a primer based on location (primer ${index+1}/${primers.length})" in {
-        Range.inclusive(0, primerMatcher.slop + 2).foreach { slop =>
-          val plusPos  = if (primer.forward) primer.start + slop else primer.end + slop
-          val minusPos = if (primer.forward) primer.start - slop else primer.end - slop
-          Seq(plusPos, minusPos).foreach { pos =>
-            primerMatcher.locationCloseEnough(primer, pos) shouldBe (slop <= primerMatcher.slop)
-            if (slop <= primerMatcher.slop) {
-              primerMatcher.matchOnLocation(primer.ref_name, pos).value shouldBe primer
-            }
-            else {
-              primerMatcher.matchOnLocation(primer.ref_name, pos) shouldBe 'empty
-            }
-          }
-        }
-      }
-
-      // tests matchWithMismatchAlignment
-      it should s"find a match with a mismatch alignment (primer ${index+1}/${primers.length})" in {
-        val result        = results(index)
-        val score         = result.mmScore
-        val nextScore     = result.mmNextScore
-        rec.foreach { r =>
-          primerMatcher.matchWithMismatchAlignment(r) match {
-            case None              => score shouldBe 'empty
-            case Some(primerMatch) =>
-              score.contains(primerMatch.numMismatches) shouldBe true
-              if (primerMatch.nextNumMismatches == Int.MaxValue) {
-                nextScore shouldBe 'empty
-              }
-              else {
-                nextScore.contains(primerMatch.nextNumMismatches) shouldBe true
-              }
-          }
-        }
-      }
-
-      // tests matchWithFullAlignment
-      it should s"find a match with a full alignment (primer ${index + 1}/${primers.length})" in {
-        val secondBest    = results(index).fullNextBest
-        rec.foreach { r =>
-          val primerMatch = primerMatcher.matchWithFullAlignment(r).value
-          primerMatch.primer shouldBe primer
-          primerMatch.score shouldBe primer.length
-          primerMatch.secondBestScore shouldBe secondBest
-        }
-      }
-    }
-  }
-
-  "PrimerMatcher.numMismatches" should "count the number of mismatches (with ambiguity)" in {
-    // NB: We have inspected the test cases for SequenceUtil.readBaseMatchesRefBaseWithAmbiguity in htjskd and found them
-    // to be comprehensive, so we do not duplicate them here.
-
-    case class TestCase(left: String, right: String, expectedNumMismatches: Int) {
-      def bases: Array[Byte] = left.getBytes
-      def primer: Array[Byte] = right.getBytes
-    }
-    Seq(
-      TestCase("",          "",            0),
-      TestCase("AAAAA",      "AAAAA",      0),
-      TestCase("TAAAA",      "AAAAA",      1),
-      TestCase("AACAA",      "AAAAA",      1),
-      TestCase("AAAAG",      "AAAAA",      1),
-      TestCase("TTTTT",      "AAAAA",      5),
-      TestCase("AAAAATTTTT", "AAAAA",      0),
-      TestCase("AAAAA",      "AAAAATTTTT", 0),
-      TestCase("A",          "N",          0),
-      TestCase("A",          "M",          0),
-      TestCase("A",          "S",          1),
-      TestCase("M",          "V",          0),
-      TestCase("V",          "M",          1) // NB: the bases of V are not a sub-set of the bases of M
-    ).foreach { testCase =>
-      PrimerMatcher.numMismatches(testCase.bases, testCase.primer) shouldBe testCase.expectedNumMismatches
-    }
-  }
 }
