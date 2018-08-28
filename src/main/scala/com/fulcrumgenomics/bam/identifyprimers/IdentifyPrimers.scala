@@ -183,8 +183,8 @@ class IdentifyPrimers
  @arg(flag='K', doc="Skip gapped alignment if no kmer of this length is common between any primer and a given read.") val gappedKmerLength: Option[Int] = None,
  @arg(          doc="Allow multiple primers on the same strand to have the same `pair_id`.") val multiPrimerPairs: Boolean = false,
  @arg(          doc="Ignore the strand of the primer when matching.") val ignorePrimerStrand: Boolean = false,
- @arg(          doc="The minimum insert length for a non-canonical primer pair match, otherwise a cross-dimer.") val minInsertLength: Int = 50,
- @arg(          doc="The maximum insert length for a non-canonical primer pair match, otherwise a cross-dimer") val maxInsertLength: Int = 250
+ @arg(          doc="The minimum insert length for a non-canonical primer pair match, otherwise a dimer.") val minInsertLength: Int = 50,
+ @arg(          doc="The maximum insert length for a non-canonical primer pair match, otherwise a dimer") val maxInsertLength: Int = 250
 ) extends FgBioTool with LazyLogging {
 
   /** The maximum number of templates in memory. */
@@ -399,6 +399,10 @@ class IdentifyPrimers
       // match based on location, then ungapped alignment, and if no match was found, then return the alignment tasks
       val r1MatchOrTasks = template.r1.map { r => toPrimerMatchOrAlignmentTasks(r) }
       val r2MatchOrTasks = template.r2.map { r => toPrimerMatchOrAlignmentTasks(r) }
+
+      // NB: if we have a match for one end only of a pair, we could add that to the list of alignment tasks to perform
+      // to ensure we detect self-dimers properly.  If the template is really short, we may not find the primer on the
+      // 5' end side, as there may be sequence preceding it.
 
       // add any alignment tasks
       Seq(r1MatchOrTasks, r2MatchOrTasks).flatten.foreach {

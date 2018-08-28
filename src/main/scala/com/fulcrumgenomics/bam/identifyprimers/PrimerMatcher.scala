@@ -139,6 +139,7 @@ private[identifyprimers] sealed trait PrimerMatcherWithKmerFilter {
         getPrimersFrom(bases = forward, matchStart = rec.unmapped || rec.positiveStrand, kmerLength = kmerLength)
           .foreach(_primers.add)
         getPrimersFrom(bases = revcomp, matchStart = rec.mapped && rec.negativeStrand, kmerLength = kmerLength)
+          .map(_.copy(reverseComplementBases = rec.mapped && rec.negativeStrand)) // *** important *** reverse complement
           .foreach(_primers.add)
       case (_, true) =>
         // We don't know if the read maps to the forward or reverse strand, so try primers with strands from both!
@@ -314,7 +315,7 @@ private[identifyprimers] class LocationBasedPrimerMatcher
         _primers.filter(_.positiveStrand == rec.positiveStrand) match {
           case Seq()       => None
           case Seq(primer) => Some(primer)
-          case ssPrimers   => unreachable(s"Found multiple primers on the same strand for $rec\n${ssPrimers.mkString("\n")}")
+          case ssPrimers   => throw new IllegalStateException(s"Found multiple primers on the same strand for $rec\n\t${ssPrimers.mkString("\n\t")}")
         }
     }
 
@@ -343,7 +344,7 @@ private[identifyprimers] class UngappedAlignmentBasedPrimerMatcher
 
   /** Examines all primers to find the best mismatch-based alignment match. */
   def find(rec: SamRecord): Option[UngappedAlignmentPrimerMatch] = {
-    val alignments =  getPrimersForAlignmentTasks(rec, ignorePrimerStrand)
+    val alignments = getPrimersForAlignmentTasks(rec, ignorePrimerStrand)
       .flatMap { p => mismatchAlign(rec, p) }
     getBestUngappedAlignment(alignments)
   }
@@ -352,10 +353,10 @@ private[identifyprimers] class UngappedAlignmentBasedPrimerMatcher
   private[identifyprimers] def getBestUngappedAlignment(alignments: Seq[UngappedAlignmentPrimerMatch]): Option[UngappedAlignmentPrimerMatch] = {
     if (alignments.isEmpty) None
     else {
-      val best: UngappedAlignmentPrimerMatch = alignments.minBy(_.numMismatches)
-      alignments.filter(_ != best) match {
-        case Seq() => Some(best.copy(nextNumMismatches = Int.MaxValue))
-        case alns  => Some(best.copy(nextNumMismatches = alns.minBy(_.numMismatches).numMismatches))
+      alignments.sortBy(_.numMismatches).take(2) match {
+        case Seq()               => unreachable("Should have found at least one.")
+        case Seq(best)           => Some(best.copy(nextNumMismatches = Int.MaxValue))
+        case Seq(best, nextBest) => Some(best.copy(nextNumMismatches=nextBest.numMismatches))
       }
     }
   }
@@ -419,16 +420,19 @@ private[identifyprimers] class GappedAlignmentBasedPrimerMatcher
   }
 
   // A little class to store an alignment to a given primer
-  private case class AlignmentAndPrimer(alignment: Alignment, primer: Primer)
+  private[identifyprimers] case class AlignmentAndPrimer(alignment: Alignment, primer: Primer)
 
   /** A little helper method for [[find()]] to create a [[GappedAlignmentPrimerMatch]]. */
   private[identifyprimers] def getBestGappedAlignment(alignments: Seq[AlignmentAndPrimer]): Option[GappedAlignmentPrimerMatch] = {
     if (alignments.isEmpty) None
     else {
-      val best: AlignmentAndPrimer = alignments.maxBy(_.alignment.score)
-      alignments.filter(_ != best) match {
-        case Seq() => Some(GappedAlignmentPrimerMatch(best.primer, best.alignment.score, (minAlignmentScoreRate * best.primer.length).toInt))
-        case alns  => Some(GappedAlignmentPrimerMatch(best.primer, best.alignment.score, alns.maxBy(_.alignment.score).alignment.score))
+      alignments.sortBy(_.alignment.score).take(2) match {
+        case Seq()                =>
+          unreachable("Should have found at least one.")
+        case Seq(best)            =>
+          Some(GappedAlignmentPrimerMatch(best.primer, score=best.alignment.score, secondBestScore=(minAlignmentScoreRate * best.primer.length).toInt))
+         case Seq(best, nextBest) =>
+           Some(GappedAlignmentPrimerMatch(best.primer, score=best.alignment.score, secondBestScore=nextBest.alignment.score))
       }
     }
   }

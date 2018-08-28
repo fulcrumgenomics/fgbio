@@ -143,7 +143,9 @@ private[identifyprimers] object Primer {
   * @param start the reference start position at which this primer starts.
   * @param end the reference end position at which this primer starts.
   * @param positive_strand true if the primer maps to the forward genomic strand, false otherwise.
-  *
+  * @param reverseComplementBases true if `bases()` should return the reverse complement of `sequence`, false otherwise.
+  *                               This is used when we match the primer on the opposite strand and want to ungapped/gapped
+  *                               alignment, so we need to compare the reverse complement.
   * Primers without a mapping to the reference should have an empty `ref_name`.
   */
 private[identifyprimers] case class Primer(pair_id: String,
@@ -153,7 +155,7 @@ private[identifyprimers] case class Primer(pair_id: String,
                                            start: Int,
                                            end: Int,
                                            positive_strand: Boolean,
-                                           private val reverseComplementBases: Boolean = false) extends Locatable with Alignable with Metric {
+                                           reverseComplementBases: Boolean = false) extends Locatable with Alignable with Metric {
   override def getContig: String = ref_name
   override def getStart: Int = start
   override def getEnd: Int = end

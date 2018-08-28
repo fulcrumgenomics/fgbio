@@ -24,7 +24,10 @@
 
 package com.fulcrumgenomics.bam.identifyprimers
 
+import com.fulcrumgenomics.alignment.{Aligner, Alignment, Mode}
+import com.fulcrumgenomics.bam.api.SamRecord
 import com.fulcrumgenomics.testing.{SamBuilder, UnitSpec}
+import htsjdk.samtools.util.{Interval, SequenceUtil}
 import org.scalatest.OptionValues
 
 object PrimerMatcherTest {
@@ -43,6 +46,20 @@ object PrimerMatcherTest {
     // this pair matches no other pair
     Primer("6", "6+", "GATTACAGAT", "chr4", 1001, 1010, true), Primer("6", "6-", "GATTACAGAT", "chr4", 1001, 1010, false),
   )
+
+  def fragFromPrimer(primer: Primer, builder: SamBuilder = new SamBuilder(), startAdjust: Int = 0): SamRecord = {
+    require(primer.length <= builder.readLength)
+    val contig = builder.dict.getSequenceIndex(primer.ref_name)
+    val start  = if (primer.positiveStrand) primer.start else primer.end - builder.readLength + 1
+    val bases  = {
+      val remaining = builder.readLength - primer.length
+      val primerBases = new String(primer.bases)
+      if (primer.positiveStrand) primerBases + ("N" * remaining)
+      else ("N" * remaining) + primerBases
+    }
+    val strand = if (primer.positiveStrand) SamBuilder.Plus else SamBuilder.Minus
+    builder.addFrag(contig=contig, start=start+startAdjust, bases=bases, unmapped = false, strand=strand).get
+  }
 }
 
 /** Tests methods in [[PrimerMatcherWithKmerFilterTest]]. */
@@ -231,36 +248,246 @@ class UngappedAlignmentTest extends UnitSpec with OptionValues {
 }
 
 class LocationBasedPrimerMatcherTest extends UnitSpec with OptionValues {
-  //"LocationBasedPrimerMatcher.getOverlaps" should
-  // - ignorePrimerStrand or enforce strand
-  // - slop or no slop
-  // - + strand, - strand
+  import PrimerMatcherTest._
 
-  //"LocationBasedPrimerMatcher.find" should
-  // - find no primers
-  // - find a single primer
-  // - find multiple primers, prioritize on the forward strand, ok
-  // - find multiple primers, prioritize on the forward strand, fail
-  // - find multiple primers, fail
-  // - ignorePrimerStrand, + strand read, matches a reverse strand read, ok with num mismatches
+  private def newMatcher(slop: Int, ignorePrimerStrand: Boolean, maxMismatchRate: Double = 1.0) = {
+    new LocationBasedPrimerMatcher(
+      primers            = primers,
+      slop               = slop,
+      ignorePrimerStrand = ignorePrimerStrand,
+      maxMismatchRate    = maxMismatchRate
+    )
+  }
+
+  private val builder = new SamBuilder(20)
+
+  private def toMatch(primer: Primer, numMismatches: Int) = LocationBasedPrimerMatch(primer, numMismatches)
+
+  "LocationBasedPrimerMatcher.getOverlaps" should "find overlaps when considering primer strand" in {
+    val matcher = newMatcher(0, false)
+    primers.foreach { primer =>
+      val frag = fragFromPrimer(primer, builder)
+      matcher.getOverlaps(frag).toList should contain theSameElementsInOrderAs Seq(primer)
+    }
+  }
+
+  it should "find overlaps without considering primer strand" in {
+    val matcher = newMatcher(0, true)
+
+    primers.foreach { primer =>
+      val newPrimer = primer.copy(positive_strand=primer.negativeStrand)
+      val frag      = fragFromPrimer(newPrimer, builder)
+      val interval  = new Interval(frag.refName, frag.start, frag.end)
+      val expected  = primers
+        .filter { p => p.overlaps(interval) }
+        .map { p =>
+          // since the strand was reversed, the bases will be reversed for mismatch alignment
+          if (p.positiveStrand == primer.positiveStrand) p.copy(reverseComplementBases = true) else p
+        }
+      matcher.getOverlaps(frag).toList should contain theSameElementsInOrderAs expected
+    }
+  }
+
+  it should "find overlaps with some slop" in {
+    val matcher = newMatcher(5, false)
+    primers.foreach { primer =>
+      val frag = fragFromPrimer(primer, builder, startAdjust=5)
+      matcher.getOverlaps(frag).toList should contain theSameElementsInOrderAs Seq(primer)
+    }
+  }
+
+
+  it should "not find overlaps when start is beyond slop" in {
+    val matcher = newMatcher(5, false)
+    primers.foreach { primer =>
+      val frag = fragFromPrimer(primer, builder, startAdjust=6)
+      matcher.getOverlaps(frag).toList shouldBe 'empty
+    }
+  }
+
+  "LocationBasedPrimerMatcher.find" should "not find primer matches when the mismatch rate is too high" in {
+    val matcher = newMatcher(0, false, 0.0)
+    primers.foreach { primer =>
+      val frag = fragFromPrimer(primer, builder)
+      frag.bases = "N"*builder.readLength // So many mismatches
+      matcher.find(frag) shouldBe 'empty
+    }
+  }
+
+  it should "find primer matches when considering primer strand" in {
+    val matcher = newMatcher(0, false)
+    primers.foreach { primer =>
+      val frag = fragFromPrimer(primer, builder)
+      matcher.find(frag).value shouldBe toMatch(primer, 0)
+    }
+  }
+
+  it should "find primer matches without considering primer strand" in {
+    val matcher = newMatcher(0, true)
+    // test only the first four as the primers in each pair don't overlap each other
+    primers.take(4).foreach { primer =>
+      val newPrimer = primer.copy(positive_strand=primer.negativeStrand, reverseComplementBases=true)
+      val frag      = fragFromPrimer(newPrimer, builder)
+      matcher.find(frag).value shouldBe toMatch(primer.copy(reverseComplementBases=true), 0)
+    }
+  }
+
+  it should "find prioritize primers on the same strand" in {
+    val matcher = newMatcher(0, true)
+    // this primer pair has primers map to the same location, so priorize the match based on strand (negative)
+    primers.slice(4, 6).foreach { primer =>
+      val frag        = fragFromPrimer(primer, builder)
+      val primerMatch = matcher.mismatchAlign(frag, primer).value
+      matcher.find(frag).value shouldBe LocationBasedPrimerMatch(primerMatch.primer, primerMatch.numMismatches)
+    }
+  }
+
+  it should "fail if there are more than one overlapping primers" in {
+    // take the first primer pair and shift it over by a base.  Voila!
+    val newPrimers = primers.take(2) ++ primers.take(2).map(p => p.copy(start=p.start+1, end=p.end+1))
+    val matcher = new LocationBasedPrimerMatcher(
+      primers            = newPrimers,
+      slop               = 5,
+      ignorePrimerStrand = false,
+      maxMismatchRate    = 1d
+    )
+    primers.take(2).foreach { primer =>
+      val frag = fragFromPrimer(primer, builder)
+      an[Exception] should be thrownBy matcher.find(frag)
+    }
+  }
 }
 
 class UngappedAlignmentBasedPrimerMatcherTest extends UnitSpec with OptionValues {
-  // getBestUngappedAlignment
-  // - none if no alignments
-  // - (numMM, Int.MaxValue) if one alignment
-  // - (numMM, numMM) if two equally likely alignments
-  // - (numMM, nextMM) if not equal
 
-  // find
-  // - + strand, - strand, unmapped
+  import PrimerMatcherTest._
+
+  private def newMatcher(slop: Int, ignorePrimerStrand: Boolean, maxMismatchRate: Double = 1.0) = {
+    new UngappedAlignmentBasedPrimerMatcher(
+      primers            = primers,
+      slop               = slop,
+      ignorePrimerStrand = ignorePrimerStrand,
+      maxMismatchRate    = maxMismatchRate
+    )
+  }
+
+  private val builder = new SamBuilder(20)
+
+  private def toMatch(numMismatches: Int) = UngappedAlignmentPrimerMatch(null, numMismatches, Int.MaxValue)
+
+  "UngappedAlignmentBasedPrimerMatcher.getBestUngappedAlignment" should "return None if no alignments were given" in {
+    val matcher = newMatcher(0, false)
+    matcher.getBestUngappedAlignment(Seq.empty) shouldBe 'empty
+  }
+
+  it should "handle a single alignment" in {
+    val matcher = newMatcher(0, false)
+    matcher.getBestUngappedAlignment(Seq(toMatch(0))).value shouldBe toMatch(0)
+  }
+
+  it should "handle two equally likely alignments" in {
+    val matcher = newMatcher(0, false)
+    matcher.getBestUngappedAlignment(Seq(toMatch(0), toMatch(0))).value shouldBe toMatch(0).copy(nextNumMismatches=0)
+  }
+
+  it should "handle multiple alignments with one with the fewest mismatches" in {
+    val matcher = newMatcher(0, false)
+    matcher.getBestUngappedAlignment(Seq(toMatch(0), toMatch(1), toMatch(3), toMatch(1))).value shouldBe toMatch(0).copy(nextNumMismatches=1)
+  }
+
+  "UngappedAlignmentBasedPrimerMatcher.find" should "find primer matches when considering primer strand" in {
+    val matcher = newMatcher(0, false)
+    primers.foreach { primer =>
+      val frag        = fragFromPrimer(primer, builder)
+      val primerMatch = matcher.find(frag).value
+      primerMatch.primer shouldBe primer
+      primerMatch.numMismatches shouldBe 0
+    }
+  }
+
+  it should "find primer matches without considering primer strand" in {
+    val matcher = newMatcher(0, true)
+    // test only the first four as the primers in each pair don't overlap each other
+    primers.take(4).foreach { primer =>
+      val frag      = fragFromPrimer(primer, builder)
+      val primerMatch = matcher.find(frag).value
+      primerMatch.primer.sequence shouldBe primer.sequence
+      primerMatch.numMismatches shouldBe 0
+    }
+  }
+
+  it should "find primer matches with unmapped reads" in {
+    val matcher = newMatcher(0, false)
+    primers.foreach { primer =>
+      val frag        = fragFromPrimer(primer.copy(positive_strand=true), builder) // use + strand so we set start right
+      frag.unmapped   = true
+      if (primer.negativeStrand) {
+        // since we used + strand above, we still need to reverse complement complement..
+        val revcomp = SequenceUtil.reverseComplement(primer.sequence)
+        frag.bases = revcomp + ("N" * (builder.readLength - primer.length))
+        val primerMatch = matcher.find(frag).value
+        // NB: the primer returned may have been matched using the reverse complement of the primer, since unmapped reads
+        // could match the negative genomic strand.
+        new String(primerMatch.primer.bases) shouldBe revcomp
+        primerMatch.numMismatches shouldBe 0
+      }
+      else {
+        val primerMatch = matcher.find(frag).value
+        primerMatch.primer.sequence shouldBe primer.sequence
+        primerMatch.numMismatches shouldBe 0
+      }
+    }
+  }
 }
 
 class GappedAlignmentBasedPrimerMatcherTest extends UnitSpec with OptionValues {
-  // getBestGappedAlignment
-  // - none if no alignments
-  // - (score, alignmentscorerate * primer length) if one alignment
-  // - (score, nextBestScore)
+
+  import PrimerMatcherTest._
+
+  private val matchScore    = 1
+  private val mismatchScore = -3
+  private val gapOpen       = -6
+  private val gapExtend     = -1
+  private val aligner       = Aligner(matchScore, mismatchScore, gapOpen, gapExtend, mode=Mode.Glocal)
+
+  private def newMatcher(slop: Int, ignorePrimerStrand: Boolean, maxMismatchRate: Double = 1.0) = {
+    new GappedAlignmentBasedPrimerMatcher(
+      primers               = primers,
+      slop                  = slop,
+      ignorePrimerStrand    = ignorePrimerStrand,
+      aligner               = aligner,
+      minAlignmentScoreRate = 0d
+    )
+  }
+
+  private def toMatch(score: Int) = GappedAlignmentPrimerMatch(primers(0), score, 0)
+
+  {
+    val matcher = newMatcher(0, false)
+
+    def toAlignmentAndPrimer(score: Int) = {
+      matcher.AlignmentAndPrimer(
+        alignment = new Alignment(null, null, 0, 0, null, score),
+        primer    = primers(0)
+      )
+    }
+
+    "GappedAlignmentBasedPrimerMatcher.getBestGappedAlignment" should "return None if no alignments were given" in {
+      matcher.getBestGappedAlignment(Seq.empty) shouldBe 'empty
+    }
+
+    it should "handle a single alignment" in {
+      matcher.getBestGappedAlignment(Seq(toAlignmentAndPrimer(0))).value shouldBe toMatch(0)
+    }
+
+    it should "handle two equally likely alignments" in {
+      matcher.getBestGappedAlignment(Seq(toAlignmentAndPrimer(0), toAlignmentAndPrimer(0))).value shouldBe toMatch(0).copy(secondBestScore=0)
+    }
+
+    it should "handle multiple alignments with one with the fewest mismatches" in {
+      matcher.getBestGappedAlignment(Seq(toAlignmentAndPrimer(0), toAlignmentAndPrimer(1), toAlignmentAndPrimer(3), toAlignmentAndPrimer(1))).value shouldBe toMatch(0).copy(secondBestScore=1)
+    }
+  }
 }
 
 

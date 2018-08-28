@@ -41,6 +41,7 @@ import com.fulcrumgenomics.commons.io.PathUtil
 import com.fulcrumgenomics.util.Metric
 import htsjdk.samtools.SamPairUtil
 
+/*
 trait PrimerMatcherTestData {
   // Defaults for all tests
   protected val slop                  = 1
@@ -299,3 +300,4 @@ final class IdentifyPrimersTest extends UnitSpec with OptionValues with PrimerMa
 
   // TODO: a few more tests, including but not limited to fragment reads.
 }
+*/
