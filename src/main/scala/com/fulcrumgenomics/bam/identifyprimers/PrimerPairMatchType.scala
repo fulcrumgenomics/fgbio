@@ -66,11 +66,11 @@ private[identifyprimers] object PrimerPairMatchType extends FgBioEnum[PrimerPair
     (forwardFivePrimeMatch, reverseFivePrimeMatch) match {
       case (Some(fwd), Some(rev)) if fwd.primer.pair_id != rev.primer.pair_id               =>
         // not from the same pair; cross-dimer if the template/product size is too small, non-canonical otherwise
-      if (fwd.primer.ref_name != rev.primer.ref_name) CrossDimer
-      else {
-        val insertLength = this.insertLength(fwd, rev)
-        if (insertLength < minInsertLength || maxInsertLength < insertLength ) CrossDimer else NonCanonical
-      }
+        if (fwd.primer.ref_name != rev.primer.ref_name) CrossDimer
+        else {
+          val insertLength = this.insertLength(fwd, rev)
+          if (insertLength < minInsertLength || maxInsertLength < insertLength ) CrossDimer else NonCanonical
+        }
       case (Some(fwd), Some(rev)) if fwd.primer == rev.primer                               => SelfDimer    // same primer pair, but same primer!
       case (Some(fwd), Some(rev)) if fwd.primer.positive_strand == rev.primer.positive_strand => NonCanonical // same primer pair, but same strand!
       case (Some(_),   Some(_))                                                             => Canonical    // same primer pair, different primers
