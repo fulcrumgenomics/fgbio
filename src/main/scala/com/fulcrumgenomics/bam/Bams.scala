@@ -31,6 +31,7 @@ import com.fulcrumgenomics.util.{Io, ProgressLogger, Sorter}
 import com.fulcrumgenomics.commons.util.LazyLogging
 import com.fulcrumgenomics.commons.collection.SelfClosingIterator
 import htsjdk.samtools.SAMFileHeader.{GroupOrder, SortOrder}
+import htsjdk.samtools.SamPairUtil.PairOrientation
 import htsjdk.samtools._
 import htsjdk.samtools.reference.ReferenceSequenceFileWalker
 import htsjdk.samtools.util.{CloserUtil, CoordMath, SequenceUtil}
@@ -56,12 +57,45 @@ case class Template(r1: Option[SamRecord],
       .getOrElse(throw new IllegalStateException("Template created with no reads!"))
   }
 
+  /** Returns an iterator over all non-secondary non-supplementary reads. */
+  def primaryReads: Iterator[SamRecord] = r1.iterator ++ r2.iterator
+
+  /** If both the R1 and R2 are present and mapped to the same chromosome returns the pair orientation, else None. */
+  def pairOrientation: Option[PairOrientation] = (r1, r2) match {
+    case (Some(a), Some(b)) if a.mapped && b.mapped && a.refIndex == b.refIndex => Some(SamPairUtil.getPairOrientation(a.asSam))
+    case _ => None
+  }
+
   /** Returns an iterator over all records that are not the primary r1 and r2. */
   def allSupplementaryAndSecondary: Iterator[SamRecord] =
     r1Supplementals.iterator ++ r2Supplementals.iterator ++ r1Secondaries.iterator ++ r2Secondaries.iterator
 
   /** Returns an iterator of all reads for the template. */
   def allReads: Iterator[SamRecord] = r1.iterator ++ r2.iterator ++ allSupplementaryAndSecondary
+
+  /**
+    * Produces a copy of the template that has had mapping information removed.  Discards secondary and supplemntary
+    * records, and retains the primary records after un-mapping them.
+    */
+  def unmapped: Template = {
+    val x1 = r1.map(_.clone())
+    val x2 = r2.map(_.clone())
+    Seq(x1, x2).flatten.foreach { r =>
+      if (r.mapped) {
+        val nm = r.get[Int]("NM").getOrElse("")
+        r("OA") = s"${r.refName},${r.start},${if (r.positiveStrand) "+" else "-"},${r.cigar},${r.mapq},$nm"
+      }
+      SAMUtils.makeReadUnmapped(r.asSam)
+      SamRecordClipper.TagsToInvalidate.foreach(t => r(t) = null)
+    }
+
+    (x1, x2) match {
+      case (Some(a), Some(b)) => SamPairUtil.setMateInfo(a.asSam, b.asSam)
+      case _ => Unit
+    }
+
+    Template(x1, x2)
+  }
 
   /** The total count of records for the template. */
   lazy val readCount: Int = r1.size + r2.size + r1Supplementals.size + r2Supplementals.size + r1Secondaries.size + r2Secondaries.size

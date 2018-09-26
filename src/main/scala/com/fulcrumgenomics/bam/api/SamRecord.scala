@@ -227,6 +227,9 @@ trait SamRecord {
       refIndex == mateRefIndex &&
       SamPairUtil.getPairOrientation(this) == PairOrientation.FR
   }
+
+  /** Exposes clone() publicly for use. */
+  override def clone(): SamRecord = super.clone().asInstanceOf[SamRecord]
 }
 
 object SamRecord {

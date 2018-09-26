@@ -156,9 +156,11 @@ object Metric {
     writer.close()
   }
 
+  /** Returns a MetricWriter that can be used to stream metrics out to a file. */
+  def writer[T <: Metric](path: Path)(implicit tt: ru.TypeTag[T]): MetricWriter[T] = writer(Io.toWriter(path))
 
   /** Returns a MetricWriter that can be used to stream metrics out to a file. */
-  def writer[T <: Metric](path: Path)(implicit tt: ru.TypeTag[T]): MetricWriter[T] = new MetricWriter[T](Io.toWriter(path))
+  def writer[T <: Metric](writer: Writer)(implicit tt: ru.TypeTag[T]): MetricWriter[T] = new MetricWriter[T](writer)
 }
 
 /**
