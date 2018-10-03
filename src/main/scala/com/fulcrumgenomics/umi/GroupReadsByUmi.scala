@@ -466,7 +466,7 @@ class GroupReadsByUmi
 
     logger.info(f"Accepted $kept%,d reads for grouping.")
     if (filteredNonPf > 0) logger.info(f"Filtered out $filteredNonPf%,d non-PF reads.")
-    logger.info(f"Filtered out $filteredPoorAlignment%,d reads that were not part of a high confidence FR mapped read pair.")
+    logger.info(f"Filtered out $filteredPoorAlignment%,d reads that were not part of a high confidence mapped read pair.")
     logger.info(f"Filtered out $filteredNsInUmi%,d reads that contained one or more Ns in their UMIs.")
     this.minUmiLength.foreach { _ => logger.info(f"Filtered out $filterUmisTooShort%,d reads that contained UMIs that were too short.") }
 
