@@ -34,6 +34,7 @@ import com.fulcrumgenomics.commons.CommonsDef._
 import com.fulcrumgenomics.commons.reflect.{ReflectionUtil, ReflectiveBuilder}
 import com.fulcrumgenomics.commons.util.DelimitedDataParser
 import htsjdk.samtools.util.{FormatUtil, Iso8601Date}
+import com.fulcrumgenomics.commons.io.{Writer => CommonsWriter}
 
 import scala.reflect.runtime.{universe => ru}
 import scala.util.{Failure, Success}
@@ -58,9 +59,12 @@ object Metric {
   private val DateFormat = new SimpleDateFormat("yyyy-MM-dd")
 
   /** A class that provides streaming writing capability for metrics. */
-  class MetricWriter[T <: Metric] private[Metric](val writer: Writer)(implicit tt: ru.TypeTag[T]) extends Closeable {
+  class MetricWriter[T <: Metric] private[Metric](val writer: Writer)(implicit tt: ru.TypeTag[T]) extends CommonsWriter[T] {
     this.writer.write(names[T].mkString(DelimiterAsString))
     this.writer.write("\n")
+
+    /** Writes a metric value to the output. */
+    def write(metric: T): Unit = this.write(metric)
 
     /** Writes one or more metric values to the output. */
     def write(metrics: T*): Unit = metrics.foreach { metric =>
