@@ -64,13 +64,13 @@ object Metric {
     this.writer.write("\n")
 
     /** Writes a metric value to the output. */
-    def write(metric: T): Unit = this.write(metric)
-
-    /** Writes one or more metric values to the output. */
-    def write(metrics: T*): Unit = metrics.foreach { metric =>
+    def write(metric: T): Unit = {
       writer.write(metric.values.mkString(DelimiterAsString))
       writer.write("\n")
     }
+
+    /** Writes one or more metric values to the output. */
+    def write(metrics: T*): Unit = metrics.foreach { metric => this.write(metric) }
 
     def flush(): Unit = this.writer.flush()
     override def close(): Unit = this.writer.close()
