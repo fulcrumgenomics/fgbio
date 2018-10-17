@@ -40,9 +40,6 @@ import com.fulcrumgenomics.commons.util.{LazyLogging, SimpleCounter}
 import com.fulcrumgenomics.sopt.cmdline.ValidationException
 import com.fulcrumgenomics.sopt.{arg, clp}
 import com.fulcrumgenomics.util.{Io, Metric, ProgressLogger}
-import htsjdk.samtools.util.SequenceUtil
-
-import scala.collection.immutable
 
 
 @clp(group=ClpGroups.SamOrBam, description=
@@ -133,10 +130,6 @@ import scala.collection.immutable
     |
     |Each read will be annotated with SAM tags based on results of primer matching.
     |
-    |The `pp` tag stores the type of match found for the read pair.  Values include: 'Canonical', 'SelfDimer',
-    |'CrossDimer', 'NonCanonical', 'Single', or 'NoMatch'.  See the Paired-End Matching section for a description of
-    |these values.
-    |
     |The `f5`, `r5` describe the primer match for the forward and reverse strand primers matching the 5' end of the read
     |respectively.  The `f3`, `r3` describe the primer match for the forward and reverse strand primers matching the 3'
     |end of the read respectively (when `--three-prime` is used).  If no match was found, then the tag is set "none",
@@ -206,7 +199,7 @@ class IdentifyPrimers
         .map(PathUtil.pathTo(_))
         .map(p => p.resolve(name)).find(ex => Files.exists(ex))
         .orElse {
-          throw new ValidationException(s"Is the path to the ksw executable mis-typed? Could not find ksw executable ${ksw} in PATH: $path")
+          throw new ValidationException(s"Is the path to the ksw executable mis-typed? Could not find ksw executable $ksw in PATH: $path")
         }
   }
 
@@ -236,7 +229,6 @@ class IdentifyPrimers
 
   val numAlignments: AtomicLong = new AtomicLong(0)
 
-  private val PrimerPairMatchTypeTag: String       = "pp"
   private val PrimerInfoForward5PrimeTag: String   = "f5"
   private val PrimerInfoReverse5PrimeTag: String   = "r5"
   private val PrimerInfoForward3PrimeTag: String   = "f3"
@@ -247,8 +239,7 @@ class IdentifyPrimers
     Seq(
       s"The $allTags tags store the primer match metadata for the forward and reverse strand respectively.",
       s"The $allTags tags are formatted as follow: <pair_id>,<primer_id>,<ref_name>:<start>-<end>,<strand>,<read-num>,<match-offset>,<match-length>,<match-type>,<match-type-info>.",
-      s"The match-type is 'location', 'gapped', or 'ungapped' based on if the match was found using the location, mismatch-based (ungapped) alignment, or gapped-alignment.",
-      s"The ${PrimerPairMatchTypeTag} tag is either 'canonical', 'self-dimer', 'cross-dimer', 'non-canonical', 'single', or '$NoPrimerMatchInfo', based on how the primers for pairs match."
+      s"The match-type is 'location', 'gapped', or 'ungapped' based on if the match was found using the location, mismatch-based (ungapped) alignment, or gapped-alignment."
     )
   }
 
@@ -433,13 +424,13 @@ class IdentifyPrimers
       val templateTypes = (template.r1, template.r2) match {
         case (Some(r1), Some(r2)) =>
           val rType = TemplateType(r1, Some(r2))
-          val mType = formatPair(r1, r2, r1Match, r2Match, r1ThreePrimeMatch, r2ThreePrimeMatch)
-          TemplateTypeMetric(rType, r1.isFrPair, mType, r1Match, r2Match)
+          formatPair(r1, r2, r1Match, r2Match, r1ThreePrimeMatch, r2ThreePrimeMatch)
+          TemplateTypeMetric(rType, r1.isFrPair, r1Match, r2Match)
         case (Some(r1), None) =>
           require(!r1.paired, s"Found paired read but missing R2 for ${r1.name}")
           val rType = TemplateType(r1, None)
-          val mType = formatFragment(r1, r1Match, r1ThreePrimeMatch)
-          TemplateTypeMetric(rType, r1.isFrPair, mType, r1Match, r2Match)
+          formatFragment(r1, r1Match, r1ThreePrimeMatch)
+          TemplateTypeMetric(rType, r1.isFrPair, r1Match, r2Match)
         case _ =>
           throw new IllegalStateException(s"Template did not have an R1: ${template.name}")
       }
@@ -515,7 +506,7 @@ class IdentifyPrimers
                          r1FivePrimeMatch: Option[PrimerMatch],
                          r2FivePrimeMatch: Option[PrimerMatch],
                          r1ThreePrimeMatch: Option[PrimerMatch],
-                         r2ThreePrimeMatch: Option[PrimerMatch]): PrimerPairMatchType = {
+                         r2ThreePrimeMatch: Option[PrimerMatch]): Unit = {
     // Get which rec is on the forward strand, and which is reverse.  First looks at the primer match for r1, then the
     // primer match for r2, otherwise r1 is forward.
     val (forwardPrimerMatch, reversePrimerMatch) = {
@@ -531,10 +522,6 @@ class IdentifyPrimers
     }
     require(forwardPrimerMatch.positiveStrand && !reversePrimerMatch.positiveStrand)
 
-    // Set the primer pair match type
-    val matchType: PrimerPairMatchType = PrimerPairMatchType(forwardPrimerMatch.fivePrimeMatch, reversePrimerMatch.fivePrimeMatch, minInsertLength, maxInsertLength)
-    Seq(r1, r2).foreach { rec => rec(PrimerPairMatchTypeTag) = matchType.toString }
-
     // Set the primer match info to place in the forward/reverse primer match tags
     def tagit(fwdTag: String, revTag: String, f: PrimerMatches => Option[PrimerMatch]): Unit = {
       val forwardInfo = f(forwardPrimerMatch).map(_.info(forwardPrimerMatch.rec)).getOrElse(NoPrimerMatchInfo)
@@ -546,17 +533,13 @@ class IdentifyPrimers
     }
     tagit(PrimerInfoForward5PrimeTag, PrimerInfoReverse5PrimeTag, _.fivePrimeMatch)
     if (threePrime) tagit(PrimerInfoForward3PrimeTag, PrimerInfoReverse3PrimeTag, _.threePrimeMatch)
-
-    matchType
   }
 
   /** Adds tags to the record based on the primer matching results. */
   private def formatFragment(frag: SamRecord, fragFivePrimeMatch: Option[PrimerMatch],
-                             fragThreePrimeMatch: Option[PrimerMatch]): PrimerPairMatchType = {
+                             fragThreePrimeMatch: Option[PrimerMatch]): Unit = {
     val forwardInfo = fragFivePrimeMatch.map(_.info(frag)).getOrElse(NoPrimerMatchInfo)
-    val matchType: PrimerPairMatchType = PrimerPairMatchType(fragFivePrimeMatch, None, minInsertLength, maxInsertLength)
 
-    frag(PrimerPairMatchTypeTag)     = matchType.toString
     frag(PrimerInfoForward5PrimeTag) = forwardInfo
     frag(PrimerInfoReverse5PrimeTag) = NoPrimerMatchInfo
 
@@ -564,7 +547,5 @@ class IdentifyPrimers
       frag(PrimerInfoForward5PrimeTag) = fragThreePrimeMatch.map(_.info(frag)).getOrElse(NoPrimerMatchInfo)
       frag(PrimerInfoReverse5PrimeTag) = NoPrimerMatchInfo
     }
-
-    matchType
   }
 }

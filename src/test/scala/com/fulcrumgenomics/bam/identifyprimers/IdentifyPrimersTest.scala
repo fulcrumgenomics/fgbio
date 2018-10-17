@@ -34,9 +34,6 @@ import com.fulcrumgenomics.testing.{SamBuilder, UnitSpec}
 import htsjdk.samtools.util.SequenceUtil
 import org.scalatest.OptionValues
 import com.fulcrumgenomics.FgBioDef.unreachable
-import com.fulcrumgenomics.bam.identifyprimers.IdentifyPrimersMetric
-//import com.fulcrumgenomics.bam.IdentifyPrimers._
-import com.fulcrumgenomics.bam.identifyprimers.IdentifyPrimers
 import com.fulcrumgenomics.commons.io.PathUtil
 import com.fulcrumgenomics.util.Metric
 import htsjdk.samtools.SamPairUtil

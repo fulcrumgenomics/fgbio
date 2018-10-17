@@ -33,14 +33,12 @@ private[identifyprimers] object TemplateTypeMetric {
   /** Builds a [[TemplateTypeMetric]]. */
   def apply(readType: TemplateType,
             is_fr: Boolean,
-            primerPairMatchType: PrimerPairMatchType,
             forwardPrimerMatchType: Option[PrimerMatch],
             reversePrimerMatchType: Option[PrimerMatch]
            ): TemplateTypeMetric = {
     TemplateTypeMetric(
       template_type          = readType,
       is_fr                  = is_fr,
-      primer_pair_match_type = primerPairMatchType,
       r1_primer_match_type   = PrimerMatch.toName(forwardPrimerMatchType),
       r2_primer_match_type   = PrimerMatch.toName(reversePrimerMatchType)
     )
@@ -60,22 +58,20 @@ private[identifyprimers] object TemplateTypeMetric {
 
 
 /** Stores summary counts for how many templates of type [[template_type]] have the given same value for
-  * [[primer_pair_match_type]], [[r1_primer_match_type]], and [[r2_primer_match_type]].
+  * [[r1_primer_match_type]], and [[r2_primer_match_type]].
   *
   * @param template_type          the [[TemplateType]].
   * @param is_fr                  true if a mapped read pair is in FR orientation: `( 5' --F-->  <--R-- 5' )`  - aka. innie
-  * @param primer_pair_match_type the [[PrimerPairMatchType]].
-  * @param r1_primer_match_type   [[PrimerMatch]]for matches read one (or fragment reads), otherwise [[None]].
-  * @param r2_primer_match_type   [[PrimerMatch]]for matches read two, otherwise [[None]].
-  * @param count                  the number of templates of type [[template_type]] having the same value for [[primer_pair_match_type]],
-  *                               [[r1_primer_match_type]], and [[r2_primer_match_type]].
-  * @param frac                   the fraction of all templates having the same value for [[primer_pair_match_type]],
-  *                               [[r1_primer_match_type]], and [[r2_primer_match_type]].
+  * @param r1_primer_match_type   [[PrimerMatch]] for matches read one (or fragment reads), otherwise [[None]].
+  * @param r2_primer_match_type   [[PrimerMatch]] for matches read two, otherwise [[None]].
+  * @param count                  the number of templates of type [[template_type]] having the same value for
+  *                               [[r1_primer_match_type]] and [[r2_primer_match_type]].
+  * @param frac                   the fraction of all templates having the same value for [[r1_primer_match_type]] and
+  *                               [[r2_primer_match_type]].
   */
 private[identifyprimers] case class TemplateTypeMetric
 (template_type: TemplateType,
  is_fr: Boolean,
- primer_pair_match_type: PrimerPairMatchType,
  r1_primer_match_type: String,
  r2_primer_match_type: String,
  count: Long = 0,

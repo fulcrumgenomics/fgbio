@@ -33,9 +33,9 @@ class TemplateTypeMetricTest extends UnitSpec {
     // build a couple
     val primer = new Primer("pair1", "primer1+", "GATTACA", "chr1", 1, 7, true)
     val metrics = Seq(
-      TemplateTypeMetric(TemplateType.MappedPair, true, PrimerPairMatchType.Canonical, Some(LocationBasedPrimerMatch(primer, 1)), None),
-      TemplateTypeMetric(TemplateType.MappedPair, true, PrimerPairMatchType.Canonical, Some(LocationBasedPrimerMatch(primer, 2)), None),
-      TemplateTypeMetric(TemplateType.MappedFragment, false, PrimerPairMatchType.Single, Some(LocationBasedPrimerMatch(primer, 3)), None)
+      TemplateTypeMetric(TemplateType.MappedPair, true,  Some(LocationBasedPrimerMatch(primer, 1)), None),
+      TemplateTypeMetric(TemplateType.MappedPair, true, Some(LocationBasedPrimerMatch(primer, 2)), None),
+      TemplateTypeMetric(TemplateType.MappedFragment, false, Some(LocationBasedPrimerMatch(primer, 3)), None)
     )
 
     // collate
