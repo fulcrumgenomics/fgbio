@@ -52,9 +52,9 @@ private[identifyprimers] object IdentifyPrimersMetric {
 
       // Add the count of # of primer matches per template
       primer_match_types.map(_ == PrimerMatch.NoPrimerMatchName) match {
-        case Seq(true, true)   => endsWithMatchesCounter.count(0)
-        case Seq(false, false) => endsWithMatchesCounter.count(2)
-        case Seq(_, _)         => endsWithMatchesCounter.count(1)
+        case Seq(true, true)   => endsWithMatchesCounter.count(0, count)
+        case Seq(false, false) => endsWithMatchesCounter.count(2, count)
+        case Seq(_, _)         => endsWithMatchesCounter.count(1, count)
       }
 
       // return this to count the # of FR pairs
@@ -82,8 +82,8 @@ private[identifyprimers] object IdentifyPrimersMetric {
       no_paired_matches         = endsWithMatchesCounter.countOf(0),
       match_attempts            = primerMatchCounter.total,
       location                  = primerMatchCounter.countOf(PrimerMatch.toName[LocationBasedPrimerMatch]),
-      mismatch                  = primerMatchCounter.countOf(PrimerMatch.toName[UngappedAlignmentPrimerMatch]),
-      gapped_alignment          = primerMatchCounter.countOf(PrimerMatch.toName[GappedAlignmentPrimerMatch]),
+      ungapped                  = primerMatchCounter.countOf(PrimerMatch.toName[UngappedAlignmentPrimerMatch]),
+      gapped          = primerMatchCounter.countOf(PrimerMatch.toName[GappedAlignmentPrimerMatch]),
       no_match                  = primerMatchCounter.countOf(PrimerMatch.NoPrimerMatchName)
     )
   }
@@ -105,8 +105,8 @@ private[identifyprimers] object IdentifyPrimersMetric {
   * @param no_paired_matches the number of templates with neither end of a pair with a match.
   * @param match_attempts the number of attempts at primer match (i.e. `(2 * pairs) + fragments`).
   * @param location the number of primer matches made based on mapping location.
-  * @param mismatch the number of primer matches made based on mismatch-only alignment.
-  * @param gapped_alignment the number of primer matches made based on gapped alignment.
+  * @param ungapped the number of primer matches made based on ungapped (mismatch-only) alignment.
+  * @param gapped the number of primer matches made based on gapped alignment.
   * @param no_match the number of reads that do no match a primer.
   */
 case class IdentifyPrimersMetric
@@ -124,7 +124,7 @@ case class IdentifyPrimersMetric
  no_paired_matches: Long = 0,
  match_attempts: Long = 0,
  location: Long = 0,
- mismatch: Long = 0,
- gapped_alignment: Long = 0,
+ ungapped: Long = 0,
+ gapped: Long = 0,
  no_match: Long = 0
 ) extends Metric
