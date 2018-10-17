@@ -46,5 +46,4 @@ case class ProgressLogger(logger: Logger,
 
   /** Logs the last record if it wasn't already logged. */
   def logLast(): Boolean = super.log() // Calls the super's log() method, not log(message: String*)
-
 }

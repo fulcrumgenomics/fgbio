@@ -24,13 +24,12 @@
 
 package com.fulcrumgenomics.vcf
 
-import com.fulcrumgenomics.FgBioDef._
 import com.fulcrumgenomics.testing.{ReferenceSetBuilder, UnitSpec, VariantContextSetBuilder}
 import htsjdk.samtools.SAMSequenceDictionary
 import htsjdk.variant.utils.SAMSequenceDictionaryExtractor
 
 class VariantMaskTest extends UnitSpec {
-  val ref = {
+  private val ref = {
     val builder = new ReferenceSetBuilder()
     builder.add("chr0").add("NNNNNNNNNN", times=100) // length 1000
     builder.add("chr1").add("AAAAAAAAAA", times=100) // length 1000
@@ -41,7 +40,7 @@ class VariantMaskTest extends UnitSpec {
     builder.toTempFile()
   }
 
-  val dict = SAMSequenceDictionaryExtractor.extractDictionary(ref.toFile)
+  private val dict = SAMSequenceDictionaryExtractor.extractDictionary(ref)
 
   "VariantMask" should "mask SNPs as individual bases" in {
     val builder = new VariantContextSetBuilder().setSequenceDictionary(dict)

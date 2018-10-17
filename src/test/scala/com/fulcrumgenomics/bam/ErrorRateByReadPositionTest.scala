@@ -51,7 +51,7 @@ class ErrorRateByReadPositionTest extends UnitSpec {
     builder.toTempFile()
   }
 
-  private val dict = SAMSequenceDictionaryExtractor.extractDictionary(ref.toFile)
+  private val dict = SAMSequenceDictionaryExtractor.extractDictionary(ref)
 
   private val vcf = {
     val builder = new VariantContextSetBuilder().setSequenceDictionary(dict)
