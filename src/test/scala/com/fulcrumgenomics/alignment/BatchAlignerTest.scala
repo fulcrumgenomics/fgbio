@@ -26,7 +26,7 @@ package com.fulcrumgenomics.alignment
 
 import com.fulcrumgenomics.testing.UnitSpec
 
-class InteractiveAlignmentScorerTest extends UnitSpec {
+class BatchAlignerTest extends UnitSpec {
 
   private case class Bases(seq: String) extends Alignable {
     val bases: Array[Byte] = seq.getBytes
@@ -38,7 +38,7 @@ class InteractiveAlignmentScorerTest extends UnitSpec {
 
   Seq(Mode.Local, Mode.Glocal, Mode.Global).foreach { mode =>
     "InteractiveAlignmentScorer" should s"align in $mode mode" in {
-      val iAligner = InteractiveAlignmentScorer[Bases, Bases](1, -4, -6, -1, mode=mode)
+      val iAligner = BatchAligner[Bases, Bases](1, -4, -6, -1, mode=mode)
       val aligner  = Aligner(1, -4, -6, -1, mode=mode)
 
       // Add the tasks to the interactive aligner
@@ -47,12 +47,12 @@ class InteractiveAlignmentScorerTest extends UnitSpec {
       // Compare the results
       testTasks.zip(iAligner.iterator.toSeq).foreach { case (task, actualPartialAlignment) =>
         val expectedAlignment        = aligner.align(task.query.bases, task.target.bases)
-        val expectedPartialAlignment = PartialAlignment(expectedAlignment)
+        val expectedPartialAlignment = BasicAlignment(expectedAlignment)
 
         actualPartialAlignment shouldBe expectedPartialAlignment
       }
       iAligner.numAdded shouldBe testTasks.length
-      iAligner.numAligned shouldBe testTasks.length
+      iAligner.numRetrieved shouldBe testTasks.length
     }
   }
 }

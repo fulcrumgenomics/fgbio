@@ -54,7 +54,14 @@ object Aligner {
     (lhs: Byte, rhs: Byte) => if (lhs == rhs) matchScore else mismatchScore
   }
 
-  /** Creates a NW aligner with fixed match and mismatch scores. */
+  /** Creates a NW aligner with fixed match and mismatch scores.
+    *
+    * @param matchScore the match score (should be greater than or equal to zero).
+    * @param mismatchScore the mismatch score (should be greater than or equal to zero).
+    * @param gapOpen the gap opening penalty, should generally be negative or zero
+    * @param gapExtend the gap extension penalty, should generally be negative or zero
+    * @param mode alignment mode to use when generating alignments
+    */
   def apply(matchScore: Int, mismatchScore: Int, gapOpen: Int, gapExtend: Int, mode: Mode = Global): Aligner = {
     new Aligner(scoringFunction=simpleScoringFunction(matchScore, mismatchScore), gapOpen, gapExtend, mode=mode)
   }

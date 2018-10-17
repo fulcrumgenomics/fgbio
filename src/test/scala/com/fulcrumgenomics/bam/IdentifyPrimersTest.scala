@@ -385,7 +385,7 @@ final class PrimerMatcherTest extends UnitSpec with OptionValues with PrimerMatc
             }
 
             // complete the alignment manually
-            aligner.align(task.toQuery, task.toTarget).score >= primerMatcher.minAlignmentScore
+            aligner.align(task.queryBytes, task.targetBytes).score >= primerMatcher.minAlignmentScore
           }
 
           // check to see if any alignment exists above the minimum score
