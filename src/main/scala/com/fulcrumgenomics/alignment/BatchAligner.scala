@@ -126,9 +126,9 @@ trait BatchAligner[A <: Alignable, B <: Alignable] extends Iterator[Alignment] w
   private var _numRetrieved: Long = 0
 
   /** Provides an asynchronous way of adding alignment tasks to the aligner*/
-  private val sink = new AsyncSink[AlignmentTask[A, B]](
-    sink       = t => this._append(t),
-    source     = None
+  private val sink = AsyncSink[AlignmentTask[A, B]](
+    sink   = t => this._append(t),
+    source = None
   )
 
   /** Adds one or more alignment tasks to this aligner. */

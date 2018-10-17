@@ -34,15 +34,18 @@ class BatchAlignerTest extends UnitSpec {
 
   private def f(query: String, target: String): AlignmentTask[Bases, Bases] = AlignmentTask(Bases(seq = query), Bases(seq = target))
 
-  private val testTasks =  Seq(f("ACGTAACC", "ACGTAACC"), f("CCGG", "AACCGGTT"), f("AAAATTTT", "AAAATTTTGGGG"))
+  private val testTasks = Seq(f("ACGTAACC", "ACGTAACC"), f("CCGG", "AACCGGTT"), f("AAAATTTT", "AAAATTTTGGGG"))
 
   Seq(Mode.Local, Mode.Glocal, Mode.Global).foreach { mode =>
-    "InteractiveAlignmentScorer" should s"align in $mode mode" in {
+    "BatchAligner" should s"align in $mode mode" in {
       val iAligner = BatchAligner[Bases, Bases](1, -4, -6, -1, mode=mode)
       val aligner  = Aligner(1, -4, -6, -1, mode=mode)
 
       // Add the tasks to the interactive aligner
       testTasks.foreach { task => iAligner.append(task) }
+
+      // Check that all have been added
+      iAligner.numAdded shouldBe testTasks.length
 
       // Compare the results
       testTasks.zip(iAligner.iterator.toSeq).foreach { case (task, actualAlignment) =>
