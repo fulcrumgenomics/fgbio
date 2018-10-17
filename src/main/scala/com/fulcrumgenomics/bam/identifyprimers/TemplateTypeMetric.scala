@@ -27,6 +27,7 @@ package com.fulcrumgenomics.bam.identifyprimers
 import com.fulcrumgenomics.commons.util.SimpleCounter
 import com.fulcrumgenomics.util.Metric
 
+/** Companion to [[TemplateTypeMetric]] */
 private[identifyprimers] object TemplateTypeMetric {
 
   /** Builds a [[TemplateTypeMetric]]. */

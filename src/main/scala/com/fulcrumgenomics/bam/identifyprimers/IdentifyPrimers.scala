@@ -567,37 +567,4 @@ class IdentifyPrimers
 
     matchType
   }
-
-}
-
-
-
-object IdentifyPrimers {
-
-  // FIXME: remove after this merges: https://github.com/fulcrumgenomics/commons/pull/34
-  /** An implicit class that adds support for getting the maximum two values, if they exist. */
-  implicit class MaxTwoBy[A](values: Iterator[A]) {
-    def maxTwoBy[B](f: A => B)(implicit cmp: Ordering[B]): (Option[A], Option[A]) = {
-      var best: Option[A] = None
-      var bestValue: Option[B] = None
-      var nextBest: Option[A] = None
-      var nextBestValue: Option[B] = None
-
-      values.foreach { cur =>
-        val curValue = f(cur)
-
-        if (bestValue.forall(v => cmp.lt(v, curValue))) {
-          best = Some(cur)
-          bestValue = Some(curValue)
-        }
-        else if (nextBestValue.forall(v => cmp.lt(v, curValue))) {
-          nextBest = Some(cur)
-          nextBestValue = Some(curValue)
-        }
-      }
-
-      (best, nextBest)
-    }
-  }
-
 }
