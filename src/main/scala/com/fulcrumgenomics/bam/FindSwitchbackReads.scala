@@ -49,18 +49,8 @@ object FindSwitchbackReads {
   /** The name of the BAM extended attribute tag used to store switchback information. */
   val SwitchTag = "sb"
 
-  /** The type code used when a switchback is identified within the sequence of a read. In this case the `sb` tag
-    * will have the format `sb:Z:r,{read|mate},{offset},{length}`.
-    */
-  val SwitchTypeRead = "r"
-
-  /** The type code used when a switchback event is detected via the tandem orientation of a read pair.
-    * In this case the `sb` tag will have the format: `sb:Z:t,{gap}`.
-    */
-  val SwitchTypeTandem = "t"
-
   /** Parent trait for the different kinds of hits we can find. */
-  sealed trait SwitchHit
+  sealed trait SwitchHit { def code: Char }
 
   /**
     * Information about a switchback found by looking at soft-clipped complementary sequence within
@@ -69,8 +59,11 @@ object FindSwitchbackReads {
     * @param offset the offset between the reference position at the last base read on the original strand and
     *               the first base read on the opposite strand.
     * @param length the length of the post-switch sequence within the read
+    * @param read optionally the read in which the hit was found (generally filled in later)
     */
-  case class ReadBasedHit(var offset: Int, length: Int, var read: Option[SamRecord] = None) extends SwitchHit
+  case class ReadBasedHit(var offset: Int, length: Int, var read: Option[SamRecord] = None) extends SwitchHit {
+    override val code: Char = 'r'
+  }
 
   /**
     * Information about a switchback found by examining a template with a tandem (i.e. FF or RR) pair orientation.
@@ -83,7 +76,9 @@ object FindSwitchbackReads {
     *     ------>          gap = -2
     * @param gap the unsequenced gap between the the 3' end of the "earlier" read and the 5' end of the "later" read.
     */
-  case class TandemBasedHit(gap: Int) extends SwitchHit
+  case class TandemBasedHit(gap: Int) extends SwitchHit {
+    override val code: Char = 't'
+  }
 
   /**
     * Summary metrics regarding switchback reads found.
@@ -231,17 +226,17 @@ object FindSwitchbackReads {
     |
     |Templates that contain strand switch events (switch-backs) are found by this tool in two different ways:
     |
-    |1. By looking at reads that contain soft-clipping at their 5' end that matches the genome, after
-    |   being reverse complemented, proximal to the 5'-most mapped base of the read.  We call these matches
+    |1. By looking at reads that contain soft-clipped bases at their 5' end that, when reverse complemented, matches the
+    |   genome proximal to the 5'-most mapped base of the read.  We call these matches
     |   "read based switchbacks".  Finding read based switchbacks is based on several parameters:
     |
-    |   1. `max-offset` controls how far away the reverse-complemented sequence is searched for.  The default value of
+    |   1. `max-offset` controls how far away to search for the reverse-complemented sequence.  The default value of
     |      `35` allows matches to be found when the soft-clipped sequence matches the genome _starting_ at most 35bp
     |      from the 5' mapped position of the read, and reading in the opposite direction.
     |   2. `min-length` controls the minimum number of soft-clipped bases that must exist to trigger the search.
     |      Given that the search looks at `2 * max-offset` locations (default=70) it is important that `min-length`
     |      is set such that `4^min-length >> 2 * `max-offset` in order to avoid false positives.
-    |   3. `max-error-rate` allows for some mismatches to exist between the soft-clipped sequence and the genome when matching
+    |   3. `max-error-rate` allows for some mismatches to exist between the soft-clipped sequence and the genome when matching.
     |
     |2. By identifying templates with `FF` or `RR` (aka tandem) orientation where it is surmised that the template
     |   switch occurred in the un-sequenced region of the template between R1 and R2.  We call these `tandem based
@@ -338,7 +333,7 @@ class FindSwitchbackReads
             Unit
           case Some(hit: TandemBasedHit) =>
             switchbackGaps.count(hit.gap)
-            val tagValue = s"${SwitchTypeTandem},${hit.gap}"
+            val tagValue = s"${hit.code},${hit.gap}"
             template.allReads.foreach(r => r(SwitchTag) = tagValue)
           case Some(hit: ReadBasedHit) =>
             switchbackLengths.count(hit.length)
@@ -346,7 +341,7 @@ class FindSwitchbackReads
             val foundInReadNum = readNum(hit.read.getOrElse(unreachable("read should be populated!")))
             template.allReads.foreach { r =>
               val num = readNum(r)
-              r(SwitchTag) = s"${SwitchTypeRead},${if (num == foundInReadNum) "read" else "mate"},${hit.offset},${hit.length}"
+              r(SwitchTag) = s"${hit.code},${if (num == foundInReadNum) "read" else "mate"},${hit.offset},${hit.length}"
             }
         }
 
@@ -381,7 +376,12 @@ class FindSwitchbackReads
 
       Metric.write(PathUtil.pathTo(prefix + ".summary.txt"), m)
 
-      for ((suffix, counter, header) <- Seq(("lengths", switchbackLengths, "length"), ("offsets", switchbackOffsets, "offset"), ("gaps", switchbackGaps, "gap_length"))) {
+
+      Seq(
+        ("lengths", switchbackLengths, "length"),
+        ("offsets", switchbackOffsets, "offset"),
+        ("gaps",    switchbackGaps,    "gap_length")
+      ).foreach { case (suffix, counter, header) =>
         val writer = Io.toWriter(PathUtil.pathTo(s"$prefix.$suffix.txt"))
         writer.write(s"$header\tcount\n")
         counter.foreach { case (x, count) => writer.write(s"$x\t$count\n")}
