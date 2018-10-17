@@ -34,6 +34,7 @@ import com.fulcrumgenomics.alignment.{Alignable, Aligner, Alignment, AlignmentTa
 import com.fulcrumgenomics.bam.api.{SamOrder, SamRecord, SamSource, SamWriter}
 import com.fulcrumgenomics.cmdline.{ClpGroups, FgBioTool}
 import com.fulcrumgenomics.commons.CommonsDef.{javaIteratorAsScalaIterator, unreachable, _}
+import com.fulcrumgenomics.commons.collection.SelfClosingIterator
 import com.fulcrumgenomics.commons.io.PathUtil
 import com.fulcrumgenomics.commons.reflect.ReflectionUtil
 import com.fulcrumgenomics.commons.util.{DelimitedDataParser, LazyLogging, SimpleCounter}
@@ -184,17 +185,18 @@ class IdentifyPrimers
   validate(minAlignmentScoreRate >= 0, "--min-alignment-score-rate must be >= 0")
   maxTemplatesInRam.foreach { m => validate(templatesPerThread < m, "--max-templates-in-ram must be greater than or equal to --templates-per-thread")}
 
-  private val aligner: Aligner = Aligner(matchScore = matchScore, mismatchScore = mismatchScore, gapOpen = gapOpen, gapExtend = gapExtend, mode = AlignmentMode.Glocal)
-
-  private val (fwdMatcher, revMatcher) = PrimerMatcher.build(
-    path                  = this.primers,
-    aligner               = aligner,
-    slop                  = slop,
-    maxMismatchRate       = maxMismatchRate,
-    minAlignmentScoreRate = minAlignmentScoreRate,
-    withFullAlignment     = !skipFullAlignment,
-    revComp               = true
-  )
+   private val (fwdMatcher, revMatcher) = {
+    val aligner: Aligner = Aligner(matchScore = matchScore, mismatchScore = mismatchScore, gapOpen = gapOpen, gapExtend = gapExtend, mode = AlignmentMode.Glocal)
+    PrimerMatcher.build(
+      path                  = this.primers,
+      aligner               = aligner,
+      slop                  = slop,
+      maxMismatchRate       = maxMismatchRate,
+      minAlignmentScoreRate = minAlignmentScoreRate,
+      withFullAlignment     = !skipFullAlignment,
+      revComp               = true
+    )
+  }
 
   val numAlignments: AtomicLong = new AtomicLong(0)
 
@@ -260,10 +262,12 @@ class IdentifyPrimers
         }
     }
     else {
+      val aligner = newAligner
       logger.info(f"Batching $templatesPerThread%,d templates.")
-      iterator
+      val iter = iterator
         .grouped(templatesPerThread)
-        .map { templates => processBatch(templates, metricCounter, readingProgress) }
+        .map { templates => processBatch(templates, metricCounter, readingProgress, Some(aligner)) }
+      new SelfClosingIterator[Seq[Template]](iter, () => aligner.close())
     }
 
     // Write the results
@@ -333,10 +337,14 @@ class IdentifyPrimers
   /** Processes a single batch of templates. */
   def processBatch(templates: Seq[Template],
                    metricCounter: SimpleCounter[TemplateTypeMetric],
-                   progress: ProgressLogger): Seq[Template] = {
+                   progress: ProgressLogger,
+                   batchAligner: Option[BatchAligner[Primer, SamRecordAlignable]] = None): Seq[Template] = {
 
     val counter = new SimpleCounter[TemplateTypeMetric]()
-    val aligner = newAligner
+    val aligner = batchAligner.getOrElse(newAligner)
+
+    // reset the provided aligner
+    batchAligner.foreach(_.reset())
 
     val templateMatchOptions = templates.toIterator.map { template =>
       // match up to but not including full alignment
@@ -394,7 +402,7 @@ class IdentifyPrimers
     require(aligner.numAdded == aligner.numRetrieved, s"added: ${aligner.numAdded} alignments: ${aligner.numRetrieved}")
     require(aligner.numAvailable == 0, s"Found alignments available: ${aligner.numAvailable}")
 
-    aligner.close()
+    if (batchAligner.isEmpty) aligner.close()
 
     numAlignments.addAndGet(aligner.numRetrieved)
     metricCounter.synchronized {
@@ -452,8 +460,8 @@ class IdentifyPrimers
     val forwardInfo = fragFivePrimeMatch.map(_.info(frag, forward = true)).getOrElse(NoPrimerMatchInfo)
 
     val matchType: PrimerPairMatchType = fragFivePrimeMatch match {
-      case Some(pm) => Single
-      case None     => NoMatch
+      case Some(_) => Single
+      case None    => NoMatch
     }
 
     frag(PrimerPairMatchTypeTag) = matchType.toString
@@ -669,7 +677,7 @@ object IdentifyPrimers {
     def toName[T <: PrimerMatch : TypeTag]: String =  typeOf[T] match {
       case t if t =:= typeOf[LocationBasedPrimerMatch]     => "Location"
       case t if t =:= typeOf[MismatchAlignmentPrimerMatch] => "Mismatch"
-      case t if t =:= typeOf[FullAlignmentPrimerMatch]     => "Alignment"
+      case t if t =:= typeOf[FullAlignmentPrimerMatch]     => "Gapped"
       case _ => unreachable(s"Unknown primer match type: ${this.getClass.getSimpleName}.")
     }
   }

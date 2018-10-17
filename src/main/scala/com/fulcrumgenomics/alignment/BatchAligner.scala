@@ -30,8 +30,6 @@ import com.fulcrumgenomics.commons.CommonsDef.FilePath
 import com.fulcrumgenomics.commons.async.AsyncSink
 import com.fulcrumgenomics.commons.util.StringUtil
 
-import scala.collection.mutable
-
 /** The set of objects, traits, and classes are to facilitate the batching of alignment tasks.
   *
   * In cases where we wish to perform a large batch of asynchronous alignment, we can provide in one or more alignment
@@ -47,10 +45,6 @@ import scala.collection.mutable
   * 1. [[ScalaBatchAligner]] - the default implementation based on [[Aligner]] which will align immediately when an a
   *    alignment task is added.
   * 2. [[KswBatchAligner]] - an aligner using the `ksw` tool as an external executable.
-  *
-  * The alignment as a [[BasicAlignment]] returned will contain only the score, and the start/end of the query/target
-  * respectively.  This allows the aligner to skip generating the cigar, as in some cases, this is computationally
-  * expensive.
   */
 
 
@@ -83,30 +77,6 @@ case class AlignmentTask[A <: Alignable, B <: Alignable](query: A, target: B) {
   def queryLength: Int         = query.length
   def targetLength: Int        = target.length
 }
-
-
-object BasicAlignment {
-  /** Builds a new alignment task from an existing [[Alignment]]. */
-  def apply(alignment: Alignment): BasicAlignment = {
-    BasicAlignment(
-      score       = alignment.score,
-      queryStart  = alignment.queryStart,
-      queryEnd    = alignment.queryEnd,
-      targetStart = alignment.targetStart,
-      targetEnd   = alignment.targetEnd
-    )
-  }
-}
-
-/** The result of a the aligner.  This does not give the full-alignment (i.e. [[Alignment]]) to reduce computation.
-  *
-  * @param score the alignment score
-  * @param queryStart the 1-based position in the query sequence where the alignment begins
-  * @param queryEnd the 1-based position in the query sequence where the alignment ends
-  * @param targetStart the 1-based position in the target sequence where the alignment begins
-  * @param targetEnd the 1-based position in the target sequence where the alignment ends
-  * */
-case class BasicAlignment(score: Int, queryStart: Int, queryEnd: Int, targetStart: Int, targetEnd: Int)
 
 object BatchAligner {
   // TODO: finish docs
@@ -145,7 +115,7 @@ object BatchAligner {
   * @tparam A the type of the query [[Alignable]].
   * @tparam B the type of the target [[Alignable]].
   */
-trait BatchAligner[A <: Alignable, B <: Alignable] extends Iterator[BasicAlignment] with Closeable {
+trait BatchAligner[A <: Alignable, B <: Alignable] extends Iterator[Alignment] with Closeable {
 
   // TODO: use a cache...
 
@@ -168,7 +138,7 @@ trait BatchAligner[A <: Alignable, B <: Alignable] extends Iterator[BasicAlignme
   }
 
    /** Gets the result of the next alignment task. */
-  final def next(): BasicAlignment = {
+  final def next(): Alignment = {
     if (!hasNext()) throw new NoSuchElementException("Calling next() when hasNext() is false.")
     this._numRetrieved += 1
     this._next()
@@ -178,7 +148,7 @@ trait BatchAligner[A <: Alignable, B <: Alignable] extends Iterator[BasicAlignme
   final def hasNext(): Boolean = this._numRetrieved < this._numAdded
 
   /** Gets an iterator over the alignment tasks*/
-  def iterator: Iterator[BasicAlignment] = this
+  def iterator: Iterator[Alignment] = this
 
   /** The number of alignment tasks added so far. */
   def numAdded: Long = _numAdded
@@ -189,11 +159,18 @@ trait BatchAligner[A <: Alignable, B <: Alignable] extends Iterator[BasicAlignme
   /** The number of alignment tasks */
   def numAvailable: Long = numAdded - numRetrieved
 
+  /** Reset the various counts.  There must be no tasks remaining. */
+  def reset(): Unit = {
+    require(!this.hasNext(), "Calling rest() when hasNext() is true")
+    this._numAdded = 0
+    this._numRetrieved = 0
+  }
+
   /** All alignment implementations must implement this to add the task to the aligner. */
   protected def _append(task: AlignmentTask[A, B]): Unit
 
   /** All alignment implementations must implement this to return the next alignment result. */
-  protected def _next(): BasicAlignment
+  protected def _next(): Alignment
 }
 
 /** Companion to [[ScalaBatchAligner]]. */
@@ -225,16 +202,15 @@ object ScalaBatchAligner {
 class ScalaBatchAligner[A <: Alignable, B <: Alignable](val aligner: Aligner) extends BatchAligner[A, B] {
 
   /** The queue of alignment tasks. */
-  private val queue = new mutable.Queue[BasicAlignment]()
+  private val queue = new java.util.concurrent.LinkedBlockingQueue[Alignment]()
 
   /** Adds the task to the task queue. */
   protected def _append(task: AlignmentTask[A, B]): Unit = {
-    val alignment: Alignment = aligner.align(task.queryBytes, task.targetBytes)
-    queue.enqueue(BasicAlignment(alignment))
+    queue.put(aligner.align(task.queryBytes, task.targetBytes))
   }
 
   /** Does the next enqueued alignment task and returns its result.*/
-  protected def _next(): BasicAlignment =  queue.dequeue()
+  protected def _next(): Alignment = queue.take()
 
   /** Does nothing */
   def close(): Unit = Unit
@@ -246,11 +222,18 @@ private object KswBatchAligner {
 
   // Developer Note: this is faster than jus split.  See [[DelimitedDataParser]].
   /** Parses an alignment result from the ksw output (a single line). */
-  def toAlignmentResult(line: String, delimiter: Char = '\t'): BasicAlignment = {
-    val tmp = new Array[String](5)
+  def toAlignment(line: String, delimiter: Char = '\t'): Alignment = {
+    val tmp = new Array[String](8)
     val count = StringUtil.split(line, delimiter, tmp)
-    require(count == 5, s"Could not parse line into five values: $line.")
-    BasicAlignment(tmp(0).toInt, tmp(1).toInt, tmp(2).toInt, tmp(3).toInt, tmp(4).toInt)
+    require(count == 8, s"Could not parse line into eight: $line.")
+    Alignment(
+      query       = tmp(6).getBytes,
+      target      = tmp(7).getBytes,
+      queryStart  = tmp(1).toInt + 1, // make it one-based
+      targetStart = tmp(3).toInt + 1, // make it one-based
+      cigar       = Cigar(tmp(5)),
+      score       = tmp(0).toInt
+    )
   }
 }
 
@@ -279,7 +262,7 @@ private class KswBatchAligner[A <: Alignable, B <: Alignable](executable: FilePa
                                                               buffer: Int = 1024*1024) extends BatchAligner[A, B]
 {
   /** The ksw process. */
-  private val process   = {
+  private val process = {
     val alignmentMode = this.mode match {
       case Mode.Local  => 0
       case Mode.Glocal => 1
@@ -292,7 +275,9 @@ private class KswBatchAligner[A <: Alignable, B <: Alignable](executable: FilePa
       "-b", math.abs(mismatchScore),
       "-q", math.abs(gapOpen),
       "-r", math.abs(gapExtend),
-      "-M", alignmentMode
+      "-M", alignmentMode,
+      "-c", // add the cigar
+      "-s"  // add the query and target
     ).map(_.toString)
     new ProcessBuilder(args:_*).redirectErrorStream(true).start()
   }
@@ -305,15 +290,18 @@ private class KswBatchAligner[A <: Alignable, B <: Alignable](executable: FilePa
 
   /** Adds an alignment task to Ksw's input.  This may block writing the input to ksw. */
   protected def _append(task: AlignmentTask[A, B]): Unit = {
-    kswInput.println(task.queryBytes)
-    kswInput.println(task.targetBytes)
+    // Align the forward and reverse: https://github.com/nh13/ksw/issues/6
+    kswInput.write(task.queryBytes)
+    kswInput.append('\n')
+    kswInput.write(task.targetBytes)
+    kswInput.append('\n')
   }
 
-  /** Retrievs the next result from ksw.  This may block reading the output of ksw. */
-  protected def _next(): BasicAlignment = {
+  /** Retrieves the next result from ksw.  This may block reading the output of ksw. */
+  protected def _next(): Alignment = {
     kswOutput.readLine() match {
       case null => throw new IllegalStateException("KSW error.")
-      case line => KswBatchAligner.toAlignmentResult(line)
+      case line => KswBatchAligner.toAlignment(line)
     }
   }
 
