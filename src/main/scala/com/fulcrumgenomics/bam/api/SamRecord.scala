@@ -24,6 +24,8 @@
 
 package com.fulcrumgenomics.bam.api
 
+import java.util
+
 import com.fulcrumgenomics.FgBioDef._
 import com.fulcrumgenomics.alignment.Cigar
 import htsjdk.samtools
@@ -229,7 +231,12 @@ trait SamRecord {
   }
 
   /** Exposes clone() publicly for use. */
-  override def clone(): SamRecord = super.clone().asInstanceOf[SamRecord]
+  override def clone(): SamRecord = {
+    val r = super.clone().asInstanceOf[SamRecord]
+    r.bases = this.bases.clone()
+    r.quals = this.quals.clone()
+    r
+  }
 }
 
 object SamRecord {

@@ -26,11 +26,17 @@ package com.fulcrumgenomics.bam
 
 import java.util
 
-import com.fulcrumgenomics.bam.api.SamOrder
+import com.fulcrumgenomics.alignment.Cigar
+import com.fulcrumgenomics.bam.api.{SamOrder, SamRecord}
 import com.fulcrumgenomics.testing.SamBuilder.{Minus, Plus}
 import com.fulcrumgenomics.testing.{SamBuilder, UnitSpec}
+import com.fulcrumgenomics.util.Sequences
 import htsjdk.samtools.SAMFileHeader.GroupOrder
+import htsjdk.samtools.SamPairUtil
+import htsjdk.samtools.SamPairUtil.PairOrientation
 import htsjdk.samtools.reference.{ReferenceSequence, ReferenceSequenceFile, ReferenceSequenceFileWalker}
+
+import scala.collection.Iterator
 
 class BamsTest extends UnitSpec {
   /* Dummy implementation of a reference sequence file walker that always returns chr1 w/2000 As. */
@@ -234,5 +240,113 @@ class BamsTest extends UnitSpec {
 
     Bams.sortByTransformedTag[Int,Float](iterator=builder.iterator, header=builder.header, tag="ZZ", transform=f)
       .map(r => r[Int]("ZZ")).toSeq should contain theSameElementsInOrderAs Seq(4, 3, 2, 2, 1)
+  }
+
+  "Template.primaryReads" should "return an iterator over just the primary reads" in {
+    val builder = new SamBuilder()
+    builder.addPair("q1", contig=0, start1=100, start2=200)
+    builder.addPair("q1", contig=1, start1=2000, start2=3000).foreach(_.supplementary = true)
+    builder.addPair("q1", contig=2, start1=2000, start2=3000).foreach(_.secondary = true)
+    val t1 = Template(builder.iterator)
+    t1.allSupplementaryAndSecondary should have size 4
+    t1.primaryReads should have size 2
+    t1.primaryReads.toSeq should contain theSameElementsInOrderAs builder.iterator.filter(_.refIndex == 0).toSeq
+  }
+
+  "Template.pairOrientation" should "return None if the template is not a pair" in {
+    val recs = new SamBuilder().addFrag(contig=0, start=100)
+    val template = Template(recs.iterator)
+    template.pairOrientation shouldBe None
+  }
+
+  it should "return None if either read is unmapped or the reads are on different chromosomes" in {
+    val recs = new SamBuilder().addPair(contig=1, start1=1000, start2=2000)
+    val Seq(r1, r2) = recs
+    val template = Template(recs.iterator)
+    template.pairOrientation.isDefined shouldBe true
+
+    r1.unmapped = true
+    template.pairOrientation shouldBe None
+    r2.unmapped = true
+    template.pairOrientation shouldBe None
+    r1.mapped = true
+    r2.mapped = true
+    template.pairOrientation.isDefined shouldBe true
+
+    r2.refIndex = 2
+    template.pairOrientation shouldBe None
+  }
+
+  it should "return the correct pair orientation for pairs mapped on the same chrom" in {
+    val Seq(r1, r2) = new SamBuilder().addPair(contig=1, start1=1000, start2=2000, strand1=Plus, strand2=Minus)
+    val template = Template(Iterator(r1, r2))
+    template.pairOrientation shouldBe Some(PairOrientation.FR)
+
+    r1.negativeStrand = true
+    r2.positiveStrand = true
+    SamPairUtil.setMateInfo(r1.asSam, r2.asSam)
+    template.pairOrientation shouldBe Some(PairOrientation.RF)
+
+    r1.positiveStrand = true
+    r2.positiveStrand = true
+    SamPairUtil.setMateInfo(r1.asSam, r2.asSam)
+    template.pairOrientation shouldBe Some(PairOrientation.TANDEM)
+
+    r1.negativeStrand = true
+    r2.negativeStrand = true
+    SamPairUtil.setMateInfo(r1.asSam, r2.asSam)
+    template.pairOrientation shouldBe Some(PairOrientation.TANDEM)
+  }
+
+  "Template.unmapped" should "unmap all primary reads and reset pair information" in {
+    val recs = new SamBuilder().addPair(contig=1, start1=1000, start2=2000, strand1=Plus, strand2=Minus)
+    val template = Template(recs.iterator)
+
+    val unmapped = template.unmapped
+    val Seq(r1, r2) = unmapped.primaryReads.toSeq
+    r1.unmapped     shouldBe true
+    r1.mateUnmapped shouldBe true
+    r2.unmapped     shouldBe true
+    r2.mateUnmapped shouldBe true
+
+    r1.refIndex     shouldBe SamRecord.UnmappedReferenceIndex
+    r1.mateRefIndex shouldBe SamRecord.UnmappedReferenceIndex
+    r2.refIndex     shouldBe SamRecord.UnmappedReferenceIndex
+    r2.mateRefIndex shouldBe SamRecord.UnmappedReferenceIndex
+
+    r1.start     shouldBe SamRecord.UnmappedStart
+    r1.mateStart shouldBe SamRecord.UnmappedStart
+    r2.start     shouldBe SamRecord.UnmappedStart
+    r2.mateStart shouldBe SamRecord.UnmappedStart
+
+    r1.cigar shouldBe Cigar.empty
+    r2.cigar shouldBe Cigar.empty
+
+    r1.mapq shouldBe SamRecord.ZeroMappingQuality
+    r2.mapq shouldBe SamRecord.ZeroMappingQuality
+
+    r2.basesString shouldBe Sequences.revcomp(template.r2.get.basesString)
+    r2.quals.reverseIterator.toSeq should contain theSameElementsInOrderAs template.r2.get.quals.toSeq
+  }
+
+  it should "discard supplementary and secondary alignment records" in {
+    val builder = new SamBuilder()
+    builder.addPair("q1", contig=0, start1=100, start2=200)
+    builder.addPair("q1", contig=1, start1=2000, start2=3000).foreach(_.supplementary = true)
+    builder.addPair("q1", contig=2, start1=2000, start2=3000).foreach(_.secondary = true)
+    val template = Template(builder.iterator)
+
+    val unmapped = template.unmapped
+    unmapped.allReads should have size 2
+    unmapped.r1Secondaries should have size 0
+    unmapped.r2Secondaries should have size 0
+    unmapped.r1Supplementals should have size 0
+    unmapped.r2Supplementals should have size 0
+
+    unmapped.allReads.foreach { r =>
+      r.secondary shouldBe false
+      r.supplementary shouldBe false
+    }
+
   }
 }

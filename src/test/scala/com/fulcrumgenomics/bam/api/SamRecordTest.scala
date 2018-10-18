@@ -137,4 +137,24 @@ class SamRecordTest extends UnitSpec with OptionValues {
     rec("bx") = 10
     rec[Int]("bx") shouldBe 10
   }
+
+  "SamRecord.clone()" should "clone the record" in {
+    val builder = new SamBuilder(readLength=50)
+    val rec = builder.addFrag(start=10, cigar="50M", attrs=Map("AB" -> 123)).get
+    val clone = rec.clone()
+
+    clone.paired shouldBe rec.paired
+    clone.refIndex shouldBe rec.refIndex
+    clone.attributes shouldBe rec.attributes
+
+    clone.mapped = false
+    clone("AB") = null
+    clone("BA") = "Hello"
+    clone.bases = ("A" * 50).getBytes
+
+    rec.mapped shouldBe true
+    rec[Int]("AB") shouldBe 123
+    rec.get[String]("BA") shouldBe None
+    rec.basesString should not be clone.basesString
+  }
 }
