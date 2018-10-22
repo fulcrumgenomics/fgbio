@@ -348,20 +348,6 @@ class IdentifyPrimers
     // alignment tasks.  The alignment tasks will be aligned by the batch aligner asynchronously.
     val primerMatchesOrAlignmentTasks = toPrimerMatchesOrAlignmentTaskIterator(templates, fivePrimeAligner)
 
-    // Now get the results of any alignment tasks
-    primerMatchesOrAlignmentTasks.map { case (template, r1MatchOrTasks, r2MatchOrTasks) =>
-      // get the final primer match, if any.  We must retrieve results from the aligner if we sent tasks
-      val r1Match = r1MatchOrTasks.flatMap {
-        case Left(pm)              => Some(pm)
-        case Right(alignmentTasks) => finalizePrimerMatchFrom(alignmentTasks, fivePrimeAligner)
-      }
-      val r2Match = r2MatchOrTasks.flatMap {
-        case Left(pm)              => Some(pm)
-        case Right(alignmentTasks) => finalizePrimerMatchFrom(alignmentTasks, fivePrimeAligner)
-      }
-      (r1Match, r2Match)
-    }
-
     // run through the match options, retrieving any alignment tasks that were performed
     primerMatchesOrAlignmentTasks.foreach { case (template, r1MatchOrTasks, r2MatchOrTasks) =>
       // get the final primer match, if any.  We must retrieve results from the aligner if we sent tasks
