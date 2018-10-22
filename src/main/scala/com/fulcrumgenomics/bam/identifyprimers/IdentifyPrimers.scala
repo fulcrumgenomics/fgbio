@@ -175,9 +175,7 @@ class IdentifyPrimers
  @arg(flag='k', doc="Skip ungapped alignment if no kmer of this length is common between any primer and a given read.") val ungappedKmerLength: Option[Int] = None,
  @arg(flag='K', doc="Skip gapped alignment if no kmer of this length is common between any primer and a given read.") val gappedKmerLength: Option[Int] = None,
  @arg(          doc="Allow multiple primers on the same strand to have the same `pair_id`.") val multiPrimerPairs: Boolean = false,
- @arg(          doc="Ignore the strand of the primer when matching.") val ignorePrimerStrand: Boolean = false,
- @arg(          doc="The minimum insert length for a non-canonical primer pair match, otherwise a dimer.") val minInsertLength: Int = 50,
- @arg(          doc="The maximum insert length for a non-canonical primer pair match, otherwise a dimer") val maxInsertLength: Int = 250
+ @arg(          doc="Ignore the strand of the primer when matching.") val ignorePrimerStrand: Boolean = false
 ) extends FgBioTool with LazyLogging {
 
   /** The maximum number of templates in memory. */
