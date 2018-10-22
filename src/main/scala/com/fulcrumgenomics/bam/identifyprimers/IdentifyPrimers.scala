@@ -34,7 +34,7 @@ import com.fulcrumgenomics.bam.api.{SamOrder, SamRecord, SamSource, SamWriter}
 import com.fulcrumgenomics.bam.{Bams, Template}
 import com.fulcrumgenomics.cmdline.{ClpGroups, FgBioTool}
 import com.fulcrumgenomics.commons.CommonsDef.{unreachable, _}
-import com.fulcrumgenomics.commons.collection.SelfClosingIterator
+import com.fulcrumgenomics.commons.async.AsyncIterator
 import com.fulcrumgenomics.commons.io.PathUtil
 import com.fulcrumgenomics.commons.util.{LazyLogging, SimpleCounter}
 import com.fulcrumgenomics.sopt.cmdline.ValidationException
@@ -269,8 +269,8 @@ class IdentifyPrimers
     // We take the input records, and batch them into `majorBatchSize` number of records.  For each major-batch, we
     // split those into `templatesPerThread` sub-batches.  Each sub-batch is processed by a single thread.  We process
     // each major-batch serially, meaning we wait for one major-batch to complete before moving onto the next one.  This
-    // is so we don't have to read all records into memory to parallize.  We set the `majorBatchSize` to have more
-    // sub-batches than just `templatesPerThread * threads` so that we can more efficiently utlize the available threads.
+    // is so we don't have to read all records into memory to parallelize.  We set the `majorBatchSize` to have more
+    // sub-batches than just `templatesPerThread * threads` so that we can more efficiently utilize the available threads.
     val majorBatchSize  = templatesPerThread * threads * 4
     val readingProgress = ProgressLogger(this.logger, verb="read", unit=5e4.toInt)
 
@@ -294,12 +294,10 @@ class IdentifyPrimers
         }
     }
     else {
-      val aligner = newAligner
       logger.info(f"Batching $templatesPerThread%,d templates.")
-      val iter = iterator
+      iterator
         .grouped(templatesPerThread)
-        .map { templates => processBatch(templates, metricCounter, readingProgress, Some(aligner)) }
-      new SelfClosingIterator[Seq[Template]](iter, () => aligner.close())
+        .map { templates => processBatch(templates, metricCounter, readingProgress) }
     }
 
     // Write the results
@@ -323,71 +321,104 @@ class IdentifyPrimers
     val templateTypeMetrics = TemplateTypeMetric.metricsFrom(metricCounter)
 
     // Write metrics
-    // Detailed metrics
     Metric.write(PathUtil.pathTo(this.metrics + ".detailed.txt"), templateTypeMetrics)
-    // Summary metrics
     Metric.write(PathUtil.pathTo(this.metrics + ".summary.txt"), IdentifyPrimersMetric(templateTypeMetrics))
   }
 
   /** Creates a new [[BatchAligner]]. */
-  private def newAligner: BatchAligner[Primer, SamRecordAlignable] = {
-    BatchAligner(matchScore, mismatchScore, gapOpen, gapExtend, AlignmentMode.Glocal, this.kswExecutable)
+  private def newAligner[T <: Alignable](mode: AlignmentMode = AlignmentMode.Glocal): BatchAligner[Primer, T] = {
+    BatchAligner(matchScore, mismatchScore, gapOpen, gapExtend, mode, this.kswExecutable)
   }
 
-  // NB: batching alignment inputs to the aligner (i.e. ksw) is empirically faster than given them all or just one at a time.
-  private def getAlignmentResults[T <: Alignable](alignmentTasks: Seq[AlignmentTask[Primer, T]],
-                                  aligner: BatchAligner[Primer, T]): Option[PrimerMatch] = {
-    case class PrimerAndScore(primer: Primer, score: Int)
+  private type MaybePrimerMatchOrAlignmentTask = Option[Either[PrimerMatch, Seq[AlignmentTask[Primer, SamRecordAlignable]]]]
 
-    // Get the alignment results
-    val alignmentResults: Seq[PrimerAndScore] = alignmentTasks.toIterator.zip(aligner.iterator)
-      // Keep results that meet the minimum score and align with a minimum # of query bases
-      .filter { case (alignmentInput, alignmentResult) =>
-        val minQueryEnd = alignmentInput.queryLength - slop
-        val alignmentScoreRate = alignmentResult.score * alignmentInput.query.length.toDouble
-        alignmentScoreRate >= minAlignmentScoreRate && alignmentResult.queryEnd >= minQueryEnd
-      }
-      // now just keep the primer and score
-      .map { case (alignmentInput, alignmentResult) => PrimerAndScore(alignmentInput.query, alignmentResult.score) }
-      // get the best two alignment results by score
-      .maxNBy(n = 2, _.score)
-
-    // Create a primer match if alignments were found (i.e. a Option[PrimerMatch])
-    alignmentResults match {
-      case Seq()               => None
-      case Seq(best)           =>
-        val secondBestScore = (minAlignmentScoreRate * best.primer.length).toInt
-        Some(GappedAlignmentPrimerMatch(primer = best.primer, score = best.score, secondBestScore = secondBestScore))
-      case Seq(best, nextBest) => Some(GappedAlignmentPrimerMatch(primer = best.primer, score = best.score, secondBestScore = nextBest.score))
-      case _                   => unreachable("Should have returned at most two items.")
-    }
-  }
-
-  /** Matches the read based on location, then ungapped alignment.  If no match was found, return a list of alignment tasks. */
-  private def toPrimerMatchOrAlignmentTasks(rec: SamRecord): Either[PrimerMatch, Seq[AlignmentTask[Primer, SamRecordAlignable]]] = {
-    locationBasedMatcher.find(rec).orElse { ungappedBasedMatcher.find(rec) } match {
-      case Some(pm) => Left(pm)
-      case None     => Right(gappedBasedMatcher.toAlignmentTasks(rec))
-    }
-  }
-
-  /** Processes a single batch of templates. */
+  /** Processes a single batch of templates.
+    *
+    * Attempts to match primers based on location, then ungapped alignment.  If no match was found, attempts to perform
+    * gapped alignment, which is performed asynchronously.
+    *
+    * Returns the batch of templates, with reads annotated with primer matches if found.
+    * */
   def processBatch(templates: Seq[Template],
                    metricCounter: SimpleCounter[TemplateTypeMetric],
-                   progress: ProgressLogger,
-                   batchAligner: Option[BatchAligner[Primer, SamRecordAlignable]] = None): Seq[Template] = {
-    val counter = new SimpleCounter[TemplateTypeMetric]()
-    val aligner = batchAligner.getOrElse(newAligner)
-    val threePrimerAligner: BatchAligner[Primer, Alignable] = {
-      // NB: we run this in local mode to get partial matches
-      BatchAligner(matchScore, mismatchScore, gapOpen, gapExtend, AlignmentMode.Local, this.kswExecutable)
+                   progress: ProgressLogger): Seq[Template] = {
+    val counter = new SimpleCounter[TemplateTypeMetric]() // local counter that will be added to metricCounter later, avoid excess synchronization
+    val fivePrimeAligner: BatchAligner[Primer, SamRecordAlignable] = newAligner()
+    val threePrimerAligner: BatchAligner[Primer, Alignable] = newAligner(AlignmentMode.Local) // NB: we run this in local mode to get partial matches
+
+    // Find match based on location, then ungapped alignment, and if no match was found, then queue and return the
+    // alignment tasks.  The alignment tasks will be aligned by the batch aligner asynchronously.
+    val primerMatchesOrAlignmentTasks = toPrimerMatchesOrAlignmentTaskIterator(templates, fivePrimeAligner)
+
+    // Now get the results of any alignment tasks
+    primerMatchesOrAlignmentTasks.map { case (template, r1MatchOrTasks, r2MatchOrTasks) =>
+      // get the final primer match, if any.  We must retrieve results from the aligner if we sent tasks
+      val r1Match = r1MatchOrTasks.flatMap {
+        case Left(pm)              => Some(pm)
+        case Right(alignmentTasks) => finalizePrimerMatchFrom(alignmentTasks, fivePrimeAligner)
+      }
+      val r2Match = r2MatchOrTasks.flatMap {
+        case Left(pm)              => Some(pm)
+        case Right(alignmentTasks) => finalizePrimerMatchFrom(alignmentTasks, fivePrimeAligner)
+      }
+      (r1Match, r2Match)
     }
 
-    // reset the provided aligner
-    batchAligner.foreach(_.reset())
+    // run through the match options, retrieving any alignment tasks that were performed
+    primerMatchesOrAlignmentTasks.foreach { case (template, r1MatchOrTasks, r2MatchOrTasks) =>
+      // get the final primer match, if any.  We must retrieve results from the aligner if we sent tasks
+      val r1Match = finalizePrimerMatch(r1MatchOrTasks, fivePrimeAligner)
+      val r2Match = finalizePrimerMatch(r2MatchOrTasks, fivePrimeAligner)
 
-    val templateMatchOptions = templates.toIterator.map { template =>
-      // match based on location, then ungapped alignment, and if no match was found, then return the alignment tasks
+      // add the three prime matching
+      val r1ThreePrimeMatch = template.r1.flatMap { r1 => matchThreePrime(r1, r1Match, r2Match, threePrimerAligner) }
+      val r2ThreePrimeMatch = template.r2.flatMap { r2 => matchThreePrime(r2, r2Match, r1Match, threePrimerAligner) }
+
+      // annotate the records and return the template type
+      val templateType = (template.r1, template.r2) match {
+        case (Some(r1), Some(r2)) =>
+          formatPair(r1, r2, r1Match, r2Match, r1ThreePrimeMatch, r2ThreePrimeMatch)
+          TemplateType(r1, Some(r2))
+        case (Some(r1), None) =>
+          require(!r1.paired, s"Found paired read but missing R2 for ${r1.name}")
+          formatFragment(r1, r1Match, r1ThreePrimeMatch)
+          TemplateType(r1, None)
+        case _ =>
+          throw new IllegalStateException(s"Template did not have an R1: ${template.name}")
+      }
+
+      counter.count(TemplateTypeMetric(templateType, template.r1.get.isFrPair, r1Match, r2Match))
+    }
+
+    require(fivePrimeAligner.numAdded == fivePrimeAligner.numRetrieved, s"added: ${fivePrimeAligner.numAdded} alignments: ${fivePrimeAligner.numRetrieved}")
+    require(fivePrimeAligner.numAvailable == 0, s"Found alignments available: ${fivePrimeAligner.numAvailable}")
+
+    // Update counters and progress
+    numAlignments.addAndGet(fivePrimeAligner.numRetrieved)
+    metricCounter.synchronized {
+      metricCounter += counter
+      templates.flatMap(_.allReads).foreach { rec =>
+        if (progress.record(rec)) {
+          val rate = numAlignments.get() / progress.getElapsedSeconds.toDouble
+          logger.info(f"Performed ${numAlignments.get()}%,d gapped alignments so far ($rate%,.2f alignments/second).")
+        }
+      }
+    }
+
+    templates
+  }
+
+  /** For each template, finds a primer match based on location, then ungapped alignment.  If still no primer match was
+    * found, then alignment tasks are added to the aligner to be processed asynchronously.  The underlying iterator
+    * itself will be asynchronous (see [[AsyncIterator]]) so try to keep the aligner always busy.
+    */
+  private def toPrimerMatchesOrAlignmentTaskIterator
+  (templates: Seq[Template],
+   aligner: BatchAligner[Primer, SamRecordAlignable],
+   bufferSize: Int = 1024
+  ): Iterator[(Template, MaybePrimerMatchOrAlignmentTask, MaybePrimerMatchOrAlignmentTask)] = {
+
+    val source = templates.toIterator.map { template =>
       val r1MatchOrTasks = template.r1.map { r => toPrimerMatchOrAlignmentTasks(r) }
       val r2MatchOrTasks = template.r2.map { r => toPrimerMatchOrAlignmentTasks(r) }
 
@@ -404,59 +435,70 @@ class IdentifyPrimers
       (template, r1MatchOrTasks, r2MatchOrTasks)
     }
 
-    // run through the match options, retrieving any alignment tasks that were performed
-    templateMatchOptions.foreach { case (template, r1MatchOrTasks, r2MatchOrTasks) =>
-      // get the final primer match, if any.  We must retrieve results from the aligner if we sent tasks
-      val r1Match = r1MatchOrTasks.flatMap {
-        case Left(pm)              => Some(pm)
-        case Right(alignmentTasks) => getAlignmentResults(alignmentTasks, aligner)
-      }
-      val r2Match = r2MatchOrTasks.flatMap {
-        case Left(pm)              => Some(pm)
-        case Right(alignmentTasks) => getAlignmentResults(alignmentTasks, aligner)
-      }
-
-      // add the three prime matching
-      val r1ThreePrimeMatch = template.r1.flatMap { r1 => matchThreePrime(r1, r1Match, r2Match, threePrimerAligner) }
-      val r2ThreePrimeMatch = template.r2.flatMap { r2 => matchThreePrime(r2, r2Match, r1Match, threePrimerAligner) }
-
-      // Get information about the matches
-      val templateTypes = (template.r1, template.r2) match {
-        case (Some(r1), Some(r2)) =>
-          val rType = TemplateType(r1, Some(r2))
-          formatPair(r1, r2, r1Match, r2Match, r1ThreePrimeMatch, r2ThreePrimeMatch)
-          TemplateTypeMetric(rType, r1.isFrPair, r1Match, r2Match)
-        case (Some(r1), None) =>
-          require(!r1.paired, s"Found paired read but missing R2 for ${r1.name}")
-          val rType = TemplateType(r1, None)
-          formatFragment(r1, r1Match, r1ThreePrimeMatch)
-          TemplateTypeMetric(rType, r1.isFrPair, r1Match, r2Match)
-        case _ =>
-          throw new IllegalStateException(s"Template did not have an R1: ${template.name}")
-      }
-
-      counter.count(templateTypes)
-    }
-
-    require(aligner.numAdded == aligner.numRetrieved, s"added: ${aligner.numAdded} alignments: ${aligner.numRetrieved}")
-    require(aligner.numAvailable == 0, s"Found alignments available: ${aligner.numAvailable}")
-
-    if (batchAligner.isEmpty) aligner.close()
-
-    numAlignments.addAndGet(aligner.numRetrieved)
-    metricCounter.synchronized {
-      metricCounter += counter
-      templates.flatMap(_.allReads).foreach { rec =>
-        if (progress.record(rec)) {
-          val rate = numAlignments.get() / progress.getElapsedSeconds.toDouble
-          logger.info(f"Performed ${numAlignments.get()}%,d gapped alignments so far ($rate%,.2f alignments/second).")
-        }
-      }
-    }
-
-    templates
+    // Create an iterator that consumes the source asynchronously
+    AsyncIterator[(Template, MaybePrimerMatchOrAlignmentTask, MaybePrimerMatchOrAlignmentTask)](
+      source     = source,
+      bufferSize = Some(Math.max(templates.size, bufferSize))
+    )
   }
 
+  /** Matches the read based on location, then ungapped alignment.  If no match was found, return a list of alignment
+    * tasks. */
+  private def toPrimerMatchOrAlignmentTasks(rec: SamRecord): Either[PrimerMatch, Seq[AlignmentTask[Primer, SamRecordAlignable]]] = {
+    locationBasedMatcher.find(rec).orElse { ungappedBasedMatcher.find(rec) } match {
+      case Some(pm) => Left(pm)
+      case None     => Right(gappedBasedMatcher.toAlignmentTasks(rec))
+    }
+  }
+
+  /** Finalizes the primer match by incorporating any gapped alignment primer matches.
+    *
+    * If there was an location-based or ungapped-alignment-based primer match, returns that primer match.  Otherwise,
+    * reads the results of the given alignment tasks and returns the best primer match, if any.
+    * */
+  private def finalizePrimerMatch(r1MatchOrTasks: MaybePrimerMatchOrAlignmentTask,
+                                  aligner: BatchAligner[Primer, SamRecordAlignable]): Option[PrimerMatch] = {
+    r1MatchOrTasks.flatMap {
+      case Left(pm)              => Some(pm)
+      case Right(alignmentTasks) => finalizePrimerMatchFrom(alignmentTasks, aligner)
+    }
+  }
+
+  /** A little case class to store a primer and its alignment score, for use in [[finalizePrimerMatchFrom]] */
+  private case class PrimerAndScore(primer: Primer, score: Int)
+
+  /** Returns the best primer match from the given alignment tasks, if any.
+    *
+    * This relies on the alignment tasks being retrieved from the aligner in the same order as they were given.
+    *
+    */
+  private def finalizePrimerMatchFrom[T <: Alignable](alignmentTasks: Seq[AlignmentTask[Primer, T]],
+                                                      aligner: BatchAligner[Primer, T]): Option[PrimerMatch] = {
+    // Get the alignment for each alignment tasks, keeping alignments that meet the minimum score and align with a
+    // minimum # of query bases
+    val alignmentResults: Seq[PrimerAndScore] = alignmentTasks.toIterator.zip(aligner.iterator)
+      .filter { case (alignmentInput, alignmentResult) =>
+        val minQueryEnd = alignmentInput.queryLength - slop
+        val alignmentScoreRate = alignmentResult.score * alignmentInput.query.length.toDouble
+        alignmentScoreRate >= minAlignmentScoreRate && alignmentResult.queryEnd >= minQueryEnd
+      }
+      // now just keep the primer and score
+      .map { case (alignmentInput, alignmentResult) => PrimerAndScore(alignmentInput.query, alignmentResult.score) }
+      // get the best two alignment results by score
+      .maxNBy(n = 2, _.score)
+
+    // Create a primer match if alignment(s) were found (i.e. a Option[PrimerMatch])
+    alignmentResults match {
+      case Seq()               => None
+      case Seq(best)           =>
+        val secondBestScore = (minAlignmentScoreRate * best.primer.length).toInt
+        Some(GappedAlignmentPrimerMatch(primer = best.primer, score = best.score, secondBestScore = secondBestScore))
+      case Seq(best, nextBest) => Some(GappedAlignmentPrimerMatch(primer = best.primer, score = best.score, secondBestScore = nextBest.score))
+      case _                   => unreachable("Should have returned at most two items.")
+    }
+  }
+
+  /** Performs matching on the 3' end of the read. */
   private def matchThreePrime(rec: SamRecord,
                               fivePrimeMatch: Option[PrimerMatch],
                               otherReadFivePrimerMatch: Option[PrimerMatch],
@@ -473,7 +515,7 @@ class IdentifyPrimers
     }
 
     // create the alignment tasks
-    val alignmentTasks = {
+    val alignmentTasks: Seq[AlignmentTask[Primer, Alignable]] = {
       val alignableCache = scala.collection.mutable.HashMap[(Int,Int), Alignable]()
       // for 3' matching, it is the same as 5' matching, just that we match the end of the reads for positive strand
       // primers (or unmapped) and start of the reads for negative strand primers
@@ -486,21 +528,22 @@ class IdentifyPrimers
             (offset, length)
           }
         }
-        val target       = alignableCache.getOrElseUpdate((targetOffset, targetLength), SamRecordAlignable(rec, targetOffset, targetLength))
+        val target = alignableCache.getOrElseUpdate((targetOffset, targetLength), SamRecordAlignable(rec, targetOffset, targetLength))
         AlignmentTask(query = primer, target = target)
       }
     }
 
-    // submit them
+    // submit them all
     alignmentTasks.foreach { task => aligner.append(task)}
 
     // get the best match, if any
-    getAlignmentResults(alignmentTasks, aligner)
+    finalizePrimerMatchFrom(alignmentTasks, aligner)
   }
 
+  /** A little cse class to store some information about primer matches on a given record, used in [[formatPair]]. */
   private case class PrimerMatches(rec: SamRecord, fivePrimeMatch: Option[PrimerMatch], threePrimeMatch: Option[PrimerMatch], positiveStrand: Boolean)
 
-  /** Adds tags to the records based on the primer matching results. */
+  /** Adds tags to paired end reads based on the primer matching results. */
   private def formatPair(r1: SamRecord,
                          r2: SamRecord,
                          r1FivePrimeMatch: Option[PrimerMatch],
@@ -535,8 +578,9 @@ class IdentifyPrimers
     if (threePrime) tagit(PrimerInfoForward3PrimeTag, PrimerInfoReverse3PrimeTag, _.threePrimeMatch)
   }
 
-  /** Adds tags to the record based on the primer matching results. */
-  private def formatFragment(frag: SamRecord, fragFivePrimeMatch: Option[PrimerMatch],
+  /** Adds tags to a fragment read based on the primer matching results. */
+  private def formatFragment(frag: SamRecord,
+                             fragFivePrimeMatch: Option[PrimerMatch],
                              fragThreePrimeMatch: Option[PrimerMatch]): Unit = {
     val forwardInfo = fragFivePrimeMatch.map(_.info(frag)).getOrElse(NoPrimerMatchInfo)
 
