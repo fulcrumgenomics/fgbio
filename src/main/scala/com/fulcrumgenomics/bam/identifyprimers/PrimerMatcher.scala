@@ -426,11 +426,14 @@ private[identifyprimers] class GappedAlignmentBasedPrimerMatcher
   private[identifyprimers] def getBestGappedAlignment(alignments: Seq[AlignmentAndPrimer]): Option[GappedAlignmentPrimerMatch] = {
     if (alignments.isEmpty) None
     else {
-      alignments.sortBy(_.alignment.score).take(2) match {
+      alignments.sortBy(-_.alignment.score).take(2) match {
         case Seq()                =>
           unreachable("Should have found at least one.")
         case Seq(best)            =>
-          Some(GappedAlignmentPrimerMatch(best.primer, score=best.alignment.score, secondBestScore=(minAlignmentScoreRate * best.primer.length).toInt))
+          val secondBestScore = (minAlignmentScoreRate * best.primer.length).toInt
+          if (best.alignment.score < secondBestScore) None else {
+            Some(GappedAlignmentPrimerMatch(best.primer, score = best.alignment.score, secondBestScore = (minAlignmentScoreRate * best.primer.length).toInt))
+          }
          case Seq(best, nextBest) =>
            Some(GappedAlignmentPrimerMatch(best.primer, score=best.alignment.score, secondBestScore=nextBest.alignment.score))
       }

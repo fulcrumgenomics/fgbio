@@ -469,14 +469,16 @@ class IdentifyPrimers
       // now just keep the primer and score
       .map { case (alignmentInput, alignmentResult) => PrimerAndScore(alignmentInput.query, alignmentResult.score) }
       // get the best two alignment results by score
-      .maxNBy(n = 2, _.score)
+      .maxNBy(n = 2, _.score).sortBy(-_.score)
 
     // Create a primer match if alignment(s) were found (i.e. a Option[PrimerMatch])
     alignmentResults match {
       case Seq()               => None
       case Seq(best)           =>
         val secondBestScore = (minAlignmentScoreRate * best.primer.length).toInt
-        Some(GappedAlignmentPrimerMatch(primer = best.primer, score = best.score, secondBestScore = secondBestScore))
+        if (best.score < secondBestScore) None else {
+          Some(GappedAlignmentPrimerMatch(primer = best.primer, score = best.score, secondBestScore = secondBestScore))
+        }
       case Seq(best, nextBest) => Some(GappedAlignmentPrimerMatch(primer = best.primer, score = best.score, secondBestScore = nextBest.score))
       case _                   => unreachable("Should have returned at most two items.")
     }

@@ -101,6 +101,7 @@ private[identifyprimers] case class LocationBasedPrimerMatch(primer: Primer, num
 }
 
 private[identifyprimers] case class UngappedAlignmentPrimerMatch(primer: Primer, numMismatches: Int, nextNumMismatches: Int) extends PrimerMatch {
+  require(numMismatches <= nextNumMismatches)
   protected def _info(rec: SamRecord): Seq[Any] = {
     val nextOrNa = if (nextNumMismatches == Int.MaxValue) "na" else nextNumMismatches
     Seq(numMismatches, nextOrNa)
@@ -109,6 +110,7 @@ private[identifyprimers] case class UngappedAlignmentPrimerMatch(primer: Primer,
 }
 
 private[identifyprimers] case class GappedAlignmentPrimerMatch(primer: Primer, score: Int, secondBestScore: Int) extends PrimerMatch {
+  require(score >= secondBestScore)
   protected def _info(rec: SamRecord): Seq[Any] = Seq(score, secondBestScore)
   def toName: String = PrimerMatch.toName[GappedAlignmentPrimerMatch]
 }
