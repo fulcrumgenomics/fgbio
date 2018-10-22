@@ -74,7 +74,7 @@ case class Template(r1: Option[SamRecord],
   def allReads: Iterator[SamRecord] = r1.iterator ++ r2.iterator ++ allSupplementaryAndSecondary
 
   /**
-    * Produces a copy of the template that has had mapping information removed.  Discards secondary and supplemntary
+    * Produces a copy of the template that has had mapping information removed.  Discards secondary and supplementary
     * records, and retains the primary records after un-mapping them.  Auxillary tags listed in [[Bams.AlignmentTags]]
     * are removed from all records.  Lastly the `OA` tag is added to reads to record the Original Alignment.
     */
