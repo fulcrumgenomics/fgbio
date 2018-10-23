@@ -31,7 +31,8 @@ class PrimerTest extends UnitSpec {
   private val pairOneForward1 = new Primer("pair1", "primer1", "GATTACA", "chr1", 1, 7, true)
   private val pairOneReverse1 = new Primer("pair1", "primer2", "GATTACA", "chr1", 1, 57, false)
   private val pairOneForward2 = new Primer("pair1", "primer3", "GATTACA", "chr1", 1, 67, true)
-  private val pairTwoReverse1 = new Primer("pair2", "primer4", "GATTACA", "chr1", 1, 7, false)
+  private val pairTwoForward1 = new Primer("pair2", "primer4", "GATTACA", "chr1", 1, 7, true)
+  private val pairTwoReverse1 = new Primer("pair2", "primer5", "GATTACA", "chr1", 1, 7, false)
 
   "Primer.validatePrimers" should "with multiPrimerPairs==true should validate that there is at least one forward and one reverse primer for each pair" in {
     an[Exception] should be thrownBy Primer.validatePrimers(Seq(pairOneForward1), multiPrimerPairs=true) // NOK
@@ -53,6 +54,14 @@ class PrimerTest extends UnitSpec {
     an[Exception] should be thrownBy Primer.validatePrimers(Seq(pairOneForward1, pairOneReverse1, pairTwoReverse1), multiPrimerPairs=false) // NOK
     Primer.validatePrimers(Seq(pairOneForward1, pairOneReverse1), multiPrimerPairs=false) // OK
   }
+
+  it should "pass validation when primers do not have mapping information" in {
+    val primers = Seq(pairOneForward1, pairOneReverse1, pairTwoForward1, pairTwoReverse1).map { primer =>
+      primer.copy(ref_name = "")
+    }
+    Primer.validatePrimers(primers, multiPrimerPairs = false)
+  }
+
 
   "Primer.strandToForward" should "return true if the positive strand, false if the negative strand" in {
     Seq("+", "f", "fwd", "for", "forward", "positive", "true").foreach { strand => Primer.isPositiveStrand(strand) shouldBe true }

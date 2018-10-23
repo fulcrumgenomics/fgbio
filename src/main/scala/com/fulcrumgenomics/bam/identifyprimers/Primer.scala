@@ -84,17 +84,6 @@ private[identifyprimers] object Primer {
   def validatePrimers(primers: Seq[Primer], multiPrimerPairs: Boolean): Unit = {
     import com.fulcrumgenomics.FgBioDef.javaIteratorAsScalaIterator
 
-    val fwdDetector = {
-      val detector = new OverlapDetector[Primer](0, 0)
-      primers.filter(_.positive_strand).foreach { p => detector.addLhs(p, p) }
-      detector
-    }
-    val revDetector = {
-      val detector = new OverlapDetector[Primer](0, 0)
-      primers.filterNot(_.positive_strand).foreach { p => detector.addLhs(p, p) }
-      detector
-    }
-
     if (multiPrimerPairs) {
       // Validate that there is at least one forward and one reverse primer for each pair
       primers.groupBy(_.pair_id).foreach {
@@ -121,7 +110,17 @@ private[identifyprimers] object Primer {
     }
 
     // Validate we do not have the same refName/start/end for primers
-    primers.foreach { primer =>
+    val fwdDetector = {
+      val detector = new OverlapDetector[Primer](0, 0)
+      primers.filter(_.positive_strand).filter(_.mapped).foreach { p => detector.addLhs(p, p) }
+      detector
+    }
+    val revDetector = {
+      val detector = new OverlapDetector[Primer](0, 0)
+      primers.filterNot(_.positive_strand).filter(_.mapped).foreach { p => detector.addLhs(p, p) }
+      detector
+    }
+    primers.filter(_.mapped).foreach { primer =>
       val overlaps = (fwdDetector.getOverlaps(primer).iterator() ++ revDetector.getOverlaps(primer).iterator())
         .filter { overlap => primer != overlap && overlap.positive_strand == primer.positive_strand && overlap.ref_name == primer.ref_name }
         .filter { overlap => overlap.start == primer.start &&  overlap.end == primer.end }
