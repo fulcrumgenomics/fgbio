@@ -38,7 +38,7 @@ private[identifyprimers] object IdentifyPrimersMetric {
     val primerMatchCounter     = new SimpleCounter[String]()
     val endsWithMatchesCounter = new NumericCounter[Int]()
 
-    val fr_pairs = templateTypeMetrics.count { templateTypeMetric =>
+    val fr_pairs = templateTypeMetrics.map { templateTypeMetric =>
       val count = templateTypeMetric.count
 
       // Add the count of the type of template
@@ -58,8 +58,8 @@ private[identifyprimers] object IdentifyPrimersMetric {
       }
 
       // return this to count the # of FR pairs
-      templateTypeMetric.is_fr
-    }
+      if (templateTypeMetric.is_fr) templateTypeMetric.count else 0
+    }.sum
 
     val mapped_pairs       = readTypeCounter.countOf(MappedPair)
     val unpaired           = readTypeCounter.countOf(Unpaired)

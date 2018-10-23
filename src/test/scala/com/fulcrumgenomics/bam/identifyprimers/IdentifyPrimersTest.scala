@@ -232,70 +232,95 @@ final class IdentifyPrimersTest extends UnitSpec with OptionValues {
     }
   }
 
-  "IdentifyPrimers" should "run end to end" in {
-    val input   = {
-      val path = makeTempFile("input.", ".bam")
-      val writer = SamWriter(path, header)
-      writer ++= this.pairs
-      writer.close()
-      path
+  Seq(true, false).foreach { primersAreMapped =>
+    val testMessage = if (primersAreMapped) "mapped primers" else "unmapped primers"
+    "IdentifyPrimers" should s"run end to end $testMessage" in {
+      val input   = {
+        val path = makeTempFile("input.", ".bam")
+        val writer = SamWriter(path, header)
+        writer ++= this.pairs
+        writer.close()
+        path
+      }
+      val metrics = makeTempFile("metrics.", ".prefix")
+      val output  = makeTempFile("output.", ".bam")
+      val primers = makeTempFile("primers.", ".tab")
+
+      if (primersAreMapped) {
+        Primer.write(primers, this.primers)
+      }
+      else {
+        Primer.write(primers, this.primers.map(_.copy(ref_name="")))
+      }
+
+      val tool = new IdentifyPrimers(
+        input                 = input,
+        primerPairs           = primers,
+        metrics               = metrics,
+        output                = output,
+        slop                  = slop,
+        maxMismatchRate       = maxMismatcheRate,
+        minAlignmentScoreRate = minAlignmentScoreRate,
+        matchScore            = matchScore,
+        mismatchScore         = mismatchScore,
+        gapOpen               = gapOpen,
+        gapExtend             = gapExtend
+      )
+
+      executeFgbioTool(tool)
+
+      val actual = Metric.read[IdentifyPrimersMetric](PathUtil.pathTo(metrics + ".summary.txt")) match {
+        case Seq(s)    => s
+        case summaries => fail(s"Found ${summaries.length} summary metrics, should be only one.")
+      }
+
+      // relationships across metric groups
+      (actual.templates * 2) shouldBe this.pairs.length
+      (actual.pairs * 2) shouldBe this.pairs.length
+      (actual.paired_matches + actual.unpaired_matches + actual.no_paired_matches) shouldBe (this.pairs.length / 2)
+      actual.match_attempts  shouldBe (actual.location + actual.ungapped + actual.gapped + actual.no_match)
+
+      // create the expected set of metrics
+      val expected = {
+        // Common metrics between mapped and unmapped test scenarios
+        val commonMetrics = new IdentifyPrimersMetric(
+          // read pair match counts
+          paired_matches     = 45,
+          unpaired_matches   = 4,
+          no_paired_matches  = 14,
+          // counts of template types
+          templates          = 63,
+          pairs              = 63,
+          fragments          = 0,
+          mapped_pairs       = 62,
+          unpaired           = 0,
+          unmapped_pairs     = 1,
+          fr_pairs           = 61,
+          mapped_fragments   = 0,
+          unmapped_fragments = 0,
+          // counts of types of individual primer matches
+          match_attempts     = 126,
+          no_match           = 32
+        )
+        if (primersAreMapped) {
+          commonMetrics.copy(
+            // counts of types of individual primer matches
+            location           = 14,
+            ungapped           = 79,
+            gapped             = 1
+          )
+        }
+        else {
+          commonMetrics.copy(
+            // counts of types of individual primer matches
+            location           = 0,
+            ungapped           = 93,
+            gapped             = 1
+          )
+        }
+      }
+
+      actual.zip(expected).foreach { case (act, exp) => act shouldBe exp }  // NB: this helps show **which** metric is different
     }
-    val metrics = makeTempFile("metrics.", ".prefix")
-    val output  = makeTempFile("output.", ".bam")
-    val primers = makeTempFile("primers.", ".tab")
-
-    Primer.write(primers, this.primers)
-
-    val tool = new IdentifyPrimers(
-      input                 = input,
-      primerPairs           = primers,
-      metrics               = metrics,
-      output                = output,
-      slop                  = slop,
-      maxMismatchRate       = maxMismatcheRate,
-      minAlignmentScoreRate = minAlignmentScoreRate,
-      matchScore            = matchScore,
-      mismatchScore         = mismatchScore,
-      gapOpen               = gapOpen,
-      gapExtend             = gapExtend
-    )
-
-    executeFgbioTool(tool)
-
-    val actual = Metric.read[IdentifyPrimersMetric](PathUtil.pathTo(metrics + ".summary.txt")) match {
-      case Seq(s)    => s
-      case summaries => fail(s"Found ${summaries.length} summary metrics, should be only one.")
-    }
-
-    // relationships across metric groups
-    (actual.templates * 2) shouldBe this.pairs.length
-    (actual.pairs * 2) shouldBe this.pairs.length
-    (actual.paired_matches + actual.unpaired_matches + actual.no_paired_matches) shouldBe (this.pairs.length / 2)
-    actual.match_attempts  shouldBe (actual.location + actual.ungapped + actual.gapped + actual.no_match)
-
-    val expected = new IdentifyPrimersMetric(
-      // counts of template types
-      templates          = 63,
-      pairs              = 63,
-      fragments          = 0,
-      mapped_pairs       = 62,
-      unpaired           = 0,
-      unmapped_pairs     = 1,
-      fr_pairs           = 6,
-      mapped_fragments   = 0,
-      unmapped_fragments = 0,
-      // read pair match counts
-      paired_matches     = 46,
-      unpaired_matches   = 4,
-      no_paired_matches  = 13,
-      // counts of types of individual primer matches
-      match_attempts     = 126,
-      location           = 14,
-      ungapped           = 79,
-      gapped             = 3,
-      no_match           = 30
-    )
-
-    actual.zip(expected).foreach { case (act, exp) => act shouldBe exp }  // NB: this helps show **which** metric is different
   }
 }
