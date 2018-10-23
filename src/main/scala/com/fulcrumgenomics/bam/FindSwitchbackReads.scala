@@ -38,16 +38,16 @@ import com.fulcrumgenomics.util._
 import htsjdk.samtools.SAMFileHeader.{GroupOrder, SortOrder}
 import htsjdk.samtools.SamPairUtil.PairOrientation
 import htsjdk.samtools.reference.ReferenceSequence
-import htsjdk.samtools.util.SequenceUtil
+import htsjdk.samtools.util.{CoordMath, SequenceUtil}
 import htsjdk.samtools.{CigarOperator, SAMFileHeader, SAMReadGroupRecord}
 
 
 object FindSwitchbackReads {
   /** Resource path for R script for plotting. */
-  val PlottingScript = "com/fulcrumgenomics/bam/FindSwitchbackReads.R"
+  private val PlottingScript = "com/fulcrumgenomics/bam/FindSwitchbackReads.R"
 
   /** The name of the BAM extended attribute tag used to store switchback information. */
-  val SwitchTag = "sb"
+  val SwitchTag: String = "sb"
 
   /** Parent trait for the different kinds of hits we can find. */
   sealed trait SwitchHit { def code: Char }
@@ -117,36 +117,56 @@ object FindSwitchbackReads {
     * @param template the template to be examined.
     * @param minLength the minimum length of switchback to be detected.
     * @param maxOffset the maximum offset on the reference between the end of the pre-switch sequence and the start
-    *                  of the post-switch sequence
+    *                  of the post-switch sequence. A value of `0` will cause this method to return `None`.
     * @param maxErrorRate the maximum rate of mismatches between the switched-back sequence and the reference
-    * @return Some(ReadBasedHit) if a hit is found else None.
+    * @return `Some(ReadBasedHit)` if a hit is found else `None`.
     */
   private[bam] def findReadBasedSwitchback(refs: Map[String, ReferenceSequence],
-                                      template: Template,
-                                      minLength: Int,
-                                      maxOffset: Int,
-                                      maxErrorRate: Double): Option[ReadBasedHit] = {
+                                           template: Template,
+                                           minLength: Int,
+                                           maxOffset: Int,
+                                           maxErrorRate: Double): Option[ReadBasedHit] = {
+    ////////////////////////////////////////////////////////////////////////////////////////////////
+    // Implementation notes:
+    //
+    // Read based switchbacks are detected by looking for soft-clipped sequence at the 5' end of the
+    // read - i.e. the start of F reads and the end of R reads.  To trigger further checks we require
+    // that soft-clipping exist and be at least as long as `minLength`.
+    //
+    // The second part of the check is that the soft-clipped sequence matches the reverse-complement
+    // of the reference, and that the match _starts_ reading on the opposite strand within `maxOffset`
+    // of the 5'-most mapped base of the non-clipped sequence.  How we do this differs by strand.
+    //
+    // A key value we wish to determine is the `offset` - the gap between where we leave off reading
+    // one strand, and where we start reading on the other strand.  This value is positive if
+    // post-switch the enzyme starts outside the sequence read on the original strand and moves back
+    // towards the last base sequenced on the original strand, and negative if the enzyme starts
+    // reading the second strand recessed within the already-read sequence of the first strand.
+    // The `find` method returns the offset within the reference window given, which is then
+    // translated into the offset from the 5' alignment position in a strand dependent manner.
+    ////////////////////////////////////////////////////////////////////////////////////////////////
+
     if (maxOffset <= 0) None else template.primaryReads.filter(_.mapped).flatMap { rec =>
-        if (rec.positiveStrand && rec.cigar.head.operator == CigarOperator.S && rec.cigar.head.length >= minLength) {
-          val ref = refs(rec.refName)
-          val bases = Sequences.revcomp(rec.basesString.take(rec.cigar.head.length))
-          val windowStart = max(1, rec.start - maxOffset)
-          val windowEnd = min(ref.length(), rec.start + bases.length + maxOffset)
-          val refBases = new String(ref.getBases, windowStart - 1, windowEnd - windowStart + 1)
-          find(bases, refBases, maxErrorRate).map { hit => hit.read = Some(rec); hit.offset = -(hit.offset + windowStart - rec.start); hit }
-        }
-        else if (rec.negativeStrand && rec.cigar.last.operator == CigarOperator.S && rec.cigar.last.length >= minLength) {
-          val ref = refs(rec.refName)
-          val bases = Sequences.revcomp(rec.basesString.takeRight(rec.cigar.last.length))
-          val windowStart = max(1, rec.end - bases.length - maxOffset + 1)
-          val windowEnd = min(ref.length(), rec.end + maxOffset)
-          val refBases = new String(ref.getBases, windowStart - 1, windowEnd - windowStart + 1)
-          find(bases, refBases, maxErrorRate).map { hit => hit.read = Some(rec); hit.offset = -(rec.end - (hit.offset + windowStart + bases.length - 1)); hit }
-        }
-        else {
-          None
-        }
-      }.find(_ => true)
+      if (rec.positiveStrand && rec.cigar.head.operator == CigarOperator.S && rec.cigar.head.length >= minLength) {
+        val ref         = refs(rec.refName)
+        val bases       = Sequences.revcomp(rec.basesString.take(rec.cigar.head.length))
+        val windowStart = max(1, rec.start - maxOffset)
+        val windowEnd   = min(ref.length(), CoordMath.getEnd(rec.start, bases.length + maxOffset))
+        val refBases    = new String(ref.getBases, windowStart - 1, CoordMath.getLength(windowStart, windowEnd))
+        find(bases, refBases, maxErrorRate).map { hit => hit.read = Some(rec); hit.offset = -(hit.offset + windowStart - rec.start); hit }
+      }
+      else if (rec.negativeStrand && rec.cigar.last.operator == CigarOperator.S && rec.cigar.last.length >= minLength) {
+        val ref         = refs(rec.refName)
+        val bases       = Sequences.revcomp(rec.basesString.takeRight(rec.cigar.last.length))
+        val windowStart = max(1, rec.end - bases.length - maxOffset + 1)
+        val windowEnd   = min(ref.length(), rec.end + maxOffset)
+        val refBases    = new String(ref.getBases, windowStart - 1, windowEnd - windowStart + 1)
+        find(bases, refBases, maxErrorRate).map { hit => hit.read = Some(rec); hit.offset = -(rec.end - (hit.offset + windowStart + bases.length - 1)); hit }
+      }
+      else {
+        None
+      }
+    }.find(_ => true)
   }
 
   /**
@@ -155,7 +175,7 @@ object FindSwitchbackReads {
     *
     * @param template the template to be examined.
     * @param maxGap the maximum allowable gap size
-    * @return either Some(TandemBasedHit) if a hit can be found, else None
+    * @return either `Some(TandemBasedHit)` if a hit can be found, else `None``
     */
   private[bam] def findTandemSwitchback(template: Template, maxGap: Int) : Option[TandemBasedHit] =
     if (maxGap <=0 ) None else template.pairOrientation match {
@@ -164,12 +184,7 @@ object FindSwitchbackReads {
           case (Some(r1), Some(r2)) =>
             val (earlier, later) = if (r1.start <= r2.start) (r1, r2) else (r2, r1)
             val gap = later.start - earlier.end - 1
-            if (abs(gap) <= maxGap) {
-              Some(TandemBasedHit(later.start - earlier.end - 1))
-            }
-            else {
-              None
-            }
+            if (abs(gap) <= maxGap) Some(TandemBasedHit(later.start - earlier.end - 1)) else None
         }
       case _ =>
         None
@@ -290,12 +305,20 @@ class FindSwitchbackReads
   @arg(flag='O', doc="Maximum offset between end the two segments of the read on the reference. Set to 0 to disable read-based checks.") val maxOffset: Int = 35,
   @arg(flag='g', doc="Maximum gap between R1 and R2 of tandem reads to call a template a switchback. Set to 0 to disable tandem-based checks.") val maxGap: Int = 500,
   @arg(flag='l', doc="Minimum match length of the switched back segment.") val minLength: Int = 6,
-  @arg(flag='e', doc="Maximum error rate of switchback match to genome.") val maxErrorRate: Double = 0.1,
+  @arg(flag='e', doc="Maximum mismatch error rate of switchback match to genome.") val maxErrorRate: Double = 0.1,
   @arg(flag='d', doc="IF true, do NOT unmap reads from switchback templates.") val dontUnmap: Boolean = false
 ) extends FgBioTool with LazyLogging {
   import FindSwitchbackReads._
+
   Io.assertReadable(input)
   Io.assertReadable(ref)
+  Io.assertCanWriteFile(output)
+  metrics.foreach(m => Io.assertCanWriteFile(m))
+
+  validate(maxOffset    >= 0,   "max-offset must be >= 0")
+  validate(maxGap       >= 0,   "max-gap must be >= 0")
+  validate(minLength    >= 0,   "min-length must be >= 0")
+  validate(maxErrorRate >= 0.0, "max-error-rate must be >= 0")
 
   override def execute(): Unit = {
     logger.info("Loading reference sequences.")
@@ -310,35 +333,34 @@ class FindSwitchbackReads
 
     val in = SamSource(input)
     val iterator = Bams.templateIterator(in)
+    val out = {
+      val outHeader = in.header.clone()
+      sortOrder match {
+        case Some(so) => so.applyTo(outHeader)
+        case None     =>
+          if (in.header.getSortOrder != SortOrder.queryname && in.header.getGroupOrder != GroupOrder.query) {
+            SamOrder.Queryname.applyTo(outHeader)
+          }
+      }
 
-    val outHeader = in.header.clone()
-    sortOrder match {
-      case Some(so) => so.applyTo(outHeader)
-      case None     =>
-        if (in.header.getSortOrder != SortOrder.queryname && in.header.getGroupOrder != GroupOrder.query) {
-          SamOrder.Queryname.applyTo(outHeader)
-        }
+      SamWriter(output, header=outHeader, sort=sortOrder)
     }
-    sortOrder.foreach(_.applyTo(outHeader))
-    val out = SamWriter(output, header=outHeader, sort=sortOrder)
 
     logger.info("Examining reads for switchbacks.")
     iterator.map { template =>
       total += 1
-      if (!template.primaryReads.exists(_.mapped)) template else {
+      if (template.primaryReads.forall(_.unmapped)) template else {
         aligned += 1
 
         val result: Option[SwitchHit] = findReadBasedSwitchback(refs, template, minLength, maxOffset, maxErrorRate)
           .orElse(findTandemSwitchback(template, maxGap))
 
-        result match {
-          case None =>
-            Unit
-          case Some(hit: TandemBasedHit) =>
+        result.foreach {
+          case hit: TandemBasedHit =>
             switchbackGaps.count(hit.gap)
             val tagValue = s"${hit.code},${hit.gap}"
             template.allReads.foreach(r => r(SwitchTag) = tagValue)
-          case Some(hit: ReadBasedHit) =>
+          case hit: ReadBasedHit =>
             switchbackLengths.count(hit.length)
             switchbackOffsets.count(hit.offset)
             val foundInReadNum = readNum(hit.read.getOrElse(unreachable("read should be populated!")))
@@ -378,7 +400,6 @@ class FindSwitchbackReads
       )
 
       Metric.write(PathUtil.pathTo(prefix + ".summary.txt"), m)
-
 
       Seq(
         ("lengths", switchbackLengths, "length"),

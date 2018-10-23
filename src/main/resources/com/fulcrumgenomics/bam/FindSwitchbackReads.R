@@ -23,7 +23,7 @@
 options(warn = -1) # Don't emit warnings, only errors
 library(ggplot2)
 
-args    = commandArgs(trailingOnly=T)
+args        = commandArgs(trailingOnly=T)
 name        = args[1]
 lengthsFile = args[2]
 offsetsFile = args[3]

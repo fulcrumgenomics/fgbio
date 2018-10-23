@@ -75,7 +75,8 @@ case class Template(r1: Option[SamRecord],
 
   /**
     * Produces a copy of the template that has had mapping information removed.  Discards secondary and supplemntary
-    * records, and retains the primary records after un-mapping them.
+    * records, and retains the primary records after un-mapping them.  Auxillary tags listed in [[Bams.AlignmentTags]]
+    * are removed from all records.  Lastly the `OA` tag is added to reads to record the Original Alignment.
     */
   def unmapped: Template = {
     val x1 = r1.map(_.clone())
@@ -153,6 +154,9 @@ object Bams extends LazyLogging {
   /** The default maximum # of records to keep and sort in memory. */
   val MaxInMemory: Int = 1e6.toInt
 
+  /** Auxillary tags that should be cleared or re-calculated when unmapping or changing the alignment of a SamRecord. */
+  val AlignmentTags: Seq[String] = Seq("MD", "NM", "UQ")
+
   /** Generates a [[Sorter]] for doing disk-backed sorting of objects. */
   def sorter(order: SamOrder,
              header: SAMFileHeader,
@@ -228,7 +232,7 @@ object Bams extends LazyLogging {
     */
   def templateIterator(in: SamSource,
                        maxInMemory: Int = MaxInMemory,
-                       tmpDir: DirPath = Io.tmpDir): Iterator[Template] = {
+                       tmpDir: DirPath = Io.tmpDir): SelfClosingIterator[Template] = {
     templateIterator(in.iterator, in.header, maxInMemory, tmpDir)
   }
 
@@ -245,16 +249,18 @@ object Bams extends LazyLogging {
   def templateIterator(iterator: Iterator[SamRecord],
                        header: SAMFileHeader,
                        maxInMemory: Int,
-                       tmpDir: DirPath): Iterator[Template] = {
+                       tmpDir: DirPath): SelfClosingIterator[Template] = {
     val queryIterator = queryGroupedIterator(iterator, header, maxInMemory, tmpDir)
 
-    new Iterator[Template] {
+    val iter = new Iterator[Template] {
       override def hasNext: Boolean = queryIterator.hasNext
       override def next(): Template = {
         require(hasNext, "next() called on empty iterator")
         Template(queryIterator)
       }
     }
+
+    new SelfClosingIterator(iter, () => queryIterator.close())
   }
 
   /** Returns an iterator over the records in the given iterator such that the order of the records returned is

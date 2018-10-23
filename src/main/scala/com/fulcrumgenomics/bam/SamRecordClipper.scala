@@ -52,7 +52,7 @@ object ClippingMode extends FgBioEnum[ClippingMode] {
 object SamRecordClipper {
 
   /** The set of tags that should be invalidated if a read undergoes clipping. */
-  val TagsToInvalidate = Seq("MD", "NM", "UQ")
+  val TagsToInvalidate: Seq[String] = Bams.AlignmentTags
 
   private val NoCallBase = 'N'.toByte
   private val NoCallQual = 2.toByte
