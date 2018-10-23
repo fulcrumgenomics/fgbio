@@ -91,7 +91,6 @@ private[identifyprimers] sealed trait PrimerMatcherWithKmerFilter {
               val buffer = new mutable.HashSet[Primer]()
               kmers.put(kmer, buffer)
               buffer.add(primer)
-
           }
         }
       }

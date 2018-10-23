@@ -147,7 +147,7 @@ private[identifyprimers] case class Primer(pair_id: String,
   override def getContig: String = ref_name
   override def getStart: Int = start
   override def getEnd: Int = end
-  override def length: Int = end - start + 1
+  override def length: Int = if (ref_name.nonEmpty) end - start + 1 else sequence.length
   def positiveStrand: Boolean = this.positive_strand
   def negativeStrand: Boolean = !this.positive_strand
 

@@ -215,6 +215,7 @@ class IdentifyPrimers
 
   private val (locationBasedMatcher, ungappedBasedMatcher, gappedBasedMatcher, pairIdToPrimers) = {
     val primers  = Primer.read(this.primerPairs, multiPrimerPairs = multiPrimerPairs).toIndexedSeq
+    logger.info(f"Read in ${primers.length}%,d primers.")
     val location = new LocationBasedPrimerMatcher(primers, slop, maxMismatchRate)
     val ungapped = new UngappedAlignmentBasedPrimerMatcher(primers, slop, maxMismatchRate, ungappedKmerLength)
     val gapped   = {
