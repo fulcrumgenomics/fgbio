@@ -36,7 +36,7 @@ class PrimerMatchTest extends UnitSpec with OptionValues {
     (LocationBasedPrimerMatch(primer, 2), LocationName),
     (UngappedAlignmentPrimerMatch(primer, 2, Int.MaxValue), UngappedName),
     (UngappedAlignmentPrimerMatch(primer, 2, 3), UngappedName),
-    (GappedAlignmentPrimerMatch(primer, 2, 3), GappedName)
+    (GappedAlignmentPrimerMatch(primer, 3, 2), GappedName)
   )
 
   "PrimerMatch.toName" should "give the name of the primer match" in {

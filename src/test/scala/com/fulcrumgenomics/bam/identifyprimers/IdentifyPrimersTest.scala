@@ -31,7 +31,7 @@ import com.fulcrumgenomics.commons.io.PathUtil
 import com.fulcrumgenomics.testing.SamBuilder.{Minus, Plus}
 import com.fulcrumgenomics.testing.{SamBuilder, UnitSpec}
 import com.fulcrumgenomics.util.Metric
-import htsjdk.samtools.{SAMFileHeader, SamPairUtil}
+import htsjdk.samtools.{SAMFileHeader, SAMUtils, SamPairUtil}
 import org.scalatest.OptionValues
 
 final class IdentifyPrimersTest extends UnitSpec with OptionValues {
@@ -98,57 +98,47 @@ final class IdentifyPrimersTest extends UnitSpec with OptionValues {
   )
   require(results.length == primers.length)
 
-  /** Create paired end reads from the given primers. */
-  private val (pairs: Seq[SamRecord], header: SAMFileHeader) = {
-    // Paired end reads are created as fragments, with pairing information added later.
-    val fragBuilder: SamBuilder = {
-      val builder = new SamBuilder(readLength=10)
-
-      // location match: use all the primers!
-      this.primers.foreach { primer =>
-        fromPrimer(builder, primer).foreach(r => r("lc") = 1)
+  private def buildBuilder(primers: Seq[Primer]): SamBuilder = {
+    val builder = new SamBuilder(readLength=10)
+    // location match: use all the primers!
+    primers.foreach { primer =>
+      fromPrimer(builder, primer).foreach { r =>
+        r("lc") = 1
+        r("id") = primer.primer_id
       }
-
-      // mismatch match: change reference and add mismatches to the bases
-      Range.inclusive(0, maxMismatches+1).foreach { numMismatches =>
-        this.primers.foreach { primer =>
-          fromPrimer(builder, primer, Some(Mismatch(numMismatches)))
-        }
-      }
-
-      // full alignment: change reference and delete a base
-      Range.inclusive(1, 2).foreach { indelLength =>
-        this.primers.foreach { primer =>
-          fromPrimer(builder, primer, Some(Deletion(indelLength)))
-        }
-        this.primers.foreach { primer =>
-          fromPrimer(builder, primer, Some(Insertion(indelLength)))
-        }
-      }
-
-      // no matches
-      builder.addFrag(bases = "G"*builder.readLength, contig = 0, start = 100000, cigar = s"${builder.readLength}M", strand = Plus)
-      builder.addFrag(bases = "C"*builder.readLength, contig = 0, start = 100000, cigar = s"${builder.readLength}M", strand = Minus)
-
-      // unmapped and no matches
-      builder.addFrag(bases = "G"*builder.readLength, contig = 0, start = 100000, cigar = s"${builder.readLength}M", strand = Plus, unmapped = true)
-      builder.addFrag(bases = "C"*builder.readLength, contig = 0, start = 100000, cigar = s"${builder.readLength}M", strand = Minus, unmapped = true)
-
-      // non-canonical when converted to pairs
-      {
-        fromPrimer(builder, primers(0))
-        fromPrimer(builder, primers(3))
-      }
-
-      builder
     }
 
-    // No pair them up!
-    val records: Seq[SamRecord] = {
-      // It's funny we have to write to a file and read back in to clone SamRecords!
-      val path  = fragBuilder.toTempFile()
-      val in    = SamSource(path)
-      val pairs = in.iterator.grouped(2).flatMap { case Seq(r1, r2) =>
+    // mismatch match: change reference and add mismatches to the bases
+    Range.inclusive(0, maxMismatches+1).foreach { numMismatches =>
+      primers.foreach { primer =>
+        fromPrimer(builder, primer, Some(Mismatch(numMismatches)))
+      }
+    }
+
+    // full alignment: change reference and delete a base
+    Range.inclusive(1, 2).foreach { indelLength =>
+      primers.foreach { primer =>
+        fromPrimer(builder, primer, Some(Deletion(indelLength)))
+      }
+      primers.foreach { primer =>
+        fromPrimer(builder, primer, Some(Insertion(indelLength)))
+      }
+    }
+
+    // no matches
+    builder.addFrag(bases = "G"*builder.readLength, contig = 0, start = 100000, cigar = s"${builder.readLength}M", strand = Plus)
+    builder.addFrag(bases = "C"*builder.readLength, contig = 0, start = 100000, cigar = s"${builder.readLength}M", strand = Minus)
+
+    // unmapped and no matches
+    builder.addFrag(bases = "G"*builder.readLength, contig = 0, start = 100000, cigar = s"${builder.readLength}M", strand = Plus, unmapped = true)
+    builder.addFrag(bases = "C"*builder.readLength, contig = 0, start = 100000, cigar = s"${builder.readLength}M", strand = Minus, unmapped = true)
+    builder
+  }
+
+  private def pairRecords(builder: SamBuilder): Seq[SamRecord] = {
+    val pairs = builder.iterator.grouped(2)
+      .map { case Seq(r1, r2) => Seq(r1.clone(), r2.clone()) }
+      .flatMap { case Seq(r1, r2) =>
         r2.name         = r1.name
         r1.paired       = true
         r2.paired       = true
@@ -157,12 +147,26 @@ final class IdentifyPrimersTest extends UnitSpec with OptionValues {
         SamPairUtil.setMateInfo(r1.asSam, r2.asSam, true)
         Seq(r1, r2)
       }.toList
-      in.close()
-      require(pairs.length == fragBuilder.toSeq.length, s"${pairs.length} == ${fragBuilder.toSeq.length}")
-      pairs
+    require(pairs.length == builder.toSeq.length, s"${pairs.length} == ${builder.toSeq.length}")
+    pairs
+  }
+
+  /** Create paired end reads from the given primers. */
+  private val (pairs: Seq[SamRecord], header: SAMFileHeader) = {
+    // Paired end reads are created as fragments, with pairing information added later.
+    val fragBuilder: SamBuilder = {
+      val builder = buildBuilder(primers)
+
+      // non-canonical when made into a pairs
+      {
+        fromPrimer(builder, primers(0))
+        fromPrimer(builder, primers(3))
+      }
+
+      builder
     }
 
-    (records, fragBuilder.header)
+    (pairRecords(fragBuilder), fragBuilder.header)
   }
 
   // The type of edit to perform
@@ -195,7 +199,7 @@ final class IdentifyPrimersTest extends UnitSpec with OptionValues {
 
   /** Inserts Ns into the middle of the read. */
   private def insertInTheMiddle(seq: String, indelLength: Int): String = {
-    val str = seq.take((seq.length+1)/2) + ("N"*indelLength) + seq.take(seq.length/2)
+    val str = seq.take((seq.length+1)/2) + ("N"*indelLength) + seq.takeRight(seq.length/2)
     require(str.length == seq.length + indelLength)
     str
   }
@@ -209,17 +213,17 @@ final class IdentifyPrimersTest extends UnitSpec with OptionValues {
     val newRefName = dict.getSequence(dict.getSequences.size() - 1).getSequenceName
     val newPrimer: Primer  = edit match {
       case None                 => primer
-      case Some(mm: Mismatch)   => primer.copy(ref_name=newRefName, sequence = addNsInTheMiddle(primer.sequence, mm.numMismatches, primer.positive_strand))
+      case Some(mm: Mismatch)   => primer.copy(ref_name=newRefName, sequence = addNsInTheMiddle(primer.sequence, mm.numMismatches, primer.positiveStrand))
       case Some(ins: Insertion) => primer.copy(ref_name=newRefName, sequence = insertInTheMiddle(primer.sequence, ins.length), end=primer.end+ins.length)
       case Some(del: Deletion)  => primer.copy(ref_name=newRefName, sequence = deleteInTheMiddle(primer.sequence, del.length), start=primer.start+del.length)
       case _                    => unreachable(s"Unknown edit: $edit")
     }
 
     val refIndex = dict.getSequenceIndex(newPrimer.ref_name)
-    val strand   = if (newPrimer.positive_strand) Plus else Minus
+    val strand   = if (newPrimer.positiveStrand) Plus else Minus
+    val bases    = new String(newPrimer.basesInGenomicOrder)
     val quals    = (33 + builder.baseQuality).toChar.toString * newPrimer.length
-    // NB: do not reverse complement the bases as the primer's bases is on the positive strand already!
-    builder.addFrag(bases = newPrimer.sequence, quals = quals, contig = refIndex, start = newPrimer.start, cigar = s"${newPrimer.length}M", strand = strand).map { rec =>
+    builder.addFrag(bases = bases, quals = quals, contig = refIndex, start = newPrimer.start, cigar = s"${newPrimer.length}M", strand = strand).map { rec =>
       val editTagValue = edit match {
         case None                 => "no_edits"
         case Some(mm: Mismatch)   => s"mis_${mm.numMismatches}"
@@ -232,95 +236,169 @@ final class IdentifyPrimersTest extends UnitSpec with OptionValues {
     }
   }
 
+  "IdentifyPrimers" should s"run end to end on a two primer pairs" in {
+    val inputPrimers = Seq(
+      Primer("1", "1+", "AGCTAGCTAG", "chr1", 1,      10, true),
+      Primer("1", "1-", "CTAGCTAGCT", "chr1", 101,   110, false),
+      Primer("2", "2+", "ACTGACTGAC", "chr2", 1,      10, true),
+      Primer("2", "2-", "GTCAGTCAGT", "chr3", 101,   110, false)
+    )
+    val (inputRecords, header) = {
+      val builder = buildBuilder(inputPrimers)
+      (pairRecords(builder), builder.header)
+    }
+
+    val input = {
+      val path = makeTempFile("input.", ".bam")
+      val writer = SamWriter(path, header)
+      writer ++= inputRecords
+      writer.close()
+      path
+    }
+
+    val metrics = makeTempFile("metrics.", ".prefix")
+    val output  = makeTempFile("output.", ".bam")
+    val primers = makeTempFile("primers.", ".tab")
+
+    Primer.write(primers, inputPrimers)
+
+    val tool = new IdentifyPrimers(
+      input                 = input,
+      primerPairs           = primers,
+      metrics               = metrics,
+      output                = output,
+      slop                  = slop,
+      maxMismatchRate       = maxMismatcheRate,
+      minAlignmentScoreRate = 0.1, // so we get at most a 1bp indel
+      matchScore            = matchScore,
+      mismatchScore         = mismatchScore,
+      gapOpen               = gapOpen,
+      gapExtend             = gapExtend
+    )
+    executeFgbioTool(tool)
+
+    val outputRecords = readBamRecs(output).toIndexedSeq
+    outputRecords.length shouldBe inputRecords.length
+
+    outputRecords.foreach { rec =>
+      val matchInfo = if (rec.positiveStrand) rec[String]("f5") else rec[String]("r5")
+      val matchType = if (matchInfo.contains(",")) matchInfo.split(',')(7) else matchInfo
+      rec.get[String]("et") match {
+        case None     => matchType shouldBe "none"
+        case Some(et) =>
+          et.split('_').toSeq match {
+            case Seq("no", "edits") => matchType shouldBe PrimerMatch.LocationName
+            case Seq("mis", n)      => matchType shouldBe (if (n.toInt < 3) PrimerMatch.UngappedName else "none")
+            case Seq("ins", n)      => matchType shouldBe (if (n.toInt < 2) PrimerMatch.GappedName else "none")
+            case Seq("del", n)      => matchType shouldBe (if (n.toInt < 2) PrimerMatch.GappedName else "none")
+          }
+      }
+    }
+  }
+
   Seq(true, false).foreach { primersAreMapped =>
-    val testMessage = if (primersAreMapped) "mapped primers" else "unmapped primers"
-    "IdentifyPrimers" should s"run end to end $testMessage" in {
-      val input   = {
-        val path = makeTempFile("input.", ".bam")
-        val writer = SamWriter(path, header)
-        writer ++= this.pairs
-        writer.close()
-        path
-      }
-      val metrics = makeTempFile("metrics.", ".prefix")
-      val output  = makeTempFile("output.", ".bam")
-      val primers = makeTempFile("primers.", ".tab")
+    val primerMessage = if (primersAreMapped) "mapped primers" else "unmapped primers"
+    Seq(true, false).foreach { readsAreMapped =>
+      val readsMessage = if (readsAreMapped) "mapped reads" else "unmapped reads"
+      it should s"run end to end $primerMessage and $readsMessage" in {
+        val input   = {
+          val path = makeTempFile("input.", ".bam")
+          val writer = SamWriter(path, header)
+          if (readsAreMapped) {
+            writer ++= this.pairs
+          }
+          else {
+            writer ++= this.pairs.map { rec =>
+              val r = rec.clone()
+              SAMUtils.makeReadUnmapped(r.asSam)
+              r
+            }
+          }
+          writer.close()
+          path
+        }
+        val metrics = makeTempFile("metrics.", ".prefix")
+        val output  = makeTempFile("output.", ".bam")
+        val primers = makeTempFile("primers.", ".tab")
 
-      if (primersAreMapped) {
-        Primer.write(primers, this.primers)
-      }
-      else {
-        Primer.write(primers, this.primers.map(_.copy(ref_name="")))
-      }
-
-      val tool = new IdentifyPrimers(
-        input                 = input,
-        primerPairs           = primers,
-        metrics               = metrics,
-        output                = output,
-        slop                  = slop,
-        maxMismatchRate       = maxMismatcheRate,
-        minAlignmentScoreRate = minAlignmentScoreRate,
-        matchScore            = matchScore,
-        mismatchScore         = mismatchScore,
-        gapOpen               = gapOpen,
-        gapExtend             = gapExtend
-      )
-
-      executeFgbioTool(tool)
-
-      val actual = Metric.read[IdentifyPrimersMetric](PathUtil.pathTo(metrics + ".summary.txt")) match {
-        case Seq(s)    => s
-        case summaries => fail(s"Found ${summaries.length} summary metrics, should be only one.")
-      }
-
-      // relationships across metric groups
-      (actual.templates * 2) shouldBe this.pairs.length
-      (actual.pairs * 2) shouldBe this.pairs.length
-      (actual.paired_matches + actual.unpaired_matches + actual.no_paired_matches) shouldBe (this.pairs.length / 2)
-      actual.match_attempts  shouldBe (actual.location + actual.ungapped + actual.gapped + actual.no_match)
-
-      // create the expected set of metrics
-      val expected = {
-        // Common metrics between mapped and unmapped test scenarios
-        val commonMetrics = new IdentifyPrimersMetric(
-          // read pair match counts
-          paired_matches     = 45,
-          unpaired_matches   = 4,
-          no_paired_matches  = 14,
-          // counts of template types
-          templates          = 63,
-          pairs              = 63,
-          fragments          = 0,
-          mapped_pairs       = 62,
-          unpaired           = 0,
-          unmapped_pairs     = 1,
-          fr_pairs           = 61,
-          mapped_fragments   = 0,
-          unmapped_fragments = 0,
-          // counts of types of individual primer matches
-          match_attempts     = 126,
-          no_match           = 32
-        )
         if (primersAreMapped) {
-          commonMetrics.copy(
-            // counts of types of individual primer matches
-            location           = 14,
-            ungapped           = 79,
-            gapped             = 1
-          )
+          Primer.write(primers, this.primers)
         }
         else {
-          commonMetrics.copy(
-            // counts of types of individual primer matches
-            location           = 0,
-            ungapped           = 93,
-            gapped             = 1
-          )
+          Primer.write(primers, this.primers.map(_.copy(ref_name="")))
         }
-      }
 
-      actual.zip(expected).foreach { case (act, exp) => act shouldBe exp }  // NB: this helps show **which** metric is different
+        val tool = new IdentifyPrimers(
+          input                 = input,
+          primerPairs           = primers,
+          metrics               = metrics,
+          output                = output,
+          slop                  = slop,
+          maxMismatchRate       = maxMismatcheRate,
+          minAlignmentScoreRate = minAlignmentScoreRate,
+          matchScore            = matchScore,
+          mismatchScore         = mismatchScore,
+          gapOpen               = gapOpen,
+          gapExtend             = gapExtend
+        )
+
+        executeFgbioTool(tool)
+
+        val actual = Metric.read[IdentifyPrimersMetric](PathUtil.pathTo(metrics + ".summary.txt")) match {
+          case Seq(s)    => s
+          case summaries => fail(s"Found ${summaries.length} summary metrics, should be only one.")
+        }
+
+        // relationships across metric groups
+        (actual.templates * 2) shouldBe this.pairs.length
+        (actual.pairs * 2) shouldBe this.pairs.length
+        (actual.paired_matches + actual.unpaired_matches + actual.no_paired_matches) shouldBe (this.pairs.length / 2)
+        actual.match_attempts  shouldBe (actual.location + actual.ungapped + actual.gapped + actual.no_match)
+
+        // create the expected set of metrics
+        val expected = {
+          // Common metrics between mapped and unmapped test scenarios
+          val commonMetrics = new IdentifyPrimersMetric(
+            // read pair match counts
+            paired_matches     = 48,
+            unpaired_matches   = 0,
+            no_paired_matches  = 15,
+            // counts of template types
+            templates          = 63,
+            pairs              = 63,
+            fragments          = 0,
+            mapped_pairs       = if (readsAreMapped) 62 else 0,
+            unpaired           = 0,
+            unmapped_pairs     = if (readsAreMapped) 1 else 63,
+            fr_pairs           = if (readsAreMapped) 61 else 0,
+            mapped_fragments   = 0,
+            unmapped_fragments = 0,
+            // counts of types of individual primer matches
+            match_attempts     = 126,
+            no_match           = 30
+          )
+          if (primersAreMapped && readsAreMapped) {
+            // location-based matching was performed
+            commonMetrics.copy(
+              // counts of types of individual primer matches
+              location           = 14,
+              ungapped           = 78,
+              gapped             = 4
+            )
+          }
+          else {
+            // only ungapped and gapped alignment
+            commonMetrics.copy(
+              // counts of types of individual primer matches
+              location           = 0,
+              ungapped           = 92,
+              gapped             = 4
+            )
+          }
+        }
+
+        actual.zip(expected).foreach { case (act, exp) => act shouldBe exp }  // NB: this helps show **which** metric is different
+      }
     }
   }
 }

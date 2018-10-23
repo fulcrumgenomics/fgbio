@@ -28,34 +28,27 @@ import com.fulcrumgenomics.alignment.Alignable
 import com.fulcrumgenomics.bam.api.SamRecord
 import com.fulcrumgenomics.commons.CommonsDef.FilePath
 import com.fulcrumgenomics.commons.util.DelimitedDataParser
-import com.fulcrumgenomics.util.Metric
+import com.fulcrumgenomics.util.{Metric, Sequences}
 import htsjdk.samtools.util.{Locatable, OverlapDetector, SequenceUtil}
 
 private[identifyprimers] object Primer {
 
-  /** Writes the given primers to file.  Reverse strand primers are written with their sequence reverse complemented. */
-  def write(path: FilePath, primers: TraversableOnce[Primer]): Unit = {
-    val newPrimers = primers.map { primer =>
-      if (primer.positive_strand) primer
-      else primer.copy(sequence = SequenceUtil.reverseComplement(primer.sequence))
-    }
-    Metric.write(path, newPrimers)
-  }
+  /** Writes the given primers to file. */
+  def write(path: FilePath, primers: TraversableOnce[Primer]): Unit = Metric.write(path, primers)
 
   /** Reads primers from a given path and validates the primers (see [[validatePrimers()]]).
     *
     * NB: the reverse strand primers stored at the path are assumed to have sequence in the primer order (i.e. not the
-    * genomic top strand), so they will be reverse complemented here to have them all on the top genomic strand.
+    * genomic top strand).
     * */
   def read(path: FilePath, multiPrimerPairs: Boolean = false): Seq[Primer] = {
     val parser  = DelimitedDataParser(path, '\t')
     val primers = parser.map { row =>
       val positive_strand = isPositiveStrand(row.get[String]("positive_strand", true).getOrElse(row.apply[String]("strand")))
-      val sequence       = row.apply[String]("sequence").toUpperCase
       Primer(
         pair_id        = row.apply[String]("pair_id"),
         primer_id      = row.apply[String]("primer_id"),
-        sequence       = if (positive_strand) sequence else SequenceUtil.reverseComplement(sequence),
+        sequence       = row.apply[String]("sequence").toUpperCase,
         ref_name       = row.apply[String]("ref_name"),
         start          = row.apply[Int]("start"),
         end            = row.apply[Int]("end"),
@@ -137,14 +130,11 @@ private[identifyprimers] object Primer {
   *
   * @param pair_id the canonical primer pair identifier, unique across all primer pairs.
   * @param primer_id the canonical primer identifier, unique across all primers.
-  * @param sequence the primer sequence, in 5'->3' on the genomic forward strand.
+  * @param sequence the primer sequence, in sequencing order.
   * @param ref_name the reference name to which this primer targets.
   * @param start the reference start position at which this primer starts.
   * @param end the reference end position at which this primer starts.
   * @param positive_strand true if the primer maps to the forward genomic strand, false otherwise.
-  * @param reverseComplementBases true if `bases()` should return the reverse complement of `sequence`, false otherwise.
-  *                               This is used when we match the primer on the opposite strand and want to ungapped/gapped
-  *                               alignment, so we need to compare the reverse complement.
   * Primers without a mapping to the reference should have an empty `ref_name`.
   */
 private[identifyprimers] case class Primer(pair_id: String,
@@ -153,8 +143,7 @@ private[identifyprimers] case class Primer(pair_id: String,
                                            ref_name: String,
                                            start: Int,
                                            end: Int,
-                                           positive_strand: Boolean,
-                                           reverseComplementBases: Boolean = false) extends Locatable with Alignable with Metric {
+                                           positive_strand: Boolean) extends Locatable with Alignable with Metric {
   override def getContig: String = ref_name
   override def getStart: Int = start
   override def getEnd: Int = end
@@ -165,8 +154,16 @@ private[identifyprimers] case class Primer(pair_id: String,
   /** Returns true if the primer has a mapping to the reference, false otherwise. */
   def mapped: Boolean = this.ref_name.nonEmpty
 
-  val bases: Array[Byte] = if (reverseComplementBases) SequenceUtil.reverseComplement(sequence).getBytes else sequence.getBytes
+  /** The bases as bytes in sequencing order */
+  val bases: Array[Byte] = sequence.getBytes
 
+  /** The bases in sequencing order. */
+  def basesInSequencingOrder: Array[Byte] = this.bases
+
+  /** The bases in genomic order. */
+  val basesInGenomicOrder: Array[Byte] = if (positiveStrand) this.bases else SequenceUtil.reverseComplement(sequence).getBytes()
+
+  // Validate the primer bases
   this.sequence.zipWithIndex.foreach { case (base, index) =>
     if (!SequenceUtil.isValidBase(base.toByte) && !SequenceUtil.isIUPAC(base.toByte)) {
       val prefix = sequence.substring(0, index)

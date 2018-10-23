@@ -174,8 +174,7 @@ class IdentifyPrimers
  @arg(          doc="Path to the ksw aligner.") val ksw: Option[String] = None,
  @arg(flag='k', doc="Skip ungapped alignment if no kmer of this length is common between any primer and a given read.") val ungappedKmerLength: Option[Int] = None,
  @arg(flag='K', doc="Skip gapped alignment if no kmer of this length is common between any primer and a given read.") val gappedKmerLength: Option[Int] = None,
- @arg(          doc="Allow multiple primers on the same strand to have the same `pair_id`.") val multiPrimerPairs: Boolean = false,
- @arg(          doc="Ignore the strand of the primer when matching.") val ignorePrimerStrand: Boolean = false
+ @arg(          doc="Allow multiple primers on the same strand to have the same `pair_id`.") val multiPrimerPairs: Boolean = false
 ) extends FgBioTool with LazyLogging {
 
   /** The maximum number of templates in memory. */
@@ -216,11 +215,11 @@ class IdentifyPrimers
 
   private val (locationBasedMatcher, ungappedBasedMatcher, gappedBasedMatcher, pairIdToPrimers) = {
     val primers  = Primer.read(this.primerPairs, multiPrimerPairs = multiPrimerPairs).toIndexedSeq
-    val location = new LocationBasedPrimerMatcher(primers, slop, ignorePrimerStrand, maxMismatchRate)
-    val ungapped = new UngappedAlignmentBasedPrimerMatcher(primers, slop, ignorePrimerStrand, maxMismatchRate, ungappedKmerLength)
+    val location = new LocationBasedPrimerMatcher(primers, slop, maxMismatchRate)
+    val ungapped = new UngappedAlignmentBasedPrimerMatcher(primers, slop, maxMismatchRate, ungappedKmerLength)
     val gapped   = {
       val aligner: Aligner = Aligner(matchScore = matchScore, mismatchScore = mismatchScore, gapOpen = gapOpen, gapExtend = gapExtend, mode = AlignmentMode.Glocal)
-      new GappedAlignmentBasedPrimerMatcher(primers, slop, ignorePrimerStrand, aligner, minAlignmentScoreRate, gappedKmerLength)
+      new GappedAlignmentBasedPrimerMatcher(primers, slop, aligner, minAlignmentScoreRate, gappedKmerLength)
     }
     (location, ungapped, gapped, primers.groupBy(_.pair_id))
   }
@@ -502,19 +501,12 @@ class IdentifyPrimers
 
     // create the alignment tasks
     val alignmentTasks: Seq[AlignmentTask[Primer, Alignable]] = {
-      val alignableCache = scala.collection.mutable.HashMap[(Int,Int), Alignable]()
+      val alignableCache = scala.collection.mutable.HashMap[Int, Alignable]()
       // for 3' matching, it is the same as 5' matching, just that we match the end of the reads for positive strand
       // primers (or unmapped) and start of the reads for negative strand primers
       primersToCheck.map { primer =>
-        val (targetOffset, targetLength) = {
-          if (primer.negativeStrand) (0, math.min(primer.sequence.length + slop, rec.length))
-          else {
-            val offset = math.max(0, rec.length - primer.length - slop)
-            val length = rec.length - offset
-            (offset, length)
-          }
-        }
-        val target = alignableCache.getOrElseUpdate((targetOffset, targetLength), SamRecordAlignable(rec, targetOffset, targetLength))
+        val targetLength = math.min(primer.sequence.length + slop, rec.length)
+        val target       = alignableCache.getOrElseUpdate(targetLength, SamRecordAlignable(rec, targetLength))
         AlignmentTask(query = primer, target = target)
       }
     }
