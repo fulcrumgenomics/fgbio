@@ -153,7 +153,8 @@ object FindSwitchbackReads {
         val windowStart = max(1, rec.start - maxOffset)
         val windowEnd   = min(ref.length(), CoordMath.getEnd(rec.start, bases.length + maxOffset))
         val refBases    = new String(ref.getBases, windowStart - 1, CoordMath.getLength(windowStart, windowEnd))
-        find(bases, refBases, maxErrorRate).map { hit => hit.read = Some(rec); hit.offset = -(hit.offset + windowStart - rec.start); hit }
+        find(bases, refBases, maxErrorRate, preferLaterMatches=false)
+          .map { hit => hit.read = Some(rec); hit.offset = -(hit.offset + windowStart - rec.start); hit }
       }
       else if (rec.negativeStrand && rec.cigar.last.operator == CigarOperator.S && rec.cigar.last.length >= minLength) {
         val ref         = refs(rec.refName)
@@ -161,7 +162,8 @@ object FindSwitchbackReads {
         val windowStart = max(1, rec.end - bases.length - maxOffset + 1)
         val windowEnd   = min(ref.length(), rec.end + maxOffset)
         val refBases    = new String(ref.getBases, windowStart - 1, windowEnd - windowStart + 1)
-        find(bases, refBases, maxErrorRate).map { hit => hit.read = Some(rec); hit.offset = -(rec.end - (hit.offset + windowStart + bases.length - 1)); hit }
+        find(bases, refBases, maxErrorRate, preferLaterMatches=true)
+          .map { hit => hit.read = Some(rec); hit.offset = -(rec.end - (hit.offset + windowStart + bases.length - 1)); hit }
       }
       else {
         None
@@ -175,7 +177,7 @@ object FindSwitchbackReads {
     *
     * @param template the template to be examined.
     * @param maxGap the maximum allowable gap size
-    * @return either `Some(TandemBasedHit)` if a hit can be found, else `None``
+    * @return either `Some(TandemBasedHit)` if a hit can be found, else `None`
     */
   private[bam] def findTandemSwitchback(template: Template, maxGap: Int) : Option[TandemBasedHit] =
     if (maxGap <=0 ) None else template.pairOrientation match {
@@ -201,7 +203,7 @@ object FindSwitchbackReads {
     *                           to the start
     * @return a [[ReadBasedHit]] if a match is found, otherwise None.
     */
-  def find(query: String, target: String, maxErrorRate: Double, preferLaterMatches: Boolean = false): Option[ReadBasedHit] = {
+  def find(query: String, target: String, maxErrorRate: Double, preferLaterMatches: Boolean): Option[ReadBasedHit] = {
     val maxMismatches = Math.floor(query.length * maxErrorRate)
     val range = {
       if (preferLaterMatches) Range.inclusive(target.length-query.length, 0, step = -1)
