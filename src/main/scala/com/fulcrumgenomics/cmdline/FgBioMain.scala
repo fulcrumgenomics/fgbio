@@ -39,6 +39,7 @@ import com.fulcrumgenomics.commons.CommonsDef._
 
 import scala.reflect.runtime.universe.TypeTag
 import scala.reflect.ClassTag
+import scala.tools.cmd.CommandLineParser
 
 /**
   * Main program for fgbio that loads everything up and runs the appropriate sub-command
@@ -85,16 +86,24 @@ class FgBioMain extends LazyLogging {
     htsjdk.samtools.util.Log.setGlobalLogLevel(htsjdk.samtools.util.Log.LogLevel.WARNING)
 
     val startTime = System.currentTimeMillis()
-    val parser    = new CommandLineParser[FgBioTool](name)
-    val exit      = Sopt.parseCommandAndSubCommand[FgBioCommonArgs,FgBioTool](name, args, Sopt.find[FgBioTool](packageList)) match {
+    val parser    = new CommandLineParser[FgBioTool](name)  // Keep a reference to the parser so we can get the command line
+    val exit      = parser.parseCommandAndSubCommand[FgBioCommonArgs](args, Sopt.find[FgBioTool](packageList)) match {
       case Sopt.Failure(usage) =>
         System.err.print(usage())
         1
-      case Sopt.CommandSuccess(cmd) =>
+      case Sopt.CommandSuccess(_) =>
         unreachable("CommandSuccess should never be returned by parseCommandAndSubCommand.")
-      case Sopt.SubcommandSuccess(command, subcommand) =>
+      case Sopt.SubcommandSuccess(_, subcommand) =>
         val name = subcommand.getClass.getSimpleName
         try {
+          parser.commandLine.foreach { commandLine =>
+            subcommand.toolInfo = FgBioToolInfo(
+              name        = name,
+              commandLine = commandLine,
+              description = parser.formatShortDescription(Sopt.inspect(subcommand.getClass).description),
+              version     = this.version
+            )
+          }
           printStartupLines(name, args)
           subcommand.execute()
           printEndingLines(startTime, name, true)
@@ -123,7 +132,6 @@ class FgBioMain extends LazyLogging {
 
   /** Prints a line of useful information when a tool starts executing. */
   protected def printStartupLines(tool: String, args: Array[String]): Unit = {
-    val version    = CommandLineProgramParserStrings.version(getClass, color=false).replace("Version: ", "")
     val host       = InetAddress.getLocalHost.getHostName
     val user       = System.getProperty("user.name")
     val jreVersion = System.getProperty("java.runtime.version")
@@ -141,4 +149,6 @@ class FgBioMain extends LazyLogging {
 
   /** The packages we wish to include in our command line **/
   protected def packageList: List[String] = List[String]("com.fulcrumgenomics")
+
+  private def version: String = CommandLineProgramParserStrings.version(getClass, color=false).replace("Version: ", "")
 }
