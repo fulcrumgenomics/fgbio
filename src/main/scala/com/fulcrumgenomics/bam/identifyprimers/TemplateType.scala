@@ -38,7 +38,7 @@ private[identifyprimers] object TemplateType extends FgBioEnum[TemplateType] {
   /** A read pair where both ends are mapped. */
   case object MappedPair extends TemplateType
   /** A read pair where exactly one end is mapped. */
-  case object Unpaired extends TemplateType
+  case object PartiallyMappedPair extends TemplateType
   /** A read pair where neither end is mapped. */
   case object UnmappedPair extends TemplateType
   /** A mapped fragment. */
@@ -55,8 +55,8 @@ private[identifyprimers] object TemplateType extends FgBioEnum[TemplateType] {
       case Some(_r2) =>
         (r1.mapped, _r2.mapped) match {
           case (true, true)   => MappedPair
-          case (true, false)  => Unpaired
-          case (false, true)  => Unpaired
+          case (true, false)  => PartiallyMappedPair
+          case (false, true)  => PartiallyMappedPair
           case (false, false) => UnmappedPair
         }
     }

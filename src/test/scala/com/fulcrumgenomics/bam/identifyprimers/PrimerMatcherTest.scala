@@ -146,7 +146,7 @@ class PrimerMatcherWithKmerFilterTest extends UnitSpec with OptionValues {
 }
 
 class UngappedAlignmentTest extends UnitSpec with OptionValues {
-  private val tool = new UngappedAlignment {
+  private val tool = new UngappedAligner {
     override def maxMismatchRate: Double = 0.25 // 1 in 4!
   }
 
@@ -397,10 +397,8 @@ class GappedAlignmentBasedPrimerMatcherTest extends UnitSpec with OptionValues {
     val matcher = newMatcher(0)
 
     def toAlignmentAndPrimer(score: Int) = {
-      matcher.AlignmentAndPrimer(
-        alignment = new Alignment(null, null, 0, 0, null, score),
-        primer    = primers(0)
-      )
+      val alignment = new Alignment(null, null, 0, 0, null, score)
+      (primers(0), alignment)
     }
 
     "GappedAlignmentBasedPrimerMatcher.getBestGappedAlignment" should "return None if no alignments were given" in {

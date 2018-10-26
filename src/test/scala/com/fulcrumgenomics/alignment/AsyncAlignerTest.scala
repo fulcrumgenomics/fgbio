@@ -25,35 +25,28 @@
 package com.fulcrumgenomics.alignment
 
 import com.fulcrumgenomics.testing.UnitSpec
+import org.scalatest.concurrent.ScalaFutures
 
-class BatchAlignerTest extends UnitSpec {
+class AsyncAlignerTest extends UnitSpec with ScalaFutures {
+  import scala.concurrent.ExecutionContext.Implicits.global
 
-  private case class Bases(seq: String) extends Alignable {
-    val bases: Array[Byte] = seq.getBytes
-  }
+  private val testTasks = Seq(("ACGTAACC", "ACGTAACC"), ("CCGG", "AACCGGTT"), ("AAAATTTT", "AAAATTTTGGGG"))
 
-  private def f(query: String, target: String): AlignmentTask[Bases, Bases] = AlignmentTask(Bases(seq = query), Bases(seq = target))
-
-  private val testTasks = Seq(f("ACGTAACC", "ACGTAACC"), f("CCGG", "AACCGGTT"), f("AAAATTTT", "AAAATTTTGGGG"))
+  private def newAligner(mode: Mode) = Aligner(1, -4, -6, -1, mode=mode)
 
   Seq(Mode.Local, Mode.Glocal, Mode.Global).foreach { mode =>
-    "BatchAligner" should s"align in $mode mode" in {
-      val iAligner = BatchAligner[Bases, Bases](1, -4, -6, -1, mode=mode)
-      val aligner  = Aligner(1, -4, -6, -1, mode=mode)
-
-      // Add the tasks to the interactive aligner
-      testTasks.foreach { task => iAligner.append(task) }
-
-      // Check that all have been added
-      iAligner.numAdded shouldBe testTasks.length
-
-      // Compare the results
-      testTasks.zip(iAligner.iterator.toSeq).foreach { case (task, actualAlignment) =>
-        val expectedAlignment: Alignment = aligner.align(task.query.bases, task.target.bases)
-        actualAlignment shouldBe expectedAlignment
+    "AsyncAligner" should s"align in $mode mode" in {
+      val asyncAligner = new AsyncScalaAligner(newAligner(mode))
+      val aligner      = newAligner(mode)
+      val futures      = testTasks.map { case (query, target) =>
+          asyncAligner.align(query, target)
       }
-      iAligner.numAdded shouldBe testTasks.length
-      iAligner.numRetrieved shouldBe testTasks.length
+      futures.length shouldBe testTasks.length
+      testTasks.zip(futures).map { case ((query, target), future) =>
+        whenReady(future) { actual =>
+          actual shouldBe aligner.align(query, target)
+        }
+      }
     }
   }
 }

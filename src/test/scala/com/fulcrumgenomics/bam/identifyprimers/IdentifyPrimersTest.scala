@@ -26,15 +26,14 @@ package com.fulcrumgenomics.bam.identifyprimers
 
 import com.fulcrumgenomics.FgBioDef.unreachable
 import com.fulcrumgenomics.alignment.{Aligner, Mode}
-import com.fulcrumgenomics.bam.api.{SamRecord, SamSource, SamWriter}
+import com.fulcrumgenomics.bam.api.{SamRecord, SamWriter}
 import com.fulcrumgenomics.commons.io.PathUtil
 import com.fulcrumgenomics.testing.SamBuilder.{Minus, Plus}
-import com.fulcrumgenomics.testing.{SamBuilder, UnitSpec}
+import com.fulcrumgenomics.testing.{FutureUnitSpec, SamBuilder}
 import com.fulcrumgenomics.util.Metric
 import htsjdk.samtools.{SAMFileHeader, SAMUtils, SamPairUtil}
-import org.scalatest.OptionValues
 
-final class IdentifyPrimersTest extends UnitSpec with OptionValues {
+final class IdentifyPrimersTest extends FutureUnitSpec {
 
   // Some basic settings for the tests
   private val primerLength = 11

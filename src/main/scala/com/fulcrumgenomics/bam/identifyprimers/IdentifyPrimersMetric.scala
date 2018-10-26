@@ -62,7 +62,7 @@ private[identifyprimers] object IdentifyPrimersMetric {
     }.sum
 
     val mapped_pairs       = readTypeCounter.countOf(MappedPair)
-    val unpaired           = readTypeCounter.countOf(Unpaired)
+    val unpaired           = readTypeCounter.countOf(PartiallyMappedPair)
     val unmapped_pairs     = readTypeCounter.countOf(UnmappedPair)
     val mapped_fragments   = readTypeCounter.countOf(MappedFragment)
     val unmapped_fragments = readTypeCounter.countOf(UnmappedFragment)
@@ -83,7 +83,7 @@ private[identifyprimers] object IdentifyPrimersMetric {
       match_attempts            = primerMatchCounter.total,
       location                  = primerMatchCounter.countOf(PrimerMatch.toName[LocationBasedPrimerMatch]),
       ungapped                  = primerMatchCounter.countOf(PrimerMatch.toName[UngappedAlignmentPrimerMatch]),
-      gapped          = primerMatchCounter.countOf(PrimerMatch.toName[GappedAlignmentPrimerMatch]),
+      gapped                    = primerMatchCounter.countOf(PrimerMatch.toName[GappedAlignmentPrimerMatch]),
       no_match                  = primerMatchCounter.countOf(PrimerMatch.NoPrimerMatchName)
     )
   }

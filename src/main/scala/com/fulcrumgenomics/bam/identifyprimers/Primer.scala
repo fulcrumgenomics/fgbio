@@ -24,14 +24,24 @@
 
 package com.fulcrumgenomics.bam.identifyprimers
 
-import com.fulcrumgenomics.alignment.Alignable
 import com.fulcrumgenomics.bam.api.SamRecord
 import com.fulcrumgenomics.commons.CommonsDef.FilePath
-import com.fulcrumgenomics.commons.util.DelimitedDataParser
-import com.fulcrumgenomics.util.{Metric, Sequences}
-import htsjdk.samtools.util.{Locatable, OverlapDetector, SequenceUtil}
+import com.fulcrumgenomics.commons.io.Io
+import com.fulcrumgenomics.commons.util.{LazyLogging, StringUtil}
+import com.fulcrumgenomics.util.Metric
+import htsjdk.samtools.util.{Locatable, SequenceUtil}
 
-private[identifyprimers] object Primer {
+private[identifyprimers] object Primer extends LazyLogging {
+  
+  private val Headers = Seq(
+    "pair_id",
+     "primer_id",
+     "sequence",
+     "ref_name",
+     "start",
+     "end",
+     "strand"
+  )
 
   /** Writes the given primers to file. */
   def write(path: FilePath, primers: TraversableOnce[Primer]): Unit = Metric.write(path, primers)
@@ -42,18 +52,59 @@ private[identifyprimers] object Primer {
     * genomic top strand).
     * */
   def read(path: FilePath, multiPrimerPairs: Boolean = false): Seq[Primer] = {
-    val parser  = DelimitedDataParser(path, '\t')
-    val primers = parser.map { row =>
-      val positive_strand = isPositiveStrand(row.get[String]("positive_strand", true).getOrElse(row.apply[String]("strand")))
-      Primer(
-        pair_id        = row.apply[String]("pair_id"),
-        primer_id      = row.apply[String]("primer_id"),
-        sequence       = row.apply[String]("sequence").toUpperCase,
-        ref_name       = row.apply[String]("ref_name"),
-        start          = row.apply[Int]("start"),
-        end            = row.apply[Int]("end"),
-        positive_strand = positive_strand
-      )
+    val lines = Io.toSource(path).getLines()
+    val headers = if (lines.hasNext) lines.next().split('\t').toIndexedSeq else IndexedSeq.empty
+
+    // A temporary array used for parsing each line into fields
+    val tmp = new Array[String](headers.size * 2)
+
+    def toInt(str: String): Int = if (str == "") 0 else str.toInt
+
+    val primers = lines.zipWithIndex.map { case (line, lineIndex) =>
+      // Get the fields
+      val fields = {
+        val count  = StringUtil.split(line=line, delimiter='\t', arr=tmp)
+        val f = new Array[String](count)
+        System.arraycopy(tmp, 0, f, 0, count)
+        f
+      }
+
+      // Parse the fields
+      val row = headers.zip(fields).toMap
+      fields.length match {
+        case 3 => // assume no mapping information
+          Headers.take(3).find(h => !row.contains(h)).foreach { h =>
+            throw new IllegalStateException(s"Missing value for $h on row ${lineIndex+1}")
+          }
+          Primer(
+            pair_id         = row("pair_id"),
+            primer_id       = row("primer_id"),
+            sequence        = row("sequence").toUpperCase,
+            ref_name        = "",
+            start           = 0,
+            end             = 0,
+            positive_strand = true
+          )
+        case headers.length => // all columns must exist
+          Headers.find(h => !row.contains(h)).foreach { h =>
+            throw new IllegalStateException(s"Missing value for $h on row ${lineIndex+1}")
+          }
+          val positive_strand = row("strand") == "" || isPositiveStrand(row("strand"))
+          Primer(
+            pair_id         = row("pair_id"),
+            primer_id       = row("primer_id"),
+            sequence        = row("sequence").toUpperCase,
+            ref_name        = row("ref_name"),
+            start           = toInt(row("start")),
+            end             = toInt(row("end")),
+            positive_strand = positive_strand
+          )
+        case _ =>
+          logger.error(s"Line has incorrect number of fields. Header length is ${headers.length}, row length is ${fields.length}")
+            logger.error(s"Headers: ${headers.mkString("\t")}")
+            logger.error(s"Line: $line")
+            throw new IllegalStateException(s"Incorrect number of values in line: ${lineIndex+1}.")
+      }
     }.toSeq
     validatePrimers(primers, multiPrimerPairs)
     primers
@@ -71,12 +122,9 @@ private[identifyprimers] object Primer {
     * If `multiPrimerPairs` is true, validates that there is at least one forward and one reverse primer for each pair.
     * Otherwise, validates that two primers exist for each pair, and that one is forward and the other is reverse.
     *
-    * Also validates that no forward primers that have the same refName/start, or reverse primers with the same
-    * refName/end.
+    * Also validates that no primers have the same ref_name/start/stop/strand
     * */
   def validatePrimers(primers: Seq[Primer], multiPrimerPairs: Boolean): Unit = {
-    import com.fulcrumgenomics.FgBioDef.javaIteratorAsScalaIterator
-
     if (multiPrimerPairs) {
       // Validate that there is at least one forward and one reverse primer for each pair
       primers.groupBy(_.pair_id).foreach {
@@ -102,25 +150,16 @@ private[identifyprimers] object Primer {
       }
     }
 
-    // Validate we do not have the same refName/start/end for primers
-    val fwdDetector = {
-      val detector = new OverlapDetector[Primer](0, 0)
-      primers.filter(_.positive_strand).filter(_.mapped).foreach { p => detector.addLhs(p, p) }
-      detector
-    }
-    val revDetector = {
-      val detector = new OverlapDetector[Primer](0, 0)
-      primers.filterNot(_.positive_strand).filter(_.mapped).foreach { p => detector.addLhs(p, p) }
-      detector
-    }
-    primers.filter(_.mapped).foreach { primer =>
-      val overlaps = (fwdDetector.getOverlaps(primer).iterator() ++ revDetector.getOverlaps(primer).iterator())
-        .filter { overlap => primer != overlap && overlap.positive_strand == primer.positive_strand && overlap.ref_name == primer.ref_name }
-        .filter { overlap => overlap.start == primer.start &&  overlap.end == primer.end }
-      if (overlaps.nonEmpty) {
-        throw new IllegalArgumentException(s"Found primers had the same location:\n$primer\n" + overlaps.map(_.toString).mkString("\n"))
+    // Validate we do not have the same refName/start/end/strand for primers
+    primers.sortBy { primer => (primer.positiveStrand, primer.ref_name, primer.start, primer.end) }
+      .sliding(2)
+      .filter { case Seq(primer, other) =>
+        primer.ref_name == other.ref_name && primer.start == other.start &&
+          primer.end == other.end && primer.positiveStrand == other.positiveStrand
       }
-    }
+      .foreach { case Seq(primer, other) =>
+        throw new IllegalArgumentException(s"Found multiple primers with the same coordinates: $primer and $other")
+      }
   }
 }
 
@@ -143,25 +182,9 @@ private[identifyprimers] case class Primer(pair_id: String,
                                            ref_name: String,
                                            start: Int,
                                            end: Int,
-                                           positive_strand: Boolean) extends Locatable with Alignable with Metric {
-  override def getContig: String = ref_name
-  override def getStart: Int = start
-  override def getEnd: Int = end
-  override def length: Int = if (ref_name.nonEmpty) end - start + 1 else sequence.length
-  def positiveStrand: Boolean = this.positive_strand
-  def negativeStrand: Boolean = !this.positive_strand
-
-  /** Returns true if the primer has a mapping to the reference, false otherwise. */
-  def mapped: Boolean = this.ref_name.nonEmpty
-
-  /** The bases as bytes in sequencing order */
-  val bases: Array[Byte] = sequence.getBytes
-
-  /** The bases in sequencing order. */
-  def basesInSequencingOrder: Array[Byte] = this.bases
-
-  /** The bases in genomic order. */
-  val basesInGenomicOrder: Array[Byte] = if (positiveStrand) this.bases else SequenceUtil.reverseComplement(sequence).getBytes()
+                                           positive_strand: Boolean) extends Locatable with Metric {
+  require(!pair_id.contains(','), s"pair_id contained a comma: '$pair_id'")
+  require(!primer_id.contains(','), s"primer_id contained a comma: '$pair_id'")
 
   // Validate the primer bases
   this.sequence.zipWithIndex.foreach { case (base, index) =>
@@ -172,4 +195,23 @@ private[identifyprimers] case class Primer(pair_id: String,
       throw new IllegalArgumentException(s"Found an invalid base for primer $pair_id/$primer_id: $prefix[$base]$suffix")
     }
   }
+
+  override def getContig: String = ref_name
+  override def getStart: Int = start
+  override def getEnd: Int = end
+  def length: Int = if (ref_name.nonEmpty) end - start + 1 else sequence.length
+  def positiveStrand: Boolean = this.positive_strand
+  def negativeStrand: Boolean = !this.positive_strand
+
+  /** Returns true if the primer has a mapping to the reference, false otherwise. */
+  def mapped: Boolean = this.ref_name.nonEmpty
+
+  /** The bases in sequencing order. */
+  val basesInSequencingOrder: Array[Byte] = sequence.getBytes
+
+  /** The bases as a [[String]] in sequencing order. */
+  def baseStringInSequencingOrder: String = sequence
+
+  /** The bases in genomic order. */
+  val basesInGenomicOrder: Array[Byte] = if (positiveStrand) basesInSequencingOrder else SequenceUtil.reverseComplement(sequence).getBytes()
 }

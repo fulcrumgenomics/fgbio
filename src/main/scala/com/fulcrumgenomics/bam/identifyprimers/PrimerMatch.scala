@@ -55,25 +55,25 @@ private[identifyprimers] sealed trait PrimerMatch {
   /** Returns a comma-delimited [[String]] of information about a primer match.
     *
     * The following fields are returned:
-    * - `pair_id` - the unique identifier for the primer pair
-    * - `primer_id` - the unique identifier for the primer in a primer pair
+    * - `pair_id` - the unique identifier for the primer pair for the given primer match
+    * - `primer_id` - the unique identifier for the primer in a primer pair for the given primer match
     * - `<ref_name>:<start>-<end>` - the primer chromosome/contig, start (1-based), and end (1-based, inclusive)
     * - `strand` - '+' if the forward primer, '-' otherwise
     * - `read_num` - the read number of the match (1 or 2).
-    * - `match_offset` - the offset in the read where the primer matches
-    * - `match_length`- the length of the primer match in the read
     * - `match_type` - how the match was found; valid values are 'location', 'gapped', or 'ungapped'
     * - `match_type_info` - additional information based on the `match_type`, containing one or more values
-    *
-    * The `match_type_info` for each `match_type` is as follow:
-    * - location:
-    *   - `num_mismatches` - the number of mismatches between the primer and read sequence
-    * - ungapped:
-    *   - `num_mismatches` - the number of mismatches between the primer and read sequence
-    *   - 'next_best` - the number of mismatches in the next best ungapped alignment (or "na" if none was found)
-    * - gapped
-    *   - `score` - the alignment score
-    *   - 'next_best` - the alignment score of then next best alignment
+
+The `match_type_info` for each `match_type` is as follow:
+    * location:
+    * - `num_mismatches` - the number of mismatches between the primer and read sequence
+    * ungapped:
+    * - `num_mismatches` - the number of mismatches between the primer and read sequence
+    * - `next_best` - the number of mismatches in the next best ungapped alignment (or "na" if none was found)
+    * gapped:
+    * - `score` - the alignment score
+    * - `next_best` - the alignment score of then next best alignment
+    * - `start` - the offset from the start of the read where the primer match starts
+    * - `end` - the offset from the start of the read where the primer match ends (inclusive)
     */
   final def info(rec: SamRecord): String = {
     val baseInfo = Seq(
@@ -82,8 +82,6 @@ private[identifyprimers] sealed trait PrimerMatch {
       primer.ref_name + ":" + primer.start + "-" + primer.end,
       if (primer.positive_strand) "+" else "-",
       if (!rec.paired || rec.firstOfPair) 1 else 2,
-      0, // TODO: start of the primer match (0-based)
-      0, // TODO: length of primer match
       this.toName
     ).map(_.toString)
     (baseInfo ++ this._info(rec)).mkString(PrimerMatch.InfoDelimiter)
@@ -107,10 +105,13 @@ private[identifyprimers] case class UngappedAlignmentPrimerMatch(primer: Primer,
     Seq(numMismatches, nextOrNa)
   }
   def toName: String = PrimerMatch.toName[UngappedAlignmentPrimerMatch]
+  def mismatchRate: Double = this.numMismatches / this.primer.length.toDouble
 }
 
-private[identifyprimers] case class GappedAlignmentPrimerMatch(primer: Primer, score: Int, secondBestScore: Int) extends PrimerMatch {
+private[identifyprimers] case class GappedAlignmentPrimerMatch
+(primer: Primer, score: Int, secondBestScore: Int, start: Int, end: Int) extends PrimerMatch {
   require(score >= secondBestScore, s"second best score ($secondBestScore) must be less than or equal to the score ($score)")
+  require(start <= end)
   protected def _info(rec: SamRecord): Seq[Any] = Seq(score, secondBestScore)
   def toName: String = PrimerMatch.toName[GappedAlignmentPrimerMatch]
 }
