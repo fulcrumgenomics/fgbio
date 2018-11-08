@@ -46,6 +46,9 @@ private case class TestMetricWithDouble(foo: String, bar: Double, option: Option
 private case class TestDoubleMetric(d: Double) extends Metric
 private case class TestFloatMetric(f: Float) extends Metric
 
+private case class TestScalaCollection(list: List[String]) extends Metric
+private case class TestJavaCollection(list: java.util.List[String]) extends Metric
+
 /**
   * Tests for Metric.
   */
@@ -266,5 +269,56 @@ class MetricTest extends UnitSpec with OptionValues with TimeLimits {
       actual should have size 1
       if (f.isNaN) actual.head.f.isNaN shouldBe true else actual.head.f shouldBe f
     }
+  }
+
+  it should "write and read scala collections" in {
+    val path = makeTempFile("test.", ".txt")
+
+    // empty
+    {
+      val expected = TestScalaCollection(list=List.empty)
+      Metric.write(path, expected)
+      val actual = Metric.read[TestScalaCollection](path)
+      actual should have size 1
+      actual.head.list should contain theSameElementsInOrderAs expected.list
+    }
+
+    // non-empty
+    {
+      val expected = TestScalaCollection(list = List("A", "B", "C"))
+      Metric.write(path, expected)
+      val actual = Metric.read[TestScalaCollection](path)
+      actual should have size 1
+      actual.head.list should contain theSameElementsInOrderAs expected.list
+    }
+  }
+
+  it should "write and read java collections" in {
+    import com.fulcrumgenomics.commons.CommonsDef.javaIterableToIterator
+    val path = makeTempFile("test.", ".txt")
+
+    // empty
+    {
+      val expected = TestJavaCollection(list=java.util.Collections.emptyList())
+      Metric.write(path, expected)
+      val actual = Metric.read[TestJavaCollection](path)
+      actual should have size 1
+      actual.head.list should contain theSameElementsInOrderAs expected.list.toSeq
+    }
+
+    // non-empty
+    {
+      val expected = TestJavaCollection(list = java.util.Arrays.asList("A", "B", "C"))
+      Metric.write(path, expected)
+      val actual = Metric.read[TestJavaCollection](path)
+      actual should have size 1
+      actual.head.list should contain theSameElementsInOrderAs expected.list.toSeq
+    }
+  }
+
+  it should "not allow commas in collections" in {
+    val path = makeTempFile("test.", ".txt")
+    val expected = TestScalaCollection(list=List("a", "comma,comma"))
+    an[Exception] should be thrownBy Metric.write(path, expected)
   }
 }

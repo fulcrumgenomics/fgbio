@@ -25,16 +25,16 @@
 
 package com.fulcrumgenomics.util
 
-import java.io.{Closeable, Writer}
+import java.io.Writer
 import java.nio.file.Path
 import java.text.{DecimalFormat, NumberFormat, SimpleDateFormat}
 import java.util.Date
 
 import com.fulcrumgenomics.commons.CommonsDef._
+import com.fulcrumgenomics.commons.io.{Writer => CommonsWriter}
 import com.fulcrumgenomics.commons.reflect.{ReflectionUtil, ReflectiveBuilder}
 import com.fulcrumgenomics.commons.util.DelimitedDataParser
-import htsjdk.samtools.util.{FormatUtil, Iso8601Date}
-import com.fulcrumgenomics.commons.io.{Writer => CommonsWriter}
+import htsjdk.samtools.util.Iso8601Date
 
 import scala.reflect.runtime.{universe => ru}
 import scala.util.{Failure, Success}
@@ -42,6 +42,7 @@ import scala.util.{Failure, Success}
 object Metric {
   val Delimiter: Char = '\t'
   val DelimiterAsString: String = s"$Delimiter"
+  val DefaultCollectionDelimiter: Char = ','
 
   /** A typedef for [[Long]] to be used when representing counts. */
   type Count = Long
@@ -86,7 +87,9 @@ object Metric {
 
   /** Reads metrics from a set of lines.  The first line should be the header with the field names.  Each subsequent
     * line should be a single metric. */
-  def read[T <: Metric](lines: Iterator[String], source: Option[String] = None)(implicit tt: ru.TypeTag[T]): Seq[T] = {
+  def read[T <: Metric](lines: Iterator[String],
+                        source: Option[String] = None,
+                        collectionDelimiter: Char = DefaultCollectionDelimiter)(implicit tt: ru.TypeTag[T]): Seq[T] = {
     if (lines.isEmpty) throw new IllegalArgumentException(s"No header found in metrics" + source.map(" in source: " + _).getOrElse(""))
     val parser = new DelimitedDataParser(lines=lines, delimiter=Delimiter, ignoreBlankLines=false, trimFields=true)
     val names  = parser.headers.toIndexedSeq
@@ -96,14 +99,27 @@ object Metric {
 
     parser.map { row =>
       forloop(from = 0, until = names.length) { i =>
-        val value = {
+        val value: String = {
           val tmp = row[String](i)
           if (tmp.nonEmpty) tmp else ReflectionUtil.SpecialEmptyOrNoneToken
         }
 
         reflectiveBuilder.argumentLookup.forField(names(i)) match {
           case Some(arg) =>
-            val argumentValue = ReflectionUtil.constructFromString(arg.argumentType, arg.unitType, value) match {
+            val values: Seq[String] = {
+              // If we have a collection, then we need to check for commas to rebuild it
+              if (value != ReflectionUtil.SpecialEmptyOrNoneToken &&
+                ReflectionUtil.isCollectionClass(arg.argumentType)) {
+                // If the argument type is equal to the unit type, then we need to return a single string value,
+                // otherwise, one value per unit
+                if (arg.argumentType == arg.unitType) Seq(value.filter(_ != collectionDelimiter))
+                else value.split(',')
+              }
+              else {
+                Seq(value)
+              }
+            }
+            val argumentValue = ReflectionUtil.constructFromString(arg.argumentType, arg.unitType, values:_*) match {
               case Success(v) => v
               case Failure(thr) => throw thr
             }
@@ -196,6 +212,9 @@ trait Metric extends Product with Iterable[(String,String)] {
   /** Gets an iterator over the fields of this metric in the order they were defined.  Returns tuples of names and values */
   override def iterator: Iterator[(String,String)] = this.names.zip(this.values).toIterator
 
+  /** The delimiter for collection types. */
+  protected def collectionDelimiter: Char = Metric.DefaultCollectionDelimiter
+
   /** @deprecated use [[formatValue]] instead. */
   @deprecated("Use formatValue instead.", since="0.5.0")
   protected def formatValues(value: Any): String = formatValue(value)
@@ -212,6 +231,23 @@ trait Metric extends Product with Iterable[(String,String)] {
       Metric.SmallDoubleFormat.synchronized { Metric.SmallDoubleFormat.format(d) }
     case d: Double if d.isNaN || d.isInfinity => d.toString
     case d: Double      => Metric.BigDoubleFormat.synchronized { Metric.BigDoubleFormat.format(d) }
+    case other if ReflectionUtil.isCollectionClass(other.getClass) =>
+      val resultType = other.getClass
+      // Condition for the collection type
+      val collection: Seq[String] = if (ReflectionUtil.isJavaCollectionClass(resultType)) {
+        other.asInstanceOf[java.util.Collection[AnyRef]].map(formatValue).toSeq
+      }
+      else if (ReflectionUtil.isSeqClass(resultType) || ReflectionUtil.isSetClass(resultType)) {
+        other.asInstanceOf[Iterable[_]].map(formatValue).toList
+      }
+      else {
+        throw new IllegalArgumentException(s"Unknown collection type '${resultType.getSimpleName}'")
+      }
+      // No commas in the values allowed.
+      if (collection.exists(_.contains(collectionDelimiter))) {
+        throw new IllegalArgumentException(s"Metric collection value contained a comma: $value")
+      }
+      collection.mkString(collectionDelimiter.toString)
     case other          => other.toString
   }
 
