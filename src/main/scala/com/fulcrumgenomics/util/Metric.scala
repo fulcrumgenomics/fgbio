@@ -83,10 +83,9 @@ object Metric {
     reflectiveBuilder.argumentLookup.ordered.map(_.name)
   }
 
-
   /** Reads metrics from a set of lines.  The first line should be the header with the field names.  Each subsequent
     * line should be a single metric. */
-  def read[T <: Metric](lines: Iterator[String], source: Option[String] = None)(implicit tt: ru.TypeTag[T]): Seq[T] = {
+  def iterator[T <: Metric](lines: Iterator[String], source: Option[String] = None)(implicit tt: ru.TypeTag[T]): Iterator[T] = {
     if (lines.isEmpty) throw new IllegalArgumentException(s"No header found in metrics" + source.map(" in source: " + _).getOrElse(""))
     val parser = new DelimitedDataParser(lines=lines, delimiter=Delimiter, ignoreBlankLines=false, trimFields=true)
     val names  = parser.headers.toIndexedSeq
@@ -117,7 +116,17 @@ object Metric {
       // Also, we don't use the default "build()" method since if a collection or option is empty, it will be treated as
       // missing.
       reflectiveBuilder.build(reflectiveBuilder.argumentLookup.ordered.map(arg => arg.value getOrElse unreachable(s"Arguments not set: ${arg.name}")))
-    }.toSeq
+    }
+  }
+
+  /** Reads metrics from the given path.  The first line should be the header with the field names.  Each subsequent
+    * line should be a single metric. */
+  def iterator[T <: Metric](path: Path)(implicit tt: ru.TypeTag[T]): Iterator[T] = iterator[T](Io.readLines(path), Some(path.toString))
+
+  /** Reads metrics from a set of lines.  The first line should be the header with the field names.  Each subsequent
+    * line should be a single metric. */
+  def read[T <: Metric](lines: Iterator[String], source: Option[String] = None)(implicit tt: ru.TypeTag[T]): Seq[T] = {
+    iterator(lines, source).toSeq
   }
 
   /** Reads metrics from the given path.  The first line should be the header with the field names.  Each subsequent
