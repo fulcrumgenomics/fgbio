@@ -30,6 +30,8 @@ import scala.reflect.ClassTag
 
 /** Factory method(s) for Matrices. */
 object Matrix {
+  private val IntTypes: Set[Class[_]] = Set(java.lang.Integer.TYPE, classOf[Int], classOf[java.lang.Integer])
+
   /**
     * Creates a matrix of the desired size
     * @param rows the number of rows in the matrix
@@ -40,7 +42,9 @@ object Matrix {
   def apply[A: ClassTag](rows: Int, columns: Int): Matrix[A] = {
     require(rows >= 0, s"Requested rows ($rows) is less than 0.")
     require(columns >= 0, s"Requested columns ($columns) is less than 0.")
-    new LinearMatrix(rows, columns)
+
+    val clazz = implicitly[ClassTag[A]].runtimeClass
+    if (IntTypes.contains(clazz)) new SimpleIntMatrix(rows, columns).asInstanceOf[Matrix[A]] else new LinearMatrix(rows, columns)
   }
 }
 
@@ -57,12 +61,18 @@ trait Matrix[A] {
   /** Updates a cell in the matrix. */
   def update(i: Int, j: Int, value: A): Unit
 
+  /** Returns the number of cells in the X dimension. */
+  def x: Int
+
+  /** Returns the number of cells in the Y dimension. */
+  def y: Int
+
   /**
     * Returns the dimensions of the matrix as a tuple of [[Int]]s. E.g. for a 2x2 matrix this method will
     * return (2,2).  Note that, like an array, since the coordinates into the matrix are zero-based,
     * the bottom-right cell in a 2x2 matrix is accessed using matrix(1,1).
     */
-  def dimensions: (Int, Int)
+  def dimensions: (Int, Int) = (x, y)
 
   /** Returns the total number of cells in the matrix. */
   def size: Int = {
@@ -93,7 +103,21 @@ class LinearMatrix[A: ClassTag](val x: Int, val y: Int) extends Matrix[A] {
     if (i >= x || j >= y || i < 0 || j < 0) throw new NoSuchElementException(s"Illegal matrix indices: (${i}, ${j})")
     data(i*y + j) = value
   }
+}
 
-  /** Returns the dimensions of the matrix. */
+/**
+  * Specialized matrix for storing integers that is markedly faster than using LinearMatrix[Int]. The performance
+  * increase comes from two factors:
+  *   1. Using an array of arrays turns out to be faster than a single large array (in some cases)
+  *   2. Specializing to Int and not using ClassTag
+  *
+  * Using this matrix provides a ~30-50% speedup in [[Aligner]] when aligning short sequences.
+  */
+final class SimpleIntMatrix(val x: Int, val y: Int) extends Matrix[Int] {
+  private val data = new Array[Array[Int]](x)
+  forloop (from=0, until=x) { i => data(i) = new Array[Int](y) }
+
+  override def apply(i: Int, j: Int): Int = data(i)(j)
+  override def update(i: Int, j: Int, value: Int): Unit = data(i)(j) = value
   override def dimensions: (Int, Int) = (x, y)
 }

@@ -386,4 +386,20 @@ class AlignerTest extends UnitSpec {
     result.cigar.toString() shouldBe "4="
     result.score shouldBe 4
   }
+
+  /** Timing test - change "ignore" to "it" to enable. */
+  ignore should "perform lots of glocal alignments" in {
+    val count = 25000
+    val aligner = Aligner(5, -4, -2, -5, Mode.Glocal)
+    val query  =                                       "AcATCTTTCGCATcGACTGAC-TTG".filterNot(_ == '-').toUpperCase.getBytes
+    val target = "GCCAGGGACCGTTTCAGACAGATATTTGCCTGGTGGATAGATCTT-CGCATGGACTGACTTTGACGATACTGCTAATTTTTTTTATAGCCTTTGCCTTGTT".filterNot(_ == '-').getBytes
+
+    Range(0, 3).foreach { _ =>
+      val startTime = System.currentTimeMillis()
+      Range(0, 25000).foreach { _ => val aln = aligner.align(query, target) }
+      val endTime = System.currentTimeMillis()
+      val total = (endTime - startTime) / 1000.0
+      System.out.println(s"Total time: $total.  Average time: ${total / count}")
+    }
+  }
 }

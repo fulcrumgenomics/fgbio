@@ -60,11 +60,11 @@ object Aligner {
   }
 
   /** Directions within the trace back matrix. */
-  private type Direction = Byte
-  private val Left: Direction     = 0.toByte
-  private val Up  : Direction     = 1.toByte
-  private val Diagonal: Direction = 2.toByte
-  private val Done: Direction     = 3.toByte
+  private type Direction = Int
+  private val Left: Direction     = 0
+  private val Up  : Direction     = 1
+  private val Diagonal: Direction = 2
+  private val Done: Direction     = 3
 
   // NB: the order of LeftAndDiagonal and UpAndDiagonal matters when breaking ties!
   private val AllDirections: Seq[Direction]   = Seq(Diagonal, Left, Up)
@@ -77,12 +77,18 @@ object Aligner {
 
   object AlignmentMatrix {
     def apply(direction: Direction, queryLength: Int, targetLength: Int): AlignmentMatrix = {
-      AlignmentMatrix(direction=direction, scoring=Matrix[Int](queryLength+1, targetLength+1), trace=Matrix[Direction](queryLength+1, targetLength+1))
+      AlignmentMatrix(
+        direction = direction,
+        scoring   = Matrix(queryLength+1, targetLength+1),
+        trace     = Matrix(queryLength+1, targetLength+1))
     }
   }
 
   /** A single alignment matrix for a given [[Direction]] storing both the scoring and traceback matrices produce by the aligner. */
-  case class AlignmentMatrix(direction: Direction, scoring: Matrix[Int], trace: Matrix[Direction])
+  case class AlignmentMatrix(direction: Direction, scoring: Matrix[Int], trace: Matrix[Direction]) {
+    val queryLength: Int  = scoring.x - 1
+    val targetLength: Int = scoring.y - 1
+  }
 }
 
 
@@ -157,74 +163,110 @@ class Aligner(val scoringFunction: (Byte,Byte) => Int,
       matrices(direction).trace(0, 0)   = Done
     }
 
-    // Down the left hand side - for global/glocal we have to keep going up, for local we're done
+    fillLeftmostColumn(query, leftScoreMatrix, leftTraceMatrix, upScoreMatrix, upTraceMatrix, diagScoreMatrix, diagTraceMatrix)
+    fillTopRow(target, leftScoreMatrix, leftTraceMatrix, upScoreMatrix, upTraceMatrix, diagScoreMatrix, diagTraceMatrix)
+    fillInterior(query, target, leftScoreMatrix, leftTraceMatrix, upScoreMatrix, upTraceMatrix, diagScoreMatrix, diagTraceMatrix)
+
+    matrices
+  }
+
+  /** Fills in the leftmost column of the matrices. */
+  private final def fillLeftmostColumn(query: Array[Byte],
+                                       leftScoreMatrix: Matrix[Int],
+                                       leftTraceMatrix: Matrix[Direction],
+                                       upScoreMatrix: Matrix[Int],
+                                       upTraceMatrix: Matrix[Direction],
+                                       diagScoreMatrix: Matrix[Int],
+                                       diagTraceMatrix: Matrix[Direction]): Unit = {
     mode match {
       case Global | Glocal =>
         forloop(from=1, until=query.length+1) { i =>
-          LeftAndDiagonal.foreach { direction =>
-            matrices(direction).scoring(i, 0) = MinStartScore
-            matrices(direction).trace(i, 0)   = Done
-          }
-          matrices(Up).scoring(i, 0) = matrices(Up).scoring(i-1, 0) + gapExtend + (if (i == 1) gapOpen else 0)
-          matrices(Up).trace(i, 0)   = if (i == 1) Diagonal else Up
+          leftScoreMatrix(i, 0) = MinStartScore
+          leftTraceMatrix(i, 0) = Done
+          diagScoreMatrix(i, 0) = MinStartScore
+          diagTraceMatrix(i, 0) = Done
+          upScoreMatrix(i, 0) = upScoreMatrix(i-1, 0) + gapExtend + (if (i == 1) gapOpen else 0)
+          upTraceMatrix(i, 0) = if (i == 1) Diagonal else Up
         }
       case Local =>
         forloop(from=1, until=query.length+1) { i =>
-          forloop(from=1, until=query.length+1) { i =>
-            LeftAndUp.foreach { direction =>
-              matrices(direction).scoring(i, 0) = MinStartScore
-              matrices(direction).trace(i, 0)   = Done
-            }
-            matrices(Diagonal).scoring(i, 0) = 0
-            matrices(Diagonal).trace(i, 0)   = Done
-          }
+          leftScoreMatrix(i, 0) = MinStartScore
+          leftTraceMatrix(i, 0) = Done
+          upScoreMatrix(i, 0) = MinStartScore
+          upTraceMatrix(i, 0) = Done
+          diagScoreMatrix(i, 0) = 0
+          diagTraceMatrix(i, 0) = Done
         }
     }
+  }
 
-    // Along the top - for global we have to keep going left, for glocal/local we're done
+  /** Fills in the top row of the matrices. */
+  private final def fillTopRow(target: Array[Byte],
+                               leftScoreMatrix: Matrix[Int],
+                               leftTraceMatrix: Matrix[Direction],
+                               upScoreMatrix: Matrix[Int],
+                               upTraceMatrix: Matrix[Direction],
+                               diagScoreMatrix: Matrix[Int],
+                               diagTraceMatrix: Matrix[Direction]): Unit = {
+
     mode match {
       case Global =>
         forloop(from=1, until=target.length+1) { j =>
-          UpAndDiagonal.foreach { direction =>
-            matrices(direction).scoring(0, j) = MinStartScore
-            matrices(direction).trace(0 , j)   = Done
-          }
-          matrices(Left).scoring(0, j) = matrices(Left).scoring(0, j-1) + gapExtend + (if (j == 1) gapOpen else 0)
-          matrices(Left).trace(0, j)   = if (j == 1) Diagonal else Left
+          upScoreMatrix(0, j)    = MinStartScore
+          upTraceMatrix(0 , j)   = Done
+          diagScoreMatrix(0, j)  = MinStartScore
+          diagTraceMatrix(0 , j) = Done
+          leftScoreMatrix(0, j) = leftScoreMatrix(0, j-1) + gapExtend + (if (j == 1) gapOpen else 0)
+          leftTraceMatrix(0, j) = if (j == 1) Diagonal else Left
         }
       case Glocal | Local =>
         forloop(from=1, until=target.length+1) { j =>
-          LeftAndUp.foreach { direction =>
-            matrices(direction).scoring(0, j) = MinStartScore
-            matrices(direction).trace(0, j)   = Done
-          }
-          matrices(Diagonal).scoring(0, j) = 0
-          matrices(Diagonal).trace(0, j)   = Done
+          leftScoreMatrix(0, j) = MinStartScore
+          leftTraceMatrix(0, j) = Done
+          upScoreMatrix(0, j)   = MinStartScore
+          upTraceMatrix(0, j)   = Done
+          diagScoreMatrix(0, j) = 0
+          diagTraceMatrix(0, j) = Done
         }
     }
+  }
 
-    // The interior of the matrix
-    var i = 1
-    while (i <= query.length) {
-      val queryBase = query(i-1)
+  /** Fills the interior of the matrix. */
+  private final def fillInterior(query: Array[Byte],
+                                 target: Array[Byte],
+                                 leftScoreMatrix: Matrix[Int],
+                                 leftTraceMatrix: Matrix[Direction],
+                                 upScoreMatrix: Matrix[Int],
+                                 upTraceMatrix: Matrix[Direction],
+                                 diagScoreMatrix: Matrix[Int],
+                                 diagTraceMatrix: Matrix[Direction]): Unit = {
+    var i: Int = 1
+    val queryLength = query.length
+    val targetLength = target.length
+    while (i <= queryLength) {
+      val iMinusOne = i - 1
+      val queryBase = query(iMinusOne)
       var j = 1
 
-      while (j <= target.length) {
-        { // Diagonal matrix can come from the previous diagonal, up, or left
-          val addend = scoringFunction(queryBase, target(j-1))
-          val dScore = diagScoreMatrix(i-1, j-1) + addend
-          val lScore = leftScoreMatrix(i-1, j-1) + addend
-          val uScore = upScoreMatrix(i-1, j-1)   + addend
+      while (j <= targetLength) {
+        val jMinusOne = j - 1
 
-          if (mode == Local && dScore < 0 && lScore < 0 && uScore < 0) {
+        { // Diagonal matrix can come from the previous diagonal, up, or left
+          val addend = scoringFunction(queryBase, target(jMinusOne))
+          val dScore = diagScoreMatrix(iMinusOne, jMinusOne) + addend
+          val lScore = leftScoreMatrix(iMinusOne, jMinusOne) + addend
+          val uScore = upScoreMatrix(iMinusOne, jMinusOne)   + addend
+          val maxScore = math.max(math.max(dScore, lScore), uScore)
+
+          if (mode == Local && maxScore < 0) {
             diagScoreMatrix(i, j) = 0
             diagTraceMatrix(i, j) = Done
           }
-          else if (dScore >= uScore && dScore >= lScore) {
+          else if (dScore == maxScore) {
             diagScoreMatrix(i, j) = dScore
             diagTraceMatrix(i, j) = Diagonal
           }
-          else if (lScore >= uScore) {
+          else if (lScore == maxScore) {
             diagScoreMatrix(i, j) = lScore
             diagTraceMatrix(i, j) = Left
           }
@@ -236,8 +278,8 @@ class Aligner(val scoringFunction: (Byte,Byte) => Int,
 
 
         { // Up matrix can come from diagonal or up
-          val dScore = gapOpen + diagScoreMatrix(i-1, j)
-          val uScore =           upScoreMatrix(i-1, j)
+          val dScore = gapOpen + diagScoreMatrix(iMinusOne, j)
+          val uScore =           upScoreMatrix(iMinusOne, j)
           if (dScore >= uScore) {
             upScoreMatrix(i, j) = dScore + gapExtend
             upTraceMatrix(i, j) = Diagonal
@@ -250,8 +292,8 @@ class Aligner(val scoringFunction: (Byte,Byte) => Int,
 
 
         { // Left matrix can come from diagonal or left
-          val dScore = gapOpen + diagScoreMatrix(i, j-1)
-          val lScore =           leftScoreMatrix(i, j-1)
+          val dScore = gapOpen + diagScoreMatrix(i, jMinusOne)
+          val lScore =           leftScoreMatrix(i, jMinusOne)
           if (dScore >= lScore) {
             leftScoreMatrix(i, j) = dScore + gapExtend
             leftTraceMatrix(i, j) = Diagonal
@@ -267,8 +309,6 @@ class Aligner(val scoringFunction: (Byte,Byte) => Int,
 
       i += 1
     }
-
-    matrices
   }
 
   /**
