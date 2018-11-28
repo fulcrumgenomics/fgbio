@@ -32,10 +32,11 @@ import com.fulcrumgenomics.FgBioDef._
 import htsjdk.samtools.SAMSequenceDictionary
 import htsjdk.variant.variantcontext._
 import htsjdk.variant.variantcontext.writer.{Options, VariantContextWriterBuilder}
-import htsjdk.variant.vcf.{VCFFileReader, VCFHeader, VCFHeaderLine, VCFStandardHeaderLines}
+import htsjdk.variant.vcf.{VCFFileReader, VCFHeader, VCFHeaderLine}
 
 import scala.collection.mutable.ListBuffer
 import scala.collection.JavaConverters._
+import scala.reflect.ClassTag
 
 object VariantContextSetBuilder {
   def apply(sampleName: String): VariantContextSetBuilder = {
@@ -84,6 +85,19 @@ class VariantContextSetBuilder(sampleNames: Seq[String] = List("Sample")) extend
     * If the sample name is not given, the first sample name in the header (in order) is used.  There must not already
     * be a genotype for this variant with the given sample name, and the sample name must be present in the header.
     *
+    * Genotype attributes may be given with the `genotypeAttributes` parameter.  The value for the `GQ` and `DP`
+    * attributes must have type [[Int]].  The value for the `AD` and `PL` attributes must have either type
+    * [[TraversableOnce]] or [[Array]], with each item having type [[Int]].  For example:
+    * {{{
+    *   val builder = new VariantContextSetBuilder()
+    *   builder.addVariant(
+    *     start=1,
+    *     variantAlleles=Seq("A", "C"),
+    *     genotypeAlleles=Seq("A", "C"),
+    *     genotypeAttributes=Map("DP" -> 10, "AD" -> Array(6, 4))
+    *   )
+    * }}}
+    *
     * */
   def addVariant(refIdx: Int = 0,
                  start: Long,
@@ -129,7 +143,15 @@ class VariantContextSetBuilder(sampleNames: Seq[String] = List("Sample")) extend
       case gAlleles => new GenotypeBuilder(name, toAlleles(gAlleles, referenceAllele=referenceAllele).asJava)
     }
     genotypeBuilder.phased(phased)
-    genotypeAttributes.foreach { case (k,v) => genotypeBuilder.attribute(k, v) }
+    // Set the genotype attributes, with GQ/DP/AD/PL being special-cased
+    // NB: no check is performed that attributes that are per-allele match the given # of alleles.
+    genotypeAttributes.foreach {
+      case ("GQ", v) => genotypeBuilder.GQ(anyToType[Integer]("GQ", v, "Int"))
+      case ("DP", v) => genotypeBuilder.DP(anyToType[Integer]("DP", v, "Int"))
+      case ("AD", v) => genotypeBuilder.AD(anyToArray[Integer]("AD", v, "Int").map(_.toInt))
+      case ("PL", v) => genotypeBuilder.PL(anyToArray[Integer]("PL", v, "Int").map(_.toInt)) // NB: we don't support Doubles
+      case (k,v)     => genotypeBuilder.attribute(k, v)
+    }
     val genotype = genotypeBuilder.make()
     // check the sample doesn't already exists.
     prevGenotypes.find { g => g.getSampleName == genotype.getSampleName } match {
@@ -142,8 +164,29 @@ class VariantContextSetBuilder(sampleNames: Seq[String] = List("Sample")) extend
     yieldingThis(this.variants.append(ctxBuilder.make()))
   }
 
+  /** Returns `v` as type `T`.  Throws an exception if `v` is not assignable to type `T`.*/
+  private def anyToType[T : ClassTag](k: String, v: Any, typeName: String): T = {
+    val clazz = implicitly[ClassTag[T]].runtimeClass
+    v match {
+      case value if clazz.isInstance(v) => value.asInstanceOf[T]
+      case _ => throw new IllegalArgumentException(s"$k attribute value must be an $typeName, found ${v.getClass.getSimpleName}")
+    }
+  }
+
+  /** Returns `v` as type `Array[T]`.  Throws an exception if `v` is not assignable to `TraversableOnce[_]` or `Array[_]`,
+    * or if any element in `v` is not of type `T` .*/
+  private def anyToArray[T : ClassTag](k: String, v: Any, typeName: String): Array[T] = {
+    val values = v match {
+      case _v: TraversableOnce[_] => _v.toArray[Any]
+      case _v: Array[_]           => _v
+      case _                      =>
+        throw new IllegalArgumentException(s"$k attribute value must be an TraversableOnce[$typeName], found ${v.getClass.getSimpleName}")
+    }
+    values.map(anyToType[T](k, _, typeName))
+  }
+
   /** Gets an iterator over the variants. */
-  override def iterator = this.variants.iterator
+  override def iterator: Iterator[VariantContext] = this.variants.iterator
 
   /** Returns the number of variants added to this builder. */
   override def size: Int = this.variants.size

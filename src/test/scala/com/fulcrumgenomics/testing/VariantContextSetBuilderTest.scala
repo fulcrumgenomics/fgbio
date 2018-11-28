@@ -49,4 +49,30 @@ class VariantContextSetBuilderTest extends  UnitSpec {
     variants.length shouldBe 1
     variants.head.getGenotype(0).isNoCall shouldBe true
   }
+
+  it should "add genotype attributes" in {
+    val builder     = new VariantContextSetBuilder()
+      .addVariant(
+        refIdx=0,
+        start=1,
+        variantAlleles=List("A", "C"),
+        genotypeAttributes = Map(
+          "GQ" -> 2,
+          "DP" -> 4,
+          "AD" -> Seq(1, 3),
+          "PL" -> Seq(1, 2, 3),
+          "ZZ" -> 3
+        )
+      )
+    val vcf = builder.toTempFile()
+    val variants = readVcfRecs(vcf).toIndexedSeq
+    variants.length shouldBe 1
+    val genotype = variants.head.getGenotype(0)
+    genotype.isNoCall shouldBe true
+    genotype.getGQ shouldBe 2
+    genotype.getDP shouldBe 4
+    genotype.getAD should contain theSameElementsInOrderAs Seq(1, 3)
+    genotype.getPL should contain theSameElementsInOrderAs Seq(1, 2, 3)
+    genotype.getAnyAttribute("ZZ") shouldBe "3"
+  }
 }
