@@ -31,6 +31,7 @@ import enumeratum.EnumEntry
 import htsjdk.samtools.CigarOperator
 
 import scala.collection.{immutable, mutable}
+import scala.annotation.switch
 
 /** Trait that entries in Mode will extend. */
 sealed trait Mode extends EnumEntry
@@ -61,10 +62,11 @@ object Aligner {
 
   /** Directions within the trace back matrix. */
   private type Direction = Int
-  private val Left: Direction     = 0
-  private val Up  : Direction     = 1
-  private val Diagonal: Direction = 2
-  private val Done: Direction     = 3
+  // NB: types are purposely omitted for match performance.  See: https://stackoverflow.com/questions/16311540/why-cant-scala-optimize-this-match-to-a-switch
+  private final val Left     = 0
+  private final val Up       = 1
+  private final val Diagonal = 2
+  private final val Done     = 3
 
   // NB: the order of LeftAndDiagonal and UpAndDiagonal matters when breaking ties!
   private val AllDirections: Seq[Direction]   = Seq(Diagonal, Left, Up)
@@ -157,6 +159,7 @@ class Aligner(val scoringFunction: (Byte,Byte) => Int,
     * @param target the target sequence
     * @return an array of alignment matrices, where the indices to the array are the Directions
     */
+  @inline
   protected def buildMatrices(query: Array[Byte], target: Array[Byte]): Array[AlignmentMatrix] = {
     val matrices = AllDirections.sorted.map(dir => AlignmentMatrix(direction=dir, queryLength=query.length, targetLength=target.length)).toArray
 
@@ -181,6 +184,7 @@ class Aligner(val scoringFunction: (Byte,Byte) => Int,
   }
 
   /** Fills in the leftmost column of the matrices. */
+  @inline
   private final def fillLeftmostColumn(query: Array[Byte],
                                        leftScoreMatrix: Matrix[Int],
                                        leftTraceMatrix: Matrix[Direction],
@@ -211,6 +215,7 @@ class Aligner(val scoringFunction: (Byte,Byte) => Int,
   }
 
   /** Fills in the top row of the matrices. */
+  @inline
   private final def fillTopRow(target: Array[Byte],
                                leftScoreMatrix: Matrix[Int],
                                leftTraceMatrix: Matrix[Direction],
@@ -242,6 +247,7 @@ class Aligner(val scoringFunction: (Byte,Byte) => Int,
   }
 
   /** Fills the interior of the matrix. */
+  @inline
   private final def fillInterior(query: Array[Byte],
                                  target: Array[Byte],
                                  leftScoreMatrix: Matrix[Int],
@@ -330,6 +336,7 @@ class Aligner(val scoringFunction: (Byte,Byte) => Int,
     * @param matrices the scoring and trace back matrices for the [[Left]], [[Up]], and [[Diagonal]] directions.
     * @return an [[Alignment]] object representing the alignment
     */
+  @inline
   protected def generateAlignment(query: Array[Byte], target: Array[Byte], matrices: Array[AlignmentMatrix]): Alignment = {
     var currOperator: CigarOperator = null
     var currLength: Int = 0
@@ -377,7 +384,7 @@ class Aligner(val scoringFunction: (Byte,Byte) => Int,
     val done = () => matrices(curD).trace(curI,curJ) == Done
     while (!done()) {
       val nextD = matrices(curD).trace(curI,curJ)
-      val op    = curD match {
+      val op    = (curD: @switch) match {
         case Up       =>
           curI -= 1
           CigarOperator.INSERTION
