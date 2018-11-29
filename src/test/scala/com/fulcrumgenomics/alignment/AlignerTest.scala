@@ -25,6 +25,7 @@
 package com.fulcrumgenomics.alignment
 
 import com.fulcrumgenomics.alignment.Mode.{Glocal, Local}
+import com.fulcrumgenomics.commons.util.NumericCounter
 import com.fulcrumgenomics.testing.UnitSpec
 
 class AlignerTest extends UnitSpec {
@@ -393,13 +394,17 @@ class AlignerTest extends UnitSpec {
     val aligner = Aligner(5, -4, -2, -5, Mode.Glocal)
     val query  =                                       "AcATCTTTCGCATcGACTGAC-TTG".filterNot(_ == '-').toUpperCase.getBytes
     val target = "GCCAGGGACCGTTTCAGACAGATATTTGCCTGGTGGATAGATCTT-CGCATGGACTGACTTTGACGATACTGCTAATTTTTTTTATAGCCTTTGCCTTGTT".filterNot(_ == '-').getBytes
+    val counter = new NumericCounter[Double]()
 
-    Range(0, 3).foreach { _ =>
+    Range(0, 10).foreach { _ =>
       val startTime = System.currentTimeMillis()
       Range(0, 25000).foreach { _ => val aln = aligner.align(query, target) }
       val endTime = System.currentTimeMillis()
       val total = (endTime - startTime) / 1000.0
       System.out.println(s"Total time: $total.  Average time: ${total / count}")
+      counter.count(total)
     }
+
+    System.out.println(s"Run median=${counter.median()}, mean=${counter.mean()}")
   }
 }

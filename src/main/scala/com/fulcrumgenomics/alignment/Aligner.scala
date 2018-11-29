@@ -31,6 +31,7 @@ import enumeratum.EnumEntry
 import htsjdk.samtools.CigarOperator
 
 import scala.collection.{immutable, mutable}
+import scala.annotation.switch
 
 /** Trait that entries in Mode will extend. */
 sealed trait Mode extends EnumEntry
@@ -61,16 +62,13 @@ object Aligner {
 
   /** Directions within the trace back matrix. */
   private type Direction = Int
-  private val Left: Direction     = 0
-  private val Up  : Direction     = 1
-  private val Diagonal: Direction = 2
-  private val Done: Direction     = 3
+  // NB: types are purposely omitted for match performance.  See: https://stackoverflow.com/questions/16311540/why-cant-scala-optimize-this-match-to-a-switch
+  private final val Left     = 0
+  private final val Up       = 1
+  private final val Diagonal = 2
+  private final val Done     = 3
 
-  // NB: the order of LeftAndDiagonal and UpAndDiagonal matters when breaking ties!
   private val AllDirections: Seq[Direction]   = Seq(Diagonal, Left, Up)
-  private val LeftAndUp: Seq[Direction]       = Seq(Left, Up)
-  private val LeftAndDiagonal: Seq[Direction] = Seq(Diagonal, Left)
-  private val UpAndDiagonal: Seq[Direction]   = Seq(Diagonal, Up)
 
   /** The minimum score allowed to start an alignment.  This prevents underflow. */
   val MinStartScore: Int = Int.MinValue / 2
@@ -367,7 +365,7 @@ class Aligner(val scoringFunction: (Byte,Byte) => Int,
     val done = () => matrices(curD).trace(curI,curJ) == Done
     while (!done()) {
       val nextD = matrices(curD).trace(curI,curJ)
-      val op    = curD match {
+      val op    = (curD: @switch) match {
         case Up       =>
           curI -= 1
           CigarOperator.INSERTION
