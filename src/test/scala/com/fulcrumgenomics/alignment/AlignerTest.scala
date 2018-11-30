@@ -24,7 +24,11 @@
 
 package com.fulcrumgenomics.alignment
 
+<<<<<<< HEAD
 import com.fulcrumgenomics.alignment.Mode.{Glocal, Local}
+=======
+import com.fulcrumgenomics.alignment.Mode.{Global, Glocal, Local}
+>>>>>>> 042dc20... Changed Aligner to generate matches when bases are compatible (including Us and ambiguous bases).
 import com.fulcrumgenomics.commons.util.NumericCounter
 import com.fulcrumgenomics.testing.UnitSpec
 
@@ -388,6 +392,16 @@ class AlignerTest extends UnitSpec {
     result.score shouldBe 4
   }
 
+  it should "generate a cigar string that gives matches for Us and IUPAC codes" in {
+    val query  = "AGCGCUGACGUCGUUGACnrg"
+    val target = "AGCaCTGACGTCGTTGACGGG"
+    val result = Aligner(5, -3, -2, -4, mode=Global).align(query, target)
+    result.cigar.toString() shouldBe "3=1X17="
+
+    val Seq(q, aln, t) = result.paddedString()
+    aln shouldBe "|||.|||||||||||||||||"
+  }
+
   /** Timing test - change "ignore" to "it" to enable. */
   ignore should "perform lots of glocal alignments" in {
     val count = 25000
@@ -398,7 +412,7 @@ class AlignerTest extends UnitSpec {
 
     Range(0, 10).foreach { _ =>
       val startTime = System.currentTimeMillis()
-      Range(0, 25000).foreach { _ => val aln = aligner.align(query, target) }
+      Range(0, count).foreach { _ => val aln = aligner.align(query, target) }
       val endTime = System.currentTimeMillis()
       val total = (endTime - startTime) / 1000.0
       System.out.println(s"Total time: $total.  Average time: ${total / count}")

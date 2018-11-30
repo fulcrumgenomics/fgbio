@@ -94,4 +94,28 @@ class SequencesTest extends UnitSpec {
     Sequences.revcomp("") shouldBe ""
     Sequences.revcomp("AACCGGTGTG") shouldBe "CACACCGGTT"
   }
+
+  "Sequences.compatible" should "do the right thing for pairs of bases" in {
+    val bases: Seq[Byte] = Seq('A', 'C', 'G', 'T', 'a', 'c', 'g', 't')
+    for (b1 <- bases; b2 <- bases) {
+      Sequences.compatible(b1, b2) shouldBe b1.toChar.toUpper == b2.toChar.toUpper
+      Sequences.compatible(b1, b2) shouldBe b1.toChar.toUpper == b2.toChar.toUpper
+      Sequences.compatible(b1, b2) shouldBe b1.toChar.toUpper == b2.toChar.toUpper
+      Sequences.compatible(b1, b2) shouldBe b1.toChar.toUpper == b2.toChar.toUpper
+    }
+
+    // Check T/U compatability
+    Sequences.compatible('T', 'U') shouldBe true
+    Sequences.compatible('u', 'T') shouldBe true
+
+    // Spot check some abiguity codes
+    Sequences.compatible('H', 'C') shouldBe true
+    Sequences.compatible('R', 'A') shouldBe true
+    Sequences.compatible('S', 'G') shouldBe true
+    bases.foreach(b => Sequences.compatible(b, 'N') shouldBe true)
+
+    // Check that incompatible combinations yield false
+    Sequences.compatible('A', 'C') shouldBe false
+    Sequences.compatible('M', 'K') shouldBe false
+  }
 }

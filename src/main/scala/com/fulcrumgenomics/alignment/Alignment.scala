@@ -260,16 +260,6 @@ case class Alignment(query: Array[Byte],
     var qOffset = queryStart - 1
     var tOffset = targetStart - 1
     cigar.foreach {
-      case CigarElem(CigarOperator.M | CigarOperator.EQ | CigarOperator.X, len) =>
-        forloop (from=0, until=len) { i =>
-          val q = this.query(qOffset).toChar
-          val t = this.target(tOffset).toChar
-          queryBuffer.append(q)
-          alignBuffer.append(if (q == t) matchChar else mismatchChar)
-          targetBuffer.append(t)
-          qOffset += 1
-          tOffset += 1
-        }
       case CigarElem(CigarOperator.INSERTION, len) =>
         forloop (from=0, until=len) { i =>
           queryBuffer.append(this.query(qOffset).toChar)
@@ -284,8 +274,22 @@ case class Alignment(query: Array[Byte],
           targetBuffer.append(this.target(tOffset).toChar)
           tOffset += 1
         }
-      case other =>
-        throw new IllegalStateException(s"Padding string cannot support cigar operator $other")
+      case CigarElem(op, len) =>
+        forloop (from=0, until=len) { i =>
+          val q = this.query(qOffset).toChar
+          val t = this.target(tOffset).toChar
+          queryBuffer.append(q)
+          targetBuffer.append(t)
+          op match {
+            case CigarOperator.EQ => alignBuffer.append(matchChar)
+            case CigarOperator.X  => alignBuffer.append(mismatchChar)
+            case CigarOperator.M  => alignBuffer.append(if (q == t) matchChar else mismatchChar)
+            case other            => throw new IllegalStateException(s"Unsupported cigar operator: $other")
+          }
+
+          qOffset += 1
+          tOffset += 1
+        }
     }
 
     buffers.map(_.toString())

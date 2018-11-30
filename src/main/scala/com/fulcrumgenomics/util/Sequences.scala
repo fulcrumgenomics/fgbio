@@ -37,6 +37,54 @@ object Sequences {
   /** Common contig/chrom names for non-autosomal sequences in mammals. */
   val CommonNonAutosomalContigNames = Seq("M", "chrM", "MT", "X", "chrX", "Y", "chrY")
 
+  /** Array for determining what bases are compatible. Indices are all DNA/RNA bases. Contents
+    * are Int masks with a bit set for each possible base.  U is treated as identical to T.
+     */
+  private val IupacMasks: Array[Int] = {
+    val masks = new Array[Int](Byte.MaxValue)
+    val (a, c, g, t) = (1, 2, 4, 8)
+
+    def up(c: Char): Int = c.toUpper.toInt
+    def down(c: Char): Int = c.toLower.toInt
+
+    Seq(up(_), down(_)).foreach { f =>
+      masks(f('A')) = a
+      masks(f('C')) = c
+      masks(f('G')) = g
+      masks(f('T')) = t
+      masks(f('U')) = t
+      masks(f('M')) = a | c
+      masks(f('R')) = a | g
+      masks(f('W')) = a | t
+      masks(f('S')) = c | g
+      masks(f('Y')) = c | t
+      masks(f('K')) = g | t
+      masks(f('V')) = a | c | g
+      masks(f('H')) = a | c | t
+      masks(f('D')) = a | g | t
+      masks(f('B')) = c | g | t
+      masks(f('N')) = a | c | g | t
+    }
+
+    masks
+  }
+
+  /** Returns true if two bases are compatible.  Compatibility is defined as having any overlap in the
+    * set of acceptable bases.  E.g.:
+    *   - `compatible('T', 't') == true`
+    *   - `compatible('T', 'U') == true`
+    *   - `compatible('A', 'R') == true`
+    *   - `compatible('M', 'S') == true`
+    *   - `compatible('A', 'C') == false`
+    *   - `compatible('M', 'K') == false`
+    *
+    * @param base1 the first base to be compared
+    * @param base2 the second base to be compared
+    * @return true if the bases share at least one concrete base in common, false otherwise
+    */
+  final def compatible(base1: Byte, base2: Byte): Boolean = (IupacMasks(base1) & IupacMasks(base2)) > 0
+
+
   /** Counts the number of mismatches between two sequences of the same length. */
   def countMismatches(s1: String, s2: String): Int = {
     require(s1.length == s2.length, s"Cannot count mismatches in strings of differing lengths: $s1 $s2")

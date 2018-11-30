@@ -27,6 +27,7 @@ package com.fulcrumgenomics.alignment
 import com.fulcrumgenomics.FgBioDef._
 import com.fulcrumgenomics.alignment.Mode.{Global, Glocal, Local}
 import com.fulcrumgenomics.alignment.Aligner._
+import com.fulcrumgenomics.util.Sequences
 import enumeratum.EnumEntry
 import htsjdk.samtools.CigarOperator
 
@@ -97,6 +98,12 @@ object Aligner {
   * A scoring function (`scoringFunction`) is taken to score pair-wise aligned bases. A default
   * implementation is supplied via the companion [[Aligner]] object which uses a fixed match
   * score and mismatch penalty.
+  *
+  * When generating CIGARs for alignments the aligner uses the [[isMatch()]] method to determine
+  * whether to treat an aligned pair of bases as a match or mismatch.  The default implementation
+  * of this method treats U bases as T bases to allow DNA/RNA alignments.  It also will identify
+  * as matches any pair of bases (including IUPAC ambiguity codes) that share at least one base
+  * in common.  This behaviour can be modified by overriding the [[isMatch()]] method.
   *
   * @param scoringFunction a function to score the alignment of a pair of bases. Parameters
   *                        are the query and target bases as bytes, in that order.
@@ -375,7 +382,7 @@ class Aligner(val scoringFunction: (Byte,Byte) => Int,
         case Diagonal =>
           curI -= 1
           curJ -= 1
-          if (query(curI) == target(curJ)) this.matchOp else this.mismatchOp
+          if (isMatch(query(curI), target(curJ))) this.matchOp else this.mismatchOp
       }
       curD = nextD
 
@@ -394,4 +401,9 @@ class Aligner(val scoringFunction: (Byte,Byte) => Int,
 
     Alignment(query=query, target=target, queryStart=curI+1, targetStart=curJ+1, cigar=Cigar(elems.reverse), score=score)
   }
+
+  /** Returns true if the two bases should be considered a match when generating the alignment from the matrix
+    * and false otherwise.
+    */
+  protected def isMatch(b1: Byte, b2: Byte): Boolean = Sequences.compatible(b1, b2)
 }
