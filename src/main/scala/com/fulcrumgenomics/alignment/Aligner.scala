@@ -369,9 +369,9 @@ class Aligner(val scoringFunction: (Byte,Byte) => Int,
 
     // For global we have to reach the origin, for glocal we just have to reach the top row, and for local we can stop
     // anywhere.  Fortunately, we have initialized the appropriate cells to "Done"
-    val done = () => matrices(curD).trace(curI,curJ) == Done
-    while (!done()) {
-      val nextD = matrices(curD).trace(curI,curJ)
+    var nextD = matrices(curD).trace(curI,curJ)
+
+    while (nextD != Done) {
       val op    = (curD: @switch) match {
         case Up       =>
           curI -= 1
@@ -386,8 +386,7 @@ class Aligner(val scoringFunction: (Byte,Byte) => Int,
       }
       curD = nextD
 
-      val extending = op == currOperator
-      if (extending) {
+      if (op == currOperator) {
         currLength += 1
       }
       else {
@@ -396,7 +395,8 @@ class Aligner(val scoringFunction: (Byte,Byte) => Int,
         currLength   = 1
       }
 
-      if (done()) elems += CigarElem(currOperator, currLength)
+      nextD = matrices(curD).trace(curI,curJ)
+      if (nextD == Done) elems += CigarElem(currOperator, currLength)
     }
 
     Alignment(query=query, target=target, queryStart=curI+1, targetStart=curJ+1, cigar=Cigar(elems.reverse), score=score)

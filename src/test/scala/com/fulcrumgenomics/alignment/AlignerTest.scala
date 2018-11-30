@@ -24,11 +24,7 @@
 
 package com.fulcrumgenomics.alignment
 
-<<<<<<< HEAD
-import com.fulcrumgenomics.alignment.Mode.{Glocal, Local}
-=======
 import com.fulcrumgenomics.alignment.Mode.{Global, Glocal, Local}
->>>>>>> 042dc20... Changed Aligner to generate matches when bases are compatible (including Us and ambiguous bases).
 import com.fulcrumgenomics.commons.util.NumericCounter
 import com.fulcrumgenomics.testing.UnitSpec
 
