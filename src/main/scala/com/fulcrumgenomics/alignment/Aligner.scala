@@ -369,7 +369,7 @@ class Aligner(val scoringFunction: (Byte,Byte) => Int,
 
     // For global we have to reach the origin, for glocal we just have to reach the top row, and for local we can stop
     // anywhere.  Fortunately, we have initialized the appropriate cells to "Done"
-    var nextD = matrices(curD).trace(curI,curJ)
+    var nextD = matrices(curD).trace(curI, curJ)
 
     while (nextD != Done) {
       val op    = (curD: @switch) match {
@@ -395,7 +395,7 @@ class Aligner(val scoringFunction: (Byte,Byte) => Int,
         currLength   = 1
       }
 
-      nextD = matrices(curD).trace(curI,curJ)
+      nextD = matrices(curD).trace(curI, curJ)
       if (nextD == Done) elems += CigarElem(currOperator, currLength)
     }
 

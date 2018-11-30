@@ -259,38 +259,42 @@ case class Alignment(query: Array[Byte],
 
     var qOffset = queryStart - 1
     var tOffset = targetStart - 1
-    cigar.foreach {
-      case CigarElem(CigarOperator.INSERTION, len) =>
-        forloop (from=0, until=len) { i =>
-          queryBuffer.append(this.query(qOffset).toChar)
-          alignBuffer.append(gapChar)
-          targetBuffer.append(padChar)
-          qOffset += 1
-        }
-      case CigarElem(CigarOperator.DELETION, len) =>
-        forloop (from=0, until=len) { i =>
-          queryBuffer.append(padChar)
-          alignBuffer.append(gapChar)
-          targetBuffer.append(this.target(tOffset).toChar)
-          tOffset += 1
-        }
-      case CigarElem(op, len) =>
-        forloop (from=0, until=len) { i =>
-          val q = this.query(qOffset).toChar
-          val t = this.target(tOffset).toChar
-          queryBuffer.append(q)
-          targetBuffer.append(t)
-          op match {
-            case CigarOperator.EQ => alignBuffer.append(matchChar)
-            case CigarOperator.X  => alignBuffer.append(mismatchChar)
-            case CigarOperator.M  => alignBuffer.append(if (q == t) matchChar else mismatchChar)
-            case other            => throw new IllegalStateException(s"Unsupported cigar operator: $other")
-          }
+    cigar.foreach { cig =>
+      val len = cig.length
 
-          qOffset += 1
-          tOffset += 1
+      cig.operator match {
+        case CigarOperator.INSERTION =>
+          forloop (from=0, until=len) { i =>
+            queryBuffer.append(this.query(qOffset).toChar)
+            alignBuffer.append(gapChar)
+            targetBuffer.append(padChar)
+            qOffset += 1
+          }
+        case CigarOperator.DELETION =>
+          forloop (from=0, until=len) { i =>
+            queryBuffer.append(padChar)
+            alignBuffer.append(gapChar)
+            targetBuffer.append(this.target(tOffset).toChar)
+            tOffset += 1
+          }
+        case op =>
+          forloop (from=0, until=len) { i =>
+            val q = this.query(qOffset).toChar
+            val t = this.target(tOffset).toChar
+            queryBuffer.append(q)
+            targetBuffer.append(t)
+            op match {
+              case CigarOperator.EQ => alignBuffer.append(matchChar)
+              case CigarOperator.X  => alignBuffer.append(mismatchChar)
+              case CigarOperator.M  => alignBuffer.append(if (q == t) matchChar else mismatchChar)
+              case other            => throw new IllegalStateException(s"Unsupported cigar operator: $other")
+            }
+
+            qOffset += 1
+            tOffset += 1
+          }
         }
-    }
+      }
 
     buffers.map(_.toString())
   }

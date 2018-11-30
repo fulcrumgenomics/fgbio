@@ -39,7 +39,7 @@ object Sequences {
 
   /** Array for determining what bases are compatible. Indices are all DNA/RNA bases. Contents
     * are Int masks with a bit set for each possible base.  U is treated as identical to T.
-     */
+    */
   private val IupacMasks: Array[Int] = {
     val masks = new Array[Int](Byte.MaxValue)
     val (a, c, g, t) = (1, 2, 4, 8)
@@ -82,7 +82,7 @@ object Sequences {
     * @param base2 the second base to be compared
     * @return true if the bases share at least one concrete base in common, false otherwise
     */
-  final def compatible(base1: Byte, base2: Byte): Boolean = (IupacMasks(base1) & IupacMasks(base2)) > 0
+  final def compatible(base1: Byte, base2: Byte): Boolean = base1 == base2 || (IupacMasks(base1) & IupacMasks(base2)) > 0
 
 
   /** Counts the number of mismatches between two sequences of the same length. */
