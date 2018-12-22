@@ -33,6 +33,7 @@ import htsjdk.samtools.CigarOperator
 
 import scala.collection.{immutable, mutable}
 import scala.annotation.switch
+import scala.collection.mutable.ArrayBuffer
 
 /** Trait that entries in Mode will extend. */
 sealed trait Mode extends EnumEntry
@@ -88,6 +89,9 @@ object Aligner {
     val queryLength: Int  = scoring.x - 1
     val targetLength: Int = scoring.y - 1
   }
+
+  /** Represents a cell within the set of matrices used for alignment. */
+  case class MatrixLocation(queryIndex: Int, targetIndex: Int, direction: Direction)
 }
 
 
@@ -124,6 +128,9 @@ class Aligner(val scoringFunction: (Byte,Byte) => Int,
   /** Convenience method that starts from Strings instead of Array[Byte]s. */
   def align(query: String, target: String): Alignment = align(query.getBytes, target.getBytes)
 
+  /** Convenience method that starts from Strings instead of Array[Byte]s. */
+  def align(query: String, target: String, minScore: Int): Seq[Alignment] = align(query.getBytes, target.getBytes, minScore)
+
   /**
     * Align two sequences with the current scoring system and mode.
     *
@@ -133,7 +140,33 @@ class Aligner(val scoringFunction: (Byte,Byte) => Int,
     */
   def align(query: Array[Byte], target: Array[Byte]): Alignment = {
     val matrices = buildMatrices(query, target)
-    generateAlignment(query, target, matrices)
+    val location = findBest(matrices)
+    generateAlignment(query, target, matrices, location)
+  }
+
+  /** Aligns two sequences and returns all alignments that have score >= `minScore`.
+    *
+    * Note that "all alignments" does not include every permutation of an alignment. E.g. in the case
+    * where there is an indel in a repetitive region the results will not include all possible placements
+    * of the indel.  Generally speaking a single alignment is produced from each cell in the alignment
+    * matrix selected as meeting the score threshold.  This in turn means a single alignment per _end_
+    * position.  Specifically by mode:
+    *
+    *   - Global alignment will always return either 0 or 1 alignments of the whole query and target
+    *   - Glocal alignment will return an alignment per end position on the target sequence at which
+    *     the end of the query is aligned and has a score >= minScore
+    *   - Local will an alignment per location in the matrix with score >= minScore (this can produce
+    *     many sub-alignments so be careful!).
+    *
+    * @param query the query sequence as an array of bytes
+    * @param target the target sequence as an array of bytes
+    * @param minScore the minimum alignment score of alignments to return
+    * @return a sequence of 0 or more alignments
+    */
+  def align(query: Array[Byte], target: Array[Byte], minScore: Int): Seq[Alignment] = {
+    val matrices = buildMatrices(query, target)
+    val locations = findByScore(matrices, minScore)
+    locations.map(l => generateAlignment(query, target, matrices, l))
   }
 
   /**
@@ -325,44 +358,14 @@ class Aligner(val scoringFunction: (Byte,Byte) => Int,
     * @param matrices the scoring and trace back matrices for the [[Left]], [[Up]], and [[Diagonal]] directions.
     * @return an [[Alignment]] object representing the alignment
     */
-  protected def generateAlignment(query: Array[Byte], target: Array[Byte], matrices: Array[AlignmentMatrix]): Alignment = {
+  protected def generateAlignment(query: Array[Byte],
+                                  target: Array[Byte],
+                                  matrices: Array[AlignmentMatrix],
+                                  location: MatrixLocation): Alignment = {
     var currOperator: CigarOperator = null
-    var currLength: Int = 0
+    var currLength: Direction = 0
     val elems = new mutable.ArrayBuffer[CigarElem]()
-
-    // For the target sequence, start at the end for Global, or the highest scoring cell in the last row for Glocal, or
-    // the highest scoring cell anywhere in the matrix for Local
-    var (curI, curJ, curD) = this.mode match {
-      case Global =>
-        (query.length, target.length, AllDirections.maxBy(d => matrices(d).scoring(query.length, target.length)))
-      case Glocal =>
-        var (maxScore, maxJ, maxD) = (MinStartScore, -1, Done)
-        forloop(from=1, until=target.length+1) { j =>
-          val direction = AllDirections.maxBy(d => matrices(d).scoring(query.length, j))
-          val score     = matrices(direction).scoring(query.length, j)
-          if (score > maxScore) {
-            maxScore = score
-            maxJ = j
-            maxD = direction
-          }
-        }
-        (query.length, maxJ, maxD)
-      case Local =>
-        var (maxScore, maxI, maxJ, maxD) = (MinStartScore, -1, -1, Done)
-        forloop(from=1, until=query.length+1) { i =>
-          forloop(from=1, until=target.length+1) { j =>
-            val direction = AllDirections.maxBy(d => matrices(d).scoring(i, j))
-            val score     = matrices(direction).scoring(i, j)
-            if (score > maxScore) {
-              maxScore = score
-              maxI = i
-              maxJ = j
-              maxD = direction
-            }
-          }
-        }
-        (maxI, maxJ, maxD)
-      }
+    var MatrixLocation(curI, curJ ,curD) = location
 
     // The score is always the score from the starting cell
     val score = matrices(curD).scoring(curI, curJ)
@@ -400,6 +403,87 @@ class Aligner(val scoringFunction: (Byte,Byte) => Int,
     }
 
     Alignment(query=query, target=target, queryStart=curI+1, targetStart=curJ+1, cigar=Cigar(elems.reverse), score=score)
+  }
+
+  /**
+    * Finds the matrix location of the single best alignment from which to backtrack and generate the alignment.
+    * When there are multiple equally best alignments the choice of which one to return is arbitrary.
+    *
+    * @param query the query sequence
+    * @param target the target sequence
+    * @param matrices the alignment matrices to search
+    */
+  private def findBest(matrices: Array[AlignmentMatrix]): MatrixLocation = {
+    // Find location based on alignment mode:
+    //   - start at the end of query and target for Global
+    //   - the highest scoring cell in the last row for Glocal
+    //   - the highest scoring cell anywhere in the matrix for Local
+    val qLen = matrices(0).queryLength
+    val tLen = matrices(0).targetLength
+
+    this.mode match {
+      case Global =>
+        MatrixLocation(qLen, tLen, AllDirections.maxBy { d => matrices(d).scoring(qLen, tLen) })
+      case Glocal =>
+        var (maxScore, maxJ, maxD) = (MinStartScore, -1, Done)
+        forloop(from = 1, until = tLen + 1) { j =>
+          val direction = AllDirections.maxBy(d => matrices(d).scoring(qLen, j))
+          val score = matrices(direction).scoring(qLen, j)
+          if (score > maxScore) {
+            maxScore = score
+            maxJ = j
+            maxD = direction
+          }
+        }
+        MatrixLocation(qLen, maxJ, maxD)
+      case Local =>
+        var (maxScore, maxI, maxJ, maxD) = (MinStartScore, -1, -1, Done)
+        forloop(from = 1, until = qLen + 1) { i =>
+          forloop(from = 1, until = tLen + 1) { j =>
+            val direction = AllDirections.maxBy(d => matrices(d).scoring(i, j))
+            val score = matrices(direction).scoring(i, j)
+            if (score > maxScore) {
+              maxScore = score
+              maxI = i
+              maxJ = j
+              maxD = direction
+            }
+          }
+        }
+        MatrixLocation(maxI, maxJ, maxD)
+    }
+  }
+
+  /**
+    * Finds all cells in the matrix from which a mode-specific backtrace could be generated and
+    * that have a score >= than the minimum score.
+    *
+    * @return a [[Seq]] of [[MatrixLocation]] in no particular order.
+    */
+  private def findByScore(matrices: Array[AlignmentMatrix], minScore: Int): Seq[MatrixLocation] = {
+    val qLen = matrices(0).queryLength
+    val tLen = matrices(0).targetLength
+    val hits = new ArrayBuffer[MatrixLocation]()
+
+    this.mode match {
+      case Global =>
+        hits += findBest(matrices)
+      case Glocal =>
+        forloop(from = 1, until = tLen + 1) { j =>
+          val direction = AllDirections.maxBy(d => matrices(d).scoring(qLen, j))
+          val score = matrices(direction).scoring(qLen, j)
+          if (score >= minScore) hits += MatrixLocation(qLen, j, direction)
+        }
+      case Local =>
+        forloop(from = 1, until = qLen + 1) { i =>
+          forloop(from = 1, until = tLen + 1) { j =>
+            val direction = AllDirections.maxBy(d => matrices(d).scoring(i, j))
+            if (matrices(direction).scoring(i, j) >= minScore) hits += MatrixLocation(i, j, direction)
+          }
+        }
+    }
+
+    hits
   }
 
   /** Returns true if the two bases should be considered a match when generating the alignment from the matrix

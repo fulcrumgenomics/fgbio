@@ -398,6 +398,12 @@ class AlignerTest extends UnitSpec {
     aln shouldBe "|||.|||||||||||||||||"
   }
 
+  "Aligner.align(minScore)" should "return at least the perfect alignment" in {
+    val results = Aligner(5, -4, -5, -3, mode=Glocal).align("ACGTTTGCAT", "ACGTTTGCAT", 20).sortBy(- _.score)
+    results.size should be >= 1
+    results.head.cigar.toString shouldBe "10="
+  }
+
   /** Timing test - change "ignore" to "it" to enable. */
   ignore should "perform lots of glocal alignments" in {
     val count = 25000
