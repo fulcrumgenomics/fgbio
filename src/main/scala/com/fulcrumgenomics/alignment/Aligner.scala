@@ -52,14 +52,24 @@ object Mode extends FgBioEnum[Mode] {
 
 
 object Aligner {
-  /** Generates a simple scoring function using the match and mismatch scores. */
-  def simpleScoringFunction(matchScore: Int, mismatchScore: Int): (Byte, Byte) => Int = {
-    (lhs: Byte, rhs: Byte) => if (lhs == rhs) matchScore else mismatchScore
-  }
-
   /** Creates a NW aligner with fixed match and mismatch scores. */
   def apply(matchScore: Int, mismatchScore: Int, gapOpen: Int, gapExtend: Int, mode: Mode = Global): Aligner = {
-    new Aligner(scoringFunction=simpleScoringFunction(matchScore, mismatchScore), gapOpen, gapExtend, mode=mode)
+    val scorer = new AlignmentScorer {
+      private val m = matchScore
+      private val mm = mismatchScore
+      private val open = gapOpen
+      private val extend = gapExtend
+      private val openAndExtend = open + extend
+
+      override final def scorePairing(queryBase: Byte, targetBase: Byte): Int = {
+        if (queryBase == targetBase) this.m else this.mm
+      }
+      override final def scoreGap(query: Array[Byte], target: Array[Byte], qOffset: Int, tOffset: Int, inQuery: Boolean, extend: Boolean): Int = {
+        if (extend) this.extend else this.openAndExtend
+      }
+    }
+
+    new Aligner(scorer, mode=mode)
   }
 
   /** Directions within the trace back matrix. */
@@ -92,8 +102,51 @@ object Aligner {
 
   /** Represents a cell within the set of matrices used for alignment. */
   case class MatrixLocation(queryIndex: Int, targetIndex: Int, direction: Direction)
-}
 
+  /** A trait that specifies how the aligner will ask for scoring information. */
+  trait AlignmentScorer {
+    /**
+      * Provides a score for a pairwise alignment of bases.
+      *
+      * @param queryBase the base from the query sequence
+      * @param targetBase the base from the target sequence
+      * @return an integer score
+      */
+    def scorePairing(queryBase: Byte, targetBase: Byte): Int
+
+    /**
+      * Provides a score for a gap open or extension.
+      *
+      * The position of the gap-base being considered is provided as a single 0-based offset into each of the
+      * query sequence array and target sequence array.  On the non-gapped side the offset represents the base
+      * at which the gap is being inserted opposite.  On the gapped side the offset represents the last base
+      * before the gap opening.  For example, in the following alignment:
+      *
+      * qoffset: 01234567
+      * query:   ACGTGCAT
+      * aln:     ||||--||
+      * target:  ACGT--AT
+      * toffset: 0123  45
+      *
+      * We'd see the following invocations:
+      *
+      * scoreGap(query, target, qOffset=4, tOffset=3, inQuery=false, extend=false)
+      * scoreGap(query, target, qOffset=5, tOffset=3, inQuery=false, extend=true)
+      *
+      * Offsets of -1, query.length and target.length may be passed to indicate that the gap is occurring
+      * before the start of one of the sequences, or after the end of the query or target sequence.
+      *
+      * @param query: the query sequence as a byte array
+      * @param target: the target sequence as a byte array
+      * @param qOffset: the offset within the query sequence of the gap-base being scored
+      * @param tOffset: the offset within the target sequence of the gap-base being scored
+      * @param inQuery: true if the gap is on the query side, false if it's on the target side
+      * @param extend: true if this is a gap extension, false if it's a gap open
+      * @return an integer score
+      */
+    def scoreGap(query: Array[Byte], target: Array[Byte], qOffset: Int, tOffset: Int, inQuery: Boolean, extend: Boolean): Int
+  }
+}
 
 /**
   * Implementation of an aligner with generic scoring function and affine gap penalty support.
@@ -109,17 +162,12 @@ object Aligner {
   * as matches any pair of bases (including IUPAC ambiguity codes) that share at least one base
   * in common.  This behaviour can be modified by overriding the [[isMatch()]] method.
   *
-  * @param scoringFunction a function to score the alignment of a pair of bases. Parameters
-  *                        are the query and target bases as bytes, in that order.
-  * @param gapOpen the gap opening penalty, should generally be negative or zero
-  * @param gapExtend the gap extension penalty, should generally be negative or zero
+  * @param scorer the AlignmentScorer to use to score base pairings and gaps
   * @param useEqualsAndX if true use the = and X cigar operators for matches and mismatches,
   *                      else use the M operator for both.
   * @param mode alignment mode to use when generating alignments
   */
-class Aligner(val scoringFunction: (Byte,Byte) => Int,
-              val gapOpen: Int,
-              val gapExtend: Int,
+class Aligner(val scorer: AlignmentScorer,
               useEqualsAndX: Boolean = true,
               val mode: Mode = Global) {
 
@@ -191,7 +239,7 @@ class Aligner(val scoringFunction: (Byte,Byte) => Int,
     // While we have `matrices` above, it's useful to unpack all the matrices for direct access
     // in the core loop; when we know the exact matrix we need at compile time, it's faster
     val (leftScoreMatrix, leftTraceMatrix, upScoreMatrix, upTraceMatrix, diagScoreMatrix, diagTraceMatrix) = {
-      val Seq(l, u, d) = Seq(Left, Up, Diagonal).map(_.toInt).map(matrices.apply)
+      val Seq(l, u, d) = Seq(Left, Up, Diagonal).map(matrices.apply)
       (l.scoring, l.trace, u.scoring, u.trace, d.scoring, d.trace)
     }
 
@@ -201,8 +249,8 @@ class Aligner(val scoringFunction: (Byte,Byte) => Int,
       matrices(direction).trace(0, 0)   = Done
     }
 
-    fillLeftmostColumn(query, leftScoreMatrix, leftTraceMatrix, upScoreMatrix, upTraceMatrix, diagScoreMatrix, diagTraceMatrix)
-    fillTopRow(target, leftScoreMatrix, leftTraceMatrix, upScoreMatrix, upTraceMatrix, diagScoreMatrix, diagTraceMatrix)
+    fillLeftmostColumn(query, target, leftScoreMatrix, leftTraceMatrix, upScoreMatrix, upTraceMatrix, diagScoreMatrix, diagTraceMatrix)
+    fillTopRow(query, target, leftScoreMatrix, leftTraceMatrix, upScoreMatrix, upTraceMatrix, diagScoreMatrix, diagTraceMatrix)
     fillInterior(query, target, leftScoreMatrix, leftTraceMatrix, upScoreMatrix, upTraceMatrix, diagScoreMatrix, diagTraceMatrix)
 
     matrices
@@ -210,6 +258,7 @@ class Aligner(val scoringFunction: (Byte,Byte) => Int,
 
   /** Fills in the leftmost column of the matrices. */
   private final def fillLeftmostColumn(query: Array[Byte],
+                                       target: Array[Byte], // new
                                        leftScoreMatrix: Matrix[Int],
                                        leftTraceMatrix: Matrix[Direction],
                                        upScoreMatrix: Matrix[Int],
@@ -223,15 +272,15 @@ class Aligner(val scoringFunction: (Byte,Byte) => Int,
           leftTraceMatrix(i, 0) = Done
           diagScoreMatrix(i, 0) = MinStartScore
           diagTraceMatrix(i, 0) = Done
-          upScoreMatrix(i, 0) = upScoreMatrix(i-1, 0) + gapExtend + (if (i == 1) gapOpen else 0)
-          upTraceMatrix(i, 0) = if (i == 1) Diagonal else Up
+          upScoreMatrix(i, 0)   = upScoreMatrix(i-1, 0) + scorer.scoreGap(query, target, qOffset=i-1, tOffset= -1, inQuery=true, extend= i != 1)
+          upTraceMatrix(i, 0)   = if (i == 1) Diagonal else Up
         }
       case Local =>
         forloop(from=1, until=query.length+1) { i =>
           leftScoreMatrix(i, 0) = MinStartScore
           leftTraceMatrix(i, 0) = Done
-          upScoreMatrix(i, 0) = MinStartScore
-          upTraceMatrix(i, 0) = Done
+          upScoreMatrix(i, 0)   = MinStartScore
+          upTraceMatrix(i, 0)   = Done
           diagScoreMatrix(i, 0) = 0
           diagTraceMatrix(i, 0) = Done
         }
@@ -239,7 +288,8 @@ class Aligner(val scoringFunction: (Byte,Byte) => Int,
   }
 
   /** Fills in the top row of the matrices. */
-  private final def fillTopRow(target: Array[Byte],
+  private final def fillTopRow(query: Array[Byte], // new
+                               target: Array[Byte],
                                leftScoreMatrix: Matrix[Int],
                                leftTraceMatrix: Matrix[Direction],
                                upScoreMatrix: Matrix[Int],
@@ -254,7 +304,7 @@ class Aligner(val scoringFunction: (Byte,Byte) => Int,
           upTraceMatrix(0 , j)   = Done
           diagScoreMatrix(0, j)  = MinStartScore
           diagTraceMatrix(0 , j) = Done
-          leftScoreMatrix(0, j) = leftScoreMatrix(0, j-1) + gapExtend + (if (j == 1) gapOpen else 0)
+          leftScoreMatrix(0, j) = leftScoreMatrix(0, j-1) + scorer.scoreGap(query, target, -1, j-1, inQuery=false, extend= j != 1)
           leftTraceMatrix(0, j) = if (j == 1) Diagonal else Left
         }
       case Glocal | Local =>
@@ -290,7 +340,7 @@ class Aligner(val scoringFunction: (Byte,Byte) => Int,
         val jMinusOne = j - 1
 
         { // Diagonal matrix can come from the previous diagonal, up, or left
-          val addend = scoringFunction(queryBase, target(jMinusOne))
+          val addend = scorer.scorePairing(queryBase, target(jMinusOne))
           val dScore = diagScoreMatrix(iMinusOne, jMinusOne) + addend
           val lScore = leftScoreMatrix(iMinusOne, jMinusOne) + addend
           val uScore = upScoreMatrix(iMinusOne, jMinusOne)   + addend
@@ -316,28 +366,28 @@ class Aligner(val scoringFunction: (Byte,Byte) => Int,
 
 
         { // Up matrix can come from diagonal or up
-          val dScore = gapOpen + diagScoreMatrix(iMinusOne, j)
-          val uScore =           upScoreMatrix(iMinusOne, j)
+          val dScore = diagScoreMatrix(iMinusOne, j) + scorer.scoreGap(query, target, i-1, j-1, inQuery=true, extend=false)
+          val uScore = upScoreMatrix(iMinusOne, j)   + scorer.scoreGap(query, target, i-1, j-1, inQuery=true, extend=true)
           if (dScore >= uScore) {
-            upScoreMatrix(i, j) = dScore + gapExtend
+            upScoreMatrix(i, j) = dScore
             upTraceMatrix(i, j) = Diagonal
           }
           else {
-            upScoreMatrix(i, j) = uScore + gapExtend
+            upScoreMatrix(i, j) = uScore
             upTraceMatrix(i, j) = Up
           }
         }
 
 
         { // Left matrix can come from diagonal or left
-          val dScore = gapOpen + diagScoreMatrix(i, jMinusOne)
-          val lScore =           leftScoreMatrix(i, jMinusOne)
+          val dScore = diagScoreMatrix(i, jMinusOne) + scorer.scoreGap(query, target, i-1, j-1, inQuery=false, extend=false)
+          val lScore = leftScoreMatrix(i, jMinusOne) + scorer.scoreGap(query, target, i-1, j-1, inQuery=false, extend=true)
           if (dScore >= lScore) {
-            leftScoreMatrix(i, j) = dScore + gapExtend
+            leftScoreMatrix(i, j) = dScore
             leftTraceMatrix(i, j) = Diagonal
           }
           else {
-            leftScoreMatrix(i, j) = lScore + gapExtend
+            leftScoreMatrix(i, j) = lScore
             leftTraceMatrix(i, j) = Left
           }
         }
