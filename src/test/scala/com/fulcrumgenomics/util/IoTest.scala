@@ -23,10 +23,11 @@
  */
 package com.fulcrumgenomics.util
 
-import java.io.{BufferedReader, FileInputStream, InputStreamReader}
+import java.io.{BufferedInputStream, BufferedReader, FileInputStream, InputStreamReader}
 import java.util.zip.GZIPInputStream
 
 import com.fulcrumgenomics.testing.UnitSpec
+import htsjdk.samtools.util.BlockCompressedInputStream
 
 /**
   * Tests for the Io utility class.
@@ -53,5 +54,20 @@ class IoTest extends UnitSpec {
     Io.writeLines(f, in)
     val out = Io.readLines(f).toSeq
     out shouldBe in
+  }
+
+  Seq(".bgz", ".bgzip").foreach { ext =>
+    it should s"round trip data to a bgzipped file with extension ${ext}" in {
+      val text = "This is a stupid little text fragment for compression. Yay compression!"
+      val data = Seq.fill(10)(text)
+      val f = makeTempFile("test.", ext)
+      Io.writeLines(f, data)
+
+      val stream = new BufferedInputStream(new FileInputStream(f.toFile))
+      BlockCompressedInputStream.isValidFile(stream) shouldBe true
+      val reread = Io.readLines(f).toIndexedSeq
+
+      reread shouldBe data
+    }
   }
 }

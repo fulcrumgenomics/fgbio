@@ -29,6 +29,7 @@ import java.util.zip.{GZIPInputStream, GZIPOutputStream}
 
 import com.fulcrumgenomics.commons.CommonsDef.DirPath
 import com.fulcrumgenomics.commons.io.{IoUtil, PathUtil}
+import htsjdk.samtools.util.BlockCompressedOutputStream
 
 /**
   * Provides common IO utility methods.  Can be instantiated to create a custom factory, or
@@ -37,11 +38,14 @@ import com.fulcrumgenomics.commons.io.{IoUtil, PathUtil}
 class Io(var compressionLevel: Int = 5,
          override val bufferSize: Int = 128*1024,
          var tmpDir: DirPath = Paths.get(System.getProperty("java.io.tmpdir"))) extends IoUtil {
+
   /** Adds the automatic handling of gzipped files when opening files for reading. */
   override def toInputStream(path: Path): InputStream = {
     PathUtil.extensionOf(path) match {
-      case Some(".gz") => new GZIPInputStream(Files.newInputStream(path), bufferSize)
-      case _           => super.toInputStream(path)
+      case Some(".gz") | Some(".bgz") | Some(".bgzip") =>
+        new GZIPInputStream(Files.newInputStream(path), bufferSize)
+      case _ =>
+        super.toInputStream(path)
     }
   }
 
@@ -49,6 +53,7 @@ class Io(var compressionLevel: Int = 5,
   override def toOutputStream(path: Path): OutputStream = {
     PathUtil.extensionOf(path) match {
       case Some(".gz") => new GZIPOutputStream(Files.newOutputStream(path), bufferSize) { this.`def`.setLevel(compressionLevel) }
+      case Some(".bgz") | Some(".bgzip") => new BlockCompressedOutputStream(super.toOutputStream(path), path.toFile, compressionLevel)
       case _           => super.toOutputStream(path)
     }
   }
