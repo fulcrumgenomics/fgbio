@@ -41,13 +41,16 @@ class SampleTest extends UnitSpec with OptionValues{
   }
 
   it should "support extended attributes" in {
-    val sample = new Sample(0, "ID", "NAME", "LIBRARY", extendedAttributes=Seq(("FOO", "1"), ("BAR", "2  ")).toMap)
+    val sample = new Sample(0, "ID", "NAME", "LIBRARY", extendedAttributes=Seq(("FOO", "1"), ("BAR", " 2  "), ("BAZ", "  ")).toMap)
     sample.extendedAttribute("foo").value shouldBe "1"
     sample.extendedAttribute("Foo").value shouldBe "1"
     sample.extendedAttribute("FOO").value shouldBe "1"
     sample.extendedAttribute("bar").value shouldBe "2"
     sample.extendedAttribute("Bar").value shouldBe "2"
     sample.extendedAttribute("BAR").value shouldBe "2"
+    sample.extendedAttribute("baz") shouldBe 'empty
+    sample.extendedAttribute("Baz") shouldBe 'empty
+    sample.extendedAttribute("BAZ") shouldBe 'empty
     sample.extendedAttribute("car") shouldBe 'empty
     sample.extendedAttribute("Car") shouldBe 'empty
     sample.extendedAttribute("CAR") shouldBe 'empty

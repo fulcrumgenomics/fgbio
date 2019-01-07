@@ -138,10 +138,9 @@ object SampleSheet {
 
   /** Gets the trimmed value of the given key (`name`) from the map.  If empty or not found, returns None */
   protected def getStringField(sampleDatum: Map[String, String], name: String): Option[String] = {
-    sampleDatum.get(name.toUpperCase) match {
-      case None => None
-      case Some(str) if str.isEmpty => None
-      case Some(str) => Some(str.trim)
+    sampleDatum.get(name.toUpperCase).map(_.trim) match {
+      case None | Some("") => None
+      case Some(str)       => Some(str)
     }
   }
 

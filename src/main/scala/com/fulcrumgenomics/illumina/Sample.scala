@@ -74,10 +74,9 @@ case class Sample(sampleOrdinal: Int,
 
   /** Gets an extended attribute for the given column name.  The column name can be any case. */
   def extendedAttribute(name: String): Option[String] = {
-    extendedAttributes.get(name.toUpperCase) match {
-      case None => None
-      case Some(str) if str.isEmpty => None
-      case Some(str) => Some(str.trim)
+    extendedAttributes.get(name.toUpperCase).map(_.trim) match {
+      case None | Some("") => None
+      case Some(str)       => Some(str)
     }
   }
 }
