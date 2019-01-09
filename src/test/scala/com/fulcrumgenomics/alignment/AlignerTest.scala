@@ -453,6 +453,17 @@ class AlignerTest extends UnitSpec {
     results.head.cigar.toString shouldBe "10="
   }
 
+  it should "produce multiple alignments" in {
+    val query = "TTTTT"
+    val target = "AAAAATTTTTGGGGGTTTTT"
+    val results = Aligner(5, -4, -10, -5, mode=Glocal).align(query, target, 25).sortBy(- _.score)
+    results should have size 2
+    results.foreach { r =>
+      r.score shouldBe 25
+      r.cigar.toString() shouldBe "5="
+    }
+  }
+
   /** Timing test - change "ignore" to "it" to enable. */
   ignore should "perform lots of glocal alignments" in {
     val count = 25000

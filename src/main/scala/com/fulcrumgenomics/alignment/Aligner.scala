@@ -55,14 +55,14 @@ object Aligner {
   /** Creates a NW aligner with fixed match and mismatch scores. */
   def apply(matchScore: Int, mismatchScore: Int, gapOpen: Int, gapExtend: Int, mode: Mode = Global): Aligner = {
     val scorer = new AlignmentScorer {
-      private val m = matchScore
-      private val mm = mismatchScore
-      private val open = gapOpen
-      private val extend = gapExtend
+      private val matching      = matchScore
+      private val mismatch      = mismatchScore
+      private val open          = gapOpen
+      private val extend        = gapExtend
       private val openAndExtend = open + extend
 
       override final def scorePairing(queryBase: Byte, targetBase: Byte): Int = {
-        if (queryBase == targetBase) this.m else this.mm
+        if (queryBase == targetBase) this.matching else this.mismatch
       }
       override final def scoreGap(query: Array[Byte], target: Array[Byte], qOffset: Int, tOffset: Int, inQuery: Boolean, extend: Boolean): Int = {
         if (extend) this.extend else this.openAndExtend
@@ -101,7 +101,7 @@ object Aligner {
   }
 
   /** Represents a cell within the set of matrices used for alignment. */
-  case class MatrixLocation(queryIndex: Int, targetIndex: Int, direction: Direction)
+  private case class MatrixLocation(queryIndex: Int, targetIndex: Int, direction: Direction)
 
   /** A trait that specifies how the aligner will ask for scoring information. */
   trait AlignmentScorer {
@@ -119,7 +119,7 @@ object Aligner {
       *
       * The position of the gap-base being considered is provided as a single 0-based offset into each of the
       * query sequence array and target sequence array.  On the non-gapped side the offset represents the base
-      * at which the gap is being inserted opposite.  On the gapped side the offset represents the last base
+      * opposite the site of the gap insertion.  On the gapped side the offset represents the last base
       * before the gap opening.  For example, in the following alignment:
       *
       * qoffset: 01234567
@@ -134,7 +134,7 @@ object Aligner {
       * scoreGap(query, target, qOffset=5, tOffset=3, inQuery=false, extend=true)
       *
       * Offsets of -1, query.length and target.length may be passed to indicate that the gap is occurring
-      * before the start of one of the sequences, or after the end of the query or target sequence.
+      * before the start of one of the sequences, or after the end of the query or target sequence respectively.
       *
       * @param query: the query sequence as a byte array
       * @param target: the target sequence as a byte array
@@ -206,8 +206,8 @@ class Aligner(val scorer: AlignmentScorer,
     *   - Local will an alignment per location in the matrix with score >= minScore (this can produce
     *     many sub-alignments so be careful!).
     *
-    * @param query the query sequence as an array of bytes
-    * @param target the target sequence as an array of bytes
+    * @param query the query sequence
+    * @param target the target sequence
     * @param minScore the minimum alignment score of alignments to return
     * @return a sequence of 0 or more alignments
     */
@@ -258,7 +258,7 @@ class Aligner(val scorer: AlignmentScorer,
 
   /** Fills in the leftmost column of the matrices. */
   private final def fillLeftmostColumn(query: Array[Byte],
-                                       target: Array[Byte], // new
+                                       target: Array[Byte],
                                        leftScoreMatrix: Matrix[Int],
                                        leftTraceMatrix: Matrix[Direction],
                                        upScoreMatrix: Matrix[Int],
@@ -288,7 +288,7 @@ class Aligner(val scorer: AlignmentScorer,
   }
 
   /** Fills in the top row of the matrices. */
-  private final def fillTopRow(query: Array[Byte], // new
+  private final def fillTopRow(query: Array[Byte],
                                target: Array[Byte],
                                leftScoreMatrix: Matrix[Int],
                                leftTraceMatrix: Matrix[Direction],
