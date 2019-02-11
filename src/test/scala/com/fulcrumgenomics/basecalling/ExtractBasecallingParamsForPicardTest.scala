@@ -44,6 +44,11 @@ class ExtractBasecallingParamsForPicardTest extends UnitSpec with ErrorLogLevel 
     bam.toString shouldBe outputDir.resolve("sampleName.GATTACA.1.bam").toString
   }
 
+  "BasecallingParams.unmatchedBamFileFrom" should "create a path to an unmatched BAM" in {
+    val bam = BasecallingParams.unmatchedBamFileFrom(output = outputDir, lane = 1)
+    bam.toString shouldBe outputDir.resolve("unmatched.1.bam").toString
+  }
+
   it should "create a path to a BAM file without a library identifier" in {
     val bam = BasecallingParams.bamFileFrom(
       output = outputDir,

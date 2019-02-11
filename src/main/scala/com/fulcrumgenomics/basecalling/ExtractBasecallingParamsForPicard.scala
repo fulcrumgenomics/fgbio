@@ -179,8 +179,8 @@ object BasecallingParams {
 
   /** Produces the path to the BAM file for the given sample and lane.
     *
-    * The BAM file name will <sample-name>.<barcode-seq>.<lane>.bam.  The resulting file name will be sanitized to
-    * remove problematic characters.
+    * The BAM file name will be of the form <sample-name>.<barcode-seq>.<lane>.bam.  The resulting file name will be
+    * sanitized to remove problematic characters.
     *
     * @param output the base output directory.
     * @param sample the sample.
@@ -191,5 +191,19 @@ object BasecallingParams {
     require(0 < lane)
     val barcodeSeq = Seq(sample.i7IndexBases, sample.i5IndexBases).flatten.mkString
     output.resolve(PathUtil.sanitizeFileName(s"${sample.sampleName}.$barcodeSeq.$lane.bam"))
+  }
+
+  /** Produces the path to the unmatched BAM file for the given lane.
+    *
+    * The BAM file name will be of the form "unmatched.<lane>.bam".  The resulting file name will be sanitized to
+    * remove problematic characters.
+    *
+    * @param output the base output directory.
+    * @param lane the lane number.
+    * @return the path to the unmatched BAM file for the given lane.
+    */
+  def unmatchedBamFileFrom(output: DirPath, lane: Int): PathToBam = {
+    require(0 < lane)
+    output.resolve(PathUtil.sanitizeFileName(s"unmatched.$lane.bam"))
   }
 }
