@@ -53,7 +53,7 @@ trait SomaticVariantFilter {
   /** Calculate the set of annotations for the filter, and return them as a Map. */
   def annotations(pileup: Pileup[PileupEntry], gt: Genotype): Map[String,Any]
 
-  /** Given the set of annotations calculated by [[annotations()]] determine the set of filters
+  /** Given the set of annotations calculated by [[annotations]] determine the set of filters
     * to be applied to the VCF record.
     */
   def filters(annotations: Map[String, Any]): Traversable[String]

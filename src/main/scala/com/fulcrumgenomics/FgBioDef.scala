@@ -34,7 +34,7 @@ import enumeratum.{Enum, EnumEntry}
   */
 object FgBioDef extends CommonsDef {
   /** Extends this trait in your enumeration object to enable the case objects to be created on the command line.
-    * You should implement the [[Enum#values]] method in your object, for example:
+    * You should implement the [[enumeratum.Enum#values]] method in your object, for example:
     * `def values: IndexedSeq[T] = findValues`.
     * */
   trait FgBioEnum[T<:EnumEntry] extends Enum[T] {

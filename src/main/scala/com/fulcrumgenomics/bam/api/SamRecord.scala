@@ -24,7 +24,6 @@
 
 package com.fulcrumgenomics.bam.api
 
-import java.util
 
 import com.fulcrumgenomics.FgBioDef._
 import com.fulcrumgenomics.alignment.Cigar

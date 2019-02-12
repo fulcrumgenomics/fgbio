@@ -174,7 +174,8 @@ class SamRecordClipper(val mode: ClippingMode, val autoClipAttributes: Boolean) 
 
   /**
     * Attempts to clip an additional numberOfBasesToClip from the 5' end of the read. For
-    * details see [[clipStartOfAlignment()]] and [[clipEndOfAlignment()]].
+    * details see [[com.fulcrumgenomics.bam.SamRecordClipper.clipStartOfAlignment]] and
+    * [[com.fulcrumgenomics.bam.SamRecordClipper.clipEndOfAlignment]].
     *
     * @param rec the record to be clipped
     * @param numberOfBasesToClip the number of additional bases to be clipped
@@ -187,7 +188,8 @@ class SamRecordClipper(val mode: ClippingMode, val autoClipAttributes: Boolean) 
 
   /**
     * Attempts to clip an additional numberOfBasesToClip from the 5' end of the read. For
-    * details see [[clipStartOfAlignment()]] and [[clipEndOfAlignment()]].
+    * details see [[com.fulcrumgenomics.bam.SamRecordClipper.clipStartOfAlignment]] and
+    * [[com.fulcrumgenomics.bam.SamRecordClipper.clipEndOfAlignment]].
     *
     * @param rec the record to be clipped
     * @param numberOfBasesToClip the number of additional bases to be clipped
@@ -201,7 +203,7 @@ class SamRecordClipper(val mode: ClippingMode, val autoClipAttributes: Boolean) 
   /**
     * Ensures that there are at least clipLength bases clipped at the start (left-hand end)
     * of the read, _including_ any existing soft and hard clipping.  Calculates any
-    * additional clipping and delegates to [[clipStartOfAlignment()]].
+    * additional clipping and delegates to [[com.fulcrumgenomics.bam.SamRecordClipper.clipStartOfAlignment]].
     *
     * @param rec the record to be clipped
     * @param clipLength the total amount of clipping desired, including any existing clipping
@@ -216,7 +218,7 @@ class SamRecordClipper(val mode: ClippingMode, val autoClipAttributes: Boolean) 
   /**
     * Ensures that there are at least clipLength bases clipped at the end (right-hand end)
     * of the read, _including_ any existing soft and hard clipping.  Calculates any
-    * additional clipping and delegates to [[clipStartOfAlignment()]].
+    * additional clipping and delegates to [[com.fulcrumgenomics.bam.SamRecordClipper.clipStartOfAlignment]].
     *
     * @param rec the record to be clipped
     * @param clipLength the total amount of clipping desired, including any existing clipping
@@ -231,7 +233,7 @@ class SamRecordClipper(val mode: ClippingMode, val autoClipAttributes: Boolean) 
   /**
     * Ensures that there are at least clipLength bases clipped at the 5' end
     * of the read, _including_ any existing soft and hard clipping.  Calculates any
-    * additional clipping and delegates to [[clipStartOfAlignment()]].
+    * additional clipping and delegates to [com.fulcrumgenomics.bam.SamRecordClipper.[clipStartOfAlignment]].
     *
     * @param rec the record to be clipped
     * @param numberOfBasesToClip the number of additional bases to be clipped
@@ -245,7 +247,7 @@ class SamRecordClipper(val mode: ClippingMode, val autoClipAttributes: Boolean) 
   /**
     * Ensures that there are at least clipLength bases clipped at the 3' end
     * of the read, _including_ any existing soft and hard clipping.  Calculates any
-    * additional clipping and delegates to [[clipStartOfAlignment()]].
+    * additional clipping and delegates to [[com.fulcrumgenomics.bam.SamRecordClipper.clipStartOfAlignment]].
     *
     * @param rec the record to be clipped
     * @param numberOfBasesToClip the number of additional bases to be clipped
@@ -263,7 +265,8 @@ class SamRecordClipper(val mode: ClippingMode, val autoClipAttributes: Boolean) 
     * 3. From [[ClippingMode.SoftWithMask]] to [[ClippingMode.Hard]]
     * In all other cases, clipping remains the same.
     *
-    * Calculates any clipping required and delegates to [[clipStartOfRead()]] and [[clipEndOfRead()]].
+    * Calculates any clipping required and delegates to [[com.fulcrumgenomics.bam.SamRecordClipper.clipStartOfRead]] and
+    * [[com.fulcrumgenomics.bam.SamRecordClipper.clipEndOfRead]].
     * @param rec the record to be clipped
     * @return the number of bases converted at the start and end of the read respectively.  For [[ClippingMode.SoftWithMask]],
     *         any existing masked bases that would be converted will be counted.

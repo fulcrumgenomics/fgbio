@@ -152,7 +152,7 @@ object UmiConsensusCaller {
   * mapping incoming SamRecords into consensus SamRecords.
   *
   * @tparam C Internally, the type of lightweight consensus read that is used prior to
-  *           rebuilding [[SamRecord]]s.
+  *           rebuilding [[com.fulcrumgenomics.bam.api.SamRecord]]s.
   */
 trait UmiConsensusCaller[C <: SimpleRead] {
   import com.fulcrumgenomics.umi.UmiConsensusCaller.ReadType._
@@ -310,7 +310,7 @@ trait UmiConsensusCaller[C <: SimpleRead] {
     * to allow for differential read length (either due to sequencing or untracked hard-clipping
     * of adapters) and for differential soft-clipping at the starts and ends of reads.
     *
-    * NOTE: filtered out reads are sent to the [[rejectRecords()]] method and do not need further handling
+    * NOTE: filtered out reads are sent to the [[rejectRecords]] method and do not need further handling
     */
   protected[umi] def filterToMostCommonAlignment(recs: Seq[SourceRead]): Seq[SourceRead] = {
     val groups = new ArrayBuffer[mutable.Buffer[SourceRead]]

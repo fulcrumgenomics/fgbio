@@ -157,7 +157,7 @@ object Bams extends LazyLogging {
   /** Auxillary tags that should be cleared or re-calculated when unmapping or changing the alignment of a SamRecord. */
   val AlignmentTags: Seq[String] = Seq("MD", "NM", "UQ")
 
-  /** Generates a [[Sorter]] for doing disk-backed sorting of objects. */
+  /** Generates a [[com.fulcrumgenomics.util.Sorter]] for doing disk-backed sorting of objects. */
   def sorter(order: SamOrder,
              header: SAMFileHeader,
              maxRecordsInRam: Int = MaxInMemory,

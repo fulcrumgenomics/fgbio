@@ -30,15 +30,15 @@ package com.fulcrumgenomics.umi
   *
   * Currently only contains tags for single-strand consensus reads, but with a view to using the following
   * names for consistency if/when we add duplex calling:
-  *     Value                 AB  BA  Final
-  *     ===================== ==  ==  =====
-  *     per-read-depth        aD  bD  cD
-  *     per-read-min-depth    aM  bM  cM
-  *     per-read-error-rate   aE  bE  cE
-  *     per-base-depth        ad  bd  cd
-  *     per-base-error-count  ae  be  ce
-  *     per-base-bases        ac  bc  bases
-  *     per-base-quals        aq  bq  quals
+  *   Value                 AB  BA  Final
+  *   --------------------- --  --  -----
+  *   per-read-depth        aD  bD  cD
+  *   per-read-min-depth    aM  bM  cM
+  *   per-read-error-rate   aE  bE  cE
+  *   per-base-depth        ad  bd  cd
+  *   per-base-error-count  ae  be  ce
+  *   per-base-bases        ac  bc  bases
+  *   per-base-quals        aq  bq  quals
   * The second letter in the tag is lower case if it is per-base, upper case if it is per-read.
   */
 object ConsensusTags {

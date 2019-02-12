@@ -43,7 +43,7 @@ import scala.util.Failure
 
 /**
   * Companion object for CollectDuplexSeqMetrics that contains various constants and types,
-  * including all the various [[Metric]] sub-types produced by the program.
+  * including all the various [[com.fulcrumgenomics.util.Metric]] sub-types produced by the program.
   */
 object CollectDuplexSeqMetrics {
   // File extensions for all the files produced

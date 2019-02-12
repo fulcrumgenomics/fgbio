@@ -31,7 +31,7 @@ import com.fulcrumgenomics.util.Metric
 
 import scala.tools.nsc.doc.base.comment._
 import scala.tools.nsc.doc.html.Doclet
-import scala.tools.nsc.doc.model.{DocTemplateEntity}
+import scala.tools.nsc.doc.model.DocTemplateEntity
 
 /** Case class to capture information about a field/column in a metrics class/file. */
 case class ColumnDescription(name: String, typ: String, description: String)
@@ -42,7 +42,7 @@ case class MetricDescription(name: String, description: String, columns: Seq[Col
 }
 
 /**
-  * Custom scaladoc Doclet for rendering the documentation for [[Metric]] classes into
+  * Custom scaladoc Doclet for rendering the documentation for [[com.fulcrumgenomics.util.Metric]] classes into
   * MarkDown for display on the fgbio website.
   */
 class FgMetricsDoclet extends Doclet {

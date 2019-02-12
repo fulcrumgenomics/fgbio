@@ -49,9 +49,9 @@ object FishersExactTest {
     * @param fail1 The number of failures in the test condition
     * @param succ2 The number of successes under the null hypothesis
     * @param fail2 The number of failures under the null hypothesis
-    * @param alternative either [[TwoSided]] to test for any difference in proportion,
-    *                           [[Less]] to test if the test condition had a lower proportion of successes than the null, or
-    *                           [[Greater]] to test if the test condition had a higher proportion of successes than the null
+    * @param alternative either `TwoSided` to test for any difference in proportion,
+    *                           `Less` to test if the test condition had a lower proportion of successes than the null, or
+    *                           `Greater` to test if the test condition had a higher proportion of successes than the null
     */
   def pValue(succ1: Int, fail1: Int, succ2: Int, fail2: Int, alternative: Alternative): Double = {
     val m = succ1 + fail1

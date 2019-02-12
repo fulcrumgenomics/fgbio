@@ -43,10 +43,10 @@ object Metric {
   val Delimiter: Char = '\t'
   val DelimiterAsString: String = s"$Delimiter"
 
-  /** A typedef for [[Long]] to be used when representing counts. */
+  /** A typedef for [[scala.Long]] to be used when representing counts. */
   type Count = Long
 
-  /** A typedef for [[Double]] to be used when representing values between 0 and 1. */
+  /** A typedef for [[scala.Double]] to be used when representing values between 0 and 1. */
   type Proportion = Double
 
   /** A format object for Doubles that outputs with limited precision. Should be synchronized over. */

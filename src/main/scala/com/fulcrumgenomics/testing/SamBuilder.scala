@@ -47,7 +47,7 @@ object SamBuilder {
   object Minus extends Strand { val isNegative = true }
 }
 
-/** Class to create sets of [[SamRecord]]s for testing. */
+/** Class to create sets of [[com.fulcrumgenomics.bam.api.SamRecord]]s for testing. */
 class SamBuilder(val readLength: Int=100,
                  val baseQuality: Int=30,
                  val sort: Option[SamOrder] = None,

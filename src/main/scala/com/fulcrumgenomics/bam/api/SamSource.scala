@@ -82,7 +82,7 @@ class SamSource private(private val reader: SamReader) extends IterableView[SamR
   /** The [[htsjdk.samtools.SAMFileHeader]] associated with the source. */
   override val header: SAMFileHeader = reader.getFileHeader
 
-  /** Required method for [[IterableView]]. */
+  /** Required method for [[scala.collection.IterableView]]. */
   override protected def underlying: SamSource = this
 
   /** True if an index exists and query() calls can be made, false otherwise. */

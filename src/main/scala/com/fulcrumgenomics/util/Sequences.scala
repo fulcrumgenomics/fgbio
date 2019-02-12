@@ -102,7 +102,7 @@ object Sequences {
   }
 
   /** Class to store the zero-based offset and length of match for various properties of a sequence.  For example, see
-    * [[longestHomopolymer()]] and [[longestDinuc()]]. */
+    * [[longestHomopolymer]] and [[longestDinuc]]. */
   case class OffsetAndLength(offset: Int, length: Int)
 
   /**

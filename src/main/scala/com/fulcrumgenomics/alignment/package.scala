@@ -25,9 +25,9 @@
 package com.fulcrumgenomics
 
 package object alignment {
-  @deprecated(since="0.5.2", message="Use Aligner instead.")
+  @deprecated(message="Use Aligner instead.", since="0.5.2")
   type NeedlemanWunschAligner = Aligner
 
-  @deprecated(since="0.5.2", message="Use Aligner instead.")
+  @deprecated(message="Use Aligner instead.", since="0.5.2")
   val NeedlemanWunschAligner: Aligner.type = Aligner
 }

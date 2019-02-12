@@ -7,3 +7,5 @@ addSbtPlugin("org.scoverage"     % "sbt-scoverage" % "1.5.1")
 addSbtPlugin("org.xerial.sbt"    % "sbt-sonatype"  % "2.2")
 addSbtPlugin("com.jsuereth"      % "sbt-pgp"       % "1.1.0")
 addSbtPlugin("net.virtual-void"  % "sbt-dependency-graph" % "0.9.0")
+addSbtPlugin("com.thoughtworks.sbt-api-mappings" % "sbt-api-mappings" % "2.0.0")
+

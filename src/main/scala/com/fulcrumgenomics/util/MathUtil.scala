@@ -63,7 +63,7 @@ object MathUtil {
     * @param requireUniqueMinimum When false the earliest index at which the minimum value occurs is
     *                             reported. When true, if there are multiple indices with the minimum
     *                             value then -1 will be returned for the index.
-    * @throws NoSuchElementException if either the input array is zero length or the array
+    * @throws java.util.NoSuchElementException if either the input array is zero length or the array
     *                                contains only invalid values (NaN and possibly NegativeInfinity)
     */
   def minWithIndex(ds: Array[Double], allowNegativeInfinity: Boolean=false, requireUniqueMinimum: Boolean=false): (Double,Int) = {
@@ -104,7 +104,7 @@ object MathUtil {
     * @param requireUniqueMaximum When false the earliest index at which the maximum value occurs is
     *                             reported. When true, if there are multiple indices with the maximum
     *                             value then -1 will be returned for the index.
-    * @throws NoSuchElementException if either the input array is zero length or the array
+    * @throws java.util.NoSuchElementException if either the input array is zero length or the array
     *                                contains only invalid values (NaN)
     */
   def maxWithIndex(ds: Array[Double], requireUniqueMaximum: Boolean=false): (Double,Int) = {

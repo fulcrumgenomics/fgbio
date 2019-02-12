@@ -37,12 +37,12 @@ import scala.math.{BigDecimal, BigInt}
   *
   * One implementation choice to be aware of when using this implementation is that each instance of the
   * class will calculate and cache factorials up to factorial(n) where n is the highest value of n
-  * supplied to any call to [[probability()]] or [[cumulativeProbability()]].  Thus to ensure reasonable
+  * supplied to any call to [[probability]] or [[cumulativeProbability]].  Thus to ensure reasonable
   * performance it is recommended to create one instance of this class and reuse it for as many
   * calculations as is practical.
   *
   * @param mc the MathContext to use for controlling precision and rounding. Changing from the default
-  *           [[MathContext.UNLIMITED]] can lead to a loss of precision.
+  *           [[java.math.MathContext.UNLIMITED]] can lead to a loss of precision.
   */
 class BinomialDistribution(val mc: MathContext = MathContext.UNLIMITED) {
   // This array will get expanded with more factorials any time a higher n is queried

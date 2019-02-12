@@ -41,8 +41,8 @@ import scala.collection.mutable.ArrayBuffer
   */
 object Sorter {
   /**
-    * A specialized tuple that contains a key object that is [[Comparable]] and a serialized version
-    * of the object being sorted in an [[Array]].  The entry itself is comparable but simply
+    * A specialized tuple that contains a key object that is [[java.lang.Comparable]] and a serialized version
+    * of the object being sorted in an [[scala.Array]].  The entry itself is comparable but simply
     * delegates comparison to the key object.
     *
     * @param key a comparable key that contains necessary information from the object being sorted
@@ -71,7 +71,7 @@ object Sorter {
   * An implementation of a disk-backed sorting system.  The implementation requires two things:
   *
   * 1. An implementation of Codec that can serialize and deserialize objects
-  * 2. A function that creates a [[Ordered]] key object for each object being sorted
+  * 2. A function that creates a [[scala.Ordered]] key object for each object being sorted
   *
   * Both must be thread-safe as they may be invoked across threads without external synchronization
   */

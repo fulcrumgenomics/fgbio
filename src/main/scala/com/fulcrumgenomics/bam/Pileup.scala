@@ -75,7 +75,7 @@ sealed trait PileupEntry {
   val rec: SamRecord
 
   /**
-    * The zero-based offset within the [[SamRecord]] that is represented.
+    * The zero-based offset within the [[com.fulcrumgenomics.bam.api.SamRecord]] that is represented.
     * For matches and mismatches this is the offset of the base in question.
     * For deletions it is the base prior to the deleted sequence.
     * For insertions it is the first inserted base in the read.

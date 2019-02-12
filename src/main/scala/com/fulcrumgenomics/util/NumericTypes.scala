@@ -118,7 +118,7 @@ object NumericTypes {
     /**
       * Exponentiates a [[LogProbability]] and limits the return to the range 0-1 to gracefully handle probabilities
       * with minor numerical imprecisions. If the LogProbability does not represent a probability between 0 and 1
-      * [[Math.exp]] should be used instead.
+      * [[java.lang.Math#exp]] should be used instead.
       */
     def expProb(p: LogProbability): Double = {
       if (p.isNegInfinity) 0
