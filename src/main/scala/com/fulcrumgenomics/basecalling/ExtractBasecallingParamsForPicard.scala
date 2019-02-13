@@ -201,7 +201,7 @@ object BasecallingParams {
 
   /** Produces the path to the unmatched BAM file for the given lane.
     *
-    * The BAM file name will be of the form "unmatched.<lane>.bam".  The resulting file name will be sanitized to
+    * The BAM file name will be of the form "<UnmatchedName>.<lane>.bam".  The resulting file name will be sanitized to
     * remove problematic characters.
     *
     * @param output the base output directory.
