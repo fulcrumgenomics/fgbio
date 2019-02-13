@@ -79,6 +79,12 @@ case class BasecallingParams(lane: Int, barcodeFile: FilePath, libraryParamsFile
 /** Contains methods useful for extractin basecalling paramter information. */
 object BasecallingParams {
 
+  /** The sample index reserved for the unmatched BAM file. */
+  val UnmatchedIndex: String = "N"
+
+  /** The name of the BAM file which contains unmatched reads only. */
+  val UnmatchedName: String = "unmatched"
+
   /** Extracts sample and library information from an sample sheet for a given lane.  The resulting files are used
     * to run Picard's ExtractIlluminaBarcodes, CollectIlluminaBasecallingMetrics, and IlluminaBasecallsToSam. See
     * [[ExtractBasecallingParamsForPicard]] for more information.
@@ -145,9 +151,9 @@ object BasecallingParams {
     require(bams.toSet.size == bams.size, "BAM file names collide: ." + bams.groupBy(_.toString).filter(_._2.length > 1).keys.mkString(", "))
 
     // Add the unmatched (only for library params!)
-    val description = if (includeDescription) Seq("unmatched") else Seq.empty
-    val barcodes    = if (dualIndexed) Seq("N", "N") else Seq("N")
-    libraryParamLines += (barcodes ++ Seq(bamOutput.getOrElse(output).resolve(s"unmatched.$lane.bam"), "unmatched", "unmatched") ++ description).mkString("\t")
+    val description = if (includeDescription) Seq(UnmatchedName) else Seq.empty
+    val barcodes    = if (dualIndexed) Seq(UnmatchedIndex, UnmatchedIndex) else Seq(UnmatchedIndex)
+    libraryParamLines += (barcodes ++ Seq(unmatchedBamFileFrom(bamOutput.getOrElse(output), lane), UnmatchedName, UnmatchedName) ++ description).mkString("\t")
 
     // Output
     Io.writeLines(path=barcodeFile, lines=barcodeLines)
@@ -204,6 +210,6 @@ object BasecallingParams {
     */
   def unmatchedBamFileFrom(output: DirPath, lane: Int): PathToBam = {
     require(0 < lane)
-    output.resolve(PathUtil.sanitizeFileName(s"unmatched.$lane.bam"))
+    output.resolve(PathUtil.sanitizeFileName(s"$UnmatchedName.$lane.bam"))
   }
 }
