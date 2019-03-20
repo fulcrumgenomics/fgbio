@@ -54,7 +54,7 @@ object Mode extends FgBioEnum[Mode] {
 object Aligner {
   /** Creates a NW aligner with fixed match and mismatch scores. */
   def apply(matchScore: Int, mismatchScore: Int, gapOpen: Int, gapExtend: Int, mode: Mode = Global): Aligner = {
-    val scorer = new AlignmentScorer {
+    val scorer: AlignmentScorer = new AlignmentScorer {
       private val matching      = matchScore
       private val mismatch      = mismatchScore
       private val open          = gapOpen
@@ -226,7 +226,7 @@ class Aligner(val scorer: AlignmentScorer,
     *   - Target sequence is along the top (each column represents a target base)
     *   - i is iterating over rows/query bases
     *   - j is iterating over columns/target bases
-    *   - Up   == Consumes query base  but not target base, i.e. Insertion vs. the target
+    *   - Up   == Consumes query base but not target base, i.e. Insertion vs. the target
     *   - Left == Consumes target base but not query base, i.e. Deletion vs. the target
     *
     * @param query the query sequence
@@ -415,7 +415,7 @@ class Aligner(val scorer: AlignmentScorer,
     var currOperator: CigarOperator = null
     var currLength: Direction = 0
     val elems = new mutable.ArrayBuffer[CigarElem]()
-    var MatrixLocation(curI, curJ ,curD) = location
+    var MatrixLocation(curI, curJ, curD) = location
 
     // The score is always the score from the starting cell
     val score = matrices(curD).scoring(curI, curJ)
@@ -426,16 +426,16 @@ class Aligner(val scorer: AlignmentScorer,
 
     while (nextD != Done) {
       val op    = (curD: @switch) match {
+        case Diagonal =>
+          curI -= 1
+          curJ -= 1
+          if (isMatch(query(curI), target(curJ))) this.matchOp else this.mismatchOp
         case Up       =>
           curI -= 1
           CigarOperator.INSERTION
         case Left     =>
           curJ -= 1
           CigarOperator.DELETION
-        case Diagonal =>
-          curI -= 1
-          curJ -= 1
-          if (isMatch(query(curI), target(curJ))) this.matchOp else this.mismatchOp
       }
       curD = nextD
 
@@ -459,8 +459,6 @@ class Aligner(val scorer: AlignmentScorer,
     * Finds the matrix location of the single best alignment from which to backtrack and generate the alignment.
     * When there are multiple equally best alignments the choice of which one to return is arbitrary.
     *
-    * @param query the query sequence
-    * @param target the target sequence
     * @param matrices the alignment matrices to search
     */
   private def findBest(matrices: Array[AlignmentMatrix]): MatrixLocation = {

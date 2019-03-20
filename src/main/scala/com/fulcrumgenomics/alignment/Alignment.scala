@@ -95,7 +95,7 @@ object Cigar {
   * @param elems the ordered sequence of elements in the Cigar
   */
 case class Cigar(elems: IndexedSeq[CigarElem]) extends Iterable[CigarElem] {
-  // Cache whether or not the Cigar is coalesced alrady (i.e. has no pair of adjacent elements with the same operator)
+  // Cache whether or not the Cigar is coalesced already (i.e. has no pair of adjacent elements with the same operator)
   private val isCoalesced: Boolean = {
     var itIs = true
     var index = 0
