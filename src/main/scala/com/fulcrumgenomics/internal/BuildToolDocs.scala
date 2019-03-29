@@ -43,7 +43,7 @@ class BuildToolDocs
     val classes = Sopt.find[FgBioTool](packages=packages)
     logger.info(s"Found ${classes.size} tools to document.")
     
-    val toolsByGroup = classes.map(c => Sopt.inspect(c)).groupBy(_.group.name)
+    val toolsByGroup = classes.map(c => Sopt.inspect(c)).filter(_.group.name != "Personal").groupBy(_.group.name)
     
     val indexHeader =
       s"""

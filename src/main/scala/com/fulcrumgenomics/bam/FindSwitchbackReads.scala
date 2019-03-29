@@ -231,7 +231,7 @@ object FindSwitchbackReads {
   }
 }
 
-@clp(group=ClpGroups.Personal, description=
+@clp(group=ClpGroups.SamOrBam, description=
   """
     |Finds reads where a template switch occurred during library construction.  Some library construction methods,
     |notably ultra-low-input shotgun methods, are prone to template switching events that create molecules
