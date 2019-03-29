@@ -52,7 +52,7 @@ class SortFastqTest extends UnitSpec {
       FastqRecord("q6", "AAA", "###"),
       FastqRecord("q2", "AAA", "###"),
       FastqRecord("q1", "AAA", "###"),
-      FastqRecord("q4", "AAA", "###"),
+      FastqRecord("q4", "AAA", "###")
     ))
 
     sorted.map(_.name) should contain theSameElementsInOrderAs Seq("q1", "q2", "q3", "q4", "q5", "q6")
@@ -63,14 +63,14 @@ class SortFastqTest extends UnitSpec {
       FastqRecord("q1", "AAA", "###", readNumber=Some(2)),
       FastqRecord("q2", "AAA", "###", readNumber=Some(2)),
       FastqRecord("q2", "AAA", "###", readNumber=Some(1)),
-      FastqRecord("q1", "AAA", "###", readNumber=Some(1)),
+      FastqRecord("q1", "AAA", "###", readNumber=Some(1))
     ))
 
     sorted shouldBe Seq(
       FastqRecord("q1", "AAA", "###", readNumber=Some(1)),
       FastqRecord("q1", "AAA", "###", readNumber=Some(2)),
       FastqRecord("q2", "AAA", "###", readNumber=Some(1)),
-      FastqRecord("q2", "AAA", "###", readNumber=Some(2)),
+      FastqRecord("q2", "AAA", "###", readNumber=Some(2))
     )
   }
 }
