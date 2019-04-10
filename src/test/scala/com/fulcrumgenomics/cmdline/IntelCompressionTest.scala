@@ -36,8 +36,8 @@ import htsjdk.samtools.BAMRecordCodec
 import htsjdk.samtools.util.zip.InflaterFactory
 
 
-class IntelTests extends UnitSpec {
-  private val intelSupported = FgBioCommonArgs.intelSupported
+class IntelCompressionTest extends UnitSpec {
+  private val intelSupported = SystemUtils.IntelCompressionLibrarySupported
   private val testBam        = Paths.get("src/test/resources/com/fulcrumgenomics/bam/estimate_pooling_fractions/HG01583.bam")
   private val levels         = Seq(2, 5, 9)
 
