@@ -24,13 +24,8 @@
 
 package com.fulcrumgenomics.cmdline
 
-import java.io.{ByteArrayOutputStream, PrintStream}
-
-import com.fulcrumgenomics.testing.UnitSpec
-import com.fulcrumgenomics.commons.util.Logger
 import com.fulcrumgenomics.sopt.{arg, clp}
-import com.intel.gkl.compression.{IntelDeflater, IntelInflater}
-import org.apache.commons.lang3.SystemUtils
+import com.fulcrumgenomics.testing.UnitSpec
 
 /* Tis a silly CLP. */
 @clp(group=ClpGroups.Utilities, description="A test class")
@@ -65,31 +60,5 @@ class ClpTests extends UnitSpec {
 
   it should "fail and print usage" in {
     new FgBioMain().makeItSo("SomeProgram --with-args=that-dont-exist".split(' ')) should not be 0
-  }
-
-  it should "load the intel inflater if available" in {
-    checkIntelSupported("IntelInflater")
-    withClue("Intel shared library was not loaded. This could be due to a configuration error, or your system might not support it.") {
-      new IntelInflater().load(null) shouldBe true
-    }
-  }
-
-  it should "load the intel deflater if available" in {
-    checkIntelSupported("IntelDeflater")
-    withClue("Intel shared library was not loaded. This could be due to a configuration error, or your system might not support it.") {
-      new IntelDeflater().load(null) shouldBe true
-    }
-  }
-
-  it should "run the intel inflater faster than the JDK inflater" in {
-
-    // TODO: create a lot of BAMs, then test
-
-
-  }
-
-  private def checkIntelSupported(componentName: String): Unit = {
-    if (!SystemUtils.IS_OS_LINUX && !SystemUtils.IS_OS_MAC) cancel(componentName + " is not available on this platform")
-    if (SystemUtils.OS_ARCH != null && SystemUtils.OS_ARCH == "ppc64le") cancel(componentName + " is not available for this architecture")
   }
 }

@@ -30,13 +30,15 @@ import java.text.DecimalFormat
 
 import com.fulcrumgenomics.bam.api.{SamSource, SamWriter}
 import com.fulcrumgenomics.cmdline.FgBioMain.FailureException
+import com.fulcrumgenomics.commons.CommonsDef._
 import com.fulcrumgenomics.commons.util.{LazyLogging, LogLevel, Logger}
 import com.fulcrumgenomics.sopt.{Sopt, arg}
 import com.fulcrumgenomics.sopt.cmdline.{CommandLineParser, CommandLineProgramParserStrings}
 import com.fulcrumgenomics.util.Io
-import htsjdk.samtools.util.{BlockCompressedOutputStream, BlockGunzipper, IOUtil, SnappyLoader}
-import com.fulcrumgenomics.commons.CommonsDef._
 import com.intel.gkl.compression.{IntelDeflaterFactory, IntelInflaterFactory}
+import htsjdk.samtools.util.{BlockCompressedOutputStream, BlockGunzipper, IOUtil, SnappyLoader}
+import org.apache.commons.lang3.SystemUtils
+
 
 /**
   * Main program for fgbio that loads everything up and runs the appropriate sub-command
@@ -52,13 +54,19 @@ object FgBioMain {
   case class FailureException private[cmdline] (exit:Int = 1, message:Option[String] = None) extends RuntimeException
 }
 
+object FgBioCommonArgs {
+  val intelSupported: Boolean = {
+    if (!SystemUtils.IS_OS_LINUX && !SystemUtils.IS_OS_MAC) false
+    else if (SystemUtils.OS_ARCH != null && SystemUtils.OS_ARCH == "ppc64le") false
+    else true
+  }
+}
+
 class FgBioCommonArgs
 ( @arg(doc="Use asynchronous I/O where possible, e.g. for SAM and BAM files.") val asyncIo: Boolean = false,
   @arg(doc="Default GZIP compression level, BAM compression level.")           val compression: Int = 5,
   @arg(doc="Directory to use for temporary files.")                            val tmpDir: DirPath  = Paths.get(System.getProperty("java.io.tmpdir")),
-  @arg(doc="Minimum severity log-level to emit.")                              val logLevel: LogLevel = LogLevel.Info,
-  @arg(doc="Use the JDK Deflater instead of the Intel Deflater for writing compressed output.") val jdkDeflater: Boolean = false,
-  @arg(doc="Use the JDK Inflater instead of the Intel Inflater for reading compressed input.") val jdkInflater: Boolean = false,
+  @arg(doc="Minimum severity log-level to emit.")                              val logLevel: LogLevel = LogLevel.Info
 ) {
 
   SamSource.DefaultUseAsyncIo = asyncIo
@@ -74,8 +82,10 @@ class FgBioCommonArgs
 
   Logger.level = this.logLevel
 
-  if (!this.jdkDeflater) BlockCompressedOutputStream.setDefaultDeflaterFactory(new IntelDeflaterFactory)
-  if (!this.jdkInflater) BlockGunzipper.setDefaultInflaterFactory(new IntelInflaterFactory)
+  if (FgBioCommonArgs.intelSupported) {
+    BlockCompressedOutputStream.setDefaultDeflaterFactory(new IntelDeflaterFactory)
+    BlockGunzipper.setDefaultInflaterFactory(new IntelInflaterFactory)
+  }
 }
 
 class FgBioMain extends LazyLogging {
@@ -88,7 +98,6 @@ class FgBioMain extends LazyLogging {
     htsjdk.samtools.util.Log.setGlobalLogLevel(htsjdk.samtools.util.Log.LogLevel.WARNING)
 
     val startTime = System.currentTimeMillis()
-    val parser    = new CommandLineParser[FgBioTool](name)
     val exit      = Sopt.parseCommandAndSubCommand[FgBioCommonArgs,FgBioTool](name, args, Sopt.find[FgBioTool](packageList)) match {
       case Sopt.Failure(usage) =>
         System.err.print(usage())
@@ -131,8 +140,8 @@ class FgBioMain extends LazyLogging {
     val user       = System.getProperty("user.name")
     val jreVersion = System.getProperty("java.runtime.version")
     val snappy     = if (new SnappyLoader().isSnappyAvailable) "with snappy" else "without snappy"
-    val inflater   = if (commonArgs.jdkInflater) "JdkInflater" else "IntelInflater"
-    val deflater   = if (commonArgs.jdkInflater) "JdkDeflater" else "IntelDeflater"
+    val inflater   = if (FgBioCommonArgs.intelSupported) "JdkInflater" else "IntelInflater"
+    val deflater   = if (FgBioCommonArgs.intelSupported) "JdkDeflater" else "IntelDeflater"
     logger.info(s"Executing $tool from $name version $version as $user@$host on JRE $jreVersion $snappy, $inflater, and $deflater")
   }
 
