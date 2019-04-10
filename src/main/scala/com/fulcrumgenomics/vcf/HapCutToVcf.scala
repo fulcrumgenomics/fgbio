@@ -608,8 +608,14 @@ private object HapCutCall {
     **/
   def toHapCutCall(callLine: String, block: BlockInfo, firstVariantPosition: Option[Int], hapCutType: HapCutType): HapCutCall = {
     val tokens = callLine.split('\t')
-    if (9 != tokens.length && 11 != tokens.length) {
-      throw new IllegalStateException(s"Did not parse 9 or 12 fields (parsed ${tokens.length}) in the HapCut/HapCut2 line: " + callLine.trim)
+    val info = hapCutType match {
+      case HapCut1 =>
+        require(9 == tokens.length, s"Did not parse 9 fields (parsed ${tokens.length}) in the HapCut line: " + callLine.trim)
+        tokens(8)
+      case HapCut2 =>
+        require(11 <= tokens.length, s"Did not parse at least 11 fields (parsed ${tokens.length}) in the HapCut2 line: " + callLine.trim)
+        tokens.drop(8).mkString("\t")
+      case _       => unreachable("Unknown HapCut type in toHapCutCall.")
     }
     val offset = tokens(0).toInt
     val pos    = tokens(4).toInt
@@ -627,7 +633,7 @@ private object HapCutCall {
       ref          = ref,
       alts         = tokens(6),
       genotype     = tokens(7),
-      info         = GenotypeInfo(tokens.drop(8).mkString("\t"), hapCutType=hapCutType, missingAlleles=(hap1Allele < 0 || hap2Allele < 0), thresholdPruning=thresholdPruning),
+      info         = GenotypeInfo(info, hapCutType=hapCutType, missingAlleles=(hap1Allele < 0 || hap2Allele < 0), thresholdPruning=thresholdPruning),
       phaseSet     = firstVariantPosition.getOrElse(pos)
     )
   }
