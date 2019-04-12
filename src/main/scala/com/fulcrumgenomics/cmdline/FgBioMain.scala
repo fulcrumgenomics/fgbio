@@ -24,6 +24,7 @@
 
 package com.fulcrumgenomics.cmdline
 
+import java.io.IOException
 import java.net.InetAddress
 import java.nio.file.Paths
 import java.text.DecimalFormat
@@ -146,6 +147,10 @@ class FgBioMain extends LazyLogging {
             logger.fatal(banner)
             printEndingLines(startTime, name, false)
             ex.exit
+          case ex: IOException if Option(ex.getMessage).exists(_.toLowerCase.contains("broken pipe")) =>
+            printEndingLines(startTime, name, false)
+            System.err.println(ex)
+            1
           case ex: Throwable =>
             printEndingLines(startTime, name, false)
             throw ex
