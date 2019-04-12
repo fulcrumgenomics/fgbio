@@ -110,7 +110,7 @@ lazy val htsjdkExcludes = Seq(
 )
 lazy val gkExcludes = Seq(
   ExclusionRule(organization="commons-io", name="commons-io"),
-  ExclusionRule(organization="org.apache.logging.log4j", name="log4j-core")
+  //ExclusionRule(organization="org.apache.logging.log4j", name="log4j-core")
 )
 lazy val assemblySettings = Seq(
   test in assembly     := {},
