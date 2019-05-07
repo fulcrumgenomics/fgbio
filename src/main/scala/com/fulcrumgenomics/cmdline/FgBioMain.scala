@@ -36,6 +36,7 @@ import com.fulcrumgenomics.sopt.{Sopt, arg}
 import com.fulcrumgenomics.sopt.cmdline.CommandLineProgramParserStrings
 import com.fulcrumgenomics.util.Io
 import com.intel.gkl.compression.{IntelDeflaterFactory, IntelInflaterFactory}
+import htsjdk.samtools.{SAMFileWriterFactory, ValidationStringency}
 import htsjdk.samtools.util.{BlockCompressedOutputStream, BlockGunzipper, IOUtil, SnappyLoader}
 
 
@@ -90,7 +91,8 @@ class FgBioCommonArgs
 ( @arg(doc="Use asynchronous I/O where possible, e.g. for SAM and BAM files.") val asyncIo: Boolean = false,
   @arg(doc="Default GZIP compression level, BAM compression level.")           val compression: Int = 5,
   @arg(doc="Directory to use for temporary files.")                            val tmpDir: DirPath  = Paths.get(System.getProperty("java.io.tmpdir")),
-  @arg(doc="Minimum severity log-level to emit.")                              val logLevel: LogLevel = LogLevel.Info
+  @arg(doc="Minimum severity log-level to emit.")                              val logLevel: LogLevel = LogLevel.Info,
+  @arg(doc="Validation stringency for SAM/BAM reading.")                       val samValidationStringency: Option[ValidationStringency] = None
 ) {
 
   SamSource.DefaultUseAsyncIo = asyncIo
@@ -105,6 +107,8 @@ class FgBioCommonArgs
   System.setProperty("java.io.tmpdir", tmpDir.toAbsolutePath.toString)
 
   Logger.level = this.logLevel
+
+  samValidationStringency.foreach { stringency => SamSource.DefaultValidationStringency = stringency }
 }
 
 class FgBioMain extends LazyLogging {
