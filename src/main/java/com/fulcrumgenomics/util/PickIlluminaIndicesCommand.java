@@ -58,6 +58,7 @@ class PickIlluminaIndicesCommand {
     public boolean ALLOW_REVERSE_COMPLEMENTS;
     public boolean ALLOW_PALINDROMES;
     public int MAX_HOMOPOLYMER;
+    public int MAX_DIPOLYMER;
     public double MIN_GC;
     public double MAX_GC;
     public File OUTPUT;
@@ -241,7 +242,8 @@ class PickIlluminaIndicesCommand {
 
         // Remove any that violate the max homopolyer length and convert them into indices
         for (final byte[] kmer : kmers) {
-            if (lengthOfLongestHomopolymer(kmer) <= MAX_HOMOPOLYMER) {
+            if (lengthOfLongestHomopolymer(kmer) <= MAX_HOMOPOLYMER &&
+                lengthOfLongestDipolymer(kmer)   <= MAX_DIPOLYMER) {
                 indexes.add(new Index(kmer));
             }
         }
@@ -549,8 +551,30 @@ class PickIlluminaIndicesCommand {
         return -1;
     }
 
+    // Finds the longest dipolymer in a stretch of bases.  Not terribly efficient!
+    static int lengthOfLongestDipolymer(final byte[] bytes) {
+        int longest = 1;
+
+        for (int i=0; i<bytes.length; ++i) {
+            int length = 1;
+
+            for (int j=i+2; j<bytes.length; j+=2) {
+                if (bytes[i] == bytes[j] && bytes[i+1] == bytes[j+1]) {
+                    ++length;
+                }
+                else {
+                    break;
+                }
+            }
+
+            longest = Math.max(longest, length);
+        }
+
+        return longest;
+    }
+
     // Finds the longest homopolymer in a stretch of bases.  Not terribly efficient!
-    int lengthOfLongestHomopolymer(final byte[] bytes) {
+    static int lengthOfLongestHomopolymer(final byte[] bytes) {
         int longest = 1;
 
         for (int i=0; i<bytes.length; ++i) {
