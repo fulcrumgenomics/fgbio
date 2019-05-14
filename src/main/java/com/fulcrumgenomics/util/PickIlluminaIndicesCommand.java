@@ -555,18 +555,16 @@ class PickIlluminaIndicesCommand {
     static int lengthOfLongestDipolymer(final byte[] bytes) {
         int longest = 1;
 
-        for (int i=0; i<bytes.length; ++i) {
+        for (int i = 0; i < bytes.length; ++i) {
             int length = 1;
 
-            for (int j=i+2; j<bytes.length; j+=2) {
-                if (bytes[i] == bytes[j] && bytes[i+1] == bytes[j+1]) {
+            for (int j = i + 2; j < bytes.length - 1; ++j) {
+                if (bytes[i] == bytes[j] && bytes[i + 1] == bytes[j + 1]) {
                     ++length;
-                }
-                else {
+                } else {
                     break;
                 }
             }
-
             longest = Math.max(longest, length);
         }
 
