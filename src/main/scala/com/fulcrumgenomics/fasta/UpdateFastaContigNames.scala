@@ -33,23 +33,24 @@ import htsjdk.samtools.reference.{FastaSequenceIndex, ReferenceSequenceFileFacto
 
 @clp(description =
   """
-    |Updates a FASTA based on the alternate names.
+    |Updates the sequence names in a FASTA.
     |
-    |The first column of the input is the original name and the second column is an alternative name.  If there
-    |is more than one alternate name, each alternate name will be on a separate line.  Only the first alternate name
-    |will be considered.
+    |The first column of the input is the source name and the second column is an target name.  If there
+    |is more than one target names (ex. multiple alternates), each alternate name may be on a separate line or as
+    |additional columns.  Only the first target name will be considered.  This is mainly to support the output of
+    |`CollectAlternateContigNames`.
   """,
   group = ClpGroups.Fasta)
-class UpdateFastaNames
+class UpdateFastaContigNames
 (@arg(flag='i', doc="Input FASTA.") val input: PathToFasta,
- @arg(flag='a', doc="The path to the original to alternate names.") val alternates :FilePath,
+ @arg(flag='m', doc="The path to the source to target contig names.") val mapping: FilePath,
  @arg(flag='o', doc="Output FASTA.")val output: PathToFasta,
  @arg(flag='l', doc="Line length or sequence lines.") val lineLength: Int = 100,
- @arg(doc="Skip missing contigs.") val skipMissing: Boolean = false
+ @arg(doc="Skip missing source contigs.") val skipMissing: Boolean = false
 ) extends FgBioTool with LazyLogging {
 
   Io.assertReadable(input)
-  Io.assertReadable(Seq(input, alternates))
+  Io.assertReadable(Seq(input, mapping))
   Io.assertCanWriteFile(output)
 
   override def execute(): Unit = {
@@ -59,13 +60,16 @@ class UpdateFastaNames
     val out      = Io.toWriter(output)
 
     val srcContigs = refFile.getSequenceDictionary match {
-      case null => new FastaSequenceIndex(ReferenceSequenceFileFactory.getFastaIndexFileName(this.input)) map(_.getContig)
+      case null =>
+        require(refFile.isIndexed,
+          "Reference sequence file must have a sequence dictionary or be indexed.  Try 'picard CreateSequenceDictionary' or 'samtools faidx <ref.fasta>'.")
+        new FastaSequenceIndex(ReferenceSequenceFileFactory.getFastaIndexFileName(this.input)) map(_.getContig)
       case dict => dict.getSequences.map(_.getSequenceName)
     }
 
-    Io.readLines(alternates).flatMap { line =>
+    Io.readLines(mapping).flatMap { line =>
       val fields = line.split('\t')
-      require(fields.length == 2, s"Malformed line: expected two columns: $line")
+      require(fields.length <= 2, s"Malformed line: expected at least two columns: $line")
       val srcName = fields(0)
       val targetName = fields(1)
       if (seen.contains(srcName)) None else {

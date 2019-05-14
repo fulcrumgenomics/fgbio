@@ -35,24 +35,25 @@ import com.fulcrumgenomics.sopt.{arg, clp}
 
 @clp(description =
   """
-    |Updates a GFF based on the alternate names.
+    |Updates then contig names in a GFF.
     |
-    |The first column of the input is the original name and the second column is an alternative name.  If there
-    |is more than one alternate name, each alternate name will be on a separate line.  Only the first alternate name
-    |will be considered.
+    |The first column of the input is the source name and the second column is an target name.  If there
+    |is more than one target names (ex. multiple alternates), each alternate name may be on a separate line or as
+    |additional columns.  Only the first target name will be considered.  This is mainly to support the output of
+    |`CollectAlternateContigNames`.
     |
     |Please note: the output GFF will be in the same order as the input GFF.
   """,
   group = ClpGroups.Utilities)
 class UpdateGffContigNames
 (@arg(flag='i', doc="Input GFF.") val input: FilePath,
- @arg(flag='a', doc="The path to the original to alternate names.") val alternates :FilePath,
+ @arg(flag='m', doc="The path to the source to target names.") val mapping :FilePath,
  @arg(flag='o', doc="Output GFF.")val output: FilePath,
  @arg(doc="Skip missing contigs.") val skipMissing: Boolean = false
 ) extends FgBioTool with LazyLogging {
 
   Io.assertReadable(input)
-  Io.assertReadable(Seq(input, alternates))
+  Io.assertReadable(Seq(input, mapping))
   Io.assertCanWriteFile(output)
 
   private val sequenceRegionKey = "##sequence-region"
@@ -61,9 +62,9 @@ class UpdateGffContigNames
   override def execute(): Unit = {
     val progress = ProgressLogger(logger, noun="features", verb="written", unit=10e5.toInt)
 
-    val srcToTarget = Io.readLines(alternates).map { line =>
+    val srcToTarget = Io.readLines(mapping).map { line =>
       val fields = line.split('\t')
-      require(fields.length == 2, s"Malformed line: expected two columns: $line")
+      require(fields.length <= 2, s"Malformed line: expected at least two columns: $line")
       (fields(0), fields(1))
     }.toMap
 
@@ -133,10 +134,10 @@ class UpdateGffContigNames
           srcToTarget.get(src) match {
             case None =>
               if (skipMissing) {
-                logger.warning(s"Did not find contig $src in the list of original nams.")
+                logger.warning(s"Did not find contig $src in the list of source names.")
                 in.dropWhile(_.startsWith(src))
               }
-              else throw new IllegalStateException(s"Did not find contig $src in the list of original nams.")
+              else throw new IllegalStateException(s"Did not find contig $src in the list of source names.")
             case Some(target) =>
               writeSequenceHeader(header)
               writeSequenceFeatures(in, src, target)

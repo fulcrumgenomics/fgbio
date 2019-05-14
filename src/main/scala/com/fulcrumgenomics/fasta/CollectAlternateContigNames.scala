@@ -35,13 +35,17 @@ import enumeratum.EnumEntry
 
 import scala.collection.immutable.IndexedSeq
 
+/** Trait that entries in AssemblyReportColumn will extend. */
 sealed trait AssemblyReportColumn extends EnumEntry {
+  /** The column name in the assembly report. */
   def key: String
 }
 
+/** Enum to represent columns in a NCBI assembly report. */
 object AssemblyReportColumn extends FgBioEnum[AssemblyReportColumn] {
   def values: IndexedSeq[AssemblyReportColumn] = findValues
 
+  /** Allows the column to be build from the Enum name or the actual column name. */
   override def apply(str: String): AssemblyReportColumn = {
     values.find(_.key == str).getOrElse(super.apply(str))
   }
@@ -57,15 +61,17 @@ object AssemblyReportColumn extends FgBioEnum[AssemblyReportColumn] {
   val SequenceLength: String = "Sequence-Length"
 }
 
-
+/** Trait that entries in SequencRole will extend. */
 sealed trait SequenceRole extends EnumEntry {
   def key: String
   def primary: Boolean
 }
 
+/** Enum to represent the various types of sequence-roles in NCBI assembly report. */
 object SequenceRole extends FgBioEnum[SequenceRole] {
   def values: IndexedSeq[SequenceRole] = findValues
 
+  /** Allows the column to be build from the Enum name or the actual sequence-role column name. */
   override def apply(str: String): SequenceRole = {
     values.find(_.key == str).getOrElse(super.apply(str))
   }
@@ -81,15 +87,16 @@ object SequenceRole extends FgBioEnum[SequenceRole] {
 
 @clp(description =
   """
-    |Gets the alternate contig names from an NCBI assembly report.
+    |Collates the alternate contig names from an NCBI assembly report.
     |
     |The input is be the `*.assembly_report.txt` obtained from NCBI.
     |
-    |The output will have the first column is the original name and the second column is an alternative name.  If there
-    |is more than one alternate name, each alternate name will be on a separate line.
+    |The output will have the first column is the primary name and the second column is an alternative name.  If there
+    |is more than one alternate name, each alternate name will be on a separate line.  The primary name should be
+    |specified with `--primary` while the alternate name(s) should be specified with `--alternates`.
     |
     |First, sequences with the Sequence-Role "assembled-molecule" will be outputted.  Next, the remaining sequences will
-    |be sorted by length, with smallest output first.
+    |be sorted by length, with smallest sequence output first.
   """,
   group = ClpGroups.Fasta)
 class CollectAlternateContigNames
@@ -107,10 +114,10 @@ class CollectAlternateContigNames
   validate(!alternates.contains(primary), s"Primary is in alternate: $primary in " + alternates.mkString(", "))
 
   override def execute(): Unit = {
-    // Go through each sequence
+    // Go through each sequence in the assembly report
     val lines = readAssemblyReport().toIterator.flatMap { dict =>
+      // Get the primary name, and the alternate names
       val primary = dict(this.primary.key)
-
       val altNames = this.alternates.flatMap { alt =>
         dict(alt.key) match {
           case alternate if alternate == AssemblyReportColumn.MissingValue =>
@@ -119,19 +126,20 @@ class CollectAlternateContigNames
           case alternate => Some(alternate)
         }
       }
-      if (primary == AssemblyReportColumn.MissingValue) {
-        logger.warning(s"Primary contig name '${this.primary.key}' had a missing value: $primary")
-        Seq.empty
-      }
-      else if (altNames.isEmpty) {
-        logger.warning(s"No alternates found for: $primary")
-        Seq.empty
-      }
-      else if (singleLine) {
-        Seq(primary + "\t" + altNames.mkString("\t"))
-      }
-      else {
-        altNames.map { altName => s"$primary\t$altName" }
+      (primary, altNames) match {
+        case (AssemblyReportColumn.MissingValue, _) => // primary missing
+          logger.warning(s"Primary contig name '${this.primary.key}' had a missing value: $primary")
+          Seq.empty
+        case (_, Seq()) => // no alternates
+          logger.warning(s"No alternates found for: $primary")
+          Seq.empty
+        case _ => // primary and at least one alternate
+          if (singleLine) {
+            Seq(primary + "\t" + altNames.mkString("\t"))
+          }
+          else {
+            altNames.map { altName => s"$primary\t$altName" }
+          }
       }
     }
 
