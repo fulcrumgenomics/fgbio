@@ -123,7 +123,7 @@ class UpdateGffContigNamesTest extends UnitSpec {
     lines.filter(_.startsWith("##sequence-region")) should contain theSameElementsInOrderAs Seq(
       "##sequence-region chr1 1 249250621",
       "##sequence-region chr2 1 243199373",
-      "##sequence-region chr3 1 198022430",
+      "##sequence-region chr3 1 198022430"
     )
     lines.filterNot(_.startsWith("#")).flatMap(_.split('\t').headOption).distinct should contain theSameElementsInOrderAs Seq("chr1")
   }
