@@ -24,6 +24,7 @@ class PickIlluminaIndices
   @arg(          doc="Allow indices that are reverse complements of one another")      val allowReverseComplements: Boolean = false,
   @arg(          doc="Allow indices that are palindromic (`bases == rev(bases)`).")    val allowPalindromes: Boolean = false,
   @arg(          doc="Reject indices with a homopolymer of greater than this length.") val maxHomopolymer: Int = 2,
+  @arg(          doc="Reject indices with a dipolymer of greater than this length.")   val maxDipolymer: Int = 2,
   @arg(          doc="The minimum GC fraction for a barcode to be accepted.")          val minGc: Double = 0,
   @arg(          doc="The maximum GC fraction for a barcode to be accepted.")          val maxGc: Double = 0.7,
   @arg(flag='t', doc="Number of threads to use.")                                      val threads: Int = 4,
@@ -47,6 +48,7 @@ class PickIlluminaIndices
     cmd.ALLOW_REVERSE_COMPLEMENTS = allowReverseComplements
     cmd.ALLOW_PALINDROMES         = allowPalindromes
     cmd.MAX_HOMOPOLYMER           = maxHomopolymer
+    cmd.MAX_DIPOLYMER             = maxDipolymer
     cmd.MIN_GC                    = minGc
     cmd.MAX_GC                    = maxGc
     cmd.OUTPUT                    = output.toFile
