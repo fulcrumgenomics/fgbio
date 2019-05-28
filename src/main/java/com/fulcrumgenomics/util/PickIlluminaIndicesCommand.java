@@ -74,7 +74,7 @@ class PickIlluminaIndicesCommand {
     private int defaultEdgeSetSize = 0;
 
     /**
-     *  Little class to encapsulate a index sequence and it's relationships to other indices.
+     *  Little class to encapsulate a index sequence and its relationships to other indices.
      */
     class Index {
         final byte[] sequence;
