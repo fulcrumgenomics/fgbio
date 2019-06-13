@@ -45,7 +45,7 @@ object Rscript extends LazyLogging {
   /** Returns true if R and ggplot2 are available and false otherwise. */
   lazy val Available: Boolean = {
     try {
-      val process = new ProcessBuilder(Executable, "-e", "require(ggplot2) || stop(1)").redirectErrorStream(true).start()
+      val process = new ProcessBuilder(Executable, "-e", "stopifnot(require(ggplot2))").redirectErrorStream(true).start()
       process.waitFor() == 0
     }
     catch { case e: Exception => false }
