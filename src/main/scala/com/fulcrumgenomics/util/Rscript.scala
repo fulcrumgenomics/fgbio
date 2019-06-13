@@ -28,7 +28,6 @@ import java.nio.file.Path
 
 import com.fulcrumgenomics.commons.util.LazyLogging
 
-import scala.io.Source
 import scala.util.{Success, Try}
 
 /**
@@ -43,10 +42,10 @@ object Rscript extends LazyLogging {
     override def getMessage: String = s"Rscript failed with exit code ${status}."
   }
 
-  /** Returns true if R is available and false otherwise. */
+  /** Returns true if R and ggplot2 are available and false otherwise. */
   lazy val Available: Boolean = {
     try {
-      val process = new ProcessBuilder(Executable, "-e", "require(ggplot2)").redirectErrorStream(true).start()
+      val process = new ProcessBuilder(Executable, "-e", "require(ggplot2) || stop(1)").redirectErrorStream(true).start()
       process.waitFor() == 0
     }
     catch { case e: Exception => false }

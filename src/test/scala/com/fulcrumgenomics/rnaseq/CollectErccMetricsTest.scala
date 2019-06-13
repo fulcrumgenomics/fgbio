@@ -31,7 +31,7 @@ import com.fulcrumgenomics.commons.CommonsDef.{FilePath, PathPrefix}
 import com.fulcrumgenomics.commons.io.{Io, PathUtil}
 import com.fulcrumgenomics.commons.util.DelimitedDataParser
 import com.fulcrumgenomics.testing.{SamBuilder, UnitSpec}
-import com.fulcrumgenomics.util.Metric
+import com.fulcrumgenomics.util.{Metric, Rscript}
 import htsjdk.samtools.{SAMSequenceDictionary, SAMSequenceRecord}
 import org.scalatest.OptionValues
 
@@ -212,7 +212,7 @@ class CollectErccMetricsTest extends UnitSpec with OptionValues {
       metrics.head.ercc_templates shouldBe 3
       metrics.head.pearsons_correlation.value shouldBe 1
       metrics.head.slope.value shouldBe 1
-      Files.exists(outputs.plotPath) shouldBe true
+      Files.exists(outputs.plotPath) shouldBe Rscript.Available
     }
   }
 

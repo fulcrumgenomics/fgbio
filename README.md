@@ -86,7 +86,7 @@ fgbio is built using [sbt](http://www.scala-sbt.org/).
 
 Use ```sbt assembly``` to build an executable jar in ```target/scala-2.11/```.
 
-Tests may be run with ```sbt test```. `R` and `ggplot2` are test dependencies.
+Tests may be run with ```sbt test```.
 
 Java SE 8 is required.
 

@@ -32,7 +32,7 @@ import com.fulcrumgenomics.bam.api.SamOrder
 import com.fulcrumgenomics.commons.util.SimpleCounter
 import com.fulcrumgenomics.testing.SamBuilder.{Minus, Plus}
 import com.fulcrumgenomics.testing.{SamBuilder, UnitSpec}
-import com.fulcrumgenomics.util.{Io, Metric}
+import com.fulcrumgenomics.util.{Io, Metric, Rscript}
 import htsjdk.samtools.util.{Interval, IntervalList}
 import org.apache.commons.math3.distribution.NormalDistribution
 
@@ -272,8 +272,8 @@ class CollectDuplexSeqMetricsTest extends UnitSpec {
       counter.count((max(abs, bas), min(abs, bas)))
     }
 
-    val metrics = exec(builder, plot=true)
-    metrics.plots.toFile.exists() shouldBe true
+    val metrics = exec(builder, plot=Rscript.Available)
+    metrics.plots.toFile.exists() shouldBe Rscript.Available
 
     // Check that the duplex family sizes tie out
     metrics.duplexFamilyMetrics.foreach { m => m.count shouldBe counter.countOf((m.ab_size, m.ba_size)) }
