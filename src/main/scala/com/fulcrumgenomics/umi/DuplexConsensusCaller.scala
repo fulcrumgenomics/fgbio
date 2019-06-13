@@ -296,8 +296,8 @@ class DuplexConsensusCaller(override val readNamePrefix: String,
         (duplexR1, duplexR2) match {
           case (Some(r1), Some(r2)) =>
             Seq(
-              createSamRecord(r1, FirstOfPair, toUmiBases(duplexR1Sources)),
-              createSamRecord(r2, SecondOfPair, toUmiBases(duplexR2Sources))
+              createSamRecord(r1, FirstOfPair, toUmiBasesForConsensusUmiCalling(duplexR1Sources, firstOfPair=true)),
+              createSamRecord(r2, SecondOfPair, toUmiBasesForConsensusUmiCalling(duplexR2Sources, firstOfPair=false))
             )
           case _                    =>
             // NB: some reads may have been rejected already in filterToMostCommonAlignment, so just
@@ -309,12 +309,24 @@ class DuplexConsensusCaller(override val readNamePrefix: String,
     }
   }
 
-  /** Extracts the UMI bases for each source read, ignoring reads without UMI bases */
-  private def toUmiBases(reads: Seq[SourceRead]): Seq[String] = {
+  /** Extracts the UMI bases for each source read, ignoring reads without UMI bases, and normalizes the order of UMI
+    * bases across the AB and BA reads.
+    *
+    * Important: the UMI bases for the source reads are not the same across R1s and R2s.  For example, considering
+    * combining the AB R1s and BA R2s to call the R1 duplex consensus R1.  If the UMI bases for the AB R1s are GAT-TAG,
+    * then the UMI-bases for the BA R2s are TAG-GAT, where A=TAG and B=GAT.  To make them all agree (assuming no
+    * sequencing error), we output them in the order found in R1 (i.e. TAG-GAT).  The different order of UMI-bases
+    * between the AB and BA reads is due to how the duplex tags are constructed and sequenced.
+    * */
+  private def toUmiBasesForConsensusUmiCalling(reads: Seq[SourceRead], firstOfPair: Boolean): Seq[String] = {
     // The source read may not have the RX tag, and if so, we ignore them through
     // the use of .flatMap and .get, with the latter returning an `Some(bases)` if the
     // UMI bases are present, `None` otherwise.
-    reads.flatMap(_.sam).flatMap(_.get[String](ConsensusTags.UmiBases))
+    reads.flatMap(_.sam).flatMap { rec =>
+      rec.get[String](ConsensusTags.UmiBases).map { umi =>
+        if (rec.firstOfPair == firstOfPair) umi else umi.split('-').reverse.mkString("-")
+      }
+    }
   }
 
   /**

@@ -289,13 +289,8 @@ class DuplexConsensusCallerTest extends UnitSpec {
     // Add the original UMI bases to each read
     builder.foreach { rec =>
       val mi = rec[String](MI)
-      // first of pair ABs and second of pair BAs
-      if ((rec.firstOfPair && mi.endsWith("/A")) || (rec.secondOfPair && mi.endsWith("/B"))) {
-        rec(RX) = "AAT-CCG"
-      }
-      else {
-        rec(RX) = "CCG-AAT"
-      }
+      // all "/A" have the same UMI bases, while the "/B" bases have them swapped
+      if (mi.endsWith("/A")) rec(RX) = "AAT-CCG" else rec(RX) = "CCG-AAT"
     }
 
     val recs = caller(q=20).consensusReadsFromSamRecords(builder.toSeq)
@@ -327,7 +322,7 @@ class DuplexConsensusCallerTest extends UnitSpec {
       r2[Float](AbRawReadErrorRate)  shouldBe (1 / 30f)
       r2[Float](BaRawReadErrorRate)  shouldBe 0f
       r2[String](MI) shouldBe "foo"
-      r2[String](RX) shouldBe "CCG-AAT"
+      r2[String](RX) shouldBe "AAT-CCG"
     }
 
     { // Check the per-base tags

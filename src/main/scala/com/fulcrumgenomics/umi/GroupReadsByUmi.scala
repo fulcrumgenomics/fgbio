@@ -539,7 +539,7 @@ class GroupReadsByUmi
   }
 
   /** When a minimum UMI length is specified, truncates all the UMIs to the length of the shortest UMI.  For the paired
-    * assigner, truncates the first UMI and second UMI sepeartely.*/
+    * assigner, truncates the first UMI and second UMI separately.*/
   private def truncateUmis(umis: Seq[Umi]): Seq[Umi] = this.minUmiLength match {
     case None => umis
     case Some(length) =>
