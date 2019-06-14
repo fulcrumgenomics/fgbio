@@ -96,16 +96,16 @@ class ConsensusCaller(errorRatePreLabeling:  PhredScore,
     def add(base: Base, pError: LogProbability, pTruth: LogProbability) = {
       val b = SequenceUtil.upperCase(base)
       if (b != 'N') {
+        val pErrorNormalized = LogProbability.normalizeByScalar(pError, 3)
         var i = 0
         while (i < DnaBaseCount) {
           val candidateBase = DnaBasesUpperCase(i)
-
           if (base == candidateBase) {
             likelihoods(i) += pTruth
             observations(i) += 1
           }
           else {
-            likelihoods(i) += LogProbability.normalizeByScalar(pError, 3)
+            likelihoods(i) += pErrorNormalized
           }
 
           i += 1
@@ -117,7 +117,9 @@ class ConsensusCaller(errorRatePreLabeling:  PhredScore,
       * Returns the number of reads that contributed evidence to the consensus. The value is equal
       * to the number of times add() was called with non-ambiguous bases.
       */
-    def contributions: Int = this.observations.sum
+    def contributions: Int = {
+      this.observations(0) + this.observations(1) + this.observations(2) + this.observations(3)
+    }
 
     /** Gets the number of observations of the base in question. */
     def observations(base: Base): Int = base match {
@@ -169,7 +171,6 @@ class ConsensusCaller(errorRatePreLabeling:  PhredScore,
       errorsTwoTrials.map(LogProbability.not)
     }
   }
-
 
   /** Pre-computes the the log-scale probabilities of an error for each a phred-scaled base quality from 0-127. */
   private val phredToAdjustedLogProbError: Array[LogProbability] = Range(0, Byte.MaxValue).toArray.map(q => {

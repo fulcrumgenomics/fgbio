@@ -152,7 +152,7 @@ class CallMolecularConsensusReads
       minInputBaseQuality          = minInputBaseQuality,
       minConsensusBaseQuality      = minConsensusBaseQuality,
       minReads                     = minReads,
-      maxReads                     = maxReads.getOrElse(Int.MaxValue),
+      maxReads                     = maxReads.getOrElse(VanillaUmiConsensusCallerOptions.DefaultMaxReads),
       producePerBaseTags           = outputPerBaseTags
     )
 

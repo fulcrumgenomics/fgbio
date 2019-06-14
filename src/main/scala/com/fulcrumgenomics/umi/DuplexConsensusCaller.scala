@@ -43,7 +43,7 @@ object DuplexConsensusCaller {
   val ErrorRatePostUmi: PhredScore        = 40.toByte
   val MinInputBaseQuality: PhredScore     = 15.toByte
   val NoCall: Byte = 'N'.toByte
-  val NoCallQual   = PhredScore.MinValue
+  val NoCallQual: PhredScore = PhredScore.MinValue
 
   /** Additional filter strings used when rejecting reads. */
   val FilterMinReads    = "Not Enough Reads (Either Total, AB, or BA)"
@@ -103,11 +103,11 @@ class DuplexConsensusCaller(override val readNamePrefix: String,
                             val trim: Boolean                   = false,
                             val errorRatePreUmi: PhredScore     = DuplexConsensusCaller.ErrorRatePreUmi,
                             val errorRatePostUmi: PhredScore    = DuplexConsensusCaller.ErrorRatePostUmi,
-                            val minReads: Seq[Int]              = Seq(1)
+                            val minReads: Seq[Int]              = Seq(1),
+                            val maxReadsPerStrand: Int          = VanillaUmiConsensusCallerOptions.DefaultMaxReads
                            ) extends UmiConsensusCaller[DuplexConsensusRead] with LazyLogging {
 
   private val Seq(minTotalReads, minXyReads, minYxReads) = this.minReads.padTo(3, this.minReads.last)
-
 
   // For depth thresholds it's required that ba <= ab <= cc
   require(minXyReads <= minTotalReads, "min-reads values must be specified high to low.")
@@ -117,23 +117,58 @@ class DuplexConsensusCaller(override val readNamePrefix: String,
       errorRatePreUmi         = this.errorRatePreUmi,
       errorRatePostUmi        = this.errorRatePostUmi,
       minReads                = 1,
+      maxReads                = maxReadsPerStrand,
       minInputBaseQuality     = this.minInputBaseQuality,
       minConsensusBaseQuality = PhredScore.MinValue,
       producePerBaseTags      = true
     ))
 
   /**
-    * Returns the MI tag minus the trailing suffix that identifies /A vs /B
+    * Returns the MI tag **with** the trailing suffix that identifies /A vs /B
+    */
+  private def sourceMoleculeAndStrandId(rec: SamRecord): String = {
+    // Optimization: speed up retrieving this tag by storing it in the transient attributes
+    rec.transientAttrs.get[String](ConsensusTags) match {
+      case Some(mi) => mi
+      case None =>
+        rec.get[String](ConsensusTags.MolecularId) match {
+          case Some(mi) => mi
+          case None     => throw new IllegalStateException(s"Read ${rec.name} is missing it's ${ConsensusTags.MolecularId} tag.")
+        }
+    }
+  }
+
+  /** Returns a clone of this consensus caller in a state where no previous reads were processed.  I.e. all counters
+    * are set to zero.*/
+  def emptyClone(): DuplexConsensusCaller = {
+    new DuplexConsensusCaller(
+      readNamePrefix      = readNamePrefix,
+      readGroupId         = readGroupId,
+      minInputBaseQuality = minInputBaseQuality,
+      trim                = trim,
+      errorRatePreUmi     = errorRatePreUmi,
+      errorRatePostUmi    = errorRatePostUmi,
+      minReads            = minReads,
+      maxReadsPerStrand   = maxReadsPerStrand
+    )
+  }
+
+  // The key in a [[SamRecord]]'s transient attributes that caches the molecular identifier. The molecular identifier is
+  // cached by the `sourceMoleculeId` method.
+  private val MolecularIdNoTrailingSuffix: String = "__" + ConsensusTags.MolecularId + "__"
+
+  /**
+    * Returns the MI tag **minus** the trailing suffix that identifies /A vs /B
     */
   override protected[umi] def sourceMoleculeId(rec: SamRecord): String = {
-    rec.get[String](ConsensusTags.MolecularId) match {
-      case None =>
-        throw new IllegalStateException(s"Read ${rec.name} is missing it's ${ConsensusTags.MolecularId} tag.")
-      case Some(mi) =>
-        val index = mi.lastIndexOf('/')
-        require(index > 0, s"Read ${rec.name}'s $ConsensusTags tag doesn't look like a duplex id: $mi")
-        mi.substring(0, index)
-    }
+    // Optimization: speed up retrieving this tag by storing it in the transient attributes
+    rec.transientAttrs.getOrElse[String](MolecularIdNoTrailingSuffix, {
+      val mi = sourceMoleculeAndStrandId(rec)
+      val index = mi.lastIndexOf('/')
+      val miRoot = mi.substring(0, index)
+      rec.transientAttrs(MolecularIdNoTrailingSuffix) = miRoot
+      miRoot
+    })
   }
 
   /**
@@ -152,7 +187,7 @@ class DuplexConsensusCaller(override val readNamePrefix: String,
     }
     else {
       // Group the reads by /A vs. /B and ensure that /A is the first group and /B the second
-      val groups = pairs.groupBy(r => r[String](ConsensusTags.MolecularId)).toSeq.sortBy { case (mi, _) => mi }.map(_._2)
+      val groups = pairs.groupBy(r => sourceMoleculeAndStrandId(r)).toSeq.sortBy { case (mi, _) => mi }.map(_._2)
 
       require(groups.length <= 2, "SamRecords supplied with more than two distinct MI values.")
 
@@ -191,6 +226,22 @@ class DuplexConsensusCaller(override val readNamePrefix: String,
     }
   }
 
+  // An empty sequence of [[SamRecord]]s, used in subGroupRecords to improve performance
+  private val NoSamRecords: Seq[SamRecord] = Seq.empty[SamRecord]
+
+  /** Split records into those that should make a single-end consensus read, first of pair consensus read,
+    * and second of pair consensus read, respectively.  This method is overridden in [[DuplexConsensusCaller]] to
+    * improve performance since no fragment reads should be given to this method.
+    */
+  override protected def subGroupRecords(records: Seq[SamRecord]): (Seq[SamRecord], Seq[SamRecord], Seq[SamRecord]) = {
+    // NB: the input records should not have fragments
+    val (firstOfPair, secondOfPair) = records.partition { r =>
+      require(r.paired, "Fragment reads should not be given to subGroupRecords in DuplexConsensusCaller.")
+      r.firstOfPair
+    }
+    (NoSamRecords, firstOfPair, secondOfPair)
+  }
+
   /** Attempts to call a duplex consensus reads from the two sets of reads, one for each strand. */
   private def callDuplexConsensusRead(ab: Seq[SamRecord], ba: Seq[SamRecord]): Seq[SamRecord] = {
     // Fragments have no place in duplex land (and are filtered out previously anyway)!
@@ -209,12 +260,12 @@ class DuplexConsensusCaller(override val readNamePrefix: String,
     // Check for this explicitly here.
     (areAllSameStrand(singleStrand1), areAllSameStrand(singleStrand2)) match {
       case (false, _)   =>
-        val ss1Mi   = singleStrand1.head.apply[String](ConsensusTags.MolecularId)
+        val ss1Mi = sourceMoleculeId(singleStrand1.head)
         rejectRecords(ab ++ ba, FilterCollision)
         logger.debug(s"Not all AB-R1s and BA-R2s were on the same strand for molecule with id: $ss1Mi")
         Nil
       case (_, false)   =>
-        val ss2Mi   = singleStrand2.head.apply[String](ConsensusTags.MolecularId)
+        val ss2Mi = sourceMoleculeId(singleStrand2.head)
         rejectRecords(ab ++ ba, FilterCollision)
         logger.debug(s"Not all AB-R2s and BA-R1s were on the same strand for molecule with id: $ss2Mi")
         Nil
@@ -305,10 +356,20 @@ class DuplexConsensusCaller(override val readNamePrefix: String,
           // Then mask it if appropriate
           val (base, qual) = if (aBase == NoCall || bBase == NoCall || rawQual == PhredScore.MinValue) (NoCall, NoCallQual) else (rawBase, rawQual)
 
-          bases(i)  = base
-          quals(i)  = qual
+          bases(i) = base
+          quals(i) = qual
 
-          errors(i) = min(sourceReads.count(s => s.length > i && isError(s.bases(i), rawBase)), Short.MaxValue).toShort
+          // NB: optimized based on profiling; was previously:
+          // sourceReads.count(s => s.length > i && isError(s.bases(i), rawBase))
+          var numErrors = 0
+          val sourceReadsArray = sourceReads.toArray
+          forloop(from=0, until=sourceReadsArray.length) { j =>
+            val sourceRead = sourceReadsArray(j)
+            if (sourceRead.length > i && isError(sourceRead.bases(i), rawBase)) {
+              numErrors += 1
+            }
+          }
+          errors(i) = min(numErrors, Short.MaxValue).toShort
         }
 
         Some(DuplexConsensusRead(id=id, bases, quals, errors, a.truncate(bases.length), Some(b.truncate(bases.length))))

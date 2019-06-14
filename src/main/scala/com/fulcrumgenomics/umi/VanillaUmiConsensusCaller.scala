@@ -32,7 +32,6 @@ import com.fulcrumgenomics.umi.UmiConsensusCaller.ReadType._
 import com.fulcrumgenomics.umi.UmiConsensusCaller._
 import com.fulcrumgenomics.umi.VanillaUmiConsensusCallerOptions._
 import com.fulcrumgenomics.util.NumericTypes._
-
 import scala.collection.mutable.ListBuffer
 import scala.util.Random
 
@@ -107,13 +106,22 @@ class VanillaUmiConsensusCaller(override val readNamePrefix: String,
 
   private val NotEnoughReadsQual: PhredScore = 0.toByte // Score output when masking to N due to insufficient input reads
   private val TooLowQualityQual: PhredScore = 2.toByte  // Score output when masking to N due to too low consensus quality
-  private val DnaBasesUpperCase: Array[Byte] = Array('A', 'C', 'G', 'T').map(_.toByte)
-  private val LogThree = LogProbability.toLogProbability(3.0)
 
   private val caller = new ConsensusCaller(errorRatePreLabeling  = options.errorRatePreUmi,
                                            errorRatePostLabeling = options.errorRatePostUmi)
 
   private val random = new Random(42)
+
+  /** Returns a clone of this consensus caller in a state where no previous reads were processed.  I.e. all counters
+    * are set to zero.*/
+  def emptyClone(): VanillaUmiConsensusCaller = {
+    new VanillaUmiConsensusCaller(
+      readNamePrefix = readNamePrefix,
+      readGroupId    = readGroupId,
+      options        = options,
+      rejects        = rejects
+    )
+  }
 
   /** Returns the value of the SAM tag directly. */
   override def sourceMoleculeId(rec: SamRecord): String = rec(this.options.tag)
@@ -131,8 +139,8 @@ class VanillaUmiConsensusCaller(override val readNamePrefix: String,
 
     // pairs
     (consensusFromSamRecords(firstOfPair), consensusFromSamRecords(secondOfPair)) match {
-      case (None, Some(r2))     => rejectRecords(secondOfPair, UmiConsensusCaller.FilterOrphan)
-      case (Some(r1), None)     => rejectRecords(firstOfPair,  UmiConsensusCaller.FilterOrphan)
+      case (None, Some(_))     => rejectRecords(secondOfPair, UmiConsensusCaller.FilterOrphan)
+      case (Some(_), None)     => rejectRecords(firstOfPair,  UmiConsensusCaller.FilterOrphan)
       case (None, None)         => rejectRecords(firstOfPair ++ secondOfPair, UmiConsensusCaller.FilterOrphan)
       case (Some(r1), Some(r2)) =>
         buffer += createSamRecord(r1, FirstOfPair, firstOfPair.flatMap(_.get[String](ConsensusTags.UmiBases)))
@@ -200,10 +208,12 @@ class VanillaUmiConsensusCaller(override val readNamePrefix: String,
           }
         }
 
+        val depth = builder.contributions // NB: cache this value, as it is re-computed each time
+
         // Call the consensus and do any additional filtering
         val (rawBase, rawQual) = builder.call()
         val (base, qual) = {
-          if (builder.contributions < this.options.minReads)       (NoCall, NotEnoughReadsQual)
+          if (depth < this.options.minReads)       (NoCall, NotEnoughReadsQual)
           else if (rawQual < this.options.minConsensusBaseQuality) (NoCall, TooLowQualityQual)
           else (rawBase, rawQual)
         }
@@ -212,7 +222,6 @@ class VanillaUmiConsensusCaller(override val readNamePrefix: String,
         consensusQuals(positionInRead) = qual
 
         // Generate the values for depth and count of errors
-        val depth  = builder.contributions
         val errors = if (rawBase == NoCall) depth else depth - builder.observations(rawBase)
         consensusDepths(positionInRead) = if (depth  > Short.MaxValue) Short.MaxValue else depth.toShort
         consensusErrors(positionInRead) = if (errors > Short.MaxValue) Short.MaxValue else errors.toShort

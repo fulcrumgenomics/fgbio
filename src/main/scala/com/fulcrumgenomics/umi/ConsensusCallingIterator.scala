@@ -26,62 +26,120 @@ package com.fulcrumgenomics.umi
 
 import com.fulcrumgenomics.FgBioDef._
 import com.fulcrumgenomics.bam.api.SamRecord
+import com.fulcrumgenomics.commons.async.AsyncIterator
+import com.fulcrumgenomics.commons.util.LazyLogging
+import com.fulcrumgenomics.umi.UmiConsensusCaller.SimpleRead
 import com.fulcrumgenomics.util.ProgressLogger
 
-import scala.collection.mutable
+import scala.concurrent.forkjoin.ForkJoinPool
 
 /**
-  * An iterator that consumes from an incoming iterator of SAMRecords and generates consensus
-  * read SAMRecords using the supplied caller.
+  * An iterator that consumes from an incoming iterator of [[SamRecord]]s and generates consensus
+  * read [[SamRecord]]s using the supplied consensus caller.
   *
-  * @param sourceIterator an iterator of SAMRecords
-  * @param caller   the consensus caller to use to call consensus reads
+  * @param sourceIterator the iterator over input [[SamRecord]]s.
+  * @param caller the consensus caller to use to call consensus reads
   * @param progress an optional progress logger to which to log progress in input reads
+  * @param threads the number of threads to use.
+  * @param maxRecordsInRam the approximate maximum number of input records to store in RAM across multiple threads.
   */
-class ConsensusCallingIterator(sourceIterator: Iterator[SamRecord],
-                               val caller: UmiConsensusCaller[_],
-                               val progress: Option[ProgressLogger] = None
-                              ) extends Iterator[SamRecord] {
+class ConsensusCallingIterator[ConsensusRead <: SimpleRead](sourceIterator: Iterator[SamRecord],
+                               caller: UmiConsensusCaller[ConsensusRead],
+                               progress: Option[ProgressLogger] = None,
+                               threads: Int = 1,
+                               maxRecordsInRam: Int = 128000)
+  extends Iterator[SamRecord] with LazyLogging {
 
-  private val input = sourceIterator.bufferBetter
-  private val outputQueue: mutable.Queue[SamRecord] = mutable.Queue[SamRecord]()
-
-    /** True if there are more consensus reads, false otherwise. */
-  def hasNext(): Boolean = this.outputQueue.nonEmpty || (this.input.nonEmpty && advance())
-
-  /** Returns the next consensus read. */
-  def next(): SamRecord = {
-    if (!this.hasNext()) throw new NoSuchElementException("Calling next() when hasNext() is false.")
-    this.outputQueue.dequeue()
+  private val progressIterator = progress match {
+    case Some(p) => sourceIterator.map { r => p.record(r); r }
+    case None    => sourceIterator
   }
 
-  /**
-    * Consumes the next group of records from the input iterator, based on molecule id
-    * and returns them as a Seq.
-    */
-  private def nextGroupOfRecords(): Seq[SamRecord] = {
-    if (this.input.isEmpty) {
-      Nil
+  protected val iterator: Iterator[SamRecord] = {
+    if (threads <= 1) {
+      val groupingIterator = new SamRecordGroupedIterator(progressIterator, caller.sourceMoleculeId)
+      groupingIterator.flatMap(caller.consensusReadsFromSamRecords)
     }
     else {
-      val idToMatch = this.caller.sourceMoleculeId(this.input.head)
-      this.input.takeWhile(this.caller.sourceMoleculeId(_) == idToMatch).toSeq
+      val halfMaxRecords   = maxRecordsInRam / 2
+      val groupingIterator = new SamRecordGroupedIterator(new AsyncIterator(progressIterator, Some(halfMaxRecords)).start(), caller.sourceMoleculeId)
+      val pool             = new ForkJoinPool(threads - 1, ForkJoinPool.defaultForkJoinWorkerThreadFactory, null, true)
+      val bufferedIter     = groupingIterator.bufferBetter
+      val callers          = new IterableThreadLocal[UmiConsensusCaller[ConsensusRead]](() => caller.emptyClone())
+
+      // Create an infinite length iterator that will pull input records (up to the half the maximum number in memory)
+      // to be consensus called.  Each chunk of records will then be called in parallel.  If no more input records are
+      // available, an empty sequence will be returned by the iterator.
+      val iterator = Iterator.continually {
+        // Pull input reads to be consensus called.  We have to be careful to pull all the raw reads for each source
+        // molecule, so we pull from a [[SamRecordGroupedIterator]] above.
+        var total = 0L
+        bufferedIter
+          .takeWhile { chunk => if (halfMaxRecords <= total) false else {total += chunk.length; true } }
+          .toSeq
+          .parWith(pool)
+          .flatMap { records =>
+            val caller = callers.get()
+            caller.synchronized { caller.consensusReadsFromSamRecords(records) }
+          }
+          .seq
+      }
+
+      // Take from the iterator until an empty sequence of records is returned, which indicates that there were no more
+      // input records on which to call consensus reads.  When this happens, update the consensus calling statistics
+      // and stop iteration.
+      iterator.takeWhile { records =>
+        if (records.nonEmpty) true else {
+          // add the statistics to the original caller since there are no more reads
+          require(bufferedIter.isEmpty, "Bug: input is not empty")
+          callers.foreach(caller.addStatistics)
+          false
+        }
+      }.flatten
+
     }
   }
+  override def hasNext: Boolean = this.iterator.hasNext
+  override def next(): SamRecord = this.iterator.next
+}
 
-  /** Consumes input records until one or more consensus reads can be created, or no more input records are available.
-    * Returns true if a consensus read was created and enqueued, false otherwise. */
-  @annotation.tailrec
+// TODO: migrate to the commons version of this class after the next commons release
+// TODO: https://github.com/fulcrumgenomics/commons/pull/51
+private class IterableThreadLocal[A](factory: () => A) extends ThreadLocal[A] with Iterable[A] {
+  private val all = new java.util.concurrent.ConcurrentLinkedQueue[A]()
+
+  override def initialValue(): A = {
+    val a = factory()
+    all.add(a)
+    a
+  }
+
+  /** Care should be taken accessing the iterator since objects may be in use by other threads. */
+  def iterator: Iterator[A] = all.toIterator
+}
+
+
+/** Groups consecutive records based on a method to group records. */
+private class SamRecordGroupedIterator[Key](sourceIterator: Iterator[SamRecord],
+                                            toKey: SamRecord => Key) extends Iterator[Seq[SamRecord]] {
+  private val input     = sourceIterator.bufferBetter
+  private var nextChunk = IndexedSeq.empty[SamRecord]
+
+  /** True if there are more consensus reads, false otherwise. */
+  def hasNext(): Boolean = this.nextChunk.nonEmpty || (this.input.nonEmpty && advance())
+
+  /** Returns the next consensus read. */
+  def next(): Seq[SamRecord] = {
+    if (!this.hasNext()) throw new NoSuchElementException("Calling next() when hasNext() is false.")
+    yieldAndThen { nextChunk } { nextChunk = IndexedSeq.empty }
+  }
+
+  /** Consumes the next group of records from the input iterator, based on the vkey, and returns them as a [[IndexedSeq]]. */
   private def advance(): Boolean = {
-    // get the records to create the consensus read
-    val inputs  = nextGroupOfRecords()
-    val outputs = this.caller.consensusReadsFromSamRecords(inputs)
-    this.outputQueue ++= outputs
-
-    // Log progress on the _input_ reads and then return/recurse
-    for (p <- progress; r <- inputs) p.record(r)
-    if (outputs.nonEmpty) true
-    else if (this.input.hasNext) advance()
-    else false
+    this.input.headOption.exists { head =>
+      val idToMatch = this.toKey(head)
+      this.nextChunk = this.input.takeWhile(this.toKey(_) == idToMatch).toIndexedSeq
+      true
+    }
   }
 }

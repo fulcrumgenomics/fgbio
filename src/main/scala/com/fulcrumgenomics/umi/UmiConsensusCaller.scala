@@ -31,13 +31,12 @@ import com.fulcrumgenomics.commons.util.{Logger, SimpleCounter}
 import com.fulcrumgenomics.umi.UmiConsensusCaller._
 import com.fulcrumgenomics.util.NumericTypes.PhredScore
 import htsjdk.samtools.SAMFileHeader.{GroupOrder, SortOrder}
-import htsjdk.samtools.util.{Murmur3, SequenceUtil, TrimmingUtil}
 import htsjdk.samtools._
+import htsjdk.samtools.util.{Murmur3, SequenceUtil, TrimmingUtil}
 
 import scala.collection.mutable
 import scala.collection.mutable.ArrayBuffer
 import scala.math.{abs, min}
-
 /**
   * Contains shared types and functions used when writing UMI-driven consensus
   * callers that take in SamRecords and emit SamRecords.
@@ -47,6 +46,7 @@ object UmiConsensusCaller {
   object ReadType extends Enumeration {
     type ReadType = Value
     val Fragment, FirstOfPair, SecondOfPair = Value
+    val ReadTypeKey: String = "__read_type__"
   }
 
   /** Filter reason for when there are too few reads to form a consensus. */
@@ -72,9 +72,9 @@ object UmiConsensusCaller {
     /** Gets the length of the consensus read. */
     def length: Int = bases.length
     /** Returns the consensus read a String - mostly useful for testing. */
-    def baseString = new String(bases)
+    def baseString: String = new String(bases)
     /** Retrieves the quals as a phred+33/fastq ascii String. */
-    def qualString = SAMUtils.phredToFastq(this.quals)
+    def qualString: String = SAMUtils.phredToFastq(this.quals)
   }
 
   /** Stores information about a read to be fed into a consensus. */
@@ -151,15 +151,15 @@ object UmiConsensusCaller {
   * A trait that can be mixed in by any consensus caller that works at the read level,
   * mapping incoming SamRecords into consensus SamRecords.
   *
-  * @tparam C Internally, the type of lightweight consensus read that is used prior to
+  * @tparam ConsensusRead Internally, the type of lightweight consensus read that is used prior to
   *           rebuilding [[com.fulcrumgenomics.bam.api.SamRecord]]s.
   */
-trait UmiConsensusCaller[C <: SimpleRead] {
+trait UmiConsensusCaller[ConsensusRead <: SimpleRead] {
   import com.fulcrumgenomics.umi.UmiConsensusCaller.ReadType._
 
   // vars to track how many reads meet various fates
   private var _totalReads: Long = 0
-  private val filteredReads = new SimpleCounter[String]()
+  private val _filteredReads = new SimpleCounter[String]()
   private var _consensusReadsConstructed: Long = 0
 
   protected val NoCall: Byte = 'N'.toByte
@@ -168,30 +168,35 @@ trait UmiConsensusCaller[C <: SimpleRead] {
   /** A consensus caller used to generate consensus UMI sequences */
   private val consensusBuilder = new SimpleConsensusCaller()
 
+  /** Returns a clone of this consensus caller in a state where no previous reads were processed.  I.e. all counters
+    * are set to zero.*/
+  def emptyClone(): UmiConsensusCaller[ConsensusRead]
+
   /** Returns the total number of input reads examined by the consensus caller so far. */
   def totalReads: Long = _totalReads
 
   /** Returns the total number of reads filtered for any reason. */
-  def totalFiltered: Long = filteredReads.total
+  def totalFiltered: Long = _filteredReads.total
 
   /**
     * Returns the number of raw reads filtered out due to there being insufficient reads present
     * to build the necessary set of consensus reads.
     */
-  def readsFilteredInsufficientSupport: Long = this.filteredReads.countOf(FilterInsufficientSupport)
+  def readsFilteredInsufficientSupport: Long = this._filteredReads.countOf(FilterInsufficientSupport)
 
   /** Returns the number of raw reads filtered out because their alignment disagreed with the majority alignment of
     * all raw reads for the same source molecule.
     */
-  def readsFilteredMinorityAlignment: Long = this.filteredReads.countOf(FilterMinorityAlignment)
+  def readsFilteredMinorityAlignment: Long = this._filteredReads.countOf(FilterMinorityAlignment)
 
   /** Returns the number of consensus reads constructed by this caller. */
   def consensusReadsConstructed: Long = _consensusReadsConstructed
 
   /** Records that the supplied records were rejected, and not used to build a consensus read. */
-  protected def rejectRecords(recs: Traversable[SamRecord], reason: String) : Unit = {
-    this.filteredReads.count(reason, recs.size)
-  }
+  protected def rejectRecords(recs: Traversable[SamRecord], reason: String) : Unit = this._filteredReads.count(reason, recs.size)
+
+  /** Records that the supplied records were rejected, and not used to build a consensus read. */
+  protected def rejectRecords(reason: String, rec: SamRecord*) : Unit = rejectRecords(rec, reason)
 
   /** A RG.ID to apply to all generated reads. */
   protected def readGroupId: String
@@ -298,6 +303,17 @@ trait UmiConsensusCaller[C <: SimpleRead] {
     (fragments, firstOfPair, secondOfPair)
   }
 
+  /** Used it [[filterToMostCommonAlignment()]] to store a cigar string and a set of flags for which reads match. */
+  private final case class AlignmentGroup(cigar: Cigar, flags: mutable.BitSet, var size: Int = 0) {
+    /** Adds the read at `idx` to the set included. */
+    @inline def add(idx: Int): Unit = {
+      flags(idx) = true
+      size      += 1
+    }
+
+    @inline def contains(idx: Int): Boolean = flags(idx)
+  }
+
   /**
     * Takes in a non-empty seq of SamRecords and filters them such that the returned seq only contains
     * those reads that share the most common alignment of the read sequence to the reference.
@@ -313,23 +329,18 @@ trait UmiConsensusCaller[C <: SimpleRead] {
     * NOTE: filtered out reads are sent to the [[rejectRecords]] method and do not need further handling
     */
   protected[umi] def filterToMostCommonAlignment(recs: Seq[SourceRead]): Seq[SourceRead] = {
-    val groups = new ArrayBuffer[mutable.Buffer[SourceRead]]
-    val cigars = new ArrayBuffer[Cigar]
+    val groups = new ArrayBuffer[AlignmentGroup]
+    val sorted = recs.sortBy(r => -r.length).toIndexedSeq
 
-    recs.sortBy(r => -r.length).foreach { rec =>
-      var compatible  = 0
-      val simpleCigar = simplifyCigar(rec.cigar)
+    forloop (from=0, until=sorted.length) { i =>
+      val simpleCigar = simplifyCigar(sorted(i).cigar)
+      var found = false
+      groups.foreach { g => if (simpleCigar.isPrefixOf(g.cigar)) { g.add(i); found = true } }
 
-      groups.iterator.zip(cigars.iterator).foreach { case(group, cigar) =>
-        if (simpleCigar.isPrefixOf(cigar)) {
-          group      += rec
-          compatible += 1
-        }
-      }
-
-      if (compatible == 0) {
-        groups += ArrayBuffer(rec)
-        cigars += simpleCigar
+      if (!found) {
+        val newGroup = AlignmentGroup(simpleCigar, new mutable.BitSet(sorted.size))
+        newGroup.add(i)
+        groups += newGroup
       }
     }
 
@@ -337,11 +348,12 @@ trait UmiConsensusCaller[C <: SimpleRead] {
       Seq.empty
     }
     else {
-      val sorted  = groups.sortBy(g => - g.size)
-      val keepers = sorted.head
-      val rejects = recs.filter(r => !keepers.contains(r))
-      rejectRecords(rejects.flatMap(_.sam), FilterMinorityAlignment)
-
+      val bestGroup = groups.maxBy(_.size)
+      val keepers = new ArrayBuffer[SourceRead](bestGroup.size)
+      forloop (from=0, until=sorted.length) { i =>
+        if (bestGroup.contains(i)) keepers += sorted(i)
+        else sorted(i).sam.foreach(rejectRecords(FilterMinorityAlignment, _))
+      }
       keepers
     }
   }
@@ -366,7 +378,7 @@ trait UmiConsensusCaller[C <: SimpleRead] {
   }
 
   /** Creates a `SamRecord` from the called consensus base and qualities. */
-  protected def createSamRecord(read: C, readType: ReadType, umis: Seq[String] = Seq.empty): SamRecord = {
+  protected def createSamRecord(read: ConsensusRead, readType: ReadType, umis: Seq[String] = Seq.empty): SamRecord = {
     val rec = SamRecord(null)
     rec.name = this.readNamePrefix + ":" + read.id
     rec.unmapped = true
@@ -397,16 +409,22 @@ trait UmiConsensusCaller[C <: SimpleRead] {
     total
   }
 
+  /** Adds the given caller's statistics (counts) to this caller. */
+  def addStatistics(caller: UmiConsensusCaller[ConsensusRead]): Unit = {
+    this._totalReads += caller.totalReads
+    this._consensusReadsConstructed += caller.consensusReadsConstructed
+    this._filteredReads += caller._filteredReads
+  }
 
   /**
     * Logs statistics about how many reads were seen, and how many were filtered/discarded due
     * to various filters.
     */
   def logStatistics(logger: Logger): Unit = {
-    logger.info(f"Total Raw Reads Considered: ${totalReads}%,d.")
-    this.filteredReads.foreach { case (filter, count) =>
-      logger.info(f"Raw Reads Filtered Due to $filter: ${count}%,d (${count/totalReads.toDouble}%.4f).")
+    logger.info(f"Total Raw Reads Considered: $totalReads%,d.")
+    this._filteredReads.foreach { case (filter, count) =>
+      logger.info(f"Raw Reads Filtered Due to $filter: $count%,d (${count/totalReads.toDouble}%.4f).")
     }
-    logger.info(f"Consensus reads emitted: ${consensusReadsConstructed}%,d.")
+    logger.info(f"Consensus reads emitted: $consensusReadsConstructed%,d.")
   }
 }

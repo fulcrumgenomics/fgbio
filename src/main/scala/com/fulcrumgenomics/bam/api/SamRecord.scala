@@ -60,6 +60,10 @@ class TransientAttrs(private val rec: SamRecord) {
     if (value == null) rec.asSam.removeTransientAttribute(key) else rec.asSam.setTransientAttribute(key, value)
   }
   def get[A](key: Any): Option[A] = Option(apply(key))
+  def getOrElse[A](key: Any, default: => A): A = rec.asSam.getTransientAttribute(key) match {
+    case null => default
+    case value => value.asInstanceOf[A]
+  }
 }
 
 /**

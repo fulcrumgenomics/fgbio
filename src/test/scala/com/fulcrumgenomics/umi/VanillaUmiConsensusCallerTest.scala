@@ -33,8 +33,8 @@ import com.fulcrumgenomics.umi.VanillaUmiConsensusCallerOptions._
 import com.fulcrumgenomics.util.NumericTypes._
 import htsjdk.samtools.SAMUtils
 import htsjdk.samtools.util.CloserUtil
-import net.jafama.FastMath._
 import org.scalatest.OptionValues
+import org.apache.commons.math3.util.FastMath._
 
 import scala.collection.mutable.ArrayBuffer
 
@@ -453,6 +453,11 @@ class VanillaUmiConsensusCallerTest extends UnitSpec with OptionValues {
     output.map(_.cigar.toString()).sorted shouldBe expected
   }
 
+  it should "return a single read if a single read was given" in {
+    val srcs = Seq(src(cigar="50M"))
+    val recs = cc().filterToMostCommonAlignment(srcs)
+    recs should have size 1
+  }
 
   "VanillaConsensusCaller.toSourceRead" should "mask bases that are below the quality threshold" in {
     val builder = new SamBuilder(readLength=10)
