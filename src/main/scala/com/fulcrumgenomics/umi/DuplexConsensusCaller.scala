@@ -126,7 +126,15 @@ class DuplexConsensusCaller(override val readNamePrefix: String,
     * Returns the MI tag minus the trailing suffix that identifies /A vs /B
     */
   override protected[umi] def sourceMoleculeId(rec: SamRecord): String = {
-    rec.get[String](ConsensusTags.MolecularId) match {
+
+
+    // Optimization: speed up retrieving this tag by storing it in the transient attributes
+    rec.transientAttrs.get[String](ConsensusTags.MolecularId).orElse {
+      rec.get[String](ConsensusTags.MolecularId).map { id =>
+        rec.transientAttrs(ConsensusTags.MolecularId) = id
+        id
+      }
+    } match {
       case None =>
         throw new IllegalStateException(s"Read ${rec.name} is missing it's ${ConsensusTags.MolecularId} tag.")
       case Some(mi) =>
@@ -308,7 +316,16 @@ class DuplexConsensusCaller(override val readNamePrefix: String,
           bases(i)  = base
           quals(i)  = qual
 
-          errors(i) = min(sourceReads.count(s => s.length > i && isError(s.bases(i), rawBase)), Short.MaxValue).toShort
+          // NB: optimized based on profiling; was previously:
+          // sourceReads.count(s => s.length > i && isError(s.bases(i), rawBase))
+          var numErrors = 0
+          forloop(from=0, until=sourceReads.length) { j =>
+            val sourceRead = sourceReads(j)
+            if (sourceRead.length > i && isError(sourceRead.bases(i), rawBase)) {
+              numErrors += 1
+            }
+          }
+          errors(i) = min(numErrors, Short.MaxValue).toShort
         }
 
         Some(DuplexConsensusRead(id=id, bases, quals, errors, a.truncate(bases.length), Some(b.truncate(bases.length))))

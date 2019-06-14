@@ -200,10 +200,12 @@ class VanillaUmiConsensusCaller(override val readNamePrefix: String,
           }
         }
 
+        val contributions = builder.contributions // NB: cache this value, as it is re-computed each time
+
         // Call the consensus and do any additional filtering
         val (rawBase, rawQual) = builder.call()
         val (base, qual) = {
-          if (builder.contributions < this.options.minReads)       (NoCall, NotEnoughReadsQual)
+          if (contributions < this.options.minReads)       (NoCall, NotEnoughReadsQual)
           else if (rawQual < this.options.minConsensusBaseQuality) (NoCall, TooLowQualityQual)
           else (rawBase, rawQual)
         }
@@ -212,7 +214,7 @@ class VanillaUmiConsensusCaller(override val readNamePrefix: String,
         consensusQuals(positionInRead) = qual
 
         // Generate the values for depth and count of errors
-        val depth  = builder.contributions
+        val depth  = contributions
         val errors = if (rawBase == NoCall) depth else depth - builder.observations(rawBase)
         consensusDepths(positionInRead) = if (depth  > Short.MaxValue) Short.MaxValue else depth.toShort
         consensusErrors(positionInRead) = if (errors > Short.MaxValue) Short.MaxValue else errors.toShort

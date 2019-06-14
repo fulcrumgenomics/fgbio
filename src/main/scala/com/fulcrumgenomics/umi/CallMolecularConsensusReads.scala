@@ -163,7 +163,7 @@ class CallMolecularConsensusReads
       rejects        = rej
     )
 
-    val iterator = new ConsensusCallingIterator(in.toIterator, caller, Some(ProgressLogger(logger, unit=5e5.toInt)))
+    val iterator = ConsensusCallingIterator(in.toIterator, caller, Some(ProgressLogger(logger, unit=5e5.toInt)))
     out ++= iterator
 
     in.safelyClose()

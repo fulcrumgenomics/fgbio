@@ -72,9 +72,9 @@ object UmiConsensusCaller {
     /** Gets the length of the consensus read. */
     def length: Int = bases.length
     /** Returns the consensus read a String - mostly useful for testing. */
-    def baseString = new String(bases)
+    def baseString: String = new String(bases)
     /** Retrieves the quals as a phred+33/fastq ascii String. */
-    def qualString = SAMUtils.phredToFastq(this.quals)
+    def qualString: String = SAMUtils.phredToFastq(this.quals)
   }
 
   /** Stores information about a read to be fed into a consensus. */
@@ -159,7 +159,7 @@ trait UmiConsensusCaller[C <: SimpleRead] {
 
   // vars to track how many reads meet various fates
   private var _totalReads: Long = 0
-  private val filteredReads = new SimpleCounter[String]()
+  private[umi] val _filteredReads = new SimpleCounter[String]()
   private var _consensusReadsConstructed: Long = 0
 
   protected val NoCall: Byte = 'N'.toByte
@@ -172,26 +172,24 @@ trait UmiConsensusCaller[C <: SimpleRead] {
   def totalReads: Long = _totalReads
 
   /** Returns the total number of reads filtered for any reason. */
-  def totalFiltered: Long = filteredReads.total
+  def totalFiltered: Long = _filteredReads.total
 
   /**
     * Returns the number of raw reads filtered out due to there being insufficient reads present
     * to build the necessary set of consensus reads.
     */
-  def readsFilteredInsufficientSupport: Long = this.filteredReads.countOf(FilterInsufficientSupport)
+  def readsFilteredInsufficientSupport: Long = this._filteredReads.countOf(FilterInsufficientSupport)
 
   /** Returns the number of raw reads filtered out because their alignment disagreed with the majority alignment of
     * all raw reads for the same source molecule.
     */
-  def readsFilteredMinorityAlignment: Long = this.filteredReads.countOf(FilterMinorityAlignment)
+  def readsFilteredMinorityAlignment: Long = this._filteredReads.countOf(FilterMinorityAlignment)
 
   /** Returns the number of consensus reads constructed by this caller. */
   def consensusReadsConstructed: Long = _consensusReadsConstructed
 
   /** Records that the supplied records were rejected, and not used to build a consensus read. */
-  protected def rejectRecords(recs: Traversable[SamRecord], reason: String) : Unit = {
-    this.filteredReads.count(reason, recs.size)
-  }
+  protected def rejectRecords(recs: Traversable[SamRecord], reason: String) : Unit = this._filteredReads.count(reason, recs.size)
 
   /** A RG.ID to apply to all generated reads. */
   protected def readGroupId: String
@@ -337,9 +335,8 @@ trait UmiConsensusCaller[C <: SimpleRead] {
       Seq.empty
     }
     else {
-      val sorted  = groups.sortBy(g => - g.size)
-      val keepers = sorted.head
-      val rejects = recs.filter(r => !keepers.contains(r))
+      val keepers    = groups.maxBy(_.size)
+      val rejects    = groups.filter(_ != groups).flatten.filter(r => !keepers.contains(r)).distinct
       rejectRecords(rejects.flatMap(_.sam), FilterMinorityAlignment)
 
       keepers
@@ -397,16 +394,22 @@ trait UmiConsensusCaller[C <: SimpleRead] {
     total
   }
 
+  /** Adds the given caller's statistics (counts) to this caller. */
+  def addStatistics(caller: UmiConsensusCaller[C]): Unit = {
+    this._totalReads += caller.totalReads
+    this._consensusReadsConstructed += caller.consensusReadsConstructed
+    this._filteredReads += caller._filteredReads
+  }
 
   /**
     * Logs statistics about how many reads were seen, and how many were filtered/discarded due
     * to various filters.
     */
   def logStatistics(logger: Logger): Unit = {
-    logger.info(f"Total Raw Reads Considered: ${totalReads}%,d.")
-    this.filteredReads.foreach { case (filter, count) =>
-      logger.info(f"Raw Reads Filtered Due to $filter: ${count}%,d (${count/totalReads.toDouble}%.4f).")
+    logger.info(f"Total Raw Reads Considered: $totalReads%,d.")
+    this._filteredReads.foreach { case (filter, count) =>
+      logger.info(f"Raw Reads Filtered Due to $filter: $count%,d (${count/totalReads.toDouble}%.4f).")
     }
-    logger.info(f"Consensus reads emitted: ${consensusReadsConstructed}%,d.")
+    logger.info(f"Consensus reads emitted: $consensusReadsConstructed%,d.")
   }
 }

@@ -99,8 +99,11 @@ class CallDuplexConsensusReads
  @arg(flag='m', doc="Ignore bases in raw reads that have Q below this value.") val minInputBaseQuality: PhredScore = DefaultMinInputBaseQuality,
  @arg(flag='t', doc="If true, quality trim input reads in addition to masking low Q bases.") val trim: Boolean = false,
  @arg(flag='S', doc="The sort order of the output, if `:none:` then the same as the input.") val sortOrder: Option[SamOrder] = Some(SamOrder.Queryname),
- @arg(flag='M', minElements=1, maxElements=3, doc="The minimum number of input reads to a consensus read.") val minReads: Seq[Int] = Seq(1)
+ @arg(flag='M', minElements=1, maxElements=3, doc="The minimum number of input reads to a consensus read.") val minReads: Seq[Int] = Seq(1),
+ @arg(doc="The number of threads to use while consensus calling.") val threads: Int = 1,
 ) extends FgBioTool with LazyLogging {
+
+  private val maxRecordsInRamPerThread = 128000
 
   Io.assertReadable(input)
   Io.assertCanWriteFile(output)
@@ -115,7 +118,7 @@ class CallDuplexConsensusReads
     val outHeader = UmiConsensusCaller.outputHeader(in.header, readGroupId, sortOrder)
     val out = SamWriter(output, outHeader, sort=sortOrder)
 
-    val caller = new DuplexConsensusCaller(
+    val toCaller = () => new DuplexConsensusCaller(
       readNamePrefix      = readNamePrefix.getOrElse(UmiConsensusCaller.makePrefixFromSamHeader(in.header)),
       readGroupId         = readGroupId,
       minInputBaseQuality = minInputBaseQuality,
@@ -124,9 +127,10 @@ class CallDuplexConsensusReads
       errorRatePostUmi    = errorRatePostUmi,
       minReads            = minReads
     )
-
-    val iterator = new ConsensusCallingIterator(in.toIterator, caller, Some(ProgressLogger(logger)))
+    val progress = ProgressLogger(logger)
+    val (iterator, caller) = ConsensusCallingIterator.parWith(in.toIterator, toCaller, Some(progress), threads, maxRecordsInRamPerThread)
     out ++= iterator
+    progress.logLast()
 
     in.safelyClose()
     out.close()
