@@ -126,7 +126,6 @@ lazy val root = Project(id="fgbio", base=file("."))
       "com.fulcrumgenomics"       %% "commons"        % "0.7.0",
       "com.fulcrumgenomics"       %% "sopt"           % "0.7.0",
       "com.github.samtools"       %  "htsjdk"         % "2.16.1" excludeAll(htsjdkExcludes: _*),
-      "net.jafama"                %  "jafama"         % "2.1.0",
       "org.apache.commons"        %  "commons-math3"  % "3.6.1",
       "com.beachape"              %% "enumeratum"     % "1.5.12",
       "com.intel.gkl"             %  "gkl"            % "0.8.6",

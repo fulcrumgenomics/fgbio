@@ -27,11 +27,10 @@ package com.fulcrumgenomics.util
 import java.lang.Math.exp
 
 import htsjdk.samtools.SAMUtils
-import net.jafama.FastMath._
+import org.apache.commons.math3.util.FastMath._
 
 /**
-  * Container object for a set of numeric types for working with common probability
-  * scalings.
+  * Container object for a set of numeric types for working with common probability scalings.
   */
 object NumericTypes {
   /** The value of toLogProbability(x) for [0, 1, ..., 10] */
