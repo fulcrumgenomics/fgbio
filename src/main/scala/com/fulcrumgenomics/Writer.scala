@@ -24,27 +24,6 @@
 
 package com.fulcrumgenomics
 
-import java.io.Closeable
-
-import com.fulcrumgenomics.FgBioDef._
-
 /** Writer trait to standardize how to interact with classes that write out objects. */
-trait Writer[A] extends Closeable {
-  /** Writes an individual item. */
-  def write(item: A): Unit
-
-  /** Writes out one or more items in order. */
-  def write[B <: A](items: TraversableOnce[B]): Unit = items.foreach(write)
-
-  /** Writes an item and returns a reference to the writer. */
-  def +=(item: A): this.type = {
-    write(item)
-    this
-  }
-
-  /** Writes an item and returns a reference to the writer. */
-  def ++=[B <: A](items: TraversableOnce[B]): this.type = {
-    write(items)
-    this
-  }
-}
+@deprecated("Use com.fulcrumgenomics.commons.io.Writer instead.", since="0.8.1")
+trait Writer[A] extends com.fulcrumgenomics.commons.io.Writer[A]
