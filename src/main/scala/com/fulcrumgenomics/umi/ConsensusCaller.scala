@@ -148,7 +148,7 @@ class ConsensusCaller(errorRatePreLabeling:  PhredScore,
           //               + Pr(pre-UMI error AND error in consensus, that do not give us the correct bases)
           // The last term tries to capture the case where a pre-UMI error modifies the base (ex. A->C) but a sequencing
           // error calls it the correct base (C->A).  Only 2/3 times will the two errors result in the incorrect base.
-          val p = LogProbability.probabilityOfErrorTwoTrials(LnErrorRatePreLabeling, pConsensusError)
+          val p = LogProbability.probabilityOfErrorTwoTrials(LnErrorRatePostLabeling, pConsensusError)
           val q = PhredScore.cap(PhredScore.fromLogProbability(p))
           val base = DnaBasesUpperCase(i)
           (base, q)
