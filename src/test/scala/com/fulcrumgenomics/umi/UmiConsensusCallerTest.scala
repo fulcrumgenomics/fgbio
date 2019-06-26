@@ -27,6 +27,7 @@ package com.fulcrumgenomics.umi
 import com.fulcrumgenomics.bam.api.SamOrder
 import com.fulcrumgenomics.testing.{SamBuilder, UnitSpec}
 import htsjdk.samtools.SAMFileHeader.GroupOrder
+import htsjdk.samtools.SAMReadGroupRecord
 import org.scalatest.OptionValues
 
 class UmiConsensusCallerTest extends UnitSpec with OptionValues {
@@ -56,5 +57,26 @@ class UmiConsensusCallerTest extends UnitSpec with OptionValues {
     UmiConsensusCaller.checkSortOrder(builder.header, "foo.bam", w => warning = Some(w), e => error = Some(e))
     warning shouldBe None
     error.value.indexOf("foo.bam") should be >= 0
+  }
+
+  "UmiConsensusCaller.outputHeader" should "be case-insensitive when merging platforms by changing them to upper-case" in {
+    def buildRg(id: String, sample: String, library: String, platform: String): SAMReadGroupRecord = {
+      val rg = new SAMReadGroupRecord(id)
+      rg.setSample(sample)
+      rg.setLibrary(library)
+      rg.setPlatform(platform)
+      return rg
+    }
+
+    val builder = new SamBuilder(sort=Some(SamOrder.TemplateCoordinate))
+
+    builder.header.addReadGroup(buildRg(id="B", sample="Sample", library="L1", platform="ILLUMINA"))
+    builder.header.addReadGroup(buildRg(id="C", sample="Sample", library="L2", platform="illumina"))
+    val outHeader = UmiConsensusCaller.outputHeader(in=builder.header, readGroupId="A")
+    outHeader.getReadGroups.size shouldBe 1
+    val rg = outHeader.getReadGroup("A")
+    rg.getSample shouldBe "Sample"
+    rg.getLibrary shouldBe "L1,L2"
+    rg.getPlatform shouldBe "ILLUMINA"
   }
 }

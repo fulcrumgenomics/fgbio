@@ -107,7 +107,7 @@ object UmiConsensusCaller {
     rg.setDescription     (collapse(_.getDescription))
     rg.setLibrary         (collapse(_.getLibrary))
     rg.setSample          (collapse(_.getSample))
-    rg.setPlatform        (collapse(_.getPlatform))
+    rg.setPlatform        (collapse(x => Option(x.getPlatform).map(_.toUpperCase).orNull)) // NB: this to ensure that platforms are all upper-case; not all tools are modern or well-behaved
     rg.setPlatformUnit    (collapse(_.getPlatformUnit))
     rg.setSequencingCenter(collapse(_.getSequencingCenter))
 
