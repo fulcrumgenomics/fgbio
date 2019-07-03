@@ -27,7 +27,7 @@ package com.fulcrumgenomics.umi
 import com.fulcrumgenomics.FgBioDef._
 import com.fulcrumgenomics.alignment.{Cigar, CigarElem}
 import com.fulcrumgenomics.bam.api.{SamOrder, SamRecord}
-import com.fulcrumgenomics.commons.util.{Logger, SimpleCounter}
+import com.fulcrumgenomics.commons.util.{Logger, NumericCounter, SimpleCounter}
 import com.fulcrumgenomics.umi.UmiConsensusCaller._
 import com.fulcrumgenomics.util.NumericTypes.PhredScore
 import htsjdk.samtools.SAMFileHeader.{GroupOrder, SortOrder}
@@ -47,6 +47,7 @@ object UmiConsensusCaller {
   object ReadType extends Enumeration {
     type ReadType = Value
     val Fragment, FirstOfPair, SecondOfPair = Value
+    val ReadTypeKey: String = "__read_type__"
   }
 
   /** Filter reason for when there are too few reads to form a consensus. */
@@ -191,6 +192,9 @@ trait UmiConsensusCaller[C <: SimpleRead] {
   /** Records that the supplied records were rejected, and not used to build a consensus read. */
   protected def rejectRecords(recs: Traversable[SamRecord], reason: String) : Unit = this._filteredReads.count(reason, recs.size)
 
+  /** Records that the supplied records were rejected, and not used to build a consensus read. */
+  protected def rejectRecords(reason: String, rec: SamRecord*) : Unit = rejectRecords(rec, reason)
+
   /** A RG.ID to apply to all generated reads. */
   protected def readGroupId: String
 
@@ -296,6 +300,8 @@ trait UmiConsensusCaller[C <: SimpleRead] {
     (fragments, firstOfPair, secondOfPair)
   }
 
+  private val GroupIdentifierKey: String = "__group_identifier__"
+
   /**
     * Takes in a non-empty seq of SamRecords and filters them such that the returned seq only contains
     * those reads that share the most common alignment of the read sequence to the reference.
@@ -311,22 +317,28 @@ trait UmiConsensusCaller[C <: SimpleRead] {
     * NOTE: filtered out reads are sent to the [[rejectRecords]] method and do not need further handling
     */
   protected[umi] def filterToMostCommonAlignment(recs: Seq[SourceRead]): Seq[SourceRead] = {
-    val groups = new ArrayBuffer[mutable.Buffer[SourceRead]]
+    // Each group is uniquely associated with one cigar, and the count of records having the "same alignment" for each
+    // cigar is stored in `groups`.  The index into `cigars` as used as the key in `groups`.  Next, for each records,
+    // the set of existing "groups" that have the "same alignment" is determined, or a new group is created.  The set
+    // of groups is stored as a transient attribute on the `SAMRecord` for when the group to "keep" is determined, and
+    // so those records that belong to the "keeper" group is determined.
+
+    val groups = new NumericCounter[Int]()
     val cigars = new ArrayBuffer[Cigar]
 
     recs.sortBy(r => -r.length).foreach { rec =>
-      var compatible  = 0
-      val simpleCigar = simplifyCigar(rec.cigar)
+      val simpleCigar  = simplifyCigar(rec.cigar)
+      val groupIndices: scala.collection.immutable.Set[Int] = cigars
+        .zipWithIndex
+        .filter { case (cigar, _) => simpleCigar.isPrefixOf(cigar) }
+        .map(_._2)
+        .toSet
+      rec.sam.get.transientAttrs(GroupIdentifierKey) = groupIndices
+      groupIndices.foreach { groupIndex => groups.count(groupIndex) }
 
-      groups.iterator.zip(cigars.iterator).foreach { case(group, cigar) =>
-        if (simpleCigar.isPrefixOf(cigar)) {
-          group      += rec
-          compatible += 1
-        }
-      }
-
-      if (compatible == 0) {
-        groups += ArrayBuffer(rec)
+      if (groupIndices.isEmpty) {
+        rec.sam.get.transientAttrs(GroupIdentifierKey) = scala.collection.immutable.Set(cigars.size)
+        groups.count(cigars.size)
         cigars += simpleCigar
       }
     }
@@ -335,10 +347,14 @@ trait UmiConsensusCaller[C <: SimpleRead] {
       Seq.empty
     }
     else {
-      val keepers    = groups.maxBy(_.size)
-      val rejects    = groups.filter(_ != groups).flatten.filter(r => !keepers.contains(r)).distinct
+      // Keep the group has the most # of records
+      val maxGroupIndex = groups.max._1
+      val (keepers, rejects) = recs.partition { rec =>
+        val groupIndices = rec.sam.get.transientAttrs[scala.collection.immutable.Set[Int]](GroupIdentifierKey)
+         rec.sam.get.transientAttrs(GroupIdentifierKey) = null
+        groupIndices.contains(maxGroupIndex)
+      }
       rejectRecords(rejects.flatMap(_.sam), FilterMinorityAlignment)
-
       keepers
     }
   }

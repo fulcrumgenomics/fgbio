@@ -103,7 +103,7 @@ class CallDuplexConsensusReads
  @arg(doc="The number of threads to use while consensus calling.") val threads: Int = 1,
 ) extends FgBioTool with LazyLogging {
 
-  private val maxRecordsInRamPerThread = 128000
+  private val maxRecordsInRamPerThread = 64000
 
   Io.assertReadable(input)
   Io.assertCanWriteFile(output)
@@ -127,7 +127,7 @@ class CallDuplexConsensusReads
       errorRatePostUmi    = errorRatePostUmi,
       minReads            = minReads
     )
-    val progress = ProgressLogger(logger)
+    val progress = ProgressLogger(logger, unit=1000000)
     val (iterator, caller) = ConsensusCallingIterator.parWith(in.toIterator, toCaller, Some(progress), threads, maxRecordsInRamPerThread)
     out ++= iterator
     progress.logLast()

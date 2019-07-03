@@ -25,7 +25,7 @@
 package com.fulcrumgenomics.umi
 
 import com.fulcrumgenomics.FgBioDef._
-import com.fulcrumgenomics.bam.api.{SamRecord, TransientAttrs}
+import com.fulcrumgenomics.bam.api.SamRecord
 import com.fulcrumgenomics.umi.UmiConsensusCaller.SimpleRead
 import com.fulcrumgenomics.util.ProgressLogger
 
@@ -78,7 +78,7 @@ object ConsensusCallingIterator {
     else {
       val callers          = IndexedSeq.range(start=0, end=threads).map(_ => toCaller())
       val groupingIterator = new SamRecordGroupedIterator(sourceIterator, callers.head.sourceMoleculeId)
-      val pool             = new ForkJoinPool(threads, ForkJoinPool.defaultForkJoinWorkerThreadFactory, null, true)
+      val pool             = new ForkJoinPool(threads, java.util.concurrent.ForkJoinPool.defaultForkJoinWorkerThreadFactory, null, true)
       val iter             = groupingIterator.bufferBetter
       val outIter          = Iterator.continually {
         // Collect sets of input reads, each set to call a consensus read, until we have consumed the specified number

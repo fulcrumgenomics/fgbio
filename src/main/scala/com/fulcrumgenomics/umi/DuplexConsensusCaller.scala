@@ -43,7 +43,7 @@ object DuplexConsensusCaller {
   val ErrorRatePostUmi: PhredScore        = 40.toByte
   val MinInputBaseQuality: PhredScore     = 15.toByte
   val NoCall: Byte = 'N'.toByte
-  val NoCallQual   = PhredScore.MinValue
+  val NoCallQual: PhredScore = PhredScore.MinValue
 
   /** Additional filter strings used when rejecting reads. */
   val FilterMinReads    = "Not Enough Reads (Either Total, AB, or BA)"
@@ -123,25 +123,33 @@ class DuplexConsensusCaller(override val readNamePrefix: String,
     ))
 
   /**
-    * Returns the MI tag minus the trailing suffix that identifies /A vs /B
+    * Returns the MI tag **with** the trailing suffix that identifies /A vs /B
+    */
+  private def sourceMoleculeAndStrandId(rec: SamRecord): String = {
+    // Optimization: speed up retrieving this tag by storing it in the transient attributes
+    rec.transientAttrs.getOrElse[String](ConsensusTags.MolecularId, {
+      val mi = rec.getOrElse[String](ConsensusTags.MolecularId,
+        throw new IllegalStateException(s"Read ${rec.name} is missing it's ${ConsensusTags.MolecularId} tag.")
+      )
+      rec.transientAttrs(ConsensusTags.MolecularId) = mi
+      mi
+    })
+  }
+
+  private val MolecularIdNoTrailingSuffix: String = "__" + ConsensusTags.MolecularId + "__"
+
+  /**
+    * Returns the MI tag **minus** the trailing suffix that identifies /A vs /B
     */
   override protected[umi] def sourceMoleculeId(rec: SamRecord): String = {
-
-
     // Optimization: speed up retrieving this tag by storing it in the transient attributes
-    rec.transientAttrs.get[String](ConsensusTags.MolecularId).orElse {
-      rec.get[String](ConsensusTags.MolecularId).map { id =>
-        rec.transientAttrs(ConsensusTags.MolecularId) = id
-        id
-      }
-    } match {
-      case None =>
-        throw new IllegalStateException(s"Read ${rec.name} is missing it's ${ConsensusTags.MolecularId} tag.")
-      case Some(mi) =>
-        val index = mi.lastIndexOf('/')
-        require(index > 0, s"Read ${rec.name}'s $ConsensusTags tag doesn't look like a duplex id: $mi")
-        mi.substring(0, index)
-    }
+    rec.transientAttrs.getOrElse[String](MolecularIdNoTrailingSuffix, {
+      val mi = sourceMoleculeAndStrandId(rec)
+      val index = mi.lastIndexOf('/')
+      val miRoot = mi.substring(0, index)
+      rec.transientAttrs(MolecularIdNoTrailingSuffix) = miRoot
+      miRoot
+    })
   }
 
   /**
@@ -160,7 +168,7 @@ class DuplexConsensusCaller(override val readNamePrefix: String,
     }
     else {
       // Group the reads by /A vs. /B and ensure that /A is the first group and /B the second
-      val groups = pairs.groupBy(r => r[String](ConsensusTags.MolecularId)).toSeq.sortBy { case (mi, _) => mi }.map(_._2)
+      val groups = pairs.groupBy(r => sourceMoleculeAndStrandId(r)).toSeq.sortBy { case (mi, _) => mi }.map(_._2)
 
       require(groups.length <= 2, "SamRecords supplied with more than two distinct MI values.")
 
@@ -199,6 +207,19 @@ class DuplexConsensusCaller(override val readNamePrefix: String,
     }
   }
 
+  /** Split records into those that should make a single-end consensus read, first of pair consensus read,
+    * and second of pair consensus read, respectively.  For [[DuplexConsensusCaller]], no fragment reads should be
+    * given to this method, so none will be returned.
+    */
+  override protected def subGroupRecords(records: Seq[SamRecord]): (Seq[SamRecord], Seq[SamRecord], Seq[SamRecord]) = {
+    // NB: the input records should not have fragments
+    val (firstOfPair, secondOfPair) = records.partition { r =>
+      assert(r.paired, "Fragment reads should not be given to subGroupRecords in DuplexConsensusCaller.")
+      r.firstOfPair
+    }
+    (Seq.empty, firstOfPair, secondOfPair)
+  }
+
   /** Attempts to call a duplex consensus reads from the two sets of reads, one for each strand. */
   private def callDuplexConsensusRead(ab: Seq[SamRecord], ba: Seq[SamRecord]): Seq[SamRecord] = {
     // Fragments have no place in duplex land (and are filtered out previously anyway)!
@@ -217,12 +238,12 @@ class DuplexConsensusCaller(override val readNamePrefix: String,
     // Check for this explicitly here.
     (areAllSameStrand(singleStrand1), areAllSameStrand(singleStrand2)) match {
       case (false, _)   =>
-        val ss1Mi   = singleStrand1.head.apply[String](ConsensusTags.MolecularId)
+        val ss1Mi = sourceMoleculeId(singleStrand1.head)
         rejectRecords(ab ++ ba, FilterCollision)
         logger.debug(s"Not all AB-R1s and BA-R2s were on the same strand for molecule with id: $ss1Mi")
         Nil
       case (_, false)   =>
-        val ss2Mi   = singleStrand2.head.apply[String](ConsensusTags.MolecularId)
+        val ss2Mi = sourceMoleculeId(singleStrand2.head)
         rejectRecords(ab ++ ba, FilterCollision)
         logger.debug(s"Not all AB-R2s and BA-R1s were on the same strand for molecule with id: $ss2Mi")
         Nil
@@ -313,8 +334,8 @@ class DuplexConsensusCaller(override val readNamePrefix: String,
           // Then mask it if appropriate
           val (base, qual) = if (aBase == NoCall || bBase == NoCall || rawQual == PhredScore.MinValue) (NoCall, NoCallQual) else (rawBase, rawQual)
 
-          bases(i)  = base
-          quals(i)  = qual
+          bases(i) = base
+          quals(i) = qual
 
           // NB: optimized based on profiling; was previously:
           // sourceReads.count(s => s.length > i && isError(s.bases(i), rawBase))
