@@ -26,7 +26,7 @@ package com.fulcrumgenomics.umi
 
 import com.fulcrumgenomics.FgBioDef._
 import com.fulcrumgenomics.bam.api.SamRecord
-import com.fulcrumgenomics.commons.util.Logger
+import com.fulcrumgenomics.commons.util.{LazyLogging, Logger}
 import com.fulcrumgenomics.umi.UmiConsensusCaller.SimpleRead
 import com.fulcrumgenomics.util.ProgressLogger
 
@@ -70,7 +70,7 @@ class ParallelConsensusCallingIterator[T<:SimpleRead](sourceIterator: Iterator[S
                                                       progress: Option[ProgressLogger] = None,
                                                       threads: Int = 1,
                                                       maxRecordsInRam: Int = 128000)
-  extends ConsensusCallingIterator(Iterator.empty, toCaller(), progress = None) {
+  extends ConsensusCallingIterator(Iterator.empty, toCaller(), progress = None) with LazyLogging {
   require(threads > 0, "One or more threads are required.")
 
   private val callers = IndexedSeq.range(start = 0, end = threads).map(_ => toCaller())
@@ -81,15 +81,13 @@ class ParallelConsensusCallingIterator[T<:SimpleRead](sourceIterator: Iterator[S
     Iterator.continually {
       // Collect sets of input reads, each set to call a consensus read, until we have consumed the specified number
       // of input records.  Then we can process that batch.
+      val tmpCaller = toCaller()
+      callers.foreach { caller => tmpCaller.addStatistics(caller) }
+      tmpCaller.logStatistics(logger)
       var total = 0L
       iter
-        .takeWhile { chunk => if (maxRecordsInRam <= total) false else {
-          total += chunk.length; true
-        }
-        }
-        .map { records => yieldAndThen(records) {
-          for (p <- progress; r <- records) p.record(r)
-        }
+        .takeWhile { chunk => if (maxRecordsInRam <= total) false else {total += chunk.length; true } }
+        .map { records => yieldAndThen(records) { for (p <- progress; r <- records) p.record(r) }
         }
         .zipWithIndex
         .toSeq
