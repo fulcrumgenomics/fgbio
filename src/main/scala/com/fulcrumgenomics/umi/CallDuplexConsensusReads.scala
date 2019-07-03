@@ -128,12 +128,15 @@ class CallDuplexConsensusReads
       minReads            = minReads
     )
     val progress = ProgressLogger(logger, unit=1000000)
-    val (iterator, caller) = ConsensusCallingIterator.parWith(in.toIterator, toCaller, Some(progress), threads, maxRecordsInRamPerThread)
+    val iterator = {
+      if (threads <= 1) new ConsensusCallingIterator(in.toIterator, toCaller(), Some(progress))
+      else new ParallelConsensusCallingIterator(in.toIterator, toCaller, Some(progress), threads, maxRecordsInRamPerThread)
+    }
     out ++= iterator
     progress.logLast()
 
     in.safelyClose()
     out.close()
-    caller.logStatistics(logger)
+    iterator.logStatistics(logger)
   }
 }

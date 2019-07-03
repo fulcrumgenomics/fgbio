@@ -37,7 +37,7 @@ import htsjdk.samtools._
 import scala.collection.mutable
 import scala.collection.mutable.ArrayBuffer
 import scala.math.{abs, min}
-
+import scala.collection.immutable.{Set => ImmutableSet}
 /**
   * Contains shared types and functions used when writing UMI-driven consensus
   * callers that take in SamRecords and emit SamRecords.
@@ -300,7 +300,7 @@ trait UmiConsensusCaller[C <: SimpleRead] {
     (fragments, firstOfPair, secondOfPair)
   }
 
-  private val GroupIdentifierKey: String = "__group_identifier__"
+  private case class CigarAndCount(simpleCigar: Cigar, index: Int = 0, var count: Long = 0)
 
   /**
     * Takes in a non-empty seq of SamRecords and filters them such that the returned seq only contains
@@ -317,43 +317,33 @@ trait UmiConsensusCaller[C <: SimpleRead] {
     * NOTE: filtered out reads are sent to the [[rejectRecords]] method and do not need further handling
     */
   protected[umi] def filterToMostCommonAlignment(recs: Seq[SourceRead]): Seq[SourceRead] = {
-    // Each group is uniquely associated with one cigar, and the count of records having the "same alignment" for each
-    // cigar is stored in `groups`.  The index into `cigars` as used as the key in `groups`.  Next, for each records,
-    // the set of existing "groups" that have the "same alignment" is determined, or a new group is created.  The set
-    // of groups is stored as a transient attribute on the `SAMRecord` for when the group to "keep" is determined, and
-    // so those records that belong to the "keeper" group is determined.
-
-    val groups = new NumericCounter[Int]()
-    val cigars = new ArrayBuffer[Cigar]
+    val cigars = new ArrayBuffer[CigarAndCount]
+    val toCigarIndices = new mutable.HashMap[SourceRead, ImmutableSet[Int]]()
 
     recs.sortBy(r => -r.length).foreach { rec =>
       val simpleCigar  = simplifyCigar(rec.cigar)
-      val groupIndices: scala.collection.immutable.Set[Int] = cigars
-        .zipWithIndex
-        .filter { case (cigar, _) => simpleCigar.isPrefixOf(cigar) }
-        .map(_._2)
+      val cigarIndices = cigars
+        .filter { cigar => simpleCigar.isPrefixOf(cigar.simpleCigar) }
+        .map(_.index)
         .toSet
-      rec.sam.get.transientAttrs(GroupIdentifierKey) = groupIndices
-      groupIndices.foreach { groupIndex => groups.count(groupIndex) }
 
-      if (groupIndices.isEmpty) {
-        rec.sam.get.transientAttrs(GroupIdentifierKey) = scala.collection.immutable.Set(cigars.size)
-        groups.count(cigars.size)
-        cigars += simpleCigar
+      if (cigarIndices.isEmpty) {
+        toCigarIndices(rec) = ImmutableSet(cigars.size)
+        cigars += CigarAndCount(simpleCigar, cigars.size, 1)
+      }
+      else {
+        toCigarIndices(rec) = cigarIndices
+        cigarIndices.foreach { cigarIndex => cigars(cigarIndex).count += 1 }
       }
     }
 
-    if (groups.isEmpty) {
+    if (cigars.isEmpty) {
       Seq.empty
     }
     else {
-      // Keep the group has the most # of records
-      val maxGroupIndex = groups.max._1
-      val (keepers, rejects) = recs.partition { rec =>
-        val groupIndices = rec.sam.get.transientAttrs[scala.collection.immutable.Set[Int]](GroupIdentifierKey)
-         rec.sam.get.transientAttrs(GroupIdentifierKey) = null
-        groupIndices.contains(maxGroupIndex)
-      }
+      // Keep the records from the cigar has the most # of matching records
+      val mostFrequentCigarIndex = cigars.maxBy(_.count).index
+      val (keepers, rejects) = recs.toList.partition { rec => toCigarIndices(rec).contains(mostFrequentCigarIndex) }
       rejectRecords(rejects.flatMap(_.sam), FilterMinorityAlignment)
       keepers
     }

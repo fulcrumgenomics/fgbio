@@ -33,8 +33,8 @@ import com.fulcrumgenomics.umi.VanillaUmiConsensusCallerOptions._
 import com.fulcrumgenomics.util.NumericTypes._
 import htsjdk.samtools.SAMUtils
 import htsjdk.samtools.util.CloserUtil
-import net.jafama.FastMath._
 import org.scalatest.OptionValues
+import org.apache.commons.math3.util.FastMath._
 
 import scala.collection.mutable.ArrayBuffer
 
