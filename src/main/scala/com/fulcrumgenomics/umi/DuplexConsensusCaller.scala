@@ -103,7 +103,8 @@ class DuplexConsensusCaller(override val readNamePrefix: String,
                             val trim: Boolean                   = false,
                             val errorRatePreUmi: PhredScore     = DuplexConsensusCaller.ErrorRatePreUmi,
                             val errorRatePostUmi: PhredScore    = DuplexConsensusCaller.ErrorRatePostUmi,
-                            val minReads: Seq[Int]              = Seq(1)
+                            val minReads: Seq[Int]              = Seq(1),
+                            val maxReads: Int                   = VanillaUmiConsensusCallerOptions.DefaultMaxReads
                            ) extends UmiConsensusCaller[DuplexConsensusRead] with LazyLogging {
 
   private val Seq(minTotalReads, minXyReads, minYxReads) = this.minReads.padTo(3, this.minReads.last)
@@ -117,6 +118,7 @@ class DuplexConsensusCaller(override val readNamePrefix: String,
       errorRatePreUmi         = this.errorRatePreUmi,
       errorRatePostUmi        = this.errorRatePostUmi,
       minReads                = 1,
+      maxReads                = maxReads,
       minInputBaseQuality     = this.minInputBaseQuality,
       minConsensusBaseQuality = PhredScore.MinValue,
       producePerBaseTags      = true
@@ -267,8 +269,8 @@ class DuplexConsensusCaller(override val readNamePrefix: String,
         // Call the duplex reads
         val duplexR1Sources = filteredAbR1s ++ filteredBaR2s
         val duplexR2Sources = filteredAbR2s ++ filteredBaR1s
-        val duplexR1 = duplexConsensus(abR1Consensus, baR2Consensus, duplexR1Sources)
-        val duplexR2 = duplexConsensus(abR2Consensus, baR1Consensus, duplexR2Sources)
+        val duplexR1 = duplexConsensus(abR1Consensus, baR2Consensus, duplexR1Sources.toArray[SourceRead])
+        val duplexR2 = duplexConsensus(abR2Consensus, baR1Consensus, duplexR2Sources.toArray[SourceRead])
 
         // Convert to SamRecords and return
         (duplexR1, duplexR2) match {

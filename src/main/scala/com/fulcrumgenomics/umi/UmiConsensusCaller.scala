@@ -27,17 +27,15 @@ package com.fulcrumgenomics.umi
 import com.fulcrumgenomics.FgBioDef._
 import com.fulcrumgenomics.alignment.{Cigar, CigarElem}
 import com.fulcrumgenomics.bam.api.{SamOrder, SamRecord}
-import com.fulcrumgenomics.commons.util.{Logger, NumericCounter, SimpleCounter}
+import com.fulcrumgenomics.commons.util.{Logger, SimpleCounter}
 import com.fulcrumgenomics.umi.UmiConsensusCaller._
 import com.fulcrumgenomics.util.NumericTypes.PhredScore
 import htsjdk.samtools.SAMFileHeader.{GroupOrder, SortOrder}
 import htsjdk.samtools.util.{Murmur3, SequenceUtil, TrimmingUtil}
 import htsjdk.samtools._
 
-import scala.collection.mutable
 import scala.collection.mutable.ArrayBuffer
 import scala.math.{abs, min}
-import scala.collection.immutable.{Set => ImmutableSet}
 /**
   * Contains shared types and functions used when writing UMI-driven consensus
   * callers that take in SamRecords and emit SamRecords.
@@ -301,6 +299,7 @@ trait UmiConsensusCaller[C <: SimpleRead] {
   }
 
   private case class CigarAndCount(simpleCigar: Cigar, index: Int = 0, var count: Long = 0)
+  private case class SourceReadAndCigarIndices(read: SourceRead, cigarIndices: Set[Int])
 
   /**
     * Takes in a non-empty seq of SamRecords and filters them such that the returned seq only contains
@@ -318,22 +317,20 @@ trait UmiConsensusCaller[C <: SimpleRead] {
     */
   protected[umi] def filterToMostCommonAlignment(recs: Seq[SourceRead]): Seq[SourceRead] = {
     val cigars = new ArrayBuffer[CigarAndCount]
-    val toCigarIndices = new mutable.HashMap[SourceRead, ImmutableSet[Int]]()
-
-    recs.sortBy(r => -r.length).foreach { rec =>
-      val simpleCigar  = simplifyCigar(rec.cigar)
+    val recsAndCigarIndices: Seq[SourceReadAndCigarIndices] = recs.sortBy(r => -r.length).map { read =>
+      val simpleCigar  = simplifyCigar(read.cigar)
       val cigarIndices = cigars
         .filter { cigar => simpleCigar.isPrefixOf(cigar.simpleCigar) }
         .map(_.index)
         .toSet
 
       if (cigarIndices.isEmpty) {
-        toCigarIndices(rec) = ImmutableSet(cigars.size)
         cigars += CigarAndCount(simpleCigar, cigars.size, 1)
+        SourceReadAndCigarIndices(read, Set(cigars.size))
       }
       else {
-        toCigarIndices(rec) = cigarIndices
         cigarIndices.foreach { cigarIndex => cigars(cigarIndex).count += 1 }
+        SourceReadAndCigarIndices(read, cigarIndices)
       }
     }
 
@@ -343,9 +340,9 @@ trait UmiConsensusCaller[C <: SimpleRead] {
     else {
       // Keep the records from the cigar has the most # of matching records
       val mostFrequentCigarIndex = cigars.maxBy(_.count).index
-      val (keepers, rejects) = recs.toList.partition { rec => toCigarIndices(rec).contains(mostFrequentCigarIndex) }
-      rejectRecords(rejects.flatMap(_.sam), FilterMinorityAlignment)
-      keepers
+      val (keepers, rejects) = recsAndCigarIndices.toList.partition(_.cigarIndices.contains(mostFrequentCigarIndex))
+      rejectRecords(rejects.flatMap(_.read.sam), FilterMinorityAlignment)
+      keepers.map(_.read)
     }
   }
 

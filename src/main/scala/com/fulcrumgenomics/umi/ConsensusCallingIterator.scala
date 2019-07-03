@@ -81,9 +81,6 @@ class ParallelConsensusCallingIterator[T<:SimpleRead](sourceIterator: Iterator[S
     Iterator.continually {
       // Collect sets of input reads, each set to call a consensus read, until we have consumed the specified number
       // of input records.  Then we can process that batch.
-      val tmpCaller = toCaller()
-      callers.foreach { caller => tmpCaller.addStatistics(caller) }
-      tmpCaller.logStatistics(logger)
       var total = 0L
       iter
         .takeWhile { chunk => if (maxRecordsInRam <= total) false else {total += chunk.length; true } }

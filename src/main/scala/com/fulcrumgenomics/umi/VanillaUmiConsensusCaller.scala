@@ -32,7 +32,6 @@ import com.fulcrumgenomics.umi.UmiConsensusCaller.ReadType._
 import com.fulcrumgenomics.umi.UmiConsensusCaller._
 import com.fulcrumgenomics.umi.VanillaUmiConsensusCallerOptions._
 import com.fulcrumgenomics.util.NumericTypes._
-
 import scala.collection.mutable.ListBuffer
 import scala.util.Random
 
@@ -107,8 +106,6 @@ class VanillaUmiConsensusCaller(override val readNamePrefix: String,
 
   private val NotEnoughReadsQual: PhredScore = 0.toByte // Score output when masking to N due to insufficient input reads
   private val TooLowQualityQual: PhredScore = 2.toByte  // Score output when masking to N due to too low consensus quality
-  private val DnaBasesUpperCase: Array[Byte] = Array('A', 'C', 'G', 'T').map(_.toByte)
-  private val LogThree = LogProbability.toLogProbability(3.0)
 
   private val caller = new ConsensusCaller(errorRatePreLabeling  = options.errorRatePreUmi,
                                            errorRatePostLabeling = options.errorRatePostUmi)
@@ -131,8 +128,8 @@ class VanillaUmiConsensusCaller(override val readNamePrefix: String,
 
     // pairs
     (consensusFromSamRecords(firstOfPair), consensusFromSamRecords(secondOfPair)) match {
-      case (None, Some(r2))     => rejectRecords(secondOfPair, UmiConsensusCaller.FilterOrphan)
-      case (Some(r1), None)     => rejectRecords(firstOfPair,  UmiConsensusCaller.FilterOrphan)
+      case (None, Some(_))     => rejectRecords(secondOfPair, UmiConsensusCaller.FilterOrphan)
+      case (Some(_), None)     => rejectRecords(firstOfPair,  UmiConsensusCaller.FilterOrphan)
       case (None, None)         => rejectRecords(firstOfPair ++ secondOfPair, UmiConsensusCaller.FilterOrphan)
       case (Some(r1), Some(r2)) =>
         buffer += createSamRecord(r1, FirstOfPair, firstOfPair.flatMap(_.get[String](ConsensusTags.UmiBases)))
