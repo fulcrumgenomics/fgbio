@@ -6,6 +6,11 @@
     </Console>
   </Appenders>
   <Loggers>
+    <!-- Suppress any log messages less severe than WARN for the Intel deflater and set additivity to false to avoid
+          passing messages to the Root logger and causing duplicate messages  -->
+    <Logger name="com.intel.gkl" level="WARN" additivity="false">
+      <AppenderRef ref="Console"/>
+    </Logger>
     <Root level="INFO">
       <AppenderRef ref="Console"/>
     </Root>

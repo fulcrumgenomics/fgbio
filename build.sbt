@@ -108,10 +108,7 @@ lazy val htsjdkExcludes = Seq(
   ExclusionRule(organization="org.testng"),
   ExclusionRule(organization="com.google.cloud.genomics")
 )
-lazy val gkExcludes = Seq(
-  ExclusionRule(organization="commons-io", name="commons-io"),
-  //ExclusionRule(organization="org.apache.logging.log4j", name="log4j-core")
-)
+
 lazy val assemblySettings = Seq(
   test in assembly     := {},
   logLevel in assembly := Level.Info
@@ -132,7 +129,7 @@ lazy val root = Project(id="fgbio", base=file("."))
       "net.jafama"                %  "jafama"         % "2.1.0",
       "org.apache.commons"        %  "commons-math3"  % "3.6.1",
       "com.beachape"              %% "enumeratum"     % "1.5.12",
-      "com.intel.gkl"             %  "gkl"            % "0.8.6" excludeAll(gkExcludes: _*),
+      "com.intel.gkl"             %  "gkl"            % "0.8.6",
 
       //---------- Test libraries -------------------//
       "org.scalatest"             %% "scalatest"     % "3.0.4"  % "test->*" excludeAll ExclusionRule(organization="org.junit", name="junit")
