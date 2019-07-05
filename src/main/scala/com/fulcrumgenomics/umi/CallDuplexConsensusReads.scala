@@ -105,7 +105,7 @@ class CallDuplexConsensusReads
             |present in a tag family, the family is randomly downsampled to exactly max-reads reads.
           """)
  val maxReads: Option[Int] = None,
- @arg(doc="The number of threads to use while consensus calling.") val threads: Int = 1,
+ @arg(doc="The number of threads to use while consensus calling.") val threads: Int = 1
 ) extends FgBioTool with LazyLogging {
 
   private val maxRecordsInRamPerThread = 128000
@@ -131,7 +131,7 @@ class CallDuplexConsensusReads
       errorRatePreUmi     = errorRatePreUmi,
       errorRatePostUmi    = errorRatePostUmi,
       minReads            = minReads,
-      maxReads            = maxReads.getOrElse(VanillaUmiConsensusCallerOptions.DefaultMaxReads),
+      maxReads            = maxReads.getOrElse(VanillaUmiConsensusCallerOptions.DefaultMaxReads)
     )
     val progress = ProgressLogger(logger, unit=1000000)
     val iterator = new ConsensusCallingIterator(in.toIterator, caller, Some(progress), threads, maxRecordsInRamPerThread)

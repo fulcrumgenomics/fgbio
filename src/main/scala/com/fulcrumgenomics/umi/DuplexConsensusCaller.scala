@@ -150,7 +150,7 @@ class DuplexConsensusCaller(override val readNamePrefix: String,
       errorRatePreUmi     = errorRatePreUmi,
       errorRatePostUmi    = errorRatePostUmi,
       minReads            = minReads,
-      maxReads            = maxReads,
+      maxReads            = maxReads
     )
   }
 
