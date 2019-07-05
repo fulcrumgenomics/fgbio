@@ -31,8 +31,8 @@ import com.fulcrumgenomics.commons.util.{Logger, SimpleCounter}
 import com.fulcrumgenomics.umi.UmiConsensusCaller._
 import com.fulcrumgenomics.util.NumericTypes.PhredScore
 import htsjdk.samtools.SAMFileHeader.{GroupOrder, SortOrder}
-import htsjdk.samtools.util.{Murmur3, SequenceUtil, TrimmingUtil}
 import htsjdk.samtools._
+import htsjdk.samtools.util.{Murmur3, SequenceUtil, TrimmingUtil}
 
 import scala.collection.mutable.ArrayBuffer
 import scala.math.{abs, min}
@@ -166,6 +166,10 @@ trait UmiConsensusCaller[C <: SimpleRead] {
 
   /** A consensus caller used to generate consensus UMI sequences */
   private val consensusBuilder = new SimpleConsensusCaller()
+
+  /** Returns a clone of this consensus caller in a state where no previous reads were processed.  I.e. all counters
+    * are set to zero.*/
+  def emptyClone(): UmiConsensusCaller[C]
 
   /** Returns the total number of input reads examined by the consensus caller so far. */
   def totalReads: Long = _totalReads
@@ -326,7 +330,7 @@ trait UmiConsensusCaller[C <: SimpleRead] {
 
       if (cigarIndices.isEmpty) {
         cigars += CigarAndCount(simpleCigar, cigars.size, 1)
-        SourceReadAndCigarIndices(read, Set(cigars.size))
+        SourceReadAndCigarIndices(read, Set(cigars.size-1))
       }
       else {
         cigarIndices.foreach { cigarIndex => cigars(cigarIndex).count += 1 }

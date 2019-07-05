@@ -112,6 +112,17 @@ class VanillaUmiConsensusCaller(override val readNamePrefix: String,
 
   private val random = new Random(42)
 
+  /** Returns a clone of this consensus caller in a state where no previous reads were processed.  I.e. all counters
+    * are set to zero.*/
+  def emptyClone(): VanillaUmiConsensusCaller = {
+    new VanillaUmiConsensusCaller(
+      readNamePrefix = readNamePrefix,
+      readGroupId    = readGroupId,
+      options        = options,
+      rejects        = rejects
+    )
+  }
+
   /** Returns the value of the SAM tag directly. */
   override def sourceMoleculeId(rec: SamRecord): String = rec(this.options.tag)
 
@@ -241,7 +252,7 @@ class VanillaUmiConsensusCaller(override val readNamePrefix: String,
   /** If a reject writer was provided, emit the reads to that writer. */
   override protected def rejectRecords(recs: Traversable[SamRecord], reason: String): Unit = {
     super.rejectRecords(recs, reason)
-    this.rejects.foreach(rej => rej ++= recs)
+    this.rejects.foreach(rej => rej ++= recs) // NB: this may not be thread-safe
   }
 
   /** Creates a `SamRecord` from the called consensus base and qualities. */

@@ -26,10 +26,12 @@ package com.fulcrumgenomics.umi
 
 import com.fulcrumgenomics.FgBioDef._
 import com.fulcrumgenomics.bam.api.SamRecord
-import com.fulcrumgenomics.commons.util.{LazyLogging, Logger}
+import com.fulcrumgenomics.commons.async.AsyncIterator
+import com.fulcrumgenomics.commons.util.LazyLogging
 import com.fulcrumgenomics.umi.UmiConsensusCaller.SimpleRead
 import com.fulcrumgenomics.util.ProgressLogger
 
+import scala.collection.mutable.ListBuffer
 import scala.concurrent.forkjoin.ForkJoinPool
 
 /**
@@ -39,68 +41,57 @@ import scala.concurrent.forkjoin.ForkJoinPool
   * @param sourceIterator the iterator over input [[SamRecord]]s.
   * @param caller the consensus caller to use to call consensus reads
   * @param progress an optional progress logger to which to log progress in input reads
+  * @param threads the number of threads to use.
+  * @param maxRecordsInRam the approximate maximum number of input records to store in RAM across multiple threads.
   */
-class ConsensusCallingIterator(sourceIterator: Iterator[SamRecord],
-                               caller: UmiConsensusCaller[_],
-                               progress: Option[ProgressLogger] = None)
-  extends Iterator[SamRecord] {
-  private val groupingIterator = new SamRecordGroupedIterator(sourceIterator, caller.sourceMoleculeId)
-  protected val iterator: Iterator[SamRecord] = groupingIterator.flatMap { records =>
-    for (p <- progress; r <- records) p.record(r)
-    caller.consensusReadsFromSamRecords(records)
+class ConsensusCallingIterator[C <: SimpleRead](sourceIterator: Iterator[SamRecord],
+                               caller: UmiConsensusCaller[C],
+                               progress: Option[ProgressLogger] = None,
+                               threads: Int = 1,
+                               maxRecordsInRam: Int = 128000)
+  extends Iterator[SamRecord] with LazyLogging {
+  protected val groupingIterator: Iterator[Seq[SamRecord]] = {
+    new SamRecordGroupedIterator(sourceIterator, caller.sourceMoleculeId)
+      .map { records => for (p <- progress; r <- records) p.record(r); records }
+  }
+  protected val iterator: Iterator[SamRecord] = {
+    if (threads <= 1) {
+      groupingIterator.flatMap(caller.consensusReadsFromSamRecords)
+    }
+    else {
+      val pool          = new ForkJoinPool(threads, ForkJoinPool.defaultForkJoinWorkerThreadFactory, null, true)
+      val bufferedIter  = groupingIterator.bufferBetter
+      val callersFactor = 1000 // the number of callers per thread to create. This to reduce chance of picking the same caller
+      val callers       = Array.range(start=0, threads*callersFactor).map { _ => caller.emptyClone() }
+
+      // Read in groups of records (each from the same source molecule) until we have the maximum number of
+      // individual records in RAM.  We have a few more records in RAM, if the group that pushes us over the limit is
+      // large.  Then process the collected groups in parallel.
+      Iterator.continually {
+        var total = 0L
+        bufferedIter
+          .takeWhile { chunk => if (maxRecordsInRam <= total) false else {total += chunk.length; true } }
+          .zipWithIndex
+          .toSeq
+          .parWith(pool)
+          .flatMap { case (records, groupIndex) =>
+            val caller = callers(groupIndex % callers.length)
+            caller.synchronized { caller.consensusReadsFromSamRecords(records) }
+          }
+          .seq
+      }.takeWhile { records =>
+        if (records.nonEmpty) true else {
+          // add the statistics to the original caller since there are no more reads
+          require(bufferedIter.isEmpty, "Bug: input is not empty")
+          callers.foreach(caller.addStatistics)
+          false
+        }
+      }.flatten
+
+    }
   }
   override def hasNext: Boolean = this.iterator.hasNext
   override def next(): SamRecord = this.iterator.next
-  def logStatistics(logger: Logger): Unit = this.caller.logStatistics(logger)
-}
-
-/**
-  * An iterator that consumes from an incoming iterator of [[SamRecord]]s and generates consensus
-  * read [[SamRecord]] using the supplied consensus caller.
-  *
-  * @param sourceIterator the iterator over input [[SamRecord]]s.
-  * @param toCaller method to build a consensus caller to use to call consensus reads
-  * @param progress an optional progress logger to which to log progress in input reads
-  * @param threads the number of threads to use.
-  * @param maxRecordsInRam the maximum number of input records to store in RAM.  May be larger if a single consensus
-  *                        read contains more records.
-  */
-class ParallelConsensusCallingIterator[T<:SimpleRead](sourceIterator: Iterator[SamRecord],
-                                                      toCaller: () => UmiConsensusCaller[T],
-                                                      progress: Option[ProgressLogger] = None,
-                                                      threads: Int = 1,
-                                                      maxRecordsInRam: Int = 128000)
-  extends ConsensusCallingIterator(Iterator.empty, toCaller(), progress = None) with LazyLogging {
-  require(threads > 0, "One or more threads are required.")
-
-  private val callers = IndexedSeq.range(start = 0, end = threads).map(_ => toCaller())
-  override protected val iterator: Iterator[SamRecord] = {
-    val groupingIterator = new SamRecordGroupedIterator(sourceIterator, callers.head.sourceMoleculeId)
-    val pool = new ForkJoinPool(threads, ForkJoinPool.defaultForkJoinWorkerThreadFactory, null, true)
-    val iter = groupingIterator.bufferBetter
-    Iterator.continually {
-      // Collect sets of input reads, each set to call a consensus read, until we have consumed the specified number
-      // of input records.  Then we can process that batch.
-      var total = 0L
-      iter
-        .takeWhile { chunk => if (maxRecordsInRam <= total) false else {total += chunk.length; true } }
-        .map { records => yieldAndThen(records) { for (p <- progress; r <- records) p.record(r) }
-        }
-        .zipWithIndex
-        .toSeq
-        .parWith(pool)
-        .flatMap { case (records, idx) => callers(idx % threads).consensusReadsFromSamRecords(records) }
-        .seq
-    }.takeWhile { records =>
-      if (records.nonEmpty) true else {
-        // add the statistics
-        callers.tail.foreach { caller => callers.head.addStatistics(caller) }
-        false
-      }
-    }.flatten
-  }
-
-  override def logStatistics(logger: Logger): Unit = this.callers.head.logStatistics(logger)
 }
 
 /** Groups consecutive records based on a method to group records. */

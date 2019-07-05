@@ -108,7 +108,7 @@ class CallDuplexConsensusReads
  @arg(doc="The number of threads to use while consensus calling.") val threads: Int = 1,
 ) extends FgBioTool with LazyLogging {
 
-  private val maxRecordsInRamPerThread = 64000
+  private val maxRecordsInRamPerThread = 128000
 
   Io.assertReadable(input)
   Io.assertCanWriteFile(output)
@@ -123,7 +123,7 @@ class CallDuplexConsensusReads
     val outHeader = UmiConsensusCaller.outputHeader(in.header, readGroupId, sortOrder)
     val out = SamWriter(output, outHeader, sort=sortOrder)
 
-    val toCaller = () => new DuplexConsensusCaller(
+    val caller = new DuplexConsensusCaller(
       readNamePrefix      = readNamePrefix.getOrElse(UmiConsensusCaller.makePrefixFromSamHeader(in.header)),
       readGroupId         = readGroupId,
       minInputBaseQuality = minInputBaseQuality,
@@ -134,15 +134,12 @@ class CallDuplexConsensusReads
       maxReads            = maxReads.getOrElse(VanillaUmiConsensusCallerOptions.DefaultMaxReads),
     )
     val progress = ProgressLogger(logger, unit=1000000)
-    val iterator = {
-      if (threads <= 1) new ConsensusCallingIterator(in.toIterator, toCaller(), Some(progress))
-      else new ParallelConsensusCallingIterator(in.toIterator, toCaller, Some(progress), threads, maxRecordsInRamPerThread)
-    }
+    val iterator = new ConsensusCallingIterator(in.toIterator, caller, Some(progress), threads, maxRecordsInRamPerThread)
     out ++= iterator
     progress.logLast()
 
     in.safelyClose()
     out.close()
-    iterator.logStatistics(logger)
+    caller.logStatistics(logger)
   }
 }

@@ -109,7 +109,6 @@ class DuplexConsensusCaller(override val readNamePrefix: String,
 
   private val Seq(minTotalReads, minXyReads, minYxReads) = this.minReads.padTo(3, this.minReads.last)
 
-
   // For depth thresholds it's required that ba <= ab <= cc
   require(minXyReads <= minTotalReads, "min-reads values must be specified high to low.")
   require(minYxReads <= minXyReads, "min-reads values must be specified high to low.")
@@ -139,6 +138,21 @@ class DuplexConsensusCaller(override val readNamePrefix: String,
   }
 
   private val MolecularIdNoTrailingSuffix: String = "__" + ConsensusTags.MolecularId + "__"
+
+  /** Returns a clone of this consensus caller in a state where no previous reads were processed.  I.e. all counters
+    * are set to zero.*/
+  def emptyClone(): DuplexConsensusCaller = {
+    new DuplexConsensusCaller(
+      readNamePrefix      = readNamePrefix,
+      readGroupId         = readGroupId,
+      minInputBaseQuality = minInputBaseQuality,
+      trim                = trim,
+      errorRatePreUmi     = errorRatePreUmi,
+      errorRatePostUmi    = errorRatePostUmi,
+      minReads            = minReads,
+      maxReads            = maxReads,
+    )
+  }
 
   /**
     * Returns the MI tag **minus** the trailing suffix that identifies /A vs /B
