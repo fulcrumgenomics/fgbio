@@ -33,21 +33,21 @@ import htsjdk.samtools.SAMSequenceRecord
 import htsjdk.variant.variantcontext.{GenotypeBuilder, VariantContext, VariantContextBuilder, Allele => JavaAllele}
 import htsjdk.variant.vcf._
 
-import scala.collection.JavaConverters.mapAsJavaMap
+import scala.collection.JavaConverters.mapAsJavaMapConverter
 import scala.collection.immutable.ListMap
 import scala.collection.mutable.ArrayBuffer
 
 /**
   * Object that provides methods for converting from fgbio's scala VCF classes to HTSJDK's
-  * Java VCF-related classes and vice-versa.
+  * Java VCF-related classes and vice-versa.  Only intended for internal use within the `api`
+  * package and should not be exposed publicly.
   */
 private[api] object VcfConversions {
-  /** Value used in VCF for values that are missing. */
-  val Missing: String = "."
-
-  /** Converts a String into Option[String] accounting for various empty/missing values. */
+  /** Converts a String into Option[String]. Returns `None` if the input string is either
+    * `null`, the empty string or [[Variant.Missing]].
+    */
   private def opt(value: String): Option[String] = {
-    if (value == null || value.isEmpty || value == Missing) None else Some(value)
+    if (value == null || value.isEmpty || value == Variant.Missing) None else Some(value)
   }
 
   /** Converts a Java VCF header into a scala VCF header. */
@@ -79,7 +79,7 @@ private[api] object VcfConversions {
       infos   = infos,
       formats = formats,
       filters = in.getFilterLines.toIndexedSeq.sortBy(_.getID).map(f => VcfFilterHeader(f.getID, f.getDescription)),
-      other   = others,
+      others   = others,
       samples = in.getSampleNamesInOrder.toIndexedSeq
     )
   }
@@ -107,9 +107,9 @@ private[api] object VcfConversions {
 
     in.filters.foreach { i =>  out.addMetaDataLine(new VCFFilterHeaderLine(i.id, i.description)) }
 
-    in.other.foreach { i =>
+    in.others.foreach { i =>
       val j = if (i.data.isEmpty) new VCFHeaderLine(i.headerType, i.id) else {
-        new VCFSimpleHeaderLine(i.headerType, mapAsJavaMap(i.data ++ Map("ID" -> i.id)))
+        new VCFSimpleHeaderLine(i.headerType, (i.data ++ Map("ID" -> i.id)).asJava)
       }
       out.addMetaDataLine(j)
     }
@@ -124,6 +124,14 @@ private[api] object VcfConversions {
     out
   }
 
+  /**
+    * Converts the count for a header line from Java to Scala.  Slighly complicated because HTSJDK
+    * classes represent this as both an int `count` _and_ a enum, whereas in scala we always represent
+    * it as a single object/instance of a trait.
+    *
+    * @param in the INFO or FORMAT header line from HTSJDK
+    * @return a [[VcfCount]] instance
+    */
   def toScalaCount(in: VCFCompoundHeaderLine): VcfCount = {
     in.getCountType match {
       case VCFHeaderLineCount.A         => VcfCount.OnePerAltAllele
@@ -134,6 +142,9 @@ private[api] object VcfConversions {
     }
   }
 
+  /**
+    * Converts an HTSJDK enum representing the type of value in an INFO or FORMAT field to a scala enum.
+    */
   def toScalaKind(in: VCFHeaderLineType): VcfFieldType = in match {
     case VCFHeaderLineType.Character => VcfFieldType.Character
     case VCFHeaderLineType.Flag      => VcfFieldType.Flag
@@ -142,6 +153,12 @@ private[api] object VcfConversions {
     case VCFHeaderLineType.String    => VcfFieldType.String
   }
 
+  /** Converts back from the scala [[VcfCount]] back to the information needed to specify the count
+    * in HTSJDK.
+    *
+    * @param in the [[VcfCount]] representing how many values an INFO or FORMAT field should have
+    * @return either a [[VCFHeaderLineCount]] when possible or an [[Int]] if the count is [[Fixed]]
+    */
   def toJavaCount(in: VcfCount): Either[VCFHeaderLineCount, Int] = {
     in match {
       case VcfCount.OnePerAltAllele    => Left(VCFHeaderLineCount.A)
@@ -152,7 +169,10 @@ private[api] object VcfConversions {
     }
   }
 
-  def toJavaKind(in: VcfFieldType ): VCFHeaderLineType= in match {
+  /**
+    * Converts back from the scala [[VcfFieldType]] into the java/HTSJDK equivalent.
+    */
+  def toJavaKind(in: VcfFieldType ): VCFHeaderLineType = in match {
     case VcfFieldType.Character => VCFHeaderLineType.Character
     case VcfFieldType.Flag      => VCFHeaderLineType.Flag
     case VcfFieldType.Float     => VCFHeaderLineType.Float
@@ -160,6 +180,15 @@ private[api] object VcfConversions {
     case VcfFieldType.String    => VCFHeaderLineType.String
   }
 
+  /**
+    * Converts a [[VariantContext]] and all nested classes into a [[Variant]] and set of [[Genotype]]s.
+    *
+    * @param in the [[VariantContext]] to be converted
+    * @param header the scala [[VcfHeader]] which contains the definitions of all the INFO and FORMAT
+    *               fields as well as the ordered list of sample names.
+    * @return a [[Variant]] instance that is a copy of the [[VariantContext]] and does not rely on it
+    *         post-return
+    */
   def toScalaVariant(in: VariantContext, header: VcfHeader): Variant = {
     // Build up the allele set
     val ref  = Allele(in.getReference.getDisplayString)
@@ -205,31 +234,55 @@ private[api] object VcfConversions {
     Variant(
       chrom     = in.getContig,
       pos       = in.getStart,
-      id        = Option(if (in.getID == Missing) null else in.getID),
+      id        = Option(if (in.getID == Variant.Missing) null else in.getID),
       alleles   = alleles,
       qual      = if (in.hasLog10PError) Some(in.getPhredScaledQual) else None,
-      filter    = in.getFilters.toIndexedSeq,
-      info      = ListMap(info:_*),
+      filter    = in.getFilters.toSet,
+      attributes      = ListMap(info:_*),
       genotypes = gts.iterator.map(g => g.sample -> g).toMap
     )
   }
 
-  def toTypedValue(value: Any, kind: VcfFieldType, count: VcfCount): Any = (value, kind, count) match {
-    case (_, VcfFieldType.Flag, _       )   => None
-    case (_, _,                 Fixed(0))   => None
-    case (s: String, _,         Fixed(1))   => kind.parse(s)
-    case (s: String, _,         _       )   => s.split(',').map(kind.parse).toIndexedSeq
-    case (l: JavaList[String], _, Fixed(1)) => kind.parse(l.get(0))
-    case (l: JavaList[String], _, _)        => l.map(kind.parse).toIndexedSeq
+  /**
+    * Converts a value found in an INFO or FORMAT/genotype attribute to a well typed value. Because HTSJDK can
+    * return any number of less-than-useful types, including strings, comma-separated strings and lists of strings
+    * this has to do a bunch of matching to figure out how to convert both to the appropriate atomic type (e.g.
+    * Int or Float) _and_ whether to return a singular value or a collection.
+    *
+    * Collection/array values are always returned as [[IndexedSeq]]s since those allow for indexed access and,
+    * unlike arrays, are immutable.
+    *
+    * Note that in the case of Flag types and things that have a fixed count of 0, [[Variant.FlagValue]] is returned
+    * since the value itself is unimportant.
+    *
+    * @param value the value that came out of the INFO or genotype attributes from HTSJDK
+    * @param kind the scala [[VcfFieldType]] declaring what the target type is
+    * @param count the scala [[VcfCount]] describing how many values are expected
+    * @return either a String/Float/Int/Char or an IndexedSeq of one of those types
+    */
+  private def toTypedValue(value: Any, kind: VcfFieldType, count: VcfCount): Any = (value, kind, count) match {
+    case (_, VcfFieldType.Flag, _       )              => Variant.FlagValue
+    case (_, _,                 Fixed(0))              => Variant.FlagValue
+    case (s: String, _,         Fixed(1))              => kind.parse(s)
+    case (s: String, _,         _       )              => Variant.toArrayAttribute(s.split(',').map(kind.parse))
+    case (l: JavaList[String @unchecked], _, Fixed(1)) => kind.parse(l.get(0))
+    case (l: JavaList[String @unchecked], _, _)        => Variant.toArrayAttribute(l.map(kind.parse))
   }
 
+  /**
+    * Converts a scala [[Variant]] back into a [[VariantContext]].
+    *
+    * @param in the [[Variant]] instance to convert
+    * @param header the scala [[VcfHeader]] for the VCF being read or written
+    * @return a VariantContext instance
+    */
   def toJavaVariant(in: Variant, header: VcfHeader): VariantContext = {
     val alleles   = in.alleles.iterator.map { a => JavaAllele.create(a.toString, a eq in.alleles.ref) }.toJavaList
     val builder = new VariantContextBuilder(null, in.chrom, in.pos, in.end, alleles)
     in.id.foreach(i => builder.id(i))
     in.qual.foreach(q => builder.log10PError(q / -10 ))
     if (in.filter.isEmpty) builder.unfiltered() else builder.filters(in.filter.iterator.toJavaSet)
-    builder.attributes(toJavaAttributeMap(in.info))
+    builder.attributes(toJavaAttributeMap(in.attributes))
 
     val genotypes = header.samples.iterator.map { s =>
       val sgt = in.genotypes(s)
@@ -237,13 +290,13 @@ private[api] object VcfConversions {
       jgt.phased(sgt.phased)
 
       sgt.attributes.foreach {
-        case ("GQ", value: Int)         => jgt.GQ(value)
-        case ("DP", value: Int)         => jgt.DP(value)
-        case ("AD", value: Seq[Int])    => jgt.AD(value.toArray)
-        case ("PL", value: Seq[Int])    => jgt.PL(value.toArray)
-        case ("FT", value: Seq[String]) => value.foreach(f => jgt.filter(f))
-        case (key, value: Seq[Any])     => jgt.attribute(key, value.toArray)
-        case (key, value: Any)          => jgt.attribute(key, value)
+        case ("GQ", value: Int)                    => jgt.GQ(value)
+        case ("DP", value: Int)                    => jgt.DP(value)
+        case ("AD", value: Seq[Int @unchecked])    => jgt.AD(value.toArray)
+        case ("PL", value: Seq[Int @unchecked])    => jgt.PL(value.toArray)
+        case ("FT", value: Seq[String @unchecked]) => value.foreach(f => jgt.filter(f))
+        case (key,  value: Seq[Any])               => jgt.attribute(key, value.toArray)
+        case (key,  value: Any)                    => jgt.attribute(key, value)
       }
 
       jgt.make()
@@ -252,7 +305,12 @@ private[api] object VcfConversions {
     builder.genotypes(genotypes).make()
   }
 
-  def toJavaAttributeMap(attrs: Map[String,Any]): java.util.LinkedHashMap[String,Any] = {
+  /**
+    * Converts a map of attributes from either the INFO field of a sample genotype into a java map that
+    * HTSJDK can handle.  Largely this means translating to a [[java.util.Map]] and converting any scala
+    * collection types back to arrays in the values.
+    */
+  private def toJavaAttributeMap(attrs: Map[String,Any]): java.util.LinkedHashMap[String,Any] = {
     val out = new util.LinkedHashMap[String,Any]()
     attrs.foreach {
       case (key, value: Seq[Any]) => out.put(key, value.toArray)

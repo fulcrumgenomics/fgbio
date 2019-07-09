@@ -24,23 +24,84 @@
 
 package com.fulcrumgenomics.vcf.api
 
+import com.fulcrumgenomics.vcf.api.Allele.NoCallAllele
+import com.fulcrumgenomics.vcf.api.Variant.ArrayAttribute
+
 import scala.collection.immutable.ListMap
 
+object Variant {
+  /** Value used in VCF for values that are missing. */
+  val Missing: String = "."
+
+  /** The value stored for fields of type `Flag` when stored in a Map. */
+  val FlagValue: String = Missing
+
+  /** The type used in attribute maps (INFO, genotype) to store multi-valued attributed. */
+  type ArrayAttribute[A] = IndexedSeq[A]
+
+  /** Function to convert any scala collection to an [[com.fulcrumgenomics.vcf.api.Variant.ArrayAttribute]]. */
+  def toArrayAttribute[A](values: TraversableOnce[A]): ArrayAttribute[A] = values.toIndexedSeq
+
+  /** The set of filters that are applied to passing variants. */
+  val PassingFilters: Set[String] = Set("PASS")
+}
+
+
+/**
+  * Represents a variant from a VCF or similar source.
+  *
+  * @param chrom the chromosome on which a variant resides.
+  * @param pos the start position of the variant
+  * @param id the optional ID (e.g. rs number) of the variant
+  * @param alleles the set of alleles recorded for the variant
+  * @param qual the optional phred-scaled quality score of the variant
+  * @param filter the set of filters applied to the variant.  An empty set indicates the variant has not had
+  *               filtration applied.  A single value of "PASS" is applied if the variant passes filters, and
+  *               one or more non-PASS strings if the variant fails filters.
+  * @param attributes a map of attributes that come from the INFO field of a VCF
+  * @param genotypes a map of sample name -> genotype for the variant
+  */
 case class Variant(chrom: String,
                    pos: Int,
                    id: Option[String],
                    alleles: AlleleSet,
                    qual: Option[Double],
-                   filter: Seq[String],
-                   info: ListMap[String,Any],
+                   filter: Set[String],
+                   attributes: ListMap[String,Any],
                    genotypes: Map[String, Genotype]
                   ) {
 
+  /** The end position of the variant based on either the `END` INFO field _or_ the length of the reference allele. */
   val end: Int = get[Int]("END").getOrElse(pos + alleles.ref.length - 1)
 
-  def apply[A](key: String): A = info(key).asInstanceOf[A]
-  def get[A](key: String): Option[A] = info.get(key).asInstanceOf[Option[A]]
-  def getOrElse[A](key: String, default: => A): Option[A] = info.getOrElse(key, default).asInstanceOf[Option[A]]
+  /** Retrieves a value from the INFO map.  Will throw an exception if the key does not exist. */
+  def apply[A](key: String): A = attributes(key).asInstanceOf[A]
+
+  /** Retrieves an optional value from the INFO map.  Will return [[None]] if the key does not exist. */
+  def get[A](key: String): Option[A] = attributes.get(key).asInstanceOf[Option[A]]
+
+  /** Retrieves an optional value from the INFO map.  Will return `default` if the key does not exist. */
+  def getOrElse[A](key: String, default: => A): Option[A] = attributes.getOrElse(key, default).asInstanceOf[Option[A]]
+
+  /** Object that provides convenient accessors to common, spec-defined, attributes from the INFO field.
+    * Methods on this object return the expected type directly and will throw exceptions if the keys
+    * do not exist in the info map.
+    */
+  final object INFO {
+    @inline def AC: ArrayAttribute[Int] = apply[ArrayAttribute[Int]]("AC")
+    @inline def DP: Int = apply[Int]("DP")
+
+    @inline def STR: Boolean = attributes.contains("STR")
+  }
+
+  /** Object that provides convenient accessors to common, spec-defined, attributes from the INFO field.
+    * Methods on this object return [[Option]]s, and will return `None` when the specified key does not
+    * exist in the info map.
+    */
+  final object info {
+    @inline def AC: Option[ArrayAttribute[Int]] = get[ArrayAttribute[Int]]("AC")
+    @inline def DP: Option[Int] = get[Int]("DP")
+  }
 }
 
 
@@ -59,22 +120,62 @@ case class Genotype(alleles: AlleleSet,
                    ) {
   require(calls.nonEmpty, "Genotype must have ploidy of at least 1!.")
 
-  val callIndices: IndexedSeq[Int] = calls.map(alleles.indexOf)
+  /** The indices of the calls within the AlleleSet. If any allele is no-called, that is returned as -1. */
+  val callIndices: IndexedSeq[Int] = calls.map(c => if (c == NoCallAllele) -1 else alleles.indexOf(c))
 
+  /** The ploidy of the called genotype - equal to calls.length. */
   def ploidy: Int = calls.length
-  def isNoCall   : Boolean = calls.forall(_ == Allele.NoCallAllele)
-  def isHomRef   : Boolean = calls.forall(_ == alleles.ref)
-  def inHomVar   : Boolean = calls(0) != alleles.ref && calls.forall(_ == calls(0))
-  def isHet      : Boolean = calls.exists(_ != calls(0))
-  def isHetNonRef: Boolean = isHet && !calls.contains(alleles.ref)
 
+  /** True if all [[calls]] are no-call alleles. */
+  def isNoCall: Boolean = calls.forall(_ == Allele.NoCallAllele)
+
+  /** True if none of [[calls]] are no-call alleles. */
+  def isFullyCalled: Boolean = !calls.contains(Allele.NoCallAllele)
+
+  /** True if all [[calls]] are the reference allele. */
+  def isHomRef: Boolean = calls.forall(_ == alleles.ref)
+
+  /** True if all [[calls]] are the same non-reference allele. */
+  def inHomVar: Boolean = isFullyCalled && calls(0) != alleles.ref && calls.forall(_ == calls(0))
+
+  /** True if the genotype is fully called and there are at least two distinct alleles called in the genotype. */
+  def isHet: Boolean = isFullyCalled && calls.exists(_ != calls(0))
+
+  /** True if the genotype is fully called, the genotype is heterozygous and none of the called alleles are the reference. */
+  def isHetNonRef: Boolean = isFullyCalled && isHet && !calls.contains(alleles.ref)
+
+  /** Retrieves a value from the INFO map.  Will throw an exception if the key does not exist. */
   def apply[A](key: String): A = attributes(key).asInstanceOf[A]
+
+  /** Retrieves an optional value from the INFO map.  Will return [[None]] if the key does not exist. */
   def get[A](key: String): Option[A] = attributes.get(key).asInstanceOf[Option[A]]
+
+  /** Retrieves an optional value from the INFO map.  Will return `default` if the key does not exist. */
   def getOrElse[A](key: String, default: => A): Option[A] = attributes.getOrElse(key, default).asInstanceOf[Option[A]]
 
-  // Would be nice to have typed accessors for common, spec-defined attributes, but how to deal with optionality?
-  def dp: Option[Int] = get[Int]("DP")
-  def DP: Int = apply[Int]("DP")
+  /** Object that provides convenient accessors to common attributes from the genotype field.
+    * Methods on this object return the expected type directly and will throw exceptions if the keys
+    * do not exist in the info map.
+    */
+  final object ATTRS {
+    @inline def AD: ArrayAttribute[Int] = apply[ArrayAttribute[Int]]("AD")
+    @inline def DP: Int                 = apply[Int]("DP")
+    @inline def GQ: Int                 = apply[Int]("GQ")
+    @inline def PL: ArrayAttribute[Int] = apply[ArrayAttribute[Int]]("PL")
+    @inline def PS: String              = apply[String]("PS")
+  }
+
+  /** Object that provides convenient accessors to common attributes from the genotype field.
+    * Methods on this object return [[Option]]s, and will return `None` when the specified key does not
+    * exist in the info map.
+    */
+  final object attrs {
+    @inline def AD: Option[ArrayAttribute[Int]] = get[ArrayAttribute[Int]]("AD")
+    @inline def DP: Option[Int ]                = get[Int]("DP")
+    @inline def GQ: Option[Int]                 = get[Int]("GQ")
+    @inline def PL: Option[ArrayAttribute[Int]] = get[ArrayAttribute[Int]]("PL")
+    @inline def PS: Option[String]              = get[String]("PS")
+  }
 }
 
 

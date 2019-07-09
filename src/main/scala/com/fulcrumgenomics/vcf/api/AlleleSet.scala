@@ -27,12 +27,31 @@ package com.fulcrumgenomics.vcf.api
 import com.fulcrumgenomics.FgBioDef._
 import com.fulcrumgenomics.vcf.api.Allele.SimpleAllele
 
+/**
+  * Simple class to encapsulate a set of alleles where one allele represents the allele
+  * that is present in the reference genome, and the remainder represent alternative alleles.
+  *
+  * @param ref the reference allele
+  * @param alts the ordered list of alternate alleles
+  */
 case class AlleleSet(ref: SimpleAllele, alts: IndexedSeq[Allele]) extends Iterable[Allele] {
+  /** Provides an iterator over all the alleles. */
   override def iterator: Iterator[Allele] = Iterator(ref) ++ alts.iterator
 
+  /** Retrives the allele at `index`.  The reference allele is given index 0, and alternate
+    * alleles are indexed starting at 1.  Requesting an index  `< 1` or `> size-1` will result
+    *  in a [[IndexOutOfBoundsException]].
+    *
+    * @param index The index of the allele to return
+    * @return the allele present at the index
+    */
   def apply(index: Int): Allele = if (index == 0) ref else alts(index-1)
 
+  /** Returns the position of the given allele within the allele set. */
   def indexOf(a: Allele): Int = if (a == ref) 0 else alts.indexOf(a) + 1
+
+  /** The number of alleles, including reference, in the set. */
+  override def size: Int = alts.size + 1
 }
 
 object AlleleSet {
