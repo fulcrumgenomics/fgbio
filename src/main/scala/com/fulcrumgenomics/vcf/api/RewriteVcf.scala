@@ -45,7 +45,6 @@ class RewriteVcf
     var n = 0L
     in.foreach { variant =>
       n += 1
-      println(variant.INFO.DP)
       out.write(variant)
     }
 
