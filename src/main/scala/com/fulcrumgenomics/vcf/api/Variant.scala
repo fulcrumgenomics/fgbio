@@ -82,26 +82,6 @@ case class Variant(chrom: String,
 
   /** Retrieves an optional value from the INFO map.  Will return `default` if the key does not exist. */
   def getOrElse[A](key: String, default: => A): Option[A] = attributes.getOrElse(key, default).asInstanceOf[Option[A]]
-
-  /** Object that provides convenient accessors to common, spec-defined, attributes from the INFO field.
-    * Methods on this object return the expected type directly and will throw exceptions if the keys
-    * do not exist in the info map.
-    */
-  final object INFO {
-    @inline def AC: ArrayAttribute[Int] = apply[ArrayAttribute[Int]]("AC")
-    @inline def DP: Int = apply[Int]("DP")
-
-    @inline def STR: Boolean = attributes.contains("STR")
-  }
-
-  /** Object that provides convenient accessors to common, spec-defined, attributes from the INFO field.
-    * Methods on this object return [[Option]]s, and will return `None` when the specified key does not
-    * exist in the info map.
-    */
-  final object info {
-    @inline def AC: Option[ArrayAttribute[Int]] = get[ArrayAttribute[Int]]("AC")
-    @inline def DP: Option[Int] = get[Int]("DP")
-  }
 }
 
 
@@ -152,30 +132,6 @@ case class Genotype(alleles: AlleleSet,
 
   /** Retrieves an optional value from the INFO map.  Will return `default` if the key does not exist. */
   def getOrElse[A](key: String, default: => A): Option[A] = attributes.getOrElse(key, default).asInstanceOf[Option[A]]
-
-  /** Object that provides convenient accessors to common attributes from the genotype field.
-    * Methods on this object return the expected type directly and will throw exceptions if the keys
-    * do not exist in the info map.
-    */
-  final object ATTRS {
-    @inline def AD: ArrayAttribute[Int] = apply[ArrayAttribute[Int]]("AD")
-    @inline def DP: Int                 = apply[Int]("DP")
-    @inline def GQ: Int                 = apply[Int]("GQ")
-    @inline def PL: ArrayAttribute[Int] = apply[ArrayAttribute[Int]]("PL")
-    @inline def PS: String              = apply[String]("PS")
-  }
-
-  /** Object that provides convenient accessors to common attributes from the genotype field.
-    * Methods on this object return [[Option]]s, and will return `None` when the specified key does not
-    * exist in the info map.
-    */
-  final object attrs {
-    @inline def AD: Option[ArrayAttribute[Int]] = get[ArrayAttribute[Int]]("AD")
-    @inline def DP: Option[Int ]                = get[Int]("DP")
-    @inline def GQ: Option[Int]                 = get[Int]("GQ")
-    @inline def PL: Option[ArrayAttribute[Int]] = get[ArrayAttribute[Int]]("PL")
-    @inline def PS: Option[String]              = get[String]("PS")
-  }
 }
 
 
