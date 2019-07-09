@@ -34,24 +34,62 @@ import htsjdk.variant.vcf.VCFFileReader
 
 import scala.collection.IterableView
 
-// class SamSource private(private val reader: SamReader) extends IterableView[SamRecord, SamSource] with HeaderHelper with Closeable {
+/**
+  * Provides a reader over a source of VCF-like data that could be a VCF file or a BCF file. Has facilities
+  * for iterating over the entire stream of variants as well as querying by genomic location if an
+  * index is present.
+  *
+  * @param reader the underlying HTSJDK [[VCFFileReader]]
+  */
 class VariantSource private (private val reader: VCFFileReader) extends IterableView[Variant, VariantSource] with Closeable {
+  /** The header associated with the VCF being read. */
   val header: VcfHeader = VcfConversions.toScalaHeader(reader.getFileHeader)
+
+  /**
+    * The type of iterator returned by both the [[iterator]] method as well as the [[query()]] method. Note that
+    * [[SelfClosingIterator]] both self-closes when it hits the end of the iterator, _and_ extends
+    * [[com.fulcrumgenomics.commons.collection.BetterBufferedIterator]].
+    */
   type VariantIterator = SelfClosingIterator[Variant]
 
-  override def close(): Unit = this.reader.safelyClose()
-  override protected def underlying: VariantSource = this
+  /** Wraps an iterator provided by HTSJDK into a SelfClosingIterator that transforms VariatnContexts into Variants. */
   private def wrap(it: CloseableIterator[VariantContext]): VariantIterator = {
     new SelfClosingIterator(
       iter   = it.map(vc => VcfConversions.toScalaVariant(vc, header)),
       closer = () => it.close())
   }
 
+  /**
+    * Returns an iterator over the entire stream of variants. The returned iterator may be be closed by invoking
+    * `close()` on it, and will automatically close itself when exhausted.  Only a single iterator at a time
+    * is supported per [[VariantSource]], including iterators returned from [[query()]].
+    */
   override def iterator: VariantIterator = wrap(reader.iterator())
+
+  /**
+    * Returns an iterator over variants overlapping the specified genomic region.
+    *
+    * The returned iterator may be be closed by invoking `close()` on it, and will automatically close itself
+    * when exhausted.  Only a single iterator at a time is supported per [[VariantSource]], including iterators
+    * returned from [[iterator()]].
+    */
   def query(chrom: String, start: Int, end: Int): Iterator[Variant] = wrap(reader.query(chrom, start, end))
+
+  /** Closes the underlying reader. */
+  override def close(): Unit = this.reader.safelyClose()
+
+  /** Required by [[scala.collection.IterableView]]. */
+  override protected def underlying: VariantSource = this
 }
 
 object VariantSource {
+  /**
+    * Manufactures a variant source for reading from the specified path.  The index, if one exists, will be
+    * auto-discovered based on the path to the VCF.
+    *
+    * @param path the path to a VCF, gzipped VCF or BCF file
+    * @return a VariantSource for reading from the path given
+    */
   def apply(path: PathToVcf): VariantSource = {
     val reader = new VCFFileReader(path, false)
     new VariantSource(reader)

@@ -28,12 +28,29 @@ import com.fulcrumgenomics.FgBioDef._
 import com.fulcrumgenomics.commons.io.Writer
 import htsjdk.variant.variantcontext.writer.{Options, VariantContextWriter, VariantContextWriterBuilder}
 
+/**
+  * Writes [[Variant]]s to a file or other storage mechanism.
+  *
+  * @param writer the underlying HTSJDK writer
+  * @param header the header of the VCF
+  */
 class VariantWriter private (private val writer: VariantContextWriter, val header: VcfHeader) extends Writer[Variant] {
   override def write(variant: Variant): Unit = writer.add(VcfConversions.toJavaVariant(variant, header))
   override def close(): Unit = writer.close()
 }
 
+
 object VariantWriter {
+  /**
+    * Creates a [[VariantWriter]] that will write to the give path.  The path must end in either
+    *   - `.vcf` to create an uncompressed VCF file
+    *   - `.vcf.gz` to create a block-gzipped VCF file
+    *   - `.bcf` to create a binary BCF file
+    *
+    * @param path the path to write to
+    * @param header the header of the VCF
+    * @return a VariantWriter to write to the given path
+    */
   def apply(path: PathToVcf, header: VcfHeader): VariantWriter = {
     val javaHeader = VcfConversions.toJavaHeader(header)
 

@@ -27,34 +27,78 @@ package com.fulcrumgenomics.vcf.api
 import com.fulcrumgenomics.FgBioDef._
 import htsjdk.samtools.util.SequenceUtil
 
+/**
+  * Represents an allele in a VCF or [[Variant]].  The only requirement of the trait is that implementing
+  * classes override [[toString]] to provide the correct string representation of the allele.
+  */
 sealed trait Allele { }
 
 object Allele {
-  // TODO: have optimized lookup for base A/C/G/T and maybe dinuc alleles?
-  def apply(value: String): Allele = value match {
-    case "." => NoCallAllele
-    case "*" => SpannedAllele
+  // Constant alleles for all the expected single-base alleles
+  private val A = SimpleAllele("A")
+  private val C = SimpleAllele("C")
+  private val G = SimpleAllele("G")
+  private val T = SimpleAllele("T")
+  private val N = SimpleAllele("N")
+  private val a = SimpleAllele("a")
+  private val c = SimpleAllele("c")
+  private val g = SimpleAllele("g")
+  private val t = SimpleAllele("t")
+  private val n = SimpleAllele("n")
+
+  /**
+    * Returns an allele for the string in question.  The string may be a string of bases containing
+    * `[ACGTNacgtn]`, the no-call string (`.`), a spanned allele (`*`) or a symbolic or break-end allele.
+    *
+    * The allele that is returned may be newly created or cached.
+
+    * @param value the String value of the allele
+    * @return an instance of Allele that represents the given String
+    */
+  def apply(value: String): Allele = if (value.length == 1) singleCharAllele(value) else value match {
     case v if v.forall(ch => SequenceUtil.isUpperACGTN(ch.toUpper.toByte)) => SimpleAllele(v)
     case v if v.startsWith("<") && v.endsWith(">") => SymbolicAllele(v)
     case v => throw new NotImplementedError(s"Oops, should probably handle allele: $v")
   }
 
+  /** Optimized match-based lookup for expected single-base allele constants. */
+  private def singleCharAllele(s: String): Allele = s.charAt(0) match {
+    case 'A' => A
+    case 'C' => C
+    case 'G' => G
+    case 'T' => T
+    case 'N' => N
+    case 'a' => a
+    case 'c' => c
+    case 'g' => g
+    case 't' => t
+    case 'n' => n
+    case '.' => NoCallAllele
+    case '*' => SpannedAllele
+    case ch  => throw new IllegalArgumentException(s"Can't create an allele for '$ch'.")
+  }
+
+  /** Singleton representing an allele that is uncalled. */
   case object NoCallAllele extends Allele {
     override def toString: String = "."
   }
 
+  /** Singleton representing an allele that doesn't exist because it is spanned by an upstream allele. */
   case object SpannedAllele extends Allele  {
     override def toString: String = "*"
   }
 
-  case class SimpleAllele private[Allele](bases: String) extends Allele {
+  /** Class for alleles composed of a simple string of bases. */
+  case class SimpleAllele private(bases: String) extends Allele {
     def length: Int = bases.length
     override def toString: String = bases
   }
 
-  case class SymbolicAllele(id: String) extends Allele {
+  /** Class for symbolic alleles. */
+  case class SymbolicAllele private (id: String) extends Allele {
     override def toString: String = id
   }
 
-  case class BreakendAllele() // TODO: what does this need to have
+  /** Class for break-end alleles. */
+  case class BreakendAllele private () // TODO: what does this need to have
 }
