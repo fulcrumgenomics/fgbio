@@ -209,7 +209,7 @@ class AssessPhasingTest extends ErrorLogLevel {
     path
   }
 
-  private val dir = PathUtil.pathTo("src/test/resources/com/fulcrumgenomics/vcf")
+  private val dir = PathUtil.pathTo("src/test/resources/com/fulcrumgenomics/vcf/testdata")
 
   // Output prefixes for when we *do not* use an interval list
   private val prefix_none_1_10  = dir.resolve("noIntervalList.1-10")

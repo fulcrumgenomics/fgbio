@@ -39,7 +39,7 @@ import org.scalatest.ParallelTestExecution
   */
 class HapCutToVcfTest extends UnitSpec with ParallelTestExecution {
 
-  private val dir            = PathUtil.pathTo("src/test/resources/com/fulcrumgenomics/vcf")
+  private val dir            = PathUtil.pathTo("src/test/resources/com/fulcrumgenomics/vcf/testdata")
   private val originalVcf    = dir.resolve("NA12878.GIABPedigreev0.2.17.41100000.41300000.vcf")
   private val hapCut1Out     = dir.resolve("NA12878.GIABPedigreev0.2.17.41100000.41300000.hapcut")
   private val hapCut1Vcf     = dir.resolve("NA12878.GIABPedigreev0.2.17.41100000.41300000.hapcut.vcf")
