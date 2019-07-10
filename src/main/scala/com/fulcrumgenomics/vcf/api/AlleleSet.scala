@@ -55,8 +55,12 @@ case class AlleleSet(ref: SimpleAllele, alts: IndexedSeq[Allele]) extends Iterab
 }
 
 object AlleleSet {
-  def apply(ref: Allele, alts: Traversable[Allele]): AlleleSet = ref match {
+  private val NoAlts: IndexedSeq[Allele] = IndexedSeq.empty
+
+  def apply(ref: Allele, alts: Traversable[Allele] = NoAlts): AlleleSet = ref match {
     case r: SimpleAllele => AlleleSet(r, alts.toIndexedSeq)
     case _ => throw new IllegalArgumentException(s"Cannot have a non-simple ref allele: $ref")
   }
+
+  def apply(ref: Allele, alts: Allele*): AlleleSet = apply(ref, alts)
 }

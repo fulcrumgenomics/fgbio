@@ -68,8 +68,15 @@ private[api] object VcfConversions {
 
     val others = in.getOtherHeaderLines.map {
       case line: VCFSimpleHeaderLine =>
-        val attrs = line.getGenericFields.entrySet().map { entry => entry.getKey -> entry.getValue }.toMap
+        val attrs = line.getGenericFields.entrySet().filter(_.getKey != "ID").map(entry => entry.getKey -> entry.getValue).toMap
         VcfGeneralHeader(line.getKey, line.getID, attrs)
+      case line: VCFHeaderLine if line.getValue.startsWith("<") && line.getValue.endsWith(">") =>
+        // This is a horrible hack necessary because HTSJDK doesn't parse compound header lines unless
+        // they are one of INFO/CONTIG/FILTER/ALT, and there's no way to get HTSJDK to report the version of the file!
+        val attrs = VCFHeaderLineTranslator.parseLine(VCFHeaderVersion.VCF4_2, line.getValue, util.Collections.emptyList())
+        val id = attrs.get("ID")
+        val scalaAttrs = attrs.entrySet().filter(_.getKey != "ID").map(entry => entry.getKey -> entry.getValue).toMap
+        VcfGeneralHeader(line.getKey, attrs.get("ID"), scalaAttrs)
       case line: VCFHeaderLine =>
         VcfGeneralHeader(line.getKey, line.getValue, Map.empty)
     }.toIndexedSeq
@@ -118,6 +125,7 @@ private[api] object VcfConversions {
       val fields = new util.HashMap[String,String]()
       fields.put("ID", i.name)
       i.assembly.foreach(a => fields.put("assembly", a))
+      i.length.foreach(l => fields.put("length", l.toString))
       out.addMetaDataLine(new VCFContigHeaderLine(fields, i.index))
     }
 
@@ -237,8 +245,8 @@ private[api] object VcfConversions {
       id        = Option(if (in.getID == Variant.Missing) null else in.getID),
       alleles   = alleles,
       qual      = if (in.hasLog10PError) Some(in.getPhredScaledQual) else None,
-      filter    = in.getFilters.toSet,
-      attributes      = ListMap(info:_*),
+      filters    = in.getFilters.toSet,
+      attrs      = ListMap(info:_*),
       genotypes = gts.iterator.map(g => g.sample -> g).toMap
     )
   }
@@ -281,15 +289,15 @@ private[api] object VcfConversions {
     val builder = new VariantContextBuilder(null, in.chrom, in.pos, in.end, alleles)
     in.id.foreach(i => builder.id(i))
     in.qual.foreach(q => builder.log10PError(q / -10 ))
-    if (in.filter.isEmpty) builder.unfiltered() else builder.filters(in.filter.iterator.toJavaSet)
-    builder.attributes(toJavaAttributeMap(in.attributes))
+    if (in.filters.isEmpty) builder.unfiltered() else builder.filters(in.filters.iterator.toJavaSet)
+    builder.attributes(toJavaAttributeMap(in.attrs))
 
     val genotypes = header.samples.iterator.map { s =>
       val sgt = in.genotypes(s)
       val jgt = new GenotypeBuilder(s, sgt.callIndices.iterator.map(i => alleles.get(i)).toJavaList)
       jgt.phased(sgt.phased)
 
-      sgt.attributes.foreach {
+      sgt.attrs.foreach {
         case ("GQ", value: Int)                    => jgt.GQ(value)
         case ("DP", value: Int)                    => jgt.DP(value)
         case ("AD", value: Seq[Int @unchecked])    => jgt.AD(value.toArray)
