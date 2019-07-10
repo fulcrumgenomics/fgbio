@@ -31,7 +31,13 @@ import htsjdk.samtools.util.SequenceUtil
   * Represents an allele in a VCF or [[Variant]].  The only requirement of the trait is that implementing
   * classes override [[toString]] to provide the correct string representation of the allele.
   */
-sealed trait Allele { }
+sealed trait Allele {
+  /** Returns the displayed value of the allele as a String. */
+  def value: String
+
+  /** Ensures that the toString is always the same as the value. */
+  override final def toString: String = value
+}
 
 object Allele {
   // Constant alleles for all the expected single-base alleles
@@ -58,7 +64,8 @@ object Allele {
   def apply(value: String): Allele = if (value.length == 1) singleCharAllele(value) else value match {
     case v if v.forall(ch => SequenceUtil.isUpperACGTN(ch.toUpper.toByte)) => SimpleAllele(v)
     case v if v.startsWith("<") && v.endsWith(">") => SymbolicAllele(v)
-    case v => throw new NotImplementedError(s"Oops, should probably handle allele: $v")
+    case v if v.exists(c => c == '[' || c == ']')  => BreakendAllele(v)
+    case v => throw new IllegalArgumentException(s"Oops, should probably handle allele: $v")
   }
 
   /** Optimized match-based lookup for expected single-base allele constants. */
@@ -80,25 +87,34 @@ object Allele {
 
   /** Singleton representing an allele that is uncalled. */
   case object NoCallAllele extends Allele {
-    override def toString: String = "."
+    override val value: String = "."
   }
 
   /** Singleton representing an allele that doesn't exist because it is spanned by an upstream allele. */
   case object SpannedAllele extends Allele  {
-    override def toString: String = "*"
+    override val value: String = "*"
   }
 
   /** Class for alleles composed of a simple string of bases. */
   case class SimpleAllele private(bases: String) extends Allele {
     def length: Int = bases.length
-    override def toString: String = bases
+    override def value: String = bases
+
+    /** Provides an implementation of equality based on case-insensitive matching of the bases. */
+    override def equals(other: Any): Boolean = other.isInstanceOf[SimpleAllele] && {
+      val that = other.asInstanceOf[SimpleAllele]
+      (this eq that) || this.bases.equalsIgnoreCase(that.bases)
+    }
+
+    /** Generate the hash based on the upper-case version of the bases. */
+    override def hashCode(): Int = this.bases.toUpperCase.hashCode
   }
 
   /** Class for symbolic alleles. */
   case class SymbolicAllele private (id: String) extends Allele {
-    override def toString: String = id
+    override def value: String = id
   }
 
   /** Class for break-end alleles. */
-  case class BreakendAllele private () // TODO: what does this need to have
+  case class BreakendAllele private (override val value: String) extends Allele // TODO: what does this need to have
 }

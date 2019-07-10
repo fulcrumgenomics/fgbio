@@ -25,30 +25,25 @@
 package com.fulcrumgenomics.vcf.api
 
 import com.fulcrumgenomics.FgBioDef._
-import com.fulcrumgenomics.cmdline.{ClpGroups, FgBioTool}
-import com.fulcrumgenomics.commons.io.Io
-import com.fulcrumgenomics.sopt.{arg, clp}
+import com.fulcrumgenomics.testing.UnitSpec
+import com.fulcrumgenomics.vcf.api.Allele.{NoCallAllele, SpannedAllele}
 
-@clp(group=ClpGroups.VcfOrBcf, description="Reads in a VCF and writes it back out - how boring!")
-class RewriteVcf
-( @arg(flag='i', doc="Input VCF") val input: PathToVcf,
-  @arg(flag='o', doc="Output VCF") val output: PathToVcf
-) extends FgBioTool {
+class AlleleSetTest extends UnitSpec {
+  "AlleleSet" should "perform basic operations correctly" in {
+    val as = AlleleSet(ref=Allele("A"), alts=Seq(Allele("T"), Allele("G")))
+    as.size shouldBe 3
+    as.indexOf(Allele("A")) shouldBe 0
+    as.indexOf(Allele("T")) shouldBe 1
+    as.indexOf(Allele("G")) shouldBe 2
+    as.toSeq shouldBe Seq(Allele("A"), Allele("T"), Allele("G"))
+    as(0) shouldBe Allele("A")
+    as(1) shouldBe Allele("T")
+    as(2) shouldBe Allele("G")
+  }
 
-  Io.assertReadable(input)
-  Io.assertCanWriteFile(output)
-
-  override def execute(): Unit = {
-    val in  = VariantSource(input)
-    val out = VariantWriter(output, in.header)
-
-    var n = 0L
-    in.foreach { variant =>
-      n += 1
-      out.write(variant)
-    }
-
-    in.close()
-    out.close()
+  it should "reject non-simple alleles as the reference" in {
+    an[IllegalArgumentException] shouldBe thrownBy { AlleleSet(ref=NoCallAllele) }
+    an[IllegalArgumentException] shouldBe thrownBy { AlleleSet(ref=SpannedAllele) }
+    an[IllegalArgumentException] shouldBe thrownBy { AlleleSet(ref=Allele("<NON_REF>")) }
   }
 }

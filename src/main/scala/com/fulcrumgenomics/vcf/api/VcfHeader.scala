@@ -71,6 +71,7 @@ object VcfFieldType extends FgBioEnum[VcfFieldType] {
 /** Trait representing an entry/line in a VCF header. */
 sealed trait VcfHeaderEntry {}
 
+// TODO add subclasses for ALT and PEDIGREE lines
 
 /** A contig line/entry in the VCF header.
   *
@@ -129,7 +130,7 @@ case class VcfFilterHeader(id: String, description: String) extends VcfHeaderEnt
 
 
 /** Catch all for header line types we don't care enough to have specific implementations of. */
-case class VcfGeneralHeader(headerType: String, id: String, data: Map[String, String]) extends VcfHeaderEntry
+case class VcfGeneralHeader(headerType: String, id: String, data: Map[String, String] = Map.empty) extends VcfHeaderEntry
 
 
 /** The header of a VCF file.
@@ -168,4 +169,7 @@ case class VcfHeader(contigs: IndexedSeq[VcfContigHeader],
 
   /** Returns an iterator over all entries in the header. */
   def entries: Iterator[VcfHeaderEntry] = contigs.iterator ++ infos.iterator ++ formats.iterator ++ filters.iterator ++ others.iterator
+
+  /** How many lines total are in the header. */
+  def size: Int = entries.size
 }

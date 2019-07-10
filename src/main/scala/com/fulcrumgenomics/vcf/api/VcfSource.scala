@@ -41,7 +41,7 @@ import scala.collection.IterableView
   *
   * @param reader the underlying HTSJDK [[VCFFileReader]]
   */
-class VariantSource private (private val reader: VCFFileReader) extends IterableView[Variant, VariantSource] with Closeable {
+class VcfSource private(private val reader: VCFFileReader) extends IterableView[Variant, VcfSource] with Closeable {
   /** The header associated with the VCF being read. */
   val header: VcfHeader = VcfConversions.toScalaHeader(reader.getFileHeader)
 
@@ -62,7 +62,7 @@ class VariantSource private (private val reader: VCFFileReader) extends Iterable
   /**
     * Returns an iterator over the entire stream of variants. The returned iterator may be be closed by invoking
     * `close()` on it, and will automatically close itself when exhausted.  Only a single iterator at a time
-    * is supported per [[VariantSource]], including iterators returned from [[query()]].
+    * is supported per [[VcfSource]], including iterators returned from [[query()]].
     */
   override def iterator: VariantIterator = wrap(reader.iterator())
 
@@ -70,7 +70,7 @@ class VariantSource private (private val reader: VCFFileReader) extends Iterable
     * Returns an iterator over variants overlapping the specified genomic region.
     *
     * The returned iterator may be be closed by invoking `close()` on it, and will automatically close itself
-    * when exhausted.  Only a single iterator at a time is supported per [[VariantSource]], including iterators
+    * when exhausted.  Only a single iterator at a time is supported per [[VcfSource]], including iterators
     * returned from [[iterator()]].
     */
   def query(chrom: String, start: Int, end: Int): Iterator[Variant] = wrap(reader.query(chrom, start, end))
@@ -79,10 +79,10 @@ class VariantSource private (private val reader: VCFFileReader) extends Iterable
   override def close(): Unit = this.reader.safelyClose()
 
   /** Required by [[scala.collection.IterableView]]. */
-  override protected def underlying: VariantSource = this
+  override protected def underlying: VcfSource = this
 }
 
-object VariantSource {
+object VcfSource {
   /**
     * Manufactures a variant source for reading from the specified path.  The index, if one exists, will be
     * auto-discovered based on the path to the VCF.
@@ -90,9 +90,9 @@ object VariantSource {
     * @param path the path to a VCF, gzipped VCF or BCF file
     * @return a VariantSource for reading from the path given
     */
-  def apply(path: PathToVcf): VariantSource = {
+  def apply(path: PathToVcf): VcfSource = {
     val reader = new VCFFileReader(path, false)
-    new VariantSource(reader)
+    new VcfSource(reader)
   }
 }
 
