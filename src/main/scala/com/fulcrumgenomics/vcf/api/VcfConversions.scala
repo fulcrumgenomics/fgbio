@@ -268,7 +268,7 @@ private[api] object VcfConversions {
     * @param count the scala [[VcfCount]] describing how many values are expected
     * @return either a String/Float/Int/Char or an IndexedSeq of one of those types
     */
-  private def toTypedValue(value: Any, kind: VcfFieldType, count: VcfCount): Any = (value, kind, count) match {
+  private def toTypedValue(value: Any, kind: VcfFieldType, count: VcfCount): Any = ((value, kind, count): @unchecked) match {
     case (_, VcfFieldType.Flag, _       )              => Variant.FlagValue
     case (_, _,                 Fixed(0))              => Variant.FlagValue
     case (s: String, _,         Fixed(1))              => kind.parse(s)
