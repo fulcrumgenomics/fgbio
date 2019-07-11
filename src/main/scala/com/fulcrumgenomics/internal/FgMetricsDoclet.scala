@@ -129,7 +129,7 @@ class FgMetricsDoclet extends Doclet {
 
     // Takes a block element and renders it into MarkDown and writes it into the buffer
     def renderBlock(block: Block, indent: String): Unit = {
-      block match {
+      (block: @unchecked) match {
         case para:  Paragraph      => render(para.text)
         case dlist: DefinitionList => Unit // TODO
         case hr:    HorizontalRule => Unit // TODO

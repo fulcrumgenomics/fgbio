@@ -41,7 +41,7 @@ class VariantMaskTest extends UnitSpec {
     builder.toTempFile()
   }
 
-  val dict = SAMSequenceDictionaryExtractor.extractDictionary(ref.toFile)
+  val dict = SAMSequenceDictionaryExtractor.extractDictionary(ref)
 
   "VariantMask" should "mask SNPs as individual bases" in {
     val builder = new VariantContextSetBuilder().setSequenceDictionary(dict)

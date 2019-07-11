@@ -182,7 +182,7 @@ object FindSwitchbackReads {
   private[bam] def findTandemSwitchback(template: Template, maxGap: Int) : Option[TandemBasedHit] =
     if (maxGap <=0 ) None else template.pairOrientation match {
       case Some(PairOrientation.TANDEM) =>
-        (template.r1, template.r2) match {
+        ((template.r1, template.r2): @unchecked) match {
           case (Some(r1), Some(r2)) =>
             val (earlier, later) = if (r1.start <= r2.start) (r1, r2) else (r2, r1)
             val gap = later.start - earlier.end - 1
