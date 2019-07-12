@@ -57,10 +57,24 @@ case class AlleleSet(ref: SimpleAllele, alts: IndexedSeq[Allele]) extends Iterab
 object AlleleSet {
   private val NoAlts: IndexedSeq[Allele] = IndexedSeq.empty
 
+  /**
+    * Generates an AlleleSet from a reference allele and zero or more alternative alleles.
+    *
+    * @param ref the reference allele; if this is not a [[SimpleAllele]] an [[IllegalArgumentException]]
+    *            will be thrown. The parameter type is [[Allele]] to avoid callers having to cast.
+    * @param alts zero or more alternative alleles
+    */
   def apply(ref: Allele, alts: Traversable[Allele] = NoAlts): AlleleSet = ref match {
     case r: SimpleAllele => AlleleSet(r, alts.toIndexedSeq)
     case _ => throw new IllegalArgumentException(s"Cannot have a non-simple ref allele: $ref")
   }
 
+  /**
+    * Generates an AlleleSet from a reference allele and zero or more alternative alleles.
+    *
+    * @param ref the reference allele; if this is not a [[SimpleAllele]] an [[IllegalArgumentException]]
+    *            will be thrown. The parameter type is [[Allele]] to avoid callers having to cast.
+    * @param alts zero or more alternative alleles
+    */
   def apply(ref: Allele, alts: Allele*): AlleleSet = apply(ref, alts)
 }
