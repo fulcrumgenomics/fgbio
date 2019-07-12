@@ -26,6 +26,8 @@ package com.fulcrumgenomics.vcf.api
 
 import com.fulcrumgenomics.FgBioDef._
 import com.fulcrumgenomics.commons.io.Writer
+import com.fulcrumgenomics.util.Io
+import htsjdk.samtools.Defaults
 import htsjdk.variant.variantcontext.writer.{Options, VariantContextWriter, VariantContextWriterBuilder}
 
 /**
@@ -41,6 +43,8 @@ class VcfWriter private(private val writer: VariantContextWriter, val header: Vc
 
 
 object VcfWriter {
+  var DefaultUseAsyncIo: Boolean = Defaults.USE_ASYNC_IO_WRITE_FOR_TRIBBLE
+
   /**
     * Creates a [[VcfWriter]] that will write to the give path.  The path must end in either
     *   - `.vcf` to create an uncompressed VCF file
@@ -51,18 +55,19 @@ object VcfWriter {
     * @param header the header of the VCF
     * @return a VariantWriter to write to the given path
     */
-  def apply(path: PathToVcf, header: VcfHeader): VcfWriter = {
+  def apply(path: PathToVcf, header: VcfHeader, async: Boolean = DefaultUseAsyncIo): VcfWriter = {
     val javaHeader = VcfConversions.toJavaHeader(header)
 
-    val writer = new VariantContextWriterBuilder()
-      .setOutputFile(path.toFile)
+    val builder = new VariantContextWriterBuilder()
+      .setOutputPath(path)
       .setOption(Options.INDEX_ON_THE_FLY)
       .setReferenceDictionary(header.dict)
-      .setOption(Options.ALLOW_MISSING_FIELDS_IN_HEADER)  // TODO: do we want to do this?
-      .build()
+      .setOption(Options.ALLOW_MISSING_FIELDS_IN_HEADER)
+      .setBuffer(Io.bufferSize)
 
+    if (async) builder.setOption(Options.USE_ASYNC_IO) else builder.unsetOption(Options.USE_ASYNC_IO)
+    val writer = builder.build()
     writer.writeHeader(javaHeader)
-
     new VcfWriter(writer, header)
   }
 }

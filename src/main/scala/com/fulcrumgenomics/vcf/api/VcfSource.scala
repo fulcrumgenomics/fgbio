@@ -66,11 +66,14 @@ class VcfSource private(private val reader: VCFFileReader) extends IterableView[
     */
   override def iterator: VariantIterator = wrap(reader.iterator())
 
+  /** True if the VCF is sorted and indexed such that queries can be executed, false otherwise. */
+  def isQueryable: Boolean = this.reader.isQueryable
+
   /**
     * Returns an iterator over variants overlapping the specified genomic region.
     *
     * The returned iterator may be be closed by invoking `close()` on it, and will automatically close itself
-    * when exhausted.  Only a single iterator at a time is supported per [[VcfSource]], including iterators
+    * when exhausted.  Only a single iterator at a time is supported per [[com.fulcrumgenomics.vcf.api.VcfSource]], including iterators
     * returned from [[iterator()]].
     */
   def query(chrom: String, start: Int, end: Int): Iterator[Variant] = wrap(reader.query(chrom, start, end))

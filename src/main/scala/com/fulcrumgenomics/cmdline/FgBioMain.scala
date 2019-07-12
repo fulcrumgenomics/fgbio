@@ -36,6 +36,7 @@ import com.fulcrumgenomics.commons.util.{LazyLogging, LogLevel, Logger}
 import com.fulcrumgenomics.sopt.{Sopt, arg}
 import com.fulcrumgenomics.sopt.cmdline.CommandLineProgramParserStrings
 import com.fulcrumgenomics.util.Io
+import com.fulcrumgenomics.vcf.api.VcfWriter
 import com.intel.gkl.compression.{IntelDeflaterFactory, IntelInflaterFactory}
 import htsjdk.samtools.{SAMFileWriterFactory, ValidationStringency}
 import htsjdk.samtools.util.{BlockCompressedOutputStream, BlockGunzipper, IOUtil, SnappyLoader}
@@ -98,6 +99,7 @@ class FgBioCommonArgs
 
   SamSource.DefaultUseAsyncIo = asyncIo
   SamWriter.DefaultUseAsyncIo = asyncIo
+  VcfWriter.DefaultUseAsyncIo = asyncIo
 
   SamWriter.DefaultCompressionLevel = compression
   BlockCompressedOutputStream.setDefaultCompressionLevel(compression)
