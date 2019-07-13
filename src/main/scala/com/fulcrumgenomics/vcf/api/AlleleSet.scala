@@ -77,4 +77,15 @@ object AlleleSet {
     * @param alts zero or more alternative alleles
     */
   def apply(ref: Allele, alts: Allele*): AlleleSet = apply(ref, alts)
+
+  /**
+    * Generates an AlleleSet from one or more String alleles. The first allele will be the reference
+    * allele and must be composed of regular bases.
+    *
+    * @param alleles one or more allele strings
+    */
+  def apply(alleles: String*): AlleleSet = {
+    require(alleles.nonEmpty, "Must provide at least one allele.")
+    AlleleSet(Allele(alleles.head), alleles.drop(1).map(s => Allele(s)))
+  }
 }

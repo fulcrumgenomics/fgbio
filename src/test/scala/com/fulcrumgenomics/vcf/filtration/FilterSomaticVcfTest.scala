@@ -26,32 +26,21 @@ package com.fulcrumgenomics.vcf.filtration
 
 import com.fulcrumgenomics.FgBioDef._
 import com.fulcrumgenomics.bam.api.SamOrder
-import com.fulcrumgenomics.testing.{SamBuilder, UnitSpec, VariantContextSetBuilder}
-import htsjdk.variant.vcf.VCFFileReader
+import com.fulcrumgenomics.testing.VcfBuilder.Gt
+import com.fulcrumgenomics.testing.{SamBuilder, UnitSpec, VcfBuilder}
+import com.fulcrumgenomics.vcf.api.VcfSource
 
 class FilterSomaticVcfTest extends UnitSpec {
   // A pair of (paths to) VCFs for use in testing below
   private lazy val Seq(tumorOnlyVcf, tumorNormalVcf) = {
     Seq(Seq("tumor"), Seq("tumor", "normal")).map { samples =>
-      val builder = new VariantContextSetBuilder(samples)
+      val builder = VcfBuilder(samples)
       val includeNormal = samples.contains("normal")
 
-      // C>A SNP at 100
-      builder.addVariant(start=100, sampleName=Some("tumor"), variantAlleles=List("C", "A"), genotypeAlleles=List("C", "A"))
-      if (includeNormal) builder.addVariant(start=100, sampleName=Some("normal"), variantAlleles=List("C", "A"), genotypeAlleles=List("C", "C"))
-
-      // A>G SNP at 200
-      builder.addVariant(start=200, sampleName=Some("tumor"), variantAlleles=List("A", "G"), genotypeAlleles=List("A", "G"))
-      if (includeNormal) builder.addVariant(start=200, sampleName=Some("normal"), variantAlleles=List("A", "G"), genotypeAlleles=List("A", "A"))
-
-      // Indel at 300
-      builder.addVariant(start=300, sampleName=Some("tumor"), variantAlleles=List("AAA", "A"), genotypeAlleles=List("AAA", "A"))
-      if (includeNormal) builder.addVariant(start=300, sampleName=Some("normal"), variantAlleles=List("AAA", "A"), genotypeAlleles=List("AAA", "AAA"))
-
-      // A>T SNP at 400
-      builder.addVariant(start=400, sampleName=Some("tumor"), variantAlleles=List("A", "T"), genotypeAlleles=List("A", "T"))
-      if (includeNormal) builder.addVariant(start=400, sampleName=Some("normal"), variantAlleles=List("A", "T"), genotypeAlleles=List("A", "A"))
-
+      builder.add(pos=100, alleles=Seq("C", "A"),   gts=Seq(Gt("tumor", "C/A"),   Gt("normal", "C/C")).filter(g => g.sample == "tumor" || includeNormal))
+      builder.add(pos=200, alleles=Seq("A", "G"),   gts=Seq(Gt("tumor", "A/G"),   Gt("normal", "A/A")).filter(g => g.sample == "tumor" || includeNormal))
+      builder.add(pos=300, alleles=Seq("AAA", "A"), gts=Seq(Gt("tumor", "AAA/A"), Gt("normal", "AAA/AAA")).filter(g => g.sample == "tumor" || includeNormal))
+      builder.add(pos=400, alleles=Seq("A", "T"),   gts=Seq(Gt("tumor", "A/T"),   Gt("normal", "A/A")).filter(g => g.sample == "tumor" || includeNormal))
       builder.toTempFile()
     }
   }
@@ -96,16 +85,16 @@ class FilterSomaticVcfTest extends UnitSpec {
     builder.toTempFile()
   }
 
-  private val EndRepairInfoKey   = new EndRepairArtifactLikelihoodFilter().InfoKey
-  private val EndRepairFilterKey = new EndRepairArtifactLikelihoodFilter().FilterKey
+  private val EndRepairInfoKey   = new EndRepairArtifactLikelihoodFilter().Info.id
+  private val EndRepairFilterKey = new EndRepairArtifactLikelihoodFilter().Filter.id
 
   "FilterSomaticVcf" should "work on an empty VCF" in {
-    val emptyVcf    = new VariantContextSetBuilder(Seq("tumor")).toTempFile()
+    val emptyVcf    = VcfBuilder(Seq("tumor")).toTempFile()
     val filteredVcf = makeTempFile("filtered.", ".vcf")
     new FilterSomaticVcf(input=emptyVcf, output=filteredVcf, bam=bam).execute()
-    val reader = new VCFFileReader(filteredVcf.toFile, false)
-    reader.getFileHeader.getInfoHeaderLines.exists(_.getID == EndRepairInfoKey) shouldBe true
-    reader.getFileHeader.getFilterLines.exists(_.getID == EndRepairFilterKey) shouldBe true
+    val reader = VcfSource(filteredVcf)
+    reader.header.info.contains(EndRepairInfoKey) shouldBe true
+    reader.header.filter.contains(EndRepairFilterKey) shouldBe true
     reader.safelyClose()
   }
 
@@ -114,11 +103,11 @@ class FilterSomaticVcfTest extends UnitSpec {
     new FilterSomaticVcf(input=tumorOnlyVcf, output=filteredVcf, bam=bam).execute()
     val variants = readVcfRecs(filteredVcf)
     variants should have size 4
-    variants(0).hasAttribute(EndRepairInfoKey) shouldBe true
-    variants(1).hasAttribute(EndRepairInfoKey) shouldBe false
-    variants(2).hasAttribute(EndRepairInfoKey) shouldBe false
-    variants(3).hasAttribute(EndRepairInfoKey) shouldBe true
-    variants.exists(_.getFilters.contains(EndRepairFilterKey)) shouldBe false // no threshold == no filtering
+    variants(0).get[Float](EndRepairInfoKey).isDefined shouldBe true
+    variants(1).get[Float](EndRepairInfoKey).isDefined shouldBe false
+    variants(2).get[Float](EndRepairInfoKey).isDefined shouldBe false
+    variants(3).get[Float](EndRepairInfoKey).isDefined shouldBe true
+    variants.exists(_.filters.contains(EndRepairFilterKey)) shouldBe false // no threshold == no filtering
   }
 
   it should "fail on a single-sample VCF if an invalid sample name is provided" in {
@@ -141,11 +130,11 @@ class FilterSomaticVcfTest extends UnitSpec {
     new FilterSomaticVcf(input=tumorNormalVcf, output=filteredVcf, bam=bam, sample=Some("tumor")).execute()
     val variants = readVcfRecs(filteredVcf)
     variants should have size 4
-    variants(0).hasAttribute(EndRepairInfoKey) shouldBe true
-    variants(1).hasAttribute(EndRepairInfoKey) shouldBe false
-    variants(2).hasAttribute(EndRepairInfoKey) shouldBe false
-    variants(3).hasAttribute(EndRepairInfoKey) shouldBe true
-    variants.exists(_.getFilters.contains(EndRepairFilterKey)) shouldBe false // no threshold == no filtering
+    variants(0).get[Float](EndRepairInfoKey).isDefined shouldBe true
+    variants(1).get[Float](EndRepairInfoKey).isDefined shouldBe false
+    variants(2).get[Float](EndRepairInfoKey).isDefined shouldBe false
+    variants(3).get[Float](EndRepairInfoKey).isDefined shouldBe true
+    variants.exists(_.filters.contains(EndRepairFilterKey)) shouldBe false // no threshold == no filtering
   }
 
   it should "apply filters if the end repair p-value threshold is supplied" in {
@@ -153,14 +142,14 @@ class FilterSomaticVcfTest extends UnitSpec {
     new FilterSomaticVcf(input=tumorOnlyVcf, output=filteredVcf, bam=bam, sample=Some("tumor"), endRepairDistance=4, endRepairPValue=Some(0.001)).execute()
     val variants = readVcfRecs(filteredVcf)
     variants should have size 4
-    variants(0).hasAttribute(EndRepairInfoKey) shouldBe true
-    variants(1).hasAttribute(EndRepairInfoKey) shouldBe false
-    variants(2).hasAttribute(EndRepairInfoKey) shouldBe false
-    variants(3).hasAttribute(EndRepairInfoKey) shouldBe true
+    variants(0).get[Float](EndRepairInfoKey).isDefined shouldBe true
+    variants(1).get[Float](EndRepairInfoKey).isDefined shouldBe false
+    variants(2).get[Float](EndRepairInfoKey).isDefined shouldBe false
+    variants(3).get[Float](EndRepairInfoKey).isDefined shouldBe true
 
-    variants(0).getFilters.contains(EndRepairFilterKey) shouldBe true
-    variants(1).getFilters.contains(EndRepairFilterKey) shouldBe false
-    variants(2).getFilters.contains(EndRepairFilterKey) shouldBe false
-    variants(3).getFilters.contains(EndRepairFilterKey) shouldBe true
+    variants(0).filters.contains(EndRepairFilterKey) shouldBe true
+    variants(1).filters.contains(EndRepairFilterKey) shouldBe false
+    variants(2).filters.contains(EndRepairFilterKey) shouldBe false
+    variants(3).filters.contains(EndRepairFilterKey) shouldBe true
   }
 }
