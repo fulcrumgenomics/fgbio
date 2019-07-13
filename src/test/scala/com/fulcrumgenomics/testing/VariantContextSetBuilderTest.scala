@@ -26,11 +26,20 @@
 package com.fulcrumgenomics.testing
 
 import com.fulcrumgenomics.FgBioDef._
+import htsjdk.variant.variantcontext.VariantContext
+import htsjdk.variant.vcf.VCFFileReader
 
 /**
   * Tests for VariantContextSetBuilder.
   */
 class VariantContextSetBuilderTest extends  UnitSpec {
+  private def readVcf(vcf: PathToVcf): IndexedSeq[VariantContext] = {
+    val in = new VCFFileReader(vcf, false)
+    val recs = in.toIndexedSeq
+    in.close()
+    recs
+  }
+
   "VariantContextSetBuilder" should "add genotypes for two samples" in {
     val sampleNames = Seq("Sample1", "Sample2")
     val builder     = new VariantContextSetBuilder(sampleNames=sampleNames)
@@ -45,7 +54,7 @@ class VariantContextSetBuilderTest extends  UnitSpec {
     val builder     = new VariantContextSetBuilder()
       .addVariant(refIdx=0, start=1, variantAlleles=List("A", "C"))
     val vcf = builder.toTempFile()
-    val variants = readVcfRecs(vcf).toIndexedSeq
+    val variants = readVcf(vcf).toIndexedSeq
     variants.length shouldBe 1
     variants.head.getGenotype(0).isNoCall shouldBe true
   }
@@ -65,7 +74,7 @@ class VariantContextSetBuilderTest extends  UnitSpec {
         )
       )
     val vcf = builder.toTempFile()
-    val variants = readVcfRecs(vcf).toIndexedSeq
+    val variants = readVcf(vcf).toIndexedSeq
     variants.length shouldBe 1
     val genotype = variants.head.getGenotype(0)
     genotype.isNoCall shouldBe true

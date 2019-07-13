@@ -24,8 +24,6 @@
 
 package com.fulcrumgenomics.vcf.filtration
 
-import java.util.Collections
-
 import com.fulcrumgenomics.FgBioDef._
 import com.fulcrumgenomics.bam._
 import com.fulcrumgenomics.bam.api.{QueryType, SamSource}
@@ -33,9 +31,9 @@ import com.fulcrumgenomics.cmdline.{ClpGroups, FgBioTool}
 import com.fulcrumgenomics.commons.util.LazyLogging
 import com.fulcrumgenomics.sopt.{arg, clp}
 import com.fulcrumgenomics.util.Io
-import htsjdk.variant.variantcontext.VariantContextBuilder
-import htsjdk.variant.variantcontext.writer.{Options, VariantContextWriter, VariantContextWriterBuilder}
-import htsjdk.variant.vcf._
+import com.fulcrumgenomics.vcf.api.{VcfHeader, VcfSource, VcfWriter}
+
+import scala.collection.immutable.ListMap
 
 @clp(group=ClpGroups.VcfOrBcf, description=
   """
@@ -93,46 +91,45 @@ class FilterSomaticVcf
   Io.assertCanWriteFile(output)
 
   override def execute(): Unit = {
-    val vcfIn = new VCFFileReader(input.toFile, false)
+    val vcfIn = VcfSource(input)
     val bamIn = SamSource(bam)
     val dict  = bamIn.dict
     val vcfSample = sample match {
       case Some(s) =>
-        validate(vcfIn.getFileHeader.getSampleNamesInOrder.contains(s), s"Sample $s not present in VCF.")
+        validate(vcfIn.header.samples.contains(s), s"Sample $s not present in VCF.")
         s
       case None =>
-        if (vcfIn.getFileHeader.getNGenotypeSamples == 1) vcfIn.getFileHeader.getGenotypeSamples.get(0)
+        if (vcfIn.header.samples.size == 1) vcfIn.header.samples.head
         else invalid("Must supply --sample when VCF contains more than one sample.")
     }
 
     val filters = Seq(new EndRepairArtifactLikelihoodFilter(endRepairDistance, endRepairPValue))
     val builder = new PileupBuilder(bamIn.dict, mappedPairsOnly=pairedReadsOnly, minBaseQ=minBaseQuality, minMapQ=minMappingQuality)
-    val out = makeWriter(output, vcfIn.getFileHeader, filters)
+    val out = makeWriter(output, vcfIn.header, filters)
 
-    vcfIn.foreach { ctx =>
-      val gt    = ctx.getGenotype(vcfSample)
-      val chrom = ctx.getContig
-      val pos   = ctx.getStart
+    vcfIn.foreach { variant =>
+      val gt    = variant.genotypes(vcfSample)
       val applicableFilters = filters.filter(_.appliesTo(gt))
 
-      if (applicableFilters.nonEmpty) {
-        val ctxBuilder = new VariantContextBuilder(ctx)
-        val iterator   = bamIn.query(chrom, pos, pos, QueryType.Overlapping)
-        val pileup     = filterPileup(builder.build(iterator, chrom, pos).withoutOverlaps)
+      val variantOut = if (applicableFilters.isEmpty) variant else {
+        val iterator = bamIn.query(variant.chrom, variant.pos, variant.pos, QueryType.Overlapping)
+        val pileup   = filterPileup(builder.build(iterator, variant.chrom, variant.pos).withoutOverlaps)
         iterator.close()
+
+        val allAnnotations = variant.attrs.toBuffer
+        val allFilters     = variant.filters.toBuffer
 
         applicableFilters.foreach { f =>
           // Generate the set of annotations, push them into the ctxBuilder, then also add any filters to the ctxBuilder
           val annotations = f.annotations(pileup, gt)
-          annotations.foreach { case (key, value) => ctxBuilder.attribute(key, value) }
-          f.filters(annotations).foreach(ctxBuilder.filter)
+          allAnnotations ++= annotations
+          allFilters     ++= f.filters(annotations)
         }
 
-        out.add(ctxBuilder.make())
+        variant.copy(attrs = ListMap(allAnnotations:_*), filters = allFilters.toSet)
       }
-      else {
-        out.add(ctx)
-      }
+
+      out += variantOut
     }
 
     out.close()
@@ -169,27 +166,12 @@ class FilterSomaticVcf
   }
 
   /** Builds a VCF writer that had all the necessary headers. */
-  private def makeWriter(output: PathToVcf, in: VCFHeader, filters: Seq[SomaticVariantFilter]): VariantContextWriter = {
-    val header = new VCFHeader(Collections.emptySet[VCFHeaderLine](), in.getSampleNamesInOrder)
+  private def makeWriter(output: PathToVcf, in: VcfHeader, filters: Seq[SomaticVariantFilter]): VcfWriter = {
+    val header = in.copy(
+      filters = (in.filters ++ filters.flatMap(_.VcfFilterLines)).distinct,
+      infos   = (in.infos   ++ filters.flatMap(_.VcfInfoLines)).distinct
+    )
 
-    in.getFilterLines.foreach(header.addMetaDataLine)
-    in.getFormatHeaderLines.foreach(header.addMetaDataLine)
-    in.getInfoHeaderLines.foreach(header.addMetaDataLine)
-    filters.foreach { f =>
-      f.VcfInfoLines.foreach(header.addMetaDataLine)
-      f.VcfFilterLines.foreach(header.addMetaDataLine)
-    }
-
-    Option(in.getSequenceDictionary).foreach(header.setSequenceDictionary)
-
-    val writer = new VariantContextWriterBuilder()
-      .setOutputFile(output.toFile)
-      .setOption(Options.INDEX_ON_THE_FLY)
-      .setOption(Options.ALLOW_MISSING_FIELDS_IN_HEADER)
-      .setReferenceDictionary(in.getSequenceDictionary)
-      .build()
-
-    writer.writeHeader(header)
-    writer
+    VcfWriter(output, header)
   }
 }

@@ -30,9 +30,9 @@ import com.fulcrumgenomics.FgBioDef._
 import com.fulcrumgenomics.bam.{Bams, BaseEntry, Pileup, PileupEntry}
 import com.fulcrumgenomics.commons.util.LazyLogging
 import com.fulcrumgenomics.util.NumericTypes.{LogProbability => LnProb}
-import htsjdk.samtools.util.SequenceUtil
-import htsjdk.variant.variantcontext.Genotype
-import htsjdk.variant.vcf.{VCFFilterHeaderLine, VCFInfoHeaderLine}
+import com.fulcrumgenomics.util.Sequences
+import com.fulcrumgenomics.vcf.api.{Genotype, VcfCount, VcfFieldType, VcfFilterHeader, VcfInfoHeader}
+
 /**
   * Filter that examines SNVs with the alt allele being A or T to see if they are likely the result
   * of aberrant end-repair and A-base addition.
@@ -50,20 +50,20 @@ import htsjdk.variant.vcf.{VCFFilterHeaderLine, VCFInfoHeaderLine}
   */
 class EndRepairArtifactLikelihoodFilter(val distance: Int = 2,
                                         pValueThreshold: Option[Double] = None) extends SomaticVariantFilter with LazyLogging {
-  val InfoKey           = "ERAP"
-  val InfoDescription   = "P-Value for the End-Repair Artifact test."
-  val FilterKey         = "EndRepairArtifact"
-  val FilterDescription = "Variant is likely an artifact caused by end-repair and A-base addition."
 
-  override val VcfInfoLines: Traversable[VCFInfoHeaderLine]     = Seq(vcfInfoLine(InfoKey, InfoDescription))
-  override val VcfFilterLines: Traversable[VCFFilterHeaderLine] = Seq(vcfFilterLine(FilterKey, FilterDescription))
+  /** The INFO header line needed by this filter. */
+  val Info = VcfInfoHeader("ERAP", VcfCount.Fixed(1), VcfFieldType.Float, "P-Value for the End-Repair Artifact test.")
+
+  /** The FILTER header line needed by this filter. */
+  val Filter = VcfFilterHeader("EndRepairArtifact", "Variant is likely an artifact caused by end-repair and A-base addition.")
+
+  override val VcfInfoLines: Traversable[VcfInfoHeader]     = Seq(Info)
+  override val VcfFilterLines: Traversable[VcfFilterHeader] = Seq(Filter)
 
   /** Only applies to het SNVs where the alt allele is A or T. */
   override def appliesTo(gt: Genotype): Boolean = {
-    gt.isHet &&
-      !gt.isHetNonRef &&
-      gt.getAlleles.forall(_.length() == 1) &&
-      gt.getAlleles.filter(_.isNonReference).exists(a => a.getBaseString.equalsIgnoreCase("A") || a.getBaseString.equalsIgnoreCase("T"))
+    gt.isHet && !gt.isHetNonRef && gt.calls.forall(_.value.length == 1) &&
+      gt.calls.exists(a => a != gt.alleles.ref && a.value.equalsIgnoreCase("A") || a.value.equalsIgnoreCase("T"))
   }
 
   /** Calculates the p-value and returns it in the map of annotations. */
@@ -72,9 +72,9 @@ class EndRepairArtifactLikelihoodFilter(val distance: Int = 2,
       Map.empty
     }
     else {
-      val refAllele = SequenceUtil.upperCase(gt.getAlleles.filter(_.isReference).map(_.getBases()(0)).next())
-      val altAllele = SequenceUtil.upperCase(gt.getAlleles.filter(_.isNonReference).map(_.getBases()(0)).next())
-      annotations(pileup, refAllele, altAllele)
+      val refAllele = gt.alleles.ref.value.charAt(0).toUpper
+      val altAllele = gt.calls.filter(_ != gt.alleles.ref).head.value.charAt(0).toUpper
+      annotations(pileup, refAllele.toByte, altAllele.toByte)
     }
   }
 
@@ -122,7 +122,7 @@ class EndRepairArtifactLikelihoodFilter(val distance: Int = 2,
     val pMutation = LnProb.expProb(LnProb.normalizeByLogProbability(llMutation, total))
     val pArtifact = LnProb.expProb(LnProb.normalizeByLogProbability(llArtifact, total))
 
-    Map(InfoKey -> pMutation)
+    Map(Info.id -> pMutation)
   }
 
   /** Calculates a pair of priors:
@@ -202,7 +202,7 @@ class EndRepairArtifactLikelihoodFilter(val distance: Int = 2,
       false
     }
     else {
-      val congruentRef = if (congruentAlt == altAllele) refAllele else SequenceUtil.complement(refAllele)
+      val congruentRef = if (congruentAlt == altAllele) refAllele else Sequences.complement(refAllele)
       entry.baseInReadOrientation == (if (isRef) congruentRef else congruentAlt)
     }
   }
@@ -211,8 +211,8 @@ class EndRepairArtifactLikelihoodFilter(val distance: Int = 2,
     * pvalue is present in the annotations, and c) the pvalue <= threshold.
     */
   override def filters(annotations: Map[String, Any]): Traversable[String] = {
-    (this.pValueThreshold, annotations.get(InfoKey).map(_.asInstanceOf[Double])) match {
-      case (Some(threshold), Some(pvalue)) if pvalue <= threshold => List(FilterKey)
+    (this.pValueThreshold, annotations.get(Info.id).map(_.asInstanceOf[Double])) match {
+      case (Some(threshold), Some(pvalue)) if pvalue <= threshold => List(Filter.id)
       case _ => Nil
     }
   }
