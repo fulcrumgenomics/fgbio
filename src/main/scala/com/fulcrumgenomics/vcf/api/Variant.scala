@@ -84,5 +84,5 @@ final case class Variant(chrom: String,
   def get[A](key: String): Option[A] = attrs.get(key).asInstanceOf[Option[A]]
 
   /** Retrieves an optional value from the INFO map.  Will return `default` if the key does not exist. */
-  def getOrElse[A](key: String, default: => A): Option[A] = attrs.getOrElse(key, default).asInstanceOf[Option[A]]
+  def getOrElse[A](key: String, default: => A): A = attrs.getOrElse(key, default).asInstanceOf[A]
 }

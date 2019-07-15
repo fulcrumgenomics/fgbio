@@ -25,12 +25,16 @@
 package com.fulcrumgenomics.vcf.api
 
 import java.io.Closeable
+import java.nio.file.Path
 
 import com.fulcrumgenomics.FgBioDef._
 import com.fulcrumgenomics.commons.collection.SelfClosingIterator
+import com.fulcrumgenomics.commons.io.PathUtil
 import htsjdk.samtools.util.CloseableIterator
+import htsjdk.tribble.{AbstractFeatureCodec, AbstractFeatureReader}
+import htsjdk.variant.bcf2.BCF2Codec
 import htsjdk.variant.variantcontext.VariantContext
-import htsjdk.variant.vcf.VCFFileReader
+import htsjdk.variant.vcf.{VCFCodec, VCFFileReader, VCFHeader}
 
 import scala.collection.IterableView
 
@@ -41,9 +45,9 @@ import scala.collection.IterableView
   *
   * @param reader the underlying HTSJDK [[VCFFileReader]]
   */
-class VcfSource private(private val reader: VCFFileReader) extends IterableView[Variant, VcfSource] with Closeable {
+class VcfSource private(private val reader: AbstractFeatureReader[VariantContext, _]) extends IterableView[Variant, VcfSource] with Closeable {
   /** The header associated with the VCF being read. */
-  val header: VcfHeader = VcfConversions.toScalaHeader(reader.getFileHeader)
+  val header: VcfHeader = VcfConversions.toScalaHeader(reader.getHeader.asInstanceOf[VCFHeader])
 
   /**
     * The type of iterator returned by both the [[iterator]] method as well as the [[query()]] method. Note that
@@ -94,7 +98,16 @@ object VcfSource {
     * @return a VariantSource for reading from the path given
     */
   def apply(path: PathToVcf): VcfSource = {
-    val reader = new VCFFileReader(path, false)
+    val codec  = if (PathUtil.extensionOf(path).contains(".bcf")) {
+      new BCF2Codec
+    }
+    else {
+      val c = new VCFCodec
+      c.disableOnTheFlyModifications()
+      c
+    }
+
+    val reader = AbstractFeatureReader.getFeatureReader(path.toUri.toString, codec, false)
     new VcfSource(reader)
   }
 }

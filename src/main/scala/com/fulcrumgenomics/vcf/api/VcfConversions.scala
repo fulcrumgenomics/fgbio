@@ -28,6 +28,7 @@ import java.util
 import java.util.{List => JavaList}
 
 import com.fulcrumgenomics.FgBioDef._
+import com.fulcrumgenomics.vcf.api.Allele.NoCallAllele
 import com.fulcrumgenomics.vcf.api.VcfCount.Fixed
 import htsjdk.samtools.SAMSequenceRecord
 import htsjdk.variant.variantcontext.{GenotypeBuilder, VariantContext, VariantContextBuilder, Allele => JavaAllele}
@@ -197,7 +198,7 @@ private[api] object VcfConversions {
     * @return a [[Variant]] instance that is a copy of the [[VariantContext]] and does not rely on it
     *         post-return
     */
-  def toScalaVariant(in: VariantContext, header: VcfHeader): Variant = {
+  def toScalaVariant(in: VariantContext, header: VcfHeader): Variant = try {
     // Build up the allele set
     val ref  = Allele(in.getReference.getDisplayString)
     val alts = in.getAlternateAlleles.map(a => Allele(a.getDisplayString)).toIndexedSeq
@@ -206,7 +207,7 @@ private[api] object VcfConversions {
 
     // Build up the genotypes
     val gts = in.getGenotypes.map { g =>
-      val calls = g.getAlleles.map(a => alleleMap(a.getDisplayString)).toIndexedSeq
+      val calls = g.getAlleles.map(a => if(a.isNoCall) NoCallAllele else alleleMap(a.getDisplayString)).toIndexedSeq
       val attrs = {
         val buffer = new ArrayBuffer[(String,Any)](g.getExtendedAttributes.size() + 4)
         if (g.hasAD) buffer.append("AD" -> g.getAD.toIndexedSeq)
@@ -218,7 +219,7 @@ private[api] object VcfConversions {
           val value = g.getExtendedAttribute(key)
 
           header.format.get(key) match {
-            case Some(hd) => buffer.append(key -> toTypedValue(value, hd.kind, hd.count))
+            case Some(hd) => toTypedValue(value, hd.kind, hd.count).foreach(v => buffer.append(key -> v))
             case None     => throw new IllegalStateException(s"Format field $key not described in header.")
           }
         }
@@ -230,14 +231,19 @@ private[api] object VcfConversions {
     }.toIndexedSeq
 
     // Build up the variant
-    val info = in.getAttributes.entrySet().map { entry =>
-      val key   = entry.getKey
-      val value = entry.getValue
-      header.info.get(key) match {
-        case Some(hd) => key -> toTypedValue(value, hd.kind, hd.count)
-        case None     => throw new IllegalStateException(s"INFO field $key not described in header.")
+    val info = {
+      val buffer = new ArrayBuffer[(String,Any)](in.getAttributes.size())
+      in.getAttributes.entrySet().foreach { entry =>
+        val key   = entry.getKey
+        val value = entry.getValue
+        header.info.get(key) match {
+          case Some(hd) => toTypedValue(value, hd.kind, hd.count).foreach(v => buffer.append(key -> v))
+          case None     => throw new IllegalStateException(s"INFO field $key not described in header.")
+        }
       }
-    }.toSeq
+
+      buffer
+    }
 
     Variant(
       chrom     = in.getContig,
@@ -245,10 +251,13 @@ private[api] object VcfConversions {
       id        = Option(if (in.getID == Variant.Missing) null else in.getID),
       alleles   = alleles,
       qual      = if (in.hasLog10PError) Some(in.getPhredScaledQual) else None,
-      filters    = in.getFilters.toSet,
-      attrs      = ListMap(info:_*),
+      filters   = in.getFilters.toSet,
+      attrs     = ListMap(info:_*),
       genotypes = gts.iterator.map(g => g.sample -> g).toMap
     )
+  }
+  catch {
+    case ex: Throwable => throw new RuntimeException(s"Failed to convert variant: ${in}", ex)
   }
 
   /**
@@ -268,13 +277,13 @@ private[api] object VcfConversions {
     * @param count the scala [[VcfCount]] describing how many values are expected
     * @return either a String/Float/Int/Char or an IndexedSeq of one of those types
     */
-  private def toTypedValue(value: Any, kind: VcfFieldType, count: VcfCount): Any = ((value, kind, count): @unchecked) match {
-    case (_, VcfFieldType.Flag, _       )              => Variant.FlagValue
-    case (_, _,                 Fixed(0))              => Variant.FlagValue
-    case (s: String, _,         Fixed(1))              => kind.parse(s)
-    case (s: String, _,         _       )              => Variant.toArrayAttribute(s.split(',').map(kind.parse))
-    case (l: JavaList[String @unchecked], _, Fixed(1)) => kind.parse(l.get(0))
-    case (l: JavaList[String @unchecked], _, _)        => Variant.toArrayAttribute(l.map(kind.parse))
+  private def toTypedValue(value: Any, kind: VcfFieldType, count: VcfCount): Option[Any] = ((value, kind, count): @unchecked) match {
+    case (_, VcfFieldType.Flag, _       )              => Some(Variant.FlagValue)
+    case (_, _,                 Fixed(0))              => Some(Variant.FlagValue)
+    case (s: String, _,         Fixed(1))              => if (s == ".") None else Some(kind.parse(s))
+    case (s: String, _,         _       )              => val xs = s.split(","); if (xs.forall(_ == ".")) None else Some(Variant.toArrayAttribute(xs.map(kind.parse)))
+    case (l: JavaList[String @unchecked], _, Fixed(1)) => if (l.get(0) == ".") None else Some(kind.parse(l.get(0)))
+    case (l: JavaList[String @unchecked], _, _)        => if (l.forall(_ == ".")) None else Some(Variant.toArrayAttribute(l.map(kind.parse)))
   }
 
   /**
