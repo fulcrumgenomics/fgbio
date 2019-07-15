@@ -85,4 +85,10 @@ final case class Variant(chrom: String,
 
   /** Retrieves an optional value from the INFO map.  Will return `default` if the key does not exist. */
   def getOrElse[A](key: String, default: => A): A = attrs.getOrElse(key, default).asInstanceOf[A]
+
+  /** Convenience method to get a single sample's genotype. */
+  def gt(sample: String): Genotype = this.genotypes(sample)
+
+  /** Returns an iterator over the genotypes for this variant. */
+  def gts: Iterator[Genotype] = this.genotypes.valuesIterator
 }
