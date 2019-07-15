@@ -80,8 +80,8 @@ final case class Genotype(alleles: AlleleSet,
   /** Retrieves an optional value from the INFO map.  Will return [[None]] if the key does not exist. */
   def get[A](key: String): Option[A] = attrs.get(key).asInstanceOf[Option[A]]
 
-  /** Retrieves an optional value from the INFO map.  Will return `default` if the key does not exist. */
-  def getOrElse[A](key: String, default: => A): Option[A] = attrs.getOrElse(key, default).asInstanceOf[Option[A]]
+  /** Retrieves an optional attribute.  Will return `default` if the key does not exist. */
+  def getOrElse[A](key: String, default: => A): A = attrs.getOrElse(key, default).asInstanceOf[A]
 
   /** Yields a genotype string using bases, e.g. A/C, or CTTT|C. */
   def gtWithBases: String = calls.map(_.toString).mkString(separator)

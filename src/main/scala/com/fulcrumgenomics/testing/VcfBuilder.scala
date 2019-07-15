@@ -46,7 +46,7 @@ object VcfBuilder {
       contigs = contigs,
       infos   = Seq(
         VcfInfoHeader(id="AC",  count=VcfCount.OnePerAltAllele, kind=VcfFieldType.Integer, description="Alternate allele counts in genotypes."),
-        VcfInfoHeader(id="DP",  count=VcfCount.Fixed(1),        kind=VcfFieldType.Integer, description="Depth across all samples."),
+        VcfInfoHeader(id="DP",  count=VcfCount.Fixed(1),        kind=VcfFieldType.Integer, description="Depth across all samples.")
       ),
       formats = Seq(
         VcfFormatHeader(id="GT", count=VcfCount.Fixed(1),       kind=VcfFieldType.String, description="Genotype string."),
