@@ -55,9 +55,9 @@ sealed trait VcfFieldType extends EnumEntry {
 
 object VcfFieldType extends FgBioEnum[VcfFieldType] {
   /** Integer field type, represented internally as [[Int]]. */
-  case object Integer   extends VcfFieldType { override def parse(s: String): Any = if (s == ".") -1 else s.toInt }
+  case object Integer   extends VcfFieldType { override def parse(s: String): Any = if (s == ".") Variant.MissingInt else s.toInt }
   /** Floating point number field type, represented internally as [[Float]]. */
-  case object Float     extends VcfFieldType { override def parse(s: String): Any = if (s == ".") scala.Float.NaN  else s.toFloat }
+  case object Float     extends VcfFieldType { override def parse(s: String): Any = if (s == ".") Variant.MissingFloat else s.toFloat }
   /** String field type, represented internally as [[String]]. */
   case object String    extends VcfFieldType { override def parse(s: String): Any = s }
   /** Character field type, represented internally as [[Char]]. */
