@@ -25,19 +25,40 @@
 package com.fulcrumgenomics.vcf.api
 
 import scala.collection.immutable.ListMap
+import scala.reflect.ClassTag
 
 object Variant {
   /** Value used in VCF for values that are missing. */
   val Missing: String = "."
 
+  /** Value used in arrays of ints for missing values. */
+  val MissingInt: Int = Int.MinValue
+
+  /** Value used in arrays of floats for missing values. This is the same value used in the BCF specification
+    * and is the "quiet NaN"; i.e. it is not a number, but the exact value is different than Float.NaN.
+    *
+    * To check for this value you must use `value.equals(MissingFloat)` NOT `value == MissingFloat` as the latter
+    * will always return false.
+    */
+  val MissingFloat: Float = {
+    import java.lang.{Long => JLong, Float => JFloat}
+    val l = JLong.parseLong("7F800001", 16)
+    JFloat.intBitsToFloat(l.intValue())
+  }
+
+  private val MissingFloatIntBits: Int = java.lang.Float.floatToRawIntBits(MissingFloat)
+
+  /** Returns true if the passed value is one of the missing values. */
+  def isMissingValue(x: Any): Boolean = x match {
+    case ch: Char   => ch == '.'
+    case s: String  => s == "."
+    case i: Int     => i == MissingInt
+    case f: Float   => java.lang.Float.floatToRawIntBits(f) == MissingFloatIntBits
+    case _          => false
+  }
+
   /** The value stored for fields of type `Flag` when stored in a Map. */
   val FlagValue: String = Missing
-
-  /** The type used in attribute maps (INFO, genotype) to store multi-valued attributed. */
-  type ArrayAttribute[A] = IndexedSeq[A]
-
-  /** Function to convert any scala collection to an [[com.fulcrumgenomics.vcf.api.Variant.ArrayAttribute]]. */
-  def toArrayAttribute[A](values: TraversableOnce[A]): ArrayAttribute[A] = values.toIndexedSeq
 
   /** The set of filters that are applied to passing variants. */
   val PassingFilters: Set[String] = Set("PASS")
@@ -52,6 +73,11 @@ object Variant {
 
 /**
   * Represents a variant from a VCF or similar source.
+  *
+  * Attributes from the INFO field are available via the [[apply()]], [[get()]], and [[getOrElse()]] methods.
+  * Attribute that are defined but missing in the VCF (e.g. DP=.) are not stored.  All multi-valued attributes
+  * are stored as instances of [[ArrayAttr]] which is a custom subclass of [[IndexedSeq]] which provides methods
+  * to help in dealing with missing values in cases where a subset of values are missing (e.g. AD=10,.,20).
   *
   * @param chrom the chromosome on which a variant resides.
   * @param pos the start position of the variant

@@ -26,7 +26,6 @@ package com.fulcrumgenomics.vcf.api
 
 import com.fulcrumgenomics.FgBioDef._
 import com.fulcrumgenomics.testing.UnitSpec
-import com.fulcrumgenomics.vcf.api.Variant.ArrayAttribute
 import org.scalatest.OptionValues
 
 import scala.collection.immutable.ListMap
@@ -109,15 +108,15 @@ class VcfIoTest extends UnitSpec with OptionValues {
     variants.head.alleles.alts.map(_.toString)     should contain theSameElementsInOrderAs Seq("G", "T")
     variants.head.qual.value                       shouldBe 1234.5
     variants.head.apply[Int]("DP")                 shouldBe 120
-    variants.head.apply[ArrayAttribute[Int]]("AC") should contain theSameElementsInOrderAs Seq(1, 1)
-    variants.head.attrs.contains("STR")       shouldBe true
-    variants.head.attrs.contains("QD")        shouldBe false
+    variants.head.apply[ArrayAttr[Int]]("AC")      should contain theSameElementsInOrderAs Seq(1, 1)
+    variants.head.attrs.contains("STR")            shouldBe true
+    variants.head.attrs.contains("QD")             shouldBe false
 
     variants.head.genotypes.size           shouldBe 1
     val gt = variants.head.genotypes("s1")
     gt.gtWithBases                         shouldBe "G/T"
     gt.gtVcfStyle                          shouldBe "1/2"
-    gt[ArrayAttribute[Int]]("AD")          should contain theSameElementsInOrderAs Seq(0, 50, 54)
+    gt[ArrayAttr[Int]]("AD")               should contain theSameElementsInOrderAs Seq(0, 50, 54)
     gt.attrs.contains("PL")                shouldBe false
   }
 
@@ -142,20 +141,20 @@ class VcfIoTest extends UnitSpec with OptionValues {
     result.vs.head.alleles.alts.map(_.toString)     should contain theSameElementsInOrderAs Seq("G")
     result.vs.head.qual                             shouldBe None
     result.vs.head.apply[Int]("DP")                 shouldBe 205
-    result.vs.head.apply[ArrayAttribute[Int]]("AC") should contain theSameElementsInOrderAs Seq(1, 3)
+    result.vs.head.apply[ArrayAttr[Int]]("AC")      should contain theSameElementsInOrderAs Seq(1, 3)
 
     result.vs.head.genotypes.size shouldBe 2
     val Seq(s1, s2) = Seq("s1", "s2").map(result.vs.head.genotypes.apply)
 
     s1.gtWithBases                shouldBe "C/G"
     s1.gtVcfStyle                 shouldBe "0/1"
-    s1[ArrayAttribute[Int]]("AD") should contain theSameElementsInOrderAs Seq(50, 54)
-    s1[ArrayAttribute[Int]]("PL") should contain theSameElementsInOrderAs Seq(999, 41, 998)
+    s1[ArrayAttr[Int]]("AD")      should contain theSameElementsInOrderAs Seq(50, 54)
+    s1[ArrayAttr[Int]]("PL")      should contain theSameElementsInOrderAs Seq(999, 41, 998)
     s1[Int]("GQ")                 shouldBe 99
 
     s2.gtWithBases                shouldBe "G/G"
     s2.gtVcfStyle                 shouldBe "1/1"
-    s2[ArrayAttribute[Int]]("AD") should contain theSameElementsInOrderAs Seq(0, 101)
+    s2[ArrayAttr[Int]]("AD")      should contain theSameElementsInOrderAs Seq(0, 101)
     s2.attrs.contains("PL")       shouldBe false
     s2.attrs.contains("GQ")       shouldBe false
   }

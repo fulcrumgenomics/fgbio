@@ -281,9 +281,9 @@ private[api] object VcfConversions {
     case (_, VcfFieldType.Flag, _       )              => Some(Variant.FlagValue)
     case (_, _,                 Fixed(0))              => Some(Variant.FlagValue)
     case (s: String, _,         Fixed(1))              => if (s == ".") None else Some(kind.parse(s))
-    case (s: String, _,         _       )              => val xs = s.split(","); if (xs.forall(_ == ".")) None else Some(Variant.toArrayAttribute(xs.map(kind.parse)))
+    case (s: String, _,         _       )              => val xs = s.split(","); if (xs.forall(_ == ".")) None else Some(ArrayAttr(xs.map(kind.parse)))
     case (l: JavaList[String @unchecked], _, Fixed(1)) => if (l.get(0) == ".") None else Some(kind.parse(l.get(0)))
-    case (l: JavaList[String @unchecked], _, _)        => if (l.forall(_ == ".")) None else Some(Variant.toArrayAttribute(l.map(kind.parse)))
+    case (l: JavaList[String @unchecked], _, _)        => if (l.forall(_ == ".")) None else Some(ArrayAttr(l.map(kind.parse)))
   }
 
   /**
