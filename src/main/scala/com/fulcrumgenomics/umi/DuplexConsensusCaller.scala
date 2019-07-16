@@ -104,7 +104,7 @@ class DuplexConsensusCaller(override val readNamePrefix: String,
                             val errorRatePreUmi: PhredScore     = DuplexConsensusCaller.ErrorRatePreUmi,
                             val errorRatePostUmi: PhredScore    = DuplexConsensusCaller.ErrorRatePostUmi,
                             val minReads: Seq[Int]              = Seq(1),
-                            val maxReads: Int                   = VanillaUmiConsensusCallerOptions.DefaultMaxReads
+                            val maxReadsPerStrand: Int          = VanillaUmiConsensusCallerOptions.DefaultMaxReads
                            ) extends UmiConsensusCaller[DuplexConsensusRead] with LazyLogging {
 
   private val Seq(minTotalReads, minXyReads, minYxReads) = this.minReads.padTo(3, this.minReads.last)
@@ -117,7 +117,7 @@ class DuplexConsensusCaller(override val readNamePrefix: String,
       errorRatePreUmi         = this.errorRatePreUmi,
       errorRatePostUmi        = this.errorRatePostUmi,
       minReads                = 1,
-      maxReads                = maxReads,
+      maxReads                = maxReadsPerStrand,
       minInputBaseQuality     = this.minInputBaseQuality,
       minConsensusBaseQuality = PhredScore.MinValue,
       producePerBaseTags      = true
@@ -128,16 +128,15 @@ class DuplexConsensusCaller(override val readNamePrefix: String,
     */
   private def sourceMoleculeAndStrandId(rec: SamRecord): String = {
     // Optimization: speed up retrieving this tag by storing it in the transient attributes
-    rec.transientAttrs.getOrElse[String](ConsensusTags.MolecularId, {
-      val mi = rec.getOrElse[String](ConsensusTags.MolecularId,
-        throw new IllegalStateException(s"Read ${rec.name} is missing it's ${ConsensusTags.MolecularId} tag.")
-      )
-      rec.transientAttrs(ConsensusTags.MolecularId) = mi
-      mi
-    })
+    rec.transientAttrs.get[String](ConsensusTags) match {
+      case Some(mi) => mi
+      case None =>
+        rec.get[String](ConsensusTags.MolecularId) match {
+          case Some(mi) => mi
+          case None     => throw new IllegalStateException(s"Read ${rec.name} is missing it's ${ConsensusTags.MolecularId} tag.")
+        }
+    }
   }
-
-  private val MolecularIdNoTrailingSuffix: String = "__" + ConsensusTags.MolecularId + "__"
 
   /** Returns a clone of this consensus caller in a state where no previous reads were processed.  I.e. all counters
     * are set to zero.*/
@@ -150,9 +149,13 @@ class DuplexConsensusCaller(override val readNamePrefix: String,
       errorRatePreUmi     = errorRatePreUmi,
       errorRatePostUmi    = errorRatePostUmi,
       minReads            = minReads,
-      maxReads            = maxReads
+      maxReadsPerStrand   = maxReadsPerStrand
     )
   }
+
+  // The key in a [[SamRecord]]'s transient attributes that caches the molecular identifier. The molecular identifier is
+  // cached by the `sourceMoleculeId` method.
+  private val MolecularIdNoTrailingSuffix: String = "__" + ConsensusTags.MolecularId + "__"
 
   /**
     * Returns the MI tag **minus** the trailing suffix that identifies /A vs /B
@@ -223,17 +226,20 @@ class DuplexConsensusCaller(override val readNamePrefix: String,
     }
   }
 
+  // An empty sequence of [[SamRecord]]s, used in subGroupRecords to improve performance
+  private val NoSamRecords: Seq[SamRecord] = Seq.empty[SamRecord]
+
   /** Split records into those that should make a single-end consensus read, first of pair consensus read,
-    * and second of pair consensus read, respectively.  For [[DuplexConsensusCaller]], no fragment reads should be
-    * given to this method, so none will be returned.
+    * and second of pair consensus read, respectively.  This method is overridden in [[DuplexConsensusCaller]] to
+    * improve performance since no fragment reads should be given to this method.
     */
   override protected def subGroupRecords(records: Seq[SamRecord]): (Seq[SamRecord], Seq[SamRecord], Seq[SamRecord]) = {
     // NB: the input records should not have fragments
     val (firstOfPair, secondOfPair) = records.partition { r =>
-      assert(r.paired, "Fragment reads should not be given to subGroupRecords in DuplexConsensusCaller.")
+      require(r.paired, "Fragment reads should not be given to subGroupRecords in DuplexConsensusCaller.")
       r.firstOfPair
     }
-    (Seq.empty, firstOfPair, secondOfPair)
+    (NoSamRecords, firstOfPair, secondOfPair)
   }
 
   /** Attempts to call a duplex consensus reads from the two sets of reads, one for each strand. */
@@ -283,8 +289,8 @@ class DuplexConsensusCaller(override val readNamePrefix: String,
         // Call the duplex reads
         val duplexR1Sources = filteredAbR1s ++ filteredBaR2s
         val duplexR2Sources = filteredAbR2s ++ filteredBaR1s
-        val duplexR1 = duplexConsensus(abR1Consensus, baR2Consensus, duplexR1Sources.toArray[SourceRead])
-        val duplexR2 = duplexConsensus(abR2Consensus, baR1Consensus, duplexR2Sources.toArray[SourceRead])
+        val duplexR1 = duplexConsensus(abR1Consensus, baR2Consensus, duplexR1Sources)
+        val duplexR2 = duplexConsensus(abR2Consensus, baR1Consensus, duplexR2Sources)
 
         // Convert to SamRecords and return
         (duplexR1, duplexR2) match {
@@ -356,8 +362,9 @@ class DuplexConsensusCaller(override val readNamePrefix: String,
           // NB: optimized based on profiling; was previously:
           // sourceReads.count(s => s.length > i && isError(s.bases(i), rawBase))
           var numErrors = 0
-          forloop(from=0, until=sourceReads.length) { j =>
-            val sourceRead = sourceReads(j)
+          val sourceReadsArray = sourceReads.toArray
+          forloop(from=0, until=sourceReadsArray.length) { j =>
+            val sourceRead = sourceReadsArray(j)
             if (sourceRead.length > i && isError(sourceRead.bases(i), rawBase)) {
               numErrors += 1
             }

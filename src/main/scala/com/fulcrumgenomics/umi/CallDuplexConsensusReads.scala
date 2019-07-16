@@ -101,14 +101,12 @@ class CallDuplexConsensusReads
  @arg(flag='S', doc="The sort order of the output, if `:none:` then the same as the input.") val sortOrder: Option[SamOrder] = Some(SamOrder.Queryname),
  @arg(flag='M', minElements=1, maxElements=3, doc="The minimum number of input reads to a consensus read.") val minReads: Seq[Int] = Seq(1),
  @arg(doc="""
-            |The maximum number of reads to use when building a single-strandconsensus. If more than this many reads are
+            |The maximum number of reads to use when building a single-strand consensus. If more than this many reads are
             |present in a tag family, the family is randomly downsampled to exactly max-reads reads.
           """)
- val maxReads: Option[Int] = None,
+ val maxReadsPerStrand: Option[Int] = None,
  @arg(doc="The number of threads to use while consensus calling.") val threads: Int = 1
 ) extends FgBioTool with LazyLogging {
-
-  private val maxRecordsInRamPerThread = 128000
 
   Io.assertReadable(input)
   Io.assertCanWriteFile(output)
@@ -131,10 +129,10 @@ class CallDuplexConsensusReads
       errorRatePreUmi     = errorRatePreUmi,
       errorRatePostUmi    = errorRatePostUmi,
       minReads            = minReads,
-      maxReads            = maxReads.getOrElse(VanillaUmiConsensusCallerOptions.DefaultMaxReads)
+      maxReadsPerStrand   = maxReadsPerStrand.getOrElse(VanillaUmiConsensusCallerOptions.DefaultMaxReads)
     )
     val progress = ProgressLogger(logger, unit=1000000)
-    val iterator = new ConsensusCallingIterator(in.toIterator, caller, Some(progress), threads, maxRecordsInRamPerThread)
+    val iterator = new ConsensusCallingIterator(in.toIterator, caller, Some(progress), threads)
     out ++= iterator
     progress.logLast()
 

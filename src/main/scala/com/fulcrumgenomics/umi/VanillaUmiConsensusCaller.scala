@@ -208,12 +208,12 @@ class VanillaUmiConsensusCaller(override val readNamePrefix: String,
           }
         }
 
-        val contributions = builder.contributions // NB: cache this value, as it is re-computed each time
+        val depth = builder.contributions // NB: cache this value, as it is re-computed each time
 
         // Call the consensus and do any additional filtering
         val (rawBase, rawQual) = builder.call()
         val (base, qual) = {
-          if (contributions < this.options.minReads)       (NoCall, NotEnoughReadsQual)
+          if (depth < this.options.minReads)       (NoCall, NotEnoughReadsQual)
           else if (rawQual < this.options.minConsensusBaseQuality) (NoCall, TooLowQualityQual)
           else (rawBase, rawQual)
         }
@@ -222,7 +222,6 @@ class VanillaUmiConsensusCaller(override val readNamePrefix: String,
         consensusQuals(positionInRead) = qual
 
         // Generate the values for depth and count of errors
-        val depth  = contributions
         val errors = if (rawBase == NoCall) depth else depth - builder.observations(rawBase)
         consensusDepths(positionInRead) = if (depth  > Short.MaxValue) Short.MaxValue else depth.toShort
         consensusErrors(positionInRead) = if (errors > Short.MaxValue) Short.MaxValue else errors.toShort
@@ -252,7 +251,7 @@ class VanillaUmiConsensusCaller(override val readNamePrefix: String,
   /** If a reject writer was provided, emit the reads to that writer. */
   override protected def rejectRecords(recs: Traversable[SamRecord], reason: String): Unit = {
     super.rejectRecords(recs, reason)
-    this.rejects.foreach(rej => rej ++= recs) // NB: this may not be thread-safe
+    this.rejects.foreach(rej => rej ++= recs)
   }
 
   /** Creates a `SamRecord` from the called consensus base and qualities. */

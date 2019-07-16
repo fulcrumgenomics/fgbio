@@ -26,17 +26,15 @@ package com.fulcrumgenomics.umi
 
 import com.fulcrumgenomics.FgBioDef._
 import com.fulcrumgenomics.bam.api.SamRecord
-import com.fulcrumgenomics.commons.async.AsyncIterator
 import com.fulcrumgenomics.commons.util.LazyLogging
 import com.fulcrumgenomics.umi.UmiConsensusCaller.SimpleRead
 import com.fulcrumgenomics.util.ProgressLogger
 
-import scala.collection.mutable.ListBuffer
 import scala.concurrent.forkjoin.ForkJoinPool
 
 /**
   * An iterator that consumes from an incoming iterator of [[SamRecord]]s and generates consensus
-  * read [[SamRecord]] using the supplied consensus caller.
+  * read [[SamRecord]]s using the supplied consensus caller.
   *
   * @param sourceIterator the iterator over input [[SamRecord]]s.
   * @param caller the consensus caller to use to call consensus reads
@@ -44,16 +42,18 @@ import scala.concurrent.forkjoin.ForkJoinPool
   * @param threads the number of threads to use.
   * @param maxRecordsInRam the approximate maximum number of input records to store in RAM across multiple threads.
   */
-class ConsensusCallingIterator[C <: SimpleRead](sourceIterator: Iterator[SamRecord],
-                               caller: UmiConsensusCaller[C],
+class ConsensusCallingIterator[ConsensusRead <: SimpleRead](sourceIterator: Iterator[SamRecord],
+                               caller: UmiConsensusCaller[ConsensusRead],
                                progress: Option[ProgressLogger] = None,
                                threads: Int = 1,
                                maxRecordsInRam: Int = 128000)
   extends Iterator[SamRecord] with LazyLogging {
+
   protected val groupingIterator: Iterator[Seq[SamRecord]] = {
     new SamRecordGroupedIterator(sourceIterator, caller.sourceMoleculeId)
       .map { records => for (p <- progress; r <- records) p.record(r); records }
   }
+
   protected val iterator: Iterator[SamRecord] = {
     if (threads <= 1) {
       groupingIterator.flatMap(caller.consensusReadsFromSamRecords)

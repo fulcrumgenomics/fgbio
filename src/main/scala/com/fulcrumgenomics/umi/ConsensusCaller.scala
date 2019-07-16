@@ -96,7 +96,6 @@ class ConsensusCaller(errorRatePreLabeling:  PhredScore,
     def add(base: Base, pError: LogProbability, pTruth: LogProbability) = {
       val b = SequenceUtil.upperCase(base)
       if (b != 'N') {
-        // NB: interestingly, caching this value (based on qual) slows things down.
         val pErrorNormalized = LogProbability.normalizeByScalar(pError, 3)
         var i = 0
         while (i < DnaBaseCount) {

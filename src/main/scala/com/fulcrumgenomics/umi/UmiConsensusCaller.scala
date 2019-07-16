@@ -150,15 +150,15 @@ object UmiConsensusCaller {
   * A trait that can be mixed in by any consensus caller that works at the read level,
   * mapping incoming SamRecords into consensus SamRecords.
   *
-  * @tparam C Internally, the type of lightweight consensus read that is used prior to
+  * @tparam ConsensusRead Internally, the type of lightweight consensus read that is used prior to
   *           rebuilding [[com.fulcrumgenomics.bam.api.SamRecord]]s.
   */
-trait UmiConsensusCaller[C <: SimpleRead] {
+trait UmiConsensusCaller[ConsensusRead <: SimpleRead] {
   import com.fulcrumgenomics.umi.UmiConsensusCaller.ReadType._
 
   // vars to track how many reads meet various fates
   private var _totalReads: Long = 0
-  private[umi] val _filteredReads = new SimpleCounter[String]()
+  private val _filteredReads = new SimpleCounter[String]()
   private var _consensusReadsConstructed: Long = 0
 
   protected val NoCall: Byte = 'N'.toByte
@@ -169,7 +169,7 @@ trait UmiConsensusCaller[C <: SimpleRead] {
 
   /** Returns a clone of this consensus caller in a state where no previous reads were processed.  I.e. all counters
     * are set to zero.*/
-  def emptyClone(): UmiConsensusCaller[C]
+  def emptyClone(): UmiConsensusCaller[ConsensusRead]
 
   /** Returns the total number of input reads examined by the consensus caller so far. */
   def totalReads: Long = _totalReads
@@ -302,8 +302,11 @@ trait UmiConsensusCaller[C <: SimpleRead] {
     (fragments, firstOfPair, secondOfPair)
   }
 
-  private case class CigarAndCount(simpleCigar: Cigar, index: Int = 0, var count: Long = 0)
-  private case class SourceReadAndCigarIndices(read: SourceRead, cigarIndices: Set[Int])
+  /** A little class to represent a canonical group of alignments, uniquely determined by the given cigar. */
+  private case class AlignmentGroup(cigar: Cigar, index: Int = 0, var count: Long = 0)
+
+  /** A little class to associate a given read with one or more compatible alignment groups. */
+  private case class SourceReadToAlignmentGroups(read: SourceRead, groupIndices: Set[Int])
 
   /**
     * Takes in a non-empty seq of SamRecords and filters them such that the returned seq only contains
@@ -320,32 +323,49 @@ trait UmiConsensusCaller[C <: SimpleRead] {
     * NOTE: filtered out reads are sent to the [[rejectRecords]] method and do not need further handling
     */
   protected[umi] def filterToMostCommonAlignment(recs: Seq[SourceRead]): Seq[SourceRead] = {
-    val cigars = new ArrayBuffer[CigarAndCount]
-    val recsAndCigarIndices: Seq[SourceReadAndCigarIndices] = recs.sortBy(r => -r.length).map { read =>
-      val simpleCigar  = simplifyCigar(read.cigar)
-      val cigarIndices = cigars
-        .filter { cigar => simpleCigar.isPrefixOf(cigar.simpleCigar) }
-        .map(_.index)
-        .toSet
+    // The alignment groups created by examining the source reads
+    val groups = new ArrayBuffer[AlignmentGroup]
 
-      if (cigarIndices.isEmpty) {
-        cigars += CigarAndCount(simpleCigar, cigars.size, 1)
-        SourceReadAndCigarIndices(read, Set(cigars.size-1))
-      }
-      else {
-        cigarIndices.foreach { cigarIndex => cigars(cigarIndex).count += 1 }
-        SourceReadAndCigarIndices(read, cigarIndices)
+    // For each source read, return the existing compatible alignment groups, or if none or compatible, create a new
+    // alignment group.  Each source read is thereby associated with one or more alignment groups (see the class
+    // SourceReadToAlignmentGroups).  The order in which we examine the reads matters, as a given source read is only
+    // compared against previously created alignment groups.
+    val sourceReadToAlignmentGroups: Seq[SourceReadToAlignmentGroups] = {
+      // go through the longest reads first
+      recs.sortBy(r => -r.length).map { read =>
+        val simpleCigar = simplifyCigar(read.cigar)
+        // find the existing alignment groups that are compatible with this read.  The index into `groups` is stored for
+        // performance reasons
+        val groupIndices = groups
+          .filter { cigar => simpleCigar.isPrefixOf(cigar.cigar) }
+          .map(_.index)
+          .toSet
+
+        // if no existing groups are compatible, create a new one, otherwise, increment the # of source reads in that
+        // group.
+        if (groupIndices.isEmpty) {
+          groups += AlignmentGroup(simpleCigar, groups.size, 1)
+          SourceReadToAlignmentGroups(read, Set(groups.size-1)) // a new group was just added, so use groups.size-1
+        }
+        else {
+          groupIndices.foreach { cigarIndex => groups(cigarIndex).count += 1 }
+          SourceReadToAlignmentGroups(read, groupIndices)
+        }
       }
     }
 
-    if (cigars.isEmpty) {
+    if (groups.isEmpty) {
       Seq.empty
     }
-    else {
-      // Keep the records from the cigar has the most # of matching records
-      val mostFrequentCigarIndex = cigars.maxBy(_.count).index
-      val (keepers, rejects) = recsAndCigarIndices.toList.partition(_.cigarIndices.contains(mostFrequentCigarIndex))
+    else { // Keep the records from the cigar has the most # of matching records
+      // first find index of the group with the largest count
+      val mostFrequentCigarIndex = groups.maxBy(_.count).index
+      // next, partition the source reads into those that are compatible with this group.  This is where storing the
+      // index (indices) of the groups compatible with a given source read is used.
+      val (keepers, rejects) = sourceReadToAlignmentGroups.toList.partition(_.groupIndices.contains(mostFrequentCigarIndex))
+      // reject the rejects!
       rejectRecords(rejects.flatMap(_.read.sam), FilterMinorityAlignment)
+      // keep the keepers
       keepers.map(_.read)
     }
   }
@@ -370,7 +390,7 @@ trait UmiConsensusCaller[C <: SimpleRead] {
   }
 
   /** Creates a `SamRecord` from the called consensus base and qualities. */
-  protected def createSamRecord(read: C, readType: ReadType, umis: Seq[String] = Seq.empty): SamRecord = {
+  protected def createSamRecord(read: ConsensusRead, readType: ReadType, umis: Seq[String] = Seq.empty): SamRecord = {
     val rec = SamRecord(null)
     rec.name = this.readNamePrefix + ":" + read.id
     rec.unmapped = true
@@ -402,7 +422,7 @@ trait UmiConsensusCaller[C <: SimpleRead] {
   }
 
   /** Adds the given caller's statistics (counts) to this caller. */
-  def addStatistics(caller: UmiConsensusCaller[C]): Unit = {
+  def addStatistics(caller: UmiConsensusCaller[ConsensusRead]): Unit = {
     this._totalReads += caller.totalReads
     this._consensusReadsConstructed += caller.consensusReadsConstructed
     this._filteredReads += caller._filteredReads
