@@ -36,7 +36,7 @@ import htsjdk.samtools.reference.{FastaSequenceIndex, ReferenceSequenceFileFacto
     |Updates the sequence names in a FASTA.
     |
     |The first column of the input is the source name and the second column is an target name.  If there
-    |is more than one target names (ex. multiple alternates), each alternate name may be on a separate line or as
+    |are more than one target names (ex. multiple alternates), each alternate name may be on a separate line or as
     |additional columns.  Only the first target name will be considered.  This is mainly to support the output of
     |`CollectAlternateContigNames`.
   """,
@@ -77,18 +77,21 @@ class UpdateFastaContigNames
         Some((srcName, targetName))
       }
     }.foreach { case (srcName, targetName) =>
-        val ref = refFile.getSequence(srcName)
-        out.append('>').append(targetName).append('\n')
-        ref.getBases.grouped(lineLength).zipWithIndex.foreach { case (bases, groupIndex) =>
-          val start = groupIndex * lineLength
-          bases.zipWithIndex.foreach { case (base, baseIdx) =>
-            progress.record(targetName, start + baseIdx + 1)
-            out.write(base)
-          }
+      val ref = refFile.getSequence(srcName)
+      out.append('>').append(targetName).append('\n')
+      val bases = ref.getBases
+      var baseCounter = 0
+      forloop(from = 0, until = bases.length) { baseIdx =>
+        out.write(bases(baseIdx))
+        progress.record(targetName, baseIdx + 1)
+        baseCounter += 1
+        if (baseCounter >= lineLength) {
           out.newLine()
+          baseCounter = 0
         }
-        progress.logLast()
-        seen.add(srcName)
+      }
+      if (baseCounter > 0) out.newLine()
+      seen.add(srcName)
     }
     out.close()
 
