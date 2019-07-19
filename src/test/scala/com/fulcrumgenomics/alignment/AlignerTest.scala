@@ -254,6 +254,25 @@ class AlignerTest extends UnitSpec {
     result.score shouldBe 11 - 100 - 1 - 100 - 1
   }
 
+  it should "use the correct gap penalties when the alignment starts/ends with gap on query or target" in {
+    val scorer = new AlignmentScorer {
+      override def scorePairing(q: Byte, t: Byte): Int = if (q == t) 5 else -4
+      override def scoreGap(query: Array[Byte], target: Array[Byte], qOffset: Int, tOffset: Int, inQuery: Boolean, extend: Boolean): Int = {
+        if (inQuery) -3 else -4
+      }
+    }
+
+    val aligner = new Aligner(scorer, mode=Mode.Global)
+    val r1 = aligner.align(  "TTTTTTTTTT",  "AATTTTTTTTTTAA") // gaps are in query
+    val r2 = aligner.align("AATTTTTTTTTTAA",  "TTTTTTTTTT")  // gaps are in target
+
+    r1.cigar.toString shouldBe "2D10=2D"
+    r1.score shouldBe (10 * 5) + (-3 * 4)
+
+    r2.cigar.toString shouldBe "2I10=2I"
+    r2.score shouldBe (10 * 5) + (-4 * 4)
+  }
+
   // Glocal alignment tests
   "Aligner.align(Glocal)" should "align two identical sequences with all matches" in {
     val result = Aligner(1, -1, -3, -1, mode=Glocal).align(s("ACGTAACC"), s("ACGTAACC"))
@@ -354,6 +373,29 @@ class AlignerTest extends UnitSpec {
     aligner.align(q, t).cigar.toString shouldBe "3=1I1X6="  // the gap is moved over the C, and a G/C mismatch created
   }
 
+  it should "charge the correct gap penalty based on whether the gap is in the query or target" in {
+    val scorer = new AlignmentScorer {
+      override def scorePairing(q: Byte, t: Byte): Int = if (q == t) 5 else -4
+      override def scoreGap(query: Array[Byte], target: Array[Byte], qOffset: Int, tOffset: Int, inQuery: Boolean, extend: Boolean): Int = {
+        if (inQuery) -3 else -4
+      }
+    }
+
+    val aligner = new Aligner(scorer, mode=Mode.Glocal)
+    val r1 = aligner.align("AACCGGTT", "AACCGGTT") // exact
+    val r2 = aligner.align("AACGGTT",  "AACCGGTT")  // gap in query
+    val r3 = aligner.align("AACCGGTT", "AACGGTT")  // gap in target
+
+    r1.cigar.toString shouldBe "8="
+    r1.score shouldBe 40
+
+    r2.cigar.toString shouldBe "2=1D5="
+    r2.score shouldBe 32
+
+    r3.cigar.toString shouldBe "2=1I5="
+    r3.score shouldBe 31
+  }
+
   "Aligner.align(Local)" should "align two identical sequences with all matches" in {
     val result = Aligner(1, -1, -3, -1, mode=Local).align(s("ACGTAACC"), s("ACGTAACC"))
     assertValidLocalAlignment(result)
@@ -447,7 +489,7 @@ class AlignerTest extends UnitSpec {
     aln shouldBe "|||.|||||||||||||||||"
   }
 
-  "Aligner.align(minScore)" should "return at least the perfect alignment" in {
+   "Aligner.align(minScore)" should "return at least the perfect alignment" in {
     val results = Aligner(5, -4, -5, -3, mode=Glocal).align("ACGTTTGCAT", "ACGTTTGCAT", 20).sortBy(- _.score)
     results.size should be >= 1
     results.head.cigar.toString shouldBe "10="
