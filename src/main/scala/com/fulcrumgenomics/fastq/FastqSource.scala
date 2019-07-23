@@ -59,14 +59,14 @@ object FastqSource {
     * @param sources a Seq of one or more FastqSource objects
     * @return an Iterator that returns a Seq of FastqRecord, one per source
     */
-  def zipped(sources: Seq[FastqSource]): Iterator[Seq[FastqRecord]] = new Iterator[Seq[FastqRecord]] {
+  def zipped(sources: Seq[Iterator[FastqRecord]]): Iterator[Seq[FastqRecord]] = new Iterator[Seq[FastqRecord]] {
     require(sources.nonEmpty, "No sources provided")
 
     def hasNext(): Boolean = sources.exists(_.hasNext)
 
     def next(): Seq[FastqRecord] = {
       if (!this.hasNext) throw new NoSuchElementException("Calling next() when hasNext() is false.")
-      require(sources.forall(_.hasNext) == sources.head.hasNext, "Sources are out of sync.")
+      require(sources.forall(_.hasNext) == sources.head.hasNext, s"Sources are out of sync: ${sources.map(_.hasNext).mkString(", ")}")
       val records = sources.map(_.next)
       // Check that the FASTQ records all have the same name
       require(records.forall(_.name == records.head.name), "Fastqs are out of sync, found read names: " + records.map(_.name).mkString(", "))

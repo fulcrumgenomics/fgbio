@@ -25,13 +25,12 @@
 
 package com.fulcrumgenomics.fastq
 
-import java.io.Closeable
-
 import com.fulcrumgenomics.FgBioDef.{FgBioEnum, unreachable}
 import com.fulcrumgenomics.bam.api.{SamOrder, SamRecord, SamWriter}
 import com.fulcrumgenomics.cmdline.{ClpGroups, FgBioTool}
 import com.fulcrumgenomics.commons.CommonsDef.{DirPath, FilePath, PathPrefix, PathToFastq}
-import com.fulcrumgenomics.commons.io.PathUtil
+import com.fulcrumgenomics.commons.async.{AsyncIterator, AsyncWriterPool}
+import com.fulcrumgenomics.commons.io.{PathUtil, Writer}
 import com.fulcrumgenomics.commons.util.{LazyLogging, Logger}
 import com.fulcrumgenomics.fastq.FastqDemultiplexer.{DemuxRecord, DemuxResult}
 import com.fulcrumgenomics.illumina.{Sample, SampleSheet}
@@ -39,14 +38,25 @@ import com.fulcrumgenomics.sopt.{arg, clp}
 import com.fulcrumgenomics.umi.ConsensusTags
 import com.fulcrumgenomics.util.ReadStructure.SubRead
 import com.fulcrumgenomics.util.{ReadStructure, SampleBarcodeMetric, _}
+import enumeratum.EnumEntry
 import htsjdk.samtools.SAMFileHeader.SortOrder
 import htsjdk.samtools._
 import htsjdk.samtools.util.{Iso8601Date, SequenceUtil}
-import enumeratum.EnumEntry
 
 import scala.collection.immutable.IndexedSeq
 import scala.collection.mutable.ListBuffer
-import scala.concurrent.forkjoin.ForkJoinPool
+
+/** Controls how we read from the inputs in [[DemuxFastqs]].*/
+sealed trait DemuxFastqsAsyncReadingType extends EnumEntry
+case object DemuxFastqsAsyncReadingType extends FgBioEnum[DemuxFastqsAsyncReadingType] {
+  def values: IndexedSeq[DemuxFastqsAsyncReadingType] = findValues
+  /** Read in a synchronous fashion */
+  case object NoAsync extends DemuxFastqsAsyncReadingType
+  /** Read all the inputs in a single thread */
+  case object SingleThread extends DemuxFastqsAsyncReadingType
+  /** Read each input in its own thread */
+  case object ThreadPerReader extends DemuxFastqsAsyncReadingType
+}
 
 object DemuxFastqs {
 
@@ -56,15 +66,17 @@ object DemuxFastqs {
   /** The name of the sample for unmatched reads. */
   val UnmatchedSampleId: String = "unmatched"
 
+  /** Contains the parameters used to control asynchronous computation and IO. */
+  private case class DemuxFastqsAsyncOptions(asyncReadingType: DemuxFastqsAsyncReadingType,
+                                             numWriterThreads: Int,
+                                             asyncDemux: Boolean,
+                                             demuxBatchSize: Int = 10e5.toInt) {
+    require(numWriterThreads >= 0)
+    require(!asyncDemux || demuxBatchSize > 0)
+  }
+
   /** The maximum # of records in RAM per SAM/BAM writer. */
   private[fastq] val MaxRecordsInRam: Int = 5e6.toInt
-
-  /** Decides whether or not to use asynchronous IO for the writers. This has a big performance benefit at the cost of
-    * some RAM. RAM may balloon if there is a need to sort the output. */
-  private[fastq] val UseAsyncIo: Boolean  = true
-
-  /** The number of records to batch when demultiplexing in parallel. */
-  private val DemuxBatchRecordsSize = 1e5.toInt
 
   /** Creates the sample output BAM path for the given sample. */
   private[fastq] def outputPrefixFrom(output: DirPath, sample: Sample): PathPrefix = {
@@ -134,36 +146,43 @@ object DemuxFastqs {
     }
   }
 
-  /** Creates a demultiplexing iterator that performs demultiplexing in parallel.
+  /** Creates a demultiplexing iterator.
     *
     * @param sources the FASTQ sources, one per read.
     * @param demultiplexer the demultiplexer to use.  The demultiplexer's [[com.fulcrumgenomics.fastq.FastqDemultiplexer.demultiplex()]]
     *                      method expects the same number of reads as sources.
     */
-  def demultiplexingIterator(sources: Seq[FastqSource],
+  def demultiplexingIterator(sources: Seq[Iterator[FastqRecord]],
                              demultiplexer: FastqDemultiplexer,
-                             threads: Int,
-                             batchSize: Int = DemuxBatchRecordsSize): Iterator[DemuxResult] = {
-
+                             asyncOptions: DemuxFastqsAsyncOptions): Iterator[DemuxResult] = {
     require(demultiplexer.expectedNumberOfReads == sources.length,
       s"The demultiplexer expects ${demultiplexer.expectedNumberOfReads} reads but ${sources.length} FASTQ sources given.")
 
-    val zippedIterator = FastqSource.zipped(sources)
-    if (threads > 1) {
+    val demuxSource = asyncOptions.asyncReadingType match {
+      case DemuxFastqsAsyncReadingType.NoAsync         => FastqSource.zipped(sources)
+      case DemuxFastqsAsyncReadingType.SingleThread    => AsyncIterator(FastqSource.zipped(sources), bufferSize=Some(1024))
+      case DemuxFastqsAsyncReadingType.ThreadPerReader => FastqSource.zipped(sources.map { source => AsyncIterator(source, bufferSize=Some(1024))})
+    }
+
+    if (asyncOptions.asyncDemux) {
+      AsyncIterator[DemuxResult](demuxSource.map { readRecords => demultiplexer.demultiplex(readRecords: _*) }, bufferSize=Some(asyncOptions.demuxBatchSize))
+      // NB: We could enable multiple threads for demultiplexing with this in the future.
       // Developer Note: Iterator does not support parallel operations, so we need to group together records into a
       // [[List]] or [[Seq]].  A fixed number of records are grouped to reduce memory overhead.
+      /*
       import com.fulcrumgenomics.FgBioDef.ParSupport
-      val pool = new ForkJoinPool(threads)
-      zippedIterator
-        .grouped(batchSize)
+      val pool = new ForkJoinPool(demuxThreads)
+      demuxSource
+        .grouped(demuxBatchSize)
         .flatMap { batch =>
           batch
             .parWith(pool=pool)
             .map { readRecords => demultiplexer.demultiplex(readRecords: _*) }
         }.seq // Developer Note: toStream ensures that the only parallelism is within the flatMap
+        */
     }
     else {
-      zippedIterator.map { readRecords => demultiplexer.demultiplex(readRecords: _*) }
+      demuxSource.map { readRecords => demultiplexer.demultiplex(readRecords: _*) }
     }
   }
 }
@@ -267,6 +286,25 @@ object DemuxFastqs {
       |
       |1. The file extension will be `_R1_001.fastq.gz` for read one, and `_R2_001.fastq.gz` for read two (if paired end).
       |2. The per-sample output prefix will be `<SampleName>_S<SampleOrdinal>_L<LaneNumber>` (without angle brackets).
+      |
+      |## Multi-threading and Asynchronous IO
+      |
+      |A number of options allow fine-grain control over multi-threading and asynchronous input and output.
+      |
+      |* The `--async-reading-type-type` option allows reading from the input(s) asynchronously.
+      |  * `NoAsync`: reads the input(s) synchronously (no threading).
+      |  * `SingleThread`: reads the input(s) all in a single thread.
+      |  * `ThreadPerReader`: reads each input in a seperate thread.
+      |* The `--async-writing-threads` option enables writing the outputs in seperate thread(s).  If zero, the outputs
+      |  are written synchronously (no threading).  Otherwise, the outputs are grouped into `N` groups, and a thread per
+      |  group is created to write to the outputs in the given group.
+      |* The `--async-demux` option enables the sample barcode matching (demultiplexing) to occur in a seperate thread.
+      |
+      |The exact values for these options will depend on the output type (see `--output-type`), number of samples (which
+      |affects the number of different writers), and the number of inputs.  It is recommended to use:
+      |  `--async-reading-type SingleThread --async-writing-threads N --async-demux`
+      |where N+2 is the # of cores you wish to use on your system.  In general, increasing `--async-writing-threads` has
+      |the greatest affect.
     """,
   group=ClpGroups.Fastq
 )
@@ -286,7 +324,6 @@ class DemuxFastqs
       |is not specified, the quality format will be detected automatically.
     """)
  val qualityFormat: Option[QualityEncoding] = None,
- @arg(flag='t', doc="The number of threads to use while de-multiplexing. The performance does not increase linearly with the # of threads and seems not to improve beyond 2-4 threads.") val threads: Int = 1,
  @arg(doc="Maximum mismatches for a barcode to be considered a match.") val maxMismatches: Int = 1,
  @arg(doc="Minimum difference between number of mismatches in the best and second best barcodes for a barcode to be considered a match.") val minMismatchDelta: Int = 2,
  @arg(doc="Maximum allowable number of no-calls in a barcode read before it is considered unmatchable.") val maxNoCalls: Int = 2,
@@ -308,12 +345,32 @@ class DemuxFastqs
         and template bases) for every read with template bases (ex. read one
         and read two) as defined by the corresponding read structure(s).
      """)
- val includeAllBasesInFastqs: Boolean = false
+ val includeAllBasesInFastqs: Boolean = false,
+ @deprecated("Use --use-threads instead", since="0.8.1")
+ @arg(flag='t', doc="*** Deprecated: use --async-reading-type and --async-writing-threads instead *** The number of threads to use.", mutex=Array("asyncReadingType", "asyncWritingThreads")) val threads: Option[Int] = None,
+ @arg(doc="Enables asynchronous reading of the inputs", mutex=Array("threads")) val asyncReadingType: Option[DemuxFastqsAsyncReadingType] = None,
+ @arg(doc="The number of threads to use for writing the outputs; zero to not use asynchronous writing", mutex=Array("threads")) val asyncWritingThreads: Option[Int] = None,
+ @arg(doc="Enable a separate thread for the demultiplexing operation (not IO).") asyncDemux: Boolean = false
 ) extends FgBioTool with LazyLogging {
 
   import DemuxFastqs._
 
   private[fastq] val metricsPath = metrics.getOrElse(output.resolve(DefaultDemuxMetricsFileName))
+
+  private val asyncOptions = threads match {
+    case Some(thr)            =>
+      validate(this.asyncReadingType.isEmpty, "--async-reading-type cannot be used with --threads")
+      validate(this.asyncWritingThreads.isEmpty, "--async-writing-threads cannot be used with --threads")
+      if (thr == 0) DemuxFastqsAsyncOptions(asyncReadingType=DemuxFastqsAsyncReadingType.NoAsync, 0, asyncDemux)
+      else DemuxFastqsAsyncOptions(asyncReadingType=DemuxFastqsAsyncReadingType.SingleThread, math.max(1, thr-2), asyncDemux)
+    case None                 =>
+      val readerOption = this.asyncReadingType.getOrElse(DemuxFastqsAsyncReadingType.NoAsync)
+      this.asyncWritingThreads match {
+        case Some(thr) if thr == 0 => DemuxFastqsAsyncOptions(asyncReadingType=readerOption, numWriterThreads=0, asyncDemux)
+        case Some(thr) if thr > 0  => DemuxFastqsAsyncOptions(asyncReadingType=readerOption, numWriterThreads=thr, asyncDemux)
+        case None                  => DemuxFastqsAsyncOptions(asyncReadingType=readerOption, numWriterThreads=0, asyncDemux)
+      }
+  }
 
   // NB: remove me when outputFastqs gets removed and use outputType directly
   private val _outputType = (this.outputType, this.outputFastqs) match {
@@ -354,17 +411,48 @@ class DemuxFastqs
   }
 
   override def execute(): Unit = {
+    val sortProgress:  ProgressLogger = ProgressLogger(logger, verb="Sorted", unit=2e6.toInt)
+    val writeProgress: ProgressLogger = ProgressLogger(logger, verb="Wrote ", unit=2e6.toInt)
+
     Io.mkdirs(this.output)
     Io.assertCanWriteFile(this.metricsPath)
+
+    // Some logging information about async reading and writing
+    {
+      val readerMessage = this.asyncOptions.asyncReadingType match {
+        case DemuxFastqsAsyncReadingType.NoAsync         => "not use async reading"
+        case DemuxFastqsAsyncReadingType.SingleThread    => "use single-threaded async reading"
+        case DemuxFastqsAsyncReadingType.ThreadPerReader => "use thread-per-input async reading"
+      }
+      val writerMessage = this.asyncWritingThreads match {
+        case None | Some(0) => "not use async writing"
+        case Some(thr)      => s"use $thr threads for async writing"
+      }
+      logger.info(s"Will $readerMessage and will $writerMessage")
+    }
 
     // Get the FASTQ quality encoding format
     val qualityEncoding: QualityEncoding = determineQualityFormat(fastqs=inputs, format=this.qualityFormat, logger=Some(this.logger))
 
     // Read in the sample sheet and create the sample information
     val samplesFromSampleSheet = sampleSheet.map(s => withCustomSampleBarcode(s, columnForSampleBarcode))
-    val samples                = samplesFromSampleSheet.toSeq :+ unmatchedSample(samplesFromSampleSheet.size, this.readStructures)
+    val samples                = samplesFromSampleSheet.toSeq :+ unmatchedSample(samplesFromSampleSheet.size+1, this.readStructures)
     val sampleInfos            = samples.map(sample => SampleInfo(sample, sample.sampleName == UnmatchedSampleId))
-    val sampleToWriter         = sampleInfos.map { info => info.sample -> toWriter(info, sampleInfos.length) }.toMap
+    val sampleToWriter         = sampleInfos.map { info => (info.sample, new DemuxResultWriter(toWriter(info, sampleInfos.length, sortProgress, writeProgress), qualityEncoding)) }
+    val sampleWriter: Writer[(DemuxResult, Int)] = {
+      this.asyncWritingThreads match {
+        case None | Some(0) =>
+          val sampleIndexToWriterMap = sampleToWriter.map { case (sample, writer) => (sample.sampleOrdinal-1, writer) }.toMap
+          new DemuxResultsBySampleIndexWriter(sampleIndexToWriterMap)
+        case Some(thr)      =>
+          val pool = new AsyncWriterPool(thr)
+          val writers = sampleToWriter.sortBy(_._1.sampleOrdinal).map(_._2)
+          val sampleIndexToWriterMap = sampleToWriter.map { case (sample, writer) =>
+            (sample.sampleOrdinal-1, pool.pool(writer))
+          }.toMap
+          new DemuxResultsBySampleIndexWriter(sampleIndexToWriterMap)
+      }
+    }
 
     // Validate that the # of sample barcode bases in the read structure matches the # of sample barcode in the sample sheet.
     {
@@ -390,27 +478,23 @@ class DemuxFastqs
 
     val progress = ProgressLogger(this.logger, unit=1e6.toInt)
 
-    // An iterator that uses the given fastq demultiplexer to convert FASTQ records from the same fragment/template to
-    // DemuxRecord in parallel
-    val sources   = inputs.map(FastqSource(_))
-    val iterator  = demultiplexingIterator(
+    val sources = inputs.map { input => FastqSource(input) }
+    val iterator    = demultiplexingIterator(
       sources       = sources,
       demultiplexer = demultiplexer,
-      threads       = threads
+      asyncOptions  = this.asyncOptions
     )
 
     // Write the records out in its own thread
     iterator.foreach { demuxResult =>
       demuxResult.sampleInfo.metric.increment(numMismatches=demuxResult.numMismatches)
-      val writer = sampleToWriter(demuxResult.sampleInfo.sample)
-      demuxResult.records.foreach { rec =>
-        writer.add(rec.copy(quals=qualityEncoding.toStandardAscii(rec.quals)))
-        progress.record()
-      }
+      sampleWriter.write(demuxResult, demuxResult.sampleInfo.sample.sampleOrdinal-1)
+      demuxResult.records.foreach { _ => progress.record() }
     }
 
     // Close the writer; NB: the inputs close automatically
-    sampleToWriter.values.foreach(_.close())
+    sources.foreach(_.close())
+    sampleWriter.close()
 
     // Write the metrics
     val metricsMap = sampleInfos.map { sampleInfo => (sampleInfo.metric.barcode, sampleInfo.metric) }.toMap
@@ -419,15 +503,17 @@ class DemuxFastqs
     Metric.write(metricsPath, sampleInfos.map(_.metric))
   }
 
-  private def toWriter(sampleInfo: SampleInfo, numSamples: Int): DemuxWriter = {
+  private def toWriter(sampleInfo: SampleInfo, numSamples: Int, sortProgress: ProgressLogger, writeProgress: ProgressLogger): DemuxRecordWriter = {
     val sample = sampleInfo.sample
     val isUnmatched = sample.sampleName == UnmatchedSampleId
     val prefix = toSampleOutputPrefix(sample, isUnmatched, illuminaStandards, output, this.unmatched)
 
-    val writers = new ListBuffer[DemuxWriter]()
+    val writers = new ListBuffer[DemuxRecordWriter]()
 
     if (this._outputType.producesFastq) {
-      writers += new FastqRecordWriter(prefix, this.pairedEnd, illuminaStandards)
+      // Only log progress if we are not writing BAM (i.e. only FASTQ)
+      val fastqWriteProgress = if (!this._outputType.producesBam) Some(writeProgress) else None
+      writers += new FastqRecordWriter(prefix, pairedEnd, illuminaStandards, progressLogger = fastqWriteProgress)
     }
 
     if (this._outputType.producesBam) {
@@ -447,34 +533,63 @@ class DemuxFastqs
         header.setSortOrder(sortOrder)
         comments.foreach(header.addComment)
 
-        writers += new SamRecordWriter(prefix, header, this.umiTag, numSamples)
+        writers += new SamRecordWriter(prefix, header, this.umiTag, numSamples, sortProgress, writeProgress)
     }
 
-    new DemuxWriter {
-      def add(rec: DemuxRecord): Unit = writers.foreach { writer => writer.add(rec) }
+    new DemuxRecordWriter {
+      def write(rec: DemuxRecord): Unit = writers.foreach { writer => writer.write(rec) }
       override def close(): Unit = writers.foreach(_.close())
     }
   }
 }
 
-/** A writer than writes [[DemuxRecord]]s */
-private trait DemuxWriter extends Closeable {
-  def add(rec: DemuxRecord): Unit
+/** Writes a [[DemuxResult]] to its associated writer given a map between the sample index and it's [[Writer]]. */
+private class DemuxResultsBySampleIndexWriter(val sampleIndexToWriterMap: Map[Int, Writer[DemuxResult]],
+                                              private[this] val source: Option[{ def close(): Unit }] = None
+                                             ) extends Writer[(DemuxResult, Int)] {
+  def write(itemAndIndex: (DemuxResult, Int)): Unit = {
+    val (item, sampleIndex) = itemAndIndex
+    sampleIndexToWriterMap(sampleIndex).write(item)
+  }
+  def close(): Unit = source match {
+    case None      => this.sampleIndexToWriterMap.values.foreach(_.close())
+    case Some(src) => src.close()
+  }
+}
+
+/** A write that writes the records in [[DemuxResult]] to the given [[DemuxRecordWriter]]. */
+private class DemuxResultWriter(val writer: DemuxRecordWriter, val qualityEncoding: QualityEncoding) extends Writer[DemuxResult] {
+  def write(item: DemuxResult): Unit = item.records.foreach { rec =>
+      this.writer.write(rec.copy(quals=qualityEncoding.toStandardAscii(rec.quals)))
+  }
+  def close(): Unit = this.writer.close()
+}
+
+/** A writer that writes [[DemuxRecord]]s */
+private trait DemuxRecordWriter extends Writer[DemuxRecord] {
+  def write(rec: DemuxRecord): Unit
 }
 
 /** A writer that writes [[DemuxRecord]]s as [[SamRecord]]s. */
 private class SamRecordWriter(prefix: PathPrefix,
                               val header: SAMFileHeader,
                               val umiTag: String,
-                              val numSamples: Int) extends DemuxWriter {
+                              val numSamples: Int,
+                              sortProgress: ProgressLogger,
+                              writeProgress: ProgressLogger) extends DemuxRecordWriter {
   val order: Option[SamOrder] = if (header.getSortOrder == SortOrder.unsorted) None else SamOrder(header)
-  private val writer = SamWriter(PathUtil.pathTo(prefix + ".bam"), header, sort=order,
-    async = DemuxFastqs.UseAsyncIo,
-    maxRecordsInRam = Math.max(10000,  DemuxFastqs.MaxRecordsInRam / numSamples))
+  private val writer = SamWriter(
+    path            = PathUtil.pathTo(prefix + ".bam"),
+    header          = header,
+    sort            = order,
+    async           = false,
+    maxRecordsInRam = Math.max(10000,  DemuxFastqs.MaxRecordsInRam / numSamples),
+    sortProgress    = Some(sortProgress),
+    writeProgress   = Some(writeProgress))
 
   private val rgId: String = this.header.getReadGroups.get(0).getId
 
-  def add(rec: DemuxRecord): Unit = {
+  def write(rec: DemuxRecord): Unit = {
     val record = SamRecord(header)
     record.name     = rec.name
     record.bases    = rec.bases
@@ -504,7 +619,10 @@ private[fastq] object FastqRecordWriter {
 }
 
 /** A writer that writes [[DemuxRecord]]s as [[FastqRecord]]s. */
-private[fastq] class FastqRecordWriter(prefix: PathPrefix, val pairedEnd: Boolean, val illuminaStandards: Boolean = false) extends DemuxWriter {
+private[fastq] class FastqRecordWriter(prefix: PathPrefix,
+                                       val pairedEnd: Boolean,
+                                       val illuminaStandards: Boolean = false,
+                                       val progressLogger: Option[ProgressLogger] = None) extends DemuxRecordWriter {
   private val writers: IndexedSeq[FastqWriter] = FastqRecordWriter.extensions(pairedEnd=pairedEnd, illuminaStandards=illuminaStandards).map { ext =>
     FastqWriter(Io.toWriter(PathUtil.pathTo(prefix + ext)))
   }.toIndexedSeq
@@ -527,7 +645,7 @@ private[fastq] class FastqRecordWriter(prefix: PathPrefix, val pairedEnd: Boolea
     }
   }
 
-  def add(rec: DemuxRecord): Unit = {
+  def write(rec: DemuxRecord): Unit = {
     val record = FastqRecord(
       name       = readName(rec),
       bases      = rec.originalBases.getOrElse(rec.bases),
@@ -539,6 +657,7 @@ private[fastq] class FastqRecordWriter(prefix: PathPrefix, val pairedEnd: Boolea
     val writer = this.writers.lift(rec.readNumber-1).getOrElse {
       throw new IllegalStateException(s"Read number was invalid: ${rec.readNumber}")
     }
+    progressLogger.foreach(_.record())
     writer.write(record)
   }
 
@@ -635,6 +754,23 @@ private class FastqDemultiplexer(val sampleInfos: Seq[SampleInfo],
     case n => throw new IllegalArgumentException(s"$n template reads defined. Can't process > 2 template reads.")
   }
 
+  /** Gets the two items [[T]] with the largest associated values ([[Int]]). */
+  private def getTopTwoByMaximum[T](elems: TraversableOnce[(T, Int)]): (Option[(T, Int)], Option[(T, Int)]) = {
+    val startBest: Option[(T, Int)] = None
+    val startSecondBest: Option[(T, Int)] = None
+    elems.foldLeft((startBest, startSecondBest)) { case ((best: Option[(T, Int)], secondBest: Option[(T, Int)]), elem: (T, Int)) =>
+      if (best.forall(_._2 > elem._2)) {
+        (Some(elem), best)
+      }
+      else if (secondBest.forall(_._2 > elem._2)) {
+        (best, Some(elem))
+      }
+      else {
+        (best, secondBest)
+      }
+    }
+  }
+
   /** Gets the [[SampleInfo]] and the number of mismatches between the bases and matched sample barcode.  If no match is
     * found, the unmatched sample and [[Int.MaxValue]] are returned. */
   private def matchSampleBarcode(subReads: Seq[SubRead]): (SampleInfo, Int) = {
@@ -643,17 +779,19 @@ private class FastqDemultiplexer(val sampleInfos: Seq[SampleInfo],
 
     // Get the best and second best sample barcode matches.
     val (bestSampleInfo, bestMismatches, secondBestMismatches) = if (numNoCalls <= maxNoCalls) {
-      this.sampleInfosNoUnmatched.map { sampleInfo =>
+      val sampleInfoAndNumMismatches = this.sampleInfosNoUnmatched.map { sampleInfo =>
         val sample          = sampleInfo.sample
         val expectedBarcode = sample.sampleBarcodeBytes
         require(expectedBarcode.nonEmpty, s"Sample with id '${sample.sampleId}' did not have a sample barcode")
         val numMismatches   = countMismatches(observedBarcode, expectedBarcode)
         (sampleInfo, numMismatches)
       }
-      .toList.sortBy(_._2).take(2) match {
-        case Nil                              => (this.unmatchedSample, Int.MaxValue, Int.MaxValue)
-        case List(bestTuple)                  => (bestTuple._1, bestTuple._2, Int.MaxValue)
-        case List(bestTuple, secondBestTuple) => (bestTuple._1, bestTuple._2, secondBestTuple._2)
+
+      getTopTwoByMaximum(sampleInfoAndNumMismatches) match {
+        case (None, None)                             => (this.unmatchedSample, Int.MaxValue, Int.MaxValue)
+        case (Some(bestTuple), None)                  => (bestTuple._1, bestTuple._2, Int.MaxValue)
+        case (Some(bestTuple), Some(secondBestTuple)) => (bestTuple._1, bestTuple._2, secondBestTuple._2)
+        case result                                   => unreachable(s"Bug: getBestTwo returned an unexpected result: '$result'")
       }
     }
     else {
@@ -721,13 +859,17 @@ private class FastqDemultiplexer(val sampleInfos: Seq[SampleInfo],
   }
 }
 
+/** Specifies the type of output(s) to produce in [[DemuxFastqs]] */
 sealed trait OutputType extends EnumEntry {
   def producesBam: Boolean
   def producesFastq: Boolean
 }
 object OutputType extends FgBioEnum[OutputType] {
   def values: IndexedSeq[OutputType] = findValues
+  /** Produce FASTQs only. */
   case object Fastq extends OutputType { val producesBam: Boolean = false; val producesFastq: Boolean = true; }
+  /** Produce BAMs only. */
   case object Bam extends OutputType { val producesBam: Boolean = true; val producesFastq: Boolean = false; }
+  /** Produce BAMs and FASTQs. */
   case object BamAndFastq extends OutputType { val producesBam: Boolean = true; val producesFastq: Boolean = true; }
 }
