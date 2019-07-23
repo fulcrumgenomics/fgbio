@@ -34,6 +34,7 @@ import htsjdk.samtools.SAMFileHeader.{GroupOrder, SortOrder}
 import htsjdk.samtools._
 import htsjdk.samtools.util.{Murmur3, SequenceUtil, TrimmingUtil}
 
+import scala.collection.mutable
 import scala.collection.mutable.ArrayBuffer
 import scala.math.{abs, min}
 /**
@@ -302,11 +303,16 @@ trait UmiConsensusCaller[ConsensusRead <: SimpleRead] {
     (fragments, firstOfPair, secondOfPair)
   }
 
-  /** A little class to represent a canonical group of alignments, uniquely determined by the given cigar. */
-  private case class AlignmentGroup(cigar: Cigar, index: Int = 0, var count: Long = 0)
+  /** Used it [[filterToMostCommonAlignment()]] to store a cigar string and a set of flags for which reads match. */
+  private final case class AlignmentGroup(cigar: Cigar, flags: mutable.BitSet, var size: Int = 0) {
+    /** Adds the read at `idx` to the set included. */
+    @inline def add(idx: Int): Unit = {
+      flags(idx) = true
+      size      += 1
+    }
 
-  /** A little class to associate a given read with one or more compatible alignment groups. */
-  private case class SourceReadToAlignmentGroups(read: SourceRead, groupIndices: Set[Int])
+    @inline def contains(idx: Int): Boolean = flags(idx)
+  }
 
   /**
     * Takes in a non-empty seq of SamRecords and filters them such that the returned seq only contains
@@ -323,50 +329,32 @@ trait UmiConsensusCaller[ConsensusRead <: SimpleRead] {
     * NOTE: filtered out reads are sent to the [[rejectRecords]] method and do not need further handling
     */
   protected[umi] def filterToMostCommonAlignment(recs: Seq[SourceRead]): Seq[SourceRead] = {
-    // The alignment groups created by examining the source reads
     val groups = new ArrayBuffer[AlignmentGroup]
+    val sorted = recs.sortBy(r => -r.length).toIndexedSeq
 
-    // For each source read, return the existing compatible alignment groups, or if none or compatible, create a new
-    // alignment group.  Each source read is thereby associated with one or more alignment groups (see the class
-    // SourceReadToAlignmentGroups).  The order in which we examine the reads matters, as a given source read is only
-    // compared against previously created alignment groups.
-    val sourceReadToAlignmentGroups: Seq[SourceReadToAlignmentGroups] = {
-      // go through the longest reads first
-      recs.sortBy(r => -r.length).map { read =>
-        val simpleCigar = simplifyCigar(read.cigar)
-        // find the existing alignment groups that are compatible with this read.  The index into `groups` is stored for
-        // performance reasons
-        val groupIndices = groups
-          .filter { cigar => simpleCigar.isPrefixOf(cigar.cigar) }
-          .map(_.index)
-          .toSet
+    forloop (from=0, until=sorted.length) { i =>
+      val simpleCigar = simplifyCigar(sorted(i).cigar)
+      var found = false
+      groups.foreach { g => if (simpleCigar.isPrefixOf(g.cigar)) { g.add(i); found = true } }
 
-        // if no existing groups are compatible, create a new one, otherwise, increment the # of source reads in that
-        // group.
-        if (groupIndices.isEmpty) {
-          groups += AlignmentGroup(simpleCigar, groups.size, 1)
-          SourceReadToAlignmentGroups(read, Set(groups.size-1)) // a new group was just added, so use groups.size-1
-        }
-        else {
-          groupIndices.foreach { cigarIndex => groups(cigarIndex).count += 1 }
-          SourceReadToAlignmentGroups(read, groupIndices)
-        }
+      if (!found) {
+        val newGroup = AlignmentGroup(simpleCigar, new mutable.BitSet(sorted.size))
+        newGroup.add(i)
+        groups += newGroup
       }
     }
 
     if (groups.isEmpty) {
       Seq.empty
     }
-    else { // Keep the records from the cigar has the most # of matching records
-      // first find index of the group with the largest count
-      val mostFrequentCigarIndex = groups.maxBy(_.count).index
-      // next, partition the source reads into those that are compatible with this group.  This is where storing the
-      // index (indices) of the groups compatible with a given source read is used.
-      val (keepers, rejects) = sourceReadToAlignmentGroups.toList.partition(_.groupIndices.contains(mostFrequentCigarIndex))
-      // reject the rejects!
-      rejectRecords(rejects.flatMap(_.read.sam), FilterMinorityAlignment)
-      // keep the keepers
-      keepers.map(_.read)
+    else {
+      val bestGroup = groups.maxBy(_.size)
+      val keepers = new ArrayBuffer[SourceRead](bestGroup.size)
+      forloop (from=0, until=sorted.length) { i =>
+        if (bestGroup.contains(i)) keepers += sorted(i)
+        else sorted(i).sam.foreach(rejectRecords(FilterMinorityAlignment, _))
+      }
+      keepers
     }
   }
 

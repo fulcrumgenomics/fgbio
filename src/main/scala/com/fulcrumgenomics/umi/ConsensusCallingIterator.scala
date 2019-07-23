@@ -26,6 +26,7 @@ package com.fulcrumgenomics.umi
 
 import com.fulcrumgenomics.FgBioDef._
 import com.fulcrumgenomics.bam.api.SamRecord
+import com.fulcrumgenomics.commons.async.AsyncIterator
 import com.fulcrumgenomics.commons.util.LazyLogging
 import com.fulcrumgenomics.umi.UmiConsensusCaller.SimpleRead
 import com.fulcrumgenomics.util.ProgressLogger
@@ -49,20 +50,22 @@ class ConsensusCallingIterator[ConsensusRead <: SimpleRead](sourceIterator: Iter
                                maxRecordsInRam: Int = 128000)
   extends Iterator[SamRecord] with LazyLogging {
 
-  protected val groupingIterator: Iterator[Seq[SamRecord]] = {
-    new SamRecordGroupedIterator(sourceIterator, caller.sourceMoleculeId)
-      .map { records => for (p <- progress; r <- records) p.record(r); records }
+  private val progressIterator = progress match {
+    case Some(p) => sourceIterator.map { r => p.record(r); r }
+    case None    => sourceIterator
   }
 
   protected val iterator: Iterator[SamRecord] = {
     if (threads <= 1) {
+      val groupingIterator = new SamRecordGroupedIterator(progressIterator, caller.sourceMoleculeId)
       groupingIterator.flatMap(caller.consensusReadsFromSamRecords)
     }
     else {
-      val pool          = new ForkJoinPool(threads, ForkJoinPool.defaultForkJoinWorkerThreadFactory, null, true)
-      val bufferedIter  = groupingIterator.bufferBetter
-      val callersFactor = 1000 // the number of callers per thread to create. This to reduce chance of picking the same caller
-      val callers       = Array.range(start=0, threads*callersFactor).map { _ => caller.emptyClone() }
+      val halfMaxRecords   = maxRecordsInRam / 2
+      val groupingIterator = new SamRecordGroupedIterator(new AsyncIterator(progressIterator, Some(halfMaxRecords)).start(), caller.sourceMoleculeId)
+      val pool             = new ForkJoinPool(threads - 1, ForkJoinPool.defaultForkJoinWorkerThreadFactory, null, true)
+      val bufferedIter     = groupingIterator.bufferBetter
+      val callers          = new IterableThreadLocal[UmiConsensusCaller[ConsensusRead]](() => caller.emptyClone())
 
       // Read in groups of records (each from the same source molecule) until we have the maximum number of
       // individual records in RAM.  We have a few more records in RAM, if the group that pushes us over the limit is
@@ -70,12 +73,11 @@ class ConsensusCallingIterator[ConsensusRead <: SimpleRead](sourceIterator: Iter
       Iterator.continually {
         var total = 0L
         bufferedIter
-          .takeWhile { chunk => if (maxRecordsInRam <= total) false else {total += chunk.length; true } }
-          .zipWithIndex
+          .takeWhile { chunk => if (halfMaxRecords <= total) false else {total += chunk.length; true } }
           .toSeq
           .parWith(pool)
-          .flatMap { case (records, groupIndex) =>
-            val caller = callers(groupIndex % callers.length)
+          .flatMap { records =>
+            val caller = callers.get()
             caller.synchronized { caller.consensusReadsFromSamRecords(records) }
           }
           .seq
@@ -93,6 +95,21 @@ class ConsensusCallingIterator[ConsensusRead <: SimpleRead](sourceIterator: Iter
   override def hasNext: Boolean = this.iterator.hasNext
   override def next(): SamRecord = this.iterator.next
 }
+
+// TODO: migrate to the commons version of this class after the next commons release
+private class IterableThreadLocal[A](factory: () => A) extends ThreadLocal[A] with Iterable[A] {
+  private val all = new java.util.concurrent.ConcurrentLinkedQueue[A]()
+
+  override def initialValue(): A = {
+    val a = factory()
+    all.add(a)
+    a
+  }
+
+  /** Care should be taken accessing the iterator since objects may be in use by other threads. */
+  def iterator: Iterator[A] = all.toIterator
+}
+
 
 /** Groups consecutive records based on a method to group records. */
 private class SamRecordGroupedIterator[Key](sourceIterator: Iterator[SamRecord],
