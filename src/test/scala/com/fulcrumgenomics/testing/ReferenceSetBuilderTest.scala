@@ -40,7 +40,7 @@ class ReferenceSetBuilderTest extends UnitSpec {
     // Check the .dict file
     val dictIn = ReferenceSequenceFileFactory.getDefaultDictionaryForReferenceSequence(fasta)
     Files.exists(dictIn) shouldBe true
-    val dict = SAMSequenceDictionaryExtractor.extractDictionary(dictIn.toFile)
+    val dict = SAMSequenceDictionaryExtractor.extractDictionary(dictIn)
 
     // Check the .fai file
     val fai =  ReferenceSequenceFileFactory.getFastaIndexFileName(fasta)
@@ -61,7 +61,7 @@ class ReferenceSetBuilderTest extends UnitSpec {
       val builder = new ReferenceSetBuilder(assembly=assembly)
       builder.add("chr1").add("A", 100)
       val path = builder.toTempFile()
-      val dict = SAMSequenceDictionaryExtractor.extractDictionary(path.toFile)
+      val dict = SAMSequenceDictionaryExtractor.extractDictionary(path)
       dict.size() shouldBe 1
       dict
     }

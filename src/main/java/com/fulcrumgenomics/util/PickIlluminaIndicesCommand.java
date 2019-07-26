@@ -275,7 +275,7 @@ class PickIlluminaIndicesCommand {
 
         // Filter out indices that have very bad secondary structure
         if (VIENNA_RNA_DIR != null) {
-            DnaFoldPredictor predictor = new DnaFoldPredictor(VIENNA_RNA_DIR, LIGATION_TEMPERATURE);
+            DnaFoldPredictor predictor = new DnaFoldPredictor(VIENNA_RNA_DIR.toPath(), LIGATION_TEMPERATURE, false);
             final Iterator<Index> iterator = indexes.iterator();
             while (iterator.hasNext()) {
                 final Index index = iterator.next();

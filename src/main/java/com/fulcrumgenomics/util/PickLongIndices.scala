@@ -176,7 +176,7 @@ class PickLongIndices
   }.toSet
 
   /* An Option[DnaFoldPredictor] to use to predict secondary structure. */
-  private val dnaFoldPredictor = viennaRnaDir.map(dir => new DnaFoldPredictor(dir.toFile, temperature))
+  private val dnaFoldPredictor = viennaRnaDir.map(dir => new DnaFoldPredictor(dir, temperature))
   private[util] val adapterRegex = Pattern.compile("^[ACGT]*N+[ACGT]*$")
   adapters.map(_.toUpperCase).filterNot(adapterRegex.matcher(_).matches()) match {
     case Seq() => Unit
@@ -282,7 +282,7 @@ class PickLongIndices
     (this.dnaFoldPredictor, adapters) match {
       case (None, _)     => None
       case (_, Seq())    => None
-      case (Some(f), as) => adapters.map(a => f.predict(a.replaceAll("N+", sIndex))).sortBy(_.deltaG()).headOption
+      case (Some(f), as) => adapters.map(a => f.predict(a.replaceAll("N+", sIndex))).sortBy(_.deltaG).headOption
     }
   }
 
@@ -345,8 +345,8 @@ class PickLongIndices
         indices_at_min_mismatches = ann.distances.headOption.map { case (_, count) => count }.getOrElse(0L),
         gc                        = SequenceUtil.calculateGc(ann.index),
         longest_homopolymer       = Sequences.longestHomopolymer(new String(ann.index)).length,
-        worst_structure_seq       = structure.map(_.sequence()),
-        worst_structure_dbn       = structure.map(_.structure()),
+        worst_structure_seq       = structure.map(_.sequence),
+        worst_structure_dbn       = structure.map(_.structure),
         worst_structure_delta_g   = structure.map(_.deltaG)
       )
     }
