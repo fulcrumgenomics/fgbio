@@ -287,7 +287,7 @@ private[api] object VcfConversions {
   }
 
   /**
-    * Converts a scala [[Variant]] back into a [[VariantContext]].
+    * Converts a Scala [[Variant]] back into a [[VariantContext]].
     *
     * @param in the [[Variant]] instance to convert
     * @param header the scala [[VcfHeader]] for the VCF being read or written
