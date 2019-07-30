@@ -46,6 +46,7 @@ object Variant {
     JFloat.intBitsToFloat(l.intValue())
   }
 
+  /** Used in comparisons in [[isMissingValue()]] since we can't compare NaNs using == or .equals(). */
   private val MissingFloatIntBits: Int = java.lang.Float.floatToRawIntBits(MissingFloat)
 
   /** Returns true if the passed value is one of the missing values. */

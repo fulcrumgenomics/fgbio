@@ -25,18 +25,15 @@
 package com.fulcrumgenomics.vcf.api
 
 import java.io.Closeable
-import java.nio.file.Path
 
 import com.fulcrumgenomics.FgBioDef._
 import com.fulcrumgenomics.commons.collection.SelfClosingIterator
 import com.fulcrumgenomics.commons.io.PathUtil
 import htsjdk.samtools.util.CloseableIterator
-import htsjdk.tribble.{AbstractFeatureCodec, AbstractFeatureReader}
+import htsjdk.tribble.AbstractFeatureReader
 import htsjdk.variant.bcf2.BCF2Codec
 import htsjdk.variant.variantcontext.VariantContext
 import htsjdk.variant.vcf.{VCFCodec, VCFFileReader, VCFHeader}
-
-import scala.collection.IterableView
 
 /**
   * Provides a reader over a source of VCF-like data that could be a VCF file or a BCF file. Has facilities
@@ -45,7 +42,7 @@ import scala.collection.IterableView
   *
   * @param reader the underlying HTSJDK [[VCFFileReader]]
   */
-class VcfSource private(private val reader: AbstractFeatureReader[VariantContext, _]) extends IterableView[Variant, VcfSource] with Closeable {
+class VcfSource private(private val reader: AbstractFeatureReader[VariantContext, _]) extends View[Variant] with Closeable {
   /** The header associated with the VCF being read. */
   val header: VcfHeader = VcfConversions.toScalaHeader(reader.getHeader.asInstanceOf[VCFHeader])
 
@@ -85,8 +82,8 @@ class VcfSource private(private val reader: AbstractFeatureReader[VariantContext
   /** Closes the underlying reader. */
   override def close(): Unit = this.reader.safelyClose()
 
-  /** Required by [[scala.collection.IterableView]]. */
-  override protected def underlying: VcfSource = this
+  /** Required for 2.12 compat. */
+  protected def underlying: VcfSource = this
 }
 
 object VcfSource {

@@ -31,6 +31,7 @@ import com.fulcrumgenomics.testing.VcfBuilder.Gt
 import com.fulcrumgenomics.vcf.api.Allele.NoCallAllele
 import com.fulcrumgenomics.vcf.api._
 
+import scala.collection.compat._
 import scala.collection.immutable.ListMap
 import scala.collection.mutable
 import scala.util.Try
@@ -154,7 +155,7 @@ class VcfBuilder private (initialHeader: VcfHeader) extends Iterable[Variant] {
           alleles: Seq[String],
           qual: Int = -1,
           info: Map[String, Any] = Map.empty,
-          filters: TraversableOnce[String] = Set.empty,
+          filters: IterableOnce[String] = Set.empty,
           gts: Seq[Gt] = Seq.empty
          ): this.type = {
 
@@ -171,9 +172,9 @@ class VcfBuilder private (initialHeader: VcfHeader) extends Iterable[Variant] {
     val alleleSet = AlleleSet(alleles:_*)
 
     val calledGenotypes = gts.map { g =>
-      val phased = g.gt.contains("|")
+      val phased    = g.gt.contains("|")
       val separator = if (phased) '|' else '/'
-      val calls  = g.gt.split(separator).map(s => toAllele(s, alleleSet)).toIndexedSeq
+      val calls     = g.gt.split(separator).map(s => toAllele(s, alleleSet)).toIndexedSeq
 
       Genotype(
         alleles = alleleSet,

@@ -63,7 +63,7 @@ class VcfIoTest extends UnitSpec with OptionValues {
   case class Result(header: VcfHeader, vs: IndexedSeq[Variant])
 
   /** Writes out the variants to a file and reads them back, returning the header and the variants. */
-  @inline private def roundtrip(variants: TraversableOnce[Variant], header: VcfHeader = VcfIoTest.Header): Result = {
+  @inline private def roundtrip(variants: IterableOnce[Variant], header: VcfHeader = VcfIoTest.Header): Result = {
     val vcf = makeTempFile("test.", ".vcf")
     val out = VcfWriter(vcf, header)
     out ++= variants
@@ -86,12 +86,12 @@ class VcfIoTest extends UnitSpec with OptionValues {
   "VcfReader and VcfWriter" should "write a VCF and read back a VCF" in {
     val alleles = AlleleSet(ref=Allele("C"), alts=IndexedSeq(Allele("G"), Allele("T")))
     val variant = Variant(
-      chrom = "chr1",
-      pos   = 1000,
-      id    = Some("testvar"),
-      alleles = alleles,
-      qual    = Some(1234.5),
-      attrs = ListMap("DP" -> 120, "AC" -> Seq(1, 1), "STR" -> "."),
+      chrom     = "chr1",
+      pos       = 1000,
+      id        = Some("testvar"),
+      alleles   = alleles,
+      qual      = Some(1234.5),
+      attrs     = ListMap("DP" -> 120, "AC" -> Seq(1, 1), "STR" -> "."),
       genotypes = Map("s1" -> Genotype(alleles, "s1", alleles.alts, phased=false, attrs=Map("AD" -> Seq(0, 50, 54))))
     )
 

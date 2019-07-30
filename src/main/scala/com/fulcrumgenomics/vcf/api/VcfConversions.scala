@@ -200,9 +200,9 @@ private[api] object VcfConversions {
     */
   def toScalaVariant(in: VariantContext, header: VcfHeader): Variant = try {
     // Build up the allele set
-    val ref  = Allele(in.getReference.getDisplayString)
-    val alts = in.getAlternateAlleles.map(a => Allele(a.getDisplayString)).toIndexedSeq
-    val alleles = AlleleSet(ref, alts)
+    val ref       = Allele(in.getReference.getDisplayString)
+    val alts      = in.getAlternateAlleles.map(a => Allele(a.getDisplayString)).toIndexedSeq
+    val alleles   = AlleleSet(ref, alts)
     val alleleMap = alleles.map(a => a.toString -> a).toMap
 
     // Build up the genotypes
@@ -232,17 +232,17 @@ private[api] object VcfConversions {
 
     // Build up the variant
     val info = {
-      val buffer = new ArrayBuffer[(String,Any)](in.getAttributes.size())
+      val buffer = IndexedSeq.newBuilder[(String,Any)]
       in.getAttributes.entrySet().foreach { entry =>
         val key   = entry.getKey
         val value = entry.getValue
         header.info.get(key) match {
-          case Some(hd) => toTypedValue(value, hd.kind, hd.count).foreach(v => buffer.append(key -> v))
+          case Some(hd) => toTypedValue(value, hd.kind, hd.count).foreach(v => buffer += (key -> v))
           case None     => throw new IllegalStateException(s"INFO field $key not described in header.")
         }
       }
 
-      buffer
+      buffer.result()
     }
 
     Variant(

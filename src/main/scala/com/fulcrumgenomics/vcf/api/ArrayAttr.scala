@@ -26,11 +26,12 @@ package com.fulcrumgenomics.vcf.api
 
 import com.fulcrumgenomics.FgBioDef._
 
+import scala.collection.compat._
 import scala.reflect.ClassTag
 
 object ArrayAttr {
   /** Constructs an instance with the values supplied. */
-  def apply[A : ClassTag](values: TraversableOnce[A]): ArrayAttr[A] = {
+  def apply[A : ClassTag](values: IterableOnce[A]): ArrayAttr[A] = {
     new ArrayAttr[A](values.toArray)
   }
 

@@ -40,7 +40,8 @@ import scala.collection.JavaConverters._
 import scala.reflect.ClassTag
 
 object VariantContextSetBuilder {
-  @deprecated def apply(sampleName: String): VariantContextSetBuilder = {
+  @deprecated(since="0.9.0", message="Use com.fulcrumgenomics.testing.VcfBuilder instead.")
+  def apply(sampleName: String): VariantContextSetBuilder = {
     new VariantContextSetBuilder(List(sampleName))
   }
 }
@@ -50,7 +51,8 @@ object VariantContextSetBuilder {
   *
   * This builder uses the default sequence dictionary from [SamBuilder] by default.
   */
-@deprecated class VariantContextSetBuilder(sampleNames: Seq[String] = List("Sample")) extends Iterable[VariantContext] {
+@deprecated(since="0.9.0", message="Use com.fulcrumgenomics.testing.VcfBuilder instead.")
+class VariantContextSetBuilder(sampleNames: Seq[String] = List("Sample")) extends Iterable[VariantContext] {
 
   if (sampleNames.isEmpty) throw new IllegalArgumentException("At least one sample name must be given")
 

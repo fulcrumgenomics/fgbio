@@ -29,12 +29,8 @@ import java.lang.Math.{min, pow}
 import com.fulcrumgenomics.bam.{Bams, BaseEntry, Pileup, PileupEntry}
 import com.fulcrumgenomics.commons.util.LazyLogging
 import com.fulcrumgenomics.util.NumericTypes.{LogProbability => LnProb}
-import com.fulcrumgenomics.vcf.api.{VcfCount, VcfFieldType, VcfInfoHeader}
-import htsjdk.samtools.util.SequenceUtil
-import htsjdk.variant.variantcontext.Genotype
-import htsjdk.variant.vcf.{VCFFilterHeaderLine, VCFInfoHeaderLine}
 import com.fulcrumgenomics.util.Sequences
-import com.fulcrumgenomics.vcf.api._
+import com.fulcrumgenomics.vcf.api.{VcfCount, VcfFieldType, VcfInfoHeader, _}
 
 /**
   * Filter that examines SNVs with the alt allele being A or T to see if they are likely the result
@@ -66,7 +62,7 @@ class EndRepairArtifactLikelihoodFilter(val distance: Int = 2,
   /** Only applies to het SNVs where the alt allele is A or T. */
   override def appliesTo(gt: Genotype): Boolean = {
     gt.isHet && !gt.isHetNonRef && gt.calls.forall(_.value.length == 1) &&
-      gt.calls.exists(a => a != gt.alleles.ref && a.value.equalsIgnoreCase("A") || a.value.equalsIgnoreCase("T"))
+      gt.calls.iterator.filter(_ != gt.alleles.ref).exists(a => a.value.equalsIgnoreCase("A") || a.value.equalsIgnoreCase("T"))
   }
 
   /** Calculates the p-value and returns it in the map of annotations. */

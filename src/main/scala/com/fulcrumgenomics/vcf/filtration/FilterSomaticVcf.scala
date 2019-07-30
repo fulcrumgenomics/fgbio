@@ -126,7 +126,7 @@ class FilterSomaticVcf
           allFilters     ++= f.filters(annotations)
         }
 
-        variant.copy(attrs = ListMap(allAnnotations:_*), filters = allFilters.toSet)
+        variant.copy(attrs = ListMap(allAnnotations.toSeq:_*), filters = allFilters.toSet)
       }
 
       out += variantOut

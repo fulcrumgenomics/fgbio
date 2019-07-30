@@ -64,7 +64,7 @@ object AlleleSet {
     *            will be thrown. The parameter type is [[Allele]] to avoid callers having to cast.
     * @param alts zero or more alternative alleles
     */
-  def apply(ref: Allele, alts: Traversable[Allele] = NoAlts): AlleleSet = ref match {
+  def apply(ref: Allele, alts: Iterable[Allele]): AlleleSet = ref match {
     case r: SimpleAllele => AlleleSet(r, alts.toIndexedSeq)
     case _ => throw new IllegalArgumentException(s"Cannot have a non-simple ref allele: $ref")
   }
