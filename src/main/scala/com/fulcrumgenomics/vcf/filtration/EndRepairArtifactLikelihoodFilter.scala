@@ -29,6 +29,10 @@ import java.lang.Math.{min, pow}
 import com.fulcrumgenomics.bam.{Bams, BaseEntry, Pileup, PileupEntry}
 import com.fulcrumgenomics.commons.util.LazyLogging
 import com.fulcrumgenomics.util.NumericTypes.{LogProbability => LnProb}
+import com.fulcrumgenomics.vcf.api.{VcfCount, VcfFieldType, VcfInfoHeader}
+import htsjdk.samtools.util.SequenceUtil
+import htsjdk.variant.variantcontext.Genotype
+import htsjdk.variant.vcf.{VCFFilterHeaderLine, VCFInfoHeaderLine}
 import com.fulcrumgenomics.util.Sequences
 import com.fulcrumgenomics.vcf.api._
 

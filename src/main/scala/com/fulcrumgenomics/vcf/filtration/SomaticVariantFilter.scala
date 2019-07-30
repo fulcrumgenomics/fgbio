@@ -25,7 +25,8 @@
 package com.fulcrumgenomics.vcf.filtration
 
 import com.fulcrumgenomics.bam.{Pileup, PileupEntry}
-import com.fulcrumgenomics.vcf.api.{VcfFilterHeader, VcfInfoHeader, Genotype}
+import com.fulcrumgenomics.vcf.api.{Genotype, VcfFilterHeader, VcfInfoHeader}
+import htsjdk.variant.vcf.{VCFFilterHeaderLine, VCFHeaderLineType, VCFInfoHeaderLine}
 
 /**
   * Trait for classes that can compute annotations on a somatic variant call and optionally

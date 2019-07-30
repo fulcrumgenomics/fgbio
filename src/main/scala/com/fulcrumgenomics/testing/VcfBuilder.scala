@@ -36,7 +36,7 @@ import scala.collection.mutable
 import scala.util.Try
 
 object VcfBuilder {
-  /** The default header that is used when making a new VcfBuilder. */
+  /** The default header that is used when making a new [[VcfBuilder]]. */
   val DefaultHeader: VcfHeader = {
     val contigs = new SamBuilder().dict.getSequences
       .map(s => VcfContigHeader(s.getSequenceIndex, s.getSequenceName, length=Some(s.getSequenceLength), assembly=Option(s.getAssembly)))
@@ -59,7 +59,7 @@ object VcfBuilder {
         VcfFilterHeader(id="LowAB", description="Low/poor allele balance.")
       ),
       others  = Seq(
-        VcfGeneralHeader(headerType="ALT",      id="NON_REF", data=Map("Description" -> "Represents any non-reference allele."))
+        VcfGeneralHeader(headerType="ALT", id="NON_REF", data=Map("Description" -> "Represents any non-reference allele."))
       ),
       samples = IndexedSeq()
     )
@@ -97,7 +97,7 @@ object VcfBuilder {
   /** Constructs a VcfBuilder using the [[DefaultHeader]] and the set of samples provided. */
   def apply(samples: Seq[String]): VcfBuilder = {
     require(samples.distinct.size == samples.size, s"${samples.mkString(",")} contains duplicate sample names.")
-    new VcfBuilder(DefaultHeader.copy(samples=samples.toIndexedSeq))
+   this.apply(DefaultHeader.copy(samples=samples.toIndexedSeq))
   }
 }
 
