@@ -28,6 +28,7 @@ import com.fulcrumgenomics.FgBioDef._
 import com.fulcrumgenomics.testing.UnitSpec
 import org.scalatest.OptionValues
 
+import scala.collection.compat._
 import scala.collection.immutable.ListMap
 
 object VcfIoTest {
@@ -144,7 +145,7 @@ class VcfIoTest extends UnitSpec with OptionValues {
     result.vs.head.apply[ArrayAttr[Int]]("AC")      should contain theSameElementsInOrderAs Seq(1, 3)
 
     result.vs.head.genotypes.size shouldBe 2
-    val Seq(s1, s2) = Seq("s1", "s2").map(result.vs.head.genotypes.apply)
+    val Seq(s1, s2): Seq[Genotype] = Seq("s1", "s2").map(result.vs.head.genotypes.apply)
 
     s1.gtWithBases                shouldBe "C/G"
     s1.gtVcfStyle                 shouldBe "0/1"
