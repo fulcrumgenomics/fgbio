@@ -120,16 +120,14 @@ class SamBuilder(val readLength: Int=100,
               attrs: Map[String,Any] = Map.empty
              ): Seq[SamRecord] = {
 
-    require(bases1.length == quals1.length, "bases1 and quals1 were different lengths.")
-    require(bases2.length == quals2.length, "bases2 and quals2 were different lengths.")
-    require((bases1 == MissingBases && quals1 == MissingQuals) || (bases1 != MissingBases && quals1 != MissingQuals),
-      s"bases1 and quals1 must both either be missing or not missing: bases1=$bases1 quals1=$quals1")
-    require((bases2 == MissingBases && quals2 == MissingQuals) || (bases2 != MissingBases && quals2 != MissingQuals),
-      s"bases2 and quals2 must both either be missing or not missing: bases2=$bases2 quals2=$quals2")
     val cig1 = Cigar(cigar1)
     val cig2 = Cigar(cigar2)
+    require(bases1 == MissingBases || quals1 == MissingQuals || bases1.length == quals1.length, "bases1 and quals1 were different lengths.")
+    require(bases2 == MissingBases || quals2 == MissingQuals || bases2.length == quals2.length, "bases2 and quals2 were different lengths.")
     require(unmapped1 || bases1 == MissingBases || bases1.length == cig1.lengthOnQuery, "bases1 doesn't agree with cigar on length.")
     require(unmapped2 || bases2 == MissingBases || bases2.length == cig2.lengthOnQuery, "bases2 doesn't agree with cigar on length.")
+    require(unmapped1 || quals1 == MissingQuals || quals1.length == cig1.lengthOnQuery, "quals1 doesn't agree with cigar on length.")
+    require(unmapped2 || quals2 == MissingQuals || quals2.length == cig2.lengthOnQuery, "quals2 doesn't agree with cigar on length.")
 
     val r1            = SamRecord(header)
     r1.pf             = true
