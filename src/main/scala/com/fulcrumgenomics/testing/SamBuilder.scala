@@ -45,11 +45,14 @@ object SamBuilder {
   }
   object Plus  extends Strand { val isNegative = false }
   object Minus extends Strand { val isNegative = true }
+  val DefaultSampleName: String = "Sample"
+  val DefaultReadGroupId: String = "A"
 }
 
 /** Class to create sets of [[com.fulcrumgenomics.bam.api.SamRecord]]s for testing. */
 class SamBuilder(val readLength: Int=100,
                  val baseQuality: Int=30,
+                 val sampleName: String = DefaultSampleName,
                  val sort: Option[SamOrder] = None,
                  val readGroupId: Option[String] = None,
                  sd: Option[SAMSequenceDictionary] = None,
@@ -71,8 +74,8 @@ class SamBuilder(val readLength: Int=100,
   /** Shorter accessor for the sequence dictionary. */
   def dict: SAMSequenceDictionary = header.getSequenceDictionary
 
-  val rg = new SAMReadGroupRecord(readGroupId.getOrElse("A"))
-  rg.setSample("Sample")
+  val rg = new SAMReadGroupRecord(readGroupId.getOrElse(DefaultReadGroupId))
+  rg.setSample(sampleName)
   header.addReadGroup(rg)
 
   private val random  = new Random(seed)
