@@ -244,4 +244,7 @@ class SamBuilder(val readLength: Int=100,
     val bam = toTempFile()
     SamSource(bam)
   }
+
+  /** Clears the records built by this builder. */
+  def clear(): Unit = this.records.clear()
 }
