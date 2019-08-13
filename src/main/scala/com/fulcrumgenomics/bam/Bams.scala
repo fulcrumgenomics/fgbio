@@ -248,7 +248,10 @@ object Bams extends LazyLogging {
         logger.info(parts = "Sorting into queryname order.")
         val progress = ProgressLogger(this.logger, "Records", "sorted")
         val sort     = sorter(Queryname, header, maxInMemory, tmpDir)
-        iterator.tapEach(progress.record).foreach(sort.write)
+        iterator.foreach { rec =>
+          progress.record(rec)
+          sort.write(rec)
+        }
         new SelfClosingIterator(sort.iterator, () => sort.close())
     }
   }
