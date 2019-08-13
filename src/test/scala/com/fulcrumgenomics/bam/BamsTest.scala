@@ -94,13 +94,17 @@ class BamsTest extends UnitSpec {
     Bams.querySortedIterator(in=builder.toSource).map(_.name).toSeq shouldBe Seq("p1", "p1", "q1", "q2")
   }
 
-  it should "use Picard style sorting of querynames" in {
-    val builder = new SamBuilder(sort=Some(SamOrder.Queryname))
-    builder.addFrag(name="A9", start=100)
-    builder.addPair(name="A88", start1=100, start2=300)
-    builder.addFrag(name="A88", start=200)
+  it should "use the htsjdk sorting of querynames" in {
+    // NB: We expect the queryname sort ordering of SamRecord objects to be stable and to reflect the
+    //     default in both htsjdk and Picard. For more information, see the discussion at:
+    //     https://github.com/samtools/hts-specs/pull/361#issuecomment-447065728
+    val builder = new SamBuilder()
 
-    Bams.querySortedIterator(in=builder.toSource).map(_.name).toSeq shouldBe Seq("A88", "A88", "A88", "A9")
+    val actual   = Seq("A1", "A2", "A7", "A9", "A10", "A12", "A88")
+    val expected = Seq("A1", "A10", "A12", "A2", "A7", "A88", "A9")
+
+    actual.foreach(name => builder.addFrag(name, start=100))
+    Bams.querySortedIterator(in=builder.toSource).map(_.name).toSeq shouldBe expected
   }
 
   it should "sort a reader that is query grouped" in {
@@ -179,7 +183,7 @@ class BamsTest extends UnitSpec {
     }
   }
 
-  "Bams.sortedTemplateIterator" should "only return templates in a queryname sorted order" in {
+  it should "only return templates in a queryname sorted order" in {
     val builder1 = new SamBuilder(sort = Some(SamOrder.Unknown))
     builder1.addPair(name = "A9")
     builder1.addPair(name = "A88")
