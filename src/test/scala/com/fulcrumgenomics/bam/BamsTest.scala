@@ -166,7 +166,7 @@ class BamsTest extends UnitSpec {
     builder.addPair(name="p2", start1=500, start2=200)
     builder.addPair(name="p0", start1=700, start2=999)
 
-    val templates = Bams.sortedTemplateIterator(builder.toSource).toSeq
+    val templates = Bams.templateSortedIterator(builder.toSource).toSeq
     templates should have size 4
     templates.map(_.name) shouldBe Seq("f1", "p0", "p1", "p2")
 
@@ -187,13 +187,13 @@ class BamsTest extends UnitSpec {
     val builder1 = new SamBuilder(sort = Some(SamOrder.Unknown))
     builder1.addPair(name = "A9")
     builder1.addPair(name = "A88")
-    val iterator1 = Bams.sortedTemplateIterator(builder1.iterator, builder1.header, maxInMemory = 10, Io.tmpDir)
+    val iterator1 = Bams.templateSortedIterator(builder1.iterator, builder1.header, maxInMemory = 10, Io.tmpDir)
     iterator1.toList.map(_.name) should contain theSameElementsInOrderAs Seq("A88", "A9")
 
     val builder2 = new SamBuilder(sort = Some(SamOrder.Unknown))
     builder2.addPair(name = "A88")
     builder2.addPair(name = "A9")
-    val iterator2 = Bams.sortedTemplateIterator(builder2.iterator, builder2.header, maxInMemory = 10, Io.tmpDir)
+    val iterator2 = Bams.templateSortedIterator(builder2.iterator, builder2.header, maxInMemory = 10, Io.tmpDir)
     iterator2.toList.map(_.name) should contain theSameElementsInOrderAs Seq("A88", "A9")
   }
 

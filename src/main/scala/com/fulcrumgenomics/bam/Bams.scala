@@ -300,28 +300,28 @@ object Bams extends LazyLogging {
 
   /** Return an iterator over records sorted and grouped into [[Template]] objects. Although a queryname sort is
     * guaranteed, the sort order may not be consistent with other queryname sorting implementations, especially in other
-    * tool kits. See [[com.fulcrumgenomics.bam.Bams.templateIterator]] for a [[Template]] iterator which emits templates
-    * in a non-guaranteed sort order.
+    * tool kits. See [[templateIterator]] for a [[Template]] iterator which emits templates in a non-guaranteed sort
+    * order.
     *
-    * @see [[com.fulcrumgenomics.bam.Bams.templateIterator]]
+    * @see [[templateIterator]]
     *
     * @param in a SamReader from which to consume records
     * @param maxInMemory the maximum number of records to keep and sort in memory, if sorting is needed
     * @param tmpDir a temp directory to use for temporary sorting files if sorting is needed
     * @return an Iterator of queryname sorted Template objects
     */
-  def sortedTemplateIterator(in: SamSource,
+  def templateSortedIterator(in: SamSource,
                              maxInMemory: Int = MaxInMemory,
                              tmpDir: DirPath = Io.tmpDir): SelfClosingIterator[Template] = {
-    sortedTemplateIterator(in.iterator, in.header, maxInMemory, tmpDir)
+    templateSortedIterator(in.iterator, in.header, maxInMemory, tmpDir)
   }
 
   /** Return an iterator over records sorted and grouped into [[Template]] objects. Although a queryname sort is
     * guaranteed, the sort order may not be consistent with other queryname sorting implementations, especially in other
-    * tool kits. See [[com.fulcrumgenomics.bam.Bams.templateIterator]] for a [[Template]] iterator which emits templates
-    * in a non-guaranteed sort order.
+    * tool kits. See [[templateIterator]] for a [[Template]] iterator which emits templates in a non-guaranteed sort
+    * order.
     *
-    * @see [[com.fulcrumgenomics.bam.Bams.templateIterator]]
+    * @see [[templateIterator]]
     *
     * @param iterator an iterator from which to consume records
     * @param header the header associated with the records
@@ -329,7 +329,7 @@ object Bams extends LazyLogging {
     * @param tmpDir a temp directory to use for temporary sorting files if sorting is needed
     * @return an Iterator of queryname sorted Template objects
     */
-  def sortedTemplateIterator(iterator: Iterator[SamRecord],
+  def templateSortedIterator(iterator: Iterator[SamRecord],
                              header: SAMFileHeader,
                              maxInMemory: Int,
                              tmpDir: DirPath): SelfClosingIterator[Template] = {
