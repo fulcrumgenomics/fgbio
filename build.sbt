@@ -95,6 +95,7 @@ lazy val commonSettings = Seq(
   fork in Test         := true,
   resolvers            += Resolver.sonatypeRepo("public"),
   resolvers            += Resolver.mavenLocal,
+  resolvers            += "broad-snapshots" at "https://artifactory.broadinstitute.org/artifactory/libs-snapshot/",
   shellPrompt          := { state => "%s| %s> ".format(GitCommand.prompt.apply(state), version.value) },
   updateOptions        := updateOptions.value.withCachedResolution(true)
 ) ++ Defaults.coreDefaultSettings
@@ -126,7 +127,7 @@ lazy val root = Project(id="fgbio", base=file("."))
       "org.scala-lang.modules"    %% "scala-collection-compat" % "2.1.1",
       "com.fulcrumgenomics"       %% "commons"        % "1.0.0",
       "com.fulcrumgenomics"       %% "sopt"           % "1.0.0",
-      "com.github.samtools"       %  "htsjdk"         % "2.19.0" excludeAll(htsjdkExcludes: _*),
+      "com.github.samtools"       %  "htsjdk"         % "2.20.2-2-g2a6e2c2-SNAPSHOT" excludeAll(htsjdkExcludes: _*),
       "org.apache.commons"        %  "commons-math3"  % "3.6.1",
       "com.beachape"              %% "enumeratum"     % "1.5.13",
       "com.intel.gkl"             %  "gkl"            % "0.8.6",
