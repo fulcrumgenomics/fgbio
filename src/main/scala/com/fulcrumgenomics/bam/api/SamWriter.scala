@@ -84,11 +84,10 @@ object SamWriter extends LazyLogging {
     }
 
     // Only index the output file if the sort order is right, indexing is requested, and no chrom is too long
-    val actuallyIndex = {
+    val actuallyIndex = if (header.getSortOrder != SortOrder.coordinate || !index) false else {
       val hasChromsTooLong = header.getSequenceDictionary.getSequences.exists(_.getSequenceLength > GenomicIndexUtil.BIN_GENOMIC_SPAN)
-      val wouldHaveIndexed = header.getSortOrder == SortOrder.coordinate && index
-      if (wouldHaveIndexed && hasChromsTooLong) logger.warning(s"Cannot index $path as one or more chromosomes is too long.")
-      wouldHaveIndexed && !hasChromsTooLong
+      if (hasChromsTooLong) logger.warning(s"Cannot index $path as one or more chromosomes is too long.")
+      !hasChromsTooLong
     }
 
     val factory = new SAMFileWriterFactory()
@@ -102,7 +101,6 @@ object SamWriter extends LazyLogging {
     new SamWriter(writer=factory.makeWriter(header, true, path.toFile, ref.map(_.toFile).orNull),
       sorter=sorter, sortProgress=sortProgress, writeProgress=writeProgress)
   }
-
 }
 
 /** Provides the ability to write [[SamRecord]]s to an output Path. */
