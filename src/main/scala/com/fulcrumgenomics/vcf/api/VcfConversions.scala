@@ -245,13 +245,19 @@ private[api] object VcfConversions {
       buffer.result()
     }
 
+    val filters = {
+      if (in.filtersWereApplied() && in.isNotFiltered) Variant.PassingFilters
+      else if (!in.filtersWereApplied()) Variant.EmptyFilters
+      else in.getFilters.toSet
+    }
+
     Variant(
       chrom     = in.getContig,
       pos       = in.getStart,
       id        = Option(if (in.getID == Variant.Missing) null else in.getID),
       alleles   = alleles,
       qual      = if (in.hasLog10PError) Some(in.getPhredScaledQual) else None,
-      filters   = in.getFilters.toSet,
+      filters   = filters,
       attrs     = ListMap(info:_*),
       genotypes = gts.iterator.map(g => g.sample -> g).toMap
     )

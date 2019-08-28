@@ -190,4 +190,14 @@ class VcfIoTest extends UnitSpec with OptionValues {
     out.vs.find(_.pos == 10).value.gt("s1").gtWithBases shouldBe "./."
     out.vs.find(_.pos == 20).value.gt("s1").gtWithBases shouldBe "G/."
   }
+
+  it should "round-trip variants with a variety of filters" in {
+    val vs = Seq(
+      Variant(chrom="chr1", pos=10, alleles=AlleleSet("A", "C"), id=Some("PASS"),  filters=Variant.PassingFilters),
+      Variant(chrom="chr1", pos=20, alleles=AlleleSet("A", "C"), id=None        ,  filters=Variant.EmptyFilters),
+      Variant(chrom="chr1", pos=30, alleles=AlleleSet("A", "C"), id=Some("LowQD"), filters=Set("LowQD")),
+    )
+    val result = roundtrip(vs, header=VcfIoTest.Header.copy(samples=IndexedSeq.empty))
+    result.vs.foreach { v => v.filters.headOption shouldBe v.id }
+  }
 }
