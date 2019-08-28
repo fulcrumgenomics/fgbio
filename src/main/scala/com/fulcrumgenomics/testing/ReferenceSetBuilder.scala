@@ -30,16 +30,17 @@ import com.fulcrumgenomics.FgBioDef._
 import com.fulcrumgenomics.commons.io.PathUtil
 import com.fulcrumgenomics.util.Io
 import htsjdk.samtools.reference.{FastaSequenceIndexCreator, ReferenceSequenceFileFactory}
+import htsjdk.samtools.util.SequenceUtil
 import htsjdk.samtools.{SAMFileHeader, SAMSequenceDictionary, SAMSequenceRecord, SAMTextHeaderCodec}
 
 import scala.collection.mutable.ListBuffer
 
 /** Class to programatically build up a reference sequence. */
-class ReferenceSetBuilder(assembly: Option[String] = Some("testassembly")) {
-  private val LineLength = 80
-
+class ReferenceSetBuilder(val assembly: Option[String] = Some("testassembly"),
+                          val species: Option[String] = Some("testspecies"),
+                          val lineLength: Int = 80) {
   // Class to build up a single reference sequence
-  class ReferenceBuilder private[ReferenceSetBuilder](val name: String, val assembly: Option[String]) {
+  class ReferenceBuilder private[ReferenceSetBuilder](val name: String, val assembly: Option[String], val species: Option[String]) {
     private[ReferenceSetBuilder] val bases = new StringBuilder
 
     /** Adds bases to the reference. */
@@ -53,21 +54,21 @@ class ReferenceSetBuilder(assembly: Option[String] = Some("testassembly")) {
   private val refs = new ListBuffer[ReferenceBuilder]()
 
   /** Generates a new ReferenceBuilder object in order and returns it. */
-  def add(name: String, assembly: Option[String] = this.assembly): ReferenceBuilder = {
-    this.refs += new ReferenceBuilder(name, assembly)
+  def add(name: String, assembly: Option[String] = this.assembly, species: Option[String] = this.species): ReferenceBuilder = {
+    this.refs += new ReferenceBuilder(name, assembly, species)
     this.refs.last
   }
 
   /** Writes the fasta out to a temp file and creates a sequence dictionary alongside it. */
-  def toTempFile(deleteOnExit: Boolean = true): PathToFasta = {
+  def toTempFile(deleteOnExit: Boolean = true, calculateMds5: Boolean = false): PathToFasta = {
     val path = Files.createTempFile("SamRecordSet.", ".fa")
     if (deleteOnExit) path.toFile.deleteOnExit()
-    toFile(path, deleteOnExit=deleteOnExit)
+    toFile(path, deleteOnExit=deleteOnExit, calculateMds5=calculateMds5)
     path
   }
 
   /** Writes the fasta out to a file, and creates a sequence dictionary and fasta index (FAI) file. */
-  def toFile(path: Path, deleteOnExit: Boolean = true): Unit = {
+  def toFile(path: Path, deleteOnExit: Boolean = true, calculateMds5: Boolean = false): Unit = {
     val out = Io.toWriter(path)
     val dict = new SAMSequenceDictionary()
     val header = new SAMFileHeader(dict)
@@ -77,13 +78,15 @@ class ReferenceSetBuilder(assembly: Option[String] = Some("testassembly")) {
       out.write(ref.name)
       out.newLine()
       val bases = ref.bases.toString()
-      ref.bases.toString().sliding(LineLength, LineLength).foreach { line =>
+      bases.grouped(lineLength).foreach { line =>
         out.write(line)
         out.newLine()
       }
 
       val rec = new SAMSequenceRecord(ref.name, bases.length)
       ref.assembly.foreach(rec.setAssembly)
+      ref.species.foreach(rec.setSpecies)
+      if (calculateMds5) rec.setMd5(SequenceUtil.calculateMD5String(bases.toUpperCase.getBytes))
       dict.addSequence(rec)
     }
 
@@ -101,6 +104,5 @@ class ReferenceSetBuilder(assembly: Option[String] = Some("testassembly")) {
     val fai    = FastaSequenceIndexCreator.buildFromFasta(path)
     fai.write(faiOut)
     if (deleteOnExit) faiOut.toFile.deleteOnExit()
-
   }
 }

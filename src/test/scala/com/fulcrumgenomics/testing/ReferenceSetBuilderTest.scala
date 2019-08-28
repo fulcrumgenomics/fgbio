@@ -69,4 +69,26 @@ class ReferenceSetBuilderTest extends UnitSpec {
     plus.getSequence("chr1").getAssembly shouldBe "hg19"
     minus.getSequence("chr1").getAssembly shouldBe null
   }
+
+  it should "write species name into the dictionary if given one" in {
+    val Seq(plus, minus) = Seq(Some("human"), None).map { species =>
+      val builder = new ReferenceSetBuilder(species=species)
+      builder.add("chr1").add("A", 100)
+      val path = builder.toTempFile()
+      val dict = SAMSequenceDictionaryExtractor.extractDictionary(path)
+      dict.size() shouldBe 1
+      dict
+    }
+
+    plus.getSequence("chr1").getSpecies shouldBe "human"
+    minus.getSequence("chr1").getSpecies shouldBe null
+  }
+
+  it should "calculate MD5s for sequences only if asked" in {
+    val builder = new ReferenceSetBuilder()
+    builder.add("chr1").add("A", 100)
+    val Seq(plus, minus) = Seq(true, false).map(md5 => builder.toTempFile(calculateMds5=md5)).map(SAMSequenceDictionaryExtractor.extractDictionary)
+    plus.getSequence("chr1").getMd5 == null shouldBe false
+    minus.getSequence("chr1").getMd5 == null shouldBe true
+  }
 }
