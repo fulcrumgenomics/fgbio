@@ -120,4 +120,25 @@ class SequencesTest extends UnitSpec {
     Sequences.compatible('A', 'C') shouldBe false
     Sequences.compatible('M', 'K') shouldBe false
   }
+
+  "Sequences.iupacCode()" should "return the same base given when given only one base" in {
+    Seq('A', 'C', 'G', 'T', 'R', 'H', 'N').map(_.toByte).foreach { b =>
+      Sequences.iupacCode(Seq(b)) shouldBe b
+    }
+  }
+
+  it should "give the correct combination of regular bases" in {
+    Sequences.iupacCode(Seq('A', 'C').map(_.toByte)) shouldBe 'M'.toByte
+    Sequences.iupacCode(Seq('T', 'G').map(_.toByte)) shouldBe 'K'.toByte
+    Sequences.iupacCode(Seq('A', 'C', 'T').map(_.toByte)) shouldBe 'H'.toByte
+  }
+
+  it should "handle duplicate entries" in {
+    Sequences.iupacCode(Seq('A', 'C', 'A', 'C', 'A').map(_.toByte)) shouldBe 'M'.toByte
+  }
+
+  it should "handle IUPAC codes in the input" in {
+    Sequences.iupacCode(Seq('A', 'N').map(_.toByte)) shouldBe 'N'.toByte
+    Sequences.iupacCode(Seq('R', 'S').map(_.toByte)) shouldBe 'V'.toByte
+  }
 }

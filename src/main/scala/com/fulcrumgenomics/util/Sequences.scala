@@ -37,7 +37,7 @@ import scala.annotation.switch
   */
 object Sequences {
   /** Common contig/chrom names for non-autosomal sequences in mammals. */
-  val CommonNonAutosomalContigNames = Seq("M", "chrM", "MT", "X", "chrX", "Y", "chrY")
+  val CommonNonAutosomalContigNames: Seq[String] = Seq("M", "chrM", "MT", "X", "chrX", "Y", "chrY")
 
   /** Array for determining what bases are compatible. Indices are all DNA/RNA bases. Contents
     * are Int masks with a bit set for each possible base.  U is treated as identical to T.
@@ -245,4 +245,11 @@ object Sequences {
   /** Compares if two bases are equal ignoring case.  The bases may be IUPAC codes, but their relationships are not
     * considered. */
   @inline private def basesEqual(b1: Byte, b2: Char): Boolean = SequenceUtil.basesEqual(b1, b2.toByte)
+
+  /** Returns the IUPAC code for the set of bases given. */
+  def iupacCode(bases: Iterable[Byte]): Byte = {
+    var mask: Int = 0
+    bases.foreach { b => mask = mask | IupacMasks(b) }
+    IupacMasks.indexOf(mask).toByte
+  }
 }
