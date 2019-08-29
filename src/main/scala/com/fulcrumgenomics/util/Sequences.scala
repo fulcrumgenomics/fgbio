@@ -248,8 +248,7 @@ object Sequences {
 
   /** Returns the IUPAC code for the set of bases given. */
   def iupacCode(bases: Iterable[Byte]): Byte = {
-    var mask: Int = 0
-    bases.foreach { b => mask = mask | IupacMasks(b) }
+    val mask: Int = bases.foldLeft(0) { case (code, next) => code | IupacMasks(next) }
     IupacMasks.indexOf(mask).toByte
   }
 }
