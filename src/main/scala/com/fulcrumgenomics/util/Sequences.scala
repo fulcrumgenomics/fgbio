@@ -86,6 +86,13 @@ object Sequences {
     */
   final def compatible(base1: Byte, base2: Byte): Boolean = base1 == base2 || (IupacMasks(base1) & IupacMasks(base2)) > 0
 
+  /**
+    * Calculates GC content for a DNA sequence as a fraction (between 0 and 1).
+    *
+    * @param s a DNA sequence
+    * @return the fraction GC content for the given sequence, zero if the sequence is empty
+    */
+  def gcContent(s: String): Double = if (s.isEmpty) 0 else SequenceUtil.calculateGc(s.getBytes)
 
   /** Counts the number of mismatches between two sequences of the same length. */
   def countMismatches(s1: String, s2: String): Int = {
@@ -99,6 +106,24 @@ object Sequences {
     }
 
     count
+  }
+
+  /**
+    * Returns the number of homopolymers of a given minimum length within the sequence.
+    *
+    * @param s a DNA or RNA sequence
+    * @param minLength the minimum length of homopolymer to count (must be greater than 0)
+    * @return the number of homopolymers of length >= minLength in the sequence
+    */
+  def homopolymers(s: String, minLength: Int): Int = {
+    require(minLength > 0, "minLength must be greater than 0")
+    var (homopolymers, currStreak) = (0, 1)
+    forloop(1, s.length) { basePosition =>
+      if (currStreak == minLength) homopolymers += 1
+      if (basesEqual(s(basePosition), s(basePosition - 1))) currStreak += 1 else currStreak = 1
+    }
+
+    homopolymers
   }
 
   /** Class to store the zero-based offset and length of match for various properties of a sequence.  For example, see
@@ -245,6 +270,10 @@ object Sequences {
   /** Compares if two bases are equal ignoring case.  The bases may be IUPAC codes, but their relationships are not
     * considered. */
   @inline private def basesEqual(b1: Byte, b2: Char): Boolean = SequenceUtil.basesEqual(b1, b2.toByte)
+
+  /** Compares if two bases are equal ignoring case.  The bases may be IUPAC codes, but their relationships are not
+    * considered. */
+  @inline private def basesEqual(b1: Char, b2: Char): Boolean = SequenceUtil.basesEqual(b1.toByte, b2.toByte)
 
   /** Returns the IUPAC code for the set of bases given. */
   def iupacCode(bases: Iterable[Byte]): Byte = {

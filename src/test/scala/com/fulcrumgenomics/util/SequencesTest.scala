@@ -141,4 +141,50 @@ class SequencesTest extends UnitSpec {
     Sequences.iupacCode(Seq('A', 'N').map(_.toByte)) shouldBe 'N'.toByte
     Sequences.iupacCode(Seq('R', 'S').map(_.toByte)) shouldBe 'V'.toByte
   }
+
+  "Sequences.homopolymers" should "return zeros for empty string" in {
+    val zeroBase = ""
+    Sequences.homopolymers(zeroBase, 1) shouldBe 0
+  }
+
+  it should "work with lower case sequences" in {
+    val lowercase = "ggggccccttttatatatgatag"
+    Sequences.homopolymers(lowercase, 4) shouldBe 3
+  }
+
+  it should "work with mixed case sequences" in {
+    val mixedCase = "gGGgcCCcttTTAtatatGAtag" // 10/23
+    Sequences.homopolymers(mixedCase, 4) shouldBe 3
+  }
+
+  it should "calculate number of homopolymers correctly" in {
+    val smallKmers = "AAATTTAAATTTAAAAATTTTTAATT"
+    Sequences.homopolymers(smallKmers, 1) shouldBe 8
+    Sequences.homopolymers(smallKmers, 3) shouldBe 6
+    Sequences.homopolymers(smallKmers, 5) shouldBe 2
+  }
+
+  "Sequences.gcContent" should "produce zeros for empty string" in {
+    val zeroBase = "" // 0
+    Sequences.gcContent(zeroBase) shouldBe 0
+  }
+
+  it should "work with lower case sequences" in {
+    val lowercase = "ggggccccttttatatatgatag" // 10/23
+    Sequences.gcContent(lowercase) shouldBe (10.0 / 23)
+  }
+
+  it should "work with mixed case sequences" in {
+    val mixedCase = "gGGgcCCcttTTAtatatGAtag" // 10/23
+    Sequences.gcContent(mixedCase) shouldBe (10.0 / 23)
+  }
+
+  it should "calculate Gc content correctly" in {
+    val noGc = "tatatatatatatatatata" // 0
+    val tenBaseAllGc = "CGGCGGGGGG"
+    val tenBaseHalfGc = "CGCGCATATT"
+    Sequences.gcContent(noGc) shouldBe 0
+    Sequences.gcContent(tenBaseAllGc) shouldBe 1.0
+    Sequences.gcContent(tenBaseHalfGc) shouldBe 0.5
+  }
 }
