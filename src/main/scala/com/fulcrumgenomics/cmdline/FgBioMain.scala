@@ -52,6 +52,8 @@ private[cmdline] object SystemUtils {
   private val OsName: Option[String]         = getSystemProperty("os.name")
   /** The current OS architecture */
   private val OsArch: Option[String]         = getSystemProperty("os.arch")
+  /** The current OS version */
+  private val OsVersion: Option[String]      = getSystemProperty("os.version")
 
   /** Gets a system property.  Returns None if not found or not allowed to look at. */
   private def getSystemProperty(property: String): Option[String] = {
@@ -66,11 +68,14 @@ private[cmdline] object SystemUtils {
   private val IsOsMac: Boolean   = MacNamePrefixes.exists(prefix => OsName.exists(_.startsWith(prefix)))
   /** Returns true if the architecture is the given name, false otherwise. */
   private def IsOsArch(name: String): Boolean = OsArch.contains(name)
+  /** Returns true if the operating system version starts with the given version string, false otherwise. */
+  private def IsOsVersion(prefix: String): Boolean = OsVersion.exists(_.startsWith(prefix))
 
   /** True if the current system supports the Intel Inflater and Deflater, false otherwise. */
   val IntelCompressionLibrarySupported: Boolean = {
     if (!SystemUtils.IsOsLinux && !SystemUtils.IsOsMac) false
     else if (SystemUtils.IsOsArch("ppc64le")) false
+    else if (SystemUtils.IsOsMac && SystemUtils.IsOsVersion("10.14.")) false // FIXME: https://github.com/Intel-HLS/GKL/issues/101
     else true
   }
 }
