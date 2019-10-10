@@ -181,8 +181,8 @@ class FgBioMain extends LazyLogging {
     val user       = System.getProperty("user.name")
     val jreVersion = System.getProperty("java.runtime.version")
     val snappy     = if (new SnappyLoader().isSnappyAvailable) "with snappy" else "without snappy"
-    val inflater   = if (SystemUtils.IntelCompressionLibrarySupported) "JdkInflater" else "IntelInflater"
-    val deflater   = if (SystemUtils.IntelCompressionLibrarySupported) "JdkDeflater" else "IntelDeflater"
+    val inflater   = if (SystemUtils.IntelCompressionLibrarySupported) "IntelInflater" else "JdkInflater"
+    val deflater   = if (SystemUtils.IntelCompressionLibrarySupported) "IntelDeflater" else "JdkDeflater"
     logger.info(s"Executing $tool from $name version $version as $user@$host on JRE $jreVersion $snappy, $inflater, and $deflater")
   }
 
