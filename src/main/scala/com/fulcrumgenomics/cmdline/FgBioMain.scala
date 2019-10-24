@@ -177,7 +177,7 @@ class FgBioMain extends LazyLogging {
   /** Prints a line of useful information when a tool starts executing. */
   protected def printStartupLines(tool: String, args: Array[String], commonArgs: FgBioCommonArgs): Unit = {
     val version    = CommandLineProgramParserStrings.version(getClass, color=false).replace("Version: ", "")
-    val host       = InetAddress.getLocalHost.getHostName
+    val host       = try { InetAddress.getLocalHost.getHostName } catch { case _: Exception => "unknown-host" }
     val user       = System.getProperty("user.name")
     val jreVersion = System.getProperty("java.runtime.version")
     val snappy     = if (new SnappyLoader().isSnappyAvailable) "with snappy" else "without snappy"
