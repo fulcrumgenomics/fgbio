@@ -28,6 +28,7 @@ import java.io._
 import com.fulcrumgenomics.util.Io
 import com.fulcrumgenomics.commons.CommonsDef.{PathToFastq, yieldAndThen}
 
+import scala.collection.View
 import scala.io.Source
 
 /**
@@ -35,13 +36,13 @@ import scala.io.Source
   */
 object FastqSource {
   /** Creates a new fastq source from a sequence of lines. */
-  def apply(lines: Seq[String]): FastqSource = new FastqSource(lines.iterator)
+  def apply(lines: Iterable[String]): FastqSource = new FastqSource(lines.iterator)
 
   /** Creates a new fastq source from an iterator of lines. */
   def apply(lines: Iterator[String]): FastqSource = new FastqSource(lines)
 
   /** Creates a new fastq source from an input stream. */
-  def apply(stream: InputStream): FastqSource = new FastqSource(Source.fromInputStream(stream).getLines(), Some(stream))
+  def apply(stream: InputStream): FastqSource = new FastqSource(Source.fromInputStream(stream).getLines())
 
   /** Creates a new fastq source from a source. */
   def apply(source: Source): FastqSource = new FastqSource(source.getLines(), Some(source))
@@ -50,7 +51,7 @@ object FastqSource {
   def apply(file: File): FastqSource = apply(path=file.toPath)
 
   /** Creates a new fastq source from a Path. */
-  def apply(path: PathToFastq): FastqSource = apply(Io.toInputStream(path))
+  def apply(path: PathToFastq): FastqSource = apply(Io.readLines(path))
 
   /** Returns an iterator over multiple fastq files that ensures:
     *   1. Either all sources or no sources have more records
@@ -62,12 +63,14 @@ object FastqSource {
   def zipped(sources: Seq[FastqSource]): Iterator[Seq[FastqRecord]] = new Iterator[Seq[FastqRecord]] {
     require(sources.nonEmpty, "No sources provided")
 
-    def hasNext(): Boolean = sources.exists(_.hasNext)
+    private val iters = sources.map(_.iterator)
+
+    def hasNext(): Boolean = iters.exists(_.hasNext)
 
     def next(): Seq[FastqRecord] = {
       if (!this.hasNext) throw new NoSuchElementException("Calling next() when hasNext() is false.")
-      require(sources.forall(_.hasNext) == sources.head.hasNext, "Sources are out of sync.")
-      val records = sources.map(_.next)
+      require(iters.forall(_.hasNext) == iters.head.hasNext, "Sources are out of sync.")
+      val records = iters.map(_.next)
       // Check that the FASTQ records all have the same name
       require(records.forall(_.name == records.head.name), "Fastqs are out of sync, found read names: " + records.map(_.name).mkString(", "))
       records
@@ -83,15 +86,19 @@ object FastqSource {
   */
 class FastqSource private(val lines: Iterator[String],
                           private[this] val source: Option[{ def close(): Unit }] = None)
-  extends Iterator[FastqRecord] with Closeable {
+  extends View[FastqRecord] with Closeable {
   
   private var nextRecord: Option[FastqRecord] = fetchNextRecord()
 
-  /** True if calling `next()` will yield another record, false otherwise. */
-  override def hasNext: Boolean = this.nextRecord.isDefined
+  // FIXME: use the trait in this commons PR: https://github.com/fulcrumgenomics/fgbio/pull/535/
+  /** Required for 2.12 compatibility. */
+  def underlying: Iterable[FastqRecord] = this
 
-  /** Returns the next record if available, or throws an exception if none is available. */
-  override def next(): FastqRecord =  yieldAndThen(nextRecord.get) { this.nextRecord = fetchNextRecord() }
+  /** Returns an iterator of [[FastqRecord]]s from this source. */
+  override def iterator: Iterator[FastqRecord] = new Iterator[FastqRecord] {
+    override def hasNext: Boolean = nextRecord.isDefined
+    override def next(): FastqRecord = yieldAndThen(nextRecord.get) { nextRecord = fetchNextRecord() }
+  }
 
   /** Short hand to throw an illegal state exception. */
   private def illegal(msg: String): Nothing = throw new IllegalStateException(msg)

@@ -56,7 +56,7 @@ class TrimFastq
     var discarded: Long = 0
     val progress = new ProgressLogger(this.logger, noun="records", verb="Wrote")
 
-    val sources = input.map(FastqSource(_))
+    val sources = input.map(FastqSource(_).iterator)
     val writers = output.map(FastqWriter(_))
     while (allHaveNext(sources)) {
       val recs = sources.map(_.next())

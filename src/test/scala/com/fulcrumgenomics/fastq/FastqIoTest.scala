@@ -59,14 +59,15 @@ class FastqIoTest extends UnitSpec {
     Io.writeLines(fq, FastqIoTest.someFastq)
 
     Seq(FastqSource(fq), FastqSource(fq.toFile), FastqSource(Io.toInputStream(fq)), FastqSource(FastqIoTest.someFastq)).foreach(source => {
-      source.hasNext shouldBe true
-      source.next shouldBe FastqIoTest.someFastqRecords(0)
-      source.hasNext shouldBe true
-      source.next shouldBe FastqIoTest.someFastqRecords(1)
-      source.hasNext shouldBe true
-      source.next shouldBe FastqIoTest.someFastqRecords(2)
-      source.hasNext shouldBe false
-      an[NoSuchElementException] shouldBe thrownBy { source.next() }
+      val iter = source.iterator
+      iter.hasNext shouldBe true
+      iter.next shouldBe FastqIoTest.someFastqRecords(0)
+      iter.hasNext shouldBe true
+      iter.next shouldBe FastqIoTest.someFastqRecords(1)
+      iter.hasNext shouldBe true
+      iter.next shouldBe FastqIoTest.someFastqRecords(2)
+      iter.hasNext shouldBe false
+      an[NoSuchElementException] shouldBe thrownBy { iter.next() }
     })
   }
 
