@@ -41,7 +41,7 @@ object FastqSource {
   def apply(lines: Iterator[String]): FastqSource = new FastqSource(lines)
 
   /** Creates a new fastq source from an input stream. */
-  def apply(stream: InputStream): FastqSource = new FastqSource(Source.fromInputStream(stream).getLines(), Some(stream))
+  def apply(stream: InputStream): FastqSource = new FastqSource(Source.fromInputStream(stream).getLines())
 
   /** Creates a new fastq source from a source. */
   def apply(source: Source): FastqSource = new FastqSource(source.getLines(), Some(source))
@@ -50,7 +50,7 @@ object FastqSource {
   def apply(file: File): FastqSource = apply(path=file.toPath)
 
   /** Creates a new fastq source from a Path. */
-  def apply(path: PathToFastq): FastqSource = apply(Io.toInputStream(path))
+  def apply(path: PathToFastq): FastqSource = apply(Io.readLines(path))
 
   /** Returns an iterator over multiple fastq files that ensures:
     *   1. Either all sources or no sources have more records
