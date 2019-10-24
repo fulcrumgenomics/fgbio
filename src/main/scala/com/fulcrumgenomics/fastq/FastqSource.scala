@@ -35,7 +35,7 @@ import scala.io.Source
   */
 object FastqSource {
   /** Creates a new fastq source from a sequence of lines. */
-  def apply(lines: Seq[String]): FastqSource = new FastqSource(lines.iterator)
+  def apply(lines: Iterable[String]): FastqSource = new FastqSource(lines.iterator)
 
   /** Creates a new fastq source from an iterator of lines. */
   def apply(lines: Iterator[String]): FastqSource = new FastqSource(lines)
