@@ -31,7 +31,6 @@ import com.fulcrumgenomics.cmdline.{ClpGroups, FgBioTool}
 import com.fulcrumgenomics.commons.collection.BetterBufferedIterator
 import com.fulcrumgenomics.commons.util.{LazyLogging, NumericCounter, SimpleCounter}
 import com.fulcrumgenomics.sopt.{arg, clp}
-import com.fulcrumgenomics.umi.ConsensusTags.{MolecularId => MI, UmiBases => RX}
 import com.fulcrumgenomics.util.Metric.{Count, Proportion}
 import com.fulcrumgenomics.util._
 import htsjdk.samtools.util.{Interval, IntervalList, Murmur3, OverlapDetector}
@@ -274,6 +273,8 @@ class CollectDuplexSeqMetrics
   @arg(flag='u', doc="If true, produce the .duplex_umi_counts.txt file with counts of duplex UMI observations.") val duplexUmiCounts: Boolean = false,
   @arg(flag='a', doc="Minimum AB reads to call a tag family a 'duplex'.") val minAbReads: Int = 1,
   @arg(flag='b', doc="Minimum BA reads to call a tag family a 'duplex'.") val minBaReads: Int = 1,
+  @arg(flag='t', doc="The tag containing the raw UMI.")  val umiTag: String    = ConsensusTags.UmiBases,
+  @arg(flag='T', doc="The output tag for UMI grouping.") val miTag: String = ConsensusTags.MolecularId,
   private val generatePlots: Boolean = true // not a CLP arg - here to allow disabling of plots to speed up testing
 ) extends FgBioTool with LazyLogging {
   import CollectDuplexSeqMetrics._
@@ -350,10 +351,10 @@ class CollectDuplexSeqMetrics
 
         if (downsampledGroup.nonEmpty) {
           this.startStopFamilyCounter(fraction).count(downsampledGroup.size)
-          val dsGroups = downsampledGroup.groupBy(r => r[String](MI).takeWhile(_ != '/')).values.toSeq
+          val dsGroups = downsampledGroup.groupBy(r => r[String](this.miTag).takeWhile(_ != '/')).values.toSeq
           dsGroups.foreach { dsGroup =>
             // Family sizes first
-            val ssGroups = dsGroup.groupBy(r => r[String](MI)).values.toSeq
+            val ssGroups = dsGroup.groupBy(r => r[String](this.miTag)).values.toSeq
             val counts = ssGroups.map(_.size).sortBy(x => -x)
             val ab = counts.head
             val ba = if (counts.length == 2) counts(1) else 0
@@ -388,8 +389,8 @@ class CollectDuplexSeqMetrics
     val umi1s = IndexedSeq.newBuilder[String] // ab UMI 1 (and ba UMI 2) sequences
     val umi2s = IndexedSeq.newBuilder[String] // ab UMI 2 (and ba UMI 1) sequences
 
-    ab.iterator.map(r => r[String](RX).split('-')).foreach { case Array(u1, u2) => umi1s += u1; umi2s += u2 }
-    ba.iterator.map(r => r[String](RX).split('-')).foreach { case Array(u1, u2) => umi1s += u2; umi2s += u1 }
+    ab.iterator.map(r => r[String](this.umiTag).split('-')).foreach { case Array(u1, u2) => umi1s += u1; umi2s += u2 }
+    ba.iterator.map(r => r[String](this.umiTag).split('-')).foreach { case Array(u1, u2) => umi1s += u2; umi2s += u1 }
 
     val Seq(abConsensusUmi, baConsensusUmi) = Seq(umi1s, umi2s).map(_.result).map{ umis =>
       val consensus = this.consensusBuilder.callConsensus(umis)
@@ -411,7 +412,7 @@ class CollectDuplexSeqMetrics
       val metric = this.duplexUmiMetricsMap.getOrElseUpdate(duplexUmi, DuplexUmiMetric(umi=duplexUmi))
       metric.raw_observations             += ab.size + ba.size
       metric.unique_observations          += 1
-      metric.raw_observations_with_errors += (ab.iterator ++ ba.iterator).map(r => r[String](RX)).count(umi => !duplexUmis.contains(umi))
+      metric.raw_observations_with_errors += (ab.iterator ++ ba.iterator).map(r => r[String](this.umiTag)).count(umi => !duplexUmis.contains(umi))
     }
   }
 
