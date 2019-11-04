@@ -376,8 +376,11 @@ object Strategy extends FgBioEnum[Strategy] {
     |   3. The assigned UMI tag
     |   4. Read Name
     |
-    |Reads are aggressively filtered out so that only high quality read pairs with both ends
-    |mapped are taken forward.  (Note: the `MQ` tag is required on reads with mapped mates).
+    |Reads are aggressively filtered out so that only high quality reads/mappings are taken forward. Single-end
+    |reads must have mapping quality >= `min-map-q`.  Paired-end reads must have both reads mapped to the same
+    | chromosome with both reads having mapping quality >= `min-mapq`.  (Note: the `MQ` tag is required on reads
+    |with mapped mates).
+    |
     |This is done with the expectation that the next step is building consensus reads, where
     |it is undesirable to either:
     |
