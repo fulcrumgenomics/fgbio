@@ -485,7 +485,7 @@ class GroupReadsByUmi
     SamOrder.TemplateCoordinate.applyTo(outHeader)
     val out = SamWriter(output, outHeader)
 
-    val iterator = Bams.templateIterator(sorter.iterator, in.header, Bams.MaxInMemory, Io.tmpDir)
+    val iterator = Bams.templateIterator(sorter.iterator, out.header, Bams.MaxInMemory, Io.tmpDir)
     val tagFamilySizeCounter = new NumericCounter[Int]()
 
     while (iterator.hasNext) {
