@@ -224,6 +224,30 @@ class GroupReadsByUmiTest extends UnitSpec with OptionValues {
     aIds.head should not equal bIds.head
   }
 
+  it should "correctly group together single-end reads with UMIs" in {
+    val builder = new SamBuilder(readLength=100, sort=Some(SamOrder.Coordinate))
+    builder.addFrag(name="a01", start=100, attrs=Map("RX" -> "AAAAAAAA"))
+    builder.addFrag(name="a02", start=100, attrs=Map("RX" -> "AAAAAAAA"))
+    builder.addFrag(name="a03", start=100, attrs=Map("RX" -> "CACACACA"))
+    builder.addFrag(name="a04", start=100, attrs=Map("RX" -> "CACACACC"))
+    builder.addFrag(name="a05", start=105, attrs=Map("RX" -> "GTAGTAGG"))
+    builder.addFrag(name="a06", start=105, attrs=Map("RX" -> "GTAGTAGG"))
+    builder.addFrag(name="a07", start=107, attrs=Map("RX" -> "AAAAAAAA"))
+    builder.addFrag(name="a08", start=107, attrs=Map("RX" -> "AAAAAAAA"))
+
+    val in  = builder.toTempFile()
+    val out = Files.createTempFile("umi_grouped.", ".sam")
+    val hist = Files.createTempFile("umi_grouped.", ".histogram.txt")
+    new GroupReadsByUmi(input=in, output=out, familySizeHistogram=Some(hist), rawTag="RX", assignTag="MI", strategy=Strategy.Edit, edits=1).execute()
+
+    val recs = readBamRecs(out)
+    recs should have size 8
+
+    val groups = recs.groupBy(r => r[String]("MI")).values.map(rs => rs.map(_.name).toSet)
+    groups should have size 4
+    groups should contain theSameElementsAs Seq(Set("a01", "a02"), Set("a03", "a04"), Set("a05", "a06"), Set("a07", "a08"))
+  }
+
   it should "exclude reads that contain an N in the UMI" in {
     val builder = new SamBuilder(readLength=100, sort=Some(SamOrder.Coordinate))
     builder.addPair(name="a01", start1=100, start2=300, strand1=Plus,  strand2=Minus, attrs=Map("RX" -> "ACT-ACT"))

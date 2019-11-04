@@ -46,10 +46,10 @@ import java.util.concurrent.ForkJoinPool
   * @param maxRecordsInRam the approximate maximum number of input records to store in RAM across multiple threads.
   */
 class ConsensusCallingIterator[ConsensusRead <: SimpleRead](sourceIterator: Iterator[SamRecord],
-                               caller: UmiConsensusCaller[ConsensusRead],
-                               progress: Option[ProgressLogger] = None,
-                               threads: Int = 1,
-                               maxRecordsInRam: Int = 128000)
+                                                            caller: UmiConsensusCaller[ConsensusRead],
+                                                            progress: Option[ProgressLogger] = None,
+                                                            threads: Int = 1,
+                                                            maxRecordsInRam: Int = 128000)
   extends Iterator[SamRecord] with LazyLogging {
 
   private val progressIterator = progress match {

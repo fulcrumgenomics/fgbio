@@ -70,4 +70,35 @@ class CallMolecularConsensusReadsTest extends UnitSpec {
       rec[String](ConsensusTags.UmiBases) shouldBe "ACGT-TGCA"
     }
   }
+
+  it should "run end-to-end on single-end data" in {
+    val rlen    = 100
+    val builder = new SamBuilder(baseQuality=30, readLength=rlen, readGroupId=Some("ABC"), sort=Some(SamOrder.TemplateCoordinate))
+    val output  = newBam
+    val rejects = newBam
+
+    builder.addFrag(name="a1", start=100, bases="A"*rlen, attrs=Map("RX" -> "ACGT", "MI" -> "a"))
+    builder.addFrag(name="a2", start=100, bases="A"*rlen, attrs=Map("RX" -> "ACGT", "MI" -> "a"))
+    builder.addFrag(name="a3", start=100, bases="A"*rlen, attrs=Map("RX" -> "ACGT", "MI" -> "a"))
+
+    builder.addFrag(name="b1", start=100, bases="A"*rlen, attrs=Map("RX" -> "ACAC", "MI" -> "b"))
+    builder.addFrag(name="b2", start=100, bases="A"*rlen, attrs=Map("RX" -> "ACAC", "MI" -> "b"))
+
+    // Run the tool
+    new CallMolecularConsensusReads(input=builder.toTempFile(), output=output, minReads=1, rejects=Some(rejects), readGroupId="ABC").execute()
+
+    // check we have no rejected records
+    readBamRecs(rejects).isEmpty shouldBe true
+
+    // we should have 1000 consensus paired end reads
+    val records = readBamRecs(output)
+    records.size shouldBe 2
+    records.count { rec => !rec.paired } shouldBe 2
+
+    records.foreach { rec =>
+      rec.readGroup.getId shouldBe "ABC"
+      rec.basesString shouldBe "A" * 100
+      rec.length shouldBe 100
+    }
+  }
 }

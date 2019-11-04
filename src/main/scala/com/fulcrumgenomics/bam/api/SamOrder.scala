@@ -176,11 +176,11 @@ object SamOrder {
     override val subSort:    Option[String] = Some("template-coordinate")
     override val sortkey: SamRecord => A = rec => {
       val readChrom = if (rec.unmapped)     Int.MaxValue else rec.refIndex
-      val mateChrom = if (rec.mateUnmapped) Int.MaxValue else rec.mateRefIndex
+      val mateChrom = if (!rec.paired || rec.mateUnmapped) Int.MaxValue else rec.mateRefIndex
       val readNeg   = rec.negativeStrand
-      val mateNeg   = rec.mateNegativeStrand
+      val mateNeg   = if (rec.paired) rec.mateNegativeStrand else false
       val readPos   = if (rec.unmapped)     Int.MaxValue else if (readNeg) rec.unclippedEnd else rec.unclippedStart
-      val matePos   = if (rec.mateUnmapped) Int.MaxValue else if (mateNeg) SAMUtils.getMateUnclippedEnd(rec.asSam) else SAMUtils.getMateUnclippedStart(rec.asSam)
+      val matePos   = if (!rec.paired || rec.mateUnmapped) Int.MaxValue else if (mateNeg) SAMUtils.getMateUnclippedEnd(rec.asSam) else SAMUtils.getMateUnclippedStart(rec.asSam)
       val lib       = Option(rec.readGroup).flatMap(rg => Option(rg.getLibrary)).getOrElse("Unknown")
       val mid       = rec.get[String](ConsensusTags.MolecularId).map { m =>
         val index: Int = m.lastIndexOf('/')
