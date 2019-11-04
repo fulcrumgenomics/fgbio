@@ -36,7 +36,7 @@ import htsjdk.samtools._
 import htsjdk.samtools.reference.ReferenceSequenceFileWalker
 import htsjdk.samtools.util.{CloserUtil, CoordMath, SequenceUtil}
 
-import scala.collection.mutable.ListBuffer
+import scala.collection.mutable.{ArrayBuffer, ListBuffer}
 import scala.math.{max, min}
 
 /**
@@ -117,10 +117,10 @@ object Template {
   def apply(recs: Iterator[SamRecord]): Template = {
     var r1: Option[SamRecord] = None
     var r2: Option[SamRecord] = None
-    val r1Supp = ListBuffer[SamRecord]()
-    val r2Supp = ListBuffer[SamRecord]()
-    val r1Sec  = ListBuffer[SamRecord]()
-    val r2Sec  = ListBuffer[SamRecord]()
+    var r1Supp: List[SamRecord] = Nil
+    var r2Supp: List[SamRecord] = Nil
+    var r1Sec : List[SamRecord] = Nil
+    var r2Sec : List[SamRecord] = Nil
 
     var name: Option[String] = None
 
@@ -130,20 +130,20 @@ object Template {
 
       val isR1 = !r.paired || r.firstOfPair
       if (isR1) {
-        if      (r.secondary)     r1Sec += r
-        else if (r.supplementary) r1Supp += r
+        if      (r.secondary)     r1Sec  = r :: r1Sec
+        else if (r.supplementary) r1Supp = r :: r1Supp
         else if (r1.isDefined) throw new IllegalArgumentException(s"Multiple non-secondary, non-supplemental R1s for ${r.name}")
         else r1 = Some(r)
       }
       else {
-        if      (r.secondary)     r2Sec += r
-        else if (r.supplementary) r2Supp += r
+        if      (r.secondary)     r2Sec  = r :: r2Sec
+        else if (r.supplementary) r2Supp = r :: r2Supp
         else if (r2.isDefined) throw new IllegalArgumentException(s"Multiple non-secondary, non-supplemental R2s for ${r.name}")
         else r2 = Some(r)
       }
     }
 
-    Template(r1=r1, r2=r2, r1Supplementals=r1Supp.toList, r2Supplementals=r2Supp.toList, r1Secondaries=r1Sec.toList, r2Secondaries=r2Sec.toList)
+    Template(r1=r1, r2=r2, r1Supplementals=r1Supp, r2Supplementals=r2Supp, r1Secondaries=r1Sec, r2Secondaries=r2Sec)
   }
 }
 

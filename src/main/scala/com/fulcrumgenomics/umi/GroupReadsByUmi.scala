@@ -475,7 +475,7 @@ class GroupReadsByUmi
 
     logger.info(f"Accepted $kept%,d reads for grouping.")
     if (filteredNonPf > 0) logger.info(f"Filtered out $filteredNonPf%,d non-PF reads.")
-    logger.info(f"Filtered out $filteredPoorAlignment%,d reads that were not part of a high confidence mapped read pair.")
+    logger.info(f"Filtered out $filteredPoorAlignment%,d reads due to low mapping quality.")
     logger.info(f"Filtered out $filteredNsInUmi%,d reads that contained one or more Ns in their UMIs.")
     this.minUmiLength.foreach { _ => logger.info(f"Filtered out $filterUmisTooShort%,d reads that contained UMIs that were too short.") }
 
@@ -489,7 +489,7 @@ class GroupReadsByUmi
     val tagFamilySizeCounter = new NumericCounter[Int]()
 
     while (iterator.hasNext) {
-      // Take the next set of pairs by position and assign UMIs
+      // Take the next set of templates by position and assign UMIs
       val templates = takeNextGroup(iterator)
       assignUmiGroups(templates)
 
@@ -520,7 +520,7 @@ class GroupReadsByUmi
     }
   }
 
-  /** Consumes the next group of pairs with all matching end positions and returns them. */
+  /** Consumes the next group of templates with all matching end positions and returns them. */
   def takeNextGroup(iterator: BufferedIterator[Template]) : Seq[Template] = {
     val first = iterator.next()
     val firstEnds = ReadInfo(first.r1.getOrElse(fail(s"R1 missing for template ${first.name}")))
@@ -530,7 +530,7 @@ class GroupReadsByUmi
   }
 
   /**
-    * Takes in pairs of reads and writes an attribute (specified by `assignTag`) denoting
+    * Takes in templates and writes an attribute (specified by `assignTag`) denoting
     * sub-grouping into UMI groups by original molecule.
     */
   def assignUmiGroups(templates: Seq[Template]): Unit = {
@@ -544,7 +544,7 @@ class GroupReadsByUmi
   }
 
   /** When a minimum UMI length is specified, truncates all the UMIs to the length of the shortest UMI.  For the paired
-    * assigner, truncates the first UMI and second UMI sepeartely.*/
+    * assigner, truncates the first UMI and second UMI separately.*/
   private def truncateUmis(umis: Seq[Umi]): Seq[Umi] = this.minUmiLength match {
     case None => umis
     case Some(length) =>
@@ -559,7 +559,7 @@ class GroupReadsByUmi
   }
 
   /**
-    * Retrieves the UMI to use for a read pair.  In the case of single-umi strategies this is just
+    * Retrieves the UMI to use for a template.  In the case of single-umi strategies this is just
     * the upper-case UMI sequence.
     *
     * For Paired the UMI is extended to encode which "side" of the template the read came from - the earlier
