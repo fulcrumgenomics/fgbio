@@ -89,7 +89,7 @@ object GroupReadsByUmi {
         val recPos  = if (recNeg) rec.unclippedEnd else rec.unclippedStart
 
         val (mateNeg, matePos) = if (!rec.paired) (false, Int.MaxValue) else {
-          if (rec.paired && rec.refIndex != rec.mateRefIndex) throw new IllegalArgumentException("Mate on different chrom.")
+          if (rec.refIndex != rec.mateRefIndex) throw new IllegalArgumentException("Mate on different chrom.")
           val neg = rec.mateNegativeStrand
           val pos = if (neg) SAMUtils.getMateUnclippedEnd(rec.asSam) else SAMUtils.getMateUnclippedStart(rec.asSam)
           (neg, pos)
