@@ -90,6 +90,9 @@ trait SamRecord {
   @inline final def paired: Boolean = getReadPairedFlag
   @inline final def paired_=(paired: Boolean):Unit = setReadPairedFlag(paired)
 
+  @inline final def unpaired: Boolean = !paired
+  @inline final def unpaired_=(unpaired: Boolean): Unit = this.paired = !unpaired
+
   @inline final def properlyPaired: Boolean = getProperPairFlag
   @inline final def properlyPaired_=(paired: Boolean):Unit = setProperPairFlag(paired)
 

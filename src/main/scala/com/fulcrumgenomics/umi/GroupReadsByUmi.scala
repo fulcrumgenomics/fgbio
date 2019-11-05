@@ -440,10 +440,13 @@ class GroupReadsByUmi
 
   /** Checks that the read's mapq is over a minimum, and if the read is paired, that the mate mapq is also over the min. */
   private def mapqOk(rec: SamRecord, minMapQ: Int): Boolean = {
-    rec.mapq >= minMapQ &&
-      (!rec.paired || rec.get[Int](SAMTag.MQ.name()).exists(_ >= minMapQ))
-  }
+    val mateMqOk = if (rec.unpaired) true else {
+      val mateMq = rec.get[Int](SAMTag.MQ.name())
+      if (mateMq.isEmpty) fail(s"") else mateMq.forall(_ >= minMapQ)
+    }
 
+    rec.mapq >= minMapQ && mateMqOk
+  }
 
   override def execute(): Unit = {
     Io.assertReadable(input)
@@ -463,8 +466,8 @@ class GroupReadsByUmi
     in.iterator
       .filter(r => !r.secondary && !r.supplementary)
       .filter(r => (includeNonPfReads || r.pf)                      || { filteredNonPf += 1; false })
-      .filter(r => (r.mapped && (!r.paired || r.mateMapped))        || { filteredPoorAlignment += 1; false })
-      .filter(r => (!r.paired || r.refIndex == r.mateRefIndex)      || { filteredPoorAlignment += 1; false })
+      .filter(r => (r.mapped && (r.unpaired || r.mateMapped))       || { filteredPoorAlignment += 1; false })
+      .filter(r => (r.unpaired || r.refIndex == r.mateRefIndex)     || { filteredPoorAlignment += 1; false })
       .filter(r => mapqOk(r, this.minMapQ)                          || { filteredPoorAlignment += 1; false })
       .filter(r => !r.get[String](rawTag).exists(_.contains('N'))   || { filteredNsInUmi += 1; false })
       .filter { r =>
@@ -478,7 +481,7 @@ class GroupReadsByUmi
 
     logger.info(f"Accepted $kept%,d reads for grouping.")
     if (filteredNonPf > 0) logger.info(f"Filtered out $filteredNonPf%,d non-PF reads.")
-    logger.info(f"Filtered out $filteredPoorAlignment%,d reads due to low mapping quality.")
+    logger.info(f"Filtered out $filteredPoorAlignment%,d reads due to mapping issues.")
     logger.info(f"Filtered out $filteredNsInUmi%,d reads that contained one or more Ns in their UMIs.")
     this.minUmiLength.foreach { _ => logger.info(f"Filtered out $filterUmisTooShort%,d reads that contained UMIs that were too short.") }
 
@@ -576,9 +579,7 @@ class GroupReadsByUmi
       if (!umi.exists(_.nonEmpty)) fail(s"Record '$rec' was missing the raw UMI tag '${this.rawTag}'")
     }
 
-    if (t.r1.isEmpty) fail(s"Read 1 missing for template ${t.name}.")
-
-    val umi = t.r1.get[String](this.rawTag)
+    val umi = t.r1.getOrElse(fail(s"R1 must be present for ${t.name}")).apply[String](this.rawTag)
 
     (t.r1, t.r2, this.assigner) match {
       case (Some(r1), Some(r2), paired: PairedUmiAssigner) =>
