@@ -438,7 +438,7 @@ class GroupReadsByUmi
 
   private val assigner = strategy.newStrategy(this.edits)
 
-  /** Checks that the read's MAPQ is over a minimum, and if the read is paired, that the mate mapq is also over the min. */
+  /** Checks that the read's mapq is over a minimum, and if the read is paired, that the mate mapq is also over the min. */
   private def mapqOk(rec: SamRecord, minMapQ: Int): Boolean = {
     rec.mapq >= minMapQ &&
       (!rec.paired || rec.get[Int](SAMTag.MQ.name()).exists(_ >= minMapQ))
