@@ -89,7 +89,7 @@ object GroupReadsByUmi {
         val recPos  = if (recNeg) rec.unclippedEnd else rec.unclippedStart
 
         val (mateNeg, matePos) = if (!rec.paired) (false, Int.MaxValue) else {
-          if (rec.refIndex != rec.mateRefIndex) throw new IllegalArgumentException("Mate on different chrom.")
+          require(rec.refIndex == rec.mateRefIndex, s"Mate on different chrom for ${rec.name}.")
           val neg = rec.mateNegativeStrand
           val pos = if (neg) SAMUtils.getMateUnclippedEnd(rec.asSam) else SAMUtils.getMateUnclippedStart(rec.asSam)
           (neg, pos)
@@ -440,9 +440,9 @@ class GroupReadsByUmi
 
   /** Checks that the read's mapq is over a minimum, and if the read is paired, that the mate mapq is also over the min. */
   private def mapqOk(rec: SamRecord, minMapQ: Int): Boolean = {
-    val mateMqOk = if (rec.unpaired) true else {
-      val mateMq = rec.get[Int](SAMTag.MQ.name())
-      if (mateMq.isEmpty) fail(s"") else mateMq.forall(_ >= minMapQ)
+    val mateMqOk = if (rec.unpaired) true else rec.get[Int](SAMTag.MQ.name()) match {
+      case None     => fail(s"Mate mapping quality (MQ) tag not present on read ${rec.name}.")
+      case Some(mq) => mq >= minMapQ
     }
 
     rec.mapq >= minMapQ && mateMqOk
