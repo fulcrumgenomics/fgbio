@@ -24,6 +24,8 @@
 
 package com.fulcrumgenomics.illumina
 
+import java.text.SimpleDateFormat
+
 import com.fulcrumgenomics.FgBioDef.FilePath
 import com.fulcrumgenomics.testing.UnitSpec
 import com.fulcrumgenomics.util.{Io, ReadStructure, SegmentType}
@@ -90,6 +92,11 @@ class RunInfoTest extends UnitSpec {
   it should "handle a dual indexed run" in {
     val info = RunInfo(runInfo(date="170204", readStructure=ReadStructure("8B150T150T8B")))
     info.read_structure.toString shouldBe "8B150T150T8B"
+  }
+
+  it should "handle the NovaSeq style date format" in {
+    val info = RunInfo(runInfo(date="11/1/2019 2:07:30 PM", readStructure=ReadStructure("150T150T")))
+    new SimpleDateFormat("MM/dd/yyyy HH:mm:ss").format(info.run_date) shouldBe "11/01/2019 14:07:30"
   }
 
   it should "handle a complicated read structure" in {

@@ -24,6 +24,8 @@
 
 package com.fulcrumgenomics.illumina
 
+import java.text.{ParseException, SimpleDateFormat}
+
 import com.fulcrumgenomics.FgBioDef.FilePath
 import com.fulcrumgenomics.bam.Template
 import com.fulcrumgenomics.util.SegmentType.SampleBarcode
@@ -86,6 +88,10 @@ object RunInfo {
   private def parseDate(date: String): Iso8601Date = {
     if (date.length == 6) new Iso8601Date("20" + date.substring(0,2) + "-" + date.substring(2,4) + "-" + date.substring(4))
     else if (date.length == 8) new Iso8601Date(date.substring(0,4) + "-" + date.substring(4,6) + "-" + date.substring(6))
-    else throw new IllegalArgumentException(s"Could not parse date: $date")
+    else {
+      val fmt = new SimpleDateFormat("M/d/yyyy h:mm:ss a")
+      try { new Iso8601Date(fmt.parse(date)) }
+      catch { case _ : ParseException => throw new IllegalArgumentException(s"Could not parse date: $date") }
+    }
   }
 }
