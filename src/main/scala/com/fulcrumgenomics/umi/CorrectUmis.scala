@@ -128,7 +128,8 @@ class CorrectUmis
   @arg(flag='u', doc="Expected UMI sequences.", minElements=0) val umis: Seq[String] = Seq.empty,
   @arg(flag='U', doc="File of UMI sequences, one per line.", minElements=0) val umiFiles: Seq[FilePath] = Seq.empty,
   @arg(flag='t', doc="Tag in which UMIs are stored.") val umiTag: String = ConsensusTags.UmiBases,
-  @arg(flag='x', doc="Don't store original UMIs upon correction.") val dontStoreOriginalUmis: Boolean = false
+  @arg(flag='x', doc="Don't store original UMIs upon correction.") val dontStoreOriginalUmis: Boolean = false,
+  @arg(doc="Treat Ns in the expected UMI sequences as matches") val allowNs: Boolean = false
 ) extends FgBioTool with LazyLogging {
 
   validate(umis.nonEmpty || umiFiles.nonEmpty, "At least one UMI or UMI file must be provided.")
@@ -249,11 +250,28 @@ class CorrectUmis
       logger.error("###################################################################")
     }
   }
+  
+  /** Counts the number of mismatches between two sequences of the same length. */
+  private val countMismatches: (String, String) => Int = {
+    if (allowNs) (s1, s2) => {
+      require(s1.length == s2.length, s"Cannot count mismatches in strings of differing lengths: $s1 $s2")
+
+      var count = 0
+      forloop (from=0, until=s1.length) { i =>
+        val a = Character.toUpperCase(s1.charAt(i))
+        val b = Character.toUpperCase(s2.charAt(i))
+        if (a != b && b != 'N') count += 1 // does not count Ns in s2 as mismatches
+      }
+
+      count
+    }
+    else (s1, s2) => Sequences.countMismatches(s1, s2)
+  }
+
 
   /** Given a UMI sequence and a set of fixed UMIs, report the best match. */
   private[umi] def findBestMatch(bases: String, umis: Array[String]): UmiMatch = {
-    val mismatchLimit = this.maxMismatches + minDistance
-    val mismatches    = umis.map(umi => Sequences.countMismatches(bases, umi))
+    val mismatches    = umis.map(umi => countMismatches(bases, umi))
     val min           = mismatches.min
     val matched       = (min <= maxMismatches) && (mismatches.count(m => m < min + this.minDistance) == 1)
 
