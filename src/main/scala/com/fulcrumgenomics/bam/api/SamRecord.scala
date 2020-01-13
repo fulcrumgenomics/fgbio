@@ -125,7 +125,7 @@ trait SamRecord {
   @inline final def secondary: Boolean = isSecondaryAlignment
   @inline final def secondary_=(secondary: Boolean):Unit = setSecondaryAlignment(secondary)
   @inline final def primary: Boolean = !this.secondary
-  @inline final def primary_=(primary: Boolean):Unit = this.secondary(!primary)
+  @inline final def primary_=(primary: Boolean):Unit = this.secondary = !primary
 
   @inline final def pf: Boolean = !getReadFailsVendorQualityCheckFlag
   @inline final def pf_=(pf: Boolean):Unit = setReadFailsVendorQualityCheckFlag(!pf)

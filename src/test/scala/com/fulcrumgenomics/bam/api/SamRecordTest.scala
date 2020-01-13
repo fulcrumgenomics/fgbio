@@ -138,6 +138,34 @@ class SamRecordTest extends UnitSpec with OptionValues {
     rec[Int]("bx") shouldBe 10
   }
 
+  it should "provide access to the record's primary, secondary, and supplementary status" in {
+    val rec = new SamBuilder(readLength=50).addFrag(start=10).get
+
+    rec.primary       = true
+    rec.supplementary = false
+    rec.primary       shouldBe true
+    rec.secondary     shouldBe false
+    rec.supplementary shouldBe false
+
+    rec.secondary     = true
+    rec.supplementary = false
+    rec.primary       shouldBe false
+    rec.secondary     shouldBe true
+    rec.supplementary shouldBe false
+
+    rec.primary       = true
+    rec.supplementary = true
+    rec.primary       shouldBe true
+    rec.secondary     shouldBe false
+    rec.supplementary shouldBe true
+
+    rec.primary       = false
+    rec.supplementary = true
+    rec.primary       shouldBe false
+    rec.secondary     shouldBe true
+    rec.supplementary shouldBe true
+  }
+
   "SamRecord.clone()" should "clone the record" in {
     val builder = new SamBuilder(readLength=50)
     val rec = builder.addFrag(start=10, cigar="50M", attrs=Map("AB" -> 123)).get
