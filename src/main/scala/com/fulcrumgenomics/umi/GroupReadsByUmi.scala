@@ -411,33 +411,34 @@ object Strategy extends FgBioEnum[Strategy] {
     |non-identical UMIs.
     |
     |UMIs may have different lengths and only UMIs with the same length will be compared.  If `--min-umi-length=len` is
-    |specified then reads that have a UMI shorter than `len` will be discarded, and when comparing UMIs of different
-    |lengths, the first `len` bases will be compared, where `len` is the length of the shortest UMI. The UMI length is
-    |the number of [ACGT] bases in the UMI (i.e. does not count dashes and other non-ACGT characters). This option is
-    |not implemented for reads with UMI pairs (i.e. using the paired assigner).
+    |specified then reads that have a UMI shorter than `len` will be discarded. To truncate any UMIs to `--min-umi-length`,
+    |specify `--truncate=true`. The UMI length is the number of [ACGT] bases in the UMI (i.e. does not count dashes
+    |and other non-ACGT characters). Truncating is not implemented for reads with UMI pairs (i.e. using the paired assigner).
   """
 )
 class GroupReadsByUmi
-( @arg(flag='i', doc="The input BAM file.")              val input: PathToBam  = Io.StdIn,
-  @arg(flag='o', doc="The output BAM file.")             val output: PathToBam = Io.StdOut,
-  @arg(flag='f', doc="Optional output of tag family size counts.") val familySizeHistogram: Option[FilePath] = None,
-  @arg(flag='t', doc="The tag containing the raw UMI.")  val rawTag: String    = "RX",
-  @arg(flag='T', doc="The output tag for UMI grouping.") val assignTag: String = "MI",
-  @arg(flag='m', doc="Minimum mapping quality.")         val minMapQ: Int      = 30,
-  @arg(flag='n', doc="Include non-PF reads.")            val includeNonPfReads: Boolean = false,
-  @arg(flag='s', doc="The UMI assignment strategy.") val strategy: Strategy,
+( @arg(flag='i', doc="The input BAM file.")                         val input: PathToBam  = Io.StdIn,
+  @arg(flag='o', doc="The output BAM file.")                        val output: PathToBam = Io.StdOut,
+  @arg(flag='f', doc="Optional output of tag family size counts.")  val familySizeHistogram: Option[FilePath] = None,
+  @arg(flag='t', doc="The tag containing the raw UMI.")             val rawTag: String    = "RX",
+  @arg(flag='T', doc="The output tag for UMI grouping.")            val assignTag: String = "MI",
+  @arg(flag='m', doc="Minimum mapping quality.")                    val minMapQ: Int      = 30,
+  @arg(flag='n', doc="Include non-PF reads.")                       val includeNonPfReads: Boolean = false,
+  @arg(flag='s', doc="The UMI assignment strategy.")                val strategy: Strategy,
   @arg(flag='e', doc="The allowable number of edits between UMIs.") val edits: Int = 1,
-  @arg(flag='l', doc=
-    """The minimum UMI length. Discard reads with UMIs shorter than this length,
-      |and truncate to UMIs in each cluster to the shortest UMI in that cluster.""")
-  val minUmiLength: Option[Int] = None,
-  @arg(flag='x', doc= """Allow read pairs with primary alignments on different contigs to be grouped when using the
-                       |paired assigner (otherwise filtered out).""")
-  val allowInterContig: Boolean = false
+  @arg(flag='l', doc="The minimum UMI length. Discard reads with UMIs shorter than this length.")
+                                                                    val minUmiLength: Option[Int] = None,
+  @arg(flag='r', doc=
+    """Whether to shorten all UMIs above `--min-umi-length` to the
+      |specified minimum length.""")                                val truncate: Boolean = false,
+  @arg(flag='x', doc=
+    """Allow read pairs with primary alignments on different contigs to be grouped when using the
+      |paired assigner (otherwise filtered out).""")                val allowInterContig: Boolean = false
 )extends FgBioTool with LazyLogging {
   import GroupReadsByUmi._
 
   require(this.minUmiLength.forall(_ => this.strategy != Strategy.Paired), "Paired strategy cannot be used with --min-umi-length")
+  require(!truncate || minUmiLength.isDefined, "Cannot truncate UMIs unless a minimum UMI length is specified")
 
   private val assigner = strategy.newStrategy(this.edits)
 
@@ -543,7 +544,10 @@ class GroupReadsByUmi
     * sub-grouping into UMI groups by original molecule.
     */
   def assignUmiGroups(templates: Seq[Template]): Unit = {
-    val umis    = truncateUmis(templates.map { t => umiForRead(t) })
+    val umis    = { 
+      if (this.truncate) truncateUmis(templates.map { t => umiForRead(t) })
+      else { templates.map { t => umiForRead(t) } }
+    }
     val rawToId = umis
       .groupBy(u => u.split("-").map(_.length).toSeq)
       .values
@@ -556,8 +560,8 @@ class GroupReadsByUmi
     }
   }
 
-  /** When a minimum UMI length is specified, truncates all the UMIs to the length of the shortest UMI.  Not supported
-    * for the paired assigner. */
+  /** When a minimum UMI length is specified and truncate is set to true, truncates all the UMIs to the length of the shortest UMI.
+    * Not supported for the paired assigner. */
   private def truncateUmis(umis: Seq[Umi]): Seq[Umi] = this.minUmiLength match {
     case None => umis
     case Some(length) =>

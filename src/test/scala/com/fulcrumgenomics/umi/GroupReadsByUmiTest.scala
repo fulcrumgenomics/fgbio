@@ -327,6 +327,89 @@ class GroupReadsByUmiTest extends UnitSpec with OptionValues with PrivateMethodT
     groups should contain theSameElementsAs Seq(Set("a01", "a02"), Set("a03", "a04"), Set("a05", "a06"), Set("a07", "a08"))
   }
 
+  it should "correctly group together single-end reads with UMIs of different lengths with min length specified " +
+    "and discard reads that are too small" in {
+    val builder = new SamBuilder(readLength=100, sort=Some(SamOrder.Coordinate))
+    builder.addFrag(name="a01", start=100, attrs=Map("RX" -> "AAAAAAAA"))
+    builder.addFrag(name="a02", start=100, attrs=Map("RX" -> "AAAAAAAA"))
+    builder.addFrag(name="a03", start=100, attrs=Map("RX" -> "ACACACA"))
+    builder.addFrag(name="a04", start=100, attrs=Map("RX" -> "ACACACC"))
+    builder.addFrag(name="a05", start=105, attrs=Map("RX" -> "AGTAGG"))
+    builder.addFrag(name="a06", start=105, attrs=Map("RX" -> "AGTAGG"))
+    builder.addFrag(name="a07", start=107, attrs=Map("RX" -> "AAAAAAAA"))
+    builder.addFrag(name="a08", start=107, attrs=Map("RX" -> "AAAAAAAA"))
+
+    val in  = builder.toTempFile()
+    val out = Files.createTempFile("umi_grouped.", ".sam")
+    val hist = Files.createTempFile("umi_grouped.", ".histogram.txt")
+    new GroupReadsByUmi(input=in, output=out, familySizeHistogram=Some(hist), rawTag="RX", assignTag="MI", strategy=Strategy.Edit, edits=1, minUmiLength = Some(7)).execute()
+
+    val recs = readBamRecs(out)
+    recs should have size 6
+
+    val groups = recs.groupBy(r => r[String]("MI")).values.map(rs => rs.map(_.name).toSet)
+    groups should have size 3
+    groups should contain theSameElementsAs Seq(Set("a01", "a02"), Set("a03", "a04"), Set("a07", "a08"))
+  }
+
+  it should "correctly group together single-end reads with UMIs of different lengths when " +
+    "--min-umi-length is specified and --truncated is false" in {
+    val builder = new SamBuilder(readLength=100, sort=Some(SamOrder.Coordinate))
+    builder.addFrag(name="a01", start=100, attrs=Map("RX" -> "AGTAGGCC"))
+    builder.addFrag(name="a02", start=100, attrs=Map("RX" -> "AGTAGGCC"))
+    builder.addFrag(name="a03", start=100, attrs=Map("RX" -> "AGTAGGC"))
+    builder.addFrag(name="a04", start=100, attrs=Map("RX" -> "AGTAGGC"))
+    builder.addFrag(name="a05", start=100, attrs=Map("RX" -> "AGTAGG"))
+    builder.addFrag(name="a06", start=100, attrs=Map("RX" -> "AGTAGG"))
+
+    val in  = builder.toTempFile()
+    val out = Files.createTempFile("umi_grouped.", ".sam")
+    val hist = Files.createTempFile("umi_grouped.", ".histogram.txt")
+    new GroupReadsByUmi(input=in, output=out, familySizeHistogram=Some(hist), rawTag="RX", assignTag="MI", strategy=Strategy.Edit, edits=1, minUmiLength=Some(7)).execute()
+
+    val recs = readBamRecs(out)
+    recs should have size 4
+
+    val groups = recs.groupBy(r => r[String]("MI")).values.map(rs => rs.map(_.name).toSet)
+    groups should have size 2
+    groups should contain theSameElementsAs Seq(Set("a01", "a02"), Set("a03", "a04"))
+  }
+
+  it should "correctly group together single-end reads with UMIs of different lengths with min length specified " +
+    "all together when truncate is true" in {
+    val builder = new SamBuilder(readLength=100, sort=Some(SamOrder.Coordinate))
+    builder.addFrag(name="a01", start=100, attrs=Map("RX" -> "AGTAGGCC"))
+    builder.addFrag(name="a02", start=100, attrs=Map("RX" -> "AGTAGGCC"))
+    builder.addFrag(name="a03", start=100, attrs=Map("RX" -> "AGTAGGC"))
+    builder.addFrag(name="a04", start=100, attrs=Map("RX" -> "AGTAGGC"))
+    builder.addFrag(name="a05", start=100, attrs=Map("RX" -> "AGTAGG"))
+    builder.addFrag(name="a06", start=100, attrs=Map("RX" -> "AGTAGG"))
+
+    val in  = builder.toTempFile()
+    val out = Files.createTempFile("umi_grouped.", ".sam")
+    val hist = Files.createTempFile("umi_grouped.", ".histogram.txt")
+    new GroupReadsByUmi(input=in, output=out, familySizeHistogram=Some(hist), rawTag="RX", assignTag="MI", strategy=Strategy.Edit, edits=1, minUmiLength=Some(7), truncate=true).execute()
+
+    val recs = readBamRecs(out)
+    recs should have size 4
+
+    val groups = recs.groupBy(r => r[String]("MI")).values.map(rs => rs.map(_.name).toSet)
+    groups should have size 1
+    groups should contain theSameElementsAs Seq(Set("a01", "a02", "a03", "a04"))
+  }
+
+  it should "correctly fail if a --truncate=true but no minimum length is specified" in {
+    val builder = new SamBuilder(readLength=100, sort=Some(SamOrder.Coordinate))
+    builder.addFrag(name="a01", start=100, attrs=Map("RX" -> "AAAAAAAA"))
+    builder.addFrag(name="a02", start=100, attrs=Map("RX" -> "AAAAAAAA"))
+
+    val in  = builder.toTempFile()
+    val out = Files.createTempFile("umi_grouped.", ".sam")
+    val hist = Files.createTempFile("umi_grouped.", ".histogram.txt")
+    val error = intercept[Exception] { new GroupReadsByUmi(input=in, output=out, familySizeHistogram=Some(hist), rawTag="RX", assignTag="MI", strategy=Strategy.Edit, edits=1, truncate=true).execute() }
+    error.getMessage should include ("unless a minimum UMI length is specified")
+  }
+
   it should "exclude reads that contain an N in the UMI" in {
     val builder = new SamBuilder(readLength=100, sort=Some(SamOrder.Coordinate))
     builder.addPair(name="a01", start1=100, start2=300, strand1=Plus,  strand2=Minus, attrs=Map("RX" -> "ACT-ACT"))
@@ -357,30 +440,83 @@ class GroupReadsByUmiTest extends UnitSpec with OptionValues with PrivateMethodT
 
       builder.addPair(name="a01", start1=100, start2=300, strand1=Plus,  strand2=Minus, attrs=Map("RX" -> "ACTACT"))
       builder.addPair(name="a02", start1=100, start2=300, strand1=Plus,  strand2=Minus, attrs=Map("RX" -> "ACTAC"))
+      builder.addPair(name="a03", start1=100, start2=300, strand1=Plus,  strand2=Minus, attrs=Map("RX" -> "ACTACTA"))
 
       val in   = builder.toTempFile()
       val out  = Files.createTempFile("umi_grouped.", ".sam")
-      new GroupReadsByUmi(input=in, output=out, familySizeHistogram=None, rawTag="RX", assignTag="MI", strategy=Strategy.Identity, edits=0, minUmiLength=Some(6)).execute()
+      new GroupReadsByUmi(input=in, output=out, familySizeHistogram=None, rawTag="RX", assignTag="MI", strategy=Strategy.Identity, edits=0, minUmiLength=Some(6), truncate=true).execute()
 
       val recs = readBamRecs(out)
-      recs should have length 2
-      recs.map(_.name) should contain theSameElementsInOrderAs Seq("a01", "a01")
+      recs should have length 4
+      recs.map(_.name) should contain theSameElementsInOrderAs Seq("a01", "a01", "a03", "a03")
       recs.map(r => r[String]("MI")).distinct should have length 1
+
+      val groups = recs.groupBy(r => r[String]("MI")).values.map(rs => rs.map(_.name).toSet)
+      groups should have size 1
+      groups should contain theSameElementsAs Seq(Set("a01", "a01", "a03", "a03"))
     }
 
     it should s"truncate to the specified minimum length with the $strategy strategy" in {
       val builder = new SamBuilder(readLength=100, sort=Some(SamOrder.Coordinate))
       builder.addPair(name="a01", start1=100, start2=300, strand1=Plus,  strand2=Minus, attrs=Map("RX" -> "ACTACT"))
       builder.addPair(name="a02", start1=100, start2=300, strand1=Plus,  strand2=Minus, attrs=Map("RX" -> "ACTAC"))
+      builder.addPair(name="a03", start1=100, start2=300, strand1=Plus,  strand2=Minus, attrs=Map("RX" -> "ACTACTA"))
 
       val in   = builder.toTempFile()
       val out  = Files.createTempFile("umi_grouped.", ".sam")
-      new GroupReadsByUmi(input=in, output=out, familySizeHistogram=None, rawTag="RX", assignTag="MI", strategy=Strategy.Identity, edits=0, minUmiLength=Some(5)).execute()
+      new GroupReadsByUmi(input=in, output=out, familySizeHistogram=None, rawTag="RX", assignTag="MI", strategy=Strategy.Identity, edits=0, minUmiLength=Some(5), truncate=true).execute()
+
+      val recs = readBamRecs(out)
+      recs should have length 6
+      recs.map(_.name) should contain theSameElementsInOrderAs Seq("a01", "a01", "a02", "a02", "a03", "a03")
+      recs.map(r => r[String]("MI")).distinct should have length 1 // all should be assigned to one molecule
+
+      val groups = recs.groupBy(r => r[String]("MI")).values.map(rs => rs.map(_.name).toSet)
+      groups should have size 1
+      groups should contain theSameElementsAs Seq(Set("a01", "a01", "a02", "a02", "a03", "a03"))
+    }
+
+    it should s"reject records with UMIs that are shorter than the specified minimum length with the $strategy strategy " +
+      s"and not truncate reads with --truncate=false" in {
+      val builder = new SamBuilder(readLength=100, sort=Some(SamOrder.Coordinate))
+
+      builder.addPair(name="a01", start1=100, start2=300, strand1=Plus,  strand2=Minus, attrs=Map("RX" -> "ACTACT"))
+      builder.addPair(name="a02", start1=100, start2=300, strand1=Plus,  strand2=Minus, attrs=Map("RX" -> "ACTAC"))
+      builder.addPair(name="a03", start1=100, start2=300, strand1=Plus,  strand2=Minus, attrs=Map("RX" -> "ACTACTA"))
+
+      val in   = builder.toTempFile()
+      val out  = Files.createTempFile("umi_grouped.", ".sam")
+      new GroupReadsByUmi(input=in, output=out, familySizeHistogram=None, rawTag="RX", assignTag="MI", strategy=Strategy.Identity, edits=0, minUmiLength=Some(6), truncate=false).execute()
 
       val recs = readBamRecs(out)
       recs should have length 4
-      recs.map(_.name) should contain theSameElementsInOrderAs Seq("a01", "a01", "a02", "a02")
-      recs.map(r => r[String]("MI")).distinct should have length 1 // all should be assigned to one molecule
+      recs.map(_.name) should contain theSameElementsAs Seq("a01", "a01", "a03", "a03")
+      recs.map(r => r[String]("MI")).distinct should have length 2
+
+      val groups = recs.groupBy(r => r[String]("MI")).values.map(rs => rs.map(_.name).toSet)
+      groups should have size 2
+      groups should contain theSameElementsAs Seq(Set("a01", "a01"), Set("a03", "a03"))
+    }
+
+    it should s"not truncate reads with the $strategy strategy when --truncate=false" in {
+      val builder = new SamBuilder(readLength=100, sort=Some(SamOrder.Coordinate))
+
+      builder.addPair(name="a01", start1=100, start2=300, strand1=Plus,  strand2=Minus, attrs=Map("RX" -> "ACTACT"))
+      builder.addPair(name="a02", start1=100, start2=300, strand1=Plus,  strand2=Minus, attrs=Map("RX" -> "ACTAC"))
+      builder.addPair(name="a03", start1=100, start2=300, strand1=Plus,  strand2=Minus, attrs=Map("RX" -> "ACTACTA"))
+
+      val in   = builder.toTempFile()
+      val out  = Files.createTempFile("umi_grouped.", ".sam")
+      new GroupReadsByUmi(input=in, output=out, familySizeHistogram=None, rawTag="RX", assignTag="MI", strategy=Strategy.Identity, edits=0, minUmiLength=Some(5), truncate=false).execute()
+
+      val recs = readBamRecs(out)
+      recs should have length 6
+      recs.map(_.name) should contain theSameElementsAs Seq("a01", "a01", "a02", "a02", "a03", "a03")
+      recs.map(r => r[String]("MI")).distinct should have length 3
+
+      val groups = recs.groupBy(r => r[String]("MI")).values.map(rs => rs.map(_.name).toSet)
+      groups should have size 3
+      groups should contain theSameElementsAs Seq(Set("a01", "a01"), Set("a02", "a02"), Set("a03", "a03"))
     }
   }
 }

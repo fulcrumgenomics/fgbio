@@ -256,6 +256,5 @@ class CorrectUmisTest extends UnitSpec {
     metricsByUmi("CCCCCCC") shouldBe UmiCorrectionMetrics(umi="CCCCCCC", total_matches=4, perfect_matches=1, one_mismatch_matches=2, two_mismatch_matches=1, other_matches=0, fraction_of_matches = 4/10.0, representation = 4.0 / (8.0 / 2))
     metricsByUmi("NNNNNN")  shouldBe UmiCorrectionMetrics(umi="NNNNNN",  total_matches=1, perfect_matches=0, one_mismatch_matches=0, two_mismatch_matches=0, other_matches=0, fraction_of_matches = 1/10.0, representation = 1.0 / (8.0 / 2))
     metricsByUmi("NNNNNNN") shouldBe UmiCorrectionMetrics(umi="NNNNNNN", total_matches=1, perfect_matches=0, one_mismatch_matches=0, two_mismatch_matches=0, other_matches=0, fraction_of_matches = 1/10.0, representation = 1.0 / (8.0 / 2))
-
   }
 }
