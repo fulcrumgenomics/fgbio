@@ -82,7 +82,7 @@ class RefFlatSourceTest extends UnitSpec {
 
       //verify the first exon in the first transcript
       val exon = transcript.exons.head
-      exon shouldBe Exon(141638944, 141639396)
+      exon shouldBe Exon(141654484, 141655128)
     })
   }
 

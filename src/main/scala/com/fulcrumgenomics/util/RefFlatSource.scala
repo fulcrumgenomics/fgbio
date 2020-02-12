@@ -129,6 +129,7 @@ class RefFlatSource private(lines: Iterator[String],
       val exonCount      = row[Int]("exonCount")
       val exonStarts     = row[String]("exonStarts").split(',').filter(_.nonEmpty).map(_.toInt)
       val exonEnds       = row[String]("exonEnds").split(',').filter(_.nonEmpty).map(_.toInt)
+      val isNegative     = strand == "-"
 
       if (dict.exists(_.getSequence(contig) == null)) { // skip unrecognized sequences
         None
@@ -138,13 +139,18 @@ class RefFlatSource private(lines: Iterator[String],
         require(exonEnds.length == exonCount, s"Number of exonEnds does not equal exonCount for $geneName/$transcriptName")
 
         // Convert from 0-based half-open to 1-based inclusive intervals.
+        val exons = {
+          val tmp = exonStarts.iterator.zip(exonEnds.iterator).map { case (s, e) => Exon(start=s + 1, end=e) }.toIndexedSeq
+          if (isNegative) tmp.sortBy(e => -e.start) else tmp.sortBy(_.start)
+        }
+
         val transcript = Transcript(
           name     = transcriptName,
           start    = row[Int]("txStart") + 1,
           end      = row[Int]("txEnd"),
           cdsStart = row[Int]("cdsStart") + 1,
           cdsEnd   = row[Int]("cdsEnd"),
-          exons    = exonStarts.iterator.zip(exonEnds.iterator).map { case (s, e) => Exon(start=s + 1, end=e) }.toIndexedSeq
+          exons    = exons
         )
 
         val gene = Gene(
@@ -190,7 +196,7 @@ class RefFlatSource private(lines: Iterator[String],
         Gene(
           contig         = contig,
           start          = transcripts.map(_.start).min,
-          end            = transcripts.map(_.end).min,
+          end            = transcripts.map(_.end).max,
           negativeStrand = negativeStrand,
           name           = name,
           transcripts    = transcripts
