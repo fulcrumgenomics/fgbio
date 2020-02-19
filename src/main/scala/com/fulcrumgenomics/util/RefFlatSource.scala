@@ -29,9 +29,10 @@ import java.io.{Closeable, File, InputStream}
 
 import com.fulcrumgenomics.commons.CommonsDef.FilePath
 import com.fulcrumgenomics.commons.util.{DelimitedDataParser, LazyLogging}
-import com.fulcrumgenomics.util.GeneAnnotations.{Exon, Gene, Transcript}
+import com.fulcrumgenomics.util.GeneAnnotations.{Exon, Gene, GeneLocus, Transcript}
 import htsjdk.samtools.SAMSequenceDictionary
 
+import scala.collection.mutable.ArrayBuffer
 import scala.io.Source
 
 object RefFlatSource {
@@ -122,13 +123,13 @@ class RefFlatSource private(lines: Iterator[String],
     var numDifferentStrands     = 0
     var numTranscripts          = 0
     val _genes = new DelimitedDataParser(lines=_lines, delimiter='\t').flatMap { row =>
-      val geneName       = row[String]("geneName")
-      val transcriptName = row[String]("name")
-      val contig         = row[String]("chrom")
-      val strand         = row[String]("strand")
-      val exonCount      = row[Int]("exonCount")
-      val exonStarts     = row[String]("exonStarts").split(',').filter(_.nonEmpty).map(_.toInt)
-      val exonEnds       = row[String]("exonEnds").split(',').filter(_.nonEmpty).map(_.toInt)
+      val geneName       = row.string("geneName")
+      val transcriptName = row.string("name")
+      val contig         = row.string("chrom")
+      val strand         = row.string("strand")
+      val exonCount      = row.string("exonCount").toInt
+      val exonStarts     = row.string("exonStarts").split(',').filter(_.nonEmpty).map(_.toInt)
+      val exonEnds       = row.string("exonEnds").split(',').filter(_.nonEmpty).map(_.toInt)
       val isNegative     = strand == "-"
 
       if (dict.exists(_.getSequence(contig) == null)) { // skip unrecognized sequences
@@ -144,63 +145,44 @@ class RefFlatSource private(lines: Iterator[String],
           if (isNegative) tmp.sortBy(e => -e.start) else tmp.sortBy(_.start)
         }
 
+        // Detect where there is no coding region and set cds start and end appropriately
+        val (cdsStart, cdsEnd) = (row[Int]("cdsStart"), row[Int]("cdsEnd")) match {
+          case (s, e) if s == e => (None, None)
+          case (s, e)           => (Some(s+1), Some(e))
+        }
+
         val transcript = Transcript(
-          name     = transcriptName,
-          start    = row[Int]("txStart") + 1,
-          end      = row[Int]("txEnd"),
-          cdsStart = row[Int]("cdsStart") + 1,
-          cdsEnd   = row[Int]("cdsEnd"),
-          exons    = exons
+          name           = transcriptName,
+          chrom          = contig,
+          start          = row[Int]("txStart") + 1,
+          end            = row[Int]("txEnd"),
+          cdsStart       = cdsStart,
+          cdsEnd         = cdsEnd,
+          negativeStrand = isNegative,
+          exons          = exons
         )
 
-        val gene = Gene(
-          contig         = contig,
-          start          = -1,
-          end            = -1,
-          negativeStrand = strand == "-",
-          name           = geneName,
-          transcripts    = Seq(transcript)
-        )
-
-        Some(gene)
+        val geneLocus = GeneLocus(Seq(transcript))
+        Some(Gene(name=geneName, loci=Seq(geneLocus)))
       }
     }
       .toSeq
       .groupBy(_.name)
       .map { case (name, _genes) =>
-        val contig         = _genes.head.contig
-        val negativeStrand = _genes.head.negativeStrand
+        // Group the transcripts into groups that are:
+        //   - On the same chromosome
+        //   - One the same strand
+        //   - Overlap at least one other transcript in the same group
+        val groups = new ArrayBuffer[ArrayBuffer[Transcript]]()
 
-        val transcripts = _genes.flatMap { gene =>
-          require(gene.transcripts.length == 1, s"Found more than one transcript for gene ${gene.name}.")
-          if (gene.contig != contig) {
-            val transcript = gene.head
-            numDifferentChromosomes += 1
-            logger.info(s"Filtering out transcript '${transcript.name}' for gene ${gene.name}' due to being on a different chromosomes (${gene.contig}) than the first transcript seen ($contig).")
-            None
-          }
-          else if (gene.negativeStrand != negativeStrand) {
-            val transcript = gene.head
-            val originalStrand = if (negativeStrand)      "-" else "+"
-            val currentStrand  = if (gene.negativeStrand) "-" else "+"
-            numDifferentStrands += 1
-            logger.info(s"Filtering out transcript '${transcript.name}' for gene ${gene.name}' due to being on a different strand ($currentStrand) than the first transcript seen ($originalStrand).")
-            None
-          }
-          else {
-            numTranscripts += 1
-            gene.transcripts
+        _genes.flatMap(_.iterator).sortBy(tx => -tx.lengthOnGenome).foreach { tx =>
+          groups.find { group => group.exists(t => t.negativeStrand == tx.negativeStrand && t.overlaps(tx)) } match {
+            case Some(group) => group += tx
+            case None        => groups += ArrayBuffer(tx)
           }
         }
 
-        Gene(
-          contig         = contig,
-          start          = transcripts.map(_.start).min,
-          end            = transcripts.map(_.end).max,
-          negativeStrand = negativeStrand,
-          name           = name,
-          transcripts    = transcripts
-        )
+        Gene(name=name, loci=groups.map(g => GeneLocus(g.toSeq)).toSeq)
       }
 
     logger.info(f"Filtered out $numDifferentChromosomes out of $numTranscripts (${numDifferentChromosomes/numTranscripts.toDouble*100}%.2f%%) transcript(s) due to being on a different chromosome.")

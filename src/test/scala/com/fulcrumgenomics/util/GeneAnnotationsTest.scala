@@ -34,6 +34,6 @@ class GeneAnnotationsTest extends UnitSpec {
   }
 
   "GeneAnnotations.Transcript" should "fail if exons overlap" in {
-    an[Exception] should be thrownBy Transcript("", 0, 0, 0, 0, Seq(Exon(1,10), Exon(10, 20)))
+    an[Exception] should be thrownBy Transcript("tx", "chr1", 1, 20, None, None, negativeStrand=false, exons=Seq(Exon(1,10), Exon(10, 20)))
   }
 }

@@ -31,8 +31,8 @@ import com.fulcrumgenomics.bam.api.SamRecord
 import com.fulcrumgenomics.commons.io.PathUtil
 import com.fulcrumgenomics.testing.SamBuilder._
 import com.fulcrumgenomics.testing.{SamBuilder, UnitSpec}
-import com.fulcrumgenomics.util.GeneAnnotations.{Exon, Gene, Transcript}
-import com.fulcrumgenomics.util.{Io, Metric}
+import com.fulcrumgenomics.util.GeneAnnotations.{Exon, Gene, GeneLocus, Transcript}
+import com.fulcrumgenomics.util.{GeneAnnotations, Io, Metric}
 import htsjdk.samtools.SamPairUtil.PairOrientation
 import org.scalatest.OptionValues
 
@@ -46,7 +46,7 @@ class EstimateRnaSeqInsertSizeTest extends UnitSpec with OptionValues {
     val mateAlignmentEnd = EstimateRnaSeqInsertSize.mateAlignmentEndFrom(mateCigar, rec.mateStart)
     EstimateRnaSeqInsertSize.insertSizeFromGene(
       rec              = rec,
-      gene             = gene,
+      gene             = gene.loci.head,
       minimumOverlap   = minimumOverlap,
       recInterval      = EstimateRnaSeqInsertSize.intervalFrom(rec=rec, mateAlignmentEnd=mateAlignmentEnd),
       recBlocks        = rec.asSam.getAlignmentBlocks.toList,
@@ -65,7 +65,7 @@ class EstimateRnaSeqInsertSizeTest extends UnitSpec with OptionValues {
     def estimate(rec: SamRecord, transcript: Transcript) =  EstimateRnaSeqInsertSize.numReadBasesOverlappingTranscript(rec.asSam.getAlignmentBlocks.toList, transcript)
 
     // many .value calls here, I know
-    val transcript = Transcript("", 2, 10, 2, 10, exons=Seq(Exon(2,2), Exon(4,4), Exon(11, 11)))
+    val transcript = Transcript("tx", "chr1", 2, 10, Some(2), Some(10), negativeStrand=false, exons=Seq(Exon(2,2), Exon(4,4), Exon(11, 11)))
     val builder    = new SamBuilder(readLength=10)
 
     // simple matches
@@ -93,7 +93,7 @@ class EstimateRnaSeqInsertSizeTest extends UnitSpec with OptionValues {
     def estimate(rec: SamRecord, transcript: Transcript) = insertSizeFromTranscript(rec, transcript, mateAlignmentEnd(rec))
 
     // many .value calls here, I know
-    val transcript = Transcript("", 2, 10, 2, 10, exons=Seq(Exon(2,2), Exon(4,4), Exon(11, 11)))
+    val transcript = Transcript("tx", "chr1", 2, 10, Some(2), Some(10), negativeStrand=false, exons=Seq(Exon(2,2), Exon(4,4), Exon(11, 11)))
     val builder    = new SamBuilder(readLength=5)
 
     // Overlaps all three exons
@@ -120,8 +120,8 @@ class EstimateRnaSeqInsertSizeTest extends UnitSpec with OptionValues {
   }
 
   it should "return a value if the record overlaps a gene" in {
-    val transcript = Transcript("example_transcript", 10, 20, 10, 20, exons=Seq(Exon(10,10), Exon(14,14), Exon(20,20)))
-    val gene       = Gene(contig="chr1", start=10, end=20, negativeStrand=false, name="", transcripts=Seq(transcript))
+    val transcript = Transcript("example_transcript", "chr1", 10, 20, Some(10), Some(20), negativeStrand=false, exons=Seq(Exon(10,10), Exon(14,14), Exon(20,20)))
+    val gene       = Gene(name="", loci=Seq(GeneLocus(Seq(transcript))))
     val builder    = new SamBuilder(readLength=5)
 
     ///////////////////////////////////////////////////////
@@ -152,8 +152,8 @@ class EstimateRnaSeqInsertSizeTest extends UnitSpec with OptionValues {
   }
 
   it should "not return a value if there is too little overlap" in {
-    val transcript = Transcript("example_transcript", 10, 20, 10, 20, exons=Seq(Exon(10,10), Exon(20, 20)))
-    val gene       = Gene(contig="chr1", start=10, end=20, negativeStrand=false, name="", transcripts=Seq(transcript))
+    val transcript = Transcript("example_transcript", "chr1", 10, 20, Some(10), Some(20), negativeStrand=false, exons=Seq(Exon(10,10), Exon(20, 20)))
+    val gene       = Gene(name="", loci=Seq(GeneLocus(Seq(transcript))))
     val builder    = new SamBuilder(readLength=5)
 
     builder.addPair(start1=10, start2=16, strand1=Plus, strand2=Minus)  foreach { rec => testInsertSizeFromGene(rec, gene, 0.0).value shouldBe 2 }
@@ -164,9 +164,9 @@ class EstimateRnaSeqInsertSizeTest extends UnitSpec with OptionValues {
   }
 
   it should "not return a value if the insert size disagrees across two transcripts" in {
-    val transcriptA = Transcript("example_transcript_A", 10, 20, 10, 20, exons=Seq(Exon(10,10), Exon(20, 20)))
-    val transcriptB = Transcript("example_transcript_B", 10, 20, 10, 20, exons=Seq(Exon(10,10), Exon(19, 20))) // one longer than A
-    val gene        = Gene(contig="chr1", start=10, end=20, negativeStrand=false, name="", transcripts=Seq(transcriptA, transcriptB))
+    val transcriptA = Transcript("example_transcript_A", "chr1", 10, 20, Some(10), Some(20), negativeStrand=false, exons=Seq(Exon(10,10), Exon(20, 20)))
+    val transcriptB = Transcript("example_transcript_B", "chr1", 10, 20, Some(10), Some(20), negativeStrand=false, exons=Seq(Exon(10,10), Exon(19, 20))) // one longer than A
+    val gene         = Gene(name="", loci=Seq(GeneLocus(Seq(transcriptA, transcriptB))))
     val builder     = new SamBuilder(readLength=5)
 
     builder.addPair(start1=10, start2=16, strand1=Plus, strand2=Minus)  foreach { rec => testInsertSizeFromGene(rec, gene, 0.0).isEmpty shouldBe true }
