@@ -125,7 +125,7 @@ class RefFlatSource private(lines: Iterator[String],
     val _genes = new DelimitedDataParser(lines=_lines, delimiter='\t').flatMap { row =>
       val geneName       = row.string("geneName")
       val transcriptName = row.string("name")
-      val contig         = row.string("chrom")
+      val contig         = row.string("chrom").intern()
       val strand         = row.string("strand")
       val exonCount      = row.string("exonCount").toInt
       val exonStarts     = row.string("exonStarts").split(',').filter(_.nonEmpty).map(_.toInt)
