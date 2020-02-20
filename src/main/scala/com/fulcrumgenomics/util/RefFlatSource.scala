@@ -119,9 +119,6 @@ class RefFlatSource private(lines: Iterator[String],
 
 
     // Each line is a gene and transcript.  We want to group all transcripts from the same gene.
-    var numDifferentChromosomes = 0
-    var numDifferentStrands     = 0
-    var numTranscripts          = 0
     val _genes = new DelimitedDataParser(lines=_lines, delimiter='\t').flatMap { row =>
       val geneName       = row.string("geneName")
       val transcriptName = row.string("name")
@@ -184,9 +181,6 @@ class RefFlatSource private(lines: Iterator[String],
 
         Gene(name=name, loci=groups.map(g => GeneLocus(g.toSeq)).toSeq)
       }
-
-    logger.info(f"Filtered out $numDifferentChromosomes out of $numTranscripts (${numDifferentChromosomes/numTranscripts.toDouble*100}%.2f%%) transcript(s) due to being on a different chromosome.")
-    logger.info(f"Filtered out $numDifferentStrands out of $numTranscripts (${numDifferentStrands/numTranscripts.toDouble*100}%.2f%%) transcript(s) due to being on a different strands.")
 
     _genes
   }
