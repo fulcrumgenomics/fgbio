@@ -34,6 +34,7 @@ object GeneAnnotations {
     * A gene with a collection of gene loci.
     */
   case class Gene(name: String, loci: Seq[GeneLocus]) extends Iterable[Transcript] {
+    /** Iterate over all transcripts from all GeneLoci (each a collection of transcripts). */
     def iterator: Iterator[Transcript] = this.loci.iterator.flatten
 
     /** Returns the locus with the maximum transcript mappings. */
@@ -51,16 +52,16 @@ object GeneAnnotations {
     require(transcripts.forall(t => t.chrom == transcripts.head.chrom))
     require(transcripts.forall(t => t.negativeStrand == transcripts.head.negativeStrand))
 
-    val chrom: String = transcripts.head.chrom
-    val start: Int = transcripts.minBy(_.start).start
-    val end:   Int = transcripts.maxBy(_.end).end
+    val chrom: String           = transcripts.head.chrom
+    val start: Int              = transcripts.minBy(_.start).start
+    val end:   Int              = transcripts.maxBy(_.end).end
     val negativeStrand: Boolean = transcripts.head.negativeStrand
     def positiveStrand: Boolean = !negativeStrand
 
     // Locatable implementation
     override def getContig: String = chrom
-    override def getStart: Int = start
-    override def getEnd: Int = end
+    override def getStart: Int     = start
+    override def getEnd: Int       = end
 
     override def iterator: Iterator[Transcript] = this.transcripts.iterator
   }
@@ -74,8 +75,8 @@ object GeneAnnotations {
                         chrom: String,
                         start: Int,
                         end: Int,
-                        cdsStart: Option[Int],
-                        cdsEnd: Option[Int],
+                        cdsStart: Option[Int] = None,
+                        cdsEnd: Option[Int]   = None,
                         negativeStrand: Boolean,
                         exons: Seq[Exon]) extends Locatable {
     if (exons.length > 1) {
