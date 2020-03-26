@@ -37,12 +37,19 @@ class NcbiRefSeqGffSourceTest extends UnitSpec with OptionValues {
   // Excerpted from https://ftp.ncbi.nlm.nih.gov/genomes/refseq/vertebrate_mammalian/Homo_sapiens/latest_assembly_versions/GCF_000001405.39_GRCh38.p13/GCF_000001405.39_GRCh38.p13_genomic.gff.gz
   private val GffFile = Paths.get("src/test/resources/com/fulcrumgenomics/util/human.gff.gz")
 
-  private val DictChr1 = new SAMSequenceDictionary(Collections.singletonList(new SAMSequenceRecord("chr1", 249250621)))
-  private val DictChr2 = new SAMSequenceDictionary(Collections.singletonList(new SAMSequenceRecord("chr2", 249250621)))
+  private val Chr1 = new SAMSequenceRecord("chr1", 249250621)
+  Chr1.setAttribute("AN", "1,NC_000001.11")
+
+  private val AltChr1 = new SAMSequenceRecord("1", 249250621)
+  AltChr1.setAttribute("AN", "chr1,NC_000001.11")
+
+  private val DictEmpty = new SAMSequenceDictionary(Collections.emptyList())
+  private val DictChr1  = new SAMSequenceDictionary(Collections.singletonList(Chr1))
+  private val DictAlt1  = new SAMSequenceDictionary(Collections.singletonList(AltChr1))
 
 
-  "NcbiRefSeqSource" should "load all genes" in {
-    val source = NcbiRefSeqGffSource(GffFile, includeXs=true, dict=None)
+  "NcbiRefSeqSource" should "auto-map the accession to chr1 when given an empty sequence dictionary" in {
+    val source = NcbiRefSeqGffSource(GffFile, includeXs=true, dict=DictEmpty)
     source should have size 7
 
     // Pseudo-gene should not have been included
@@ -94,17 +101,25 @@ class NcbiRefSeqGffSourceTest extends UnitSpec with OptionValues {
   }
 
   it should "still load all genes when given a dictionary that has all the used chroms in it" in {
-    val source = NcbiRefSeqGffSource(GffFile, includeXs=true, dict=Some(DictChr1))
+    val source = NcbiRefSeqGffSource(GffFile, includeXs=true, dict=DictChr1)
     source should have size 7
+    for (gene <- source; locus <- gene.loci; tx <- locus) {
+      locus.chrom shouldBe "chr1"
+      tx.chrom shouldBe "chr1"
+    }
   }
 
-  it should "filter everything out when chr1 isn't in the dictionary" in {
-    val source = NcbiRefSeqGffSource(GffFile, includeXs=true, dict=Some(DictChr2))
-    source should have size 0
+  it should "map the chromosome name using the dictionary" in {
+    val source = NcbiRefSeqGffSource(GffFile, includeXs=true, dict=DictAlt1)
+    source should have size 7
+    for (gene <- source; locus <- gene.loci; tx <- locus) {
+      locus.chrom shouldBe "1"
+      tx.chrom shouldBe "1"
+    }
   }
 
   it should "exclude experimental transcripts (and genes with only exp transcripts)" in {
-    val source = NcbiRefSeqGffSource(GffFile, includeXs=false, dict=None)
+    val source = NcbiRefSeqGffSource(GffFile, includeXs=false, dict=DictChr1)
     source should have size 5
 
     for (gene <- source; locus <- gene.loci; tx <- locus) {

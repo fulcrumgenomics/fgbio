@@ -30,10 +30,9 @@ import com.fulcrumgenomics.FgBioDef._
 import com.fulcrumgenomics.commons.collection.BetterBufferedIterator
 import com.fulcrumgenomics.commons.util.LazyLogging
 import com.fulcrumgenomics.util.GeneAnnotations.{Exon, Gene, GeneLocus, Transcript}
-import htsjdk.samtools.SAMSequenceDictionary
+import htsjdk.samtools.{SAMSequenceDictionary, SAMSequenceRecord}
 
 import scala.collection.mutable
-import scala.collection.mutable.ArrayBuffer
 
 /**
   * Companion object for [[NcbiRefSeqGffSource]] which provides factory methods for parsing RefSeq GFF
@@ -43,16 +42,6 @@ import scala.collection.mutable.ArrayBuffer
   *   https://ftp.ncbi.nlm.nih.gov/genomes/refseq/vertebrate_mammalian/Macaca_fascicularis/latest_assembly_versions/GCF_000364345.1_Macaca_fascicularis_5.0/GCF_000364345.1_Macaca_fascicularis_5.0_genomic.gff.gz
   */
 object NcbiRefSeqGffSource {
-  /** Represents a line in the GFF that represents a chromosome. This is necessary because all
-    * lines in the RefSeq GFF refer to a genbank accession for the chromosome, and the
-    * chromosome lines in the file are needed to decode this back to a chromosome name.
-    *
-    * @param accession the accession of the chromosome
-    * @param length the length of the chromosome
-    * @param name the name (e.g. chr1, chrX) of the chromosome
-    */
-  private case class Chrom(accession: String, length: Int, name: String) {}
-
   /** Represents a generic GFF feature with it's fixed set of fields (minus score).
     *
     * @param accession the accession of the sequence on which the feature is found
@@ -71,9 +60,6 @@ object NcbiRefSeqGffSource {
     /** Gets a dynamic attribute by name. Throws an exception if the attribute is not present. */
     def apply(name: String): String = this.attributes(name)
 
-    /** Gets a dynamic attribute by name. Returns `Some(value)` if present and `None` if not present. */
-    def get(name: String): Option[String] = this.attributes.get(name)
-
     /** Returns `true` if the dynamic attribute exists on this record, `false` otherwise. */
     def has(name: String): Boolean = this.attributes.contains(name)
 
@@ -84,7 +70,7 @@ object NcbiRefSeqGffSource {
       * but is for all sub-features of genes. Genes parent transcripts and transcript-like entries, transcripts
       * parent exons and CDS records.
       */
-    def parentId: Option[String] = this.get("Parent")
+    def parentId: Option[String] = this.attributes.get("Parent")
 
     /** Returns the name of this record. All record types we parse have names, but not every GFF record has a name. */
     def name: String = this("Name")
@@ -94,44 +80,68 @@ object NcbiRefSeqGffSource {
     *
     * @param lines the lines to parse
     * @param includeXs whether to include experimental transcripts (i.e. XM_* XP_* and XR_*).
+    * @param dict a sequence dictionary used to help resolve accessions used in the GFF
     * @return an instance of [[NcbiRefSeqGffSource]] that can be queried for contents
     */
-  def apply(lines: Iterator[String], includeXs: Boolean, dict: Option[SAMSequenceDictionary]): NcbiRefSeqGffSource =
+  def apply(lines: Iterator[String], includeXs: Boolean, dict: SAMSequenceDictionary): NcbiRefSeqGffSource =
     new NcbiRefSeqGffSource(lines, includeXs, dict)
 
   /** Parses a RefSeq GFF file from a collection of lines of text.
     *
     * @param lines the lines to parse
     * @param includeXs whether to include experimental transcripts (i.e. XM_* XP_* and XR_*).
+    * @param dict a sequence dictionary used to help resolve accessions used in the GFF
     * @return an instance of [[NcbiRefSeqGffSource]] that can be queried for contents
     */
-  def apply(lines: IterableOnce[String], includeXs: Boolean, dict: Option[SAMSequenceDictionary]): NcbiRefSeqGffSource =
+  def apply(lines: IterableOnce[String], includeXs: Boolean, dict: SAMSequenceDictionary): NcbiRefSeqGffSource =
     NcbiRefSeqGffSource(lines.iterator, includeXs, dict)
 
   /** Parses a RefSeq GFF file from an (optionally gzipped) text file.
     *
     * @param path the path to the file to parse
     * @param includeXs whether to include experimental transcripts (i.e. XM_* XP_* and XR_*).
+    * @param dict a sequence dictionary used to help resolve accessions used in the GFF
     * @return an instance of [[NcbiRefSeqGffSource]] that can be queried for contents
     */
-  def apply(path: FilePath, includeXs: Boolean, dict: Option[SAMSequenceDictionary]): NcbiRefSeqGffSource =
+  def apply(path: FilePath, includeXs: Boolean, dict: SAMSequenceDictionary): NcbiRefSeqGffSource =
     NcbiRefSeqGffSource(Io.readLines(path), includeXs, dict)
 }
 
 
 /** Queryable object that contains gene/transcript/exon information parsed from a RefSeq GFF file.
   *
+  * One notable complication in parsing RefSeq GFF files is that they refer to chromosomes/contigs by NCBI
+  * accessions rather than by more common names (e.g. chr1).  The accessions are translated such that the returned
+  * records use common contig names.  The `dict` parameter is the preferred way to do this.  Ideally a dictionary
+  * should be provided with accessions as sequence aliases, e.g.:
+  *
+  *   @SQ     SN:chr1 LN:248956422    M5:2648ae1bacce4ec4b6cf337dcae37816     AS:hg38 AN:NC_000001.11
+  *
+  * This will allow the chromosome to be looked up by accession and resolved to it's common name without any
+  * other assumptions.  If an accession in the GFF is not found in the sequence dictionary it will be handled as
+  * follows:
+  *
+  *   - NC_* accessions with name MT in the GFF are translated to chrM
+  *   - NC_* accessions other than MT are automatically mapped to "chr{chromsome-number}"
+  *   - Other accessions/contigs are skipped
+  *
   * @param lines the GFF lines to parse
   * @param includeXs whether to include experimental transcripts (i.e. XM_* XP_* and XR_*).
-  * @param dict an optional sequence dictionary which, if provided, to use to limit the set of chromosomes
-  *             to process
+  * @param dict a sequence dictionary used to help resolve accessions in the accessions in the GFF
   */
 class NcbiRefSeqGffSource private(lines: Iterator[String],
                                   val includeXs: Boolean,
-                                  val dict: Option[SAMSequenceDictionary] = None) extends Iterable[Gene] with LazyLogging {
+                                  val dict: SAMSequenceDictionary) extends Iterable[Gene] with LazyLogging {
   import NcbiRefSeqGffSource._
 
-  private val chroms = new ArrayBuffer[Chrom]()
+  // Construct a lookup from the sequence dictionary that includes all the aliases as well as primary names
+  private val sequenceLookup: Map[String, SAMSequenceRecord] = dict.getSequences.iterator().flatMap { s =>
+    s.getAttribute("AN") match {
+      case null    => Seq(s.getSequenceName -> s)
+      case aliases => (s.getSequenceName +: aliases.split(',').toSeq).map(name => name -> s)
+    }
+  }.toMap
+
   private val genes  = mutable.LinkedHashMap[String,Gene]()
 
   /** NOTE about the structure of the RefSeq GFF files.
@@ -148,62 +158,70 @@ class NcbiRefSeqGffSource private(lines: Iterator[String],
     * Thus the parsing takes place top-down by a) scanning for the next line of the expected type
     * and then b) attempting to parse that line and it's children.
     */
-
   private val _bufferedLines = lines.bufferBetter
 
-  val genomeBuild: Option[String] = {
-    // Make an iterator of generic GFF records that is buffered so we can peek at the next rec
-    val headerLines = _bufferedLines.takeWhile(_.startsWith("#")).toIndexedSeq
-    headerLines.find(_.startsWith("#!genome-build")).map { l => l.split("""\s+""")(1) }
-  }
+  /** The genome build declared in the header of the GFF. */
+  val genomeBuild: Option[String] = _bufferedLines.find(_.startsWith("#!genome-build")).map(_.split(' ')(1))
 
   {
     val iter = _bufferedLines.filter(l => !l.startsWith("#")).map { line =>
-      val fs = line.split('\t')
-      GffRecord(fs(0), fs(1), fs(2), int(fs(3)), int(fs(4)), fs(6) == "-", if (fs(7) == ".") -1 else int(fs(7)), fs(8))
+      val fields = line.split('\t')
+      GffRecord(
+        accession = fields(0),
+        source    = fields(1),
+        kind      = fields(2),
+        start     = int(fields(3)),
+        end       = int(fields(4)),
+        negative  = fields(6) == "-",
+        frame     = if (fields(7) == ".") -1 else int(fields(7)),
+        attrs     = fields(8))
     }.bufferBetter
 
     while (iter.nonEmpty) {
       // Scan for the next chromosome record, discard any other records along the way
-      iter.find(rec => rec.kind == "region" && rec.accession.startsWith("NC_")) match {
+      iter.find(rec => rec.kind == "region") match {
         case None =>
           () // Indicates we've hit the end of the file
         case Some(rec) =>
-          val chrom = Chrom(rec.accession, rec.end, if (rec.name == "MT") "chrM" else "chr" + rec.name)
-
-          if (this.dict.exists(sd => sd.getSequence(chrom.name) == null)) {
-            iter.dropWhile(_.accession == chrom.accession)
+          val chromName = this.sequenceLookup.get(rec.accession) match {
+            case Some(sequence)                          => Some(sequence.getSequenceName)
+            case None if rec.name == "MT"                => Some("chrM")
+            case None if rec.accession.startsWith("NC_") => Some("chr" + rec.name)
+            case None                                    => None
           }
-          else {
-            chroms += chrom
 
-            // Build a sub-iterator that stops at the end of this chromosome
-            val chromIter = iter.takeWhile(_.accession == chrom.accession)
+          chromName match {
+            case None =>
+              logger.debug(s"Skipping records for reference sequence accession ${rec.accession}")
+              iter.dropWhile(_.accession == rec.accession)
+            case Some(chrom) =>
+              // Build a sub-iterator that stops at the end of this chromosome
+              val chromIter = iter.takeWhile(_.accession == rec.accession)
 
-            // Run through the chromosome's records, parsing out genes
-            chromIter.foreach { rec =>
-              if (rec.kind == "gene") {
-                try {
-                  parseGene(chrom.name, rec, iter).foreach { gene =>
-                    this.genes.get(gene.name) match {
-                      case None =>
-                        this.genes.put(gene.name, gene)
-                      case Some(existing) =>
-                        logger.debug(s"Adding second locus for $gene.")
-                        this.genes.put(gene.name, existing.copy(loci = existing.loci ++ gene.loci))
+              // Run through the chromosome's records, parsing out genes
+              chromIter.foreach { rec =>
+                if (rec.kind == "gene") {
+                  try {
+                    parseGene(chrom, rec, iter).foreach { gene =>
+                      this.genes.get(gene.name) match {
+                        case None =>
+                          this.genes.put(gene.name, gene)
+                        case Some(existing) =>
+                          logger.debug(s"Adding second locus for $gene.")
+                          this.genes.put(gene.name, existing.copy(loci = existing.loci ++ gene.loci))
+                      }
                     }
                   }
-                }
-                catch {
-                  case ex: Exception => logger.error(s"Error parsing gene: $rec"); throw ex
+                  catch {
+                    case ex: Exception => logger.error(s"Error parsing gene: $rec"); throw ex
+                  }
                 }
               }
-            }
           }
       }
     }
   }
-  logger.debug(s"Loaded ${genes.size} genes across ${chroms.size} chromosomes.")
+  logger.debug(s"Loaded ${genes.size} genes.")
 
   /**
     * Parses a single gene and all of it's sub-features from the iterator. After invoking this method
