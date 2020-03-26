@@ -93,7 +93,7 @@ object NcbiRefSeqGffSource {
     * @param dict a sequence dictionary used to help resolve accessions used in the GFF
     * @return an instance of [[NcbiRefSeqGffSource]] that can be queried for contents
     */
-  def apply(lines: IterableOnce[String], includeXs: Boolean, dict: SAMSequenceDictionary): NcbiRefSeqGffSource =
+  def apply(lines: Iterable[String], includeXs: Boolean, dict: SAMSequenceDictionary): NcbiRefSeqGffSource =
     NcbiRefSeqGffSource(lines.iterator, includeXs, dict)
 
   /** Parses a RefSeq GFF file from an (optionally gzipped) text file.
