@@ -45,6 +45,7 @@ private case class TestMetricWithDouble(foo: String, bar: Double, option: Option
 
 private case class TestDoubleMetric(d: Double) extends Metric
 private case class TestFloatMetric(f: Float) extends Metric
+private case class TestCharMetric(c: Char) extends Metric
 
 /**
   * Tests for Metric.
@@ -246,6 +247,18 @@ class MetricTest extends UnitSpec with OptionValues with TimeLimits {
   it should "be iterable over tuples of names and values" in {
     val testMetric = TestMetric(foo="fooValue", bar=1)
     testMetric.iterator.toSeq should contain theSameElementsInOrderAs Seq(("foo", "fooValue"), ("bar", "1"), ("car", "default"))
+  }
+
+  it should "read and write a char" in {
+    val path = makeTempFile("char_test", ".txt")
+
+    Seq('X', '$', 'a').foreach { c => 
+      val expected = TestCharMetric(c=c)
+      Metric.write(path, expected)
+      val actual = Metric.read[TestCharMetric](path)
+      actual should have size 1
+      actual.head shouldEqual expected
+    }
   }
 
   it should "write and read special values for Double and Float" in {
