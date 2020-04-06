@@ -32,53 +32,15 @@ import java.text.DecimalFormat
 import com.fulcrumgenomics.bam.api.{SamSource, SamWriter}
 import com.fulcrumgenomics.cmdline.FgBioMain.FailureException
 import com.fulcrumgenomics.commons.CommonsDef._
+import com.fulcrumgenomics.commons.util.SystemUtil.IntelCompressionLibrarySupported
 import com.fulcrumgenomics.commons.util.{LazyLogging, LogLevel, Logger}
-import com.fulcrumgenomics.sopt.{Sopt, arg}
 import com.fulcrumgenomics.sopt.cmdline.CommandLineProgramParserStrings
+import com.fulcrumgenomics.sopt.{Sopt, arg}
 import com.fulcrumgenomics.util.Io
 import com.fulcrumgenomics.vcf.api.VcfWriter
 import com.intel.gkl.compression.{IntelDeflaterFactory, IntelInflaterFactory}
-import htsjdk.samtools.{SAMFileWriterFactory, ValidationStringency}
+import htsjdk.samtools.ValidationStringency
 import htsjdk.samtools.util.{BlockCompressedOutputStream, BlockGunzipper, IOUtil, SnappyLoader}
-
-
-/** A little class so that we don't have to rely on SystemUtils from org.apache.commons:commons-lang3. */
-private[cmdline] object SystemUtils {
-  /** The OS name prefixes for Linux */
-  private val LinuxNamePrefixes: Seq[String] = Seq("Linux", "LINUX")
-  /** The OS name prefixes for Mac */
-  private val MacNamePrefixes: Seq[String]   = Seq("Mac")
-  /** The current OS name. */
-  private val OsName: Option[String]         = getSystemProperty("os.name")
-  /** The current OS architecture */
-  private val OsArch: Option[String]         = getSystemProperty("os.arch")
-  /** The current OS version */
-  private val OsVersion: Option[String]      = getSystemProperty("os.version")
-
-  /** Gets a system property.  Returns None if not found or not allowed to look at. */
-  private def getSystemProperty(property: String): Option[String] = {
-    try {
-      Option(System.getProperty(property))
-    } catch { case _: SecurityException => None } // not allowed to look at this property
-  }
-
-  /** True if this OS is Linux, false otherwise. */
-  private val IsOsLinux: Boolean = LinuxNamePrefixes.exists(prefix => OsName.exists(_.startsWith(prefix)))
-  /** True if this OS is Mac, false otherwise. */
-  private val IsOsMac: Boolean   = MacNamePrefixes.exists(prefix => OsName.exists(_.startsWith(prefix)))
-  /** Returns true if the architecture is the given name, false otherwise. */
-  private def IsOsArch(name: String): Boolean = OsArch.contains(name)
-  /** Returns true if the operating system version starts with the given version string, false otherwise. */
-  private def IsOsVersion(prefix: String): Boolean = OsVersion.exists(_.startsWith(prefix))
-
-  /** True if the current system supports the Intel Inflater and Deflater, false otherwise. */
-  val IntelCompressionLibrarySupported: Boolean = {
-    if (!SystemUtils.IsOsLinux && !SystemUtils.IsOsMac) false
-    else if (SystemUtils.IsOsArch("ppc64le")) false
-    else if (SystemUtils.IsOsMac && SystemUtils.IsOsVersion("10.14.")) false // FIXME: https://github.com/Intel-HLS/GKL/issues/101
-    else true
-  }
-}
 
 /**
   * Main program for fgbio that loads everything up and runs the appropriate sub-command
@@ -129,7 +91,7 @@ class FgBioMain extends LazyLogging {
     htsjdk.samtools.util.Log.setGlobalLogLevel(htsjdk.samtools.util.Log.LogLevel.WARNING)
 
     // Use the Intel Inflater/Deflater if available
-    if (SystemUtils.IntelCompressionLibrarySupported) {
+    if (IntelCompressionLibrarySupported) {
       BlockCompressedOutputStream.setDefaultDeflaterFactory(new IntelDeflaterFactory)
       BlockGunzipper.setDefaultInflaterFactory(new IntelInflaterFactory)
     }
@@ -181,8 +143,8 @@ class FgBioMain extends LazyLogging {
     val user       = System.getProperty("user.name")
     val jreVersion = System.getProperty("java.runtime.version")
     val snappy     = if (new SnappyLoader().isSnappyAvailable) "with snappy" else "without snappy"
-    val inflater   = if (SystemUtils.IntelCompressionLibrarySupported) "IntelInflater" else "JdkInflater"
-    val deflater   = if (SystemUtils.IntelCompressionLibrarySupported) "IntelDeflater" else "JdkDeflater"
+    val inflater   = if (IntelCompressionLibrarySupported) "IntelInflater" else "JdkInflater"
+    val deflater   = if (IntelCompressionLibrarySupported) "IntelDeflater" else "JdkDeflater"
     logger.info(s"Executing $tool from $name version $version as $user@$host on JRE $jreVersion $snappy, $inflater, and $deflater")
   }
 

@@ -1,5 +1,6 @@
 JeanLuc.iml
 .idea
+.java-version
 target
 project/project
 .DS_Store
