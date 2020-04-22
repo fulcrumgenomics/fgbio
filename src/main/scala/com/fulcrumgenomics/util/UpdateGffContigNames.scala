@@ -58,15 +58,10 @@ class UpdateGffContigNames
 
   private val sequenceRegionKey = "##sequence-region"
 
-
   override def execute(): Unit = {
     val progress = ProgressLogger(logger, noun="features", verb="written", unit=10e5.toInt)
 
-    val srcToTarget = Io.readLines(mapping).map { line =>
-      val fields = line.split('\t')
-      require(fields.length <= 2, s"Malformed line: expected at least two columns: $line")
-      (fields(0), fields(1))
-    }.toMap
+    val srcToTarget = ContigNameMapping.parse(mapping)
 
     val in = Io.readLines(input).bufferBetter
     val out = Io.toWriter(output)
@@ -78,9 +73,9 @@ class UpdateGffContigNames
         if (line.startsWith(sequenceRegionKey)) {
           require(StringUtil.split(line, ' ', fields) == 4, s"Not enough fields: $line")
           val srcName = fields(1)
-          srcToTarget.get(srcName).foreach { targetName =>
+          srcToTarget.get(srcName).foreach { targetNames =>
             out.append(fields(0))
-              .append(' ').append(targetName)
+              .append(' ').append(targetNames.head)
               .append(' ').append(fields(2))
               .append(' ').append(fields(3))
               .append('\n')
@@ -138,9 +133,9 @@ class UpdateGffContigNames
                 in.dropWhile(_.startsWith(src))
               }
               else throw new IllegalStateException(s"Did not find contig $src in the list of source names.")
-            case Some(target) =>
+            case Some(targets) =>
               writeSequenceHeader(header)
-              writeSequenceFeatures(in, src, target)
+              writeSequenceFeatures(in, src, targets.head)
           }
       }
     }

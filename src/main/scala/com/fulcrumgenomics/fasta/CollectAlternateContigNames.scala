@@ -61,7 +61,7 @@ object AssemblyReportColumn extends FgBioEnum[AssemblyReportColumn] {
   val SequenceLength: String = "Sequence-Length"
 }
 
-/** Trait that entries in SequencRole will extend. */
+/** Trait that entries in SequenceRole will extend. */
 sealed trait SequenceRole extends EnumEntry {
   def key: String
   def primary: Boolean
@@ -89,14 +89,14 @@ object SequenceRole extends FgBioEnum[SequenceRole] {
   """
     |Collates the alternate contig names from an NCBI assembly report.
     |
-    |The input is be the `*.assembly_report.txt` obtained from NCBI.
+    |The input is to be the `*.assembly_report.txt` obtained from NCBI.
     |
-    |The output will have the first column is the primary name and the second column is an alternative name.  If there
+    |The output will have primary name as the first column and alternate name as the second column.  If there
     |is more than one alternate name, each alternate name will be on a separate line.  The primary name should be
     |specified with `--primary` while the alternate name(s) should be specified with `--alternates`.
     |
     |First, sequences with the Sequence-Role "assembled-molecule" will be outputted.  Next, the remaining sequences will
-    |be sorted by length, with smallest sequence output first.
+    |be sorted by descending length.
   """,
   group = ClpGroups.Fasta)
 class CollectAlternateContigNames
