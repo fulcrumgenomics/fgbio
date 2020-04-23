@@ -16,6 +16,14 @@ class ContigNameMappingTest extends UnitSpec {
       "3\tChr3",
   )
 
+  private val mappingLinesBad = Seq(
+
+      "1\tchr1",
+      "2\tchr2\tChr2",
+      "3",
+      "3\tChr3",
+  )
+
   private def mappingInput(mappingLines: Seq[String]) = {
       val path = makeTempFile("test.", ".txt")
       Io.writeLines(path, mappingLines)
@@ -35,5 +43,10 @@ class ContigNameMappingTest extends UnitSpec {
       srcToTarget shouldBe Map("1" -> List("chr1"),
                                "2" -> List("chr2", "Chr2"),
                                "3" -> List("chr3", "Chr3"))
+  }
+
+  it should "throw error when a target is missing" in {
+    val ex = intercept[Exception] {ContigNameMapping.parse(mappingInput(mappingLinesBad))}
+    ex.getMessage should include ("Malformed line: expected at least two columns: 3")
   }
 }

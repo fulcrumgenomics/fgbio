@@ -28,16 +28,23 @@ import com.fulcrumgenomics.FgBioDef._
 
 object  ContigNameMapping {
     /**
-      * Parses a contig name Mappings file that is `source`, `List[target]`.
+      * Parses a contig name mappings file that is a tab seperated source -> target mapping. EX:
+      *
+      * """
+      * 1   chr1
+      * 2   chr2    Chr2
+      * 3   chr3
+      * 3   Chr3
+      * """
       *
       * Multiple targets can be specified on one line, or on multiple lines.
       */
-    def parse(nameMapping: FilePath): Map[String, List[String]] = {
-
+    def parse(nameMapping: FilePath): Map[String, Seq[String]] = {
         Io.readLines(nameMapping).map { line =>
-            val fields = line.split('\t')
-            require(fields.length >= 2, s"Malformed line: expected at least two columns: $line")
-            (fields.head, fields.tail)
+            line.split('\t').toList match {
+                case head::tail if tail.length > 0 => (head, tail)
+                case _ => throw new IllegalArgumentException(s"Malformed line: expected at least two columns: $line")
+            }
         }.toSeq.groupBy(_._1).map(k => k._1 -> k._2.map(_._2).flatten.distinct.toList)
     }
 }
