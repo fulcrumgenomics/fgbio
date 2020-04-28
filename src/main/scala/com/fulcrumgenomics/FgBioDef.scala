@@ -54,4 +54,21 @@ object FgBioDef extends CommonsDef {
       case _                           => PathUtil.basename(input, trimExt=true).toString
     }
   }
+
+  /** Parses a genomic range of the form `<chr>:<start>-<end>`. */
+  def parseRange(range: String): (String, Int, Int) = {
+    val (refName: String, rest: String) = range.indexOf(':') match {
+      case -1  => throw new IllegalArgumentException(f"Missing colon in genomic range: '$range'")
+      case idx =>
+        val (left, right) = range.splitAt(idx)
+        (left, right.drop(1))
+    }
+    val (start, end) = rest.indexOf('-') match {
+      case -1  => throw new IllegalArgumentException(f"Missing dash in genomic range: '$range'")
+      case idx =>
+        val (left, right) = rest.splitAt(idx)
+        (left, right.drop(1))
+    }
+    (refName, start.toInt, end.toInt)
+  }
 }

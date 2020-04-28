@@ -25,6 +25,7 @@
 
 package com.fulcrumgenomics.fasta
 
+import com.fulcrumgenomics.FgBioDef
 import com.fulcrumgenomics.FgBioDef._
 import enumeratum.EnumEntry
 import htsjdk.samtools.{SAMSequenceDictionary, SAMSequenceRecord}
@@ -34,63 +35,72 @@ import htsjdk.samtools.{SAMSequenceDictionary, SAMSequenceRecord}
   *
   * @param name the primary name of the sequence
   * @param length the length of the sequence, or zero if unknown
-  * @param aliases the list of aliases for this sequence
   * @param attributes attributes of this sequence
   */
-case class SequenceInfo(name: String,
-                        length: Int,
-                        aliases: Seq[String] = Seq.empty,
-                        attributes: Map[String, Any] = Map.empty
-                       ) {
+case class SequenceMetadata(name: String,
+                            length: Int,
+                            attributes: Map[String, Any] = Map.empty) {
 
   allNames.foreach { name => SAMSequenceRecord.validateSequenceName(name) }
-  require(length > 0, s"Length must be > 0 for '$name'")
+  require(length >= 0, s"Length must be >= 0 for '$name'")
+  require(attributes.keys.forall(_ != SAMSequenceRecord.SEQUENCE_NAME_TAG),
+    f"`${SAMSequenceRecord.SEQUENCE_NAME_TAG}` should not given in the list of attributes")
+  require(attributes.keys.forall(_ != SAMSequenceRecord.SEQUENCE_LENGTH_TAG),
+    s"`${SAMSequenceRecord.SEQUENCE_LENGTH_TAG}` should not given in the list of attributes")
 
-  /** All names, including aliases */
-  @inline final def allNames: Seq[String] = name +: aliases
   @inline final def apply[T](key: String): T = this.attributes(key).asInstanceOf[T]
+  @inline final def string(key: String): String = this.attributes(key).toString
   @inline final def get[T](key: String): Option[T] = this.attributes.get(key).map(_.asInstanceOf[T])
+  @inline final def getString(key: String): Option[String] = this.attributes.get(key).map(_.toString)
   @inline final def contains(key: String): Boolean = this.attributes.contains(key)
 
-  @inline final def isAlternate: Boolean = this.contains("AH")
-  def alternate: Option[AlternateLocus] = {
+  @inline final def aliases: Seq[String] = this.get[String]("AN").getOrElse("").split(',')
+  /** All names, including aliases */
+  @inline final def allNames: Seq[String] = name +: aliases
+
+  @inline final def isAlternate: Boolean = this.alternate.isDefined
+  lazy val alternate: Option[AlternateLocus] = {
     this.apply[String]("AH") match {
-      case "*" => None
-      case string =>
-        val Array(refName, rest) = string.split(':')
-        val Array(start, end) = rest.split('-')
-        val locus = refName match {
-          case "=" => AlternateLocus(refName=this.name, start=start.toInt, end=end.toInt)
-          case _   => AlternateLocus(refName=refName, start=start.toInt, end=end.toInt)
+      case "*"   => None
+      case range =>
+        val (refName: String, start: Int, end: Int) = FgBioDef.parseRange(range)
+        val locus: AlternateLocus = {
+          if (refName == "=") AlternateLocus(refName=this.name, start=start.toInt, end=end.toInt)
+          else AlternateLocus(refName=refName, start=start.toInt, end=end.toInt)
         }
         Some(locus)
     }
   }
 
-  @inline final def m5: String = this.apply(SAMSequenceRecord.MD5_TAG)
-  @inline final def m5Int: BigInt = BigInt(this.m5, 16)
+  @inline final def md5: Option[String] = this.get(SAMSequenceRecord.MD5_TAG)
+  @inline final def md5Int: Option[BigInt] = this.md5.map(BigInt(_, 16))
 
-  @inline final def assembly: String = this.apply(SAMSequenceRecord.ASSEMBLY_TAG)
-  @inline final def uri: String = this.apply(SAMSequenceRecord.URI_TAG)
-  @inline final def species: String = this.apply(SAMSequenceRecord.SPECIES_TAG)
-  @inline final def description: String = this.apply(SAMSequenceRecord.DESCRIPTION_TAG)
-  @inline final def topology: Topology = Topology.values.find(_.name == this.apply("TP")).get
+  @inline final def assembly: Option[String] = this.get(SAMSequenceRecord.ASSEMBLY_TAG)
+  @inline final def uri: Option[String] = this.get(SAMSequenceRecord.URI_TAG)
+  @inline final def species: Option[String] = this.get(SAMSequenceRecord.SPECIES_TAG)
+  // FIXME
+//  @inline final def description: Option[String] = this.get(SAMSequenceRecord.DESCRIPTION_TAG)
+  @inline final def topology: Option[Topology] = {
+    this.get[String]("TP").flatMap(tp => Topology.values.find(_.name == tp))
+  }
 
   /** Returns true if the the sequences share a common reference name (including aliases), have the same length, and
     * the same MD5 if both have MD5s. */
-  def same(that: SequenceInfo): Boolean = {
-    val thisM5: Option[BigInt] = if (this.contains(SAMSequenceRecord.MD5_TAG)) Some(this.m5Int) else None
-    val thatM5: Option[BigInt] = if (that.contains(SAMSequenceRecord.MD5_TAG)) Some(that.m5Int) else None
+  def same(that: SequenceMetadata): Boolean = {
+    val md5Match = (this.md5Int, that.md5Int) match {
+      case (Some(thisMd5Int), Some(thatMd5Int)) => thisMd5Int == thatMd5Int
+      case _                                    => true
+    }
 
-    this.allNames.exists(that.allNames.contains) &&
-      this.length == that.length &&
-      thisM5 == thatM5
+    this.length == that.length &&
+      (this.name == that.name || this.allNames.exists(that.allNames.contains)) &&
+      md5Match
   }
 
 }
 
 /** Contains an ordered collection of sequences. */
-class SequenceInfos(infos: IndexedSeq[SequenceInfo]) extends Iterable[SequenceInfo] {
+class SequenceDictionary(infos: IndexedSeq[SequenceMetadata]) extends Iterable[SequenceMetadata] {
   // Ensure that all names, even aliases, are unique.
   {
     val duplicateNames: String = infos.flatMap(_.allNames)
@@ -101,21 +111,22 @@ class SequenceInfos(infos: IndexedSeq[SequenceInfo]) extends Iterable[SequenceIn
     require(duplicateNames.isEmpty, f"Found duplicate names: $duplicateNames")
   }
 
-  private val mapping: Map[String, SequenceInfo] = infos.flatMap { info =>
+  private val mapping: Map[String, SequenceMetadata] = infos.flatMap { info =>
     info.allNames.map { name => name -> info }
   }.toMap
 
-  def apply(name: String): SequenceInfo = this.mapping(name)
-  def get(name: String): Option[SequenceInfo] = this.mapping.get(name)
+  def apply(name: String): SequenceMetadata = this.mapping(name)
+  def get(name: String): Option[SequenceMetadata] = this.mapping.get(name)
   def contains(name: String): Boolean = this.mapping.contains(name)
-  override def iterator: Iterator[SequenceInfo] = this.infos.iterator
+  def apply(index: Int): SequenceMetadata = this.infos(index)
+  override def iterator: Iterator[SequenceMetadata] = this.infos.iterator
 }
 
 
 /** Contains useful converters to and from HTSJDK objects. */
 object Converters {
 
-  implicit class ToSequenceRecord(info: SequenceInfo) {
+  implicit class ToSequenceRecord(info: SequenceMetadata) {
     def asSam(index: Option[Int] = None): SAMSequenceRecord = {
       val rec = new SAMSequenceRecord(info.name, info.length)
       index.foreach(rec.setSequenceIndex)
@@ -125,21 +136,19 @@ object Converters {
   }
 
   implicit class FromSequenceRecord(rec: SAMSequenceRecord) {
-    def fromSam(): SequenceInfo = {
+    def fromSam(): SequenceMetadata = {
       val attributes: Map[String, Any] = rec.getAttributes.map { entry =>
         entry.getKey -> entry.getValue
       }.toMap
-      val aliases = attributes.getOrElse[String]("AN", "").split(',')
-      SequenceInfo(
+      SequenceMetadata(
         name       = rec.getSequenceName,
         length     = rec.getSequenceLength,
-        aliases    = aliases,
         attributes = attributes
       )
     }
   }
 
-  implicit class ToSequenceDictionary(infos: SequenceInfos) {
+  implicit class ToSequenceDictionary(infos: SequenceDictionary) {
     def asSam(): SAMSequenceDictionary = {
       val recs = infos.iterator.zipWithIndex.map { case (info, index) =>
         info.asSam(index=Some(index))
@@ -149,7 +158,7 @@ object Converters {
   }
 
   implicit class FromSequenceDictionary(dict: SAMSequenceDictionary) {
-    def fromSam(): SequenceInfos = new SequenceInfos(dict.getSequences.map(_.fromSam()).toIndexedSeq)
+    def fromSam(): SequenceDictionary = new SequenceDictionary(dict.getSequences.map(_.fromSam()).toIndexedSeq)
   }
 }
 
