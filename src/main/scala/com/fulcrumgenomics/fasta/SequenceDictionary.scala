@@ -29,6 +29,7 @@ import com.fulcrumgenomics.FgBioDef
 import com.fulcrumgenomics.FgBioDef._
 import enumeratum.EnumEntry
 import htsjdk.samtools.{SAMSequenceDictionary, SAMSequenceRecord}
+import scala.collection.mutable
 
 
 /** Stores information about a single Sequence (ex. chromosome, contig)
@@ -39,8 +40,7 @@ import htsjdk.samtools.{SAMSequenceDictionary, SAMSequenceRecord}
   */
 case class SequenceMetadata(name: String,
                             length: Int,
-                            attributes: Map[String, Any] = Map.empty) {
-
+                            attributes: Map[String, String] = Map.empty) {
   allNames.foreach { name => SAMSequenceRecord.validateSequenceName(name) }
   require(length >= 0, s"Length must be >= 0 for '$name'")
   require(attributes.keys.forall(_ != SAMSequenceRecord.SEQUENCE_NAME_TAG),
@@ -48,19 +48,19 @@ case class SequenceMetadata(name: String,
   require(attributes.keys.forall(_ != SAMSequenceRecord.SEQUENCE_LENGTH_TAG),
     s"`${SAMSequenceRecord.SEQUENCE_LENGTH_TAG}` should not given in the list of attributes")
 
-  @inline final def apply[T](key: String): T = this.attributes(key).asInstanceOf[T]
+  @inline final def apply(key: String): String = this.attributes(key)
   @inline final def string(key: String): String = this.attributes(key).toString
-  @inline final def get[T](key: String): Option[T] = this.attributes.get(key).map(_.asInstanceOf[T])
+  @inline final def get(key: String): Option[String] = this.attributes.get(key)
   @inline final def getString(key: String): Option[String] = this.attributes.get(key).map(_.toString)
   @inline final def contains(key: String): Boolean = this.attributes.contains(key)
 
-  @inline final def aliases: Seq[String] = this.get[String]("AN").getOrElse("").split(',')
+  @inline final def aliases: Seq[String] = this.get("AN").getOrElse("").split(',')
   /** All names, including aliases */
   @inline final def allNames: Seq[String] = name +: aliases
 
   @inline final def isAlternate: Boolean = this.alternate.isDefined
   lazy val alternate: Option[AlternateLocus] = {
-    this.apply[String]("AH") match {
+    this.get("AH").flatMap {
       case "*"   => None
       case range =>
         val (refName: String, start: Int, end: Int) = FgBioDef.parseRange(range)
@@ -78,10 +78,9 @@ case class SequenceMetadata(name: String,
   @inline final def assembly: Option[String] = this.get(SAMSequenceRecord.ASSEMBLY_TAG)
   @inline final def uri: Option[String] = this.get(SAMSequenceRecord.URI_TAG)
   @inline final def species: Option[String] = this.get(SAMSequenceRecord.SPECIES_TAG)
-  // FIXME
-//  @inline final def description: Option[String] = this.get(SAMSequenceRecord.DESCRIPTION_TAG)
+  //@inline final def description: Option[String] = this.get(SAMSequenceRecord.DESCRIPTION_TAG) // FIXME
   @inline final def topology: Option[Topology] = {
-    this.get[String]("TP").flatMap(tp => Topology.values.find(_.name == tp))
+    this.get("TP").flatMap(tp => Topology.values.find(_.name == tp))
   }
 
   /** Returns true if the the sequences share a common reference name (including aliases), have the same length, and
@@ -100,20 +99,19 @@ case class SequenceMetadata(name: String,
 }
 
 /** Contains an ordered collection of sequences. */
-class SequenceDictionary(infos: IndexedSeq[SequenceMetadata]) extends Iterable[SequenceMetadata] {
-  // Ensure that all names, even aliases, are unique.
-  {
-    val duplicateNames: String = infos.flatMap(_.allNames)
-      .groupBy(identity)
-      .filter(_._2.length > 1)
-      .keys
-      .mkString(", ")
-    require(duplicateNames.isEmpty, f"Found duplicate names: $duplicateNames")
-  }
+case class SequenceDictionary(infos: IndexedSeq[SequenceMetadata]) extends Iterable[SequenceMetadata] {
 
-  private val mapping: Map[String, SequenceMetadata] = infos.flatMap { info =>
-    info.allNames.map { name => name -> info }
-  }.toMap
+  private val mapping: Map[String, SequenceMetadata] = {
+    // validates that the same name is not present twice across allNames (so includes aliases)
+    val names: mutable.Set[String] = mutable.HashSet[String]()
+    infos.flatMap { info =>
+      info.allNames.map { name =>
+        require(!names.contains(name), f"Found duplicate sequence name: $name")
+        names.add(name)
+        name -> info
+      }
+    }.toMap
+  }
 
   def apply(name: String): SequenceMetadata = this.mapping(name)
   def get(name: String): Option[SequenceMetadata] = this.mapping.get(name)
@@ -137,7 +135,7 @@ object Converters {
 
   implicit class FromSequenceRecord(rec: SAMSequenceRecord) {
     def fromSam(): SequenceMetadata = {
-      val attributes: Map[String, Any] = rec.getAttributes.map { entry =>
+      val attributes: Map[String, String] = rec.getAttributes.map { entry =>
         entry.getKey -> entry.getValue
       }.toMap
       SequenceMetadata(
@@ -158,7 +156,7 @@ object Converters {
   }
 
   implicit class FromSequenceDictionary(dict: SAMSequenceDictionary) {
-    def fromSam(): SequenceDictionary = new SequenceDictionary(dict.getSequences.map(_.fromSam()).toIndexedSeq)
+    def fromSam(): SequenceDictionary = SequenceDictionary(dict.getSequences.map(_.fromSam()).toIndexedSeq)
   }
 }
 
