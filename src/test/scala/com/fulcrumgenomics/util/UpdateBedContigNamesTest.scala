@@ -71,7 +71,7 @@ class UpdateBedContigNamesTest extends UnitSpec {
       "chr1\t123\t500",
       "chr2\t444\t888\tother\tfields",
       "chr3\t8284\t10000\tmore",
-      "chr4\t112345\t223456",
+      "chr4\t112345\t223456"
     )
   }
 
