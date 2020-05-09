@@ -47,7 +47,7 @@ class UpdateBedContigNamesTest extends UnitSpec {
       "NC_000001.10\t123\t500",
       "NC_000002.11\t444\t888\tother\tfields",
       "NC_000003.11\t8284\t10000\tmore",
-      "NC_000004.11\t112345\t223456",
+      "NC_000004.11\t112345\t223456"
     )
 
   private def bed = {
@@ -102,7 +102,7 @@ class UpdateBedContigNamesTest extends UnitSpec {
     lines should contain theSameElementsInOrderAs Seq(
       "chr1\t123\t500",
       "chr2\t444\t888\tother\tfields",
-      "chr3\t8284\t10000\tmore",
+      "chr3\t8284\t10000\tmore"
     )
   }
 }

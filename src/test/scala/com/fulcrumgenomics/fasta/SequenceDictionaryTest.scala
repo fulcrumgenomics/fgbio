@@ -45,7 +45,7 @@ class SequenceDictionaryTest extends UnitSpec with OptionValues {
       Keys.Assembly    -> "assembly",
       Keys.Description -> "description",
       Keys.Md5         -> "123",
-      Keys.Species     -> "species",
+      Keys.Species     -> "species"
     )
   )
 

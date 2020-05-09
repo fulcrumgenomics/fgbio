@@ -13,7 +13,7 @@ class ContigNameMappingTest extends UnitSpec {
       "1\tchr1",
       "2\tchr2\tChr2",
       "3\tchr3",
-      "3\tChr3",
+      "3\tChr3"
   )
 
   private val mappingLinesBad = Seq(
@@ -21,7 +21,7 @@ class ContigNameMappingTest extends UnitSpec {
       "1\tchr1",
       "2\tchr2\tChr2",
       "3",
-      "3\tChr3",
+      "3\tChr3"
   )
 
   private def mappingInput(mappingLines: Seq[String]) = {
