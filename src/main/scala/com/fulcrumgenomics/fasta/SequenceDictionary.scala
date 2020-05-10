@@ -25,12 +25,17 @@
 
 package com.fulcrumgenomics.fasta
 
+import java.io.{FileInputStream, StringWriter}
+
 import com.fulcrumgenomics.FgBioDef
 import com.fulcrumgenomics.FgBioDef._
 import enumeratum.EnumEntry
-import htsjdk.samtools.{SAMSequenceDictionary, SAMSequenceRecord}
+import htsjdk.samtools.{SAMSequenceDictionary, SAMSequenceDictionaryCodec, SAMSequenceRecord, SAMTextHeaderCodec}
+
 import scala.collection.mutable
 import SequenceMetadata.Keys
+import com.fulcrumgenomics.util.Io
+import htsjdk.samtools.util.BufferedLineReader
 
 object SequenceMetadata {
   /** Keys for standard attributes in [[SequenceMetadata]] */
@@ -107,6 +112,11 @@ case class SequenceMetadata(name: String,
       (this.name == that.name || this.allNames.exists(that.allNames.contains)) &&
       md5Match
   }
+
+  override def toString: FilenameSuffix = {
+    import com.fulcrumgenomics.fasta.Converters.ToSAMSequenceRecord
+    this.asSam.getSAMString
+  }
 }
 
 object SequenceDictionary {
@@ -116,6 +126,15 @@ object SequenceDictionary {
       if (info.index != index) info.copy(index=index) else info
     }.toIndexedSeq
     SequenceDictionary(infos=infos)
+  }
+  /** Builds a sequence dictionary from the given path */
+  def apply(path: FilePath): SequenceDictionary = {
+    import Converters.FromSAMSequenceDictionary
+    val codec  = new SAMTextHeaderCodec()
+    val reader = new BufferedLineReader(Io.toInputStream(path))
+    val dict   = codec.decode(reader, path.toString).getSequenceDictionary()
+    reader.close()
+    dict.fromSam
   }
 }
 
@@ -141,6 +160,27 @@ case class SequenceDictionary(infos: IndexedSeq[SequenceMetadata]) extends Itera
   def apply(index: Int): SequenceMetadata = this.infos(index)
   override def iterator: Iterator[SequenceMetadata] = this.infos.iterator
   def length: Int = this.infos.length
+
+  def write(path: FilePath): Unit = {
+    val writer = Io.toWriter(path)
+    this.write(writer=writer)
+    writer.close()
+  }
+
+  def write(writer: java.io.Writer): Unit = {
+    import Converters.ToSAMSequenceRecord
+    val codec  = new SAMSequenceDictionaryCodec(writer)
+    codec.encodeHeaderLine(false)
+    this.foreach { metadata: SequenceMetadata =>
+      codec.encodeSequenceRecord(metadata.asSam)
+    }
+  }
+
+  override def toString(): String = {
+    val writer = new StringWriter()
+    this.write(writer=writer)
+    writer.toString
+  }
 }
 
 

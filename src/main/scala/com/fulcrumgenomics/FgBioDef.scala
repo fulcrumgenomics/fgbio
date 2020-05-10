@@ -33,6 +33,11 @@ import enumeratum.{Enum, EnumEntry}
   * there's a need for FgBio specific defs later.
   */
 object FgBioDef extends CommonsDef {
+
+  // TODO: move this to com.fulcrumgenomics.commons
+  /** Represents a path to a sequence dictionary (.dict). */
+  type PathToSequenceDictionary = java.nio.file.Path
+
   /** Extends this trait in your enumeration object to enable the case objects to be created on the command line.
     * You should implement the [[enumeratum.Enum#values]] method in your object, for example:
     * `def values: IndexedSeq[T] = findValues`.
