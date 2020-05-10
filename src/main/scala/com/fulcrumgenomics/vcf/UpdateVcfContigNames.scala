@@ -24,12 +24,12 @@
 
 package com.fulcrumgenomics.vcf
 
-import com.fulcrumgenomics.FgBioDef.{FilePath, PathToVcf, javaIterableToIterator}
+import com.fulcrumgenomics.FgBioDef.{PathToSequenceDictionary, PathToVcf, SafelyClosable, javaIterableToIterator}
 import com.fulcrumgenomics.cmdline.{ClpGroups, FgBioTool}
 import com.fulcrumgenomics.commons.util.LazyLogging
+import com.fulcrumgenomics.fasta.SequenceDictionary
 import com.fulcrumgenomics.sopt.{arg, clp}
-import com.fulcrumgenomics.util.ProgressLogger
-import htsjdk.variant.utils.SAMSequenceDictionaryExtractor
+import com.fulcrumgenomics.util.{Io, ProgressLogger}
 import htsjdk.variant.variantcontext.VariantContextBuilder
 import htsjdk.variant.variantcontext.writer.{Options, VariantContextWriterBuilder}
 import htsjdk.variant.vcf.{VCFFileReader, VCFHeader}
@@ -38,36 +38,28 @@ import htsjdk.variant.vcf.{VCFFileReader, VCFHeader}
   """
     |Updates then contig names in a VCF.
     |
-    |The input sequence dictionary should have the output contig names in the SN filed, and the source contig names in
-    |the AN field (comma-separated for multiple values).  For example, the contigs with names "NC_000001.11" and
-    |"CM000663.2" will be updated to "chr1" if the following line is present in the sequence dictionary:
-    |`@SQ SN:chr1 LN:248956422 AN:NC_000001.11,CM000663.2`.
+    |The name of each sequence must match one of the names (including aliases) in the given sequence dictionary.  The
+    |new name will be the primary (non-alias) name in the sequence dictionary.
   """,
   group = ClpGroups.VcfOrBcf)
 class UpdateVcfContigNames
 (@arg(flag='i', doc="Input VCF.") val input: PathToVcf,
- @arg(flag='d', doc="The sequence dictionary") val dict: FilePath,
+ @arg(flag='d', doc="The path to the sequence dictionary with contig aliases.") val dict: PathToSequenceDictionary,
  @arg(flag='o', doc="Output VCF.") val output: PathToVcf,
  @arg(doc="Skip missing contigs.") val skipMissing: Boolean = false
-) extends FgBioTool with LazyLogging{
+) extends FgBioTool with LazyLogging {
+
+  Io.assertReadable(input)
+  Io.assertReadable(Seq(input, dict))
+  Io.assertCanWriteFile(output)
 
   override def execute(): Unit = {
-    // read in the dictionary
-    val dict              = SAMSequenceDictionaryExtractor.extractDictionary(this.dict)
-    val altNamesToPrimary = dict.getSequences.flatMap { seq =>
-      val primary = seq.getSequenceName
-      val alts    = seq.getAttribute("AN") match {
-        case null => throw new IllegalStateException(s"Sequence '$primary' does not have the AN attribute set.")
-        case value => value.split(',')
-      }
-      alts.map { alt => (alt, primary) }
-    }.toMap
-
-    // build the VCF reader and writer
+    val dict   = SequenceDictionary(this.dict)
     val reader = new VCFFileReader(this.input)
     val header = {
+      import com.fulcrumgenomics.fasta.Converters.ToSAMSequenceDictionary
       val h: VCFHeader = new VCFHeader(reader.getFileHeader)
-      h.setSequenceDictionary(dict)
+      h.setSequenceDictionary(dict.asSam)
       h
     }
     val writer = {
@@ -81,20 +73,19 @@ class UpdateVcfContigNames
     // go through all the records
     val progress = ProgressLogger(logger, noun = "variants", verb = "written")
     reader.foreach { v =>
-       altNamesToPrimary.get(v.getContig) match {
+      dict.get(v.getContig) match {
         case None =>
           if (skipMissing) logger.warning(s"Did not find contig ${v.getContig} in the sequence dictionary.")
-          else throw new IllegalStateException(s"Did not find contig ${v.getContig}  in the sequence dictionary.")
-        case Some(contig) =>
-          val newV = new VariantContextBuilder(v)
-              .chr(contig)
-              .make()
+          else throw new IllegalStateException(s"Did not find contig ${v.getContig} in the sequence dictionary.")
+        case Some(info) =>
+          val newV = new VariantContextBuilder(v).chr(info.name).make()
           progress.record(newV.getContig, newV.getStart)
           writer.add(newV)
        }
     }
     progress.logLast()
 
+    reader.safelyClose()
     writer.close()
   }
 }
