@@ -32,14 +32,15 @@ import com.fulcrumgenomics.bam.api.SamSource
 import com.fulcrumgenomics.cmdline.{ClpGroups, FgBioTool}
 import com.fulcrumgenomics.commons.io.{Io, PathUtil}
 import com.fulcrumgenomics.commons.util.LazyLogging
+import com.fulcrumgenomics.fasta.SequenceDictionary
 import com.fulcrumgenomics.sopt._
 import com.fulcrumgenomics.util.Metric.Count
 import com.fulcrumgenomics.util.{Metric, ProgressLogger, Rscript}
 import com.fulcrumgenomics.vcf.{ByIntervalListVariantContextIterator, VariantMask}
+import htsjdk.samtools.SAMRecord
 import htsjdk.samtools.filter.{DuplicateReadFilter, FailsVendorReadQualityFilter, SamRecordFilter, SecondaryOrSupplementaryFilter}
 import htsjdk.samtools.reference.ReferenceSequenceFileWalker
 import htsjdk.samtools.util.{IntervalList, SamLocusIterator, SequenceUtil}
-import htsjdk.samtools.{SAMRecord, SAMSequenceDictionary}
 import htsjdk.variant.vcf.VCFFileReader
 
 import scala.collection.mutable
@@ -121,12 +122,13 @@ class ErrorRateByReadPosition
 
   /** Computes the metrics from the BAM file. */
   private[bam] def computeMetrics(in: SamSource= SamSource(input, ref=Some(ref))): Seq[ErrorRateByReadPositionMetric] = {
+    import com.fulcrumgenomics.fasta.Converters.FromSAMSequenceDictionary
     val progress = ProgressLogger(logger, verb="Processed", noun="loci", unit=50000)
     val ilist    = this.intervals.map(p => IntervalList.fromFile(p.toFile).uniqued(false))
 
     val refWalker     = new ReferenceSequenceFileWalker(this.ref.toFile)
     val locusIterator = buildSamLocusIterator(in, ilist).iterator()
-    val variantMask   = buildVariantMask(variants, ilist, refWalker.getSequenceDictionary)
+    val variantMask   = buildVariantMask(variants, ilist, refWalker.getSequenceDictionary.fromSam)
 
     val counters = List.tabulate(3)(_ => mutable.Map[Int, ObsCounter]())
 
@@ -178,7 +180,7 @@ class ErrorRateByReadPosition
   }
 
   /** Generates a variant mask object. */
-  private def buildVariantMask(variants: Option[PathToVcf], intervals: Option[IntervalList], dict: SAMSequenceDictionary): VariantMask = {
+  private def buildVariantMask(variants: Option[PathToVcf], intervals: Option[IntervalList], dict: SequenceDictionary): VariantMask = {
     this.variants match {
       case None =>
         new VariantMask(Iterator.empty, dict)

@@ -31,7 +31,8 @@ import htsjdk.variant.variantcontext.VariantContext
   * Tests for JointVariantContextIterator.
   */
 class JointVariantContextIteratorTest extends UnitSpec {
-  private val dict = new VariantContextSetBuilder().header.getSequenceDictionary
+  import com.fulcrumgenomics.fasta.Converters.FromSAMSequenceDictionary
+  private val dict = new VariantContextSetBuilder().header.getSequenceDictionary.fromSam
 
   private def compareVariantContexts(actual: VariantContext, expected: VariantContext): Unit = {
     actual.getContig shouldBe expected.getContig

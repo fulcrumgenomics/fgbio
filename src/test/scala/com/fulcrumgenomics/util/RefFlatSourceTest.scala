@@ -26,20 +26,17 @@
 package com.fulcrumgenomics.util
 
 import java.nio.file.Paths
-import java.util.Collections
 
+import com.fulcrumgenomics.fasta.{SequenceDictionary, SequenceMetadata}
 import com.fulcrumgenomics.testing.UnitSpec
 import com.fulcrumgenomics.util.GeneAnnotations.Exon
-import htsjdk.samtools.{SAMSequenceDictionary, SAMSequenceRecord}
 
 class RefFlatSourceTest extends UnitSpec {
 
   // Adapted from http://hgdownload.cse.ucsc.edu/goldenPath/hg18/database/refFlat.txt.gz
   private val RefFlatFile = Paths.get("src/test/resources/com/fulcrumgenomics/util/refFlat.txt.gz")
 
-  private val Dictionary = {
-    new SAMSequenceDictionary(Collections.singletonList(new SAMSequenceRecord("chr1", 249250621)))
-  }
+  private val Dictionary = SequenceDictionary(SequenceMetadata(name="chr1", length=249250621))
 
   "RefFlatSource" should "read valid refFlat from various kinds of input resources" in {
     val rf = RefFlatFile

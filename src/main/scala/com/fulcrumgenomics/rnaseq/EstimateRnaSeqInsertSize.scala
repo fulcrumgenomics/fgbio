@@ -88,7 +88,7 @@ class EstimateRnaSeqInsertSize
     val progress            = ProgressLogger(logger, verb = "read", unit = 5e6.toInt)
     val pairOrientations    = PairOrientation.values()
     val in                  = SamSource(input)
-    val refFlatSource       = RefFlatSource(refFlat, Some(in.header.getSequenceDictionary))
+    val refFlatSource       = RefFlatSource(refFlat, Some(in.dict))
     val counters            = pairOrientations.map { pairOrientation => (pairOrientation, new NumericCounter[Long]()) }.toMap
     val filter              = new AggregateFilter(EstimateRnaSeqInsertSize.filters(minimumMappingQuality=minimumMappingQuality, includeDuplicates=includeDuplicates).asJava)
     var numReadPairs        = 0L

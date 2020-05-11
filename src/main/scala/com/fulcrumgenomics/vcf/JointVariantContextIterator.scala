@@ -24,12 +24,12 @@
 
 package com.fulcrumgenomics.vcf
 
-import htsjdk.samtools.SAMSequenceDictionary
+import com.fulcrumgenomics.fasta.SequenceDictionary
 import htsjdk.variant.variantcontext.{VariantContext, VariantContextComparator}
 
 object JointVariantContextIterator {
   def apply(iters: Seq[Iterator[VariantContext]],
-            dict: SAMSequenceDictionary
+            dict: SequenceDictionary
            ): JointVariantContextIterator = {
     new JointVariantContextIterator(
       iters=iters,
@@ -52,15 +52,16 @@ object JointVariantContextIterator {
   * across the iterators.  If samples is given, we subset each variant context to just that sample.
   */
 class JointVariantContextIterator private(iters: Seq[Iterator[VariantContext]],
-                                          dictOrComp: Either[SAMSequenceDictionary, VariantContextComparator]
+                                          dictOrComp: Either[SequenceDictionary, VariantContextComparator]
                                          )
 extends Iterator[Seq[Option[VariantContext]]] {
+  import com.fulcrumgenomics.fasta.Converters.ToSAMSequenceDictionary
 
   if (iters.isEmpty) throw new IllegalArgumentException("No iterators given")
 
   private val iterators = iters.map(_.buffered)
   private val comparator = dictOrComp match {
-    case Left(dict)  => new VariantContextComparator(dict)
+    case Left(dict)  => new VariantContextComparator(dict.asSam)
     case Right(comp) => comp
   }
 

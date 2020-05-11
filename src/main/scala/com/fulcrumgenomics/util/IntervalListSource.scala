@@ -31,8 +31,9 @@ import java.io.{Closeable, File, InputStream}
 import com.fulcrumgenomics.FgBioDef.{PathToIntervals, yieldAndThen}
 import com.fulcrumgenomics.commons.CommonsDef.BetterBufferedIteratorScalaWrapper
 import com.fulcrumgenomics.commons.util.StringUtil
+import com.fulcrumgenomics.fasta.SequenceDictionary
 import htsjdk.samtools.util.{BufferedLineReader, Interval, IntervalList}
-import htsjdk.samtools.{SAMFileHeader, SAMSequenceDictionary, SAMTextHeaderCodec}
+import htsjdk.samtools.{SAMFileHeader, SAMTextHeaderCodec}
 
 import scala.io.Source
 
@@ -85,10 +86,13 @@ class IntervalListSource private(lines: Iterator[String],
     codec.decode(lineReader, "IntervalListSource")
   }
 
-  require(!this.dict.isEmpty, "No reference sequences found in the header.")
+  require(this.dict.nonEmpty, "No reference sequences found in the header.")
 
-  /** The [[htsjdk.samtools.SAMSequenceDictionary]] associated with the source. */
-  def dict: SAMSequenceDictionary = this.header.getSequenceDictionary
+  /** The [[SequenceDictionary]] associated with the source. */
+  lazy val dict: SequenceDictionary = {
+    import com.fulcrumgenomics.fasta.Converters.FromSAMSequenceDictionary
+    this.header.getSequenceDictionary.fromSam
+  }
 
   private val parseArray = Array[String]("", "", "", "", "")
 
@@ -103,12 +107,12 @@ class IntervalListSource private(lines: Iterator[String],
     val start = startString.toInt
     val end   = endString.toInt
 
-    Option(dict.getSequence(refName)) match {
+    Option(dict(refName)) match {
       case None =>
         throw new IllegalArgumentException(f"Reference contig '$refName' not found in the sequence dictionary on line number $lineNumber.")
       case Some(seq) =>
         require(1 <= start, s"Start is less than 1 on line number $lineNumber")
-        require(end <= seq.getSequenceLength, s"End is beyond the reference contig length on line number $lineNumber")
+        require(end <= seq.length, s"End is beyond the reference contig length on line number $lineNumber")
         require(start <= end, f"Start is greater than end on line number $lineNumber")
     }
 
@@ -123,7 +127,8 @@ class IntervalListSource private(lines: Iterator[String],
 
   /** Reads in the intervals into an [[htsjdk.samtools.util.IntervalList]] */
   def toIntervalList: IntervalList = {
-    val list = new IntervalList(dict)
+    import com.fulcrumgenomics.fasta.Converters.ToSAMSequenceDictionary
+    val list = new IntervalList(dict.asSam)
     this.foreach { list.add }
     list
   }

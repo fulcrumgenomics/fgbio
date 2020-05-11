@@ -32,7 +32,7 @@ import com.fulcrumgenomics.FgBioDef.PathToIntervals
 import com.fulcrumgenomics.commons.io.Writer
 import com.fulcrumgenomics.fasta.SequenceDictionary
 import htsjdk.samtools.util.Interval
-import htsjdk.samtools.{SAMFileHeader, SAMSequenceDictionary, SAMTextHeaderCodec}
+import htsjdk.samtools.{SAMFileHeader, SAMTextHeaderCodec}
 
 
 object IntervalListWriter {
@@ -40,13 +40,7 @@ object IntervalListWriter {
   def apply(path: PathToIntervals, header: SAMFileHeader): IntervalListWriter = apply(Io.toWriter(path), header)
 
   /** Constructs an [[IntervalListWriter]] that will write to the provided path. */
-  def apply(path: PathToIntervals, dict: SAMSequenceDictionary): IntervalListWriter = apply(Io.toWriter(path), dict)
-
-  /** Constructs an [[IntervalListWriter]] that will write to the provided path. */
-  def apply(path: PathToIntervals, dict: SequenceDictionary): IntervalListWriter = {
-    import com.fulcrumgenomics.fasta.Converters.ToSAMSequenceDictionary
-    apply(Io.toWriter(path), dict.asSam)
-  }
+  def apply(path: PathToIntervals, dict: SequenceDictionary): IntervalListWriter = apply(Io.toWriter(path), dict)
 
   /** Constructs an [[IntervalListWriter]] from a Writer. */
   def apply(writer: java.io.Writer, header: SAMFileHeader): IntervalListWriter = writer match {
@@ -55,9 +49,10 @@ object IntervalListWriter {
   }
 
   /** Constructs an [[IntervalListWriter]] from a Writer. */
-  def apply(writer: java.io.Writer, dict: SAMSequenceDictionary): IntervalListWriter = {
+  def apply(writer: java.io.Writer, dict: SequenceDictionary): IntervalListWriter = {
+    import com.fulcrumgenomics.fasta.Converters.ToSAMSequenceDictionary
     val header = new SAMFileHeader()
-    header.setSequenceDictionary(dict)
+    header.setSequenceDictionary(dict.asSam)
     this.apply(writer, header)
   }
 }

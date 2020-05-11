@@ -30,8 +30,9 @@ import java.util.concurrent.atomic.AtomicLong
 
 import com.fulcrumgenomics.FgBioDef._
 import com.fulcrumgenomics.alignment.Cigar
-import com.fulcrumgenomics.bam.api.{SamOrder, SamRecord, SamSource, SamWriter}
 import com.fulcrumgenomics.bam.api.SamRecord.{MissingBases, MissingQuals}
+import com.fulcrumgenomics.bam.api.{SamOrder, SamRecord, SamSource, SamWriter}
+import com.fulcrumgenomics.fasta.{SequenceDictionary, SequenceMetadata}
 import com.fulcrumgenomics.testing.SamBuilder._
 import htsjdk.samtools._
 
@@ -55,24 +56,27 @@ class SamBuilder(val readLength: Int=100,
                  val sampleName: String = DefaultSampleName,
                  val sort: Option[SamOrder] = None,
                  val readGroupId: Option[String] = None,
-                 sd: Option[SAMSequenceDictionary] = None,
+                 sd: Option[SequenceDictionary] = None,
                  seed: Int = 42
                 ) extends Iterable[SamRecord] {
+  import com.fulcrumgenomics.fasta.Converters._
 
   // Setup the header, sequence dictionary and read group
   val header = new SAMFileHeader()
   sort.getOrElse(SamOrder.Unsorted).applyTo(header)
 
   { // Build the default dictionary
-    val dict: SAMSequenceDictionary = sd.getOrElse {
-      val seqs = (Range.inclusive(1, 22) ++ Seq("X", "Y", "M")).map { chr => new SAMSequenceRecord("chr" + chr, 200e6.toInt) }
-      new SAMSequenceDictionary(seqs.iterator.toJavaList)
+    val dict: SequenceDictionary = sd.getOrElse {
+      val seqs = (Range.inclusive(1, 22) ++ Seq("X", "Y", "M")).map { chr =>
+        SequenceMetadata(name="chr" + chr, length=200e6.toInt)
+      }
+      SequenceDictionary(seqs:_*)
     }
-    header.setSequenceDictionary(dict)
+    header.setSequenceDictionary(dict.asSam)
   }
 
   /** Shorter accessor for the sequence dictionary. */
-  def dict: SAMSequenceDictionary = header.getSequenceDictionary
+  lazy val dict: SequenceDictionary = header.getSequenceDictionary.fromSam
 
   val rg = new SAMReadGroupRecord(readGroupId.getOrElse(DefaultReadGroupId))
   rg.setSample(sampleName)

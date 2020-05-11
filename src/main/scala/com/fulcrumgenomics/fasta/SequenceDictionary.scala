@@ -25,17 +25,18 @@
 
 package com.fulcrumgenomics.fasta
 
-import java.io.{FileInputStream, StringWriter}
+import java.io.StringWriter
 
 import com.fulcrumgenomics.FgBioDef
 import com.fulcrumgenomics.FgBioDef._
+import com.fulcrumgenomics.fasta.SequenceMetadata.Keys
+import com.fulcrumgenomics.util.Io
 import enumeratum.EnumEntry
+import htsjdk.samtools.util.BufferedLineReader
 import htsjdk.samtools.{SAMSequenceDictionary, SAMSequenceDictionaryCodec, SAMSequenceRecord, SAMTextHeaderCodec}
+import htsjdk.variant.utils.SAMSequenceDictionaryExtractor
 
 import scala.collection.mutable
-import SequenceMetadata.Keys
-import com.fulcrumgenomics.util.Io
-import htsjdk.samtools.util.BufferedLineReader
 
 object SequenceMetadata {
   /** Keys for standard attributes in [[SequenceMetadata]] */
@@ -51,6 +52,16 @@ object SequenceMetadata {
     val Topology             : String = "TP"
     val Uri                  : String = SAMSequenceRecord.URI_TAG
   }
+
+  def apply(name: String, length: Int, aliases: Seq[String]): SequenceMetadata = {
+    SequenceMetadata(
+      name = name,
+      length = length,
+      attributes = Map(Keys.Aliases -> aliases.mkString(","))
+    )
+  }
+
+  val UnknownLength: Int = 0
 }
 
 /** Stores information about a single Sequence (ex. chromosome, contig)
@@ -62,7 +73,7 @@ object SequenceMetadata {
   */
 case class SequenceMetadata(name: String,
                             length: Int,
-                            index: Int = 0,
+                            index: Int = SequenceMetadata.UnknownLength,
                             attributes: Map[String, String] = Map.empty) {
   allNames.foreach { name => SAMSequenceRecord.validateSequenceName(name) }
   require(length >= 0, s"Length must be >= 0 for '$name'")
@@ -127,14 +138,21 @@ object SequenceDictionary {
     }.toIndexedSeq
     SequenceDictionary(infos=infos)
   }
+
   /** Builds a sequence dictionary from the given path */
-  def apply(path: FilePath): SequenceDictionary = {
+  def apply(path: PathToSequenceDictionary): SequenceDictionary = {
     import Converters.FromSAMSequenceDictionary
     val codec  = new SAMTextHeaderCodec()
     val reader = new BufferedLineReader(Io.toInputStream(path))
     val dict   = codec.decode(reader, path.toString).getSequenceDictionary()
     reader.close()
     dict.fromSam
+  }
+
+  /** Extracts a [[SequenceDictionary]] from SAM/BAM/CRAM/FASTA/DICT files. */
+  def extract(path: FilePath): SequenceDictionary = {
+    import com.fulcrumgenomics.fasta.Converters.FromSAMSequenceDictionary
+    SAMSequenceDictionaryExtractor.extractDictionary(path).fromSam
   }
 }
 
@@ -160,6 +178,12 @@ case class SequenceDictionary(infos: IndexedSeq[SequenceMetadata]) extends Itera
   def apply(index: Int): SequenceMetadata = this.infos(index)
   override def iterator: Iterator[SequenceMetadata] = this.infos.iterator
   def length: Int = this.infos.length
+
+  /** Returns true if the the sequences share a common reference name (including aliases), have the same length, and
+    * the same MD5 if both have MD5s. */
+  def sameAs(that: SequenceDictionary): Boolean = {
+    this.length == that.length && this.zip(that).forall { case (thisInfo, thatInfo) => thisInfo.sameAs(thatInfo) }
+  }
 
   def write(path: FilePath): Unit = {
     val writer = Io.toWriter(path)

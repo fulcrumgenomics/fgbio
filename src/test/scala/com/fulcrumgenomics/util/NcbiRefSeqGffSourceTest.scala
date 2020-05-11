@@ -25,28 +25,20 @@
 package com.fulcrumgenomics.util
 
 import java.nio.file.Paths
-import java.util.Collections
 
-import com.fulcrumgenomics.FgBioDef._
+import com.fulcrumgenomics.fasta.{SequenceDictionary, SequenceMetadata}
 import com.fulcrumgenomics.testing.UnitSpec
 import com.fulcrumgenomics.util.GeneAnnotations.Exon
-import htsjdk.samtools.{SAMSequenceDictionary, SAMSequenceRecord}
 import org.scalatest.OptionValues
 
 class NcbiRefSeqGffSourceTest extends UnitSpec with OptionValues {
   // Excerpted from https://ftp.ncbi.nlm.nih.gov/genomes/refseq/vertebrate_mammalian/Homo_sapiens/latest_assembly_versions/GCF_000001405.39_GRCh38.p13/GCF_000001405.39_GRCh38.p13_genomic.gff.gz
-  private val GffFile = Paths.get("src/test/resources/com/fulcrumgenomics/util/human.gff.gz")
-
-  private val Chr1 = new SAMSequenceRecord("chr1", 249250621)
-  Chr1.setAttribute("AN", "1,NC_000001.11")
-
-  private val AltChr1 = new SAMSequenceRecord("1", 249250621)
-  AltChr1.setAttribute("AN", "chr1,NC_000001.11")
-
-  private val DictEmpty = new SAMSequenceDictionary(Collections.emptyList())
-  private val DictChr1  = new SAMSequenceDictionary(Collections.singletonList(Chr1))
-  private val DictAlt1  = new SAMSequenceDictionary(Collections.singletonList(AltChr1))
-
+  private val GffFile   = Paths.get("src/test/resources/com/fulcrumgenomics/util/human.gff.gz")
+  private val Chr1      = SequenceMetadata(name="chr1", length=249250621, aliases=Seq("1", "NC_000001.11"))
+  private val AltChr1   = SequenceMetadata(name="1", length=249250621, aliases=Seq("chr1", "NC_000001.11"))
+  private val DictEmpty = SequenceDictionary()
+  private val DictChr1  = SequenceDictionary(Chr1)
+  private val DictAlt1  = SequenceDictionary(AltChr1)
 
   "NcbiRefSeqSource" should "auto-map the accession to chr1 when given an empty sequence dictionary" in {
     val source = NcbiRefSeqGffSource(GffFile, includeXs=true, dict=DictEmpty)

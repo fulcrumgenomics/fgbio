@@ -25,18 +25,17 @@
 
 package com.fulcrumgenomics.util
 
+import com.fulcrumgenomics.fasta.{SequenceDictionary, SequenceMetadata}
 import com.fulcrumgenomics.testing.UnitSpec
-import htsjdk.samtools.{SAMFileHeader, SAMSequenceDictionary, SAMSequenceRecord}
-import htsjdk.samtools.util.{Interval, IntervalList}
+import htsjdk.samtools.SAMFileHeader
+import htsjdk.samtools.util.Interval
 
 class IntervalListWriterTest extends UnitSpec {
 
-  private val dict = {
-    val d = new SAMSequenceDictionary()
-    d.addSequence(new SAMSequenceRecord("chr1", 10000))
-    d.addSequence(new SAMSequenceRecord("chr2", 50000))
-    d
-  }
+  private val dict = SequenceDictionary(
+    SequenceMetadata(name="chr1", length=10000),
+    SequenceMetadata(name="chr2", length=50000)
+  )
 
   "IntervalListWriter" should "write a set of intervals" in {
     val path   = makeTempFile("intervals.", ".interval_list")
