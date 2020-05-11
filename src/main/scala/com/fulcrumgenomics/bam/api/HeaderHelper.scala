@@ -25,7 +25,8 @@
 package com.fulcrumgenomics.bam.api
 
 import com.fulcrumgenomics.FgBioDef._
-import htsjdk.samtools.{SAMFileHeader, SAMProgramRecord, SAMReadGroupRecord, SAMSequenceDictionary}
+import com.fulcrumgenomics.fasta.SequenceDictionary
+import htsjdk.samtools.{SAMFileHeader, SAMProgramRecord, SAMReadGroupRecord}
 
 /**
   * Trait that can be mixed into any class that provides access to a SAMFileHeader in
@@ -36,7 +37,10 @@ private[api] trait HeaderHelper {
   def header: SAMFileHeader
 
   /** The sequence dictionary. */
-  def dict: SAMSequenceDictionary = header.getSequenceDictionary
+  lazy val dict: SequenceDictionary = {
+    import com.fulcrumgenomics.fasta.Converters.FromSAMSequenceDictionary
+    header.getSequenceDictionary.fromSam
+  }
 
   /** The list of read groups from the associated header. */
   def readGroups: Seq[SAMReadGroupRecord] = header.getReadGroups.toIndexedSeq

@@ -29,30 +29,30 @@ import java.io.{Closeable, File, InputStream}
 
 import com.fulcrumgenomics.commons.CommonsDef.FilePath
 import com.fulcrumgenomics.commons.util.{DelimitedDataParser, LazyLogging}
+import com.fulcrumgenomics.fasta.SequenceDictionary
 import com.fulcrumgenomics.util.GeneAnnotations.{Exon, Gene, GeneLocus, Transcript}
-import htsjdk.samtools.SAMSequenceDictionary
 
 import scala.collection.mutable.ArrayBuffer
 import scala.io.Source
 
 object RefFlatSource {
   /** Creates a new refflat source from a sequence of lines. */
-  def apply(lines: Seq[String], dict: Option[SAMSequenceDictionary]): RefFlatSource = new RefFlatSource(lines.iterator, dict)
+  def apply(lines: Seq[String], dict: Option[SequenceDictionary]): RefFlatSource = new RefFlatSource(lines.iterator, dict)
 
   /** Creates a new fasrefflattq source from an iterator of lines. */
-  def apply(lines: Iterator[String], dict: Option[SAMSequenceDictionary]): RefFlatSource = new RefFlatSource(lines, dict)
+  def apply(lines: Iterator[String], dict: Option[SequenceDictionary]): RefFlatSource = new RefFlatSource(lines, dict)
 
   /** Creates a new refflat source from an input stream. */
-  def apply(stream: InputStream, dict: Option[SAMSequenceDictionary]): RefFlatSource = new RefFlatSource(Source.fromInputStream(stream).getLines(), dict, Some(stream))
+  def apply(stream: InputStream, dict: Option[SequenceDictionary]): RefFlatSource = new RefFlatSource(Source.fromInputStream(stream).getLines(), dict, Some(stream))
 
   /** Creates a new refflat source from a source. */
-  def apply(source: Source, dict: Option[SAMSequenceDictionary]): RefFlatSource = new RefFlatSource(source.getLines(), dict, Some(source))
+  def apply(source: Source, dict: Option[SequenceDictionary]): RefFlatSource = new RefFlatSource(source.getLines(), dict, Some(source))
 
   /** Creates a new refflat source from a File. */
-  def apply(file: File, dict: Option[SAMSequenceDictionary]): RefFlatSource = apply(path=file.toPath, dict=dict)
+  def apply(file: File, dict: Option[SequenceDictionary]): RefFlatSource = apply(path=file.toPath, dict=dict)
 
   /** Creates a new refflat source from a Path. */
-  def apply(path: FilePath, dict: Option[SAMSequenceDictionary] = None): RefFlatSource = apply(Io.toInputStream(path), dict)
+  def apply(path: FilePath, dict: Option[SequenceDictionary] = None): RefFlatSource = apply(Io.toInputStream(path), dict)
 
   private val Header: Seq[String] = Seq(
     "geneName",
@@ -94,7 +94,7 @@ object RefFlatSource {
   * A Picard-style header is also supported (GENE_NAME, TRANSCRIPT_NAME, ...).
   * */
 class RefFlatSource private(lines: Iterator[String],
-                            dict: Option[SAMSequenceDictionary] = None,
+                            dict: Option[SequenceDictionary] = None,
                             private[this] val source: Option[{ def close(): Unit }] = None
                            ) extends Iterable[Gene] with Closeable with LazyLogging {
   private val genes = {
@@ -129,7 +129,7 @@ class RefFlatSource private(lines: Iterator[String],
       val exonEnds       = row.string("exonEnds").split(',').filter(_.nonEmpty).map(_.toInt)
       val isNegative     = strand == "-"
 
-      if (dict.exists(_.getSequence(contig) == null)) { // skip unrecognized sequences
+      if (dict.exists(!_.contains(contig))) { // skip unrecognized sequences
         None
       }
       else {

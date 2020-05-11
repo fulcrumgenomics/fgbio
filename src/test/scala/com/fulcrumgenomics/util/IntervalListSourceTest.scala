@@ -25,21 +25,20 @@
 
 package com.fulcrumgenomics.util
 
-import com.fulcrumgenomics.testing.UnitSpec
-import htsjdk.samtools.{SAMSequenceDictionary, SAMSequenceRecord}
-import htsjdk.samtools.util.IntervalList
 import com.fulcrumgenomics.FgBioDef._
+import com.fulcrumgenomics.fasta.{SequenceDictionary, SequenceMetadata}
+import com.fulcrumgenomics.testing.UnitSpec
+import htsjdk.samtools.util.IntervalList
 
 class IntervalListSourceTest extends UnitSpec {
+  import com.fulcrumgenomics.fasta.Converters.ToSAMSequenceDictionary
 
-  private val dict = {
-    val d = new SAMSequenceDictionary()
-    d.addSequence(new SAMSequenceRecord("chr1", 10000))
-    d.addSequence(new SAMSequenceRecord("chr2", 50000))
-    d
-  }
+  private val dict = SequenceDictionary(
+    SequenceMetadata(name="chr1", length=10000),
+    SequenceMetadata(name="chr2", length=50000)
+  )
 
-  private val intervals = new IntervalList(this.dict)
+  private val intervals = new IntervalList(this.dict.asSam)
 
   "IntervalListSource" should "read an interval list from a path" in {
     val path = makeTempFile("intervals.", ".interval_list")
@@ -49,13 +48,13 @@ class IntervalListSourceTest extends UnitSpec {
     val actual = source.toIndexedSeq
     source.close()
 
-    this.intervals.getHeader.getSequenceDictionary.assertSameDictionary(source.dict)
-    this.dict.assertSameDictionary(source.dict)
+    this.intervals.getHeader.getSequenceDictionary.assertSameDictionary(source.dict.asSam)
+    this.dict.asSam.assertSameDictionary(source.dict.asSam)
     actual should contain theSameElementsInOrderAs this.intervals.getIntervals.toIndexedSeq
 
     val list = IntervalListSource(path).toIntervalList
     this.intervals.getHeader.getSequenceDictionary.assertSameDictionary(list.getHeader.getSequenceDictionary)
-    this.dict.assertSameDictionary(list.getHeader.getSequenceDictionary)
+    this.dict.asSam.assertSameDictionary(list.getHeader.getSequenceDictionary)
     list.getIntervals.toIndexedSeq should contain theSameElementsInOrderAs this.intervals.getIntervals.toIndexedSeq
   }
 
@@ -76,7 +75,7 @@ class IntervalListSourceTest extends UnitSpec {
 
   it should "fail if an interval's contig is not found the in the sequence dictionary" in {
     val exception = intercept[Exception] { IntervalListSource(Seq("@HD\tVN:1.0", "@SQ\tSN:chr1\tLN:10000", "chr2\t1\t1\t+\tname")).toSeq }
-    exception.getMessage should include("'chr2' not found")
+    exception.getMessage should include("key not found: chr2")
   }
 
   it should "fail if an interval's start is less than one" in {

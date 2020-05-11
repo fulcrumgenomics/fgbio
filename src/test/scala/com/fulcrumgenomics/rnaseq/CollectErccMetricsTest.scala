@@ -30,25 +30,24 @@ import java.nio.file.Files
 import com.fulcrumgenomics.commons.CommonsDef.{FilePath, PathPrefix}
 import com.fulcrumgenomics.commons.io.{Io, PathUtil}
 import com.fulcrumgenomics.commons.util.DelimitedDataParser
+import com.fulcrumgenomics.fasta.{SequenceDictionary, SequenceMetadata}
 import com.fulcrumgenomics.testing.{SamBuilder, UnitSpec}
 import com.fulcrumgenomics.util.{Metric, Rscript}
-import htsjdk.samtools.{SAMSequenceDictionary, SAMSequenceRecord}
 import org.scalatest.OptionValues
 
+import scala.collection.mutable.ListBuffer
 import scala.io.Source
 
 class CollectErccMetricsTest extends UnitSpec with OptionValues {
 
-  private val dict = {
-    val sd = new SAMSequenceDictionary()
-    sd.addSequence(new SAMSequenceRecord("chr1", 10000))
-    sd.addSequence(new SAMSequenceRecord("ERCC-00001", 1000))
-    sd.addSequence(new SAMSequenceRecord("ERCC-00002", 1000))
-    sd.addSequence(new SAMSequenceRecord("ERCC-00003", 1000))
-    sd.addSequence(new SAMSequenceRecord("ERCC-00004", 1000))
-    sd.addSequence(new SAMSequenceRecord("ERCC-00005", 1000))
-    sd
-  }
+  private val dict = SequenceDictionary(
+    SequenceMetadata(name="chr1", length=1000),
+    SequenceMetadata(name="ERCC-00001", length=1000),
+    SequenceMetadata(name="ERCC-00002", length=1000),
+    SequenceMetadata(name="ERCC-00003", length=1000),
+    SequenceMetadata(name="ERCC-00004", length=1000),
+    SequenceMetadata(name="ERCC-00005", length=1000)
+  )
 
   private val builder = new SamBuilder(sd=Some(dict))
   builder.addFrag(contig=0, start=1) // non-ERCC frag
@@ -261,10 +260,10 @@ class CollectErccMetricsTest extends UnitSpec with OptionValues {
       val names  = new DelimitedDataParser(lines, '\t').map { row => row[String](1)  }.toSeq
 
       // Create a dummy dictionary
-      val sd = new SAMSequenceDictionary()
-      names.foreach { name => sd.addSequence(new SAMSequenceRecord(name, 1000)) }
-      sd.addSequence(new SAMSequenceRecord("chr1", 10000))
-      sd
+      val infos = ListBuffer[SequenceMetadata]()
+      infos ++= names.map { name => SequenceMetadata(name=name, length=1000) }
+      infos += SequenceMetadata(name="chr1", length=10000)
+      SequenceDictionary(infos.toSeq:_*)
     }
 
     val builder = new SamBuilder(sd=Some(dict))

@@ -24,18 +24,16 @@
 
 package com.fulcrumgenomics.bam
 
-import com.fulcrumgenomics.FgBioDef._
 import com.fulcrumgenomics.bam.FindSwitchbackReads.SwitchMetric
 import com.fulcrumgenomics.bam.api.SamOrder
 import com.fulcrumgenomics.commons.io.PathUtil
+import com.fulcrumgenomics.fasta.Converters.FromSAMSequenceDictionary
 import com.fulcrumgenomics.fasta.ReferenceSequenceIterator
 import com.fulcrumgenomics.testing.SamBuilder.{Minus, Plus}
 import com.fulcrumgenomics.testing.{ReferenceSetBuilder, SamBuilder, UnitSpec}
 import com.fulcrumgenomics.util.Metric
-import com.fulcrumgenomics.util.Metric.{Count, Proportion}
 import htsjdk.samtools.reference.ReferenceSequenceFileFactory
 import org.scalatest.OptionValues
-import org.scalatest.OptionValues.convertOptionToValuable
 
 class FindSwitchbackReadsTest extends UnitSpec with OptionValues {
   private val (ref, refPath) = {
@@ -96,7 +94,7 @@ class FindSwitchbackReadsTest extends UnitSpec with OptionValues {
   private val refMap = ReferenceSequenceIterator(refPath, stripComments=true).map(r => r.getName -> r).toMap
 
   "FindSwitchbackReads.findReadBasedSwitchback" should "not find switchbacks when there is too little clipping" in {
-    val builder = new SamBuilder(readLength=50, sd=Some(ref.getSequenceDictionary))
+    val builder = new SamBuilder(readLength=50, sd=Some(ref.getSequenceDictionary.fromSam))
 
     val noClip = Template(builder.addFrag(contig=0, start=71, cigar="50M", bases="CTGGACTCCTTCCACTCGCGGGTCGTCTCCAGAGCTCAGAAAATGAGGTG").iterator)
     val noClipHit = FindSwitchbackReads.findReadBasedSwitchback(refMap, noClip, minLength=5, maxOffset=20, maxErrorRate=0.1)
@@ -108,7 +106,7 @@ class FindSwitchbackReadsTest extends UnitSpec with OptionValues {
   }
 
   it should "find a switchback at the start of a plus strand read" in {
-    val builder  = new SamBuilder(readLength=50, sd=Some(ref.getSequenceDictionary))
+    val builder  = new SamBuilder(readLength=50, sd=Some(ref.getSequenceDictionary.fromSam))
     val template = Template(builder.addFrag(contig=0, start=71, cigar="10S40M", bases="aggagtccagCTGGACTCCTTCCACTCGCGGGTCGTCTCCAGAGCTCAGA").iterator)
     val hit      = FindSwitchbackReads.findReadBasedSwitchback(refMap, template, minLength=5, maxOffset=20, maxErrorRate=0.1)
     hit.value.length shouldBe 10
@@ -116,14 +114,14 @@ class FindSwitchbackReadsTest extends UnitSpec with OptionValues {
   }
 
   it should "not find a switchback at the start of a plus strand read when the error rate is too high" in {
-    val builder  = new SamBuilder(readLength=50, sd=Some(ref.getSequenceDictionary))
+    val builder  = new SamBuilder(readLength=50, sd=Some(ref.getSequenceDictionary.fromSam))
     val template = Template(builder.addFrag(contig=0, start=71, cigar="10S40M", bases="aCCagtccagCTGGACTCCTTCCACTCGCGGGTCGTCTCCAGAGCTCAGA").iterator)
     val hit      = FindSwitchbackReads.findReadBasedSwitchback(refMap, template, minLength=5, maxOffset=20, maxErrorRate=0.1)
     hit shouldBe None
   }
 
   it should "find a switchback at the start of a plus strand read with a large offset" in {
-    val builder  = new SamBuilder(readLength=50, sd=Some(ref.getSequenceDictionary))
+    val builder  = new SamBuilder(readLength=50, sd=Some(ref.getSequenceDictionary.fromSam))
     val template = Template(builder.addFrag(contig=0, start=71, cigar="10S40M", bases="ttgatgggaaCTGGACTCCTTCCACTCGCGGGTCGTCTCCAGAGCTCAGA").iterator)
     val hit      = FindSwitchbackReads.findReadBasedSwitchback(refMap, template, minLength=5, maxOffset=20, maxErrorRate=0.1)
     hit.value.length shouldBe 10
@@ -131,21 +129,21 @@ class FindSwitchbackReadsTest extends UnitSpec with OptionValues {
   }
 
   it should "not find a switchback at the start of a plus strand read with an offset that is too large (25bp>20bp)" in {
-    val builder  = new SamBuilder(readLength=50, sd=Some(ref.getSequenceDictionary))
+    val builder  = new SamBuilder(readLength=50, sd=Some(ref.getSequenceDictionary.fromSam))
     val template = Template(builder.addFrag(contig=0, start=71, cigar="10S40M", bases="gggaagggacCTGGACTCCTTCCACTCGCGGGTCGTCTCCAGAGCTCAGA").iterator)
     val hit      = FindSwitchbackReads.findReadBasedSwitchback(refMap, template, minLength=5, maxOffset=20, maxErrorRate=0.1)
     hit shouldBe None
   }
 
   it should "not find a switchback in a plus strand read with soft-clipping at the _end_" in {
-    val builder  = new SamBuilder(readLength=50, sd=Some(ref.getSequenceDictionary))
+    val builder  = new SamBuilder(readLength=50, sd=Some(ref.getSequenceDictionary.fromSam))
     val template = Template(builder.addFrag(contig=0, start=71, cigar="40M10S", bases="CTGGACTCCTTCCACTCGCGGGTCGTCTCCAGAGCTCAGAtctgagctct").iterator)
     val hit      = FindSwitchbackReads.findReadBasedSwitchback(refMap, template, minLength=5, maxOffset=20, maxErrorRate=0.1)
     hit shouldBe None
   }
 
   it should "find a switchback in a negative strand read with soft-clipping at the end" in {
-    val builder  = new SamBuilder(readLength=50, sd=Some(ref.getSequenceDictionary))
+    val builder  = new SamBuilder(readLength=50, sd=Some(ref.getSequenceDictionary.fromSam))
     val template = Template(builder.addFrag(contig=0, start=71, cigar="40M10S", strand=Minus, bases="CTGGACTCCTTCCACTCGCGGGTCGTCTCCAGAGCTCAGAtctgagctct").iterator)
     val hit      = FindSwitchbackReads.findReadBasedSwitchback(refMap, template, minLength=5, maxOffset=20, maxErrorRate=0.1)
     hit.value.length shouldBe 10
@@ -153,7 +151,7 @@ class FindSwitchbackReadsTest extends UnitSpec with OptionValues {
   }
 
   it should "calculate offset correctly for negative strand reads" in {
-    val builder  = new SamBuilder(readLength=50, sd=Some(ref.getSequenceDictionary))
+    val builder  = new SamBuilder(readLength=50, sd=Some(ref.getSequenceDictionary.fromSam))
     val plus10  = Template(builder.addFrag(contig=0, start=71, cigar="40M10S", strand=Minus, bases="CTGGACTCCTTCCACTCGCGGGTCGTCTCCAGAGCTCAGAcacctcattt").iterator)
     val minus10 = Template(builder.addFrag(contig=0, start=71, cigar="40M10S", strand=Minus, bases="CTGGACTCCTTCCACTCGCGGGTCGTCTCCAGAGCTCAGAggagacgacc").iterator)
     val plusHit  = FindSwitchbackReads.findReadBasedSwitchback(refMap, plus10, minLength=5, maxOffset=20, maxErrorRate=0.1)
@@ -163,7 +161,7 @@ class FindSwitchbackReadsTest extends UnitSpec with OptionValues {
   }
 
   it should "find a switchback with errors in the sequence at the start of a read" in {
-    val builder  = new SamBuilder(readLength=100, sd=Some(ref.getSequenceDictionary))
+    val builder  = new SamBuilder(readLength=100, sd=Some(ref.getSequenceDictionary.fromSam))
     val rec = builder.addFrag(contig=0, start=71, cigar="50S50M", bases="cacctcattttctgagctctggagacgacccgcgagtggaaggagtccagCTGGACTCCTTCCACTCGCGGGTCGTCTCCAGAGCTCAGAAAATGAGGTG").get
     val template = Template(Iterator(rec))
 
@@ -185,7 +183,7 @@ class FindSwitchbackReadsTest extends UnitSpec with OptionValues {
   }
 
   it should "find a switchback in a read when given a template with paired reads" in {
-    val builder  = new SamBuilder(readLength=50, sd=Some(ref.getSequenceDictionary))
+    val builder  = new SamBuilder(readLength=50, sd=Some(ref.getSequenceDictionary.fromSam))
     val recs     = builder.addPair(contig=0, start1=1,  cigar1="50M",    strand1=Plus,  bases1="TGGCACCGAGCGAGCCGCGATGACAATGGCTGCATTGTGCTTCATGTCCC",
                                              start2=71, cigar2="40M10S", strand2=Minus, bases2="CTGGACTCCTTCCACTCGCGGGTCGTCTCCAGAGCTCAGAtctgagctct")
     val template = Template(recs.iterator)
@@ -196,7 +194,7 @@ class FindSwitchbackReadsTest extends UnitSpec with OptionValues {
   }
 
   it should "not find switchbacks in secondary or supplementary records" in {
-    val builder  = new SamBuilder(readLength=50, sd=Some(ref.getSequenceDictionary))
+    val builder  = new SamBuilder(readLength=50, sd=Some(ref.getSequenceDictionary.fromSam))
     builder.addFrag(name="q1", contig=0, start=71, cigar="50M", strand=Plus, bases="CTGGACTCCTTCCACTCGCGGGTCGTCTCCAGAGCTCAGAAAATGAGGTG")
     builder.addFrag(name="q1", contig=0, start=71, cigar="10S40M", strand=Plus, bases="aggagtccagCTGGACTCCTTCCACTCGCGGGTCGTCTCCAGAGCTCAGA").foreach(_.secondary = true)
     builder.addFrag(name="q1", contig=0, start=71, cigar="12S38M", strand=Plus, bases="gaaggagtccagCTGGACTCCTTCCACTCGCGGGTCGTCTCCAGAGCTCA").foreach(_.supplementary = true)
@@ -206,7 +204,7 @@ class FindSwitchbackReadsTest extends UnitSpec with OptionValues {
   }
 
   "FindSwitchbackReads.findTandemSwitchback" should "call FF and RR templates with small enough gaps as switchbacks" in {
-    val builder = new SamBuilder(readLength=50, sd=Some(ref.getSequenceDictionary))
+    val builder = new SamBuilder(readLength=50, sd=Some(ref.getSequenceDictionary.fromSam))
     val ff = Template(builder.addPair(contig=0, start1=100, start2=160, strand1=Plus, strand2=Plus).iterator)
     val rr = Template(builder.addPair(contig=0, start1=100, start2=160, strand1=Minus, strand2=Minus).iterator)
 
@@ -217,7 +215,7 @@ class FindSwitchbackReadsTest extends UnitSpec with OptionValues {
   it should "not call tandem pairs switchbacks if the gap is too big" in {
     val readLen = 250
     val start   = 500
-    val builder = new SamBuilder(readLength=readLen, sd=Some(ref.getSequenceDictionary))
+    val builder = new SamBuilder(readLength=readLen, sd=Some(ref.getSequenceDictionary.fromSam))
 
     (Seq(-201, 201) ++ Range(-200, 200, step=20)).foreach { gap =>
       val ff  = Template(builder.addPair(contig=0, start1=start, start2=start+readLen+gap, strand1=Plus, strand2=Plus).iterator)
@@ -229,7 +227,7 @@ class FindSwitchbackReadsTest extends UnitSpec with OptionValues {
   }
 
   it should "not call tandem pairs switchbacks if the reads are on different chromosomes" in {
-    val builder = new SamBuilder(readLength=50, sd=Some(ref.getSequenceDictionary))
+    val builder = new SamBuilder(readLength=50, sd=Some(ref.getSequenceDictionary.fromSam))
     val ff = Template(builder.addPair(contig=0, start1=100, start2=160, strand1=Plus, strand2=Plus).iterator)
     FindSwitchbackReads.findTandemSwitchback(ff, maxGap=200) shouldBe defined
 
@@ -239,7 +237,7 @@ class FindSwitchbackReadsTest extends UnitSpec with OptionValues {
   }
 
   it should "not call FR or RF pairs switchbacks" in {
-    val builder = new SamBuilder(readLength=50, sd=Some(ref.getSequenceDictionary))
+    val builder = new SamBuilder(readLength=50, sd=Some(ref.getSequenceDictionary.fromSam))
     val ff = Template(builder.addPair(contig=0, start1=100, start2=160, strand1=Plus, strand2=Plus).iterator)
     val fr = Template(builder.addPair(contig=0, start1=100, start2=160, strand1=Plus, strand2=Minus).iterator)
     val rf = Template(builder.addPair(contig=0, start1=100, start2=160, strand1=Minus, strand2=Plus).iterator)
@@ -250,7 +248,7 @@ class FindSwitchbackReadsTest extends UnitSpec with OptionValues {
   }
 
   "FindSwitchbackReads" should "run end to end and produce a tagged BAM and metrics" in {
-     val builder = new SamBuilder(readLength=50, sd=Some(ref.getSequenceDictionary), sort=Some(SamOrder.Queryname))
+     val builder = new SamBuilder(readLength=50, sd=Some(ref.getSequenceDictionary.fromSam), sort=Some(SamOrder.Queryname))
     builder.rg.setSample("switchback_sample")
     builder.rg.setLibrary("switchback_library")
 
@@ -328,7 +326,7 @@ class FindSwitchbackReadsTest extends UnitSpec with OptionValues {
   }
 
   it should "run end to end and not unmap reads when dont-unmap is set" in {
-    val builder = new SamBuilder(readLength=50, sd=Some(ref.getSequenceDictionary), sort=Some(SamOrder.Queryname))
+    val builder = new SamBuilder(readLength=50, sd=Some(ref.getSequenceDictionary.fromSam), sort=Some(SamOrder.Queryname))
 
     // Add an FF pair
     builder.addPair(name=s"ff", start1=500, start2=560, strand1=Plus, strand2=Plus)

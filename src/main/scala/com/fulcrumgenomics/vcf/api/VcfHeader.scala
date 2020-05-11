@@ -25,8 +25,8 @@
 package com.fulcrumgenomics.vcf.api
 
 import com.fulcrumgenomics.FgBioDef._
+import com.fulcrumgenomics.fasta.{SequenceDictionary, SequenceMetadata}
 import enumeratum.EnumEntry
-import htsjdk.samtools.{SAMSequenceDictionary, SAMSequenceRecord}
 
 import scala.collection.immutable
 
@@ -151,11 +151,11 @@ case class VcfHeader(contigs: IndexedSeq[VcfContigHeader],
                     ) {
 
   /** The contig lines represented as a SAM sequence dictionary. */
-  val dict: SAMSequenceDictionary = {
-    val d = new SAMSequenceDictionary()
-    contigs.map { c => new SAMSequenceRecord(c.name, c.length.getOrElse(SAMSequenceRecord.UNKNOWN_SEQUENCE_LENGTH))}
-      .foreach(r => d.addSequence(r))
-    d
+  val dict: SequenceDictionary = {
+    val infos = contigs.map { c =>
+      SequenceMetadata(name = c.name, length = c.length.getOrElse(0))
+    }
+    SequenceDictionary(infos:_*)
   }
 
   /** The INFO entries organized as a map where the key is the ID of the INFO field. */

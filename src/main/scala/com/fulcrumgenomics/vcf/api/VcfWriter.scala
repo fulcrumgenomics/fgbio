@@ -56,12 +56,13 @@ object VcfWriter {
     * @return a VariantWriter to write to the given path
     */
   def apply(path: PathToVcf, header: VcfHeader, async: Boolean = DefaultUseAsyncIo): VcfWriter = {
+    import com.fulcrumgenomics.fasta.Converters.ToSAMSequenceDictionary
     val javaHeader = VcfConversions.toJavaHeader(header)
 
     val builder = new VariantContextWriterBuilder()
       .setOutputPath(path)
       .setOption(Options.INDEX_ON_THE_FLY)
-      .setReferenceDictionary(header.dict)
+      .setReferenceDictionary(header.dict.asSam)
       .setOption(Options.ALLOW_MISSING_FIELDS_IN_HEADER)
       .setBuffer(Io.bufferSize)
 

@@ -26,8 +26,9 @@ package com.fulcrumgenomics.vcf
 
 import com.fulcrumgenomics.FgBioDef.javaIterableToIterator
 import com.fulcrumgenomics.commons.io.PathUtil
+import com.fulcrumgenomics.fasta.Converters.FromSAMSequenceDictionary
+import com.fulcrumgenomics.fasta.SequenceDictionary
 import com.fulcrumgenomics.testing.{UnitSpec, VariantContextSetBuilder}
-import htsjdk.variant.utils.SAMSequenceDictionaryExtractor
 import htsjdk.variant.vcf.VCFFileReader
 
 class UpdateVcfContigNamesTest extends UnitSpec {
@@ -35,8 +36,8 @@ class UpdateVcfContigNamesTest extends UnitSpec {
   private val testDir        = PathUtil.pathTo("src/test/resources/com/fulcrumgenomics/vcf/update_vcf_contig_names/")
   private val sourceDictPath = testDir.resolve("GRCh38.p12.dict")
   private val targetDictPath = testDir.resolve("hg38.dict")
-  private val sourceDict     = SAMSequenceDictionaryExtractor.extractDictionary(this.sourceDictPath)
-  private val targetDict     = SAMSequenceDictionaryExtractor.extractDictionary(this.targetDictPath)
+  private val sourceDict     = SequenceDictionary.extract(this.sourceDictPath)
+  private val targetDict     = SequenceDictionary.extract(this.targetDictPath)
 
   "UpdateVcfContigNames" should "update the contig names" in {
 
@@ -53,8 +54,8 @@ class UpdateVcfContigNamesTest extends UnitSpec {
     val reader = new VCFFileReader(output)
 
     // Check the sequence dictionary
-    val outputDict = reader.getFileHeader.getSequenceDictionary
-    outputDict.assertSameDictionary(targetDict)
+    val outputDict = reader.getFileHeader.getSequenceDictionary.fromSam
+    outputDict.sameAs(targetDict) shouldBe true
 
     // Check the variants
     val variants = reader.toIndexedSeq
@@ -93,8 +94,8 @@ class UpdateVcfContigNamesTest extends UnitSpec {
     val reader = new VCFFileReader(output)
 
     // Check the sequence dictionary
-    val outputDict = reader.getFileHeader.getSequenceDictionary
-    outputDict.assertSameDictionary(targetDict)
+    val outputDict = reader.getFileHeader.getSequenceDictionary.fromSam
+    outputDict.sameAs(targetDict) shouldBe true
 
     // Check the variants
     val variants = reader.toIndexedSeq

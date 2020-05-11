@@ -26,7 +26,8 @@ package com.fulcrumgenomics.bam
 
 import com.fulcrumgenomics.FgBioDef._
 import com.fulcrumgenomics.bam.api.SamRecord
-import htsjdk.samtools.{CigarOperator, SAMSequenceDictionary}
+import com.fulcrumgenomics.fasta.SequenceDictionary
+import htsjdk.samtools.CigarOperator
 import htsjdk.samtools.util.SequenceUtil
 
 import scala.collection.mutable
@@ -115,7 +116,7 @@ case class DeletionEntry(override val rec: SamRecord, override val offset: Int) 
 /**
   * Class that provides methods to build and filter [[Pileup]]s.
   *
-  * @param dict the SAMSequenceDictionary for the reference sequence
+  * @param dict the SequenceDictionary for the reference sequence
   * @param minMapQ the minimum MAPQ to allow a read to contribute to the pileup
   * @param minBaseQ the minimum base quality to allow a base to contribute to the pileup
   * @param mappedPairsOnly if true only allow reads from read-pairs with both reads mapped to contribute to the pileup
@@ -123,7 +124,7 @@ case class DeletionEntry(override val rec: SamRecord, override val offset: Int) 
   * @param includeSecondaryAlignments if true allow secondary alignments to contribute to the pileup
   * @param includeSupplementalAlignments if true allow supplemental alignments to contribute to the pileup
   */
-class PileupBuilder(dict: SAMSequenceDictionary,
+class PileupBuilder(dict: SequenceDictionary,
                     minMapQ: Int = 20,
                     minBaseQ: Int = 20,
                     mappedPairsOnly: Boolean = true,
@@ -167,7 +168,7 @@ class PileupBuilder(dict: SAMSequenceDictionary,
     * @param pos the 1-based position on the reference sequence at which to construct the pileup
     */
   def build(iterator: Iterator[SamRecord], refName: String, pos: Int): Pileup[PileupEntry] = {
-    val refIndex = dict.getSequenceIndex(refName)
+    val refIndex = dict(refName).index
     require(refIndex >= 0, s"Unknown reference sequence: ${refName}")
 
     val builder = IndexedSeq.newBuilder[PileupEntry]

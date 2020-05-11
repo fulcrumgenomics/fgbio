@@ -27,10 +27,12 @@ package com.fulcrumgenomics.testing
 
 import java.nio.file.Files
 
+import com.fulcrumgenomics.fasta.Converters.FromSAMSequenceDictionary
+import com.fulcrumgenomics.fasta.SequenceDictionary
 import htsjdk.samtools.reference.ReferenceSequenceFileFactory
-import htsjdk.variant.utils.SAMSequenceDictionaryExtractor
+import org.scalatest.OptionValues
 
-class ReferenceSetBuilderTest extends UnitSpec {
+class ReferenceSetBuilderTest extends UnitSpec with OptionValues {
   "ReferenceSetBuilder" should "write a simple FASTA file, with accompanying .dict and .fai files" in {
     val builder = new ReferenceSetBuilder
     builder.add("chr1").add("AAAAAAAAAA", 500) // 5000 bases
@@ -40,7 +42,7 @@ class ReferenceSetBuilderTest extends UnitSpec {
     // Check the .dict file
     val dictIn = ReferenceSequenceFileFactory.getDefaultDictionaryForReferenceSequence(fasta)
     Files.exists(dictIn) shouldBe true
-    val dict = SAMSequenceDictionaryExtractor.extractDictionary(dictIn)
+    val dict = SequenceDictionary.extract(dictIn)
 
     // Check the .fai file
     val fai =  ReferenceSequenceFileFactory.getFastaIndexFileName(fasta)
@@ -52,7 +54,7 @@ class ReferenceSetBuilderTest extends UnitSpec {
     ref.getSequenceDictionary.getSequences.size shouldBe 2
     ref.getSequence("chr1").getBases.count(_ == 'A') shouldBe 5000
     ref.getSequence("chr2").getBases.count(_ == 'C') shouldBe 5000
-    ref.getSequenceDictionary.assertSameDictionary(dict)
+    ref.getSequenceDictionary.fromSam.sameAs(dict)
     ref.close()
   }
 
@@ -61,13 +63,13 @@ class ReferenceSetBuilderTest extends UnitSpec {
       val builder = new ReferenceSetBuilder(assembly=assembly)
       builder.add("chr1").add("A", 100)
       val path = builder.toTempFile()
-      val dict = SAMSequenceDictionaryExtractor.extractDictionary(path)
-      dict.size() shouldBe 1
+      val dict = SequenceDictionary.extract(path)
+      dict.length shouldBe 1
       dict
     }
 
-    plus.getSequence("chr1").getAssembly shouldBe "hg19"
-    minus.getSequence("chr1").getAssembly shouldBe null
+    plus("chr1").assembly.value shouldBe "hg19"
+    minus("chr1").assembly shouldBe 'empty
   }
 
   it should "write species name into the dictionary if given one" in {
@@ -75,20 +77,20 @@ class ReferenceSetBuilderTest extends UnitSpec {
       val builder = new ReferenceSetBuilder(species=species)
       builder.add("chr1").add("A", 100)
       val path = builder.toTempFile()
-      val dict = SAMSequenceDictionaryExtractor.extractDictionary(path)
-      dict.size() shouldBe 1
+      val dict = SequenceDictionary.extract(path)
+      dict.length shouldBe 1
       dict
     }
 
-    plus.getSequence("chr1").getSpecies shouldBe "human"
-    minus.getSequence("chr1").getSpecies shouldBe null
+    plus("chr1").species.value shouldBe "human"
+    minus("chr1").species shouldBe 'empty
   }
 
   it should "calculate MD5s for sequences only if asked" in {
     val builder = new ReferenceSetBuilder()
     builder.add("chr1").add("A", 100)
-    val Seq(plus, minus) = Seq(true, false).map(md5 => builder.toTempFile(calculateMds5=md5)).map(SAMSequenceDictionaryExtractor.extractDictionary)
-    plus.getSequence("chr1").getMd5 == null shouldBe false
-    minus.getSequence("chr1").getMd5 == null shouldBe true
+    val Seq(plus, minus) = Seq(true, false).map(md5 => builder.toTempFile(calculateMds5=md5)).map(SequenceDictionary.extract)
+    plus("chr1").md5 shouldBe 'nonEmpty
+    minus("chr1").md5 shouldBe 'empty
   }
 }

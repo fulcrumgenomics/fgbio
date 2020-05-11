@@ -24,10 +24,8 @@
 
 package com.fulcrumgenomics.vcf
 
-import com.fulcrumgenomics.FgBioDef._
+import com.fulcrumgenomics.fasta.SequenceDictionary
 import com.fulcrumgenomics.testing.{ReferenceSetBuilder, UnitSpec, VariantContextSetBuilder}
-import htsjdk.samtools.SAMSequenceDictionary
-import htsjdk.variant.utils.SAMSequenceDictionaryExtractor
 
 class VariantMaskTest extends UnitSpec {
   val ref = {
@@ -41,7 +39,7 @@ class VariantMaskTest extends UnitSpec {
     builder.toTempFile()
   }
 
-  val dict = SAMSequenceDictionaryExtractor.extractDictionary(ref)
+  val dict = SequenceDictionary.extract(ref)
 
   "VariantMask" should "mask SNPs as individual bases" in {
     val builder = new VariantContextSetBuilder().setSequenceDictionary(dict)
@@ -100,7 +98,7 @@ class VariantMaskTest extends UnitSpec {
   it should "throw an exception if a VCF doesn't have a sequence dictionary in it" in {
     val builder = new VariantContextSetBuilder().setSequenceDictionary(dict)
     builder.addVariant(refIdx=1, start=100, variantAlleles=List("A","C"), genotypeAlleles=List("A", "C"))
-    builder.setSequenceDictionary(new SAMSequenceDictionary())
+    builder.setSequenceDictionary(SequenceDictionary())
     val vcf = builder.toTempFile()
     an[Exception] shouldBe thrownBy { VariantMask(vcf) }
   }
