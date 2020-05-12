@@ -25,10 +25,9 @@
 package com.fulcrumgenomics.fasta
 
 import com.fulcrumgenomics.commons.io.PathUtil
-import com.fulcrumgenomics.testing.UnitSpec
-import com.fulcrumgenomics.util.Io
 import com.fulcrumgenomics.fasta.AssemblyReportColumn._
 import com.fulcrumgenomics.fasta.SequenceRole._
+import com.fulcrumgenomics.testing.UnitSpec
 
 class CollectAlternateContigNamesTest extends UnitSpec {
 
@@ -36,8 +35,8 @@ class CollectAlternateContigNamesTest extends UnitSpec {
   private val reportHg19 = dir.resolve("GRCh37.p13.assembly_report.txt")
   private val reportHg38 = dir.resolve("GRCh38.p12.assembly_report.txt")
 
-  "CollectAlternateContigNames" should "read get the UCSC-style-names for alternates in GRCh37.p13" in {
-    val output = makeTempFile("test.", ".txt")
+  "CollectAlternateContigNames" should "read the UCSC-style-names for alternates in GRCh37.p13" in {
+    val output = makeTempFile("test.", ".dict")
     val tool = new CollectAlternateContigNames(
       input         = reportHg19,
       output        = output,
@@ -47,14 +46,16 @@ class CollectAlternateContigNamesTest extends UnitSpec {
     )
     executeFgbioTool(tool)
 
-    val lines = Io.readLines(output).toList
-    lines should have length 84
-    lines.head shouldBe "NC_000001.10\tchr1"
-    lines.last shouldBe "NT_113948.1\tchr19_gl000208_random"
+    val dict = SequenceDictionary(output)
+    dict should have length 84
+    dict.head.name shouldBe "NC_000001.10"
+    dict.head.aliases should contain theSameElementsInOrderAs Seq("chr1")
+    dict.last.name shouldBe "NT_113947.1"
+    dict.last.aliases should contain theSameElementsInOrderAs Seq("chr18_gl000207_random")
   }
 
-  it should "read get the UCSC-style-names for alternates in GRCh38.p12" in {
-    val output = makeTempFile("test.", ".txt")
+  it should "read the UCSC-style-names for alternates in GRCh38.p12" in {
+    val output = makeTempFile("test.", ".dict")
     val tool = new CollectAlternateContigNames(
       input         = reportHg38,
       output        = output,
@@ -64,45 +65,11 @@ class CollectAlternateContigNamesTest extends UnitSpec {
     )
     executeFgbioTool(tool)
 
-    val lines = Io.readLines(output).toList
-    lines should have length 193
-    lines.head shouldBe "NC_000001.11\tchr1"
-    lines.last shouldBe "NT_187405.1\tchrUn_KI270312v1"
-  }
-
-  it should "read get the UCSC-style-names and GenBank accessions for alternates in GRCh37.p13 and output a single alternate per line" in {
-    val output = makeTempFile("test.", ".txt")
-    val tool = new CollectAlternateContigNames(
-      input         = reportHg19,
-      output        = output,
-      primary       = RefSeqAccession,
-      alternates    = Seq(UcscName, GenBankAccession),
-      sequenceRoles = Seq(AssembledMolecule, UnlocalizedScaffold, UnplacedScaffold),
-      singleLine = false
-    )
-    executeFgbioTool(tool)
-
-    val lines = Io.readLines(output).toList
-    lines should have length 168
-    lines.head shouldBe "NC_000001.10\tchr1"
-    lines.last shouldBe "NT_113948.1\tGL000208.1"
-  }
-
-  it should "read get the UCSC-style-names and GenBank accessions for alternates in GRCh37.p13 and output all alternates on a single line" in {
-    val output = makeTempFile("test.", ".txt")
-    val tool = new CollectAlternateContigNames(
-      input         = reportHg19,
-      output        = output,
-      primary       = RefSeqAccession,
-      alternates    = Seq(UcscName, GenBankAccession),
-      sequenceRoles = Seq(AssembledMolecule, UnlocalizedScaffold, UnplacedScaffold),
-      singleLine = true
-    )
-    executeFgbioTool(tool)
-
-    val lines = Io.readLines(output).toList
-    lines should have length 84
-    lines.head shouldBe "NC_000001.10\tchr1\tCM000663.1"
-    lines.last shouldBe "NT_113948.1\tchr19_gl000208_random\tGL000208.1"
+    val dict = SequenceDictionary(output)
+    dict should have length 193
+    dict.head.name shouldBe "NC_000001.11"
+    dict.head.aliases should contain theSameElementsInOrderAs Seq("chr1")
+    dict.last.name shouldBe "NT_187479.1"
+    dict.last.aliases should contain theSameElementsInOrderAs Seq("chrUn_KI270394v1")
   }
 }

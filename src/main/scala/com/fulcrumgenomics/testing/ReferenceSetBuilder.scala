@@ -28,10 +28,11 @@ import java.nio.file.{Files, Path}
 
 import com.fulcrumgenomics.FgBioDef._
 import com.fulcrumgenomics.commons.io.PathUtil
+import com.fulcrumgenomics.fasta.{SequenceDictionary, SequenceMetadata}
 import com.fulcrumgenomics.util.Io
 import htsjdk.samtools.reference.{FastaSequenceIndexCreator, ReferenceSequenceFileFactory}
 import htsjdk.samtools.util.SequenceUtil
-import htsjdk.samtools.{SAMFileHeader, SAMSequenceDictionary, SAMSequenceRecord, SAMTextHeaderCodec}
+import htsjdk.samtools.{SAMFileHeader, SAMTextHeaderCodec}
 
 import scala.collection.mutable.ListBuffer
 
@@ -70,10 +71,8 @@ class ReferenceSetBuilder(val assembly: Option[String] = Some("testassembly"),
   /** Writes the fasta out to a file, and creates a sequence dictionary and fasta index (FAI) file. */
   def toFile(path: Path, deleteOnExit: Boolean = true, calculateMds5: Boolean = false): Unit = {
     val out = Io.toWriter(path)
-    val dict = new SAMSequenceDictionary()
-    val header = new SAMFileHeader(dict)
 
-    this.refs.foreach { ref =>
+    val infos = this.refs.map { ref =>
       out.write('>')
       out.write(ref.name)
       out.newLine()
@@ -83,14 +82,22 @@ class ReferenceSetBuilder(val assembly: Option[String] = Some("testassembly"),
         out.newLine()
       }
 
-      val rec = new SAMSequenceRecord(ref.name, bases.length)
-      ref.assembly.foreach(rec.setAssembly)
-      ref.species.foreach(rec.setSpecies)
-      if (calculateMds5) rec.setMd5(SequenceUtil.calculateMD5String(bases.toUpperCase.getBytes))
-      dict.addSequence(rec)
-    }
 
+      SequenceMetadata(
+        name       = ref.name,
+        length     = bases.length,
+        assembly   = ref.assembly,
+        species    = ref.species,
+        md5        = if (calculateMds5) Some(SequenceUtil.calculateMD5String(bases.toUpperCase.getBytes)) else None
+      )
+    }
     out.close()
+
+    val dict = SequenceDictionary(infos.toSeq:_*)
+    val header = {
+      import com.fulcrumgenomics.fasta.Converters.ToSAMSequenceDictionary
+      new SAMFileHeader(dict.asSam)
+    }
 
     // Create the sequence dictionary
     val dictOut    = PathUtil.replaceExtension(path, ".dict")

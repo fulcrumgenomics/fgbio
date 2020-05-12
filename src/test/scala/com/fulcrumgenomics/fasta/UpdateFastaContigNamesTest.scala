@@ -24,25 +24,34 @@
 
 package com.fulcrumgenomics.fasta
 
+import com.fulcrumgenomics.FgBioDef.{PathToFasta, PathToSequenceDictionary}
 import com.fulcrumgenomics.commons.io.PathUtil
 import com.fulcrumgenomics.testing.UnitSpec
-import com.fulcrumgenomics.util.Io
-import com.fulcrumgenomics.FgBioDef.PathToFasta
 
-class UpdateFastaContigNamesTest extends UnitSpec {
+import scala.collection.mutable.ListBuffer
+
+  class UpdateFastaContigNamesTest extends UnitSpec {
 
   private val dir   = PathUtil.pathTo("src/test/resources/com/fulcrumgenomics/fasta")
   private val fasta = dir.resolve("soft-masked.fa")
 
+  private def toSequenceMetadata(name: String, alias: String*): SequenceMetadata = {
+    SequenceMetadata(name=name, length=0, aliases=alias)
+  }
 
-  private def mappingInput(skipLast: Boolean = false) = {
-    val lines = Seq(
-      "gi|7|emb|X51700.1|\t1",
-      "gi|20|emb|X52703.1|\t2",
-      "gi|595576|gb|U13080.1|BPU13080\t3"
+  private def dict(skipLast: Boolean = false): SequenceDictionary = {
+    val infos = ListBuffer[SequenceMetadata](
+      toSequenceMetadata(name="1", "gi|7|emb|X51700.1|"),
+      toSequenceMetadata(name="2", "gi|20|emb|X52703.1|")
     )
-    val path = makeTempFile("test.", ".txt")
-    if (skipLast) Io.writeLines(path, lines.dropRight(1)) else Io.writeLines(path, lines)
+    if (!skipLast) infos += toSequenceMetadata(name="3", "gi|595576|gb|U13080.1|BPU13080")
+
+    SequenceDictionary(infos.toSeq:_*)
+  }
+
+  private def pathToSequenceDictionary(skipLast: Boolean = false): PathToSequenceDictionary = {
+    val path = makeTempFile("test.", "in.dict")
+    dict(skipLast=skipLast).write(path)
     path
   }
 
@@ -54,9 +63,9 @@ class UpdateFastaContigNamesTest extends UnitSpec {
     val output = makeTempFile("test.", ".fasta")
 
     val tool = new UpdateFastaContigNames(
-      input   = fasta,
-      output  = output,
-      mapping = mappingInput()
+      input  = fasta,
+      dict   = pathToSequenceDictionary(),
+      output = output
     )
 
     executeFgbioTool(tool)
@@ -68,9 +77,9 @@ class UpdateFastaContigNamesTest extends UnitSpec {
     val output = makeTempFile("test.", ".fasta")
 
     val tool = new UpdateFastaContigNames(
-      input   = fasta,
-      output  = output,
-      mapping = mappingInput(skipLast = true)
+      input  = fasta,
+      dict   = pathToSequenceDictionary(skipLast = true),
+      output = output
     )
     val ex = intercept[Exception] {executeFgbioTool(tool) }
     ex.getMessage should include ("Did not find contig")
@@ -81,8 +90,8 @@ class UpdateFastaContigNamesTest extends UnitSpec {
 
     val tool = new UpdateFastaContigNames(
       input       = fasta,
+      dict        = pathToSequenceDictionary(skipLast = true),
       output      = output,
-      mapping     = mappingInput(skipLast = true),
       skipMissing = true
     )
     executeFgbioTool(tool)

@@ -24,12 +24,11 @@
 
 package com.fulcrumgenomics.util
 
-import java.io.BufferedWriter
-
 import com.fulcrumgenomics.FgBioDef._
 import com.fulcrumgenomics.cmdline.{ClpGroups, FgBioTool}
 import com.fulcrumgenomics.commons.collection.BetterBufferedIterator
 import com.fulcrumgenomics.commons.util.{LazyLogging, StringUtil}
+import com.fulcrumgenomics.fasta.SequenceDictionary
 import com.fulcrumgenomics.sopt.{arg, clp}
 
 
@@ -37,35 +36,31 @@ import com.fulcrumgenomics.sopt.{arg, clp}
   """
     |Updates then contig names in a GFF.
     |
-    |The first column of the input is the source name and the second column is an target name.  If there
-    |is more than one target names (ex. multiple alternates), each alternate name may be on a separate line or as
-    |additional columns.  Only the first target name will be considered.  This is mainly to support the output of
-    |`CollectAlternateContigNames`.
+    |The name of each sequence must match one of the names (including aliases) in the given sequence dictionary.  The
+    |new name will be the primary (non-alias) name in the sequence dictionary.
     |
     |Please note: the output GFF will be in the same order as the input GFF.
   """,
   group = ClpGroups.Utilities)
 class UpdateGffContigNames
 (@arg(flag='i', doc="Input GFF.") val input: FilePath,
- @arg(flag='m', doc="The path to the source to target names.") val mapping :FilePath,
- @arg(flag='o', doc="Output GFF.")val output: FilePath,
+ @arg(flag='d', doc="The path to the sequence dictionary with contig aliases.") val dict: PathToSequenceDictionary,
+ @arg(flag='o', doc="Output GFF.") val output: FilePath,
  @arg(doc="Skip missing contigs.") val skipMissing: Boolean = false
 ) extends FgBioTool with LazyLogging {
 
   Io.assertReadable(input)
-  Io.assertReadable(Seq(input, mapping))
+  Io.assertReadable(Seq(input, dict))
   Io.assertCanWriteFile(output)
 
   private val sequenceRegionKey = "##sequence-region"
 
   override def execute(): Unit = {
     val progress = ProgressLogger(logger, noun="features", verb="written", unit=10e5.toInt)
-
-    val srcToTarget = ContigNameMapping.parse(mapping)
-
-    val in = Io.readLines(input).bufferBetter
-    val out = Io.toWriter(output)
-    val fields = Array("", "", "", "")
+    val dict     = SequenceDictionary(this.dict)
+    val in       = Io.readLines(input).bufferBetter
+    val out      = Io.toWriter(output)
+    val fields   = Array("", "", "", "")
 
     // writes the header lines prior to the features for a given sequence/contig
     def writeSequenceHeader(headerLines: Seq[String]): Unit = {
@@ -73,9 +68,9 @@ class UpdateGffContigNames
         if (line.startsWith(sequenceRegionKey)) {
           require(StringUtil.split(line, ' ', fields) == 4, s"Not enough fields: $line")
           val srcName = fields(1)
-          srcToTarget.get(srcName).foreach { targetNames =>
+          dict.get(srcName).map { info =>
             out.append(fields(0))
-              .append(' ').append(targetNames.head)
+              .append(' ').append(info.name)
               .append(' ').append(fields(2))
               .append(' ').append(fields(3))
               .append('\n')
@@ -89,8 +84,8 @@ class UpdateGffContigNames
 
     // writes the features for the given sequence/contig (src)
     def writeSequenceFeatures(in: BetterBufferedIterator[String],
-                                      srcName: String,
-                                      targetName: String): Unit = {
+                              srcName: String,
+                              targetName: String): Unit = {
       in.takeWhile(_.startsWith(srcName)).foreach { line =>
         require(StringUtil.split(line, '\t', fields) == fields.length, s"Not enough fields: $line")
         require(fields(0) == srcName)
@@ -126,16 +121,17 @@ class UpdateGffContigNames
       srcName match {
         case None      => header.foreach(line => out.append(line).append('\n')) // just write the header
         case Some(src) =>
-          srcToTarget.get(src) match {
+          dict.get(src) match {
             case None =>
+              val message = s"Did not find contig $src in the list of source names."
               if (skipMissing) {
-                logger.warning(s"Did not find contig $src in the list of source names.")
+                logger.warning(message)
                 in.dropWhile(_.startsWith(src))
               }
-              else throw new IllegalStateException(s"Did not find contig $src in the list of source names.")
-            case Some(targets) =>
+              else throw new IllegalStateException(message)
+            case Some(info) =>
               writeSequenceHeader(header)
-              writeSequenceFeatures(in, src, targets.head)
+              writeSequenceFeatures(in, src, info.name)
           }
       }
     }

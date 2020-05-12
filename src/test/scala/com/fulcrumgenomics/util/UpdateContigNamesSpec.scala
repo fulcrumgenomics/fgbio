@@ -1,7 +1,7 @@
 /*
  * The MIT License
  *
- * Copyright (c) 2020 Fulcrum Genomics LLC
+ * Copyright (c) 2020 Fulcrum Genomics
  *
  * Permission is hereby granted, free of charge, to any person obtaining a copy
  * of this software and associated documentation files (the "Software"), to deal
@@ -20,31 +20,36 @@
  * LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
  * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
  * THE SOFTWARE.
+ *
  */
 
 package com.fulcrumgenomics.util
 
-import com.fulcrumgenomics.FgBioDef._
+import com.fulcrumgenomics.FgBioDef.PathToSequenceDictionary
+import com.fulcrumgenomics.fasta.{SequenceDictionary, SequenceMetadata}
+import com.fulcrumgenomics.testing.UnitSpec
 
-object  ContigNameMapping {
-    /**
-      * Parses a contig name mappings file that is a tab seperated source -> target mapping. EX:
-      *
-      * """
-      * 1   chr1
-      * 2   chr2    Chr2
-      * 3   chr3
-      * 3   Chr3
-      * """
-      *
-      * Multiple targets can be specified on one line, or on multiple lines.
-      */
-    def parse(nameMapping: FilePath): Map[String, Seq[String]] = {
-        Io.readLines(nameMapping).map { line =>
-            line.split('\t').toList match {
-                case head::tail if tail.length > 0 => (head, tail)
-                case _ => throw new IllegalArgumentException(s"Malformed line: expected at least two columns: $line")
-            }
-        }.toSeq.groupBy(_._1).map(k => k._1 -> k._2.map(_._2).flatten.distinct.toList)
-    }
+import scala.collection.mutable.ListBuffer
+
+trait UpdateContigNamesSpec extends UnitSpec {
+
+  protected def toSequenceMetadata(name: String, alias: String*): SequenceMetadata = {
+    SequenceMetadata(name=name, length=100000000, aliases=alias)
+  }
+
+  protected def dict(skipLast: Boolean = false): SequenceDictionary = {
+    val infos = ListBuffer[SequenceMetadata](
+      toSequenceMetadata(name="chr1", "NC_000001.10"),
+      toSequenceMetadata(name="chr2", "NC_000002.10"),
+      toSequenceMetadata(name="chr3", "NC_000003.10")
+    )
+    if (!skipLast) infos += toSequenceMetadata(name="chr4", "NC_000004.10")
+    SequenceDictionary(infos.toSeq:_*)
+  }
+
+  protected def pathToSequenceDictionary(skipLast: Boolean = false): PathToSequenceDictionary = {
+    val path = makeTempFile("test.", "in.dict")
+    dict(skipLast=skipLast).write(path)
+    path
+  }
 }

@@ -25,7 +25,7 @@
 package com.fulcrumgenomics.fasta
 
 
-import com.fulcrumgenomics.FgBioDef.FgBioEnum
+import com.fulcrumgenomics.FgBioDef.{FgBioEnum, PathToSequenceDictionary}
 import com.fulcrumgenomics.cmdline.{ClpGroups, FgBioTool}
 import com.fulcrumgenomics.commons.CommonsDef._
 import com.fulcrumgenomics.commons.util.LazyLogging
@@ -34,11 +34,14 @@ import com.fulcrumgenomics.util.Io
 import enumeratum.EnumEntry
 
 import scala.collection.immutable.IndexedSeq
+import scala.collection.mutable.ListBuffer
 
 /** Trait that entries in AssemblyReportColumn will extend. */
 sealed trait AssemblyReportColumn extends EnumEntry {
   /** The column name in the assembly report. */
   def key: String
+  /** The tag to store in the SAM header */
+  def tag: String
 }
 
 /** Enum to represent columns in a NCBI assembly report. */
@@ -50,15 +53,27 @@ object AssemblyReportColumn extends FgBioEnum[AssemblyReportColumn] {
     values.find(_.key == str).getOrElse(super.apply(str))
   }
 
-  case object SequenceName     extends AssemblyReportColumn { val key: String = "Sequence-Name" }
-  case object AssignedMolecule extends AssemblyReportColumn { val key: String = "Assigned-Molecule" }
-  case object GenBankAccession extends AssemblyReportColumn { val key: String = "GenBank-Accn" }
-  case object RefSeqAccession  extends AssemblyReportColumn { val key: String = "RefSeq-Accn" }
-  case object UcscName         extends AssemblyReportColumn { val key: String = "UCSC-style-name" }
+  case object SequenceName     extends AssemblyReportColumn { val key: String = "Sequence-Name"; val tag: String = "sn" }
+  case object AssignedMolecule extends AssemblyReportColumn { val key: String = "Assigned-Molecule"; val tag: String = "am"  }
+  case object GenBankAccession extends AssemblyReportColumn { val key: String = "GenBank-Accn"; val tag: String = "ga"  }
+  case object RefSeqAccession  extends AssemblyReportColumn { val key: String = "RefSeq-Accn"; val tag: String = "ra"  }
+  case object UcscName         extends AssemblyReportColumn { val key: String = "UCSC-style-name"; val tag: String = "un"  }
 
-  val MissingValue: String   = "na"
-  val SequenceRole: String   = "Sequence-Role"
+  /** The missing value for a column */
+  val MissingValue: String = "na"
+
+  /** The column key for Sequence-Role */
+  val SequenceRole: String = "Sequence-Role"
+
+  /** The column key for Sequence-Length */
   val SequenceLength: String = "Sequence-Length"
+
+  /** The sam tag to use for Sequence-Role */
+  val SequenceRoleTag: String = "sr"
+
+  values.foreach { value =>
+    require(value.tag.toLowerCase == value.tag, s"Tag must be lowerase for $value: ${value.tag}")
+  }
 }
 
 /** Trait that entries in SequenceRole will extend. */
@@ -91,22 +106,21 @@ object SequenceRole extends FgBioEnum[SequenceRole] {
     |
     |The input is to be the `*.assembly_report.txt` obtained from NCBI.
     |
-    |The output will have primary name as the first column and alternate name as the second column.  If there
-    |is more than one alternate name, each alternate name will be on a separate line.  The primary name should be
-    |specified with `--primary` while the alternate name(s) should be specified with `--alternates`.
+    |The output will be a "sequence dictionary", which is a valid SAM file, containing the version header line and one
+    |line per contig.  The primary contig name (i.e. `@SQ.SN`) is specified with `--primary` option, while alternate
+    |names (i.e. aliases) are specified with the `--alternates` option.
     |
-    |First, sequences with the Sequence-Role "assembled-molecule" will be outputted.  Next, the remaining sequences will
-    |be sorted by descending length.
+    |First, contig with the Sequence-Role "assembled-molecule" will be outputted.  Next, the remaining contigs will be
+    |sorted by descending length.
   """,
   group = ClpGroups.Fasta)
 class CollectAlternateContigNames
-( @arg(flag='i', doc="Input NCBI assembly report file.") val input: FilePath,
-  @arg(flag='o', doc="Output file.")val output: FilePath,
-  @arg(flag='p', doc="The assembly report column for the primary contig name.") val primary: AssemblyReportColumn = AssemblyReportColumn.RefSeqAccession,
-  @arg(flag='a', doc="The assembly report column(s) for the alternate contig name(s)", minElements=1) val alternates: Seq[AssemblyReportColumn],
-  @arg(flag='s', doc="Only output sequences with the given sequence roles.  If none given, all sequences will be output.", minElements=0)
+(@arg(flag='i', doc="Input NCBI assembly report file.") val input: FilePath,
+ @arg(flag='o', doc="Output sequence dictionary file.") val output: PathToSequenceDictionary,
+ @arg(flag='p', doc="The assembly report column for the primary contig name.") val primary: AssemblyReportColumn = AssemblyReportColumn.RefSeqAccession,
+ @arg(flag='a', doc="The assembly report column(s) for the alternate contig name(s)", minElements=1) val alternates: Seq[AssemblyReportColumn],
+ @arg(flag='s', doc="Only output sequences with the given sequence roles.  If none given, all sequences will be output.", minElements=0)
   val sequenceRoles: Seq[SequenceRole] = Seq.empty,
-  @arg(doc="Output all alternates on a single line.") val singleLine: Boolean = false
 ) extends FgBioTool with LazyLogging {
 
   Io.assertReadable(input)
@@ -114,39 +128,6 @@ class CollectAlternateContigNames
   validate(!alternates.contains(primary), s"Primary is in alternate: $primary in " + alternates.mkString(", "))
 
   override def execute(): Unit = {
-    // Go through each sequence in the assembly report
-    val lines = readAssemblyReport().toIterator.flatMap { dict =>
-      // Get the primary name, and the alternate names
-      val primary = dict(this.primary.key)
-      val altNames = this.alternates.flatMap { alt =>
-        dict(alt.key) match {
-          case alternate if alternate == AssemblyReportColumn.MissingValue =>
-            logger.warning(s"Missing value for alternate ${alt.key}: $primary")
-            None
-          case alternate => Some(alternate)
-        }
-      }
-      (primary, altNames) match {
-        case (AssemblyReportColumn.MissingValue, _) => // primary missing
-          logger.warning(s"Primary contig name '${this.primary.key}' had a missing value: $primary")
-          Seq.empty
-        case (_, Seq()) => // no alternates
-          logger.warning(s"No alternates found for: $primary")
-          Seq.empty
-        case _ => // primary and at least one alternate
-          if (singleLine) {
-            Seq(primary + "\t" + altNames.mkString("\t"))
-          }
-          else {
-            altNames.map { altName => s"$primary\t$altName" }
-          }
-      }
-    }
-
-    Io.writeLines(output, lines)
-  }
-
-  private def readAssemblyReport(): Seq[Map[String, String]] = {
     val iter = Io.readLines(input).bufferBetter
 
     // skip over comments until we reach the header
@@ -154,22 +135,61 @@ class CollectAlternateContigNames
 
     // read the header
     require(iter.hasNext, s"Missing header from $input.")
-    val header = iter.next().split('\t')
+    val header = iter.next().substring(2).split('\t')
+
+    // store primary and secondaries seperately; the former will be written before the latter
+    val primaries   = ListBuffer[SequenceMetadata]()
+    val secondaries = ListBuffer[SequenceMetadata]()
 
     // Reads the input assembly report into a sequence of key/value maps
-    val maps = iter.flatMap { line =>
-      val fields = line.split('\t')
-      val d      = header.zip(fields).toMap
-      if (sequenceRoles.isEmpty || sequenceRoles.exists(_.key == d(AssemblyReportColumn.SequenceRole))) {
-        Some(d)
-      } else {
-        None
+    iter.foreach { line =>
+      val dict   = header.zip(line.split('\t')).toMap
+      val name   = dict(this.primary.key)
+      val role   = SequenceRole(dict(AssemblyReportColumn.SequenceRole))
+      val alts   = this.alternates.flatMap { alt =>
+        dict(alt.key) match {
+          case alternate if alternate == AssemblyReportColumn.MissingValue =>
+            logger.warning(s"Contig '$name' had a missing value for alternate in column '${alt.key}'")
+            None
+          case alternate => Some(alternate)
+        }
       }
-    }.toSeq
+      if (sequenceRoles.nonEmpty && !this.sequenceRoles.contains(role)) {
+        logger.warning(s"Skipping contig name '$name' with mismatching sequencing role: $role.")
+      }
+      else if (name == AssemblyReportColumn.MissingValue) {
+        logger.warning(s"Skipping contig as it had a missing value for column '${this.primary.key}': $line")
+      }
+      else if (alts.isEmpty) {
+        logger.warning(s"Skipping contig name '$name' with no alternates.")
+      }
+      else {
+       val attributes = ListBuffer[(String, String)]()
+        attributes += ((AssemblyReportColumn.SequenceRoleTag, dict(AssemblyReportColumn.SequenceRole)))
+        AssemblyReportColumn.values.foreach { column =>
+          attributes += ((column.tag, dict(column.key)))
+        }
+        val metadata = SequenceMetadata(
+          name            = name,
+          length          = dict(AssemblyReportColumn.SequenceLength).toInt,
+          aliases         = alts,
+          customAttributes = attributes.toMap
+        )
+        if (role.primary) {
+          primaries += metadata
+        }
+        else {
+          secondaries += metadata
+        }
+      }
+    }
+    // Sort the secondary entries based on descending sequence length.
+    val infos = (primaries ++ secondaries.sortBy(-_.length))
+      .zipWithIndex
+      .map { case (metadata, index) => metadata.copy(index=index) }
+      .toSeq
 
-    // Re-order the entries based on primary vs non primary sequence roles, then based on increasing sequence length
-    val primary   = maps.filter { d => SequenceRole(d(AssemblyReportColumn.SequenceRole)).primary }
-    val secondary = maps.filter { d => !SequenceRole(d(AssemblyReportColumn.SequenceRole)).primary}.sortBy { d => d(AssemblyReportColumn.SequenceLength)}
-    primary ++ secondary
+    // Write it out!
+    SequenceDictionary(infos:_*).write(output)
   }
 }

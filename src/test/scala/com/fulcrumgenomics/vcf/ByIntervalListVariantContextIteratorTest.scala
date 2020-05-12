@@ -24,12 +24,12 @@
 
 package com.fulcrumgenomics.vcf
 
+import com.fulcrumgenomics.FgBioDef._
 import com.fulcrumgenomics.testing.{UnitSpec, VariantContextSetBuilder}
 import htsjdk.samtools.SAMFileHeader
 import htsjdk.samtools.util.{Interval, IntervalList}
 import htsjdk.variant.variantcontext.VariantContext
 import htsjdk.variant.vcf.VCFFileReader
-import com.fulcrumgenomics.FgBioDef._
 
 /**
   * Tests for ByIntervalListVariantContextIterator.
@@ -51,7 +51,9 @@ class ByIntervalListVariantContextIteratorTest extends UnitSpec {
       ByIntervalListVariantContextIterator(reader=reader, intervalList=intervalList)
     }
     else {
-      ByIntervalListVariantContextIterator(iterator=reader.iterator(), intervalList=intervalList, dict=reader.getFileHeader.getSequenceDictionary)
+      import com.fulcrumgenomics.fasta.Converters.FromSAMSequenceDictionary
+      val dict = reader.getFileHeader.getSequenceDictionary.fromSam
+      ByIntervalListVariantContextIterator(iterator=reader.iterator(), intervalList=intervalList, dict=dict)
     }
   }
 

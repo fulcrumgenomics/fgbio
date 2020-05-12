@@ -24,49 +24,60 @@
 
 package com.fulcrumgenomics.util
 
+import com.fulcrumgenomics.FgBioDef.PathToSequenceDictionary
 import com.fulcrumgenomics.cmdline.{ClpGroups, FgBioTool}
-import com.fulcrumgenomics.commons.CommonsDef.{FilePath, _}
+import com.fulcrumgenomics.commons.CommonsDef._
 import com.fulcrumgenomics.commons.util.LazyLogging
+import com.fulcrumgenomics.fasta.SequenceDictionary
 import com.fulcrumgenomics.sopt.{arg, clp}
-import com.fulcrumgenomics.util.{Io, ProgressLogger}
-import htsjdk.samtools.reference.{FastaSequenceIndex, ReferenceSequenceFileFactory}
-import com.fulcrumgenomics.util.ContigNameMapping
+import htsjdk.samtools.util.Interval
 
 @clp(description =
   """
-    |Updates the sequence names in a BED file.
+    |Updates the sequence names in an Interval List file.
     |
-    |The first column of the input is the source name and the second column is an target name.  If there
-    |are more than one target names (ex. multiple alternates), each alternate name may be on a separate line or as
-    |additional columns.  Only the first target name will be considered.  This is mainly to support the output of
-    |`CollectAlternateContigNames`.
+    |The name of each sequence must match one of the names (including aliases) in the given sequence dictionary.  The
+    |new name will be the primary (non-alias) name in the sequence dictionary.
   """,
   group = ClpGroups.Fasta)
-class UpdateBedContigNames
-(@arg(flag='i', doc="Input BED.") val input: PathToFasta,
- @arg(flag='m', doc="The path to the source the contig name mappings.") val mapping: FilePath,
- @arg(flag='o', doc="Output BED.")val output: PathToFasta,
+class UpdateIntervalListContigNames
+(@arg(flag='i', doc="Input interval list.") val input: PathToIntervals,
+ @arg(flag='d', doc="The path to the sequence dictionary with contig aliases.") val dict: PathToSequenceDictionary,
+ @arg(flag='o', doc="Output interval list.") val output: PathToIntervals,
  @arg(doc="Skip missing source contigs.") val skipMissing: Boolean = false
 ) extends FgBioTool with LazyLogging {
 
   Io.assertReadable(input)
-  Io.assertReadable(Seq(input, mapping))
+  Io.assertReadable(Seq(input, dict))
   Io.assertCanWriteFile(output)
 
   override def execute(): Unit = {
     val progress = ProgressLogger(logger, noun="bases", verb="written", unit=10e7.toInt)
-    val out      = Io.toWriter(output)
+    val dict     = SequenceDictionary(this.dict)
+    val source   = IntervalListSource(this.input)
+    val writer   = IntervalListWriter(path=this.output, dict=dict)
+    source.foreach { interval =>
+      dict.get(interval.getContig) match {
+        case Some(info)          =>
+          val newInterval = new Interval(
+            info.name,
+            interval.getStart,
+            interval.getEnd,
+            interval.isNegativeStrand,
+            interval.getName
+          )
+          progress.record(newInterval)
+          writer += newInterval
+        case None =>
+          val message = s"Did not find contig '${interval.getContig}' in source mappings."
+          if (skipMissing) logger.warning(message)
+          else throw new IllegalStateException(message)
+      }
 
-    val srcToTarget = ContigNameMapping.parse(mapping)
 
-    Io.readLines(input).foreach{ line =>
-        val fields = line.split('\t')
-        srcToTarget.get(fields.head) match {
-            case Some(target)        => out.write((target.head +: fields.tail).mkString("\t") + "\n")
-            case None if skipMissing => logger.warning(s"Did not find contig ${fields.head} in source mappings.")
-            case None                => throw new IllegalStateException(s"Did not find contig ${fields.head} in source mappings.")
-        }
     }
-    out.close()
+    progress.logLast()
+    writer.close()
+    source.safelyClose()
   }
 }

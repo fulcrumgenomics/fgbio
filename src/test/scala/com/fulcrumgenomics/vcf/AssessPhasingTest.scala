@@ -27,11 +27,12 @@ package com.fulcrumgenomics.vcf
 import java.nio.file.{Files, Paths}
 
 import com.fulcrumgenomics.FgBioDef._
+import com.fulcrumgenomics.commons.io.PathUtil
+import com.fulcrumgenomics.commons.util.NumericCounter
+import com.fulcrumgenomics.fasta.Converters.FromSAMSequenceDictionary
 import com.fulcrumgenomics.testing.{ErrorLogLevel, UnitSpec, VariantContextSetBuilder}
 import com.fulcrumgenomics.util.Metric
 import com.fulcrumgenomics.vcf.PhaseCigar.IlluminaSwitchErrors
-import com.fulcrumgenomics.commons.io.PathUtil
-import com.fulcrumgenomics.commons.util.NumericCounter
 import htsjdk.samtools.SAMFileHeader
 import htsjdk.samtools.util.{Interval, IntervalList}
 import htsjdk.variant.variantcontext.writer.{Options, VariantContextWriterBuilder}
@@ -298,18 +299,18 @@ class PhaseBlockTest extends ErrorLogLevel {
 
   "PhaseBlock.toOverlapDetector" should "create an empty detector if no variants are given" in {
     val builder = new VariantContextSetBuilder()
-    PhaseBlock.buildOverlapDetector(iterator=builder.iterator, dict=builder.header.getSequenceDictionary).getAll.isEmpty shouldBe true
+    PhaseBlock.buildOverlapDetector(iterator=builder.iterator, dict=builder.dict).getAll.isEmpty shouldBe true
   }
 
   it should "create an empty detector when variants do not have the phase set tag" in {
     val builder  = new VariantContextSetBuilder().addVariant(start=1, variantAlleles=List("A", "C"), genotypeAlleles=List("A", "C"), phased=true)
-    PhaseBlock.buildOverlapDetector(iterator=builder.iterator, dict=builder.header.getSequenceDictionary).getAll.isEmpty shouldBe true
+    PhaseBlock.buildOverlapDetector(iterator=builder.iterator, dict=builder.dict).getAll.isEmpty shouldBe true
   }
 
   it should "create a detector for a single variant" in {
     val builder  = new VariantContextSetBuilder().addVariant(start=1, variantAlleles=List("A", "C"), genotypeAlleles=List("A", "C"), phased=true)
     val iterator = builder.iterator.map { ctx => withPhasingSetId(ctx, 1) }
-    val detector = PhaseBlock.buildOverlapDetector(iterator=iterator, dict=builder.header.getSequenceDictionary)
+    val detector = PhaseBlock.buildOverlapDetector(iterator=iterator, dict=builder.dict)
     detector.getAll should have size 1
     val interval = detector.getAll.toSeq.head
     interval.getStart shouldBe 1
@@ -323,7 +324,7 @@ class PhaseBlockTest extends ErrorLogLevel {
     builder.addVariant(start=3, variantAlleles=List("A", "C"), genotypeAlleles=List("A", "C"), phased=true)
 
     val iterator = builder.iterator.map { ctx => withPhasingSetId(ctx, 1) }
-    val detector = PhaseBlock.buildOverlapDetector(iterator=iterator, dict=builder.header.getSequenceDictionary)
+    val detector = PhaseBlock.buildOverlapDetector(iterator=iterator, dict=builder.dict)
     detector.getAll should have size 1
     val interval = detector.getAll.toSeq.head
     interval.getStart shouldBe 1
@@ -343,7 +344,7 @@ class PhaseBlockTest extends ErrorLogLevel {
 
     val iterator = builderBlockOne.iterator.map { ctx => withPhasingSetId(ctx, 1) } ++ builderBlockTwo.iterator.map { ctx => withPhasingSetId(ctx, 4) }
 
-    val detector = PhaseBlock.buildOverlapDetector(iterator=iterator, dict=builderBlockOne.header.getSequenceDictionary)
+    val detector = PhaseBlock.buildOverlapDetector(iterator=iterator, dict=builderBlockOne.dict)
     detector.getAll should have size 2
     val intervals = detector.getAll.toSeq.sortBy(_.getStart)
     val head = intervals.head
@@ -368,9 +369,9 @@ class PhaseBlockTest extends ErrorLogLevel {
       val contexts = (builderBlockOne.iterator.map { ctx => withPhasingSetId(ctx, 1) } ++ builderBlockTwo.iterator.map { ctx => withPhasingSetId(ctx, 2) }).toSeq
 
       // Check that if we do not want to modify the blocks we get an exception
-      an[Exception] should be thrownBy PhaseBlock.buildOverlapDetector(iterator = contexts.iterator, dict = builderBlockOne.header.getSequenceDictionary, modifyBlocks = false)
+      an[Exception] should be thrownBy PhaseBlock.buildOverlapDetector(iterator = contexts.iterator, dict = builderBlockOne.dict, modifyBlocks = false)
 
-      val detector = PhaseBlock.buildOverlapDetector(iterator = contexts.iterator, dict = builderBlockOne.header.getSequenceDictionary)
+      val detector = PhaseBlock.buildOverlapDetector(iterator = contexts.iterator, dict = builderBlockOne.dict)
       detector.getAll should have size 1
       val intervals = detector.getAll.toSeq.sortBy(_.getStart)
       val head = intervals.head
@@ -386,9 +387,9 @@ class PhaseBlockTest extends ErrorLogLevel {
       val contexts = (builderBlockTwo.iterator.map { ctx => withPhasingSetId(ctx, 2) } ++ builderBlockOne.iterator.map { ctx => withPhasingSetId(ctx, 1) }).toSeq
 
       // Check that if we do not want to modify the blocks we get an exception
-      an[Exception] should be thrownBy PhaseBlock.buildOverlapDetector(iterator = contexts.iterator, dict = builderBlockOne.header.getSequenceDictionary, modifyBlocks = false)
+      an[Exception] should be thrownBy PhaseBlock.buildOverlapDetector(iterator = contexts.iterator, dict = builderBlockOne.dict, modifyBlocks = false)
 
-      val detector = PhaseBlock.buildOverlapDetector(iterator = contexts.iterator, dict = builderBlockOne.header.getSequenceDictionary)
+      val detector = PhaseBlock.buildOverlapDetector(iterator = contexts.iterator, dict = builderBlockOne.dict)
       detector.getAll should have size 1
       val intervals = detector.getAll.toSeq.sortBy(_.getStart)
       val head = intervals.head
@@ -400,7 +401,7 @@ class PhaseBlockTest extends ErrorLogLevel {
     {
       val contexts = builderBlockOne.iterator.map { ctx => withPhasingSetId(ctx, 1) }.toSeq
 
-      val detector = PhaseBlock.buildOverlapDetector(iterator = (contexts ++ contexts).iterator, dict = builderBlockOne.header.getSequenceDictionary)
+      val detector = PhaseBlock.buildOverlapDetector(iterator = (contexts ++ contexts).iterator, dict = builderBlockOne.dict)
       detector.getAll should have size 1
       val intervals = detector.getAll.toSeq.sortBy(_.getStart)
       val head = intervals.head
@@ -425,9 +426,9 @@ class PhaseBlockTest extends ErrorLogLevel {
       val contexts = (builderBlockOne.iterator.map { ctx => withPhasingSetId(ctx, 2) } ++ builderBlockTwo.iterator.map { ctx => withPhasingSetId(ctx, 3) }).toSeq
 
       // Check that if we do not want to modify the blocks we get an exception
-      an[Exception] should be thrownBy PhaseBlock.buildOverlapDetector(iterator = contexts.iterator, dict = builderBlockOne.header.getSequenceDictionary, modifyBlocks = false)
+      an[Exception] should be thrownBy PhaseBlock.buildOverlapDetector(iterator = contexts.iterator, dict = builderBlockOne.dict, modifyBlocks = false)
 
-      val detector = PhaseBlock.buildOverlapDetector(iterator = contexts.iterator, dict = builderBlockOne.header.getSequenceDictionary)
+      val detector = PhaseBlock.buildOverlapDetector(iterator = contexts.iterator, dict = builderBlockOne.dict)
       detector.getAll should have size 2
       val intervals = detector.getAll.toSeq.sortBy(_.getStart)
       val head = intervals.head
@@ -449,9 +450,9 @@ class PhaseBlockTest extends ErrorLogLevel {
       val contexts = (builderBlockOne.iterator.map { ctx => withPhasingSetId(ctx, 2) } ++ builderBlockTwo.iterator.map { ctx => withPhasingSetId(ctx, 3) }).toSeq
 
       // Check that if we do not want to modify the blocks we get an exception
-      an[Exception] should be thrownBy PhaseBlock.buildOverlapDetector(iterator = contexts.iterator, dict = builderBlockOne.header.getSequenceDictionary, modifyBlocks = false)
+      an[Exception] should be thrownBy PhaseBlock.buildOverlapDetector(iterator = contexts.iterator, dict = builderBlockOne.dict, modifyBlocks = false)
 
-      val detector = PhaseBlock.buildOverlapDetector(iterator = contexts.iterator, dict = builderBlockOne.header.getSequenceDictionary)
+      val detector = PhaseBlock.buildOverlapDetector(iterator = contexts.iterator, dict = builderBlockOne.dict)
       detector.getAll should have size 2
       val intervals = detector.getAll.toSeq.sortBy(_.getStart)
       val head = intervals.head
@@ -482,9 +483,9 @@ class PhaseBlockTest extends ErrorLogLevel {
     val contexts = (oneIter ++ twoIter ++ threeIter).toSeq
 
     // Check that if we do not want to modify the blocks we get an exception
-    an[Exception] should be thrownBy PhaseBlock.buildOverlapDetector(iterator = contexts.iterator, dict = builderBlockOne.header.getSequenceDictionary, modifyBlocks = false)
+    an[Exception] should be thrownBy PhaseBlock.buildOverlapDetector(iterator = contexts.iterator, dict = builderBlockOne.dict, modifyBlocks = false)
 
-    val detector = PhaseBlock.buildOverlapDetector(iterator = contexts.iterator, dict = builderBlockOne.header.getSequenceDictionary)
+    val detector = PhaseBlock.buildOverlapDetector(iterator = contexts.iterator, dict = builderBlockOne.dict)
     detector.getAll should have size 3
     val intervals = detector.getAll.toSeq.sortBy(_.getStart)
 
@@ -522,9 +523,9 @@ class PhaseBlockTest extends ErrorLogLevel {
     val contexts = (oneIter ++ twoIter ++ threeIter).toSeq
 
     // Check that if we do not want to modify the blocks we get an exception
-    an[Exception] should be thrownBy PhaseBlock.buildOverlapDetector(iterator = contexts.iterator, dict = builderBlockOne.header.getSequenceDictionary, modifyBlocks = false)
+    an[Exception] should be thrownBy PhaseBlock.buildOverlapDetector(iterator = contexts.iterator, dict = builderBlockOne.dict, modifyBlocks = false)
 
-    val detector = PhaseBlock.buildOverlapDetector(iterator = contexts.iterator, dict = builderBlockOne.header.getSequenceDictionary)
+    val detector = PhaseBlock.buildOverlapDetector(iterator = contexts.iterator, dict = builderBlockOne.dict)
     detector.getAll should have size 2
     val intervals = detector.getAll.toSeq.sortBy(_.getStart)
 
@@ -549,10 +550,10 @@ class PhaseCigarTest extends ErrorLogLevel {
                       header: VCFHeader,
                       skipMismatchingAlleles: Boolean,
                       assumeFixedAlleleOrder: Boolean = true): (Seq[PhaseCigarOp], AssessPhasingMetric) = {
-    val dict = header.getSequenceDictionary
+    val dict = header.getSequenceDictionary.fromSam
     val pairedIterator = JointVariantContextIterator(
-      iters       = Seq(truth.iterator, call.iterator),
-      dict        = dict
+      iters = Seq(truth.iterator, call.iterator),
+      dict  = dict
     ).map { case Seq(left, right) => (left, right) }
     val truthPhaseBlockDetector  = PhaseBlock.buildOverlapDetector(truth.iterator, dict)
     val calledPhaseBlockDetector = PhaseBlock.buildOverlapDetector(call.iterator, dict)

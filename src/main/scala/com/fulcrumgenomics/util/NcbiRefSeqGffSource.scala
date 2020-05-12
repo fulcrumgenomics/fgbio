@@ -29,8 +29,8 @@ import java.lang.Integer.{parseInt => int}
 import com.fulcrumgenomics.FgBioDef._
 import com.fulcrumgenomics.commons.collection.BetterBufferedIterator
 import com.fulcrumgenomics.commons.util.LazyLogging
+import com.fulcrumgenomics.fasta.SequenceDictionary
 import com.fulcrumgenomics.util.GeneAnnotations.{Exon, Gene, GeneLocus, Transcript}
-import htsjdk.samtools.{SAMSequenceDictionary, SAMSequenceRecord}
 
 import scala.collection.mutable
 
@@ -83,7 +83,7 @@ object NcbiRefSeqGffSource {
     * @param dict a sequence dictionary used to help resolve accessions used in the GFF
     * @return an instance of [[NcbiRefSeqGffSource]] that can be queried for contents
     */
-  def apply(lines: Iterator[String], includeXs: Boolean, dict: SAMSequenceDictionary): NcbiRefSeqGffSource =
+  def apply(lines: Iterator[String], includeXs: Boolean, dict: SequenceDictionary): NcbiRefSeqGffSource =
     new NcbiRefSeqGffSource(lines, includeXs, dict)
 
   /** Parses a RefSeq GFF file from a collection of lines of text.
@@ -93,7 +93,7 @@ object NcbiRefSeqGffSource {
     * @param dict a sequence dictionary used to help resolve accessions used in the GFF
     * @return an instance of [[NcbiRefSeqGffSource]] that can be queried for contents
     */
-  def apply(lines: Iterable[String], includeXs: Boolean, dict: SAMSequenceDictionary): NcbiRefSeqGffSource =
+  def apply(lines: Iterable[String], includeXs: Boolean, dict: SequenceDictionary): NcbiRefSeqGffSource =
     NcbiRefSeqGffSource(lines.iterator, includeXs, dict)
 
   /** Parses a RefSeq GFF file from an (optionally gzipped) text file.
@@ -103,7 +103,7 @@ object NcbiRefSeqGffSource {
     * @param dict a sequence dictionary used to help resolve accessions used in the GFF
     * @return an instance of [[NcbiRefSeqGffSource]] that can be queried for contents
     */
-  def apply(path: FilePath, includeXs: Boolean, dict: SAMSequenceDictionary): NcbiRefSeqGffSource =
+  def apply(path: FilePath, includeXs: Boolean, dict: SequenceDictionary): NcbiRefSeqGffSource =
     NcbiRefSeqGffSource(Io.readLines(path), includeXs, dict)
 }
 
@@ -131,16 +131,8 @@ object NcbiRefSeqGffSource {
   */
 class NcbiRefSeqGffSource private(lines: Iterator[String],
                                   val includeXs: Boolean,
-                                  val dict: SAMSequenceDictionary) extends Iterable[Gene] with LazyLogging {
+                                  val dict: SequenceDictionary) extends Iterable[Gene] with LazyLogging {
   import NcbiRefSeqGffSource._
-
-  // Construct a lookup from the sequence dictionary that includes all the aliases as well as primary names
-  private val sequenceLookup: Map[String, SAMSequenceRecord] = dict.getSequences.iterator().flatMap { s =>
-    s.getAttribute("AN") match {
-      case null    => Seq(s.getSequenceName -> s)
-      case aliases => (s.getSequenceName +: aliases.split(',').toSeq).map(name => name -> s)
-    }
-  }.toMap
 
   private val genes  = mutable.LinkedHashMap[String,Gene]()
 
@@ -183,8 +175,8 @@ class NcbiRefSeqGffSource private(lines: Iterator[String],
         case None =>
           () // Indicates we've hit the end of the file
         case Some(rec) =>
-          val chromName = this.sequenceLookup.get(rec.accession) match {
-            case Some(sequence)                          => Some(sequence.getSequenceName)
+          val chromName = this.dict.get(rec.accession) match {
+            case Some(sequence)                          => Some(sequence.name)
             case None if rec.name == "MT"                => Some("chrM")
             case None if rec.accession.startsWith("NC_") => Some("chr" + rec.name)
             case None                                    => None

@@ -28,7 +28,6 @@ package com.fulcrumgenomics.rnaseq
 import com.fulcrumgenomics.FgBioDef.{FgBioEnum, FilePath, PathPrefix, PathToBam, SafelyClosable, plotDescription}
 import com.fulcrumgenomics.bam.api._
 import com.fulcrumgenomics.cmdline.{ClpGroups, FgBioTool}
-import com.fulcrumgenomics.commons.CommonsDef._
 import com.fulcrumgenomics.commons.io.PathUtil
 import com.fulcrumgenomics.commons.util.{DelimitedDataParser, LazyLogging, SimpleCounter}
 import com.fulcrumgenomics.sopt.cmdline.ValidationException
@@ -126,7 +125,7 @@ class CollectErccMetrics
     }
 
     // require that the SAM/BAM header contains all the ERCC transcripts
-    val missingErccTranscripts = erccData.keySet -- in.header.getSequenceDictionary.getSequences.map(_.getSequenceName)
+    val missingErccTranscripts = erccData.keySet -- in.dict.map(_.name)
     if (missingErccTranscripts.nonEmpty) {
       throw new IllegalArgumentException(s"Missing ERCC transcripts in the SAM/BAM header: ${missingErccTranscripts.mkString(", ")}")
     }
@@ -199,9 +198,8 @@ class CollectErccMetrics
       Metric.write[ErccSummaryMetrics](summaryPath, erccMetrics)
 
       // detailed (per-ERCC-transcript) file, written in the order defined in the Sam header
-      val metrics = in.header.getSequenceDictionary
-        .getSequences
-        .map(_.getSequenceName)
+      val metrics = in.dict
+        .map(_.name)
         .filter { name => erccData.contains(name) }
         .map { name =>
           val count           = erccTemplatesCounter.countOf(name)

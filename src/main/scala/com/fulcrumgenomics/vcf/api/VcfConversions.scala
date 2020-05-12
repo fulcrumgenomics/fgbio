@@ -28,9 +28,9 @@ import java.util
 import java.util.{List => JavaList}
 
 import com.fulcrumgenomics.FgBioDef._
+import com.fulcrumgenomics.fasta.SequenceMetadata
 import com.fulcrumgenomics.vcf.api.Allele.NoCallAllele
 import com.fulcrumgenomics.vcf.api.VcfCount.Fixed
-import htsjdk.samtools.SAMSequenceRecord
 import htsjdk.variant.variantcontext.{GenotypeBuilder, VariantContext, VariantContextBuilder, Allele => JavaAllele}
 import htsjdk.variant.vcf._
 
@@ -55,7 +55,7 @@ private[api] object VcfConversions {
   def toScalaHeader(in: VCFHeader): VcfHeader = {
     val contigs = in.getContigLines.map { c =>
       val rec = c.getSAMSequenceRecord
-      val length = if (rec.getSequenceLength == SAMSequenceRecord.UNKNOWN_SEQUENCE_LENGTH) None else Some(rec.getSequenceLength)
+      val length = if (rec.getSequenceLength == SequenceMetadata.UnknownSequenceLength) None else Some(rec.getSequenceLength)
       VcfContigHeader(rec.getSequenceIndex, rec.getSequenceName, length, Option(rec.getAssembly))
     }.toIndexedSeq
 

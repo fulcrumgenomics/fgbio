@@ -24,7 +24,6 @@
 
 package com.fulcrumgenomics.vcf.api
 
-import com.fulcrumgenomics.FgBioDef._
 import com.fulcrumgenomics.testing.UnitSpec
 import com.fulcrumgenomics.vcf.api.Allele.NoCallAllele
 import org.scalatest.OptionValues
@@ -99,7 +98,7 @@ class VcfIoTest extends UnitSpec with OptionValues {
 
     val Result(header, variants) = roundtrip(Seq(variant))
     header.samples should contain theSameElementsInOrderAs Seq("s1")
-    header.dict.getSequence(0).getSequenceName shouldBe "chr1"
+    header.dict(0).name shouldBe "chr1"
 
     variants should have size 1
 

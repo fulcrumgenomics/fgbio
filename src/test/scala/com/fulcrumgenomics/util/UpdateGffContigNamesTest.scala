@@ -24,22 +24,7 @@
 
 package com.fulcrumgenomics.util
 
-import com.fulcrumgenomics.testing.UnitSpec
-
-class UpdateGffContigNamesTest extends UnitSpec {
-
-  private val mappingLines = Seq(
-    "NC_000001.10\tchr1",
-    "NC_000002.11\tchr2",
-    "NC_000003.11\tchr3",
-    "NC_000004.11\tchr4"
-  )
-
-  private def mappingInput(skipLast: Boolean = false) = {
-    val path = makeTempFile("test.", ".txt")
-    if (skipLast) Io.writeLines(path, mappingLines.dropRight(1)) else Io.writeLines(path, mappingLines)
-    path
-  }
+class UpdateGffContigNamesTest extends UpdateContigNamesSpec {
 
   private val gffLines =
     Seq(
@@ -56,18 +41,18 @@ class UpdateGffContigNamesTest extends UnitSpec {
       "NC_000001.10\tBestRefSeq\tgene\t11874\t14409\t.\t+\t.\tID=gene0;Dbxref=GeneID:100287102,HGNC:HGNC:37102;Name=DDX11L1;description=DEAD/H-box helicase 11 like 1;gbkey=Gene;gene=DDX11L1;gene_biotype=misc_RNA;pseudo=true",
       "NC_000001.10\tBestRefSeq\ttranscript\t11874\t14409\t.\t+\t.\tID=rna0;Parent=gene0;Dbxref=GeneID:100287102,Genbank:NR_046018.2,HGNC:HGNC:37102;Name=NR_046018.2;gbkey=misc_RNA;gene=DDX11L1;product=DEAD/H-box helicase 11 like 1;transcript_id=NR_046018.2",
       "NC_000001.10\tBestRefSeq\texon\t11874\t12227\t.\t+\t.\tID=id1;Parent=rna0;Dbxref=GeneID:100287102,Genbank:NR_046018.2,HGNC:HGNC:37102;gbkey=misc_RNA;gene=DDX11L1;product=DEAD/H-box helicase 11 like 1;transcript_id=NR_046018.2",
-      "##sequence-region NC_000002.11 1 243199373",
-      "##sequence-region NC_000003.11 1 198022430",
-      "##sequence-region NC_000004.11 1 191154276",
-      "NC_000004.11\tRefSeq\tregion\t1\t191154276\t.\t+\t.\tID=id135365;Dbxref=taxon:9606;Name=4;chromosome=4;gbkey=Src;genome=chromosome;mol_type=genomic DNA",
-      "NC_000004.11\tBestRefSeq\tgene\t53179\t88099\t.\t+\t.\tID=gene9164;Dbxref=GeneID:152687,HGNC:HGNC:27196,HPRD:15868;Name=ZNF595;description=zinc finger protein 595;gbkey=Gene;gene=ZNF595;gene_biotype=protein_coding",
-      "NC_000004.11\tBestRefSeq\tmRNA\t53179\t88099\t.\t+\t.\tID=rna13646;Parent=gene9164;Dbxref=GeneID:152687,Genbank:NM_001286054.1,HGNC:HGNC:27196,HPRD:15868;Name=NM_001286054.1;Note=The RefSeq transcript has 11 substitutions%2C 5 frameshifts%2C 1 non-frameshifting indel compared to this genomic sequence;exception=annotated by transcript or proteomic data;gbkey=mRNA;gene=ZNF595;product=zinc finger protein 595%2C transcript variant 4;transcript_id=NM_001286054.1",
-      "NC_000004.11\tBestRefSeq\texon\t53179\t53385\t.\t+\t.\tID=id135366;Parent=rna13646;Dbxref=GeneID:152687,Genbank:NM_001286054.1,HGNC:HGNC:27196,HPRD:15868;Note=The RefSeq transcript has 11 substitutions%2C 5 frameshifts%2C 1 non-frameshifting indel compared to this genomic sequence;exception=annotated by transcript or proteomic data;gbkey=mRNA;gene=ZNF595;product=zinc finger protein 595%2C transcript variant 4;transcript_id=NM_001286054.1",
-      "NC_000004.11\tBestRefSeq\texon\t59323\t59449\t.\t+\t.\tID=id135367;Parent=rna13646;Dbxref=GeneID:152687,Genbank:NM_001286054.1,HGNC:HGNC:27196,HPRD:15868;Note=The RefSeq transcript has 11 substitutions%2C 5 frameshifts%2C 1 non-frameshifting indel compared to this genomic sequence;exception=annotated by transcript or proteomic data;gbkey=mRNA;gene=ZNF595;product=zinc finger protein 595%2C transcript variant 4;transcript_id=NM_001286054.1",
-      "NC_000004.11\tBestRefSeq\texon\t59951\t60046\t.\t+\t.\tID=id135368;Parent=rna13646;Dbxref=GeneID:152687,Genbank:NM_001286054.1,HGNC:HGNC:27196,HPRD:15868;Note=The RefSeq transcript has 11 substitutions%2C 5 frameshifts%2C 1 non-frameshifting indel compared to this genomic sequence;exception=annotated by transcript or proteomic data;gbkey=mRNA;gene=ZNF595;product=zinc finger protein 595%2C transcript variant 4;transcript_id=NM_001286054.1",
-      "NC_000004.11\tBestRefSeq\texon\t83180\t83280\t.\t+\t.\tID=id135369;Parent=rna13646;Dbxref=GeneID:152687,Genbank:NM_001286054.1,HGNC:HGNC:27196,HPRD:15868;Note=The RefSeq transcript has 11 substitutions%2C 5 frameshifts%2C 1 non-frameshifting indel compared to this genomic sequence;exception=annotated by transcript or proteomic data;gbkey=mRNA;gene=ZNF595;product=zinc finger protein 595%2C transcript variant 4;transcript_id=NM_001286054.1",
-      "NC_000004.11\tBestRefSeq\texon\t85622\t85995\t.\t+\t.\tID=id135370;Parent=rna13646;Dbxref=GeneID:152687,Genbank:NM_001286054.1,HGNC:HGNC:27196,HPRD:15868;Note=The RefSeq transcript has 11 substitutions%2C 5 frameshifts%2C 1 non-frameshifting indel compared to this genomic sequence;exception=annotated by transcript or proteomic data;gbkey=mRNA;gene=ZNF595;product=zinc finger protein 595%2C transcript variant 4;transcript_id=NM_001286054.1",
-      "NC_000004.11\tBestRefSeq\texon\t85998\t86015\t.\t+\t.\tID=id135371;Parent=rna13646;Dbxref=GeneID:152687,Genbank:NM_001286054.1,HGNC:HGNC:27196,HPRD:15868;Note=The RefSeq transcript has 11 substitutions%2C 5 frameshifts%2C 1 non-frameshifting indel compared to this genomic sequence;exception=annotated by transcript or proteomic data;gbkey=mRNA;gene=ZNF595;product=zinc finger protein 595%2C transcript variant 4;transcript_id=NM_001286054.1"
+      "##sequence-region NC_000002.10 1 243199373",
+      "##sequence-region NC_000003.10 1 198022430",
+      "##sequence-region NC_000004.10 1 191154276",
+      "NC_000004.10\tRefSeq\tregion\t1\t191154276\t.\t+\t.\tID=id135365;Dbxref=taxon:9606;Name=4;chromosome=4;gbkey=Src;genome=chromosome;mol_type=genomic DNA",
+      "NC_000004.10\tBestRefSeq\tgene\t53179\t88099\t.\t+\t.\tID=gene9164;Dbxref=GeneID:152687,HGNC:HGNC:27196,HPRD:15868;Name=ZNF595;description=zinc finger protein 595;gbkey=Gene;gene=ZNF595;gene_biotype=protein_coding",
+      "NC_000004.10\tBestRefSeq\tmRNA\t53179\t88099\t.\t+\t.\tID=rna13646;Parent=gene9164;Dbxref=GeneID:152687,Genbank:NM_001286054.1,HGNC:HGNC:27196,HPRD:15868;Name=NM_001286054.1;Note=The RefSeq transcript has 11 substitutions%2C 5 frameshifts%2C 1 non-frameshifting indel compared to this genomic sequence;exception=annotated by transcript or proteomic data;gbkey=mRNA;gene=ZNF595;product=zinc finger protein 595%2C transcript variant 4;transcript_id=NM_001286054.1",
+      "NC_000004.10\tBestRefSeq\texon\t53179\t53385\t.\t+\t.\tID=id135366;Parent=rna13646;Dbxref=GeneID:152687,Genbank:NM_001286054.1,HGNC:HGNC:27196,HPRD:15868;Note=The RefSeq transcript has 11 substitutions%2C 5 frameshifts%2C 1 non-frameshifting indel compared to this genomic sequence;exception=annotated by transcript or proteomic data;gbkey=mRNA;gene=ZNF595;product=zinc finger protein 595%2C transcript variant 4;transcript_id=NM_001286054.1",
+      "NC_000004.10\tBestRefSeq\texon\t59323\t59449\t.\t+\t.\tID=id135367;Parent=rna13646;Dbxref=GeneID:152687,Genbank:NM_001286054.1,HGNC:HGNC:27196,HPRD:15868;Note=The RefSeq transcript has 11 substitutions%2C 5 frameshifts%2C 1 non-frameshifting indel compared to this genomic sequence;exception=annotated by transcript or proteomic data;gbkey=mRNA;gene=ZNF595;product=zinc finger protein 595%2C transcript variant 4;transcript_id=NM_001286054.1",
+      "NC_000004.10\tBestRefSeq\texon\t59951\t60046\t.\t+\t.\tID=id135368;Parent=rna13646;Dbxref=GeneID:152687,Genbank:NM_001286054.1,HGNC:HGNC:27196,HPRD:15868;Note=The RefSeq transcript has 11 substitutions%2C 5 frameshifts%2C 1 non-frameshifting indel compared to this genomic sequence;exception=annotated by transcript or proteomic data;gbkey=mRNA;gene=ZNF595;product=zinc finger protein 595%2C transcript variant 4;transcript_id=NM_001286054.1",
+      "NC_000004.10\tBestRefSeq\texon\t83180\t83280\t.\t+\t.\tID=id135369;Parent=rna13646;Dbxref=GeneID:152687,Genbank:NM_001286054.1,HGNC:HGNC:27196,HPRD:15868;Note=The RefSeq transcript has 11 substitutions%2C 5 frameshifts%2C 1 non-frameshifting indel compared to this genomic sequence;exception=annotated by transcript or proteomic data;gbkey=mRNA;gene=ZNF595;product=zinc finger protein 595%2C transcript variant 4;transcript_id=NM_001286054.1",
+      "NC_000004.10\tBestRefSeq\texon\t85622\t85995\t.\t+\t.\tID=id135370;Parent=rna13646;Dbxref=GeneID:152687,Genbank:NM_001286054.1,HGNC:HGNC:27196,HPRD:15868;Note=The RefSeq transcript has 11 substitutions%2C 5 frameshifts%2C 1 non-frameshifting indel compared to this genomic sequence;exception=annotated by transcript or proteomic data;gbkey=mRNA;gene=ZNF595;product=zinc finger protein 595%2C transcript variant 4;transcript_id=NM_001286054.1",
+      "NC_000004.10\tBestRefSeq\texon\t85998\t86015\t.\t+\t.\tID=id135371;Parent=rna13646;Dbxref=GeneID:152687,Genbank:NM_001286054.1,HGNC:HGNC:27196,HPRD:15868;Note=The RefSeq transcript has 11 substitutions%2C 5 frameshifts%2C 1 non-frameshifting indel compared to this genomic sequence;exception=annotated by transcript or proteomic data;gbkey=mRNA;gene=ZNF595;product=zinc finger protein 595%2C transcript variant 4;transcript_id=NM_001286054.1"
     )
 
   private def gff = {
@@ -80,8 +65,8 @@ class UpdateGffContigNamesTest extends UnitSpec {
     val output = makeTempFile("test.", ".gff")
     val tool = new UpdateGffContigNames(
       input   = gff,
-      output  = output,
-      mapping = mappingInput()
+      dict    = pathToSequenceDictionary(),
+      output  = output
     )
 
     executeFgbioTool(tool)
@@ -100,8 +85,8 @@ class UpdateGffContigNamesTest extends UnitSpec {
     val output = makeTempFile("test.", ".gff")
     val tool = new UpdateGffContigNames(
       input   = gff,
-      output  = output,
-      mapping = mappingInput(skipLast = true)
+      dict    = pathToSequenceDictionary(skipLast = true),
+      output  = output
     )
 
     val ex = intercept[Exception] {executeFgbioTool(tool) }
@@ -112,8 +97,8 @@ class UpdateGffContigNamesTest extends UnitSpec {
     val output = makeTempFile("test.", ".gff")
     val tool = new UpdateGffContigNames(
       input       = gff,
+      dict        = pathToSequenceDictionary(skipLast = true),
       output      = output,
-      mapping     = mappingInput(skipLast = true),
       skipMissing = true
     )
 

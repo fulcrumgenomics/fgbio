@@ -4,7 +4,7 @@ dist: trusty
 scala:
 - 2.12.2
 jdk:
-- oraclejdk8
+- oraclejdk8 
 script:
 - sudo chmod 0777 "$HOME/.gitconfig"
 - sbt +clean coverage +test && sbt coverageReport coverageAggregate

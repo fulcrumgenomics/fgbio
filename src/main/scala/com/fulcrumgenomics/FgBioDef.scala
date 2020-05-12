@@ -33,6 +33,11 @@ import enumeratum.{Enum, EnumEntry}
   * there's a need for FgBio specific defs later.
   */
 object FgBioDef extends CommonsDef {
+
+  // TODO: Remove this once it is merged in commons: https://github.com/fulcrumgenomics/commons/pull/63
+  /** Represents a path to a sequence dictionary (.dict). */
+  type PathToSequenceDictionary = java.nio.file.Path
+
   /** Extends this trait in your enumeration object to enable the case objects to be created on the command line.
     * You should implement the [[enumeratum.Enum#values]] method in your object, for example:
     * `def values: IndexedSeq[T] = findValues`.
@@ -53,5 +58,36 @@ object FgBioDef extends CommonsDef {
       case (Seq(sample), Seq(library)) => s"$sample / $library"
       case _                           => PathUtil.basename(input, trimExt=true).toString
     }
+  }
+
+
+  /** Stores information about the coordinates of the alternate locus
+    *
+    * @param refName the name of the reference sequence (or chromosome)
+    * @param start position of the genomic range (1-based)
+    * @param end position of the gneomic range (1-based inclusive).
+    */
+  case class GenomicRange(refName: String, start: Int, end: Int) {
+    override def toString: String = f"$refName:$start-$end"
+  }
+
+  /** Parses a genomic range of the form `<chr>:<start>-<end>`, assuming the range is 1-based inclusive (closed-ended).
+    *
+    * @param range the string to parse.
+    */
+  def parseRange(range: String): GenomicRange = {
+    val (refName: String, rest: String) = range.indexOf(':') match {
+      case -1  => throw new IllegalArgumentException(f"Missing colon in genomic range: '$range'")
+      case idx =>
+        val (left, right) = range.splitAt(idx)
+        (left, right.drop(1))
+    }
+    val (start, end) = rest.indexOf('-') match {
+      case -1  => throw new IllegalArgumentException(f"Missing dash in genomic range: '$range'")
+      case idx =>
+        val (left, right) = rest.splitAt(idx)
+        (left, right.drop(1))
+    }
+    GenomicRange(refName=refName, start=start.toInt, end=end.toInt)
   }
 }
