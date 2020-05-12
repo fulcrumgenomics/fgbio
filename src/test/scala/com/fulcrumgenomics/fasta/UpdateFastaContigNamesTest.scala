@@ -36,7 +36,7 @@ import scala.collection.mutable.ListBuffer
   private val fasta = dir.resolve("soft-masked.fa")
 
   private def toSequenceMetadata(name: String, alias: String*): SequenceMetadata = {
-    SequenceMetadata(name=name, length=0, attributes=Map(SequenceMetadata.Keys.Aliases -> alias.mkString(",")))
+    SequenceMetadata(name=name, length=0, aliases=alias)
   }
 
   private def dict(skipLast: Boolean = false): SequenceDictionary = {

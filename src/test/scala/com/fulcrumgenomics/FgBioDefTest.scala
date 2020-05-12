@@ -118,7 +118,7 @@ class FgBioDefTest extends UnitSpec {
     an[IllegalArgumentException] should be thrownBy FgBioDef.parseRange("chr1::1")
     an[NumberFormatException] should be thrownBy FgBioDef.parseRange("chr1:1-A")
     an[NumberFormatException] should be thrownBy FgBioDef.parseRange("chr1:B-1")
-    FgBioDef.parseRange("chr1:1-2") shouldBe ("chr1", 1, 2)
-    FgBioDef.parseRange("foo:11-5") shouldBe ("foo", 11, 5)
+    FgBioDef.parseRange("chr1:1-2") shouldBe GenomicRange("chr1", 1, 2)
+    FgBioDef.parseRange("foo:11-5") shouldBe GenomicRange("foo", 11, 5)
   }
 }

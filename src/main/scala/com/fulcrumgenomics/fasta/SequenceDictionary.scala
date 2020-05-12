@@ -37,31 +37,92 @@ import htsjdk.samtools.{SAMSequenceDictionary, SAMSequenceDictionaryCodec, SAMSe
 import htsjdk.variant.utils.SAMSequenceDictionaryExtractor
 
 import scala.collection.mutable
+import scala.collection.mutable.ListBuffer
 
 object SequenceMetadata {
   /** Keys for standard attributes in [[SequenceMetadata]] */
   object Keys {
-    val Aliases              : String = "AN"
-    val AlternateLocus       : String = "AH"
-    val Assembly             : String = SAMSequenceRecord.ASSEMBLY_TAG
-    val Description          : String = SAMSequenceRecord.DESCRIPTION_TAG
-    private[fasta] val Length: String = SAMSequenceRecord.SEQUENCE_LENGTH_TAG
-    val Md5                  : String = SAMSequenceRecord.MD5_TAG
-    private[fasta] val Name  : String = SAMSequenceRecord.SEQUENCE_NAME_TAG
-    val Species              : String = SAMSequenceRecord.SPECIES_TAG
-    val Topology             : String = "TP"
-    val Uri                  : String = SAMSequenceRecord.URI_TAG
-  }
+    val Aliases               : String = "AN"
+    val AlternateLocus        : String = "AH"
+    val Assembly              : String = SAMSequenceRecord.ASSEMBLY_TAG
+    val Description           : String = SAMSequenceRecord.DESCRIPTION_TAG
+    private[fasta] val Length : String = SAMSequenceRecord.SEQUENCE_LENGTH_TAG
+    val Md5                   : String = SAMSequenceRecord.MD5_TAG
+    private[fasta] val Name   : String = SAMSequenceRecord.SEQUENCE_NAME_TAG
+    val Species               : String = SAMSequenceRecord.SPECIES_TAG
+    val Topology              : String = "TP"
+    val Uri                   : String = SAMSequenceRecord.URI_TAG
 
-  def apply(name: String, length: Int, aliases: Seq[String]): SequenceMetadata = {
-    SequenceMetadata(
-      name = name,
-      length = length,
-      attributes = Map(Keys.Aliases -> aliases.mkString(","))
+    val values: Set[String] = Set(
+      Aliases, AlternateLocus, Assembly, Description, Length, Md5, Name, Species, Topology, Uri
     )
   }
 
-  val UnknownLength: Int = 0
+  /** Builds a new [[SequenceMetadata]]
+    *
+    * @param name name of the reference sequence (contig)
+    * @param length length of the contig
+    * @param index index of the contig in a set of contigs (ex. genome or assembly)
+    * @param aliases list of reference sequence name aliases
+    * @param alternateLocus genomic range in the genome or assembly for which this sequence is an alternate
+    * @param assembly genome assembly identifier
+    * @param description description of the reference sequence
+    * @param md5 MD5 checksum
+    * @param species species name
+    * @param topology molecule topology
+    * @param uri URI of the sequence
+    * @param customAttributes any custom attributes (non-standard SAM attributes)
+    */
+  def apply(name: String,
+            length: Int                            = SequenceMetadata.UnknownSequenceLength,
+            index: Int                             = SequenceMetadata.UnknownSequenceIndex,
+            aliases: Seq[String]                   = Seq.empty,
+            alternateLocus: Option[AlternateLocus] = None,
+            assembly: Option[String]               = None,
+            description: Option[String]            = None,
+            md5: Option[String]                    = None,
+            species: Option[String]                = None,
+            topology: Option[Topology]             = None,
+            uri: Option[String]                    = None,
+            customAttributes: Map[String, String]        = Map.empty
+           ): SequenceMetadata = {
+    Keys.values.find(customAttributes.contains).foreach { key =>
+      throw new IllegalArgumentException(s"Attributes contains a standard key: $key")
+    }
+    // Build the attributes
+    val buffer: ListBuffer[(String, String)] = ListBuffer()
+    if (aliases.nonEmpty)       buffer += ((Keys.Aliases,        aliases.mkString(",")))
+    alternateLocus.foreach(l => buffer += ((Keys.AlternateLocus, l.toString)) )
+    assembly.foreach      (a => buffer += ((Keys.Assembly,       a)) )
+    description.foreach   (d => buffer += ((Keys.Description,    d)) )
+    md5.foreach           (m => buffer += ((Keys.Md5,            m)) )
+    species.foreach       (s => buffer += ((Keys.Species,        s)) )
+    topology.foreach      (t => buffer += ((Keys.Topology,       t.name)) )
+    uri.foreach           (u => buffer += ((Keys.Uri,            u)) )
+
+    SequenceMetadata(
+      name       = name,
+      length     = length,
+      index      = index,
+      attributes = buffer.toMap ++ customAttributes
+    )
+  }
+
+  /** The value for sequences of unknown length */
+  val UnknownSequenceLength: Int = SAMSequenceRecord.UNKNOWN_SEQUENCE_LENGTH
+
+
+  /** The value for sequences of unknown length */
+  val UnknownSequenceIndex: Int = SAMSequenceRecord.UNAVAILABLE_SEQUENCE_INDEX
+
+  /** Stores information about the coordinates of the alternate locus  */
+  type AlternateLocus = GenomicRange
+
+  object AlternateLocus {
+    @inline def apply(refName: String, start: Int, end: Int): AlternateLocus = {
+      GenomicRange(refName=refName, start=start, end=end)
+    }
+  }
 }
 
 /** Stores information about a single Sequence (ex. chromosome, contig)
@@ -71,21 +132,23 @@ object SequenceMetadata {
   * @param index the index in the sequence dictionary
   * @param attributes attributes of this sequence
   */
-case class SequenceMetadata(name: String,
-                            length: Int,
-                            index: Int = SequenceMetadata.UnknownLength,
-                            attributes: Map[String, String] = Map.empty) {
+case class SequenceMetadata private[fasta]
+(name: String,
+ length: Int,
+ index: Int,
+ attributes: Map[String, String]) {
+  import SequenceMetadata.AlternateLocus
+
   allNames.foreach { name => SAMSequenceRecord.validateSequenceName(name) }
   require(length >= 0, s"Length must be >= 0 for '$name'")
-  require(attributes.keys.forall(_ != Keys.Name),
-    f"`${Keys.Name}` should not given in the list of attributes")
-  require(attributes.keys.forall(_ != Keys.Length),
-    s"`${Keys.Length}` should not given in the list of attributes")
+  require(!attributes.contains(Keys.Name), f"`${Keys.Name}` should not given in the list of attributes")
+  require(!attributes.contains(Keys.Length), s"`${Keys.Length}` should not given in the list of attributes")
 
   @inline final def apply(key: String): String = this.attributes(key)
   @inline final def get(key: String): Option[String] = this.attributes.get(key)
+  @inline final def getOrElse(key: String, default: String): String = this.attributes.getOrElse(key, default)
   @inline final def contains(key: String): Boolean = this.attributes.contains(key)
-  @inline final def aliases: Seq[String] = this.get(Keys.Aliases).map(_.split(',').toSeq).getOrElse(Seq.empty[String])
+  lazy val aliases: Seq[String] = this.get(Keys.Aliases).map(_.split(',').toSeq).getOrElse(Seq.empty[String])
   /** All names, including aliases */
   @inline final def allNames: Seq[String] = name +: aliases
   @inline final def isAlternate: Boolean = this.alternate.isDefined
@@ -93,10 +156,9 @@ case class SequenceMetadata(name: String,
     this.get(Keys.AlternateLocus).flatMap {
       case "*"   => None
       case range =>
-        val (refName: String, start: Int, end: Int) = FgBioDef.parseRange(range)
-        val locus: AlternateLocus = {
-          if (refName == "=") AlternateLocus(refName=this.name, start=start.toInt, end=end.toInt)
-          else AlternateLocus(refName=refName, start=start.toInt, end=end.toInt)
+        val locus = FgBioDef.parseRange(range) match {
+          case GenomicRange("=", start, end) => AlternateLocus(refName=this.name, start=start.toInt, end=end.toInt)
+          case _locus                        => _locus
         }
         Some(locus)
     }
@@ -114,14 +176,14 @@ case class SequenceMetadata(name: String,
   /** Returns true if the the sequences share a common reference name (including aliases), have the same length, and
     * the same MD5 if both have MD5s. */
   def sameAs(that: SequenceMetadata): Boolean = {
-    val md5Match = (this.md5Int, that.md5Int) match {
-      case (Some(thisMd5Int), Some(thatMd5Int)) => thisMd5Int == thatMd5Int
-      case _                                    => true
+    if (this.length != that.length) false
+    else if (this.name != that.name && !this.allNames.exists(that.allNames.contains)) false
+    else {
+      (this.md5Int, that.md5Int) match {
+        case (Some(thisMd5Int), Some(thatMd5Int)) => thisMd5Int == thatMd5Int
+        case _                                    => true
+      }
     }
-
-    this.length == that.length &&
-      (this.name == that.name || this.allNames.exists(that.allNames.contains)) &&
-      md5Match
   }
 
   override def toString: FilenameSuffix = {
@@ -144,7 +206,7 @@ object SequenceDictionary {
     import Converters.FromSAMSequenceDictionary
     val codec  = new SAMTextHeaderCodec()
     val reader = new BufferedLineReader(Io.toInputStream(path))
-    val dict   = codec.decode(reader, path.toString).getSequenceDictionary()
+    val dict   = codec.decode(reader, path.toString).getSequenceDictionary
     reader.close()
     dict.fromSam
   }
@@ -185,12 +247,14 @@ case class SequenceDictionary(infos: IndexedSeq[SequenceMetadata]) extends Itera
     this.length == that.length && this.zip(that).forall { case (thisInfo, thatInfo) => thisInfo.sameAs(thatInfo) }
   }
 
+  /** Writes the sequence dictionary to the given path */
   def write(path: FilePath): Unit = {
     val writer = Io.toWriter(path)
     this.write(writer=writer)
     writer.close()
   }
 
+  /** Writes the sequence dictionary to the given writer */
   def write(writer: java.io.Writer): Unit = {
     import Converters.ToSAMSequenceRecord
     val codec  = new SAMSequenceDictionaryCodec(writer)
@@ -265,6 +329,3 @@ object Topology extends FgBioEnum[Topology] {
   /** The sequence is circular. */
   case object Circular extends Topology
 }
-
-/** Stores information about the coordinates of the alternate locus  */
-case class AlternateLocus(refName: String, start: Int, end: Int)

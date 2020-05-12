@@ -82,15 +82,13 @@ class ReferenceSetBuilder(val assembly: Option[String] = Some("testassembly"),
         out.newLine()
       }
 
-      val attributes = ListBuffer[(String, String)]()
-      ref.assembly.foreach(assembly => attributes += ((SequenceMetadata.Keys.Assembly, assembly)))
-      ref.species.foreach(species => attributes += ((SequenceMetadata.Keys.Species, species)))
-      if (calculateMds5) attributes += ((SequenceMetadata.Keys.Md5, SequenceUtil.calculateMD5String(bases.toUpperCase.getBytes)))
 
       SequenceMetadata(
         name       = ref.name,
         length     = bases.length,
-        attributes = attributes.toMap
+        assembly   = ref.assembly,
+        species    = ref.species,
+        md5        = if (calculateMds5) Some(SequenceUtil.calculateMD5String(bases.toUpperCase.getBytes)) else None
       )
     }
     out.close()

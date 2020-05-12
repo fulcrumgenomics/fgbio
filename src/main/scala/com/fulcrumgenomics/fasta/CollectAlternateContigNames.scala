@@ -165,15 +165,15 @@ class CollectAlternateContigNames
       }
       else {
        val attributes = ListBuffer[(String, String)]()
-        attributes += ((SequenceMetadata.Keys.Aliases, alts.mkString(",")))
         attributes += ((AssemblyReportColumn.SequenceRoleTag, dict(AssemblyReportColumn.SequenceRole)))
         AssemblyReportColumn.values.foreach { column =>
           attributes += ((column.tag, dict(column.key)))
         }
         val metadata = SequenceMetadata(
-          name       = name,
-          length     = dict(AssemblyReportColumn.SequenceLength).toInt,
-          attributes = attributes.toMap
+          name            = name,
+          length          = dict(AssemblyReportColumn.SequenceLength).toInt,
+          aliases         = alts,
+          customAttributes = attributes.toMap
         )
         if (role.primary) {
           primaries += metadata

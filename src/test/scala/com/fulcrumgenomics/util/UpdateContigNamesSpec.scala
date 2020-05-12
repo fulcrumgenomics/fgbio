@@ -34,7 +34,7 @@ import scala.collection.mutable.ListBuffer
 trait UpdateContigNamesSpec extends UnitSpec {
 
   protected def toSequenceMetadata(name: String, alias: String*): SequenceMetadata = {
-    SequenceMetadata(name=name, length=100000000, attributes=Map(SequenceMetadata.Keys.Aliases -> alias.mkString(",")))
+    SequenceMetadata(name=name, length=100000000, aliases=alias)
   }
 
   protected def dict(skipLast: Boolean = false): SequenceDictionary = {

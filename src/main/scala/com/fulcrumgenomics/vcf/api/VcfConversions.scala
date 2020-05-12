@@ -55,7 +55,7 @@ private[api] object VcfConversions {
   def toScalaHeader(in: VCFHeader): VcfHeader = {
     val contigs = in.getContigLines.map { c =>
       val rec = c.getSAMSequenceRecord
-      val length = if (rec.getSequenceLength == SequenceMetadata.UnknownLength) None else Some(rec.getSequenceLength)
+      val length = if (rec.getSequenceLength == SequenceMetadata.UnknownSequenceLength) None else Some(rec.getSequenceLength)
       VcfContigHeader(rec.getSequenceIndex, rec.getSequenceName, length, Option(rec.getAssembly))
     }.toIndexedSeq
 

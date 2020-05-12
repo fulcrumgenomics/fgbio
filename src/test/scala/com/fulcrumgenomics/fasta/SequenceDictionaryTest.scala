@@ -28,7 +28,7 @@ package com.fulcrumgenomics.fasta
 import com.fulcrumgenomics.fasta.Converters.{FromSAMSequenceDictionary, FromSAMSequenceRecord, ToSAMSequenceDictionary, ToSAMSequenceRecord}
 import com.fulcrumgenomics.testing.UnitSpec
 import org.scalatest.OptionValues
-import com.fulcrumgenomics.fasta.SequenceMetadata.Keys
+import com.fulcrumgenomics.fasta.SequenceMetadata.{AlternateLocus, Keys}
 import com.fulcrumgenomics.fasta.Topology.{Circular, Linear}
 import htsjdk.samtools.{SAMSequenceDictionary, SAMSequenceRecord}
 import com.fulcrumgenomics.FgBioDef._
@@ -36,16 +36,16 @@ import com.fulcrumgenomics.FgBioDef._
 class SequenceDictionaryTest extends UnitSpec with OptionValues {
 
   private val validSequence = SequenceMetadata(
-    name = "chr1",
-    length = 100,
-    attributes = Map(
-      "key1"           -> "value1",
-      "key2"           -> "value2",
-      Keys.Aliases     -> "chr1_1,chr1_2,chr1_3",
-      Keys.Assembly    -> "assembly",
-      Keys.Description -> "description",
-      Keys.Md5         -> "123",
-      Keys.Species     -> "species"
+    name             = "chr1",
+    length           = 100,
+    aliases          = Seq( "chr1_1", "chr1_2", "chr1_3"),
+    assembly         = Some("assembly"),
+    description      = Some("description"),
+    md5              = Some("123"),
+    species          = Some("species"),
+    customAttributes = Map(
+      "key1" -> "value1",
+      "key2" -> "value2"
     )
   )
 
@@ -60,11 +60,11 @@ class SequenceDictionaryTest extends UnitSpec with OptionValues {
   }
 
   it should "fail if the sequence name tag is given in the attributes" in {
-    an[Exception] should be thrownBy SequenceMetadata(name="chr1", length=1, attributes=Map("SN" -> "chr1"))
+    an[Exception] should be thrownBy SequenceMetadata(name="chr1", length=1, customAttributes=Map("SN" -> "chr1"))
   }
 
   it should "fail if the sequence length tag is given in the attributes" in {
-    an[Exception] should be thrownBy SequenceMetadata(name="chr1", length=1, attributes=Map("LN" -> "2"))
+    an[Exception] should be thrownBy SequenceMetadata(name="chr1", length=1, customAttributes=Map("LN" -> "2"))
   }
 
   it should "implement apply, get, and contains" in {
@@ -91,9 +91,9 @@ class SequenceDictionaryTest extends UnitSpec with OptionValues {
 
   "SequenceMetadata.isAlternate" should "return if the sequence is an alternate locus" in {
     val noAltLocus  = SequenceMetadata(name="chr1", length=123)
-    val altStar     = SequenceMetadata(name="chr1", length=123, attributes=Map("AH" -> "*"))
-    val locusEquals = SequenceMetadata(name="chr1", length=123, attributes=Map("AH" -> "=:1-2"))
-    val locusFull   = SequenceMetadata(name="chr1", length=123, attributes=Map("AH" -> "chr4:2-3"))
+    val altStar     = new SequenceMetadata(name="chr1", length=123, index=0, attributes=Map("AH" -> "*"))
+    val locusEquals = new SequenceMetadata(name="chr1", length=123, index=0, attributes=Map("AH" -> "=:1-2"))
+    val locusFull   = new SequenceMetadata(name="chr1", length=123, index=0, attributes=Map("AH" -> "chr4:2-3"))
 
     noAltLocus.isAlternate shouldBe false
     noAltLocus.alternate shouldBe 'empty
@@ -131,8 +131,8 @@ class SequenceDictionaryTest extends UnitSpec with OptionValues {
   }
 
   "SequenceMetadata.topology" should "return the topology if present" in {
-    val linear   = SequenceMetadata(name="chr1", length=123, attributes=Map(Keys.Topology -> Topology.Linear.name))
-    val circular = SequenceMetadata(name="chr1", length=123, attributes=Map(Keys.Topology -> Topology.Circular.name))
+    val linear   = SequenceMetadata(name="chr1", length=123, topology=Some(Topology.Linear))
+    val circular = SequenceMetadata(name="chr1", length=123,  topology=Some(Topology.Circular))
 
     linear.topology.value shouldBe Linear
     circular.topology.value shouldBe Circular
@@ -141,8 +141,8 @@ class SequenceDictionaryTest extends UnitSpec with OptionValues {
 
   "SequenceMetadata.sameAs" should "return false if not reference names are shared" in {
     SequenceMetadata(name="chr1", length=0) sameAs SequenceMetadata(name="chr2", length=0) shouldBe false
-    SequenceMetadata(name="chr1", length=0) sameAs SequenceMetadata(name="chr2", length=0, attributes=Map(Keys.Aliases -> "chr3")) shouldBe false
-    SequenceMetadata(name="chr1", length=0) sameAs SequenceMetadata(name="chr2", length=0, attributes=Map(Keys.Aliases -> "chr3,chr4")) shouldBe false
+    SequenceMetadata(name="chr1", length=0) sameAs SequenceMetadata(name="chr2", length=0, aliases=Seq("chr3")) shouldBe false
+    SequenceMetadata(name="chr1", length=0) sameAs SequenceMetadata(name="chr2", length=0, aliases=Seq("chr3", "chr4")) shouldBe false
   }
 
   it should "return false if the lengths are different" in {
@@ -151,7 +151,7 @@ class SequenceDictionaryTest extends UnitSpec with OptionValues {
 
 
   it should "return false if the md5s are different" in {
-    SequenceMetadata(name="chr1", length=0, attributes=Map(Keys.Md5 -> "1")) sameAs SequenceMetadata(name="chr1", length=0, attributes=Map(Keys.Md5 -> "2")) shouldBe false
+    SequenceMetadata(name="chr1", length=0, md5=Some("1")) sameAs SequenceMetadata(name="chr1", length=0, md5=Some("2")) shouldBe false
   }
 
   it should "return true if the primary name is the same" in {
@@ -159,23 +159,23 @@ class SequenceDictionaryTest extends UnitSpec with OptionValues {
   }
 
   it should "return true if the primary name in one matches an alias in the other" in {
-    SequenceMetadata(name="chr1", length=0) sameAs SequenceMetadata(name="chr2", length=0, attributes=Map(Keys.Aliases -> "chr1")) shouldBe true
-    SequenceMetadata(name="chr2", length=0, attributes=Map(Keys.Aliases -> "chr1")) sameAs SequenceMetadata(name="chr1", length=0) shouldBe true
+    SequenceMetadata(name="chr1", length=0) sameAs SequenceMetadata(name="chr2", length=0, aliases=Seq("chr1")) shouldBe true
+    SequenceMetadata(name="chr2", length=0, aliases=Seq("chr1")) sameAs SequenceMetadata(name="chr1", length=0) shouldBe true
   }
 
   it should "return true if they share an alias" in {
-    SequenceMetadata(name="chrX", length=0, attributes=Map(Keys.Aliases -> "chr1")) sameAs SequenceMetadata(name="chrY", length=0, attributes=Map(Keys.Aliases -> "chr1")) shouldBe true
-    SequenceMetadata(name="chrX", length=0, attributes=Map(Keys.Aliases -> "chr1,chr2")) sameAs SequenceMetadata(name="chrY", length=0, attributes=Map(Keys.Aliases -> "chr2,chr3")) shouldBe true
+    SequenceMetadata(name="chrX", length=0, aliases=Seq("chr1")) sameAs SequenceMetadata(name="chrY", length=0, aliases=Seq("chr1")) shouldBe true
+    SequenceMetadata(name="chrX", length=0, aliases=Seq("chr1", "chr2")) sameAs SequenceMetadata(name="chrY", length=0, aliases=Seq("chr2", "chr3")) shouldBe true
   }
 
   it should "return true if the name, length, and md5 match" in {
-    SequenceMetadata(name="chr1", length=0, attributes=Map(Keys.Md5 -> "1")) sameAs SequenceMetadata(name="chr1", length=0, attributes=Map(Keys.Md5 -> "1")) shouldBe true
+    SequenceMetadata(name="chr1", length=0, md5=Some("1")) sameAs SequenceMetadata(name="chr1", length=0, md5=Some("1")) shouldBe true
   }
 
   "SequenceDictionary" should "fail to build two sequence metadatas share a name (including aliases)" in {
     val one   = SequenceMetadata(name="chr1", length=0)
-    val two   = SequenceMetadata(name="chr2", length=0, attributes=Map(Keys.Aliases -> "chr1"))
-    val three = SequenceMetadata(name="chr3", length=0, attributes=Map(Keys.Aliases -> "chr0,chr1,chrX"))
+    val two   = SequenceMetadata(name="chr2", length=0, aliases=Seq("chr1"))
+    val three = SequenceMetadata(name="chr3", length=0, aliases=Seq("chr0", "chr1", "chrX"))
 
     an[Exception] should be thrownBy SequenceDictionary(one, one)
     an[Exception] should be thrownBy SequenceDictionary(one, two)
@@ -184,8 +184,8 @@ class SequenceDictionaryTest extends UnitSpec with OptionValues {
 
   it should "implement apply, get, contains, and iterator" in {
     val one   = SequenceMetadata(name="1", length=0)
-    val two   = SequenceMetadata(name="2", length=0, attributes=Map(Keys.Aliases -> "1_alt"))
-    val three = SequenceMetadata(name="3", length=0, attributes=Map(Keys.Aliases -> "3_alt_1,3_alt_2,3_alt_3"))
+    val two   = SequenceMetadata(name="2", length=0, aliases=Seq("1_alt"))
+    val three = SequenceMetadata(name="3", length=0, aliases=Seq("3_alt_1", "3_alt_2","3_alt_3"))
     val dict  = SequenceDictionary(one, two, three)
 
     dict.infos.length shouldBe 3

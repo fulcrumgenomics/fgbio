@@ -34,7 +34,7 @@ import enumeratum.{Enum, EnumEntry}
   */
 object FgBioDef extends CommonsDef {
 
-  // TODO: move this to com.fulcrumgenomics.commons
+  // TODO: Remove this once it is merged in commons: https://github.com/fulcrumgenomics/commons/pull/63
   /** Represents a path to a sequence dictionary (.dict). */
   type PathToSequenceDictionary = java.nio.file.Path
 
@@ -60,8 +60,22 @@ object FgBioDef extends CommonsDef {
     }
   }
 
-  /** Parses a genomic range of the form `<chr>:<start>-<end>`. */
-  def parseRange(range: String): (String, Int, Int) = {
+
+  /** Stores information about the coordinates of the alternate locus
+    *
+    * @param refName the name of the reference sequence (or chromosome)
+    * @param start position of the genomic range (1-based)
+    * @param end position of the gneomic range (1-based inclusive).
+    */
+  case class GenomicRange(refName: String, start: Int, end: Int) {
+    override def toString: String = f"$refName:$start-$end"
+  }
+
+  /** Parses a genomic range of the form `<chr>:<start>-<end>`, assuming the range is 1-based inclusive (closed-ended).
+    *
+    * @param range the string to parse.
+    */
+  def parseRange(range: String): GenomicRange = {
     val (refName: String, rest: String) = range.indexOf(':') match {
       case -1  => throw new IllegalArgumentException(f"Missing colon in genomic range: '$range'")
       case idx =>
@@ -74,6 +88,6 @@ object FgBioDef extends CommonsDef {
         val (left, right) = rest.splitAt(idx)
         (left, right.drop(1))
     }
-    (refName, start.toInt, end.toInt)
+    GenomicRange(refName=refName, start=start.toInt, end=end.toInt)
   }
 }
