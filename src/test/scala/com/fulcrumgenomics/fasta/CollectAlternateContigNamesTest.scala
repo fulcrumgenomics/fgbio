@@ -72,4 +72,44 @@ class CollectAlternateContigNamesTest extends UnitSpec {
     dict.last.name shouldBe "NT_187479.1"
     dict.last.aliases should contain theSameElementsInOrderAs Seq("chrUn_KI270394v1")
   }
+
+  it should "read the assigned-molecules for alternates in GRCh38.p12" in {
+    val output = makeTempFile("test.", ".dict")
+    val tool = new CollectAlternateContigNames(
+      input         = reportHg38,
+      output        = output,
+      primary       = RefSeqAccession,
+      alternates    = Seq(AssignedMolecule),
+      sequenceRoles = Seq(AssembledMolecule, UnlocalizedScaffold, UnplacedScaffold),
+      skipMissing   = false
+    )
+    executeFgbioTool(tool)
+
+    val dict = SequenceDictionary(output)
+    dict should have length 193
+    dict.head.name shouldBe "NC_000001.11"
+    dict.head.aliases should contain theSameElementsInOrderAs Seq("1")
+    dict.last.name shouldBe "NT_187479.1"
+    dict.last.aliases.isEmpty shouldBe true // no aliases, since it is not a assembled-molecule
+  }
+
+  it should "read the assigned-molecules for alternates in GRCh38.p12 but only those with aliases" in {
+    val output = makeTempFile("test.", ".dict")
+    val tool = new CollectAlternateContigNames(
+      input         = reportHg38,
+      output        = output,
+      primary       = RefSeqAccession,
+      alternates    = Seq(AssignedMolecule),
+      sequenceRoles = Seq(AssembledMolecule, UnlocalizedScaffold, UnplacedScaffold),
+      skipMissing   = true
+    )
+    executeFgbioTool(tool)
+
+    val dict = SequenceDictionary(output)
+    dict should have length 25
+    dict.head.name shouldBe "NC_000001.11"
+    dict.head.aliases should contain theSameElementsInOrderAs Seq("1")
+    dict.last.name shouldBe "NC_012920.1"
+    dict.last.aliases should contain theSameElementsInOrderAs Seq("MT")
+  }
 }
