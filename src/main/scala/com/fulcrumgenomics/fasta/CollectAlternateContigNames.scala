@@ -42,8 +42,6 @@ sealed trait AssemblyReportColumn extends EnumEntry {
   def key: String
   /** The tag to store in the SAM header */
   def tag: String
-  /** The roles to which this column applies. */
-  def roles: Seq[SequenceRole] = SequenceRole.values
 }
 
 /** Enum to represent columns in a NCBI assembly report. */
@@ -56,13 +54,7 @@ object AssemblyReportColumn extends FgBioEnum[AssemblyReportColumn] {
   }
 
   case object SequenceName     extends AssemblyReportColumn { val key: String = "Sequence-Name"; val tag: String = "sn" }
-  case object AssignedMolecule extends AssemblyReportColumn {
-    val key: String = "Assigned-Molecule"
-    val tag: String = "am"
-    // Developer note: only valid for assemble-molecules as other contigs are assigned the assembled molecule name
-    // (or are missing)
-    override val roles: Seq[SequenceRole] = Seq(SequenceRole.AssembledMolecule)
-  }
+  case object AssignedMolecule extends AssemblyReportColumn { val key: String = "Assigned-Molecule"; val tag: String = "am" }
   case object GenBankAccession extends AssemblyReportColumn { val key: String = "GenBank-Accn"; val tag: String = "ga"  }
   case object RefSeqAccession  extends AssemblyReportColumn { val key: String = "RefSeq-Accn"; val tag: String = "ra"  }
   case object UcscName         extends AssemblyReportColumn { val key: String = "UCSC-style-name"; val tag: String = "un"  }
@@ -149,22 +141,27 @@ class CollectAlternateContigNames
     require(iter.hasNext, s"Missing header from $input.")
     val header = iter.next().substring(2).split('\t')
 
-    // store primary and secondaries seperately; the former will be written before the latter
+    // Collect the primary and secondary sequence metadatas
+    // store primary and secondaries separately; the former will be written before the latter
     val primaries   = ListBuffer[SequenceMetadata]()
     val secondaries = ListBuffer[SequenceMetadata]()
-
-    // Reads the input assembly report into a sequence of key/value maps
     iter.foreach { line =>
       val dict   = header.zip(line.split('\t')).toMap
       val name   = dict(this.primary.key)
       val role   = SequenceRole(dict(AssemblyReportColumn.SequenceRoleKey))
-      val alts   = this.alternates.filter(_.roles.contains(role)).flatMap { alt =>
-        dict(alt.key) match {
-          case alternate if alternate == AssemblyReportColumn.MissingValueKey =>
-            logger.warning(s"Contig '$name' had a missing value for alternate in column '${alt.key}'")
-            None
-          case alternate => Some(alternate)
-        }
+      val alts   = this.alternates.flatMap {
+        // Developer note: the value of assigned-molecule sequence column is one of the values in the same column for
+        // an assembled-molecule, so only include them for assembled-molecules.  Otherwise, we will have the same alias
+        // across two or molecules.  Perhaps this is better represented as an alternate locus, but that is not
+        // implemented here.
+        case AssemblyReportColumn.AssignedMolecule if role != SequenceRole.AssembledMolecule => None
+        case alt: AssemblyReportColumn =>
+          dict(alt.key) match {
+            case alternate if alternate == AssemblyReportColumn.MissingValueKey =>
+              logger.warning(s"Contig '$name' had a missing value for alternate in column '${alt.key}'")
+              None
+            case alternate => Some(alternate)
+          }
       }
       if (sequenceRoles.nonEmpty && !this.sequenceRoles.contains(role)) {
         logger.warning(s"Skipping contig name '$name' with mismatching sequencing role: $role.")
