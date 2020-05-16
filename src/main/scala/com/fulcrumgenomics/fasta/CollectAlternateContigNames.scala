@@ -122,6 +122,7 @@ class CollectAlternateContigNames
  @arg(flag='s', doc="Only output sequences with the given sequence roles.  If none given, all sequences will be output.", minElements=0)
   val sequenceRoles: Seq[SequenceRole] = Seq.empty,
  @arg(flag='d', doc="Add aliases to this existing sequence dictionary file.  The primary contig must match.") val existing: Option[PathToSequenceDictionary] = None,
+ @arg(flag='x', doc="Allow mismatching sequence lengths when using an existing sequence dictionary fil.") val allowMismatchingLengths: Boolean = false,
  @arg(doc="Skip contigs that have no alternates") val skipMissing: Boolean = true
 ) extends FgBioTool with LazyLogging {
 
@@ -196,7 +197,8 @@ class CollectAlternateContigNames
             val data   = sequenceDictionary(name)
             val length = dict(Column.SequenceLength.key).toInt
             require(data.name == name, s"Existing sequence name '${data.name}' mismatches primary name '$name'")
-            require(data.length == length, s"Existing sequence length '${data.length}' mismatches primary name '$length'")
+            require(allowMismatchingLengths || data.length == length,
+              s"Existing sequence length '${data.length}' mismatches primary length '$length'")
             attributes ++= data.attributes.toSeq.filterNot { case (key, _) => SequenceMetadata.Keys.values.contains(key) }
             (data.aliases ++ alts).distinct
         }
