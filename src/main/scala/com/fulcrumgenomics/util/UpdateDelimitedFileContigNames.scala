@@ -45,7 +45,7 @@ class UpdateDelimitedFileContigNames
  @arg(flag='c', doc="The column indices for the contig names (0-based).") val columns: Seq[Int],
  @arg(flag='o', doc="Output delimited data file.") val output: FilePath,
  @arg(flag='T', doc="The delimiter") val delimiter: Char = '\t',
- @arg(flag='H', doc="Treat lines with this starting string as comments (always printed)") val header: String = "\t",
+ @arg(flag='H', doc="Treat lines with this starting string as comments (always printed)") val header: String = "#",
  @arg(doc="Skip missing contigs.") val skipMissing: Boolean = false
 ) extends FgBioTool with LazyLogging {
 
@@ -91,7 +91,7 @@ class UpdateDelimitedFileContigNames
 
       // update the fields and output
       columns.foreach { column =>
-        require(column < numFields, s"Too few columns (at least ${column + 1}) on line ${progress.getCount}%,d")
+        require(column < numFields, f"Too few columns (at least ${column + 1}) on line ${progress.getCount}%,d")
         dict.get(fields(column)) match {
           case Some(metadata) => fields(column) = metadata.name
           case None           =>
@@ -105,11 +105,13 @@ class UpdateDelimitedFileContigNames
 
       // write it all out
       forloop(from=0, until=numFields) { i =>
-        if (i < numExpected - 1) out.append(delimiter)
+        if (0 < i) out.append(delimiter)
         out.write(fields(i))
       }
       out.write('\n')
     }
     progress.logLast()
+
+    out.close()
   }
 }
