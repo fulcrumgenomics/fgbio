@@ -91,6 +91,7 @@ class UpdateGffContigNames
         require(fields(0) == srcName)
         val position = fields(3).toInt
         out.append(targetName)
+        out.append('\t')
         out.append(line.substring(srcName.length))
         out.append('\n')
         progress.record(s"$srcName => $targetName", position)
