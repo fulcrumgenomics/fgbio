@@ -228,7 +228,9 @@ class CollectAlternateContigNames
       case Some(sequenceDictionary) =>
         // re-order the contigs by the existing dictionary
         val infosMap = (primaries ++ secondaries).map { metadata => (metadata.name, metadata) }.toMap
-        sequenceDictionary.map { metadata => infosMap(metadata.name) }.toSeq
+        sequenceDictionary.map { metadata =>
+          infosMap.getOrElse(metadata.name, metadata)
+        }.toSeq
     }
 
     // Write it out!
