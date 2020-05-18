@@ -33,7 +33,7 @@ import com.fulcrumgenomics.sopt.{arg, clp}
 
 @clp(description =
   """
-    |Updates then contig names in a delimited data file.
+    |Updates the contig names in columns of a delimited data file (e.g. CSV, TSV).
     |
     |The name of each sequence must match one of the names (including aliases) in the given sequence dictionary.  The
     |new name will be the primary (non-alias) name in the sequence dictionary.
@@ -43,10 +43,10 @@ class UpdateDelimitedFileContigNames
 (@arg(flag='i', doc="Input delimited data file.") val input: FilePath,
  @arg(flag='d', doc="The path to the sequence dictionary with contig aliases.") val dict: PathToSequenceDictionary,
  @arg(flag='c', doc="The column indices for the contig names (0-based).") val columns: Seq[Int],
- @arg(flag='o', doc="Output delimited data file.") val output: FilePath,
  @arg(flag='T', doc="The delimiter") val delimiter: Char = '\t',
- @arg(flag='H', doc="Treat lines with this starting string as comments (always printed)") val header: String = "#",
- @arg(doc="Skip missing contigs.") val skipMissing: Boolean = false
+ @arg(flag='H', doc="Treat lines with this starting string as comments (always printed)") val comment: String = "#",
+ @arg(flag='o', doc="Output delimited data file.") val output: FilePath,
+ @arg(flag='n', doc="Output the first `N` lines as-is (always printed).") val outputFirstNumLines: Int = 0
 ) extends FgBioTool with LazyLogging {
 
   Io.assertReadable(input)
@@ -55,60 +55,50 @@ class UpdateDelimitedFileContigNames
 
   this.columns.foreach(column => validate(column >= 0, s"Column index < 0: $column"))
 
-
   override def execute(): Unit = {
-    val dict   = SequenceDictionary(this.dict)
-    val in     = Io.readLines(input).bufferBetter
-    val out    = Io.toWriter(output)
-
+    val dict     = SequenceDictionary(this.dict)
+    val in       = Io.readLines(input).bufferBetter
+    val out      = Io.toWriter(output)
     val progress = ProgressLogger(logger, noun="lines", verb="written")
 
-    // write the header
-    in.takeWhile(_.startsWith(this.header)).foreach { line =>
+    // Output the requested # of lines at the start of the file
+    in.take(outputFirstNumLines).foreach { line =>
       progress.record()
-      out.write(line); out.write('\n')
+      out.write(line)
+      out.write('\n')
     }
 
     // write the rest of the lines
-    var fields = Array("", "", "", "")
+    val maxColumn = this.columns.max
+    val fields = Array.fill(maxColumn + 2)("")  // stuff the remaining in the last array value
     in.foreach { line =>
       progress.record()
 
-      // Split the line, but support lines that have a variable number of fields
-      val numFields   = StringUtil.split(line, delimiter, fields)
-      val numExpected = {
-        var count: Int = 0
-        forloop(from=0, until=line.length) { i =>
-          if (line(i) == delimiter) count += 1
-        }
-        count
+      if (line.startsWith(this.comment)) {
+        out.write(line)
+        out.write('\n')
       }
-      if (numExpected > numFields) {
-        assert(fields.length < numExpected + fields.map(_.length).sum)
-        fields = Array.fill(numExpected)("")
-        assert(StringUtil.split(line, delimiter, fields) == numExpected)
-      }
+      else {
+        val numFields = StringUtil.split(line=line, delimiter=delimiter, arr=fields, concatenateRemaining=true)
+        require(numFields >= maxColumn + 1, f"Too few columns '$numFields' on line ${progress.getCount}%,d")
 
-      // update the fields and output
-      columns.foreach { column =>
-        require(column < numFields, f"Too few columns (at least ${column + 1}) on line ${progress.getCount}%,d")
-        dict.get(fields(column)) match {
-          case Some(metadata) => fields(column) = metadata.name
-          case None           =>
-            val message = s"Did not find contig ${fields(column)} in the list of source names."
-            if (skipMissing) {
-              logger.warning(message)
-            }
-            else throw new IllegalStateException(message)
+        // update the fields and output
+        columns.foreach { column =>
+          dict.get(fields(column)) match {
+            case Some(metadata) =>
+              fields(column) = metadata.name
+            case None           =>
+              throw new IllegalStateException(s"Did not find contig ${fields(column)} in the given sequence dictionary.")
+          }
         }
-      }
 
-      // write it all out
-      forloop(from=0, until=numFields) { i =>
-        if (0 < i) out.append(delimiter)
-        out.write(fields(i))
+        // write it all out
+        forloop(from = 0, until = numFields) { i =>
+          if (0 < i) out.append(delimiter)
+          out.write(fields(i))
+        }
+        out.write('\n')
       }
-      out.write('\n')
     }
     progress.logLast()
 
