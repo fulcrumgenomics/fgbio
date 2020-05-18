@@ -36,7 +36,8 @@ import com.fulcrumgenomics.sopt.{arg, clp}
     |Updates the contig names in columns of a delimited data file (e.g. CSV, TSV).
     |
     |The name of each sequence must match one of the names (including aliases) in the given sequence dictionary.  The
-    |new name will be the primary (non-alias) name in the sequence dictionary.
+    |new name will be the primary (non-alias) name in the sequence dictionary.  Use `--skip-missing` to ignore lines
+    |where a contig name could not be updated (i.e. missing from the sequence dictionary).
   """,
   group = ClpGroups.Utilities)
 class UpdateDelimitedFileContigNames
@@ -46,7 +47,8 @@ class UpdateDelimitedFileContigNames
  @arg(flag='T', doc="The delimiter") val delimiter: Char = '\t',
  @arg(flag='H', doc="Treat lines with this starting string as comments (always printed)") val comment: String = "#",
  @arg(flag='o', doc="Output delimited data file.") val output: FilePath,
- @arg(flag='n', doc="Output the first `N` lines as-is (always printed).") val outputFirstNumLines: Int = 0
+ @arg(flag='n', doc="Output the first `N` lines as-is (always printed).") val outputFirstNumLines: Int = 0,
+ @arg(doc="Skip lines where a contig name could not be updated (i.e. missing from the sequence dictionary).") skipMissing: Boolean = false
 ) extends FgBioTool with LazyLogging {
 
   Io.assertReadable(input)
@@ -82,22 +84,28 @@ class UpdateDelimitedFileContigNames
         val numFields = StringUtil.split(line=line, delimiter=delimiter, arr=fields, concatenateRemaining=true)
         require(numFields >= maxColumn + 1, f"Too few columns '$numFields' on line ${progress.getCount}%,d")
 
-        // update the fields and output
-        columns.foreach { column =>
+        // Find the first column that can't be updated, but update the fields with those that can be updated along the way
+        val missingContig: Option[Int] = columns.find { column =>
           dict.get(fields(column)) match {
-            case Some(metadata) =>
-              fields(column) = metadata.name
-            case None           =>
-              throw new IllegalStateException(s"Did not find contig ${fields(column)} in the given sequence dictionary.")
+            case Some(metadata) => fields(column) = metadata.name; false
+            case None           => true
           }
         }
 
-        // write it all out
-        forloop(from = 0, until = numFields) { i =>
-          if (0 < i) out.append(delimiter)
-          out.write(fields(i))
+        // Log or error if there was a column that couldn't be updated, otherwise, write it out
+        missingContig match {
+          case Some(column) if skipMissing =>
+            logger.warning(s"Skipping line, could not update contig with name '${fields(column)}' in column $column on line ${progress.getCount}%,d")
+          case Some(column) =>
+            throw new IllegalStateException(s"Did not find contig ${fields(column)} in the given sequence dictionary.")
+          case None =>
+            // Write it all out
+            forloop(from = 0, until = numFields) { i =>
+              if (0 < i) out.append(delimiter)
+              out.write(fields(i))
+            }
+            out.write('\n')
         }
-        out.write('\n')
       }
     }
     progress.logLast()

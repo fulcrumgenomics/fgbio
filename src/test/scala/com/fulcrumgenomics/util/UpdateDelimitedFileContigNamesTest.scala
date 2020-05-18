@@ -54,7 +54,8 @@ class UpdateDelimitedFileContigNamesTest extends UnitSpec {
                       actual: Seq[String],
                       expected: Seq[String],
                       outputFirstNumLines: Int = 0,
-                      comment: String = "#"): Unit = {
+                      comment: String = "#",
+                      skipMissing: Boolean = false): Unit = {
     val input    = makeTempFile("test.", "in.txt")
     val output   = makeTempFile("test.", "out.txt")
 
@@ -68,6 +69,7 @@ class UpdateDelimitedFileContigNamesTest extends UnitSpec {
       comment             = comment,
       output              = output,
       outputFirstNumLines = outputFirstNumLines,
+      skipMissing         = skipMissing
     )
 
     executeFgbioTool(tool)
@@ -154,5 +156,24 @@ class UpdateDelimitedFileContigNamesTest extends UnitSpec {
       )
     }
     exception.getMessage.contains("Did not find contig") shouldBe true
+  }
+
+  it should "skip lines if not all contig names can be updated with --skip-missing" in {
+    val actual = Seq(
+      "1-old,4-old", // skipped, second can't be updated
+      "2-old,3-old", // updated
+      "4-old,5-old", // skipped, both can't be updated
+      "5-old,1-old", // skipped, first can't be updated
+    )
+    val expected = Seq(
+      "2-new,3-new"
+    )
+    runTest(
+      delimiter   = ',',
+      columns     = Seq(0, 1),
+      actual      = actual,
+      expected    = expected,
+      skipMissing = true
+    )
   }
 }
