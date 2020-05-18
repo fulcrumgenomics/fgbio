@@ -120,7 +120,7 @@ object SequenceRole extends FgBioEnum[SequenceRole] {
     |
     |When updating an existing sequence dictionary with `--existing` the primary contig names must match.  I.e. the
     |contig name from the assembly report column specified by `--primary` must match the contig name in the existing
-    |sequence dictionary (`@SQ.SN`).  All contigs in the existing sequence report must be present in the assembly
+    |sequence dictionary (`@SQ.SN`).  All contigs in the existing sequence dictionary must be present in the assembly
     |report.  Furthermore, contigs in the assembly report not found in the sequence dictionary will be ignored.
   """,
   group = ClpGroups.Fasta)
@@ -213,7 +213,7 @@ class CollectAlternateContigNames
         val updatedMetadatas          = SequenceDictionary(path).map { existingMetadata =>
           // Get the metadata from the assembly report
           val assemblyReportMetadata: SequenceMetadata = assemblyReportMetadataMap.getOrElse(existingMetadata.name,
-            throw new IllegalArgumentException(s"Could not find contig '${existingMetadata.name}' in the asesmlby report'")
+            throw new IllegalArgumentException(s"Could not find contig '${existingMetadata.name}' in the assembly report'")
           )
           // append new aliases, and add new tags
           val attributes = existingMetadata.attributes ++ assemblyReportMetadata.attributes.map {
