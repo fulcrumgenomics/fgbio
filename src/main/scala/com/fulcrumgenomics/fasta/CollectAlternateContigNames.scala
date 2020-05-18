@@ -29,6 +29,7 @@ import com.fulcrumgenomics.FgBioDef.{FgBioEnum, PathToSequenceDictionary}
 import com.fulcrumgenomics.cmdline.{ClpGroups, FgBioTool}
 import com.fulcrumgenomics.commons.CommonsDef._
 import com.fulcrumgenomics.commons.util.LazyLogging
+import com.fulcrumgenomics.fasta.SequenceMetadata.Keys
 import com.fulcrumgenomics.sopt._
 import com.fulcrumgenomics.util.Io
 import enumeratum.EnumEntry
@@ -76,7 +77,6 @@ object AssemblyReportColumn extends FgBioEnum[AssemblyReportColumn] {
 /** Trait that entries in SequenceRole will extend. */
 sealed trait SequenceRole extends EnumEntry {
   def key: String
-  def primary: Boolean
 }
 
 /** Enum to represent the various types of sequence-roles in NCBI assembly report. */
@@ -88,12 +88,20 @@ object SequenceRole extends FgBioEnum[SequenceRole] {
     values.find(_.key == str).getOrElse(super.apply(str))
   }
 
-  case object AltScaffold         extends SequenceRole { val key: String = "alt-scaffold"; val primary: Boolean = false }
-  case object AssembledMolecule   extends SequenceRole { val key: String = "assembled-molecule"; val primary: Boolean = true }
-  case object FixPatch            extends SequenceRole { val key: String = "fix-patch"; val primary: Boolean = false }
-  case object NovelPatch          extends SequenceRole { val key: String = "novel-patch"; val primary: Boolean = false }
-  case object UnlocalizedScaffold extends SequenceRole { val key: String = "unlocalized-scaffold"; val primary: Boolean = false }
-  case object UnplacedScaffold    extends SequenceRole { val key: String = "unplaced-scaffold"; val primary: Boolean = false }
+  /** Allows the column to be build from the Enum name or the actual sequence-role column name. */
+  def apply(metadata: SequenceMetadata): SequenceRole = {
+    val roleValue = metadata.attributes.getOrElse(AssemblyReportColumn.SequenceRole.tag,
+      throw new IllegalArgumentException(s"Metadata missing tag: ${AssemblyReportColumn.SequenceRole.tag}")
+    )
+    SequenceRole(roleValue)
+  }
+
+  case object AltScaffold         extends SequenceRole { val key: String = "alt-scaffold" }
+  case object AssembledMolecule   extends SequenceRole { val key: String = "assembled-molecule" }
+  case object FixPatch            extends SequenceRole { val key: String = "fix-patch" }
+  case object NovelPatch          extends SequenceRole { val key: String = "novel-patch" }
+  case object UnlocalizedScaffold extends SequenceRole { val key: String = "unlocalized-scaffold" }
+  case object UnplacedScaffold    extends SequenceRole { val key: String = "unplaced-scaffold" }
 }
 
 
@@ -107,11 +115,13 @@ object SequenceRole extends FgBioEnum[SequenceRole] {
     |line per contig.  The primary contig name (i.e. `@SQ.SN`) is specified with `--primary` option, while alternate
     |names (i.e. aliases) are specified with the `--alternates` option.
     |
-    |First, contig with the Sequence-Role "assembled-molecule" will be outputted.  Next, the remaining contigs will be
-    |sorted by descending length.
-    |
     |The `Assigned-Molecule` column, if specified as an `--alternate`, will only be used for sequences with
     |`Sequence-Role` `assembled-molecule`.
+    |
+    |When updating an existing sequence dictionary with `--existing` the primary contig names must match.  I.e. the
+    |contig name from the assembly report column specified by `--primary` must match the contig name in the existing
+    |sequence dictionary (`@SQ.SN`).  All contigs in the existing sequence report must be present in the assembly
+    |report.  Furthermore, contigs in the assembly report not found in the sequence dictionary will be ignored.
   """,
   group = ClpGroups.Fasta)
 class CollectAlternateContigNames
@@ -121,9 +131,9 @@ class CollectAlternateContigNames
  @arg(flag='a', doc="The assembly report column(s) for the alternate contig name(s)", minElements=1) val alternates: Seq[AssemblyReportColumn],
  @arg(flag='s', doc="Only output sequences with the given sequence roles.  If none given, all sequences will be output.", minElements=0)
   val sequenceRoles: Seq[SequenceRole] = Seq.empty,
- @arg(flag='d', doc="Add aliases to this existing sequence dictionary file.  The primary contig must match.") val existing: Option[PathToSequenceDictionary] = None,
- @arg(flag='x', doc="Allow mismatching sequence lengths when using an existing sequence dictionary fil.") val allowMismatchingLengths: Boolean = false,
- @arg(doc="Skip contigs that have no alternates") val skipMissing: Boolean = true
+ @arg(flag='d', doc="Update an existing sequence dictionary file.  The primary names must match.") val existing: Option[PathToSequenceDictionary] = None,
+ @arg(flag='x', doc="Allow mismatching sequence lengths when using an existing sequence dictionary file.") val allowMismatchingLengths: Boolean = false,
+ @arg(doc="Skip contigs that have no alternates") val skipMissingAlternates: Boolean = true
 ) extends FgBioTool with LazyLogging {
 
   import com.fulcrumgenomics.fasta.{AssemblyReportColumn => Column}
@@ -148,13 +158,8 @@ class CollectAlternateContigNames
     require(iter.hasNext, s"Missing header from $input.")
     val header = iter.next().substring(2).split('\t')
 
-    // read in the existing sequence dictionary, if specified
-    val existingSequenceDictionary: Option[SequenceDictionary] = this.existing.map(SequenceDictionary(_))
-
-    // Collect the primary and secondary sequence metadatas
-    // store primary and secondaries separately; the former will be written before the latter
-    val primaries   = ListBuffer[SequenceMetadata]()
-    val secondaries = ListBuffer[SequenceMetadata]()
+    // Collect the sequence metadatas
+    val metadatas = ListBuffer[SequenceMetadata]()
     iter.foreach { line =>
       val dict   = header.zip(line.split('\t')).toMap
       val name   = dict(this.primary.key)
@@ -181,7 +186,7 @@ class CollectAlternateContigNames
       else if (name == Column.MissingColumnValue) {
         logger.warning(s"Skipping contig as it had a missing value for column '${this.primary.key}': $line")
       }
-      else if (alts.isEmpty && skipMissing) {
+      else if (alts.isEmpty && skipMissingAlternates) {
         logger.warning(s"Skipping contig name '$name' with no alternates.")
       }
       else {
@@ -190,50 +195,38 @@ class CollectAlternateContigNames
         Column.values.foreach { column =>
           attributes += ((column.tag, dict(column.key)))
         }
-        // get the list of aliases (may update attributes if an existing contig is found)
-        val aliases: Seq[String] = existingSequenceDictionary match {
-          case None           => alts
-          case Some(sequenceDictionary) =>
-            val data   = sequenceDictionary(name)
-            val length = dict(Column.SequenceLength.key).toInt
-            require(data.name == name, s"Existing sequence name '${data.name}' mismatches primary name '$name'")
-            require(allowMismatchingLengths || data.length == length,
-              s"Existing sequence length '${data.length}' mismatches primary length '$length'")
-            attributes ++= data.attributes.toSeq.filterNot { case (key, _) => SequenceMetadata.Keys.values.contains(key) }
-            (data.aliases ++ alts).distinct
-        }
         val metadata = SequenceMetadata(
           name             = name,
           length           = dict(Column.SequenceLength.key).toInt,
-          aliases          = aliases,
+          aliases          = alts,
           customAttributes = attributes.toMap
         )
-        if (role.primary) {
-          primaries += metadata
-        }
-        else {
-          secondaries += metadata
-        }
+        metadatas += metadata
       }
     }
 
-    // Get the ordering of the molecules
-    val infos: Seq[SequenceMetadata] = existingSequenceDictionary match {
-      case None =>
-        // Sort the secondary entries based on descending sequence length.
-        (primaries ++ secondaries.sortBy(-_.length))
-          .zipWithIndex
-          .map { case (metadata, index) => metadata.copy(index=index) }
-          .toSeq
-      case Some(sequenceDictionary) =>
-        // re-order the contigs by the existing dictionary
-        val infosMap = (primaries ++ secondaries).map { metadata => (metadata.name, metadata) }.toMap
-        sequenceDictionary.map { metadata =>
-          infosMap.getOrElse(metadata.name, metadata)
-        }.toSeq
+    // Apply to an existing sequence dictionary if necessary
+    val dict: SequenceDictionary = existing match {
+      case None => SequenceDictionary(metadatas.toSeq:_*)
+      case Some(path) =>
+        val assemblyReportMetadataMap = metadatas.map { m => (m.name, m) }.toMap
+        val updatedMetadatas          = SequenceDictionary(path).map { existingMetadata =>
+          // Get the metadata from the assembly report
+          val assemblyReportMetadata: SequenceMetadata = assemblyReportMetadataMap.getOrElse(existingMetadata.name,
+            throw new IllegalArgumentException(s"Could not find contig '${existingMetadata.name}' in the asesmlby report'")
+          )
+          // append new aliases, and add new tags
+          val attributes = existingMetadata.attributes ++ assemblyReportMetadata.attributes.map {
+              case (Keys.Aliases, _) =>
+                (Keys.Aliases, (existingMetadata.aliases ++ assemblyReportMetadata.aliases).distinct.mkString(","))
+              case (key, value)                          => (key, value)
+          }
+          existingMetadata.copy(attributes=attributes)
+        }
+        SequenceDictionary(updatedMetadatas.toSeq:_*)
     }
 
     // Write it out!
-    SequenceDictionary(infos:_*).write(output)
+    dict.write(output)
   }
 }

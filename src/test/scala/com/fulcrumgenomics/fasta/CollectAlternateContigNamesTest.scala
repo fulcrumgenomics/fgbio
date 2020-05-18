@@ -25,7 +25,7 @@
 package com.fulcrumgenomics.fasta
 
 import com.fulcrumgenomics.commons.io.PathUtil
-import com.fulcrumgenomics.fasta.AssemblyReportColumn._
+import com.fulcrumgenomics.fasta.{AssemblyReportColumn => Column}
 import com.fulcrumgenomics.fasta.SequenceRole._
 import com.fulcrumgenomics.testing.UnitSpec
 
@@ -40,8 +40,8 @@ class CollectAlternateContigNamesTest extends UnitSpec {
     val tool = new CollectAlternateContigNames(
       input         = reportHg19,
       output        = output,
-      primary       = RefSeqAccession,
-      alternates    = Seq(UcscName),
+      primary       = Column.RefSeqAccession,
+      alternates    = Seq(Column.UcscName),
       sequenceRoles = Seq(AssembledMolecule, UnlocalizedScaffold, UnplacedScaffold)
     )
     executeFgbioTool(tool)
@@ -50,17 +50,18 @@ class CollectAlternateContigNamesTest extends UnitSpec {
     dict should have length 84
     dict.head.name shouldBe "NC_000001.10"
     dict.head.aliases should contain theSameElementsInOrderAs Seq("chr1")
-    dict.last.name shouldBe "NT_113947.1"
-    dict.last.aliases should contain theSameElementsInOrderAs Seq("chr18_gl000207_random")
+    dict.last.name shouldBe "NC_012920.1"
+    dict.last.aliases should contain theSameElementsInOrderAs Seq("chrM")
   }
 
   it should "read the UCSC-style-names for alternates in GRCh38.p12" in {
+    // Note: skips molecules without a ref-seq accession
     val output = makeTempFile("test.", ".dict")
     val tool = new CollectAlternateContigNames(
       input         = reportHg38,
       output        = output,
-      primary       = RefSeqAccession,
-      alternates    = Seq(UcscName),
+      primary       = Column.RefSeqAccession,
+      alternates    = Seq(Column.UcscName),
       sequenceRoles = Seq(AssembledMolecule, UnlocalizedScaffold, UnplacedScaffold)
     )
     executeFgbioTool(tool)
@@ -69,19 +70,19 @@ class CollectAlternateContigNamesTest extends UnitSpec {
     dict should have length 193
     dict.head.name shouldBe "NC_000001.11"
     dict.head.aliases should contain theSameElementsInOrderAs Seq("chr1")
-    dict.last.name shouldBe "NT_187479.1"
-    dict.last.aliases should contain theSameElementsInOrderAs Seq("chrUn_KI270394v1")
+    dict.last.name shouldBe "NC_012920.1"
+    dict.last.aliases should contain theSameElementsInOrderAs Seq("chrM")
   }
 
   it should "read the assigned-molecules for alternates in GRCh38.p12" in {
     val output = makeTempFile("test.", ".dict")
     val tool = new CollectAlternateContigNames(
-      input         = reportHg38,
-      output        = output,
-      primary       = RefSeqAccession,
-      alternates    = Seq(AssignedMolecule),
-      sequenceRoles = Seq(AssembledMolecule, UnlocalizedScaffold, UnplacedScaffold),
-      skipMissing   = false
+      input                = reportHg38,
+      output                = output,
+      primary               = Column.RefSeqAccession,
+      alternates            = Seq(Column.AssignedMolecule),
+      sequenceRoles         = Seq(AssembledMolecule, UnlocalizedScaffold, UnplacedScaffold),
+      skipMissingAlternates = false
     )
     executeFgbioTool(tool)
 
@@ -89,19 +90,23 @@ class CollectAlternateContigNamesTest extends UnitSpec {
     dict should have length 193
     dict.head.name shouldBe "NC_000001.11"
     dict.head.aliases should contain theSameElementsInOrderAs Seq("1")
-    dict.last.name shouldBe "NT_187479.1"
-    dict.last.aliases.isEmpty shouldBe true // no aliases, since it is not a assembled-molecule
+    dict.last.name shouldBe "NC_012920.1"
+    dict.last.aliases should contain theSameElementsInOrderAs Seq("MT")
+    // make sure only assembled-molecules have aliases
+    dict.foreach { metadata: SequenceMetadata =>
+      metadata.aliases.nonEmpty shouldBe (SequenceRole(metadata) == AssembledMolecule)
+    }
   }
 
   it should "read the assigned-molecules for alternates in GRCh38.p12 but only those with aliases" in {
     val output = makeTempFile("test.", ".dict")
     val tool = new CollectAlternateContigNames(
-      input         = reportHg38,
-      output        = output,
-      primary       = RefSeqAccession,
-      alternates    = Seq(AssignedMolecule),
-      sequenceRoles = Seq(AssembledMolecule, UnlocalizedScaffold, UnplacedScaffold),
-      skipMissing   = true
+      input                 = reportHg38,
+      output                = output,
+      primary               = Column.RefSeqAccession,
+      alternates            = Seq(Column.AssignedMolecule),
+      sequenceRoles         = Seq(AssembledMolecule, UnlocalizedScaffold, UnplacedScaffold),
+      skipMissingAlternates = true
     )
     executeFgbioTool(tool)
 
@@ -114,14 +119,13 @@ class CollectAlternateContigNamesTest extends UnitSpec {
   }
 
   it should "update an existing sequence dictionary" in {
-
     val firstOutput  = makeTempFile("test.", ".1.dict")
     val secondOutput = makeTempFile("test.", ".2.dict")
     val firstTool = new CollectAlternateContigNames(
       input         = reportHg38,
       output        = firstOutput,
-      primary       = RefSeqAccession,
-      alternates    = Seq(GenBankAccession),
+      primary       = Column.RefSeqAccession,
+      alternates    = Seq(Column.GenBankAccession),
       sequenceRoles = Seq(AssembledMolecule, UnlocalizedScaffold, UnplacedScaffold)
     )
     executeFgbioTool(firstTool)
@@ -129,8 +133,8 @@ class CollectAlternateContigNamesTest extends UnitSpec {
     val secondTool = new CollectAlternateContigNames(
       input         = reportHg38,
       output        = secondOutput,
-      primary       = RefSeqAccession,
-      alternates    = Seq(UcscName),
+      primary       = Column.RefSeqAccession,
+      alternates    = Seq(Column.UcscName),
       sequenceRoles = Seq(AssembledMolecule, UnlocalizedScaffold, UnplacedScaffold),
       existing      = Some(firstOutput)
     )
@@ -140,7 +144,7 @@ class CollectAlternateContigNamesTest extends UnitSpec {
     dict should have length 193
     dict.head.name shouldBe "NC_000001.11"
     dict.head.aliases should contain theSameElementsInOrderAs Seq("CM000663.2", "chr1")
-    dict.last.name shouldBe "NT_187479.1"
-    dict.last.aliases should contain theSameElementsInOrderAs Seq("KI270394.1", "chrUn_KI270394v1")
+    dict.last.name shouldBe "NC_012920.1"
+    dict.last.aliases should contain theSameElementsInOrderAs Seq("J01415.2", "chrM")
   }
 }
