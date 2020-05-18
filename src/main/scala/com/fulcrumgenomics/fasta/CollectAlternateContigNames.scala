@@ -148,6 +148,8 @@ class CollectAlternateContigNames
     validate(Column.values.contains(primary), s"Alternate column '$alternate' must be one of the following: " + Column.values.mkString(", "))
   }
 
+  private case class SkipReason(name: String, role: SequenceRole, msg: String)
+
   override def execute(): Unit = {
     val iter = Io.readLines(input).bufferBetter
 
@@ -159,7 +161,8 @@ class CollectAlternateContigNames
     val header = iter.next().substring(2).split('\t')
 
     // Collect the sequence metadatas
-    val metadatas = ListBuffer[SequenceMetadata]()
+    val metadatas   = ListBuffer[SequenceMetadata]()
+    val skipReasons = ListBuffer[SkipReason]()
     iter.foreach { line =>
       val dict   = header.zip(line.split('\t')).toMap
       val name   = dict(this.primary.key)
@@ -181,13 +184,13 @@ class CollectAlternateContigNames
           }
       }
       if (sequenceRoles.nonEmpty && !this.sequenceRoles.contains(role)) {
-        logger.warning(s"Skipping contig name '$name' with mismatching sequencing role: $role.")
+        skipReasons += SkipReason(name=name, role=role, msg=s"Skipping contig name '$name' with mismatching sequencing role: $role.")
       }
       else if (name == Column.MissingColumnValue) {
-        logger.warning(s"Skipping contig as it had a missing value for column '${this.primary.key}': $line")
+        skipReasons += SkipReason(name=name, role=role, msg="Skipping contig as it had a missing value for column '${this.primary.key}': $line")
       }
       else if (alts.isEmpty && skipMissingAlternates) {
-        logger.warning(s"Skipping contig name '$name' with no alternates.")
+        skipReasons += SkipReason(name=name, role=role, msg=s"Skipping contig name '$name' with no alternates.")
       }
       else {
        val attributes = ListBuffer[(String, String)]()
@@ -205,6 +208,9 @@ class CollectAlternateContigNames
       }
     }
 
+    // Log all the reasons we skipped contigs
+    skipReasons.foreach(reason => logger.warning(reason.msg))
+
     // Apply to an existing sequence dictionary if necessary
     val dict: SequenceDictionary = existing match {
       case None => SequenceDictionary(metadatas.toSeq:_*)
@@ -213,7 +219,12 @@ class CollectAlternateContigNames
         val updatedMetadatas          = SequenceDictionary(path).map { existingMetadata =>
           // Get the metadata from the assembly report
           val assemblyReportMetadata: SequenceMetadata = assemblyReportMetadataMap.getOrElse(existingMetadata.name,
-            throw new IllegalArgumentException(s"Could not find contig '${existingMetadata.name}' in the assembly report'")
+            skipReasons.find(_.name == existingMetadata.name) match {
+              case Some(skipReason) =>
+                throw new IllegalArgumentException(s"Contig '${existingMetadata.name}' was in the assembly report but skipped: ${skipReason.msg}.")
+              case None             =>
+                throw new IllegalArgumentException(s"Could not find contig '${existingMetadata.name}' in the assembly report.")
+            }
           )
           // append new aliases, and add new tags
           val attributes = existingMetadata.attributes ++ assemblyReportMetadata.attributes.map {
