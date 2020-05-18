@@ -83,8 +83,8 @@ class UpdateFastaContigNames
               out.newLine()
               baseCounter = 0
             }
+          }
           if (baseCounter > 0) out.newLine()
-        }
       }
     }
     out.close()
