@@ -121,12 +121,14 @@ class CollectAlternateContigNames
  @arg(flag='a', doc="The assembly report column(s) for the alternate contig name(s)", minElements=1) val alternates: Seq[AssemblyReportColumn],
  @arg(flag='s', doc="Only output sequences with the given sequence roles.  If none given, all sequences will be output.", minElements=0)
   val sequenceRoles: Seq[SequenceRole] = Seq.empty,
+ @arg(flag='d', doc="Add aliases to this existing sequence dictionary file.  The primary contig must match.") val existing: Option[PathToSequenceDictionary] = None,
  @arg(doc="Skip contigs that have no alternates") val skipMissing: Boolean = true
 ) extends FgBioTool with LazyLogging {
 
   import com.fulcrumgenomics.fasta.{AssemblyReportColumn => Column}
 
   Io.assertReadable(input)
+  existing.foreach(Io.assertReadable)
   Io.assertCanWriteFile(output)
   validate(!alternates.contains(primary), s"Primary column is in alternate column: $primary in " + alternates.mkString(", "))
 
@@ -144,6 +146,9 @@ class CollectAlternateContigNames
     // read the header
     require(iter.hasNext, s"Missing header from $input.")
     val header = iter.next().substring(2).split('\t')
+
+    // read in the existing sequence dictionary, if specified
+    val existingSequenceDictionary: Option[SequenceDictionary] = this.existing.map(SequenceDictionary(_))
 
     // Collect the primary and secondary sequence metadatas
     // store primary and secondaries separately; the former will be written before the latter
@@ -184,10 +189,21 @@ class CollectAlternateContigNames
         Column.values.foreach { column =>
           attributes += ((column.tag, dict(column.key)))
         }
+        // get the list of aliases (may update attributes if an existing contig is found)
+        val aliases: Seq[String] = existingSequenceDictionary match {
+          case None           => alts
+          case Some(sequenceDictionary) =>
+            val data   = sequenceDictionary(name)
+            val length = dict(Column.SequenceLength.key).toInt
+            require(data.name == name, s"Existing sequence name '${data.name}' mismatches primary name '$name'")
+            require(data.length == length, s"Existing sequence length '${data.length}' mismatches primary name '$length'")
+            attributes ++= data.attributes.toSeq.filterNot { case (key, _) => SequenceMetadata.Keys.values.contains(key) }
+            (data.aliases ++ alts).distinct
+        }
         val metadata = SequenceMetadata(
           name             = name,
           length           = dict(Column.SequenceLength.key).toInt,
-          aliases          = alts,
+          aliases          = aliases,
           customAttributes = attributes.toMap
         )
         if (role.primary) {
@@ -198,11 +214,20 @@ class CollectAlternateContigNames
         }
       }
     }
-    // Sort the secondary entries based on descending sequence length.
-    val infos = (primaries ++ secondaries.sortBy(-_.length))
-      .zipWithIndex
-      .map { case (metadata, index) => metadata.copy(index=index) }
-      .toSeq
+
+    // Get the ordering of the molecules
+    val infos: Seq[SequenceMetadata] = existingSequenceDictionary match {
+      case None =>
+        // Sort the secondary entries based on descending sequence length.
+        (primaries ++ secondaries.sortBy(-_.length))
+          .zipWithIndex
+          .map { case (metadata, index) => metadata.copy(index=index) }
+          .toSeq
+      case Some(sequenceDictionary) =>
+        // re-order the contigs by the existing dictionary
+        val infosMap = (primaries ++ secondaries).map { metadata => (metadata.name, metadata) }.toMap
+        sequenceDictionary.map { metadata => infosMap(metadata.name) }.toSeq
+    }
 
     // Write it out!
     SequenceDictionary(infos:_*).write(output)

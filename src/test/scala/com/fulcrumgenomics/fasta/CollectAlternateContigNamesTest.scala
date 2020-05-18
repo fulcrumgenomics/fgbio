@@ -112,4 +112,35 @@ class CollectAlternateContigNamesTest extends UnitSpec {
     dict.last.name shouldBe "NC_012920.1"
     dict.last.aliases should contain theSameElementsInOrderAs Seq("MT")
   }
+
+  it should "update an existing sequence dictionary" in {
+
+    val firstOutput  = makeTempFile("test.", ".1.dict")
+    val secondOutput = makeTempFile("test.", ".2.dict")
+    val firstTool = new CollectAlternateContigNames(
+      input         = reportHg38,
+      output        = firstOutput,
+      primary       = RefSeqAccession,
+      alternates    = Seq(GenBankAccession),
+      sequenceRoles = Seq(AssembledMolecule, UnlocalizedScaffold, UnplacedScaffold)
+    )
+    executeFgbioTool(firstTool)
+
+    val secondTool = new CollectAlternateContigNames(
+      input         = reportHg38,
+      output        = secondOutput,
+      primary       = RefSeqAccession,
+      alternates    = Seq(UcscName),
+      sequenceRoles = Seq(AssembledMolecule, UnlocalizedScaffold, UnplacedScaffold),
+      existing      = Some(firstOutput)
+    )
+    executeFgbioTool(secondTool)
+
+    val dict = SequenceDictionary(secondOutput)
+    dict should have length 193
+    dict.head.name shouldBe "NC_000001.11"
+    dict.head.aliases should contain theSameElementsInOrderAs Seq("CM000663.2", "chr1")
+    dict.last.name shouldBe "NT_187479.1"
+    dict.last.aliases should contain theSameElementsInOrderAs Seq("KI270394.1", "chrUn_KI270394v1")
+  }
 }
