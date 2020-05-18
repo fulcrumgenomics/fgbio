@@ -42,11 +42,15 @@ sealed trait AssemblyReportColumn extends EnumEntry {
   def key: String
   /** The tag to store in the SAM header */
   def tag: String
+  /** True if this columns contains a valid molecule alias, false otherwise. */
+  def alias: Boolean = true
 }
 
 /** Enum to represent columns in a NCBI assembly report. */
 object AssemblyReportColumn extends FgBioEnum[AssemblyReportColumn] {
-  def values: IndexedSeq[AssemblyReportColumn] = findValues
+  // Developer note: we only return those that are "aliases" so that sequence role and sequence length are not
+  // valid options on the command line.
+  def values: IndexedSeq[AssemblyReportColumn] = findValues.filter(_.alias)
 
   /** Allows the column to be build from the Enum name or the actual column name. */
   override def apply(str: String): AssemblyReportColumn = {
@@ -55,24 +59,17 @@ object AssemblyReportColumn extends FgBioEnum[AssemblyReportColumn] {
 
   case object SequenceName     extends AssemblyReportColumn { val key: String = "Sequence-Name"; val tag: String = "sn" }
   case object AssignedMolecule extends AssemblyReportColumn { val key: String = "Assigned-Molecule"; val tag: String = "am" }
-  case object GenBankAccession extends AssemblyReportColumn { val key: String = "GenBank-Accn"; val tag: String = "ga"  }
-  case object RefSeqAccession  extends AssemblyReportColumn { val key: String = "RefSeq-Accn"; val tag: String = "ra"  }
-  case object UcscName         extends AssemblyReportColumn { val key: String = "UCSC-style-name"; val tag: String = "un"  }
+  case object GenBankAccession extends AssemblyReportColumn { val key: String = "GenBank-Accn"; val tag: String = "ga" }
+  case object RefSeqAccession  extends AssemblyReportColumn { val key: String = "RefSeq-Accn"; val tag: String = "ra" }
+  case object UcscName         extends AssemblyReportColumn { val key: String = "UCSC-style-name"; val tag: String = "un" }
+  case object SequenceRole     extends AssemblyReportColumn { val key: String = "Sequence-Role"; val tag: String = "sr"; override val alias: Boolean = false }
+  case object SequenceLength   extends AssemblyReportColumn { val key: String = "Sequence-Length"; val tag: String = "sl"; override val alias: Boolean = false }
 
-  /** The missing value for a column */
-  val MissingValueKey: String = "na"
-
-  /** The column key for Sequence-Role */
-  val SequenceRoleKey: String = "Sequence-Role"
-
-  /** The column key for Sequence-Length */
-  val SequenceLengthKey: String = "Sequence-Length"
-
-  /** The sam tag to use for Sequence-Role */
-  val SequenceRoleTag: String = "sr"
+  /** The missing value for a column. */
+  val MissingColumnValue: String = "na"
 
   values.foreach { value =>
-    require(value.tag.toLowerCase == value.tag, s"Tag must be lowerase for $value: ${value.tag}")
+    require(value.tag.toLowerCase == value.tag, s"Tag must be lowercase for $value: ${value.tag}")
   }
 }
 
@@ -113,8 +110,8 @@ object SequenceRole extends FgBioEnum[SequenceRole] {
     |First, contig with the Sequence-Role "assembled-molecule" will be outputted.  Next, the remaining contigs will be
     |sorted by descending length.
     |
-    |Aliases for values in the Assigned-Molecule column will only be applied to sequences with the "assembled-molecule"
-    |Sequence-Role.
+    |The `Assigned-Molecule` column, if specified as an `--alternate`, will only be used for sequences with
+    |`Sequence-Role` `assembled-molecule`.
   """,
   group = ClpGroups.Fasta)
 class CollectAlternateContigNames
@@ -127,15 +124,22 @@ class CollectAlternateContigNames
  @arg(doc="Skip contigs that have no alternates") val skipMissing: Boolean = true
 ) extends FgBioTool with LazyLogging {
 
+  import com.fulcrumgenomics.fasta.{AssemblyReportColumn => Column}
+
   Io.assertReadable(input)
   Io.assertCanWriteFile(output)
-  validate(!alternates.contains(primary), s"Primary is in alternate: $primary in " + alternates.mkString(", "))
+  validate(!alternates.contains(primary), s"Primary column is in alternate column: $primary in " + alternates.mkString(", "))
+
+  validate(Column.values.contains(primary), s"Primary column '$primary' must be one of the following: " + Column.values.mkString(", "))
+  this.alternates.foreach { alternate =>
+    validate(Column.values.contains(primary), s"Alternate column '$alternate' must be one of the following: " + Column.values.mkString(", "))
+  }
 
   override def execute(): Unit = {
     val iter = Io.readLines(input).bufferBetter
 
     // skip over comments until we reach the header
-    iter.dropWhile { line => line.startsWith("#") && !line.startsWith(s"# ${AssemblyReportColumn.SequenceName.key}") }
+    iter.dropWhile { line => line.startsWith("#") && !line.startsWith(s"# ${Column.SequenceName.key}") }
 
     // read the header
     require(iter.hasNext, s"Missing header from $input.")
@@ -148,16 +152,18 @@ class CollectAlternateContigNames
     iter.foreach { line =>
       val dict   = header.zip(line.split('\t')).toMap
       val name   = dict(this.primary.key)
-      val role   = SequenceRole(dict(AssemblyReportColumn.SequenceRoleKey))
+      val role   = SequenceRole(dict(Column.SequenceRole.key))
       val alts   = this.alternates.flatMap {
-        // Developer note: the value of assigned-molecule sequence column is one of the values in the same column for
-        // an assembled-molecule, so only include them for assembled-molecules.  Otherwise, we will have the same alias
-        // across two or molecules.  Perhaps this is better represented as an alternate locus, but that is not
-        // implemented here.
-        case AssemblyReportColumn.AssignedMolecule if role != SequenceRole.AssembledMolecule => None
-        case alt: AssemblyReportColumn =>
+        // Developer note: the values in the Assigned-Molecule column (e.g. "1" or "chr1") make sense for molecules
+        // with Sequence-Role "assembled-molecule".  But for others, e.g. "unlocalized-scaffold" and "alt-scaffold",
+        // the Assigned-Molecule points to the primary/assembled molecule (e.g. chr1_gl000191_random -> 1).
+        // Only use Assigned-Molecule to generate alias(es) for "assembled-molecules" in order not to generate
+        // multiple records with the same alias.  Perhaps this is better represented as an alternate locus, but that is
+        // not implemented here.
+        case Column.AssignedMolecule if role != SequenceRole.AssembledMolecule => None
+        case alt: Column =>
           dict(alt.key) match {
-            case alternate if alternate == AssemblyReportColumn.MissingValueKey =>
+            case Column.MissingColumnValue =>
               logger.warning(s"Contig '$name' had a missing value for alternate in column '${alt.key}'")
               None
             case alternate => Some(alternate)
@@ -166,7 +172,7 @@ class CollectAlternateContigNames
       if (sequenceRoles.nonEmpty && !this.sequenceRoles.contains(role)) {
         logger.warning(s"Skipping contig name '$name' with mismatching sequencing role: $role.")
       }
-      else if (name == AssemblyReportColumn.MissingValueKey) {
+      else if (name == Column.MissingColumnValue) {
         logger.warning(s"Skipping contig as it had a missing value for column '${this.primary.key}': $line")
       }
       else if (alts.isEmpty && skipMissing) {
@@ -174,13 +180,13 @@ class CollectAlternateContigNames
       }
       else {
        val attributes = ListBuffer[(String, String)]()
-        attributes += ((AssemblyReportColumn.SequenceRoleTag, dict(AssemblyReportColumn.SequenceRoleKey)))
-        AssemblyReportColumn.values.foreach { column =>
+        attributes += ((Column.SequenceRole.tag, dict(Column.SequenceRole.key)))
+        Column.values.foreach { column =>
           attributes += ((column.tag, dict(column.key)))
         }
         val metadata = SequenceMetadata(
           name             = name,
-          length           = dict(AssemblyReportColumn.SequenceLengthKey).toInt,
+          length           = dict(Column.SequenceLength.key).toInt,
           aliases          = alts,
           customAttributes = attributes.toMap
         )
