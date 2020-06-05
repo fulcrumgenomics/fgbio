@@ -26,7 +26,7 @@ package com.fulcrumgenomics.fasta
 
 import com.fulcrumgenomics.FgBioDef.{PathToFasta, PathToSequenceDictionary}
 import com.fulcrumgenomics.commons.io.PathUtil
-import com.fulcrumgenomics.testing.UnitSpec
+import com.fulcrumgenomics.testing.{ReferenceSetBuilder, UnitSpec}
 
 import scala.collection.mutable.ListBuffer
 
@@ -97,5 +97,57 @@ import scala.collection.mutable.ListBuffer
     executeFgbioTool(tool)
 
     getNames(output) should contain theSameElementsInOrderAs Seq("1", "2")
+  }
+
+  it should "add default contigs and sort" in {
+    val output = makeTempFile("test.", ".fasta")
+    // two contigs that will be remapped
+    val input = {
+      val builder = new ReferenceSetBuilder()
+      builder.add("chr2").add("GGGGG", 1000)
+      builder.add("chr4").add("TTTTT", 1000)
+      builder.toTempFile()
+    }
+    val default = {
+      val builder = new ReferenceSetBuilder()
+      builder.add("1").add("AAAAA", 1000)
+      builder.add("2").add("CCCCC", 1000)
+      builder.add("3").add("AAAAA", 1000)
+      builder.add("4").add("CCCCC", 1000)
+      builder.add("5").add("AAAAA", 1000)
+      builder.toTempFile()
+    }
+    val dict = {
+      val path = makeTempFile("test.", "in.dict")
+      val infos = ListBuffer[SequenceMetadata](
+        SequenceMetadata(name="1", length=5000, aliases=Seq("chr1")),
+        SequenceMetadata(name="2", length=5000, aliases=Seq("chr2")),
+        SequenceMetadata(name="3", length=5000, aliases=Seq("chr3")),
+        SequenceMetadata(name="4", length=5000, aliases=Seq("chr4")),
+        SequenceMetadata(name="5", length=5000, aliases=Seq("chr5")),
+      )
+      SequenceDictionary(infos.toSeq:_*).write(path)
+      path
+    }
+
+    val tool = new UpdateFastaContigNames(
+      input          = input,
+      dict           = dict,
+      output         = output,
+      sort           = true,
+      defaultContigs = Some(default)
+    )
+    executeFgbioTool(tool)
+
+    val names = ReferenceSequenceIterator(path=output).map(_.getName)
+    names.toSeq should contain theSameElementsInOrderAs Seq("1", "2", "3", "4", "5")
+
+    val refSeqMap = ReferenceSequenceIterator(path=output).map(seq => seq.getName -> seq.getBaseString).toMap
+
+    refSeqMap("1") shouldBe ("AAAAA" * 1000) // defaulted
+    refSeqMap("2") shouldBe ("GGGGG" * 1000) // has a default, but from the input FASTA
+    refSeqMap("3") shouldBe ("AAAAA" * 1000) // defaulted
+    refSeqMap("4") shouldBe ("TTTTT" * 1000) // has a default, but from the input FASTA
+    refSeqMap("5") shouldBe ("AAAAA" * 1000) // defaulted
   }
 }
