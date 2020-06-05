@@ -41,10 +41,10 @@ import htsjdk.samtools.reference.{FastaSequenceIndex, ReferenceSequence, Referen
     |The name of each sequence must match one of the names (including aliases) in the given sequence dictionary.  The
     |new name will be the primary (non-alias) name in the sequence dictionary.
     |
-    |By default, the sort order of the contigs will be the same as the input FASTA.  Use the `--sort` option to sort by
-    |the input sequence dictionary.  Furthermore, the sequence dictionary may contain **more** contigs than the input
-    |FASTA, and they wont be used.  Use the `--skip-missing` option to skip contigs in the input FASTA that cannot be
-    |renamed (i.e. who are not present in the input sequence dictionary).  Finally, use the `--default-contigs` to
+    |By default, the sort order of the contigs will be the same as the input FASTA.  Use the `--sort-by-dict` option to
+    |sort by the input sequence dictionary.  Furthermore, the sequence dictionary may contain **more** contigs than the
+    |input FASTA, and they wont be used.  Use the `--skip-missing` option to skip contigs in the input FASTA that cannot
+    |be renamed (i.e. who are not present in the input sequence dictionary).  Finally, use the `--default-contigs` to
     |append contigs not present in the input FASTA but present in the sequence dictionary.
   """,
   group = ClpGroups.Fasta)
@@ -54,7 +54,7 @@ class UpdateFastaContigNames
  @arg(flag='o', doc="Output FASTA.") val output: PathToFasta,
  @arg(flag='l', doc="Line length or sequence lines.") val lineLength: Int = 100,
  @arg(doc="Skip missing source contigs.") val skipMissing: Boolean = false,
- @arg(doc="Sort the contigs based on the input sequence dictionary") sort: Boolean = false,
+ @arg(doc="Sort the contigs based on the input sequence dictionary") sortByDict: Boolean = false,
  @arg(doc="Add sequences from this FASTA when contigs in the sequence dictionary are missing from the input FASTA")
  defaultContigs: Option[PathToFasta] = None
 ) extends FgBioTool with LazyLogging {
@@ -70,12 +70,12 @@ class UpdateFastaContigNames
     * overhead.
     *
     * @param info the sequence metadata to output
-    * @param toSequence method that returns the reference sequence to output
+    * @param sequence the reference sequence to output
     */
-  private case class OutputSequence(info: SequenceMetadata, toSequence: () => ReferenceSequence) {
+  private class OutputSequence(val info: SequenceMetadata, sequence: => ReferenceSequence) {
     /** Writes the output sequence */
     def write(writer: BufferedWriter, progress: ProgressLogger): Unit = {
-      val ref = toSequence()
+      val ref = sequence
       writer.append('>').append(info.name).append('\n')
       val bases = ref.getBases
       var baseCounter = 0
@@ -114,7 +114,7 @@ class UpdateFastaContigNames
         case None                => throw new IllegalStateException(s"Did not find contig ${srcInfo.name} in the sequence dictionary.")
         case Some(info)          => Some(info)
       }
-      dictInfo.map(info => OutputSequence(info=info, toSequence=() => srcRefFile.getSequence(srcInfo.name)))
+      dictInfo.map(info => new OutputSequence(info=info, sequence=srcRefFile.getSequence(srcInfo.name)))
     }.toSeq
 
     // Get any default contigs that we need to add/append to the output
@@ -128,7 +128,7 @@ class UpdateFastaContigNames
           // Keep the contigs in the input sequence dictionary that are not going be used to rename
           val contigs = dict
             .filterNot(info => namesThatCanBeRenamed.contains(info.name))
-            .map(info => OutputSequence(info=info, toSequence=() => defaultRefFile.getSequence(info.name)))
+            .map(info => new OutputSequence(info=info, sequence=defaultRefFile.getSequence(info.name)))
             .toSeq
           logger.info(s"Will add/append ${contigs.length} contigs to the output.")
           contigs
@@ -137,7 +137,7 @@ class UpdateFastaContigNames
 
     // Order the contigs based on if we want to sort by the input sequence dictionary or not
     val sequences: Seq[OutputSequence] = {
-      if (sort) {
+      if (sortByDict) {
         logger.info("Sorting the contigs using the input sequence dictionary")
         (srcSequences ++ defaultSequences).sortBy(_.info.index)
       }

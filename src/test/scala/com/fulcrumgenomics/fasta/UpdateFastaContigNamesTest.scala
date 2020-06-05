@@ -134,7 +134,7 @@ import scala.collection.mutable.ListBuffer
       input          = input,
       dict           = dict,
       output         = output,
-      sort           = true,
+      sortByDict     = true,
       defaultContigs = Some(default)
     )
     executeFgbioTool(tool)
