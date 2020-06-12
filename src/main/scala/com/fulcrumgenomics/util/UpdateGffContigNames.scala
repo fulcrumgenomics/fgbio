@@ -92,7 +92,7 @@ class UpdateGffContigNames
         val position = fields(3).toInt
         out.append(targetName)
         out.append('\t')
-        out.append(line.substring(srcName.length))
+        out.append(line.substring(srcName.length + 1)) // skip over the previous target name AND trailing tab
         out.append('\n')
         progress.record(s"$srcName => $targetName", position)
       }
