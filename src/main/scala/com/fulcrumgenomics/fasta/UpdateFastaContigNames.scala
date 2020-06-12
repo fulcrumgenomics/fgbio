@@ -43,9 +43,12 @@ import htsjdk.samtools.reference.{FastaSequenceIndex, ReferenceSequence, Referen
     |
     |By default, the sort order of the contigs will be the same as the input FASTA.  Use the `--sort-by-dict` option to
     |sort by the input sequence dictionary.  Furthermore, the sequence dictionary may contain **more** contigs than the
-    |input FASTA, and they wont be used.  Use the `--skip-missing` option to skip contigs in the input FASTA that cannot
-    |be renamed (i.e. who are not present in the input sequence dictionary).  Finally, use the `--default-contigs` to
-    |append contigs not present in the input FASTA but present in the sequence dictionary.
+    |input FASTA, and they wont be used.
+    |
+    |Use the `--skip-missing` option to skip contigs in the input FASTA that cannot be renamed (i.e. who are not present
+    |in the input sequence dictionary); missing contigs will not be written to the output FASTA.  Finally, use the
+    |`--default-contigs` option to specify an additional FASTA which will be queried to locate contigs not present in
+    |the input FASTA but present in the sequence dictionary.
   """,
   group = ClpGroups.Fasta)
 class UpdateFastaContigNames
@@ -53,9 +56,9 @@ class UpdateFastaContigNames
  @arg(flag='d', doc="The path to the sequence dictionary with contig aliases.") val dict: PathToSequenceDictionary,
  @arg(flag='o', doc="Output FASTA.") val output: PathToFasta,
  @arg(flag='l', doc="Line length or sequence lines.") val lineLength: Int = 100,
- @arg(doc="Skip missing source contigs.") val skipMissing: Boolean = false,
- @arg(doc="Sort the contigs based on the input sequence dictionary") sortByDict: Boolean = false,
- @arg(doc="Add sequences from this FASTA when contigs in the sequence dictionary are missing from the input FASTA")
+ @arg(doc="Skip missing source contigs (will not be outputted).") val skipMissing: Boolean = false,
+ @arg(doc="Sort the contigs based on the input sequence dictionary.") sortByDict: Boolean = false,
+ @arg(doc="Add sequences from this FASTA when contigs in the sequence dictionary are missing from the input FASTA.")
  defaultContigs: Option[PathToFasta] = None
 ) extends FgBioTool with LazyLogging {
   import com.fulcrumgenomics.fasta.Converters.FromSAMSequenceDictionary
@@ -76,19 +79,11 @@ class UpdateFastaContigNames
     /** Writes the output sequence */
     def write(writer: BufferedWriter, progress: ProgressLogger): Unit = {
       val ref = sequence
-      writer.append('>').append(info.name).append('\n')
-      val bases = ref.getBases
-      var baseCounter = 0
-      forloop(from = 0, until = bases.length) { baseIdx =>
-        writer.write(bases(baseIdx))
-        progress.record(info.name, baseIdx + 1)
-        baseCounter += 1
-        if (baseCounter >= lineLength) {
-          writer.newLine()
-          baseCounter = 0
-        }
+      writer.write(s">${ref.getName}\n")
+      ref.getBaseString.toIterable.grouped(80).foreach { line =>
+        writer.write(line.unwrap)
+        writer.write('\n')
       }
-      if (baseCounter > 0) writer.newLine()
     }
   }
 
@@ -100,7 +95,8 @@ class UpdateFastaContigNames
     val (srcDict, srcRefFile) = getDictAndFile(fasta=this.input)
     val defaultDictAndRefFile = this.defaultContigs.map(fasta => getDictAndFile(fasta=fasta))
 
-    // Make sure the default FASTA and the input dict are the same
+    // Make sure the default FASTA and the default input dict are the same, as the latter should be built from the
+    // former
     defaultDictAndRefFile.foreach { case (defaultDict, _) =>
       require(dict.sameAs(defaultDict), "Input sequence dictionary mismatch and default FASTA mismatch")
     }
@@ -115,7 +111,7 @@ class UpdateFastaContigNames
         case Some(info)          => Some(info)
       }
       dictInfo.map(info => new OutputSequence(info=info, sequence=srcRefFile.getSequence(srcInfo.name)))
-    }.toSeq
+    }.toIndexedSeq
 
     // Get any default contigs that we need to add/append to the output
     // Note: we do not pre-load the sequences, as to preserve memory
@@ -129,7 +125,7 @@ class UpdateFastaContigNames
           val contigs = dict
             .filterNot(info => namesThatCanBeRenamed.contains(info.name))
             .map(info => new OutputSequence(info=info, sequence=defaultRefFile.getSequence(info.name)))
-            .toSeq
+            .toIndexedSeq
           logger.info(s"Will add/append ${contigs.length} contigs to the output.")
           contigs
       }
@@ -157,7 +153,7 @@ class UpdateFastaContigNames
   }
 
 
-  /** Gets the sequence dictionary and referene sequence file for a given FASTA */
+  /** Gets the sequence dictionary and reference sequence file for a given FASTA */
   private def getDictAndFile(fasta: PathToFasta): (SequenceDictionary, ReferenceSequenceFile) = {
     val refFile = ReferenceSequenceFileFactory.getReferenceSequenceFile(fasta, true, true)
     val dict    = Option(refFile.getSequenceDictionary) match {
@@ -172,7 +168,7 @@ class UpdateFastaContigNames
           .getFastaIndexFileName(this.input))
           .map { entry =>
             SequenceMetadata(name=entry.getContig, length=entry.getSize.toInt, index=entry.getSequenceIndex)
-          }.toSeq
+          }.toIndexedSeq
         SequenceDictionary(infos:_*)
     }
     (dict, refFile)
