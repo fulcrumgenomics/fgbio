@@ -108,17 +108,19 @@ class FgBioDefTest extends UnitSpec {
     CustomEnum("bar") shouldBe CustomEnum.Bar
   }
 
-  "FgbioDef.parseRange" should "parse a `<chr>:<start>-<end>` correctly" in {
-    an[IllegalArgumentException] should be thrownBy FgBioDef.parseRange("chr1")
-    an[IllegalArgumentException] should be thrownBy FgBioDef.parseRange("chr1-")
-    an[IllegalArgumentException] should be thrownBy FgBioDef.parseRange("chr1-2")
-    an[IllegalArgumentException] should be thrownBy FgBioDef.parseRange("chr1:")
-    an[IllegalArgumentException] should be thrownBy FgBioDef.parseRange("chr1:1")
-    an[IllegalArgumentException] should be thrownBy FgBioDef.parseRange("chr1:1-")
-    an[IllegalArgumentException] should be thrownBy FgBioDef.parseRange("chr1::1")
-    an[NumberFormatException] should be thrownBy FgBioDef.parseRange("chr1:1-A")
-    an[NumberFormatException] should be thrownBy FgBioDef.parseRange("chr1:B-1")
-    FgBioDef.parseRange("chr1:1-2") shouldBe GenomicRange("chr1", 1, 2)
-    FgBioDef.parseRange("foo:11-5") shouldBe GenomicRange("foo", 11, 5)
+  "FgbioDef.GenomicRange()" should "parse a `<chr>:<start>-<end>` correctly" in {
+    an[IllegalArgumentException] should be thrownBy FgBioDef.GenomicRange("chr1")
+    an[IllegalArgumentException] should be thrownBy FgBioDef.GenomicRange("chr1-")
+    an[IllegalArgumentException] should be thrownBy FgBioDef.GenomicRange("chr1-2")
+    an[IllegalArgumentException] should be thrownBy FgBioDef.GenomicRange("chr1:")
+    an[IllegalArgumentException] should be thrownBy FgBioDef.GenomicRange("chr1:1-")
+    an[IllegalArgumentException] should be thrownBy FgBioDef.GenomicRange("chr1::1")
+    an[NumberFormatException] should be thrownBy FgBioDef.GenomicRange("chr1:1-A")
+    an[NumberFormatException] should be thrownBy FgBioDef.GenomicRange("chr1:B-1")
+
+    FgBioDef.GenomicRange("chr1:1")   shouldBe GenomicRange("chr1", 1, 1)
+    FgBioDef.GenomicRange("chr1:1-2") shouldBe GenomicRange("chr1", 1, 2)
+    FgBioDef.GenomicRange("foo:11-5") shouldBe GenomicRange("foo", 11, 5)
+    FgBioDef.GenomicRange("chr2:1,234-5,678") shouldBe GenomicRange("chr2", 1234, 5678)
   }
 }

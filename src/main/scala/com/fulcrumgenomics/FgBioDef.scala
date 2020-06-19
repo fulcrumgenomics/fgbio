@@ -71,23 +71,40 @@ object FgBioDef extends CommonsDef {
     override def toString: String = f"$refName:$start-$end"
   }
 
-  /** Parses a genomic range of the form `<chr>:<start>-<end>`, assuming the range is 1-based inclusive (closed-ended).
+  object GenomicRange {
+    /** Parses a genomic range of the form `<chr>:<start>-<end>` or `<chr>:<start>`, assuming the range is 1-based
+      * inclusive (closed-ended).  If only a start position is included the range includes just the single base.
+      * Coordinates may include commas in the numbers.
+      *
+      * @param range the string to parse.
+      */
+    def apply(range: String): GenomicRange = {
+      val (refName: String, rest: String) = range.indexOf(':') match {
+        case -1  => throw new IllegalArgumentException(f"Missing colon in genomic range: '$range'")
+        case idx =>
+          val (left, right) = range.splitAt(idx)
+          (left, right.drop(1).replace(",", ""))
+      }
+
+      val (start, end) = rest.indexOf('-') match {
+        case -1  => (rest, rest)
+        case idx =>
+          val (left, right) = rest.splitAt(idx)
+          (left, right.drop(1))
+      }
+
+      GenomicRange(refName=refName, start=start.toInt, end=end.toInt)
+    }
+  }
+
+  /** Parses a genomic range of the form `<chr>:<start>-<end>` or `<chr>:<start>`, assuming the range is 1-based
+    * inclusive (closed-ended).  If only a start position is included the range includes just the single base.
+    * Coordinates may include commas in the numbers.
     *
     * @param range the string to parse.
+    * @deprecated use GenomicRange(string) instead
     */
   def parseRange(range: String): GenomicRange = {
-    val (refName: String, rest: String) = range.indexOf(':') match {
-      case -1  => throw new IllegalArgumentException(f"Missing colon in genomic range: '$range'")
-      case idx =>
-        val (left, right) = range.splitAt(idx)
-        (left, right.drop(1))
-    }
-    val (start, end) = rest.indexOf('-') match {
-      case -1  => throw new IllegalArgumentException(f"Missing dash in genomic range: '$range'")
-      case idx =>
-        val (left, right) = rest.splitAt(idx)
-        (left, right.drop(1))
-    }
-    GenomicRange(refName=refName, start=start.toInt, end=end.toInt)
+    GenomicRange(range)
   }
 }
