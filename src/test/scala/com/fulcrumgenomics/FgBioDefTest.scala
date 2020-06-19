@@ -117,6 +117,7 @@ class FgBioDefTest extends UnitSpec {
     an[IllegalArgumentException] should be thrownBy FgBioDef.GenomicRange("chr1::1")
     an[NumberFormatException] should be thrownBy FgBioDef.GenomicRange("chr1:1-A")
     an[NumberFormatException] should be thrownBy FgBioDef.GenomicRange("chr1:B-1")
+    an[NumberFormatException] should be thrownBy FgBioDef.GenomicRange("chr1:2-,")
 
     FgBioDef.GenomicRange("chr1:1")   shouldBe GenomicRange("chr1", 1, 1)
     FgBioDef.GenomicRange("chr1:1-2") shouldBe GenomicRange("chr1", 1, 2)

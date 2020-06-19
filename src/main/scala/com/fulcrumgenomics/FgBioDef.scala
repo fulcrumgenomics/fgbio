@@ -104,7 +104,7 @@ object FgBioDef extends CommonsDef {
     * @param range the string to parse.
     * @deprecated use GenomicRange(string) instead
     */
-  def parseRange(range: String): GenomicRange = {
+  @deprecated(message="Use GenomicRange() instead", since="1.3.0") def parseRange(range: String): GenomicRange = {
     GenomicRange(range)
   }
 }
