@@ -80,12 +80,18 @@ class UpdateFastaContigNames
     def write(writer: BufferedWriter, progress: ProgressLogger): Unit = {
       val ref = sequence
       writer.write(s">${info.name}\n")
-      ref.getBaseString.toIterable.grouped(80).foreach { line: Seq[Char] =>
-        forloop(from = 0, until = line.length) { i =>
-          writer.write(line(i))
+      val bases = ref.getBases
+      var baseCounter = 0
+      forloop(from = 0, until = bases.length) { baseIdx =>
+        writer.write(bases(baseIdx))
+        progress.record(info.name, baseIdx + 1)
+        baseCounter += 1
+        if (baseCounter >= lineLength) {
+          writer.newLine()
+          baseCounter = 0
         }
-        writer.write('\n')
       }
+      if (baseCounter > 0) writer.newLine()
     }
   }
 
