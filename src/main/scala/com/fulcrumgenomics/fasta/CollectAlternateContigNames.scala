@@ -187,7 +187,7 @@ class CollectAlternateContigNames
         skipReasons += SkipReason(name=name, role=role, msg=s"Skipping contig name '$name' with mismatching sequencing role: $role.")
       }
       else if (name == Column.MissingColumnValue) {
-        skipReasons += SkipReason(name=name, role=role, msg="Skipping contig as it had a missing value for column '${this.primary.key}': $line")
+        skipReasons += SkipReason(name=name, role=role, msg=s"Skipping contig as it had a missing value for column '${this.primary.key}': $line")
       }
       else if (alts.isEmpty && skipMissingAlternates) {
         skipReasons += SkipReason(name=name, role=role, msg=s"Skipping contig name '$name' with no alternates.")
