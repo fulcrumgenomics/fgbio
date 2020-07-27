@@ -55,7 +55,10 @@ class UpdateDelimitedFileContigNamesTest extends UnitSpec {
                       expected: Seq[String],
                       outputFirstNumLines: Int = 0,
                       comment: String = "#",
-                      skipMissing: Boolean = false): Unit = {
+                      skipMissing: Boolean = false,
+                      sortOrder: SortOrder = SortOrder.Unsorted,
+                      contig: Option[Int] = None,
+                      position: Option[Int] = None): Unit = {
     val input    = makeTempFile("test.", "in.txt")
     val output   = makeTempFile("test.", "out.txt")
 
@@ -69,7 +72,10 @@ class UpdateDelimitedFileContigNamesTest extends UnitSpec {
       comment             = comment,
       output              = output,
       outputFirstNumLines = outputFirstNumLines,
-      skipMissing         = skipMissing
+      skipMissing         = skipMissing,
+      sortOrder           = sortOrder,
+      contig              = contig,
+      position            = position
     )
 
     executeFgbioTool(tool)
@@ -174,6 +180,104 @@ class UpdateDelimitedFileContigNamesTest extends UnitSpec {
       actual      = actual,
       expected    = expected,
       skipMissing = true
+    )
+  }
+
+  it should "sort by contig name only" in {
+    val actual = Seq(
+      "1-old,0",
+      "3-old,4",
+      "3-old,3",
+      "2-old,2"
+    )
+    val expected = Seq(
+      "1-new,0",
+      "2-new,2",
+      "3-new,4",
+      "3-new,3"
+    )
+    // --contig not specified
+    runTest(
+      delimiter   = ',',
+      columns     = Seq(0),
+      actual      = actual,
+      expected    = expected,
+      sortOrder   = SortOrder.ByContigOnly
+    )
+    // --contig specified
+    runTest(
+      delimiter   = ',',
+      columns     = Seq(0),
+      actual      = actual,
+      expected    = expected,
+      sortOrder   = SortOrder.ByContigOnly,
+      contig      = Some(0)
+    )
+  }
+
+  it should "sort by coordinate" in {
+    val actual = Seq(
+      "1-old,0,2-old,1",
+      "3-old,4,2-old,2",
+      "3-old,1,2-old,3",
+      "2-old,2,2-old,4",
+      "2-old,2,2-old,5"
+    )
+    // sorts by col0, col1, then line number (col3)s
+    val expectedCol0 = Seq(
+      "1-new,0,2-new,1",
+      "2-new,2,2-new,4",
+      "2-new,2,2-new,5",
+      "3-new,1,2-new,3",
+      "3-new,4,2-new,2"
+    )
+    // col2 has the same value for all, so sorting by position in col1
+    val expectedCol2 = Seq(
+      "1-new,0,2-new,1",
+      "3-new,1,2-new,3",
+      "2-new,2,2-new,4",
+      "2-new,2,2-new,5",
+      "3-new,4,2-new,2"
+    )
+    // --contig is not specified, so defaults to column 0
+    runTest(
+      delimiter   = ',',
+      columns     = Seq(0, 2),
+      actual      = actual,
+      expected    = expectedCol0,
+      sortOrder   = SortOrder.ByCoordinate,
+      position    = Some(1)
+    )
+    // --contig is specified as column 0
+    runTest(
+      delimiter   = ',',
+      columns     = Seq(0, 2),
+      actual      = actual,
+      expected    = expectedCol0,
+      sortOrder   = SortOrder.ByCoordinate,
+      contig      = Some(0),
+      position    = Some(1)
+    )
+    // --contig is not specified, so defaults to column 0
+    runTest(
+      delimiter   = ',',
+      columns     = Seq(0, 2),
+      actual      = actual,
+      expected    = expectedCol2,
+      sortOrder   = SortOrder.ByCoordinate,
+      contig      = Some(2),
+      position    = Some(1)
+    )
+    // tests that when all values are the same, we sort by line number
+    val clones = Seq.range(0, 100).map(_ => "1-new,0,2-new,1")
+    runTest(
+      delimiter   = ',',
+      columns     = Seq(0, 2),
+      actual      = clones,
+      expected    = clones,
+      sortOrder   = SortOrder.ByCoordinate,
+      contig      = Some(2),
+      position    = Some(1)
     )
   }
 }
