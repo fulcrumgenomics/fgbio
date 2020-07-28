@@ -211,8 +211,7 @@ object UpdateDelimitedFileContigNames {
     def encode(a: LineInfo): Array[Byte] = f"${a.key.lineno}$delimiter${a.line}".getBytes
     override def decode(bs: Array[Byte], start: Int, length: Int): LineInfo = {
       val line = new String(bs, start, length)
-      val numFields = StringUtil.split(line=line, delimiter=delimiter, arr=fields, concatenateRemaining=true)
-      require(numFields >= maxColumn + 1, f"Too few columns '$numFields'")
+      StringUtil.split(line=line, delimiter=delimiter, arr=fields, concatenateRemaining=true)
       val lineno   = fields(0).toInt
       val contig   = fields(contigColumnIndex + 1)
       val position = if (positionColumnIndex >= 0) fields(positionColumnIndex + 1).toInt else 0
