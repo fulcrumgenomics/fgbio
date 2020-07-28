@@ -58,7 +58,8 @@ class UpdateDelimitedFileContigNamesTest extends UnitSpec {
                       skipMissing: Boolean = false,
                       sortOrder: SortOrder = SortOrder.Unsorted,
                       contig: Option[Int] = None,
-                      position: Option[Int] = None): Unit = {
+                      position: Option[Int] = None,
+                      maxObjectsInRam: Int = 1e6.toInt): Unit = {
     val input    = makeTempFile("test.", "in.txt")
     val output   = makeTempFile("test.", "out.txt")
 
@@ -75,7 +76,8 @@ class UpdateDelimitedFileContigNamesTest extends UnitSpec {
       skipMissing         = skipMissing,
       sortOrder           = sortOrder,
       contig              = contig,
-      position            = position
+      position            = position,
+      maxObjectsInRam     = maxObjectsInRam
     )
 
     executeFgbioTool(tool)
@@ -278,6 +280,20 @@ class UpdateDelimitedFileContigNamesTest extends UnitSpec {
       sortOrder   = SortOrder.ByCoordinate,
       contig      = Some(2),
       position    = Some(1)
+    )
+  }
+
+  it should "spill to disk when sorting" in {
+    val actual   = Seq.range(0, 1000).map { i => f"1-old,0,2-old,$i" }
+    val expected = Seq.range(0, 1000).map { i => f"1-new,0,2-new,$i" }
+    runTest(
+      delimiter       = ',',
+      columns         = Seq(0, 2),
+      actual          = actual,
+      expected        = expected,
+      sortOrder       = SortOrder.ByCoordinate,
+      position        = Some(1),
+      maxObjectsInRam = 10
     )
   }
 }

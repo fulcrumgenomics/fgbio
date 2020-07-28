@@ -26,7 +26,6 @@
 package com.fulcrumgenomics.util
 
 import com.fulcrumgenomics.FgBioDef.{FilePath, PathToSequenceDictionary, _}
-import com.fulcrumgenomics.bam.Bams.MaxInMemory
 import com.fulcrumgenomics.cmdline.{ClpGroups, FgBioTool}
 import com.fulcrumgenomics.commons.util.{LazyLogging, StringUtil}
 import com.fulcrumgenomics.fasta.SequenceDictionary
@@ -56,8 +55,11 @@ class UpdateDelimitedFileContigNames
  @arg(doc="Skip lines where a contig name could not be updated (i.e. missing from the sequence dictionary).") skipMissing: Boolean = false,
  @arg(flag='s', doc="Sort the output based on the following order.") sortOrder: SortOrder = SortOrder.Unsorted,
  @arg(doc="The column index for the contig (0-based) for sorting. Use the first column if not given.") val contig: Option[Int] = None,
- @arg(doc="The column index for the genomic position (0-based) for sorting by coordinate.") val position: Option[Int] = None
+ @arg(doc="The column index for the genomic position (0-based) for sorting by coordinate.") val position: Option[Int] = None,
+ @arg(doc="The maximum number of objects to store in memory") val maxObjectsInRam: Int = 1e6.toInt
 ) extends FgBioTool with LazyLogging {
+
+  import UpdateDelimitedFileContigNames._
 
   Io.assertReadable(input)
   Io.assertReadable(Seq(input, dict))
@@ -66,19 +68,29 @@ class UpdateDelimitedFileContigNames
   this.columns.foreach(column => validate(column >= 0, s"Column index < 0: $column"))
 
   if (sortOrder == SortOrder.ByCoordinate) {
-    require(position.nonEmpty, "--position is required when sorting by coordinate")
+    validate(position.nonEmpty, "--position is required when sorting by coordinate")
   }
 
   override def execute(): Unit = {
-    val dict     = SequenceDictionary(this.dict)
-    val in       = Io.readLines(input).bufferBetter
-    val out      = Io.toWriter(output)
-    val progress = ProgressLogger(logger, noun="lines", verb="written")
-    val sorter   = {
-      if (SortOrder.Unsorted == this.sortOrder) None
-      else Some(new Sorter(maxObjectsInRam=MaxInMemory, codec=new CoordinateAndStringCodec, keyfunc=identity[CoordinateAndString]))
-    }
+    val dict              = SequenceDictionary(this.dict)
+    val in                = Io.readLines(input).bufferBetter
+    val out               = Io.toWriter(output)
+    val progress          = ProgressLogger(logger, noun="lines", verb="written")
+    val maxColumn         = this.columns.max
     val contigColumnIndex = this.contig.getOrElse(this.columns.head)
+    val sorter            = {
+      if (SortOrder.Unsorted == this.sortOrder) None
+      else {
+        val codec: LineInfoCodec = new LineInfoCodec(
+          delimiter           = this.delimiter,
+          maxColumn           = maxColumn,
+          contigColumnIndex   = this.contig.getOrElse(this.columns.head),
+          positionColumnIndex = position.getOrElse(-1),
+          toContigIndex       = (name: String) => dict(name).index
+        )
+        Some(new Sorter[LineInfo, LineInfoKey](maxObjectsInRam=maxObjectsInRam, codec=codec, keyfunc=_.key))
+      }
+    }
     val delimiterString   = this.delimiter.toString
 
     // Output the requested # of lines at the start of the file
@@ -89,7 +101,6 @@ class UpdateDelimitedFileContigNames
     }
 
     // write the rest of the lines
-    val maxColumn = this.columns.max
     val fields: Array[String] = Array.fill(maxColumn + 2)("")  // stuff the remaining in the last array value
     in.foreach { line =>
       progress.record()
@@ -126,7 +137,7 @@ class UpdateDelimitedFileContigNames
                 }
                 out.write('\n')
               case Some(_sorter) => // add then to the sorter, to be written later
-                _sorter += CoordinateAndString(
+                _sorter += LineInfo(
                   contig   = dict(fields(contigColumnIndex)).index,
                   position = if (this.sortOrder == SortOrder.ByContigOnly) 0 else position.map(i => fields(i).toInt).getOrElse(0),
                   lineno   = progress.getCount.toInt,
@@ -163,35 +174,54 @@ object SortOrder extends FgBioEnum[SortOrder] {
   def values: IndexedSeq[SortOrder] = findValues
 }
 
-/** Stores the genomic position, line number, and output line. */
-private case class CoordinateAndString(contig: Int, position: Int, lineno: Int, line: String) extends Ordered[CoordinateAndString] {
-  /** Compares by contig, position, then line number, ascending. */
-  override def compare(that: CoordinateAndString): Int = {
-    var retval = this.contig - that.contig
-    if (retval == 0) retval = this.position - that.position
-    if (retval == 0) retval = this.lineno - that.lineno
-    retval
-  }
-}
+object UpdateDelimitedFileContigNames {
 
-/** [[Codec]] for [[CoordinateAndString]] */
-private class CoordinateAndStringCodec extends Codec[CoordinateAndString] {
-  def encode(a: CoordinateAndString): Array[Byte] = {
-    val contigBytes   = BigInt(a.contig).toByteArray
-    val positionBytes = BigInt(a.position).toByteArray
-    val linenoBytes   = BigInt(a.lineno).toByteArray
-    Array(contigBytes.length.toByte, positionBytes.length.toByte, linenoBytes.length.toByte) ++
-      contigBytes ++ positionBytes ++ linenoBytes ++ a.line.getBytes
+  /** The key used to compare across lines in the input delimited file. */
+  private case class LineInfoKey(contig: Int, position: Int, lineno: Int) extends Ordered[LineInfoKey] {
+    /** Compares by contig, position, then line number, ascending. */
+    override def compare(that: LineInfoKey): Int = {
+      var retval = this.contig - that.contig
+      if (retval == 0) retval = this.position - that.position
+      if (retval == 0) retval = this.lineno - that.lineno
+      retval
+    }
   }
-  override def decode(bs: Array[Byte], start: Int, length: Int): CoordinateAndString = {
-    val contigBytes   = bs(0).toInt
-    val positionBytes = bs(1).toInt
-    val linenoBytes   = bs(2).toInt
-    CoordinateAndString(
-      contig   = BigInt(bs.slice(3, 3 + contigBytes)).toInt,
-      position = BigInt(bs.slice(3 + contigBytes, 3 + contigBytes + positionBytes)).toInt,
-      lineno   = BigInt(bs.slice(3 + contigBytes + positionBytes, 3 + contigBytes + positionBytes + linenoBytes)).toInt,
-      line     = new String(bs.slice(3 + contigBytes + positionBytes + linenoBytes, bs.length))
-    )
+
+  private object LineInfo {
+    /** Builds a [[LineInfo]]. */
+    def apply(contig: Int, position: Int, lineno: Int, line: String): LineInfo = {
+      LineInfo(LineInfoKey(contig=contig, position=position, lineno=lineno), line=line)
+    }
+  }
+
+  /** Container class for a line in the input delimited file, and a key used to sort the lines. */
+  private case class LineInfo(key: LineInfoKey, line: String)
+
+  /** [[Codec]] for [[LineInfo]] */
+  private class LineInfoCodec(val delimiter: Char,
+                              val maxColumn: Int,
+                              val contigColumnIndex: Int,
+                              val positionColumnIndex: Int = -1,
+                              val toContigIndex: String => Int
+                             ) extends Codec[LineInfo] {
+    // add one for the line number, and stuff any remaining items in the last array value
+    private val fields: Array[String] = Array.fill(maxColumn + 3)("")
+    private val delimiterString: String = delimiter.toString
+
+    def encode(a: LineInfo): Array[Byte] = f"${a.key.lineno}$delimiter${a.line}".getBytes
+    override def decode(bs: Array[Byte], start: Int, length: Int): LineInfo = {
+      val line = new String(bs, start, length)
+      val numFields = StringUtil.split(line=line, delimiter=delimiter, arr=fields, concatenateRemaining=true)
+      require(numFields >= maxColumn + 1, f"Too few columns '$numFields'")
+      val lineno   = fields(0).toInt
+      val contig   = fields(contigColumnIndex + 1)
+      val position = if (positionColumnIndex >= 0) fields(positionColumnIndex + 1).toInt else 0
+      LineInfo(
+        contig   = toContigIndex(contig),
+        position = position,
+        lineno   = lineno,
+        line     = fields.drop(1).mkString(delimiterString)
+      )
+    }
   }
 }
