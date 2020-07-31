@@ -35,6 +35,7 @@ import com.fulcrumgenomics.commons.reflect.{ReflectionUtil, ReflectiveBuilder}
 import com.fulcrumgenomics.commons.util.DelimitedDataParser
 import htsjdk.samtools.util.{FormatUtil, Iso8601Date}
 import com.fulcrumgenomics.commons.io.{Writer => CommonsWriter}
+import enumeratum.EnumEntry
 
 import scala.collection.compat._
 import scala.reflect.runtime.{universe => ru}
@@ -222,6 +223,7 @@ trait Metric extends Product with Iterable[(String,String)] {
       Metric.SmallDoubleFormat.synchronized { Metric.SmallDoubleFormat.format(d) }
     case d: Double if d.isNaN || d.isInfinity => d.toString
     case d: Double      => Metric.BigDoubleFormat.synchronized { Metric.BigDoubleFormat.format(d) }
+    case e: EnumEntry   => e.entryName
     case other          => other.toString
   }
 

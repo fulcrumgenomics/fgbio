@@ -29,9 +29,32 @@ import java.io.StringWriter
 import java.nio.file.Path
 
 import com.fulcrumgenomics.testing.UnitSpec
+import enumeratum.EnumEntry.Uppercase
+import enumeratum.{Enum, EnumEntry}
 import org.scalatest.OptionValues
 import org.scalatest.concurrent.TimeLimits
 import org.scalatest.time.SpanSugar._
+
+/** Mixin to provide access to field formatting for [[Metric]] classes. */
+trait Formatted { self: Metric => def formatted(x: Any): String = formatValue(x) }
+
+/** Manual override of EnumEntry string serialization
+  * @see https://github.com/lloydmeta/enumeratum#manual-override-of-name
+  */
+private sealed abstract class TestEnumOverride(override val entryName: String) extends EnumEntry
+private object TestEnumOverride extends Enum[TestEnumOverride] {
+  val values: IndexedSeq[TestEnumOverride] = findValues
+  case object TestUpperCase extends TestEnumOverride("TESTUPPERCASE")
+}
+
+/** Mixin override of EnumEntry string serialization
+  * @see https://github.com/lloydmeta/enumeratum#mixins-to-override-the-name
+  */
+private sealed trait TestEnumMixin extends EnumEntry
+private object TestEnumMixin extends Enum[TestEnumMixin] {
+  val values: IndexedSeq[TestEnumMixin] = findValues
+  case object TestUpperCase extends TestEnumMixin with Uppercase
+}
 
 private case class TestMetric(foo: String, bar: Int, car: String = "default") extends Metric
 
@@ -39,9 +62,11 @@ private case class TestMetricWithOption(foo: String, bar: Int, option: Option[St
 
 private case class TestMetricWithIntOption(foo: String, bar: Int, option: Option[Int]) extends Metric
 
-private case class TestMetricWithDouble(foo: String, bar: Double, option: Option[Float]) extends Metric {
-  def formatted(x: Any): String = formatValue(x)
-}
+private case class TestMetricWithDouble(foo: String, bar: Double, option: Option[Float]) extends Metric with Formatted
+
+private case class TestMetricWithEnumEntryOverride(foo: TestEnumOverride) extends Metric with Formatted
+
+private case class TestMetricWithEnumEntryMixin(foo: TestEnumMixin) extends Metric with Formatted
 
 private case class TestDoubleMetric(d: Double) extends Metric
 private case class TestFloatMetric(f: Float) extends Metric
@@ -279,5 +304,15 @@ class MetricTest extends UnitSpec with OptionValues with TimeLimits {
       actual should have size 1
       if (f.isNaN) actual.head.f.isNaN shouldBe true else actual.head.f shouldBe f
     }
+  }
+
+  it should "use the `entryName` property of [[EnumEntry]] fields when serializing to string" in {
+    val metricOverride = TestMetricWithEnumEntryOverride(TestEnumOverride.TestUpperCase)
+    metricOverride.formatted(metricOverride.foo)            shouldBe "TESTUPPERCASE"                // Serialization
+    TestEnumOverride.withName(metricOverride.foo.entryName) shouldBe TestEnumOverride.TestUpperCase // De-serialization
+
+    val metricMixin = TestMetricWithEnumEntryMixin(TestEnumMixin.TestUpperCase)
+    metricMixin.formatted(metricMixin.foo)            shouldBe "TESTUPPERCASE"             // Serialization
+    TestEnumMixin.withName(metricMixin.foo.entryName) shouldBe TestEnumMixin.TestUpperCase // De-serialization
   }
 }
