@@ -31,6 +31,20 @@ import com.fulcrumgenomics.FgBioDef._
 import com.fulcrumgenomics.bam.api.SamRecord
 import htsjdk.samtools.util.{Interval, OverlapDetector}
 
+object AmpliconDetector {
+  def apply(amplicons: IterableOnce[Amplicon], slop: Int, unclippedCoordinates: Boolean): AmpliconDetector = {
+    new AmpliconDetector(
+      detector             = Amplicon.detector(amplicons=amplicons.iterator),
+      slop                 = slop,
+      unclippedCoordinates = unclippedCoordinates
+    )
+  }
+
+  def apply(path: FilePath, slop: Int, unclippedCoordinates: Boolean): AmpliconDetector = {
+    this.apply(amplicons=Metric.iterator[Amplicon](path), slop=slop, unclippedCoordinates=unclippedCoordinates)
+  }
+}
+
 /** Detector to find the amplicon sequenced by a given read for a multiplex PCR (or similar) experiment.  The primer for
   * a read is assumed to be at the 5' end (sequencing order) of the read.  The various methods use the genomic
   * coordinates of the amplicons compared to the 5' end (sequencing order) of the read.  The genomic coordinates are

@@ -105,11 +105,11 @@ class AssignPrimers
     // Log some info
     def log(numerator: Long, noun: String): Unit = {
       val pct: Double = if (progress.getCount == 0) 0 else numerator * 100.0 / progress.getCount
-      logger.info(s"Assigned $numerator%,d out of ${progress.getCount}%,d ($pct%,2f%%) reads to $noun")
+      logger.info(f"Assigned $numerator%,d out of ${progress.getCount}%,d ($pct%.2f%%) reads $noun.")
     }
-    log(numerator=totalMetric.left, "left primers")
-    log(numerator=totalMetric.right, "right primers")
-    log(numerator=totalMetric.pairs, "as primer pairs")
+    log(numerator=totalMetric.left, "to left primers")
+    log(numerator=totalMetric.right, "to right primers")
+    log(numerator=totalMetric.pairs * 2, "as primer pairs")
   }
 }
 
@@ -122,6 +122,8 @@ object AssignPrimers {
   val AmpliconIdentifierTag    : String = "ip"
   /** The SAM tag to use for the current record's mate's assigned primer identifier */
   val MateAmpliconIdentifierTag: String = "im"
+
+  def tags: Seq[String] = Seq(PrimerCoordinateTag, MatePrimerCoordinateTag, AmpliconIdentifierTag, MateAmpliconIdentifierTag)
 
 }
 
@@ -171,10 +173,10 @@ class AmpliconLabeller(val metrics: Map[Amplicon, AssignPrimersMetric] = Map.emp
     if (rec.paired) {
       // Find the primer for its mate
       mateAmplicon.foreach { amp =>
-        val isPrimerPair = rec.isFrPair && recAmplicon.forall(_ == amp)
+        val isPrimerPair = rec.isFrPair && recAmplicon.contains(amp)
         // update metrics
         metrics.get(amp).foreach { metric =>
-          if (isPrimerPair) metric.pairs += 1
+          if (isPrimerPair && rec.firstOfPair) metric.pairs += 1
         }
         // assign am/im
         rec(matePrimerCoordinatesTag)   = if (rec.matePositiveStrand) amp.leftPrimerString else amp.rightPrimerString
