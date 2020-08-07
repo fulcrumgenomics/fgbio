@@ -229,11 +229,11 @@ case class AssignPrimersMetric
 ) extends Metric {
   /** Update the factional metrics given the total number of reads. */
   def finalize(total: Long): this.type = if (total == 0) this else {
-    this.frac_left  = this.left / total
-    this.frac_right = this.right / total
-    this.frac_r1s   = this.r1s / total
-    this.frac_r2s   = this.r2s / total
-    this.frac_pairs = if (total <= 1) 0 else this.pairs / (total / 2)
+    this.frac_left  = this.left / total.toDouble
+    this.frac_right = this.right / total.toDouble
+    this.frac_r1s   = this.r1s / total.toDouble
+    this.frac_r2s   = this.r2s / total.toDouble
+    this.frac_pairs = if (total <= 1) 0 else this.pairs / (total / 2.0)
     this
   }
 }
