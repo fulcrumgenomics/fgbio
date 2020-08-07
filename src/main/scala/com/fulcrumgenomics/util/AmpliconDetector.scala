@@ -30,6 +30,8 @@ import java.lang.Math.abs
 import com.fulcrumgenomics.FgBioDef._
 import com.fulcrumgenomics.bam.api.SamRecord
 import htsjdk.samtools.util.{Interval, OverlapDetector}
+import scala.collection.compat._
+
 
 object AmpliconDetector {
   def apply(amplicons: IterableOnce[Amplicon], slop: Int, unclippedCoordinates: Boolean): AmpliconDetector = {
