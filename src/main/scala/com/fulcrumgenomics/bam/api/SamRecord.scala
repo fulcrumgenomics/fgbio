@@ -174,6 +174,18 @@ trait SamRecord {
     get[String]("MC").map(cig => mateStart + Cigar(cig).lengthOnTarget - 1)
   }
 
+  @inline final def mateUnclippedStart: Option[Int] = {
+    require(paired && mateMapped, "Cannot get mate unclipped start position on read without a mapped mate.")
+    get[String]("MC").map(cig => mateStart - Cigar(cig).iterator.takeWhile(_.operator.isClipping).map(_.length).sum)
+  }
+  @inline final def mateUnclippedEnd: Option[Int] = {
+    require(paired && mateMapped, "Cannot get mate unclipped end position on read without a mapped mate.")
+    get[String]("MC").map { cig =>
+      val cigar = Cigar(cig)
+      mateStart + cigar.lengthOnTarget - 1 + cigar.reverseIterator.takeWhile(_.operator.isClipping).map(_.length).sum
+    }
+  }
+
   @inline final def insertSize: Int = getInferredInsertSize
   @inline final def insertSize_=(s: Int):Unit = setInferredInsertSize(s)
 

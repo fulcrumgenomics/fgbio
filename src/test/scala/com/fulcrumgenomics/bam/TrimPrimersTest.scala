@@ -30,17 +30,16 @@ import com.fulcrumgenomics.FgBioDef._
 import com.fulcrumgenomics.bam.api.SamOrder
 import com.fulcrumgenomics.testing.SamBuilder.{Minus, Plus}
 import com.fulcrumgenomics.testing.{SamBuilder, UnitSpec}
-import com.fulcrumgenomics.util.Io
+import com.fulcrumgenomics.util.{Amplicon, Io, Metric}
 import htsjdk.samtools.util.{CoordMath, SequenceUtil}
 import htsjdk.samtools.{CigarOperator => Op}
 
 class TrimPrimersTest extends UnitSpec {
-  val primerLines = Seq(
-    Seq("chrom", "left_start", "left_end", "right_start", "right_end"),
-    Seq("chr1", 100, 119, 200, 219),
-    Seq("chr1", 200, 219, 300, 320),
-    Seq("chr1", 300, 319, 400, 421),
-    Seq("chr1", 400, 419, 500, 522)
+  val amplicons: Seq[Amplicon] = Seq(
+    Amplicon("chr1", 100, 119, 200, 219),
+    Amplicon("chr1", 200, 219, 300, 320),
+    Amplicon("chr1", 300, 319, 400, 421),
+    Amplicon("chr1", 400, 419, 500, 522)
   )
 
   val refFasta = Paths.get("src/test/resources/com/fulcrumgenomics/bam/trim_primers_test.fa")
@@ -50,7 +49,7 @@ class TrimPrimersTest extends UnitSpec {
 
   def primers: FilePath = {
     val tmp = makeTempFile("primers.", ".txt")
-    Io.writeLines(tmp, primerLines.map(x => x.mkString("\t")))
+    Metric.write(path=tmp, amplicons)
     tmp
   }
 
@@ -186,7 +185,7 @@ class TrimPrimersTest extends UnitSpec {
   it should "fail if no primers are given in the primer file" in {
     val primerFile = makeTempFile("primers.", ".txt")
     val bam = new SamBuilder().toTempFile()
-    Io.writeLines(primerFile, Seq(TrimPrimers.Headers.mkString("\t")))
+    Metric.write[Amplicon](primerFile)
     an[Exception] shouldBe thrownBy {
       new TrimPrimers(input=bam, output=bam, primers=primerFile, hardClip=false).execute()
     }

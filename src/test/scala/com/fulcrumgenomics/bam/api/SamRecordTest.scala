@@ -27,7 +27,7 @@ package com.fulcrumgenomics.bam.api
 import com.fulcrumgenomics.alignment.Cigar
 import com.fulcrumgenomics.testing.SamBuilder.{Minus, Plus}
 import com.fulcrumgenomics.testing.{SamBuilder, UnitSpec}
-import htsjdk.samtools.TextCigarCodec
+import htsjdk.samtools.{SAMTag, TextCigarCodec}
 import org.scalatest.OptionValues
 
 class SamRecordTest extends UnitSpec with OptionValues {
@@ -184,5 +184,41 @@ class SamRecordTest extends UnitSpec with OptionValues {
     rec[Int]("AB") shouldBe 123
     rec.get[String]("BA") shouldBe None
     rec.basesString should not be clone.basesString
+  }
+
+  "SamRecord.mateUnclippedStart/End" should "return None if no mate cigar set" in {
+    val builder = new SamBuilder(readLength=50)
+    val recs = builder.addPair(start1=10, start2=50)
+
+    recs.foreach { r =>
+      r(SAMTag.MC.name) = null // Clear mate cigar
+      r.mateUnclippedStart.isEmpty shouldBe true
+      r.mateUnclippedEnd.isEmpty shouldBe true
+    }
+  }
+
+  it should "return the mate's unclipped start/end" in {
+    val builder = new SamBuilder(readLength=50)
+    val Seq(r1, r2) = builder.addPair(start1=10, start2=50, cigar1="5S45M10H", cigar2="10S40M5H")
+
+    r1.start shouldBe 10
+    r2.mateStart shouldBe r1.start
+    r2.start shouldBe 50
+    r1.mateStart shouldBe r2.start
+
+    r1.end shouldBe 54
+    r2.mateEnd.value shouldBe r1.end
+    r2.end shouldBe 89
+    r1.mateEnd.value shouldBe r2.end
+
+    r1.unclippedStart shouldBe 5
+    r2.mateUnclippedStart.value shouldBe r1.unclippedStart
+    r2.unclippedStart shouldBe 40
+    r1.mateUnclippedStart.value shouldBe r2.unclippedStart
+
+    r1.unclippedEnd shouldBe 64
+    r2.mateUnclippedEnd.value shouldBe r1.unclippedEnd
+    r2.unclippedEnd shouldBe 94
+    r1.mateUnclippedEnd.value shouldBe r2.unclippedEnd
   }
 }
