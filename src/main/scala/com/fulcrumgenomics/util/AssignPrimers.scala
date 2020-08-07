@@ -99,7 +99,7 @@ class AssignPrimers
     // Write the metrics
     Metric.write[AssignPrimersMetric](
       path    = metrics,
-      metrics = amplicons.iterator.map(metricsMap.apply) ++ Iterator(totalMetric)
+      metrics = (amplicons.iterator.map(metricsMap.apply) ++ Iterator(totalMetric)).map(_.finalize(total=progress.getCount))
     )
 
     // Log some info
@@ -233,7 +233,7 @@ case class AssignPrimersMetric
     this.frac_right = this.right / total
     this.frac_r1s   = this.r1s / total
     this.frac_r2s   = this.r2s / total
-    this.frac_pairs = this.pairs / total
+    this.frac_pairs = if (total <= 1) 0 else this.pairs / (total / 2)
     this
   }
 }
