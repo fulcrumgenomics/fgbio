@@ -138,7 +138,5 @@ class AssignPrimersTest extends UnitSpec with OptionValues {
     metrics.length shouldBe amplicons.length + 1
     metrics.zip(expected).foreach { case (act, exp) => act shouldBe exp } // compare one-by-one to make it easier to debug
     metrics.length shouldBe expected.length
-
-
   }
 }
