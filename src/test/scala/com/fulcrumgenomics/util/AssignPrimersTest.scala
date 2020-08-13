@@ -37,10 +37,10 @@ class AssignPrimersTest extends UnitSpec with OptionValues {
         rec.contains(AssignPrimers.AmpliconIdentifierTag) shouldBe false
       case Some(amp) =>
         if (rec.positiveStrand) {
-          rec.get[String](AssignPrimers.PrimerCoordinateTag).value shouldBe amp.leftPrimerString
+          rec.get[String](AssignPrimers.PrimerCoordinateTag).value shouldBe amp.leftPrimerLocation
         }
         else {
-          rec.get[String](AssignPrimers.PrimerCoordinateTag).value shouldBe amp.rightPrimerString
+          rec.get[String](AssignPrimers.PrimerCoordinateTag).value shouldBe amp.rightPrimerLocation
         }
         rec.get[String](AssignPrimers.AmpliconIdentifierTag).value shouldBe amp.identifier
     }
@@ -52,10 +52,10 @@ class AssignPrimersTest extends UnitSpec with OptionValues {
       case Some(amp) =>
         rec.paired shouldBe true
         if (rec.matePositiveStrand) {
-          rec.get[String](AssignPrimers.MatePrimerCoordinateTag).value shouldBe amp.leftPrimerString
+          rec.get[String](AssignPrimers.MatePrimerCoordinateTag).value shouldBe amp.leftPrimerLocation
         }
         else {
-          rec.get[String](AssignPrimers.MatePrimerCoordinateTag).value shouldBe amp.rightPrimerString
+          rec.get[String](AssignPrimers.MatePrimerCoordinateTag).value shouldBe amp.rightPrimerLocation
         }
         if (amplicon.contains(amp)) { // same amplicon
           rec.get[String](AssignPrimers.MateAmpliconIdentifierTag).value shouldBe "="
@@ -136,7 +136,11 @@ class AssignPrimersTest extends UnitSpec with OptionValues {
     ).map(_.finalize(total=recs.length))
 
     metrics.length shouldBe amplicons.length + 1
-    metrics.zip(expected).foreach { case (act, exp) => act shouldBe exp } // compare one-by-one to make it easier to debug
+    metrics.zip(expected).foreach { case (act, exp) =>
+      // compare one-by-one to make it easier to debug
+      act.finalize(0) shouldBe exp.finalize(0)  // just the values
+      act shouldBe exp // now the fractions
+    }
     metrics.length shouldBe expected.length
   }
 }

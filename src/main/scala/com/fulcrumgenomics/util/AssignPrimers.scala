@@ -22,6 +22,18 @@ import com.fulcrumgenomics.sopt.{arg, clp}
     |coordinates of the amplicon's primers will be used:
     |  `<chrom>:<left_start>-<left_end>,<chrom>:<right_start>:<right_end>`
     |
+    |Each read is assigned independently of its mate (for paired end reads). The primer for a read is assumed to be
+    |located at the start of the read in 5' sequencing order.  Therefore, a positive strand
+    |read will use its aligned start position to match against the amplicon's left-most coordinate, while a negative
+    |strand read will use its aligned end position to match against the amplicon's right-most coordinate.
+    |
+    |For paired end reads, the assignment for mate will also be stored in the current read, using the same procedure as
+    |above but using the mate's coordinates.  This requires the input BAM have the mate-cigar ("MC") SAM tag.  Read
+    |pairs must have both ends mapped in forward/reverse configuration to have an assignment.  Furthermore, the amplicon
+    |assignment may be different for a read and its mate.  This may occur, for example, if tiling nearby amplicons and
+    |a large deletion occurs over a given primer and therefore "skipping" an amplicon.  This may also occur if there are
+    |translocations across amplicons.
+    |
     |The output will have the following tags added:
     |- ap: the assigned primer coordinates (ex. `chr1:1010873-1010894`)
     |- am: the mate's assigned primer coordinates (ex. `chr1:1011118-1011137`)
@@ -54,17 +66,13 @@ class AssignPrimers
     val progress  = ProgressLogger(logger=logger, unit=250000)
     val amplicons = Metric.read[Amplicon](path=primers)
     val detector  = new AmpliconDetector(
-      detector             = Amplicon.detector(amplicons=amplicons.iterator),
+      detector             = Amplicon.overlapDetector(amplicons=amplicons.iterator),
       slop                 = slop,
       unclippedCoordinates = unclippedCoordinates
     )
 
-    val metricsMap: Map[Amplicon, AssignPrimersMetric] = amplicons.map { amplicon =>
-      amplicon -> new AssignPrimersMetric(identifier=amplicon.identifier)
-    }.toMap
-
     val labeller = new AmpliconLabeller(
-      metrics                   = metricsMap,
+      amplicons                 = amplicons.iterator,
       primerCoordinatesTag      = primerCoordinatesTag,
       matePrimerCoordinatesTag  = matePrimerCoordinatesTag,
       ampliconIdentifierTag     = ampliconIdentifierTag,
@@ -72,11 +80,11 @@ class AssignPrimers
     )
 
     reader.foreach { rec =>
-      val recAmplicon = detector.find(rec=rec)
+      val recAmplicon = detector.findPrimer(rec=rec)
       labeller.label(
         rec = rec,
         recAmplicon = recAmplicon,
-        mateAmplicon = if (rec.unpaired) None else detector.findMate(rec=rec)
+        mateAmplicon = if (rec.unpaired) None else detector.findMatePrimer(rec=rec)
       )
       writer.write(rec)
       progress.record(rec)
@@ -88,7 +96,7 @@ class AssignPrimers
 
     // Sum up the values across all amplicons
     val totalMetric = new AssignPrimersMetric(identifier=AssignPrimersMetric.AllAmpliconsIdentifier)
-    metricsMap.values.foreach { metric =>
+    labeller.metrics.values.foreach { metric =>
       totalMetric.r1s   += metric.r1s
       totalMetric.r2s   += metric.r2s
       totalMetric.left  += metric.left
@@ -99,7 +107,7 @@ class AssignPrimers
     // Write the metrics
     Metric.write[AssignPrimersMetric](
       path    = metrics,
-      metrics = (amplicons.iterator.map(metricsMap.apply) ++ Iterator(totalMetric)).map(_.finalize(total=progress.getCount))
+      metrics = (amplicons.iterator.map(labeller.metrics.apply) ++ Iterator(totalMetric)).map(_.finalize(total=progress.getCount))
     )
 
     // Log some info
@@ -115,13 +123,13 @@ class AssignPrimers
 
 object AssignPrimers {
   /** The SAM tag to use for the current record's assigned primer genomic coordinates */
-  val PrimerCoordinateTag      : String = "ap"
+  val PrimerCoordinateTag      : String = "rp"
   /** The SAM tag to use for the current record's mate's assigned primer genomic coordinates */
-  val MatePrimerCoordinateTag  : String = "am"
+  val MatePrimerCoordinateTag  : String = "mp"
   /** The SAM tag to use for the current record's assigned primer identifier */
-  val AmpliconIdentifierTag    : String = "ip"
+  val AmpliconIdentifierTag    : String = "ra"
   /** The SAM tag to use for the current record's mate's assigned primer identifier */
-  val MateAmpliconIdentifierTag: String = "im"
+  val MateAmpliconIdentifierTag: String = "ma"
 
   def tags: Seq[String] = Seq(PrimerCoordinateTag, MatePrimerCoordinateTag, AmpliconIdentifierTag, MateAmpliconIdentifierTag)
 
@@ -137,18 +145,23 @@ object AssignPrimers {
   *
   * If not primer/amplicon was found, then no tag will be written.
   *
-  * @param metrics a map of amplicon to [[AssignPrimersMetric]] to collect metrics, may be empty
+  * @param amplicons the amplicons used to collect metrics, may be empty
   * @param primerCoordinatesTag the SAM tag to store the primer genomic coordinates for the read
   * @param matePrimerCoordinatesTag the SAM tag to store the primer genomic coordinates for the read's mate
   * @param ampliconIdentifierTag the SAM tag to store the amplicon identifier for the read
   * @param mateAmpliconIdentifierTag the SAM tag to store  the amplicon identifier for the read's mate
   */
-class AmpliconLabeller(val metrics: Map[Amplicon, AssignPrimersMetric] = Map.empty,
+class AmpliconLabeller(val amplicons: Iterator[Amplicon] = Iterator.empty,
                        val primerCoordinatesTag: String = AssignPrimers.PrimerCoordinateTag,
                        val matePrimerCoordinatesTag: String = AssignPrimers.MatePrimerCoordinateTag,
                        val ampliconIdentifierTag: String = AssignPrimers.AmpliconIdentifierTag,
                        val mateAmpliconIdentifierTag: String = AssignPrimers.MateAmpliconIdentifierTag,
                       ) {
+
+  val metrics: Map[Amplicon, AssignPrimersMetric] = amplicons.map { amplicon =>
+    amplicon -> new AssignPrimersMetric(identifier=amplicon.identifier)
+  }.toMap
+
   /** Labels (adds SAM tags) to a record based on the assigned amplicon(s) for itself and potentially its mate.
     *
     * @param rec the record to label
@@ -158,7 +171,7 @@ class AmpliconLabeller(val metrics: Map[Amplicon, AssignPrimersMetric] = Map.emp
   def label(rec: SamRecord,
             recAmplicon: Option[Amplicon] = None,
             mateAmplicon: Option[Amplicon] = None): Unit = {
-    // Find the primer for the current read
+    // Process the primer for the current read
     recAmplicon.foreach { amp =>
       // update metrics
       metrics.get(amp).foreach { metric =>
@@ -166,22 +179,21 @@ class AmpliconLabeller(val metrics: Map[Amplicon, AssignPrimersMetric] = Map.emp
         if (rec.unpaired || rec.firstOfPair) metric.r1s += 1 else metric.r2s += 1
       }
       // assign ap/ip
-      rec(primerCoordinatesTag)   = if (rec.positiveStrand) amp.leftPrimerString else amp.rightPrimerString
+      rec(primerCoordinatesTag)  = if (rec.positiveStrand) amp.leftPrimerLocation else amp.rightPrimerLocation
       rec(ampliconIdentifierTag) = amp.identifier
     }
 
-    if (rec.paired) {
-      // Find the primer for its mate
-      mateAmplicon.foreach { amp =>
-        val isPrimerPair = rec.isFrPair && recAmplicon.contains(amp)
-        // update metrics
-        metrics.get(amp).foreach { metric =>
-          if (isPrimerPair && rec.firstOfPair) metric.pairs += 1
-        }
-        // assign am/im
-        rec(matePrimerCoordinatesTag)   = if (rec.matePositiveStrand) amp.leftPrimerString else amp.rightPrimerString
-        rec(mateAmpliconIdentifierTag) = if (isPrimerPair) "=" else amp.identifier
+    // Find the primer for its mate
+    mateAmplicon.foreach { amp =>
+      require(rec.paired)
+      val isPrimerPair = rec.isFrPair && recAmplicon.contains(amp)
+      // update metrics
+      metrics.get(amp).foreach { metric =>
+        if (isPrimerPair && rec.firstOfPair) metric.pairs += 1
       }
+      // assign am/im
+      rec(matePrimerCoordinatesTag)   = if (rec.matePositiveStrand) amp.leftPrimerLocation else amp.rightPrimerLocation
+      rec(mateAmpliconIdentifierTag) = if (isPrimerPair) "=" else amp.identifier
     }
   }
 
@@ -221,19 +233,28 @@ case class AssignPrimersMetric
   var r1s: Long = 0L,
   var r2s: Long = 0L,
   var pairs: Long = 0L,
-  var frac_left: Double = 0L,
-  var frac_right: Double = 0L,
-  var frac_r1s: Double = 0L,
-  var frac_r2s: Double = 0L,
-  var frac_pairs: Double = 0L
+  var frac_left: Double = 0,
+  var frac_right: Double = 0,
+  var frac_r1s: Double = 0,
+  var frac_r2s: Double = 0,
+  var frac_pairs: Double = 0
 ) extends Metric {
   /** Update the factional metrics given the total number of reads. */
-  def finalize(total: Long): this.type = if (total == 0) this else {
-    this.frac_left  = this.left / total.toDouble
-    this.frac_right = this.right / total.toDouble
-    this.frac_r1s   = this.r1s / total.toDouble
-    this.frac_r2s   = this.r2s / total.toDouble
-    this.frac_pairs = if (total <= 1) 0 else this.pairs / (total / 2.0)
+  def finalize(total: Long): this.type = {
+    if (total == 0) {
+      this.frac_left  = 0
+      this.frac_right = 0
+      this.frac_r1s   = 0
+      this.frac_r2s   = 0
+      this.frac_pairs = 0
+    }
+    else {
+      this.frac_left  = this.left / total.toDouble
+      this.frac_right = this.right / total.toDouble
+      this.frac_r1s   = this.r1s / total.toDouble
+      this.frac_r2s   = this.r2s / total.toDouble
+      this.frac_pairs = if (total <= 1) 0 else this.pairs / (total / 2.0)
+    }
     this
   }
 }

@@ -31,15 +31,15 @@ import htsjdk.samtools.util.{CoordMath, OverlapDetector}
 /** Convenience methods for [[Amplicon]] */
 object Amplicon {
   /** Builds a [[OverlapDetector]] for the given amplicons. */
-  def detector(amplicons: Iterator[Amplicon]): OverlapDetector[Amplicon] = {
+  def overlapDetector(amplicons: Iterator[Amplicon]): OverlapDetector[Amplicon] = {
     val detector = new OverlapDetector[Amplicon](0,0)
     amplicons.foreach(amp => detector.addLhs(amp, amp))
     detector
   }
 
   /** Builds a [[OverlapDetector]] for the given file of amplicons. */
-  def detector(path: FilePath): OverlapDetector[Amplicon] = {
-    Amplicon.detector(amplicons=Metric.iterator[Amplicon](path))
+  def overlapDetector(path: FilePath): OverlapDetector[Amplicon] = {
+    Amplicon.overlapDetector(amplicons=Metric.iterator[Amplicon](path))
   }
 }
 
@@ -74,11 +74,11 @@ case class Amplicon
   @inline def start: Int      = leftStart
   @inline def end: Int        = rightEnd
 
-  def leftPrimerLength: Int     = CoordMath.getLength(leftStart, leftEnd)
-  def rightPrimerLength: Int    = CoordMath.getLength(rightStart, rightEnd)
-  def longestPrimerLength: Int  = Math.max(leftPrimerLength, rightPrimerLength)
-  def leftPrimerString: String  = f"$chrom:$leftStart-$leftEnd"
-  def rightPrimerString: String = f"$chrom:$rightStart-$rightEnd"
-  def ampliconString: String    = f"$chrom:$leftStart-$rightEnd"
-  def identifier: String        = this.id.getOrElse(f"$leftPrimerString,$rightPrimerString")
+  def leftPrimerLength: Int       = CoordMath.getLength(leftStart, leftEnd)
+  def rightPrimerLength: Int      = CoordMath.getLength(rightStart, rightEnd)
+  def longestPrimerLength: Int    = Math.max(leftPrimerLength, rightPrimerLength)
+  def leftPrimerLocation: String  = f"$chrom:$leftStart-$leftEnd"
+  def rightPrimerLocation: String = f"$chrom:$rightStart-$rightEnd"
+  def ampliconLocation: String    = f"$chrom:$leftStart-$rightEnd"
+  def identifier: String          = this.id.getOrElse(ampliconLocation)
 }

@@ -102,7 +102,7 @@ class TrimPrimers
     }
 
     val detector = new AmpliconDetector(
-      detector             = Amplicon.detector(path=primers),
+      detector             = Amplicon.overlapDetector(path=primers),
       slop                 = slop,
       unclippedCoordinates = true
     )

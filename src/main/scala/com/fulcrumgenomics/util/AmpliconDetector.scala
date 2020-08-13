@@ -36,7 +36,7 @@ import scala.collection.compat._
 object AmpliconDetector {
   def apply(amplicons: IterableOnce[Amplicon], slop: Int, unclippedCoordinates: Boolean): AmpliconDetector = {
     new AmpliconDetector(
-      detector             = Amplicon.detector(amplicons=amplicons.iterator),
+      detector             = Amplicon.overlapDetector(amplicons=amplicons.iterator),
       slop                 = slop,
       unclippedCoordinates = unclippedCoordinates
     )
@@ -68,9 +68,12 @@ class AmpliconDetector(val detector: OverlapDetector[Amplicon],
     if (unclippedCoordinates) new UnclippedCoordinates else new ClippedCoordinates
   }
 
-  /** Finds the primer for the given genomic interval.
+  /** Finds the amplicon for a single read (not read pair).
     *
-    * A positive strand read will be match based on left primers, while a negative strand read will match right primers.
+    * The primer is assumed to be located at the start of the read in 5' sequencing order.  Therefore, a positive strand
+    * read will use its aligned start position to match against the amplicon's left-most coordinate, while a negative
+    * strand read will use its aligned end position to match against the amplicon's right-most coordinate.  The mate of
+    * the read will not be used.
     *
     * @param refName the reference name
     * @param start the start position
@@ -78,55 +81,75 @@ class AmpliconDetector(val detector: OverlapDetector[Amplicon],
     * @param positiveStrand true for the positive strand, false for the negative strand
     * @return the amplicon if found
     */
-  private[util] def find(refName: String, start: Int, end: Int, positiveStrand: Boolean): Option[Amplicon] = {
+  private[util] def findPrimer(refName: String, start: Int, end: Int, positiveStrand: Boolean): Option[Amplicon] = {
     val interval = new Interval(refName, start, end)
-    if (positiveStrand) {
-      detector.getOverlaps(interval).find(amp => abs(amp.leftStart - start) <= slop)
+    val hits: Iterator[(Amplicon, Int)] = {
+      if (positiveStrand) detector.getOverlaps(interval).map(amp => (amp, abs(amp.leftStart - start)))
+      else detector.getOverlaps(interval).map(amp => (amp, abs(amp.rightEnd - end)))
     }
-    else {
-      detector.getOverlaps(interval).find(amp => abs(amp.rightEnd - end) <= slop)
-    }
+    hits.minByOption(_._2).find(_._2 <= slop).map(_._1)
   }
 
-  /** Finds the amplicon for the given read.
+  /** Finds the amplicon that contains the primer for the given read.
     *
-    * A positive strand read will be matched to left primers, while a negative strand read will be matched to right primers.
+    * The primer is assumed to be located at the start of the read in 5' sequencing order.  Therefore, a positive strand
+    * read will use its aligned start position to match against the amplicon's left-most coordinate, while a negative
+    * strand read will use its aligned end position to match against the amplicon's right-most coordinate.  The mate of
+    * the read will not be used.
     *
-    * @param rec the record to match
+    * If multiple amplicons are found, the amplicon with the smallest distance will be returned.
+    *
+    * @param rec the record to match.
+    *
     * @return Some amplicon if a match is found, None otherwise
     */
-  def find(rec: SamRecord): Option[Amplicon] = if (rec.unmapped) None else {
+  def findPrimer(rec: SamRecord): Option[Amplicon] = if (rec.unmapped) None else {
     val (start, end) = (coordinates.start(rec), coordinates.end(rec))
-    find(refName=rec.refName, start=start, end=end, positiveStrand=rec.positiveStrand)
+    findPrimer(refName=rec.refName, start=start, end=end, positiveStrand=rec.positiveStrand)
   }
 
-  /** Finds the amplicon for the given read's mate.
+  /** Finds the amplicon that contains the primer for the given read's mate.
     *
-    * A positive strand mate will be matched to left primers, while a negative strand mate will be matched to right primers.
+    * The primer is assumed to be located at the start of the mate in 5' sequencing order.  Therefore, a positive strand
+    * mate will use its aligned start position to match against the amplicon's left-most coordinate, while a negative
+    * strand mate will use its aligned end position to match against the amplicon's right-most coordinate.  The current
+    * read will not be used.
+    *
+    * If multiple amplicons are found, the amplicon with the smallest distance will be returned.
     *
     * @param rec the record for which to match the mate
     * @return Some amplicon if a match is found for the mate, None otherwise
     */
-  def findMate(rec: SamRecord): Option[Amplicon] = if (rec.mateUnmapped) None else {
+  def findMatePrimer(rec: SamRecord): Option[Amplicon] = if (rec.mateUnmapped) None else {
     val (start, end) = (coordinates.mateStart(rec), coordinates.mateEnd(rec))
-    find(refName=rec.mateRefName, start=start, end=end, positiveStrand=rec.matePositiveStrand)
+    findPrimer(refName=rec.mateRefName, start=start, end=end, positiveStrand=rec.matePositiveStrand)
   }
 
   /** Finds the amplicon for a read pair.
     *
     * Both reads must be mapped to the same contig and in FR orientation.
     *
-    * The positive strand read will be matched to left primers, while the negative strand read will be matched to right primers.
+    * The primer is assumed to be located at the start of the read in 5' sequencing order.  Therefore, a positive strand
+    * read will use its aligned start position to match against the amplicon's left-most coordinate, while a negative
+    * strand read will use its aligned end position to match against the amplicon's right-most coordinate.  Similarly
+    * for its mate.  Both the read and its mate must match the same amplicon.
+    *
+    * If multiple amplicons are found, the amplicon with the smallest combined distance between coordinates will be
+    * returned.
     *
     * @param r1 the first end of a pair
     * @param r2 the second end of a pair
-    * @return Some amplicon if a match is found for the mate, None otherwise
+    * @return Some amplicon if a match is found for the read pair, None otherwise
     */
   def find(r1: SamRecord, r2: SamRecord): Option[Amplicon] = if (!r1.isFrPair) None else {
     val (left, right) = if (r1.positiveStrand) (r1, r2) else (r2, r1)
     val (start, end)  = (coordinates.start(left), coordinates.end(right))
     val insert        = new Interval(left.refName, start, end)
-    detector.getOverlaps(insert).find(amp => abs(amp.leftStart - start) <= slop && abs(amp.rightEnd - end) <= slop)
+    detector.getOverlaps(insert)
+      .map(amp => (amp, abs(amp.leftStart - start), abs(amp.rightEnd - end)))
+      .filter(hit => hit._2 <= slop && hit._3 <= slop)
+      .minByOption(hit => (hit._2 + hit._3))
+      .map(_._1)
   }
 }
 
