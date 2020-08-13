@@ -29,6 +29,8 @@ import com.fulcrumgenomics.commons.CommonsDef
 import com.fulcrumgenomics.commons.io.PathUtil
 import enumeratum.{Enum, EnumEntry}
 
+import scala.math.Ordering
+
 /** FgBioDef that is just an extension of the commons CommonsDef. Here in case
   * there's a need for FgBio specific defs later.
   */
@@ -106,5 +108,22 @@ object FgBioDef extends CommonsDef {
     */
   @deprecated(message="Use GenomicRange() instead", since="1.3.0") def parseRange(range: String): GenomicRange = {
     GenomicRange(range)
+  }
+
+  // Developer note: move this to commons as scala 2.12 does not have this method on an [[IterableOnce]]/[[Iterator]]
+  implicit class IterableOnceMinByOption[A](iter: Iterator[A]) {
+    /** Finds the first element which yields the smallest value measured by function f.
+      *
+      * @param    cmp An ordering to be used for comparing elements.
+      * @tparam   B The result type of the function f.
+      * @param    f The measuring function.
+      * @return an option value containing the first element of this $coll
+      *         with the smallest value measured by function f
+      *         with respect to the ordering `cmp`.
+      */
+    def minByOption[B](f: A => B)(implicit cmp: Ordering[B]): Option[A] = {
+      if (iter.iterator.isEmpty) None
+      else Some(iter.iterator.minBy(f)(cmp))
+    }
   }
 }
