@@ -31,11 +31,11 @@ import com.fulcrumgenomics.FgBioDef._
 import com.fulcrumgenomics.bam.api.SamSource
 import com.fulcrumgenomics.cmdline.{ClpGroups, FgBioTool}
 import com.fulcrumgenomics.commons.io.{Io, PathUtil}
-import com.fulcrumgenomics.commons.util.LazyLogging
+import com.fulcrumgenomics.commons.util.{LazyLogging, SimpleCounter}
 import com.fulcrumgenomics.fasta.SequenceDictionary
 import com.fulcrumgenomics.sopt._
 import com.fulcrumgenomics.util.Metric.Count
-import com.fulcrumgenomics.util.{Metric, ProgressLogger, Rscript}
+import com.fulcrumgenomics.util.{Metric, ProgressLogger, Rscript, Sequences}
 import com.fulcrumgenomics.vcf.{ByIntervalListVariantContextIterator, VariantMask}
 import htsjdk.samtools.SAMRecord
 import htsjdk.samtools.filter.{DuplicateReadFilter, FailsVendorReadQualityFilter, SamRecordFilter, SecondaryOrSupplementaryFilter}
@@ -88,7 +88,11 @@ class ErrorRateByReadPosition
   @arg(flag='l', doc="Optional list of intervals to restrict analysis to.") val intervals: Option[PathToIntervals] = None,
   @arg(flag='d', doc="Include duplicate reads, otherwise ignore.") val includeDuplicates: Boolean = false,
   @arg(flag='m', doc="The minimum mapping quality for a read to be included.") val minMappingQuality: Int = 20,
-  @arg(flag='q', doc="The minimum base quality for a base to be included.") val minBaseQuality: Int = 0
+  @arg(flag='q', doc="The minimum base quality for a base to be included.") val minBaseQuality: Int = 0,
+  @arg(doc="Collapse substitution types based on the reference or expected base, with only six substitution" +
+    " types being reported: `A>C`, `A>G`, `A>T`, `C>A`, `C>G` and `C>T`.For example, `T>G` is grouped in with `A>C`." +
+    " Otherwise, all possible substitution types will be reported."
+  ) val collapse: Boolean = true
 ) extends FgBioTool with LazyLogging {
 
   private val ScriptPath = "com/fulcrumgenomics/bam/ErrorRateByReadPosition.R"
@@ -140,9 +144,9 @@ class ErrorRateByReadPosition
           val readBase = SequenceUtil.upperCase(rec.getReadBase)
           val readNum  = readNumber(rec.getRecord)
           val cycle    = if (rec.getRecord.getReadNegativeStrandFlag) rec.getRecord.getReadLength - rec.getOffset else rec.getOffset + 1
-          val counter  = counters(readNum).getOrElseUpdate(cycle, new ObsCounter(readNum, cycle))
+          val counter  = counters(readNum).getOrElseUpdate(cycle, new ObsCounter(readNum, cycle, collapse))
 
-          if (refBase == 'A' || refBase == 'C') counter.count(refBase.toChar, readBase.toChar)
+          if (!collapse || refBase == 'A' || refBase == 'C') counter.count(refBase.toChar, readBase.toChar)
           else counter.count(SequenceUtil.complement(refBase).toChar, SequenceUtil.complement(readBase).toChar)
         }
       }
@@ -153,7 +157,7 @@ class ErrorRateByReadPosition
 
     // Ensure that all the maps have values up to the max
     for ((counter, readNum) <- counters.filter(_.nonEmpty).zipWithIndex; cycle <- 1 to counter.keys.max) {
-      counter.getOrElseUpdate(cycle, new ObsCounter(readNum, cycle))
+      counter.getOrElseUpdate(cycle, new ObsCounter(readNum, cycle, collapse))
     }
 
     counters.flatMap(c => c.values.map(_.toMetric)).sortBy(m => (m.read_number, m.position))
@@ -197,48 +201,62 @@ class ErrorRateByReadPosition
   def readNumber(rec: SAMRecord): Int = if (!rec.getReadPairedFlag) 0 else if (rec.getFirstOfPairFlag) 1 else 2
 }
 
-private class ObsCounter(readNumber: Int, position: Int) {
-  var a_ref_obs: Long  = 0
-  var c_ref_obs: Long  = 0
-  var a_to_c_obs: Long = 0
-  var a_to_g_obs: Long = 0
-  var a_to_t_obs: Long = 0
-  var c_to_a_obs: Long = 0
-  var c_to_g_obs: Long = 0
-  var c_to_t_obs: Long = 0
+/** Counter for substitutions for a given read number and position in that read.
+  *
+  * @param readNumber the read number
+  * @param position the position in the read
+  * @param collapse true to collapse substitution types, false otherwise
+  */
+private class ObsCounter(readNumber: Int, position: Int, collapse: Boolean) extends SimpleCounter[(Char, Char)] {
+  private val Dna: Seq[Char] = IndexedSeq('A', 'C', 'G', 'T')
 
-  /** Increments the appropriate counter. */
-  def count(ref: Char, read: Char): Unit = (ref, read) match {
-    case ('A', 'A') => a_ref_obs  += 1
-    case ('A', 'C') => a_to_c_obs += 1
-    case ('A', 'G') => a_to_g_obs += 1
-    case ('A', 'T') => a_to_t_obs += 1
-    case ('C', 'A') => c_to_a_obs += 1
-    case ('C', 'C') => c_ref_obs  += 1
-    case ('C', 'G') => c_to_g_obs += 1
-    case ('C', 'T') => c_to_t_obs += 1
-    case _          => unreachable("Should never be invoked with a case other than the above.")
+  @inline def count(ref: Char, read: Char): Unit   = this.count((ref, read))
+  @inline def countOf(ref: Char, read: Char): Long = this.countOf((ref, read))
+
+  @inline private def total(ref: Char): Long   = Dna.map(read => countOf(ref, read)).sum
+  @inline private def totalRef(ref: Char): Long = countOf(ref, ref)
+
+  @inline private def errorRate(ref: Char, read: Char): Double = {
+    val totalRef = this.total(ref)
+    if (totalRef == 0) 0 else countOf(ref=ref, read=read) / totalRef.toDouble
   }
 
+  @inline private def getErrorRate(ref: Char, read: Char): Option[Double] = {
+    if (!collapse || ref == 'A' || ref == 'C') Some(errorRate(ref=ref, read=read))
+    else None
+  }
 
   def toMetric: ErrorRateByReadPositionMetric = {
-    val totalA = a_ref_obs + a_to_c_obs + a_to_g_obs + a_to_t_obs
-    val totalC = c_ref_obs + c_to_a_obs + c_to_g_obs + c_to_t_obs
-    val total  = totalA + totalC
-    val errors = total - a_ref_obs - c_ref_obs
+    // Double check that we have zero counts for G>X and T>X when we collapse substitution types
+    if (collapse) {
+      Seq('G', 'T').foreach { ref =>
+        Dna.foreach { read =>
+          require(this.countOf(ref=ref, read=read) == 0,
+            s"Bug: collapse is true but found a non-zero count for $ref>$read")
+        }
+      }
+    }
 
+    val total  = Dna.map(ref => this.total(ref=ref)).sum
+    val errors = total - Dna.map(ref => this.totalRef(ref=ref)).sum
     new ErrorRateByReadPositionMetric(
       read_number = readNumber,
       position    = position,
       bases_total = total,
       errors      = errors,
       error_rate  = if (total == 0) 0 else errors / total.toDouble,
-      a_to_c_error_rate = if (totalA == 0) 0 else a_to_c_obs / totalA.toDouble,
-      a_to_g_error_rate = if (totalA == 0) 0 else a_to_g_obs / totalA.toDouble,
-      a_to_t_error_rate = if (totalA == 0) 0 else a_to_t_obs / totalA.toDouble,
-      c_to_a_error_rate = if (totalC == 0) 0 else c_to_a_obs / totalC.toDouble,
-      c_to_g_error_rate = if (totalC == 0) 0 else c_to_g_obs / totalC.toDouble,
-      c_to_t_error_rate = if (totalC == 0) 0 else c_to_t_obs / totalC.toDouble
+      a_to_c_error_rate = errorRate('A', 'C'),
+      a_to_g_error_rate = errorRate('A', 'G'),
+      a_to_t_error_rate = errorRate('A', 'T'),
+      c_to_a_error_rate = errorRate('C', 'A'),
+      c_to_g_error_rate = errorRate('C', 'G'),
+      c_to_t_error_rate = errorRate('C', 'T'),
+      g_to_a_error_rate = getErrorRate('G', 'A'),
+      g_to_c_error_rate = getErrorRate('G', 'C'),
+      g_to_t_error_rate = getErrorRate('G', 'T'),
+      t_to_a_error_rate = getErrorRate('T', 'A'),
+      t_to_c_error_rate = getErrorRate('T', 'C'),
+      t_to_g_error_rate = getErrorRate('T', 'G'),
     )
   }
 }
@@ -251,21 +269,28 @@ object ErrorRateByReadPositionMetric {
 /**
   * Metrics produced by `ErrorRateByReadPosition` describing the number of base observations and
   * substitution errors at each position within each sequencing read.  Error rates are given for
-  * the overall substitution error rate and also for each kind of substitution separately. Instead
-  * of reporting 12 substitution rates, 6 are reported where complementary substitutions are grouped
-  * together, e.g. `T>G` substitutions are reported as `A>C`.
+  * the overall substitution error rate and also for each kind of substitution separately.
+  *
+  * If `collapsed` is `true`, then complementary substitutions are grouped together into the first 6 error rates.
+  * e.g. `T>G` substitutions are reported as `A>C`.  Otherwise, all 12 substitution rates are reported.
   *
   * @param read_number The read number (0 for fragments, 1 for first of pair, 2 for second of pair).
   * @param position The position or cycle within the read (1-based).
   * @param bases_total The total number of bases observed at this position.
   * @param errors The total number of errors or non-reference basecalls observed at this position.
   * @param error_rate The overall error rate at position.
-  * @param a_to_c_error_rate The rate of `A>C` (and `T>G`) errors at the position.
-  * @param a_to_g_error_rate The rate of `A>G` (and `T>C`) errors at the position.
-  * @param a_to_t_error_rate The rate of `A>T` (and `T>A`) errors at the position.
-  * @param c_to_a_error_rate The rate of `C>A` (and `G>T`) errors at the position.
-  * @param c_to_g_error_rate The rate of `C>G` (and `G>C`) errors at the position.
-  * @param c_to_t_error_rate The rate of `C>T` (and `G>A`) errors at the position.
+  * @param a_to_c_error_rate The rate of `A>C` (and `T>G` when collapsed) errors at the position.
+  * @param a_to_g_error_rate The rate of `A>G` (and `T>C` when collapsed) errors at the position.
+  * @param a_to_t_error_rate The rate of `A>T` (and `T>A` when collapsed) errors at the position.
+  * @param c_to_a_error_rate The rate of `C>A` (and `G>T` when collapsed) errors at the position.
+  * @param c_to_g_error_rate The rate of `C>G` (and `G>C` when collapsed) errors at the position.
+  * @param c_to_t_error_rate The rate of `C>T` (and `G>A` when collapsed) errors at the position.
+  * @param g_to_a_error_rate The rate of `G>A` errors at the position.
+  * @param g_to_c_error_rate The rate of `G>C` errors at the position.
+  * @param g_to_t_error_rate The rate of `G>T` errors at the position.
+  * @param t_to_a_error_rate The rate of `T>A` errors at the position.
+  * @param t_to_c_error_rate The rate of `T>C` errors at the position.
+  * @param t_to_g_error_rate The rate of `T>T` errors at the position.
   */
 case class ErrorRateByReadPositionMetric
 ( read_number: Int,
@@ -278,5 +303,12 @@ case class ErrorRateByReadPositionMetric
   a_to_t_error_rate: Double,
   c_to_a_error_rate: Double,
   c_to_g_error_rate: Double,
-  c_to_t_error_rate: Double
+  c_to_t_error_rate: Double,
+  g_to_a_error_rate: Option[Double] = None,
+  g_to_c_error_rate: Option[Double] = None,
+  g_to_t_error_rate: Option[Double] = None,
+  t_to_a_error_rate: Option[Double] = None,
+  t_to_c_error_rate: Option[Double] = None,
+  t_to_g_error_rate: Option[Double] = None,
+  collapsed: Boolean = true
 ) extends Metric

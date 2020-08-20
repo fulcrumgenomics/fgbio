@@ -34,11 +34,29 @@ import com.fulcrumgenomics.fasta.SequenceDictionary
 import com.fulcrumgenomics.testing.{ReferenceSetBuilder, SamBuilder, UnitSpec, VariantContextSetBuilder}
 import com.fulcrumgenomics.util.{Metric, Rscript}
 import htsjdk.samtools.util.{Interval, IntervalList}
+import com.fulcrumgenomics.util.Metric.Count
+import org.scalatest.OptionValues
+
+
+// Old-style metrics that did not include the optional non-collapsed substitution types
+private case class DeprecatedErrorRateByReadPositionMetric
+( read_number: Int,
+  position: Int,
+  bases_total: Count,
+  errors: Count,
+  error_rate: Double,
+  a_to_c_error_rate: Double,
+  a_to_g_error_rate: Double,
+  a_to_t_error_rate: Double,
+  c_to_a_error_rate: Double,
+  c_to_g_error_rate: Double,
+  c_to_t_error_rate: Double
+) extends Metric
 
 /**
   * Tests for ErrorRateByReadPosition.
   */
-class ErrorRateByReadPositionTest extends UnitSpec {
+class ErrorRateByReadPositionTest extends UnitSpec with OptionValues {
   /////////////////////////////////////////////////////////////////////////////
   // Make a reference and a set of variants for use in the tests
   /////////////////////////////////////////////////////////////////////////////
@@ -66,6 +84,7 @@ class ErrorRateByReadPositionTest extends UnitSpec {
   private def outputAndPrefix: (Path, Path) = {
     val out = makeTempFile("ErrorRateByReadPositionTest.", ErrorRateByReadPositionMetric.FileExtension)
     val pre = PathUtil.pathTo(out.toString.replace(ErrorRateByReadPositionMetric.FileExtension, ""))
+    pre.toFile.deleteOnExit()
     (out, pre)
   }
 
@@ -162,7 +181,7 @@ class ErrorRateByReadPositionTest extends UnitSpec {
     builder.addFrag(contig=3, start=490, bases="AGGGGGGGGGAGGGGGGGGG")
     builder.addFrag(contig=4, start=490, bases="CTTTTTTTTTTTTTTTTTTT")
 
-    val (out, pre) = outputAndPrefix
+    val (_, pre) = outputAndPrefix
     val metrics = new ErrorRateByReadPosition(input=builder.toTempFile(), output=Some(pre), ref=ref, variants=Some(vcf)).computeMetrics()
     metrics.find(_.position == 1).get.error_rate shouldBe 1.0
     metrics.find(_.position == 11).get.error_rate shouldBe 0.0
@@ -172,24 +191,57 @@ class ErrorRateByReadPositionTest extends UnitSpec {
     }
   }
 
-  it should "run end to end and maybe generate a PDF" in {
+  it should "only collapse substitution types when --collapse is false" in {
     val builder = newSamBuilder
-    1 to 99 foreach {i => builder.addPair(contig=1, start1=i, start2=i+50, bases1="A"*20, bases2="A"*20) }
-    builder.addPair(contig=1, start1=100, start2=200, bases1="AAAAAAAAATTAAAAAAAAA", bases2="AAAAAAAAATTAAAAAAAAA")
+    builder.addFrag(contig=1, start=490, bases="GAAAAAAAAAGAAAAAAAAA")
+    builder.addFrag(contig=2, start=490, bases="TCCCCCCCCCTCCCCCCCCC")
+    builder.addFrag(contig=3, start=490, bases="AGGGGGGGGGAGGGGGGGGG")
+    builder.addFrag(contig=4, start=490, bases="CTTTTTTTTTTTTTTTTTTT")
 
-    val (out, pre) = outputAndPrefix
-    new ErrorRateByReadPosition(input=builder.toTempFile(), output=Some(pre), ref=ref).execute()
-    val metrics = Metric.read[ErrorRateByReadPositionMetric](out)
-    metrics.size shouldBe 40
-    metrics.map(_.bases_total).sum shouldBe 4000
-    metrics.foreach { m =>
-      if (m.position == 10 || m.position == 11) m.error_rate shouldBe 0.01
-      else m.error_rate shouldBe 0.0
+    Seq(true, false).foreach { collapse =>
+      val (_, pre) = outputAndPrefix
+      val metrics = new ErrorRateByReadPosition(input=builder.toTempFile(), output=Some(pre), ref=ref, variants=None, collapse=collapse).computeMetrics()
+      metrics.find(_.position == 1).get.error_rate shouldBe 1.0
+      metrics.find(_.position == 11).get.error_rate shouldBe 0.75
+      metrics.filter(m => m.position != 1 && m.position != 11).foreach { m =>
+        m.bases_total shouldBe 4
+        m.error_rate  shouldBe 0.0
+      }
+
+      val metricPosition1 = metrics.find(_.position == 1).get
+      metricPosition1.a_to_g_error_rate shouldBe 1.0
+      metricPosition1.c_to_t_error_rate shouldBe 1.0
+      if (collapse) {
+        metricPosition1.g_to_a_error_rate.isEmpty shouldBe true
+        metricPosition1.t_to_c_error_rate.isEmpty shouldBe true
+      }
+      else {
+        metricPosition1.g_to_a_error_rate.value shouldBe 1.0
+        metricPosition1.t_to_c_error_rate.value shouldBe 1.0
+      }
     }
+  }
 
-    if (Rscript.Available) {
-      val plot = PathUtil.pathTo(s"${pre}${ErrorRateByReadPositionMetric.PlotExtension}")
-      Files.exists(plot) shouldBe true
+  it should "run end to end and maybe generate a PDF" in {
+    Seq(true, false).foreach { collapse =>
+      val builder = newSamBuilder
+      1 to 99 foreach {i => builder.addPair(contig=1, start1=i, start2=i+50, bases1="A"*20, bases2="A"*20) }
+      builder.addPair(contig=1, start1=100, start2=200, bases1="AAAAAAAAATTAAAAAAAAA", bases2="AAAAAAAAATTAAAAAAAAA")
+
+      val (out, pre) = outputAndPrefix
+      new ErrorRateByReadPosition(input=builder.toTempFile(), output=Some(pre), ref=ref, collapse=collapse).execute()
+      val metrics = Metric.read[ErrorRateByReadPositionMetric](out)
+      metrics.size shouldBe 40
+      metrics.map(_.bases_total).sum shouldBe 4000
+      metrics.foreach { m =>
+        if (m.position == 10 || m.position == 11) m.error_rate shouldBe 0.01
+        else m.error_rate shouldBe 0.0
+      }
+
+      if (Rscript.Available) {
+        val plot = PathUtil.pathTo(s"${pre}${ErrorRateByReadPositionMetric.PlotExtension}")
+        Files.exists(plot) shouldBe true
+      }
     }
   }
 
@@ -257,5 +309,48 @@ class ErrorRateByReadPositionTest extends UnitSpec {
     ms(16).a_to_g_error_rate shouldBe 0.5
     ms(17).errors shouldBe 1
     ms(17).a_to_c_error_rate shouldBe 0.5
+  }
+
+  // This test cases makes sure that we can read in metric files that used the old-style metrics, which did not contain
+  // the optional exhaustive substitution types, rather contained the collapsed substitution types.
+  it should "read in old-style metrics" in {
+    val oldMetric = DeprecatedErrorRateByReadPositionMetric(
+      read_number = 1,
+      position    = 2,
+      bases_total = 3L,
+      errors      = 4L,
+      error_rate  = 0.1,
+      a_to_c_error_rate = 0.2,
+      a_to_g_error_rate = 0.3,
+      a_to_t_error_rate = 0.4,
+      c_to_a_error_rate = 0.5,
+      c_to_g_error_rate = 0.6,
+      c_to_t_error_rate = 0.7
+    )
+    val path = makeTempFile("metrics.", ".txt")
+    Metric.write(path=path, oldMetric)
+
+    val newMetrics = Metric.read[ErrorRateByReadPositionMetric](path=path)
+    newMetrics.length shouldBe 1
+    val newMetric = newMetrics.head
+
+    newMetric.read_number shouldBe oldMetric.read_number
+    newMetric.position shouldBe oldMetric.position
+    newMetric.bases_total shouldBe oldMetric.bases_total
+    newMetric.errors shouldBe oldMetric.errors
+    newMetric.error_rate shouldBe oldMetric.error_rate
+    newMetric.a_to_c_error_rate shouldBe oldMetric.a_to_c_error_rate
+    newMetric.a_to_g_error_rate shouldBe oldMetric.a_to_g_error_rate
+    newMetric.a_to_t_error_rate shouldBe oldMetric.a_to_t_error_rate
+    newMetric.c_to_a_error_rate shouldBe oldMetric.c_to_a_error_rate
+    newMetric.c_to_g_error_rate shouldBe oldMetric.c_to_g_error_rate
+    newMetric.c_to_t_error_rate shouldBe oldMetric.c_to_t_error_rate
+    newMetric.g_to_a_error_rate.isEmpty shouldBe true
+    newMetric.g_to_c_error_rate.isEmpty shouldBe true
+    newMetric.g_to_t_error_rate.isEmpty shouldBe true
+    newMetric.t_to_a_error_rate.isEmpty shouldBe true
+    newMetric.t_to_c_error_rate.isEmpty shouldBe true
+    newMetric.t_to_g_error_rate.isEmpty shouldBe true
+    newMetric.collapsed shouldBe true
   }
 }
