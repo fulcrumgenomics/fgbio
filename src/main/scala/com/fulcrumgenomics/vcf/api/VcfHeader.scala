@@ -150,6 +150,9 @@ case class VcfHeader(contigs: IndexedSeq[VcfContigHeader],
                      samples: IndexedSeq[String]
                     ) {
 
+  /** A mapping of sample name to the index in samples. */
+  private[api] val sampleIndex = samples.zipWithIndex.toMap
+
   /** The contig lines represented as a SAM sequence dictionary. */
   val dict: SequenceDictionary = {
     val infos = contigs.map { c =>

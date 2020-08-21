@@ -42,7 +42,7 @@ final case class Genotype(alleles: AlleleSet,
   require(calls.nonEmpty, "Genotype must have ploidy of at least 1!.")
 
   /** The indices of the calls within the AlleleSet. If any allele is no-called, that is returned as -1. */
-  private [api] val callIndices: IndexedSeq[Int] = calls.map(c => if (c == NoCallAllele) -1 else alleles.indexOf(c))
+  private [api] lazy val callIndices: IndexedSeq[Int] = calls.map(c => if (c == NoCallAllele) -1 else alleles.indexOf(c))
 
   /** Returns the separator that should be used between alleles when displaying the genotype. */
   private def separator: String = if (phased) "|" else "/"

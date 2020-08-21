@@ -36,7 +36,7 @@ import htsjdk.variant.vcf._
 
 import scala.collection.JavaConverters.mapAsJavaMapConverter
 import scala.collection.immutable.ListMap
-import scala.collection.mutable.ArrayBuffer
+import scala.collection.mutable
 
 /**
   * Object that provides methods for converting from fgbio's scala VCF classes to HTSJDK's
@@ -44,6 +44,16 @@ import scala.collection.mutable.ArrayBuffer
   * package and should not be exposed publicly.
   */
 private[api] object VcfConversions {
+  /** Map used when there are no attributes to be copied. */
+  private val NoAttrs = Map.empty[String, Any]
+
+  /** Class to allow wrapping an Array into an immutable IndexedSeq without copying. */
+  private class ArrayIndexedSeq[T](private val array: Array[T]) extends scala.collection.immutable.IndexedSeq[T] {
+    override final def apply(i: Int): T = this.array(i)
+    override final def length: Int = this.array.length
+    override final def nonEmpty: Boolean = this.array.length > 0
+  }
+
   /** Converts a String into Option[String]. Returns `None` if the input string is either
     * `null`, the empty string or [[Variant.Missing]].
     */
@@ -75,7 +85,6 @@ private[api] object VcfConversions {
         // This is a horrible hack necessary because HTSJDK doesn't parse compound header lines unless
         // they are one of INFO/CONTIG/FILTER/ALT, and there's no way to get HTSJDK to report the version of the file!
         val attrs = VCFHeaderLineTranslator.parseLine(VCFHeaderVersion.VCF4_2, line.getValue, util.Collections.emptyList())
-        val id = attrs.get("ID")
         val scalaAttrs = attrs.entrySet().filter(_.getKey != "ID").map(entry => entry.getKey -> entry.getValue).toMap
         VcfGeneralHeader(line.getKey, attrs.get("ID"), scalaAttrs)
       case line: VCFHeaderLine =>
@@ -88,7 +97,7 @@ private[api] object VcfConversions {
       formats = formats,
       filters = in.getFilterLines.toIndexedSeq.sortBy(_.getID).map(f => VcfFilterHeader(f.getID, f.getDescription)),
       others   = others,
-      samples = in.getSampleNamesInOrder.toIndexedSeq
+      samples = in.getGenotypeSamples.toIndexedSeq
     )
   }
 
@@ -200,35 +209,47 @@ private[api] object VcfConversions {
     */
   def toScalaVariant(in: VariantContext, header: VcfHeader): Variant = try {
     // Build up the allele set
-    val ref       = Allele(in.getReference.getDisplayString)
-    val alts      = in.getAlternateAlleles.map(a => Allele(a.getDisplayString)).toIndexedSeq
-    val alleles   = AlleleSet(ref, alts)
-    val alleleMap = alleles.map(a => a.toString -> a).toMap
+    val scalaAlleles = in.getAlleles.iterator.map(a => Allele(a.getDisplayString)).toIndexedSeq
+    val alleleMap    = in.getAlleles.iterator().zip(scalaAlleles).toMap
+    val alleles      = AlleleSet(scalaAlleles.head, scalaAlleles.tail)
 
     // Build up the genotypes
-    val gts = in.getGenotypes.map { g =>
-      val calls = g.getAlleles.map(a => if(a.isNoCall) NoCallAllele else alleleMap(a.getDisplayString)).toIndexedSeq
-      val attrs = {
-        val buffer = new ArrayBuffer[(String,Any)](g.getExtendedAttributes.size() + 4)
-        if (g.hasAD) buffer.append("AD" -> g.getAD.toIndexedSeq)
-        if (g.hasDP) buffer.append("DP" -> g.getDP)
-        if (g.hasGQ) buffer.append("GQ" -> g.getGQ)
-        if (g.hasPL) buffer.append("PL" -> g.getPL.toIndexedSeq)
+    val gts = new Array[Genotype](in.getNSamples)
+    forloop (from=0, until=in.getNSamples) { i =>
+      val g = in.getGenotype(i)
+
+      val calls = {
+        val buffer = new Array[Allele](g.getPloidy)
+        val javaAlleles = g.getAlleles
+        forloop (from=0, until=buffer.length) { i =>
+          val a = javaAlleles.get(i)
+          buffer(i) = if(a.isNoCall) NoCallAllele else alleleMap(a)
+        }
+
+        new ArrayIndexedSeq(buffer)
+      }
+
+      val attrs = if (g.getExtendedAttributes.isEmpty && !g.hasAD && !g.hasDP && !g.hasGQ && !g.hasPL) NoAttrs else {
+        val builder = Map.newBuilder[String, Any]
+        if (g.hasAD) builder += ("AD" -> g.getAD.toIndexedSeq)
+        if (g.hasDP) builder += ("DP" -> g.getDP)
+        if (g.hasGQ) builder += ("GQ" -> g.getGQ)
+        if (g.hasPL) builder += ("PL" -> g.getPL.toIndexedSeq)
 
         g.getExtendedAttributes.keySet().foreach { key =>
           val value = g.getExtendedAttribute(key)
 
           header.format.get(key) match {
-            case Some(hd) => toTypedValue(value, hd.kind, hd.count).foreach(v => buffer.append(key -> v))
+            case Some(hd) => toTypedValue(value, hd.kind, hd.count).foreach(v => builder += (key -> v))
             case None     => throw new IllegalStateException(s"Format field $key not described in header.")
           }
         }
 
-        buffer.toMap
+        builder.result()
       }
 
-      Genotype(alleles, g.getSampleName, calls, g.isPhased, attrs)
-    }.toIndexedSeq
+      gts(i) = Genotype(alleles, g.getSampleName, calls, g.isPhased, attrs)
+    }
 
     // Build up the variant
     val info = {
@@ -259,7 +280,7 @@ private[api] object VcfConversions {
       qual      = if (in.hasLog10PError) Some(in.getPhredScaledQual) else None,
       filters   = filters,
       attrs     = ListMap(info:_*),
-      genotypes = gts.iterator.map(g => g.sample -> g).toMap
+      genotypes = new GenotypeMap(gts, header.sampleIndex)
     )
   }
   catch {
