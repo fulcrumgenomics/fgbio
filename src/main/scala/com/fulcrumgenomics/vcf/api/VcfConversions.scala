@@ -44,9 +44,6 @@ import scala.collection.mutable
   * package and should not be exposed publicly.
   */
 private[api] object VcfConversions {
-  /** Map used when there are no attributes to be copied. */
-  private val NoAttrs = Map.empty[String, Any]
-
   /** Class to allow wrapping an Array into an immutable IndexedSeq without copying. */
   private class ArrayIndexedSeq[T](private val array: Array[T]) extends scala.collection.immutable.IndexedSeq[T] {
     override final def apply(i: Int): T = this.array(i)
@@ -215,21 +212,21 @@ private[api] object VcfConversions {
 
     // Build up the genotypes
     val gts = new Array[Genotype](in.getNSamples)
-    forloop (from=0, until=in.getNSamples) { i =>
-      val g = in.getGenotype(i)
+    forloop (from=0, until=in.getNSamples) { sampleIndex =>
+      val g = in.getGenotype(sampleIndex)
 
       val calls = {
         val buffer = new Array[Allele](g.getPloidy)
         val javaAlleles = g.getAlleles
-        forloop (from=0, until=buffer.length) { i =>
-          val a = javaAlleles.get(i)
-          buffer(i) = if(a.isNoCall) NoCallAllele else alleleMap(a)
+        forloop (from=0, until=buffer.length) { alleleIndex =>
+          val a = javaAlleles.get(alleleIndex)
+          buffer(alleleIndex) = if (a.isNoCall) NoCallAllele else alleleMap(a)
         }
 
         new ArrayIndexedSeq(buffer)
       }
 
-      val attrs = if (g.getExtendedAttributes.isEmpty && !g.hasAD && !g.hasDP && !g.hasGQ && !g.hasPL) NoAttrs else {
+      val attrs = if (g.getExtendedAttributes.isEmpty && !g.hasAD && !g.hasDP && !g.hasGQ && !g.hasPL) Variant.EmptyGtAttrs else {
         val builder = Map.newBuilder[String, Any]
         if (g.hasAD) builder += ("AD" -> g.getAD.toIndexedSeq)
         if (g.hasDP) builder += ("DP" -> g.getDP)
@@ -248,22 +245,23 @@ private[api] object VcfConversions {
         builder.result()
       }
 
-      gts(i) = Genotype(alleles, g.getSampleName, calls, g.isPhased, attrs)
+      gts(sampleIndex) = Genotype(alleles, g.getSampleName, calls, g.isPhased, attrs)
     }
 
     // Build up the variant
-    val info = {
-      val buffer = IndexedSeq.newBuilder[(String,Any)]
-      in.getAttributes.entrySet().foreach { entry =>
+    val inInfo = in.getAttributes
+    val info = if (inInfo.isEmpty) Variant.EmptyInfo else {
+      val builder = ListMap.newBuilder[String, Any]
+      inInfo.entrySet().foreach { entry =>
         val key   = entry.getKey
         val value = entry.getValue
         header.info.get(key) match {
-          case Some(hd) => toTypedValue(value, hd.kind, hd.count).foreach(v => buffer += (key -> v))
+          case Some(hd) => toTypedValue(value, hd.kind, hd.count).foreach(v => builder += (key -> v))
           case None     => throw new IllegalStateException(s"INFO field $key not described in header.")
         }
       }
 
-      buffer.result()
+      builder.result()
     }
 
     val filters = {
@@ -279,7 +277,7 @@ private[api] object VcfConversions {
       alleles   = alleles,
       qual      = if (in.hasLog10PError) Some(in.getPhredScaledQual) else None,
       filters   = filters,
-      attrs     = ListMap(info:_*),
+      attrs     = info,
       genotypes = new GenotypeMap(gts, header.sampleIndex)
     )
   }
