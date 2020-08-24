@@ -271,6 +271,7 @@ private class ObsCounter(readNumber: Int, position: Int, collapse: Boolean) {
       t_to_a_error_rate = getErrorRate('T', 'A'),
       t_to_c_error_rate = getErrorRate('T', 'C'),
       t_to_g_error_rate = getErrorRate('T', 'G'),
+      collapsed         = collapse
     )
   }
 }
