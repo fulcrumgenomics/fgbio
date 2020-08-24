@@ -111,7 +111,7 @@ class ErrorRateByReadPositionTest extends UnitSpec with OptionValues {
 
   it should "compute the error rate for some simple paired end reads" in {
     val builder = newSamBuilder
-    1 to 9 foreach {i => builder.addPair(name="$i", contig=1, start1=100, start2=200, bases1="A"*20, bases2="A"*20) }
+    1 to 9 foreach {i => builder.addPair(name=s"$i", contig=1, start1=100, start2=200, bases1="A"*20, bases2="A"*20) }
     builder.addPair("err", contig=1, start1=300, start2=400).foreach { rec =>
       if (rec.firstOfPair) rec.bases = "AAAAAAAAAAAAAAAAACGT"
       else rec.bases = "AAAAAAAAAAAAAAAAACGT"
