@@ -48,7 +48,7 @@ error_rate_plot = ggplot(data) + aes(x=position) +
   geom_line(aes(y=c_to_a_error_rate, color="C>A")) +
   geom_line(aes(y=c_to_g_error_rate, color="C>G")) +
   geom_line(aes(y=c_to_t_error_rate, color="C>T"))
-if ("collapsed" %in% names(data) && data$collapsed[1] == "true") {
+if ("collapsed" %in% names(data) && data$collapsed[1] == "false") {
   error_rate_plot = error_rate_plot +
     geom_line(aes(y=g_to_a_error_rate, color="G>A")) +
     geom_line(aes(y=g_to_c_error_rate, color="G>C")) +
