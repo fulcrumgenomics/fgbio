@@ -62,7 +62,8 @@ class FixVcfPhaseSet
   @arg(flag='o', doc="Output VCFs") val output: PathToVcf,
   @arg(flag='s', doc="Samples to mix. See general usage for format and examples.", minElements=0) val samples: Seq[String] = Seq.empty,
   @arg(flag='k', doc="Store the original phase set in the `OPS` field.") val keepOriginal: Boolean = false,
-  @arg(flag='x', doc="Set unphased genotypes with a PS FORMAT value to be phased.") val phaseGenotypesWithPhaseSet: Boolean = false
+  @arg(flag='x', doc="Set unphased genotypes with a PS FORMAT value to be phased.") val phaseGenotypesWithPhaseSet: Boolean = false,
+  @arg(flag='z', doc="Remove header lines that do not the required ID.") val removeNoIdHeaderLines: Boolean = false
 ) extends FgBioTool with LazyLogging {
 
   Io.assertReadable(input)
@@ -139,9 +140,13 @@ class FixVcfPhaseSet
         )
       }
 
+    // In some cases, input VCFs may have heeder lines (ex. PEDIGREE) with no ID, which is required
+    val others = if (removeNoIdHeaderLines) header.others.filterNot(_.id == null) else header.others
+
     // Put it all together
     header.copy(
-      formats = header.formats.filter(_.id != "PS") ++ original.iterator.toSeq :+ newPhaseSet
+      formats = header.formats.filter(_.id != "PS") ++ original.iterator.toSeq :+ newPhaseSet,
+      others  = others
     )
   }
 }
@@ -193,7 +198,9 @@ class VcfPhaseSetUpdater(header: VcfHeader, keepOriginal: Boolean, phaseGenotype
         result match {
           case NotPhasedWithPhaseSetValue(_)   =>
             logger.warning(
-              f"Genotype had a phase set but was unphased: ${variant.chrom}:${variant.pos}:${variant.id.getOrElse(".")} PS=${genotype("PS")}"
+              "Genotype had a phase set but was unphased:" +
+                f"${variant.chrom}:${variant.pos}:${variant.id.getOrElse(".")} PS=${genotype("PS")}" +
+                "; consider r-running using `-x/--phase-genotypes-with-phase-set`"
             )
           case PhasedMissingPhaseSetValue(_) =>
             logger.warning(
