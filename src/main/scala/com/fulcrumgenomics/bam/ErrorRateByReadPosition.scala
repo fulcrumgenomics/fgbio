@@ -43,6 +43,7 @@ import htsjdk.samtools.reference.ReferenceSequenceFileWalker
 import htsjdk.samtools.util.{IntervalList, SamLocusIterator, SequenceUtil}
 import htsjdk.variant.vcf.VCFFileReader
 
+import scala.annotation.switch
 import scala.collection.mutable
 import scala.util.Failure
 
@@ -207,13 +208,27 @@ class ErrorRateByReadPosition
   * @param position the position in the read
   * @param collapse true to collapse substitution types, false otherwise
   */
-private class ObsCounter(readNumber: Int, position: Int, collapse: Boolean) extends SimpleCounter[(Char, Char)] {
-  private val Dna: Seq[Char] = IndexedSeq('A', 'C', 'G', 'T')
+private class ObsCounter(readNumber: Int, position: Int, collapse: Boolean) {
+  private val Dna: Seq[Char]             = IndexedSeq('A', 'C', 'G', 'T')
+  private val counts: Array[Array[Long]] = new Array[Long](4).map(_ => new Array[Long](4))
 
-  @inline def count(ref: Char, read: Char): Unit   = this.count((ref, read))
-  @inline def countOf(ref: Char, read: Char): Long = this.countOf((ref, read))
+  /** Maps A/C/G/T to an index 0-3 and throws an exception for any other base. */
+  @inline private def index(base: Char): Int = (base: @switch) match {
+    case 'A' => 0
+    case 'C' => 1
+    case 'G' => 2
+    case 'T' => 3
+    case _   => throw new IllegalArgumentException(s"Invalid base: $base")
+  }
 
-  @inline private def total(ref: Char): Long   = Dna.map(read => countOf(ref, read)).sum
+
+  @inline def count(ref: Char, read: Char): Unit =
+    try { this.counts(index(ref))(index(read)) += 1 } catch { case _: IllegalArgumentException => () }
+
+  @inline def countOf(ref: Char, read: Char): Long =
+    try { this.counts(index(ref))(index(read)) } catch { case _: IllegalArgumentException => 0 }
+
+  @inline private def total(ref: Char): Long    = this.counts(index(ref)).sum
   @inline private def totalRef(ref: Char): Long = countOf(ref, ref)
 
   @inline private def errorRate(ref: Char, read: Char): Double = {
