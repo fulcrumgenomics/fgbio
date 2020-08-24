@@ -221,7 +221,6 @@ private class ObsCounter(readNumber: Int, position: Int, collapse: Boolean) {
     case _   => throw new IllegalArgumentException(s"Invalid base: $base")
   }
 
-
   @inline def count(ref: Char, read: Char): Unit =
     try { this.counts(index(ref))(index(read)) += 1 } catch { case _: IllegalArgumentException => () }
 
