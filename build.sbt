@@ -135,7 +135,7 @@ lazy val root = Project(id="fgbio", base=file("."))
       "com.intel.gkl"             %  "gkl"            % "0.8.6",
 
       //---------- Test libraries -------------------//
-      "org.scalatest"             %% "scalatest"     % "3.0.8"  % "test->*" excludeAll ExclusionRule(organization="org.junit", name="junit")
+      "org.scalatest"             %% "scalatest"     % "3.1.3"  % "test->*" excludeAll ExclusionRule(organization="org.junit", name="junit")
     ))
 
 
