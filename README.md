@@ -143,8 +143,3 @@ Public sponsors include:
 <img src=".github/logos/fulcrumgenomics.svg" alt="Fulcrum Genomics" height="35"/>
 
 The full list of sponsors supporting `fgbio` is available in the [sponsor](https://github.com/sponsors/fulcrumgenomics) page.
-
-
-
-
-
