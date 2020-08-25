@@ -78,13 +78,15 @@ val docScalacOptions = Seq("-groups", "-implicits")
 // Common settings 
 ////////////////////////////////////////////////////////////////////////////////////////////////
 
+val primaryScalaVersion = "2.13.3"
+
 lazy val commonSettings = Seq(
   organization         := "com.fulcrumgenomics",
   organizationName     := "Fulcrum Genomics LLC",
   homepage             := Some(url("http://github.com/fulcrumgenomics/fgbio")),
   startYear            := Some(2015),
-  scalaVersion         := "2.13.3",
-  crossScalaVersions   :=  Seq("2.13.3"),
+  scalaVersion         := primaryScalaVersion,
+  crossScalaVersions   :=  Seq(primaryScalaVersion),
   scalacOptions        ++= Seq("-target:jvm-1.8", "-deprecation", "-unchecked"),
   scalacOptions in (Compile, doc) ++= docScalacOptions,
   scalacOptions in (Test, doc) ++= docScalacOptions,
