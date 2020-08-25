@@ -220,7 +220,8 @@ class AmpliconLabeller(val amplicons: Iterator[Amplicon] = Iterator.empty,
   }
 }
 
-/**
+/** Metrics produced by `AssignPrimers` that detail how many reads were assigned to a given primer and/or amplicon.
+  *
   * @param identifier the amplicon identifier this metric collects over
   * @param left the number of reads assigned to the left primer
   * @param right the number of reads assigned to the right primer
