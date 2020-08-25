@@ -111,7 +111,7 @@ class FgMetricsDoclet extends Doclet(reporter = new ConsoleReporter(new Settings
       }
 
       MetricDescription(name=name, description=description, columns=columns)
-    }
+    }.sortBy(_.name)
   }
 
   /** Finds the [[scala.tools.nsc.doc.model.DocTemplateEntity]] instances that correspond to subclasses of [[Metric]] */
