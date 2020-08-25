@@ -7,7 +7,6 @@
 [![License](http://img.shields.io/badge/license-MIT-blue.svg)](https://github.com/fulcrumgenomics/fgbio/blob/master/LICENSE)
 [![Language](http://img.shields.io/badge/language-scala-brightgreen.svg)](http://www.scala-lang.org/)
 
-
 fgbio
 ====
 
@@ -144,7 +143,6 @@ Public sponsors include:
 <img src=".github/logos/fulcrumgenomics.svg" alt="Fulcrum Genomics" height="35"/>
 
 The full list of sponsors supporting `fgbio` is available in the [sponsor](https://github.com/sponsors/fulcrumgenomics) page.
-
 
 
 
