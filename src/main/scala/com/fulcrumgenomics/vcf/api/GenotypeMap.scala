@@ -37,9 +37,32 @@ import com.fulcrumgenomics.FgBioDef._
 class GenotypeMap private[api] (private val gts: Array[Genotype],
                                 private val sampleIndex: Map[String, Int]) extends Map[String, Genotype] {
 
-  override def removed(key: String): Map[String, Genotype] = throw new UnsupportedOperationException
-  override def updated[V1 >: Genotype](key: String, value: V1): Map[String, V1] = throw new UnsupportedOperationException
   override def get(key: String): Option[Genotype] = sampleIndex.get(key).map(i => gts(i))
   override def apply(key: String): Genotype = gts(sampleIndex(key))
   override def iterator: Iterator[(String, Genotype)] = gts.iterator.map(gt => (gt.sample, gt))
+
+  override def removed(key: String): Map[String, Genotype] = sampleIndex.get(key) match {
+    case None        => this
+    case Some(index) =>
+      val newGts = new Array[Genotype](gts.length - 1)
+      System.arraycopy(gts, 0, newGts, 0, index)
+      System.arraycopy(gts, index+1, newGts, index , gts.length - index - 1)
+      new GenotypeMap(newGts, sampleIndex.removed(key))
+  }
+
+  override def updated[V1 >: Genotype](key: String, value: V1): Map[String, V1] = (sampleIndex.get(key), value) match {
+    case (None, _)                   => this
+    case (Some(index), gt: Genotype) =>
+      require(gt.sample == key, s"Cannot insert genotype with conflicting sample: $key vs.${gt.sample}")
+      val newGts = new Array[Genotype](gts.length)
+      System.arraycopy(gts, 0, newGts, 0, gts.length)
+      newGts(index) = gt
+      new GenotypeMap(newGts, sampleIndex)
+    case _                           =>
+      iterator.map { case (k, v) => if (k == key) (key, value) else (k, v) }.toMap
+  }
+
+  override def keysIterator: Iterator[String] = this.gts.iterator.map(_.sample)
+  override def valuesIterator: Iterator[Genotype] = this.gts.iterator
+  override def size: Int = this.gts.length
 }
