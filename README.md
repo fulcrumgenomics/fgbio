@@ -138,8 +138,10 @@ As a free and open source project, `fgbio` relies on the support of the communit
 Sponsors provide support for `fgbio` through direct funding or employing contributors.
 Public sponsors include:
 
-<img src=".github/logos/fulcrumgenomics.svg" alt="Fulcrum Genomics" height="35"/>
+<a href="https://fulcrumgenomics.com"><img src=".github/logos/fulcrumgenomics.svg" alt="Fulcrum Genomics" height="35"></a>
 
-<img src=".github/logos/missionbio.svg" alt="Mission Bio" height="35"/>
+<a href="https://missionbio.com/"><img src=".github/logos/missionbio.svg" alt="Mission Bio" height="30"></a>
+
+<a href="https://twinstrandbio.com/"><img src=".github/logos/twinstrandbio.svg" alt="TwinStrand Biosciences" height="45"></a>
 
 The full list of sponsors supporting `fgbio` is available in the [sponsor](https://github.com/sponsors/fulcrumgenomics) page.
