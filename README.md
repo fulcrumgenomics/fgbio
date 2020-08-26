@@ -151,6 +151,8 @@ Public sponsors include:
 &nbsp;
 <a href float="left"="https://missionbio.com"><img src=".github/logos/missionbio.svg" alt="Mission Bio" height="30"/></a>
 &nbsp;
+<a href float="left"="https://singulargenomics.com"><img src=".github/logos/singulargenomics.svg" alt="Singular Genomics" height="30"/></a>
+&nbsp;
 <a href float="left"="https://strataoncology.com"><img src=".github/logos/strataoncology.png" alt="Strata Oncology" height="30"/></a>
 </p>
 
