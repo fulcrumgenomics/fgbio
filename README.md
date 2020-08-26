@@ -143,6 +143,10 @@ Public sponsors include:
 &nbsp;
 <a href float="left"="https://twinstrandbio.com/"><img src=".github/logos/twinstrandbio.svg" alt="TwinStrand Biosciences" height="45"/></a>
 &nbsp;
+<a href float="left"="https://www.jumpcodegenomics.com//"><img src=".github/logos/jumpcodegenomics.png" alt="Jumpcode Genomics" height="30"/></a>
+&nbsp;
+<a href float="left"="https://www.igenomx.com//"><img src=".github/logos/igenomx.png" alt="iGenomX" height="30"/></a>
+&nbsp;
 <a href float="left"="https://myriad.com"><img src=".github/logos/myriad.png" alt="Myriad Genetics" height="35"/></a>
 &nbsp;
 <a href float="left"="https://missionbio.com"><img src=".github/logos/missionbio.svg" alt="Mission Bio" height="30"/></a>
