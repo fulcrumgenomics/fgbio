@@ -138,14 +138,16 @@ As a free and open source project, `fgbio` relies on the support of the communit
 Sponsors provide support for `fgbio` through direct funding or employing contributors.
 Public sponsors include:
 
-<a href="https://fulcrumgenomics.com"><img src=".github/logos/fulcrumgenomics.svg" alt="Fulcrum Genomics" height="35"/></a>
-
-<a href="https://twinstrandbio.com/"><img src=".github/logos/twinstrandbio.svg" alt="TwinStrand Biosciences" height="45"/></a>
-
-<a href="https://myriad.com"><img src=".github/logos/myriad.jpg" alt="Myriad Genetics" height="35"/></a>
-
-<a href="https://missionbio.com"><img src=".github/logos/missionbio.svg" alt="Mission Bio" height="30"/></a>
-
-<a href="https://strataoncology.com"><img src=".github/logos/strataoncology.png" alt="Strata Oncology" height="35"/></a>
+<p>
+<a href float="left"="https://fulcrumgenomics.com"><img src=".github/logos/fulcrumgenomics.svg" alt="Fulcrum Genomics" height="35"/></a>
+&nbsp;
+<a href float="left"="https://twinstrandbio.com/"><img src=".github/logos/twinstrandbio.svg" alt="TwinStrand Biosciences" height="45"/></a>
+&nbsp;
+<a href float="left"="https://myriad.com"><img src=".github/logos/myriad.png" alt="Myriad Genetics" height="35"/></a>
+&nbsp;
+<a href float="left"="https://missionbio.com"><img src=".github/logos/missionbio.svg" alt="Mission Bio" height="30"/></a>
+&nbsp;
+<a href float="left"="https://strataoncology.com"><img src=".github/logos/strataoncology.png" alt="Strata Oncology" height="30"/></a>
+</p>
 
 The full list of sponsors supporting `fgbio` is available in the [sponsor](https://github.com/sponsors/fulcrumgenomics) page.
