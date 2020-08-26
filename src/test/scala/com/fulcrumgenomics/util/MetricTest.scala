@@ -43,7 +43,7 @@ trait Formatted { self: Metric => def formatted(x: Any): String = formatValue(x)
   */
 private sealed abstract class TestEnumOverride(override val entryName: String) extends EnumEntry
 private object TestEnumOverride extends Enum[TestEnumOverride] {
-  val values: IndexedSeq[TestEnumOverride] = findValues
+  val values:  scala.collection.immutable.IndexedSeq[TestEnumOverride] = findValues
   case object TestUpperCase extends TestEnumOverride("TESTUPPERCASE")
 }
 
@@ -52,7 +52,7 @@ private object TestEnumOverride extends Enum[TestEnumOverride] {
   */
 private sealed trait TestEnumMixin extends EnumEntry
 private object TestEnumMixin extends Enum[TestEnumMixin] {
-  val values: IndexedSeq[TestEnumMixin] = findValues
+  val values:  scala.collection.immutable.IndexedSeq[TestEnumMixin] = findValues
   case object TestUpperCase extends TestEnumMixin with Uppercase
 }
 
