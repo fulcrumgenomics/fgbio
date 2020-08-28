@@ -160,6 +160,8 @@ class SplitBam
     outputHeader.setProgramRecords(header.getProgramRecords)
     // Comment
     outputHeader.setComments(header.getComments)
+    // Other attributes
+    header.getAttributes.foreach(entry => outputHeader.setAttribute(entry.getKey, entry.getValue))
     outputHeader
   }
 }
