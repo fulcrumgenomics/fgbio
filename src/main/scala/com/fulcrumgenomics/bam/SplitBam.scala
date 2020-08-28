@@ -147,6 +147,9 @@ class SplitBam
     * */
   private def toOutputHeader(header: SAMFileHeader, readGroup: SAMReadGroupRecord*): SAMFileHeader = {
     val outputHeader = new SAMFileHeader()
+    // Sort order and group order
+    outputHeader.setSortOrder(header.getSortOrder)
+    outputHeader.setGroupOrder(header.getGroupOrder)
     // HD
     outputHeader.setAttribute(SAMFileHeader.VERSION_TAG, header.getVersion)
     // SD
