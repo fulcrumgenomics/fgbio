@@ -95,7 +95,8 @@ class SplitBam
 
     in.safelyClose()
 
-    writerInfoMap.values.toSeq.sortBy(_.name).distinct.foreach { info =>
+    val infos = writerInfoMap.values.toSeq.sortBy(_.name).distinct :+ unknownBamAndWriter
+    infos.foreach { info =>
       info.writer.close()
       logger.info(f"Wrote ${info.count}%,d records to ${info.bam.getFileName}")
     }
