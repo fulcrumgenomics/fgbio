@@ -68,7 +68,10 @@ class SplitBam
 ) extends FgBioTool with LazyLogging {
 
   Io.assertReadable(input)
-  Io.assertCanWriteFile(output)
+
+  private val outputIsDirectory: Boolean = Files.isDirectory(output)
+  if (outputIsDirectory) Io.assertWritableDirectory(output)
+  else Io.assertCanWriteFile(output)
 
   override def execute(): Unit = {
     val in       = SamSource(input)
@@ -104,9 +107,14 @@ class SplitBam
 
   /** Gets the output path for the writer with a given name. */
   private[bam] def toOutput(name: String): PathToBam = {
-    val outputDir = output.getParent
-    val prefix    = output.getFileName
-    outputDir.resolve(PathUtil.sanitizeFileName(s"$prefix.$name.bam"))
+    if (outputIsDirectory) {
+      output.resolve(f"$name.bam")
+    }
+    else {
+      val outputDir = output.getParent
+      val prefix    = output.getFileName
+      outputDir.resolve(PathUtil.sanitizeFileName(s"$prefix.$name.bam"))
+    }
   }
 
   /** Initializes the writers and returns a map from each read group to a writer. */
