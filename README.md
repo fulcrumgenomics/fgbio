@@ -155,6 +155,8 @@ Public sponsors include:
 &nbsp;
 <a href float="left"="https://verogen.com"><img src=".github/logos/verogen.jpg" alt="Verogen" height="30"/></a>
 &nbsp;
+<a href float="left"="https://idtdna.com"><img src=".github/logos/idtdna.png" alt="Integrated DNA Technologies" height="30"/></a>
+&nbsp;
 <a href float="left"="https://strataoncology.com"><img src=".github/logos/strataoncology.png" alt="Strata Oncology" height="30"/></a>
 </p>
 
