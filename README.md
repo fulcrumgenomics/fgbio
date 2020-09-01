@@ -153,7 +153,10 @@ Public sponsors include:
 &nbsp;
 <a href float="left"="https://singulargenomics.com"><img src=".github/logos/singulargenomics.svg" alt="Singular Genomics" height="30"/></a>
 &nbsp;
+<a href float="left"="https://verogen.com"><img src=".github/logos/verogen.jpg" alt="Verogen" height="30"/></a>
+&nbsp;
 <a href float="left"="https://strataoncology.com"><img src=".github/logos/strataoncology.png" alt="Strata Oncology" height="30"/></a>
 </p>
 
 The full list of sponsors supporting `fgbio` is available in the [sponsor](https://github.com/sponsors/fulcrumgenomics) page.
+
