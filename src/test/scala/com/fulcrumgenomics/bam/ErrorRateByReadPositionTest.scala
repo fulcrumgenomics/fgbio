@@ -192,7 +192,7 @@ class ErrorRateByReadPositionTest extends UnitSpec with OptionValues {
     }
   }
 
-  it should "only collapse substitution types when --collapse is false" in {
+  it should "only collapse substitution types when --collapse is true" in {
     val builder = newSamBuilder
     builder.addFrag(contig=1, start=490, bases="GAAAAAAAAAGAAAAAAAAA")
     builder.addFrag(contig=2, start=490, bases="TCCCCCCCCCTCCCCCCCCC")
