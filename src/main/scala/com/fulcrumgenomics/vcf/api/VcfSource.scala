@@ -41,11 +41,12 @@ import htsjdk.variant.vcf.{VCFCodec, VCFFileReader, VCFHeader}
   * index is present.
   *
   * @param reader the underlying HTSJDK [[VCFFileReader]]
+  * @param headerTransformer a method to transform the header after being read in.
   */
 class VcfSource private(private val reader: AbstractFeatureReader[VariantContext, _],
-                        _header: Option[VcfHeader]) extends View[Variant] with Closeable {
+                        private val headerTransformer: VcfHeader => VcfHeader) extends View[Variant] with Closeable {
   /** The header associated with the VCF being read. */
-  val header: VcfHeader = _header.getOrElse(VcfConversions.toScalaHeader(reader.getHeader.asInstanceOf[VCFHeader]))
+  val header: VcfHeader = headerTransformer(VcfConversions.toScalaHeader(reader.getHeader.asInstanceOf[VCFHeader]))
 
   /**
     * The type of iterator returned by both the [[iterator]] method as well as the [[query()]] method. Note that
@@ -93,11 +94,21 @@ object VcfSource {
     * auto-discovered based on the path to the VCF.
     *
     * @param path the path to a VCF, gzipped VCF or BCF file
-    * @param header ignore the VCF header from the file and use this one instead.  This is useful if the records do
-    *               match the header.
     * @return a VariantSource for reading from the path given
     */
-  def apply(path: PathToVcf, header: Option[VcfHeader] = None): VcfSource = {
+  def apply(path: PathToVcf): VcfSource = {
+    this.apply(path=path, headerTransformer=identity)
+  }
+
+  /**
+    * Manufactures a variant source for reading from the specified path.  The index, if one exists, will be
+    * auto-discovered based on the path to the VCF.
+    *
+    * @param path the path to a VCF, gzipped VCF or BCF file
+    * @param headerTransformer a method to transform the header after being read in
+    * @return a VariantSource for reading from the path given
+    */
+  def apply(path: PathToVcf, headerTransformer: VcfHeader => VcfHeader): VcfSource = {
     val codec  = if (PathUtil.extensionOf(path).contains(".bcf")) {
       new BCF2Codec
     }
@@ -108,7 +119,7 @@ object VcfSource {
     }
 
     val reader = AbstractFeatureReader.getFeatureReader(path.toUri.toString, codec, false)
-    new VcfSource(reader, _header=header)
+    new VcfSource(reader, headerTransformer=headerTransformer)
   }
 }
 
