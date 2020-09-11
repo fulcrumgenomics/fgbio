@@ -28,12 +28,11 @@ package com.fulcrumgenomics.bam
 import java.io.Closeable
 import java.nio.file.Files
 
-import com.fulcrumgenomics.FgBioDef.FgBioEnum
+import com.fulcrumgenomics.FgBioDef._
 import com.fulcrumgenomics.bam.api.{SamRecord, SamSource, SamWriter}
 import com.fulcrumgenomics.cmdline.{ClpGroups, FgBioTool}
-import com.fulcrumgenomics.commons.CommonsDef.{IteratorToJavaCollectionsAdapter, PathPrefix, PathToBam, SafelyClosable, javaIterableToIterator}
 import com.fulcrumgenomics.commons.io.{Io, PathUtil, Writer}
-import com.fulcrumgenomics.commons.util.LazyLogging
+import com.fulcrumgenomics.commons.util.{LazyLogging, NumericCounter}
 import com.fulcrumgenomics.sopt.{arg, clp}
 import com.fulcrumgenomics.util.ProgressLogger
 import enumeratum.EnumEntry
@@ -56,7 +55,10 @@ object SplitType extends FgBioEnum[SplitType] {
     |when splitting by the library.  All reads without a read group, or without a library when splitting by library,
     |will be written to `<output-prefix>.unknown.bam`.  If no such reads exist, then no such file will exist.
     |
-    |By default async writing of BAM files is used to increase performance.  If the input BAM has significantly more read groups (or libraries) than your system has CPUs it is recommended to disable this feature using `--no-async-writing`.
+    |By default, async writing of BAM files is controlled by the `--async-io` common tool option to
+    |increase performance.  If the input BAM has significantly more read groups (or libraries) than your system has CPUs
+    |it is recommended to disable this feature for this tool using `--no-async-writing`.  Asynchronous reading is not
+    |affected.
   """)
 class SplitBam
 ( @arg(flag='i', doc="Input SAM or BAM file.") val input: PathToBam,
@@ -81,12 +83,12 @@ class SplitBam
       val unknownWriter: SamWriter = SamWriter(toOutput(unknown), toOutputHeader(in.header))
       WriterInfo(name=unknown, bam=unknownBam, writer=unknownWriter)
     }
-    val writerInfoMap: Map[SAMReadGroupRecord, WriterInfo] = {
+    val writerInfoMap: Map[String, WriterInfo] = {
       createWriters(header=in.header, splitBy=splitBy).withDefaultValue(unknownBamAndWriter)
     }
 
     in.foreach { rec =>
-      val info = writerInfoMap(rec.readGroup)
+      val info = writerInfoMap(Option(rec.readGroup).map(_.getId).getOrElse("unknown"))
       info.count += 1
       info.writer.write(rec)
       progress.record(rec)
@@ -96,9 +98,20 @@ class SplitBam
     in.safelyClose()
 
     val infos = writerInfoMap.values.toSeq.sortBy(_.name).distinct :+ unknownBamAndWriter
+    val writerCounts = new NumericCounter[Long]()
     infos.foreach { info =>
       info.writer.close()
-      logger.info(f"Wrote ${info.count}%,d records to ${info.bam.getFileName}")
+      writerCounts.count(info.count)
+      logger.debug(f"Wrote ${info.count}%,d records to ${info.bam.getFileName}")
+    }
+
+    // Write some summary statistics about the # of records written across files.
+    {
+      val min            = writerCounts.map(_._1).min
+      val max            = writerCounts.map(_._1).max
+      val (mean, stddev) = writerCounts.meanAndStddev()
+      logger.info(f"Wrote to ${infos.length}%,d files.")
+      logger.info(f"Wrote from $min%,d to $max%,d records per file ($mean%.2f +/- $stddev%.2f)")
     }
 
     if (unknownBamAndWriter.count == 0) {
@@ -119,7 +132,7 @@ class SplitBam
   }
 
   /** Initializes the writers and returns a map from each read group to a writer. */
-  private def createWriters(header: SAMFileHeader, splitBy: SplitType): Map[SAMReadGroupRecord, WriterInfo] = {
+  private def createWriters(header: SAMFileHeader, splitBy: SplitType): Map[String, WriterInfo] = {
     val groups: Map[String, Seq[SAMReadGroupRecord]]  = splitBy match {
       case SplitType.Library   => header.getReadGroups.toSeq.groupBy { rg => rg.getLibrary }
       case SplitType.ReadGroup => header.getReadGroups.map(rg => rg.getId -> Seq(rg)).toMap
@@ -132,7 +145,7 @@ class SplitBam
         header = toOutputHeader(header=header, readGroups:_*),
         async  = !noAsyncWriting
       )
-      readGroups.map { rg => rg -> WriterInfo(name=library, bam=bam, writer=writer) }
+      readGroups.map { rg => rg.getId -> WriterInfo(name=library, bam=bam, writer=writer) }
     }
   }
 
