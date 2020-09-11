@@ -38,7 +38,7 @@ import scala.collection.{immutable, mutable}
 
 @clp(group=ClpGroups.VcfOrBcf, description=
   """
-    |Adds/fixes the phase set (PS) genotype file.
+    |Adds/fixes the phase set (PS) genotype field.
     |
     |The VCF specification allows phased genotypes to be annotated with the `PS` (phase set) `FORMAT` field.  The value
     |should be a non-negative integer, corresponding to the position of the first variant in the phase set.  Some tools
@@ -59,7 +59,7 @@ import scala.collection.{immutable, mutable}
   """)
 class FixVcfPhaseSet
 ( @arg(flag='i', doc="Input VCF.") val input: PathToVcf,
-  @arg(flag='o', doc="Output VCFs") val output: PathToVcf,
+  @arg(flag='o', doc="Output VCF.") val output: PathToVcf,
   @arg(flag='s', doc="Samples to mix. See general usage for format and examples.", minElements=0) val samples: Seq[String] = Seq.empty,
   @arg(flag='k', doc="Store the original phase set in the `OPS` field.") val keepOriginal: Boolean = false,
   @arg(flag='x', doc="Set unphased genotypes with a PS FORMAT value to be phased.") val phaseGenotypesWithPhaseSet: Boolean = false,
@@ -76,12 +76,12 @@ class FixVcfPhaseSet
     val updater  = new VcfPhaseSetUpdater(header=reader.header, keepOriginal=keepOriginal, phaseGenotypesWithPhaseSet=phaseGenotypesWithPhaseSet)
 
     reader.foreach { variant =>
-      progress.record(variant)
       writer.write(variant=updater.update(variant=variant))
+      progress.record(variant)
     }
     progress.logLast()
 
-    reader.safelyClose
+    reader.safelyClose()
     writer.close()
 
     logger.info(f"Examined ${updater.descriptionCounter.total}%,d genotypes.")
@@ -123,7 +123,7 @@ class FixVcfPhaseSet
         id          = "OPS",
         count       = VcfCount.Fixed(1),
         kind        = VcfFieldType.String,
-        description = "Original phasing set (typically the position of the first variant in the set)"
+        description = "Original phasing set prior to being fixed with fgbio FixVcfPhaseSet"
       ))
     }
 
@@ -189,8 +189,7 @@ class VcfPhaseSetUpdater(header: VcfHeader, keepOriginal: Boolean, phaseGenotype
     }
 
     variants += 1
-    val genotypes: Map[String, Genotype] = variant
-      .genotypes
+    val genotypes: Map[String, Genotype] = variant.genotypes
       .map { case (sampleName: String, genotype: Genotype) =>
         // update the genotype
         val result = updateGenotype(variant=variant, genotype=genotype)
@@ -199,7 +198,7 @@ class VcfPhaseSetUpdater(header: VcfHeader, keepOriginal: Boolean, phaseGenotype
           case NotPhasedWithPhaseSetValue(_)   =>
             logger.warning(
               "Genotype had a phase set but was unphased:" +
-                f"${variant.chrom}:${variant.pos}:${variant.id.getOrElse(".")} PS=${genotype("PS")}" +
+                f"${variant.chrom}:${variant.pos}:${variant.id.getOrElse(".")} sample=${sampleName} PS=${genotype("PS")}" +
                 "; consider r-running using `-x/--phase-genotypes-with-phase-set`"
             )
           case PhasedMissingPhaseSetValue(_) =>
@@ -227,10 +226,7 @@ class VcfPhaseSetUpdater(header: VcfHeader, keepOriginal: Boolean, phaseGenotype
         // Get the new phase set
         val phaseSetToValue = this.phaseSetToPositionBySample(genotype.sample)
         val oldValueString  = oldValue.toString
-        val newValue        = phaseSetToValue.getOrElse(oldValueString, {
-          phaseSetToValue(oldValueString) = variant.pos
-          variant.pos
-        })
+        val newValue        = phaseSetToValue.getOrElseUpdate(oldValueString, variant.pos)
         // Build the new set of attributes
         val phaseSetAttrs = {
           if (keepOriginal) Map("PS" -> newValue, "OPS" -> oldValueString)
