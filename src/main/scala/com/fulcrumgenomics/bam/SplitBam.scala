@@ -56,14 +56,14 @@ object SplitType extends FgBioEnum[SplitType] {
     |when splitting by the library.  All reads without a read group, or without a library when splitting by library,
     |will be written to `<output-prefix>.unknown.bam`.  If no such reads exist, then no such file will exist.
     |
-    |For splitting a BAM with many read groups, use `--no-async-writing` in case too many threads or memory are used.
+    |By default async writing of BAM files is used to increase performance.  If the input BAM has significantly more read groups (or libraries) than your system has CPUs it is recommended to disable this feature using `--no-async-writing`.
   """)
 class SplitBam
 ( @arg(flag='i', doc="Input SAM or BAM file.") val input: PathToBam,
   @arg(flag='o', doc="Output prefix for all SAM or BAM files (ex. output/sample-name).") val output: PathPrefix,
   @arg(flag='s', doc="Split by library instead of read group") val splitBy: SplitType = SplitType.ReadGroup,
   @arg(flag='u', doc="The name to use for the unknown file") val unknown: String = "unknown",
-  @arg(doc="Do not write the records asynchronously. Use this if with a large numbers of read groups to reduce memory usage.")
+  @arg(doc="Do not write the records asynchronously. Use this to reduce memory usage when many read groups/libraries are present.")
   val noAsyncWriting: Boolean = false
 ) extends FgBioTool with LazyLogging {
 
@@ -141,7 +141,7 @@ class SplitBam
     def close(): Unit = writer.close()
   }
 
-  /** Efficiently creates an output header with a single read group from the input header.
+  /** Efficiently creates an output header with a subset of read groups from the input header.
     *
     * Developer note: `SamFileHeader.clone` is very memory inefficient.  It creates a `String` from the header to clone,
     * the decodes it!
@@ -166,4 +166,3 @@ class SplitBam
     outputHeader
   }
 }
-
