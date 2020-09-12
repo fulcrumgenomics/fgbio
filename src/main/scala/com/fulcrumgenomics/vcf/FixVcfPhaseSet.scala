@@ -160,7 +160,7 @@ class FixVcfPhaseSet
 }
 
 object FixVcfPhaseSet {
-  private object VcfPhaseSetUpdater {
+  private[vcf] object VcfPhaseSetUpdater {
     /** Base traits for the result of  [[VcfPhaseSetUpdater.updateGenotype()]] */
     sealed trait Result extends EnumEntry {
       def genotype: Genotype
@@ -178,13 +178,15 @@ object FixVcfPhaseSet {
     }
   }
 
-  /** Updates the phase set for a given variant's genotype(s)
+  /** Updates the phase set for a given variant's genotype(s).
+    *
+    * The phase set values must have type [[String]].
     *
     * @param header the VCF header
     * @param keepOriginal true to store the original phase set value in the OPS format field, false otherwise
     * @param phaseGenotypesWithPhaseSet set unphased genotypes with a PS FORMAT value to be phased
     */
-  private class VcfPhaseSetUpdater(header: VcfHeader, keepOriginal: Boolean, phaseGenotypesWithPhaseSet: Boolean) extends LazyLogging {
+  private[vcf] class VcfPhaseSetUpdater(header: VcfHeader, keepOriginal: Boolean, phaseGenotypesWithPhaseSet: Boolean) extends LazyLogging {
     import VcfPhaseSetUpdater._
     import VcfPhaseSetUpdater.Result._
 
@@ -235,7 +237,7 @@ object FixVcfPhaseSet {
 
     /** Updates the phase set of a given genotype.  Returns the [[Result]] of updating the genotyping, describing
       * what updating was done, if any. */
-    private def updateGenotype(variant: Variant, genotype: Genotype): Result = {
+    private[vcf] def updateGenotype(variant: Variant, genotype: Genotype): Result = {
       this.genotypes += 1
 
       (genotype.phased, genotype.get[String]("PS")) match {
@@ -246,11 +248,10 @@ object FixVcfPhaseSet {
         case (isPhased, Some(oldValue)) => // may or not be phased, but has a phase set
           // Get the new phase set
           val phaseSetToValue = this.phaseSetToPositionBySample(genotype.sample)
-          val oldValueString  = oldValue
-          val newValue: Int = phaseSetToValue.getOrElseUpdate(oldValueString, variant.pos)
+          val newValue        = phaseSetToValue.getOrElseUpdate(oldValue, variant.pos)
           // Build the new set of attributes
           val phaseSetAttrs = {
-            if (keepOriginal) Map("PS" -> newValue, "OPS" -> oldValueString)
+            if (keepOriginal) Map("PS" -> newValue, "OPS" -> oldValue)
             else Map("PS" -> newValue)
           }
           // update the genotype

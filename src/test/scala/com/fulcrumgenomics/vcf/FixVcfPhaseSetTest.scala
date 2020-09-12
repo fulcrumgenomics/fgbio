@@ -27,7 +27,8 @@ package com.fulcrumgenomics.vcf
 
 import com.fulcrumgenomics.testing.VcfBuilder.Gt
 import com.fulcrumgenomics.testing.{UnitSpec, VcfBuilder}
-import com.fulcrumgenomics.vcf.VcfPhaseSetUpdater.Result._
+import com.fulcrumgenomics.vcf.FixVcfPhaseSet.VcfPhaseSetUpdater
+import com.fulcrumgenomics.vcf.FixVcfPhaseSet.VcfPhaseSetUpdater.Result._
 import com.fulcrumgenomics.vcf.api.{Genotype, Variant, VcfHeader}
 import org.scalatest.OptionValues
 
@@ -78,53 +79,54 @@ class FixVcfPhaseSetTest extends UnitSpec with OptionValues {
     updater.update(variant=variant) shouldBe variant.copy(genotypes=Map("sample" -> updatedGenotype))
   }
 
-  it should "set unphased variants to be set with a phase set value if phaseGenotypesWithPhaseSet=true" in {
+  it should "update the phase set value for unphased variants if phaseGenotypesWithPhaseSet=true" in {
     val TestCase(variant: Variant, genotype: Genotype, header: VcfHeader) = testCase(phased=false, phaseSet=Some("1"))
     val updater = new VcfPhaseSetUpdater(header=header, keepOriginal=false, phaseGenotypesWithPhaseSet=true)
     genotype.get[String]("PS").value shouldBe "1"
     val updatedGenotype = genotype.copy(phased=true, attrs=Map("PS" -> 1)) // note the type is changed!
-    updater.updateGenotype(variant=variant, genotype=genotype) shouldBe UpdatedPhaseAndValue(updatedGenotype)
+    updater.updateGenotype(variant=variant, genotype=genotype) shouldBe UpdatedPhaseOnly(updatedGenotype)
     updater.update(variant=variant) shouldBe variant.copy(genotypes=Map("sample" -> updatedGenotype))
   }
 
   it should "ignore phased variants with no phase set" in {
     val TestCase(variant: Variant, genotype: Genotype, header: VcfHeader) = testCase(phased=true, phaseSet=None)
     val updater = new VcfPhaseSetUpdater(header=header, keepOriginal=false, phaseGenotypesWithPhaseSet=false)
-    genotype.get[Int]("PS").isEmpty shouldBe true
+    genotype.get[String]("PS").isEmpty shouldBe true
     updater.updateGenotype(variant=variant, genotype=genotype) shouldBe PhasedMissingPhaseSetValue(genotype)
     updater.update(variant=variant) shouldBe variant
   }
 
   it should "do nothing to a phased variant with the correct the phase set value" in {
-    val TestCase(variant: Variant, genotype: Genotype, header: VcfHeader) = testCase(phased=true, phaseSet=Some(1))
-    val updater = new VcfPhaseSetUpdater(header=header, keepOriginal=false, phaseGenotypesWithPhaseSet=false)
-    genotype.get[Int]("PS").value shouldBe 1
-    updater.updateGenotype(variant=variant, genotype=genotype) shouldBe Valid(genotype)
-    updater.update(variant=variant) shouldBe variant
-  }
-
-  it should "update the phase set if it is the wrong type/kind" in {
     val TestCase(variant: Variant, genotype: Genotype, header: VcfHeader) = testCase(phased=true, phaseSet=Some("1"))
     val updater = new VcfPhaseSetUpdater(header=header, keepOriginal=false, phaseGenotypesWithPhaseSet=false)
     genotype.get[String]("PS").value shouldBe "1"
+    val updatedGenotype = genotype.copy(phased=true, attrs=Map("PS" -> 1)) // note the type is changed!
+    updater.updateGenotype(variant=variant, genotype=genotype) shouldBe Valid(updatedGenotype)
+    updater.update(variant=variant) shouldBe variant.copy(genotypes=Map("sample" -> updatedGenotype))
+  }
+
+  it should "update the phase set if it is the wrong type/kind" in {
+    val TestCase(variant: Variant, genotype: Genotype, header: VcfHeader) = testCase(phased=true, phaseSet=Some("ABC"))
+    val updater = new VcfPhaseSetUpdater(header=header, keepOriginal=false, phaseGenotypesWithPhaseSet=false)
+    genotype.get[String]("PS").value shouldBe "ABC"
     val updatedGenotype = genotype.copy(phased=true, attrs=Map("PS" -> 1)) // note the type is changed!
     updater.updateGenotype(variant=variant, genotype=genotype) shouldBe UpdatedPhaseSetValue(updatedGenotype)
     updater.update(variant=variant) shouldBe variant.copy(genotypes=Map("sample" -> updatedGenotype))
   }
 
   it should "update the phase set if it is the wrong value" in {
-    val TestCase(variant: Variant, genotype: Genotype, header: VcfHeader) = testCase(phased=true, phaseSet=Some(123))
+    val TestCase(variant: Variant, genotype: Genotype, header: VcfHeader) = testCase(phased=true, phaseSet=Some("2"))
     val updater = new VcfPhaseSetUpdater(header=header, keepOriginal=false, phaseGenotypesWithPhaseSet=false)
-    genotype.get[Int]("PS").value shouldBe 123
+    genotype.get[String]("PS").value shouldBe "2"
     val updatedGenotype = genotype.copy(phased=true, attrs=Map("PS" -> 1)) // note the type is changed!
     updater.updateGenotype(variant=variant, genotype=genotype) shouldBe UpdatedPhaseSetValue(updatedGenotype)
     updater.update(variant=variant) shouldBe variant.copy(genotypes=Map("sample" -> updatedGenotype))
   }
 
   it should "keep the original value when the phase set is updated" in {
-    val TestCase(variant: Variant, genotype: Genotype, header: VcfHeader) = testCase(phased=true, phaseSet=Some(123))
+    val TestCase(variant: Variant, genotype: Genotype, header: VcfHeader) = testCase(phased=true, phaseSet=Some("123"))
     val updater = new VcfPhaseSetUpdater(header=header, keepOriginal=true, phaseGenotypesWithPhaseSet=false)
-    genotype.get[Int]("PS").value shouldBe 123
+    genotype.get[String]("PS").value shouldBe "123"
     val updatedGenotype = genotype.copy(phased=true, attrs=Map("PS" -> 1, "OPS" -> "123")) // note the type is changed!
     updater.updateGenotype(variant=variant, genotype=genotype) shouldBe UpdatedPhaseSetValue(updatedGenotype)
     updater.update(variant=variant) shouldBe variant.copy(genotypes=Map("sample" -> updatedGenotype))
@@ -143,9 +145,11 @@ class FixVcfPhaseSetTest extends UnitSpec with OptionValues {
   }
 
   def build(): (VcfBuilder, Seq[Variant]) = {
-    // sample s1 is phased and wrong phase set values
-    // sample s2 is unphased
-    // sample s3 has correct phase set values, but is not phased, so will have it updated
+    // Developer notes:
+    // - sample s1 is phased and wrong phase set values
+    // - sample s2 is unphased
+    // - sample s3 has correct phase set values, but is not phased, so will have it updated
+    // - some PS values are string, some are integers, and these should be handled gracefully
     val builder = VcfBuilder(samples=Seq("s1", "s2", "s3"))
 
     // S3 unphased
@@ -153,14 +157,14 @@ class FixVcfPhaseSetTest extends UnitSpec with OptionValues {
       chrom   = "chr1",
       pos     = 1,
       alleles = Seq("A", "C"),
-      gts     = Seq(Gt("s1", "0|1", attrs=Map("PS" -> "42")), Gt("s2", "0/1"), Gt("s3", "0/1"))
+      gts     = Seq(Gt("s1", "0|1", attrs=Map("PS" -> "ABC")), Gt("s2", "0/1"), Gt("s3", "0/1"))
     )
 
     builder.add(
       chrom   = "chr1",
       pos     = 2,
       alleles = Seq("A", "C"),
-      gts     = Seq(Gt("s1", "1|1", attrs=Map("PS" -> "42")), Gt("s2", "0/1"), Gt("s3", "0/1", attrs=Map("PS" -> 2)))
+      gts     = Seq(Gt("s1", "1|1", attrs=Map("PS" -> "ABC")), Gt("s2", "0/1"), Gt("s3", "0/1", attrs=Map("PS" -> 2)))
     )
 
     // S1 is unphased
@@ -201,8 +205,15 @@ class FixVcfPhaseSetTest extends UnitSpec with OptionValues {
 
   it should "update the phase set value to the position of the first variant in the set" in {
     val (builder: VcfBuilder, expected: Seq[Variant]) = build()
-    val actual: Seq[Variant] = builder.toIndexedSeq
-
+    // convert all phase set values to string, as VcfPhaseSetUpdater expects all genotypes to be String values.
+    val actual: Seq[Variant] = builder.toIndexedSeq.map { variant =>
+      val genotypes = variant.genotypes.map { case (sample, genotype) =>
+        val maybePhaseSet = genotype.get[Any]("PS").map {value => ("PS", value.toString) }
+        val attrs         = genotype.attrs.filterNot(_._1 == "PS") ++ maybePhaseSet
+        sample -> genotype.copy(attrs=attrs)
+      }
+      variant.copy(genotypes=genotypes)
+    }
     val updater = new VcfPhaseSetUpdater(header=builder.header, keepOriginal=false, phaseGenotypesWithPhaseSet=true)
     compareVariants(
       actual   = actual.map { variant => updater.update(variant=variant)},
@@ -214,7 +225,7 @@ class FixVcfPhaseSetTest extends UnitSpec with OptionValues {
     val (builder: VcfBuilder, expected: Seq[Variant]) = build()
     val output = makeTempFile("out.", ".vcf.gz")
     val tool   = new FixVcfPhaseSet(input=builder.toTempFile(), output=output, keepOriginal=false, phaseGenotypesWithPhaseSet=true)
-    tool.execute()
+    executeFgbioTool(tool)
 
     val actual = readVcfRecs(vcf=output)
     compareVariants(
