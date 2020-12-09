@@ -34,6 +34,7 @@ import com.fulcrumgenomics.sopt.{arg, clp}
 import com.fulcrumgenomics.util.Metric.{Count, Proportion}
 import com.fulcrumgenomics.util.{Io, Metric, Sequences}
 import com.fulcrumgenomics.vcf.ByIntervalListVariantContextIterator
+import com.fulcrumgenomics.vcf.api.{Variant, VcfSource}
 import htsjdk.samtools.util.SamLocusIterator.LocusInfo
 import htsjdk.samtools.util._
 import htsjdk.variant.variantcontext.VariantContext
@@ -76,18 +77,21 @@ class EstimatePoolingFractions
   case class Locus(chrom: String, pos: Int, ref: Char, alt: Char, expectedSampleFractions: Array[Double], var observedFraction: Option[Double] = None)
 
   override def execute(): Unit = {
-    val vcfReader   = new VCFFileReader(vcf.toFile)
+    val vcfReader   = VcfSource(vcf)
     val sampleNames = pickSamplesToUse(vcfReader)
     val intervals   = loadIntervals
 
     // Get the expected fractions from the VCF
     val vcfIterator = constructVcfIterator(vcfReader, intervals, sampleNames)
-    val loci = vcfIterator.filterNot(v => this.nonAutosomes.contains(v.getContig)).map { v => Locus(
-      chrom = v.getContig,
-      pos = v.getStart,
-      ref = v.getReference.getBaseString.charAt(0),
-      alt = v.getAlternateAllele(0).getBaseString.charAt(0),
-      expectedSampleFractions = sampleNames.map { s => val gt = v.getGenotype(s); if (gt.isHomRef) 0 else if (gt.isHet) 0.5 else 1.0 }
+    val loci = vcfIterator.filterNot(v => this.nonAutosomes.contains(v.chrom)).map { v => Locus(
+      chrom = v.chrom,
+      pos   = v.pos,
+      ref   = v.alleles.ref.bases.charAt(0),
+      alt   = v.alleles.alts.head.value.charAt(0),
+      expectedSampleFractions = sampleNames.map { s =>
+        val gt = v.gt(s)
+        if (gt.isHomRef) 0 else if (gt.isHet) 0.5 else 1.0
+      }
     )}.toArray
 
     logger.info(s"Loaded ${loci.length} bi-allelic SNPs from VCF.")
@@ -134,15 +138,12 @@ class EstimatePoolingFractions
   }
 
   /** Verify a provided sample list, or if none provided retrieve the set of samples from the VCF. */
-  private def pickSamplesToUse(vcfReader: VCFFileReader): Array[String] = {
-    if (samples.nonEmpty) {
-      val samplesInVcf = vcfReader.getFileHeader.getSampleNamesInOrder.iterator.toSet
-      val missingSamples = samples.filterNot(samplesInVcf.contains)
+  private def pickSamplesToUse(vcfIn: VcfSource): Array[String] = {
+    if (this.samples.isEmpty) vcfIn.header.samples.toArray else {
+      val samplesInVcf   = vcfIn.header.samples
+      val missingSamples = samples.toSet.diff(samplesInVcf.toSet)
       if (missingSamples.nonEmpty) fail(s"Samples not present in VCF: ${missingSamples.mkString(", ")}")
       else samples.toArray.sorted
-    }
-    else {
-      vcfReader.getFileHeader.getSampleNamesInOrder.iterator.toSeq.toArray.sorted // toSeq.toArray is necessary cos util.ArrayList.toArray() exists
     }
   }
 
@@ -163,20 +164,18 @@ class EstimatePoolingFractions
   }
 
   /** Generates an iterator over non-filtered bi-allelic SNPs where all the required samples are genotyped. */
-  def constructVcfIterator(in: VCFFileReader, intervals: Option[IntervalList], samples: Array[String]): Iterator[VariantContext] = {
-    val vcfIterator: Iterator[VariantContext] = intervals match {
+  def constructVcfIterator(in: VcfSource, intervals: Option[IntervalList], samples: Seq[String]): Iterator[Variant] = {
+    val iterator: Iterator[Variant] = intervals match {
       case None     => in.iterator
-      case Some(is) => ByIntervalListVariantContextIterator(in, is)
+      case Some(is) => is.flatMap(i => in.query(i.getContig, i.getStart, i.getEnd))
     }
 
-    val samplesAsUtilSet = CollectionUtil.makeSet(samples:_*)
-
-    vcfIterator
-      .filterNot(_.isFiltered)
-      .map(_.subContextFromSamples(samplesAsUtilSet, true))
-      .filter(v => v.isSNP && v.isBiallelic && !v.isMonomorphicInSamples)
-      .filter(_.getNoCallCount == 0)
-      .filter(v => v.getGenotypesOrderedByName.iterator.forall(gt => gt.getGQ >= this.minGenotypeQuality))
+    iterator
+      .filter(v => v.filters.isEmpty || v.filters == Variant.PassingFilters)
+      .filter(v => v.alleles.size == 2 && v.alleles.forall(a => a.value.length == 1))  // Just biallelic SNPs
+      .filter(v => samples.map(v.gt).forall(gt => gt.isFullyCalled && (this.minGenotypeQuality <= 0 || gt.get[Int]("GQ").exists(_ >= this.minGenotypeQuality))))
+      .map   (v => v.copy(genotypes=v.genotypes.filter { case (s, _) => samples.contains(s)} ))
+      .filter(v => v.gts.flatMap(_.calls).toSet.size > 1)  // Not monomorphic
   }
 
   /** Constructs a SamLocusIterator that will visit every locus in the input. */
