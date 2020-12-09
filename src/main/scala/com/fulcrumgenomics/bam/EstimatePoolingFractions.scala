@@ -33,12 +33,9 @@ import com.fulcrumgenomics.commons.util.LazyLogging
 import com.fulcrumgenomics.sopt.{arg, clp}
 import com.fulcrumgenomics.util.Metric.{Count, Proportion}
 import com.fulcrumgenomics.util.{Io, Metric, Sequences}
-import com.fulcrumgenomics.vcf.ByIntervalListVariantContextIterator
 import com.fulcrumgenomics.vcf.api.{Variant, VcfSource}
 import htsjdk.samtools.util.SamLocusIterator.LocusInfo
 import htsjdk.samtools.util._
-import htsjdk.variant.variantcontext.VariantContext
-import htsjdk.variant.vcf.VCFFileReader
 import org.apache.commons.math3.stat.regression.OLSMultipleLinearRegression
 
 @clp(group=ClpGroups.SamOrBam, description=
@@ -48,6 +45,11 @@ import org.apache.commons.math3.stat.regression.OLSMultipleLinearRegression
     |mixture along with a BAM of sequencing data derived from the pool.  Performs a multiple regression
     |for the alternative allele fractions at each SNP locus, using as inputs the individual sample's genotypes.
     |Only SNPs that are bi-allelic within the pooled samples are used.
+    |
+    |Each sample's contribution of REF vs. ALT alleles at each site is derived in one of two ways. If
+    |the sample's genotype in the VCF has the `AF` attribute then the value from that field will be used.  If the
+    |genotype has no AF attribute then the contribution is estimated based on the genotype (e.g. 0/0 will be 100%
+    |ref, 0/1 will be 50% ref and 50% alt, etc.).
     |
     |Various filtering parameters can be used to control which loci are used:
     |
@@ -90,7 +92,10 @@ class EstimatePoolingFractions
       alt   = v.alleles.alts.head.value.charAt(0),
       expectedSampleFractions = sampleNames.map { s =>
         val gt = v.gt(s)
-        if (gt.isHomRef) 0 else if (gt.isHet) 0.5 else 1.0
+        gt.get[IndexedSeq[Float]]("AF") match {
+          case None      => if (gt.isHomRef) 0 else if (gt.isHet) 0.5 else 1.0
+          case Some(afs) => afs(0)
+        }
       }
     )}.toArray
 
