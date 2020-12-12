@@ -93,11 +93,12 @@ class EstimatePoolingFractions
       expectedSampleFractions = sampleNames.map { s =>
         val gt = v.gt(s)
         gt.get[IndexedSeq[Float]]("AF") match {
-          case None      => if (gt.isHomRef) 0 else if (gt.isHet) 0.5 else 1.0
+          case None      => if (gt.isHomRef) 0 else if (gt.isHet) 0.5 else 1.0  // requires bi-allelic sites and ploidy=2
           case Some(afs) => afs(0)
         }
       }
     )}.toArray
+    vcfReader.safelyClose()
 
     logger.info(s"Loaded ${loci.length} bi-allelic SNPs from VCF.")
 
@@ -146,7 +147,7 @@ class EstimatePoolingFractions
   private def pickSamplesToUse(vcfIn: VcfSource): Array[String] = {
     if (this.samples.isEmpty) vcfIn.header.samples.toArray else {
       val samplesInVcf   = vcfIn.header.samples
-      val missingSamples = samples.toSet.diff(samplesInVcf.toSet)
+      val missingSamples = samples.toSet -- samplesInVcf.toSet
       if (missingSamples.nonEmpty) fail(s"Samples not present in VCF: ${missingSamples.mkString(", ")}")
       else samples.toArray.sorted
     }
@@ -180,7 +181,7 @@ class EstimatePoolingFractions
       .filter(v => v.alleles.size == 2 && v.alleles.forall(a => a.value.length == 1))  // Just biallelic SNPs
       .filter(v => samples.map(v.gt).forall(gt => gt.isFullyCalled && (this.minGenotypeQuality <= 0 || gt.get[Int]("GQ").exists(_ >= this.minGenotypeQuality))))
       .map   (v => v.copy(genotypes=v.genotypes.filter { case (s, _) => samples.contains(s)} ))
-      .filter(v => v.gts.flatMap(_.calls).toSet.size > 1)  // Not monomorphic
+      .filter(v => v.gts.flatMap(_.calls).distinct.size > 1)  // Not monomorphic
   }
 
   /** Constructs a SamLocusIterator that will visit every locus in the input. */
