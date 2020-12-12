@@ -202,7 +202,7 @@ class EstimatePoolingFractions
       if (locusInfo.getSequenceName != locus.chrom || locusInfo.getPosition != locus.pos) fail("VCF and BAM iterators out of sync.")
 
       // A gross coverage check here to avoid a lot of work; better check below
-      if (locusInfo.getRecordAndOffsets.size() > minCoverage) {
+      if (locusInfo.getRecordAndOffsets.size() >= minCoverage) {
         val counts = BaseCounts(locusInfo)
         val (ref, alt) = (counts(locus.ref), counts(locus.alt))
 
