@@ -43,12 +43,15 @@ class EstimatePoolingFractionsTest extends UnitSpec with ParallelTestExecution {
   private val Regions = DataDir.resolve("regions.interval_list")
 
   /** Merges one or more BAMs and returns the path to the merged BAM. */
-  def merge(bams: Seq[PathToBam]): PathToBam = {
+  def merge(bams: Seq[PathToBam], sample: Option[String] = None): PathToBam = {
     val readers = bams.map(bam => SamSource(bam))
 
     // Mangle the library names in the header so that the merger sees duplicate RGs as different RGs.
     readers.zipWithIndex.foreach { case (reader, index) =>
-        reader.header.getReadGroups.foreach(rg => rg.setLibrary(rg.getLibrary + ":" + index))
+        reader.header.getReadGroups.foreach { rg =>
+          rg.setLibrary(rg.getLibrary + ":" + index)
+          sample.foreach(s => rg.setSample(s))
+        }
     }
     val headerMerger = new SamFileHeaderMerger(SortOrder.coordinate, readers.iterator.map(_.header).toJavaList, false)
     val iterator     = new MergingSamRecordIterator(headerMerger, readers.iterator.map(_.toSamReader).toJavaList, true)
@@ -103,7 +106,7 @@ class EstimatePoolingFractionsTest extends UnitSpec with ParallelTestExecution {
     val metrics = Metric.read[PoolingFractionMetric](out)
     metrics should have size 2
     metrics.foreach {m =>
-      val expected = if (m.sample == samples.head) 0.75 else 0.25
+      val expected = if (m.pool_sample == samples.head) 0.75 else 0.25
       expected should (be >= m.ci99_low and be <= m.ci99_high)
     }
   }
@@ -162,7 +165,33 @@ class EstimatePoolingFractionsTest extends UnitSpec with ParallelTestExecution {
 
     metrics should have size 2
     metrics.foreach {m =>
-      val expected = if (m.sample == samples.head) 1/3.0 else 2/3.0
+      val expected = if (m.pool_sample == samples.head) 1/3.0 else 2/3.0
+      expected should (be >= m.ci99_low and be <= m.ci99_high)
+    }
+  }
+
+  it should "accurately estimate mixes of two samples across multiple input read groups" in {
+    val samples         = Samples.take(2)
+    val Seq(bam1, bam2) = Bams.take(2)
+    val inBam1          = merge(Seq(bam1, bam1, bam1, bam2), sample=Some("Sample1")) // 75% bam1, 25% bam2
+    val inBam2          = merge(Seq(bam1, bam2, bam2, bam2), sample=Some("Sample2")) // 25% bam1, 75% bam2
+    val bam             = merge(Seq(inBam1, inBam2))
+    val out = makeTempFile("pooling_metrics.", ".txt")
+    new EstimatePoolingFractions(vcf=Vcf, bam=bam, output=out, samples=samples, bySample=true).execute()
+    val metrics = Metric.read[PoolingFractionMetric](out)
+    metrics should have size 4
+
+    val metrics1 = metrics.filter(_.observed_sample == "Sample1")
+    metrics1 should have size 2
+    metrics1.foreach {m =>
+      val expected = if (m.pool_sample == samples.head) 0.75 else 0.25
+      expected should (be >= m.ci99_low and be <= m.ci99_high)
+    }
+
+    val metrics2 = metrics.filter(_.observed_sample == "Sample2")
+    metrics2 should have size 2
+    metrics2.foreach {m =>
+      val expected = if (m.pool_sample == samples.head) 0.25 else 0.75
       expected should (be >= m.ci99_low and be <= m.ci99_high)
     }
   }

@@ -25,6 +25,7 @@
 package com.fulcrumgenomics.bam
 
 import java.lang.Math.{max, min}
+import java.util
 
 import com.fulcrumgenomics.FgBioDef._
 import com.fulcrumgenomics.bam.api.SamSource
@@ -69,14 +70,22 @@ class EstimatePoolingFractions
  @arg(flag='g', doc="Minimum genotype quality. Use -1 to disable.") val minGenotypeQuality: Int = 30,
  @arg(flag='c', doc="Minimum (sequencing coverage @ SNP site / n_samples).") val minMeanSampleCoverage: Int = 6,
  @arg(flag='m', doc="Minimum mapping quality.") val minMappingQuality: Int = 20,
- @arg(flag='q', doc="Minimum base quality.") val minBaseQuality:Int = 5
+ @arg(flag='q', doc="Minimum base quality.") val minBaseQuality:Int = 5,
+ @arg(doc="Examine input reads by sample given in each read's read group.") bySample: Boolean = false
 ) extends FgBioTool with LazyLogging {
   Io.assertReadable(vcf :: bam :: intervals.toList)
 
   private val Ci99Width = 2.58 // Width of a 99% confidence interval in units of std err
 
+  private val AllReadGroupsName: String = "all"
+
   /* Class to hold information about a single locus. */
-  case class Locus(chrom: String, pos: Int, ref: Char, alt: Char, expectedSampleFractions: Array[Double], var observedFraction: Option[Double] = None)
+  case class Locus(chrom: String,
+                   pos: Int,
+                   ref: Char,
+                   alt: Char,
+                   expectedSampleFractions: Array[Double],
+                   var observedFraction: Map[String, Double] = Map.empty)
 
   override def execute(): Unit = {
     val vcfReader   = VcfSource(vcf)
@@ -101,45 +110,61 @@ class EstimatePoolingFractions
 
     logger.info(s"Loaded ${loci.length} bi-allelic SNPs from VCF.")
 
-    val coveredLoci = fillObserveredFractionAndFilter(loci, this.minMeanSampleCoverage * sampleNames.length)
+    fillObserveredFractionAndFilter(loci, this.minMeanSampleCoverage * sampleNames.length)
 
-    logger.info(s"Regressing on ${coveredLoci.length} of ${loci.length} that met coverage requirements.")
+    val observedSamples = loci.flatMap { locus => locus.observedFraction.keySet }.distinct.sorted
+    logger.info(f"Regressing on ${observedSamples.length}%,d input samples.")
+
     val regression = new OLSMultipleLinearRegression
     regression.setNoIntercept(true) // Intercept should be at 0!
-    regression.newSampleData(
-      coveredLoci.map(_.observedFraction.getOrElse(unreachable("observed fraction must be defined"))),
-      coveredLoci.map(_.expectedSampleFractions)
-    )
 
-    val regressionParams = regression.estimateRegressionParameters()
-    val total            = regressionParams.sum
-    val fractions        = regressionParams.map(_ / total)
-    val stderrs          = regression.estimateRegressionParametersStandardErrors().map(_ / total)
-    logger.info(s"R^2 = ${regression.calculateRSquared()}")
-    logger.info(s"Sum of regression parameters = ${total}")
+    val metrics = observedSamples.flatMap { observedSample =>
+      logger.info(f"Examining $observedSample")
+      val (observedFractions, lociExpectedSampleFractions) = loci.flatMap { locus =>
+        locus.observedFraction.get(observedSample).map { observedFraction =>
+          (observedFraction, locus.expectedSampleFractions)
+        }
+      }.unzip
+      logger.info(f"Regressing on ${observedFractions.length}%,d of ${loci.length}%,d loci that met coverage requirements.")
+      regression.newSampleData(
+        observedFractions,
+        lociExpectedSampleFractions
+      )
 
-    val metrics = sampleNames.toSeq.zipWithIndex.map { case (sample, index) =>
-      val sites      = coveredLoci.count(l => l.expectedSampleFractions(index) > 0)
-      val singletons = coveredLoci.count(l => l.expectedSampleFractions(index) > 0 && l.expectedSampleFractions.sum == l.expectedSampleFractions(index))
-      PoolingFractionMetric(
-        sample             = sample,
-        variant_sites      = sites,
-        singletons         = singletons,
-        estimated_fraction = fractions(index),
-        standard_error     = stderrs(index),
-        ci99_low           = max(0, fractions(index) - stderrs(index)*Ci99Width),
-        ci99_high          = min(1, fractions(index) + stderrs(index)*Ci99Width))
+      val regressionParams = regression.estimateRegressionParameters()
+      val total            = regressionParams.sum
+      val fractions        = regressionParams.map(_ / total)
+      val stderrs          = regression.estimateRegressionParametersStandardErrors().map(_ / total)
+      logger.info(s"R^2 = ${regression.calculateRSquared()}")
+      logger.info(s"Sum of regression parameters = ${total}")
+
+      if (regression.estimateRegressionParameters().exists(_ < 0)) {
+        logger.error("#################################################################################")
+        logger.error("# One or more samples is estimated to have fraction < 0. This is likely due to  #")
+        logger.error("# incorrect samples being used, insufficient coverage and/or too few SNPs.      #")
+        logger.error("#################################################################################")
+        fail(1)
+      }
+
+      sampleNames.toSeq.zipWithIndex.map { case (pool_sample, index) =>
+        val sites      = lociExpectedSampleFractions.count(expectedSampleFractions => expectedSampleFractions(index) > 0)
+        val singletons = lociExpectedSampleFractions.count { expectedSampleFractions =>
+          expectedSampleFractions(index) > 0 && expectedSampleFractions.sum == expectedSampleFractions(index)
+        }
+        PoolingFractionMetric(
+          observed_sample       = observedSample,
+          pool_sample        = pool_sample,
+          variant_sites      = sites,
+          singletons         = singletons,
+          estimated_fraction = fractions(index),
+          standard_error     = stderrs(index),
+          ci99_low           = max(0, fractions(index) - stderrs(index)*Ci99Width),
+          ci99_high          = min(1, fractions(index) + stderrs(index)*Ci99Width))
+      }
     }
 
+    logger.info("Writing metrics")
     Metric.write(output, metrics)
-
-    if (regression.estimateRegressionParameters().exists(_ < 0)) {
-      logger.error("#################################################################################")
-      logger.error("# One or more samples is estimated to have fraction < 0. This is likely due to  #")
-      logger.error("# incorrect samples being used, insufficient coverage and/or too few SNPs.      #")
-      logger.error("#################################################################################")
-      fail(1)
-    }
   }
 
   /** Verify a provided sample list, or if none provided retrieve the set of samples from the VCF. */
@@ -196,29 +221,54 @@ class EstimatePoolingFractions
     javaIteratorAsScalaIterator(iterator)
   }
 
+  /** Computes the observed fraction of the alternate allele at the given locus*/
+  private def getObservedFraction(recordAndOffsets: Seq[SamLocusIterator.RecordAndOffset],
+                                  locus: Locus,
+                                  minCoverage: Int): Option[Double] = {
+    if (recordAndOffsets.length < minCoverage) None else {
+      val counts = BaseCounts(recordAndOffsets)
+      val (ref, alt) = (counts(locus.ref), counts(locus.alt))
+
+      // Somewhat redundant with check above, but this protects against a large fraction
+      // of Ns or other alleles, and also against a large proportion of overlapping reads
+      if (ref + alt < minCoverage) None else {
+        Some(alt / (ref + alt).toDouble)
+      }
+    }
+  }
+
   /**
     * Fills in the observedFraction field for each locus that meets coverage and then returns
     * the subset of loci that met coverage.
     */
-  def fillObserveredFractionAndFilter(loci: Array[Locus], minCoverage: Int): Array[Locus] = {
+  def fillObserveredFractionAndFilter(loci: Array[Locus], minCoverage: Int): Unit = {
     val locusIterator = constructBamIterator(loci)
     locusIterator.zip(loci.iterator).foreach { case (locusInfo, locus) =>
       if (locusInfo.getSequenceName != locus.chrom || locusInfo.getPosition != locus.pos) fail("VCF and BAM iterators out of sync.")
 
-      // A gross coverage check here to avoid a lot of work; better check below
-      if (locusInfo.getRecordAndOffsets.size() > minCoverage) {
-        val counts = BaseCounts(locusInfo)
-        val (ref, alt) = (counts(locus.ref), counts(locus.alt))
-
-        // Somewhat redundant with check above, but this protects against a large fraction
-        // of Ns or other alleles, and also against a large proportion of overlapping reads
-        if (ref + alt >= minCoverage) {
-          locus.observedFraction = Some(alt / (ref + alt).toDouble)
+      if (bySample) {
+        locus.observedFraction = locusInfo.getRecordAndOffsets.toSeq
+          .groupBy(_.getRecord.getReadGroup.getSample)
+          .flatMap { case (sample, recordAndOffsets) =>
+            val observedFraction = getObservedFraction(
+              recordAndOffsets = recordAndOffsets,
+              locus            = locus,
+              minCoverage      = minCoverage
+            )
+            observedFraction.map(frac => sample -> frac)
+         }
+      }
+      else {
+        val observedFraction = getObservedFraction(
+          recordAndOffsets = locusInfo.getRecordAndOffsets.toSeq,
+          locus            = locus,
+          minCoverage      = minCoverage
+        )
+        observedFraction.foreach { frac =>
+          locus.observedFraction = Map(AllReadGroupsName -> frac)
         }
       }
     }
-
-    loci.filter(_.observedFraction.isDefined)
   }
 }
 
@@ -226,7 +276,9 @@ class EstimatePoolingFractions
   * Metrics produced by `EstimatePoolingFractions` to quantify the estimated proportion of a sample
   * mixture that is attributable to a specific sample with a known set of genotypes.
   *
-  * @param sample The name of the sample within the pool being reported on.
+  * @param observed_sample The name of the input sample as reported in the read group, or "all" if all read groups are
+  *                     being treated as a single input sample.
+  * @param pool_sample The name of the sample within the pool being reported on.
   * @param variant_sites How many sites were examined at which the reported sample is known to be variant.
   * @param singletons How many of the variant sites were sites at which only this sample was variant.
   * @param estimated_fraction The estimated fraction of the pool that comes from this sample.
@@ -234,7 +286,8 @@ class EstimatePoolingFractions
   * @param ci99_low  The lower bound of the 99% confidence interval for the estimated fraction.
   * @param ci99_high The upper bound of the 99% confidence interval for the estimated fraction.
   */
-case class PoolingFractionMetric(sample: String,
+case class PoolingFractionMetric(observed_sample: String,
+                                 pool_sample: String,
                                  variant_sites: Count,
                                  singletons: Count,
                                  estimated_fraction: Proportion,
