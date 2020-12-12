@@ -46,9 +46,9 @@ import org.apache.commons.math3.stat.regression.OLSMultipleLinearRegression
     |for the alternative allele fractions at each SNP locus, using as inputs the individual sample's genotypes.
     |Only SNPs that are bi-allelic within the pooled samples are used.
     |
-    |Each sample's contribution of REF vs. ALT alleles at each site is derived in one of two ways. If
-    |the sample's genotype in the VCF has the `AF` attribute then the value from that field will be used.  If the
-    |genotype has no AF attribute then the contribution is estimated based on the genotype (e.g. 0/0 will be 100%
+    |Each sample's contribution of REF vs. ALT alleles at each site is derived in one of two ways: (1) if
+    |the sample's genotype in the VCF has the `AF` attribute then the value from that field will be used, (2) if the
+    |genotype has no `AF` attribute then the contribution is estimated based on the genotype (e.g. 0/0 will be 100%
     |ref, 0/1 will be 50% ref and 50% alt, etc.).
     |
     |Various filtering parameters can be used to control which loci are used:
