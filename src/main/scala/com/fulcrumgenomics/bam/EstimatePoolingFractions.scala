@@ -92,7 +92,7 @@ class EstimatePoolingFractions
 
     logger.info(s"Loaded ${loci.length} bi-allelic SNPs from VCF.")
 
-    val coveredLoci = fillObserveredFractionAndFilter(loci, this.minMeanSampleCoverage * sampleNames.length)
+    val coveredLoci = fillObservedFractionAndFilter(loci, this.minMeanSampleCoverage * sampleNames.length)
 
     logger.info(s"Regressing on ${coveredLoci.length} of ${loci.length} that met coverage requirements.")
     val regression = new OLSMultipleLinearRegression
@@ -196,7 +196,7 @@ class EstimatePoolingFractions
     * Fills in the observedFraction field for each locus that meets coverage and then returns
     * the subset of loci that met coverage.
     */
-  def fillObserveredFractionAndFilter(loci: Array[Locus], minCoverage: Int): Array[Locus] = {
+  def fillObservedFractionAndFilter(loci: Array[Locus], minCoverage: Int): Array[Locus] = {
     val locusIterator = constructBamIterator(loci)
     locusIterator.zip(loci.iterator).foreach { case (locusInfo, locus) =>
       if (locusInfo.getSequenceName != locus.chrom || locusInfo.getPosition != locus.pos) fail("VCF and BAM iterators out of sync.")
