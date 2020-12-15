@@ -156,19 +156,24 @@ class MakeMixtureVcf
       }
 
       // Validate that each sample was specified only once
-      validate(samples.size == samples.map(_.name).distinct.size, "Each sample name can be specified at most once.")
+      require(samples.size == samples.map(_.name).distinct.size, "Each sample name can be specified at most once.")
 
       // Auto-set fraction for any samples that didn't have it
+      if (samples.exists(_.proportion == 0)) {
+        val total = samples.map(_.proportion).sum
+        require(total <= 1, "Sample fractions added to more than 1.0")
+        val remainder = 1 - total
+        val fraction  = remainder / samples.count(_.proportion == 0)
+        samples = samples.map(s => if (s.proportion == 0) s.copy(proportion = fraction) else s)
+      }
+
+      // Validate that the proportions add up to ~1
       val total = samples.map(_.proportion).sum
-      validate(total <= 1, "Sample fractions added to more than 1.0")
-      val remainder = 1 - total
-      val fraction  = remainder / samples.count(_.proportion == 0)
-      samples = samples.map(s => if (s.proportion == 0) s.copy(proportion = fraction) else s)
-      validate(samples.map(_.proportion).sum == 1, "Sample fractions must add to 1.0")
+      require(total >= 0.999 && total <= 1.001, s"Sample fractions must add to 1.0. Total: $total")
 
       // Then lastly validate that all given samples exist in the VCF
       val missing = samples.filterNot(s => header.getSampleNamesInOrder.contains(s.name))
-      validate(missing.isEmpty, s"Samples are not present in the VCF: ${missing.mkString(", ")}")
+      require(missing.isEmpty, s"Samples are not present in the VCF: ${missing.mkString(", ")}")
 
       samples
   }
