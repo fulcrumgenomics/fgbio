@@ -46,7 +46,7 @@ class PickIlluminaIndices
       Io.readLines(path).map(_.trim.toUpperCase).filter(_.nonEmpty).map(_.getBytes).toSeq
     }.getOrElse(Seq.empty)
     candidates.foreach { candidate =>
-      require(candidate.length == this.length, s"Candidate length was ${candidate.length} but expected $length: $candidate")
+      require(candidate.length == this.length, s"Candidate length was ${candidate.length} but expected $length: ${new String(candidate)}")
     }
 
     val cmd = new PickIlluminaIndicesCommand()
