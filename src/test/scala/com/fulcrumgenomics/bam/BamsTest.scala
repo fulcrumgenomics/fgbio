@@ -159,7 +159,7 @@ class BamsTest extends UnitSpec {
     }
   }
 
-  "Bams.sortedTemplateIterator" should "return template objects in order" in {
+  "Bams.templateSortedIterator" should "return template objects in a sorted order" in {
     val builder = new SamBuilder(sort=Some(SamOrder.Coordinate))
     builder.addPair(name="p1", start1=100, start2=300)
     builder.addFrag(name="f1", start=100)
