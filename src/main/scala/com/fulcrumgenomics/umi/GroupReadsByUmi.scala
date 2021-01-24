@@ -410,11 +410,11 @@ object Strategy extends FgBioEnum[Strategy] {
     |`edit`, `adjacency` and `paired` make use of the `--edits` parameter to control the matching of
     |non-identical UMIs.
     |
-    |By default, all UMIs must be the same length. If `--min-umi-length=len` is specified then reads that have a UMI
-    |shorter than `len` will be discarded, and when comparing UMIs of different lengths, the first len bases will be
-    |compared, where `len` is the length of the shortest UMI. The UMI length is the number of [ACGT] bases in the UMI
-    |(i.e. does not count dashes and other non-ACGT characters). This option is not implemented for reads with UMI pairs
-    |(i.e. using the paired assigner).
+    |UMIs may have different lengths and only UMIs with the same length will be compared.  If `--min-umi-length=len` is
+    |specified then reads that have a UMI shorter than `len` will be discarded, and when comparing UMIs of different
+    |lengths, the first `len` bases will be compared, where `len` is the length of the shortest UMI. The UMI length is
+    |the number of [ACGT] bases in the UMI (i.e. does not count dashes and other non-ACGT characters). This option is
+    |not implemented for reads with UMI pairs (i.e. using the paired assigner).
   """
 )
 class GroupReadsByUmi
@@ -427,9 +427,7 @@ class GroupReadsByUmi
   @arg(flag='n', doc="Include non-PF reads.")            val includeNonPfReads: Boolean = false,
   @arg(flag='s', doc="The UMI assignment strategy.") val strategy: Strategy,
   @arg(flag='e', doc="The allowable number of edits between UMIs.") val edits: Int = 1,
-  @arg(flag='l', doc= """The minimum UMI length. If not specified then all UMIs must have the same length,
-                       |otherwise discard reads with UMIs shorter than this length and allow for differing UMI lengths.
-                       |""")
+  @arg(flag='l', doc= """The minimum UMI length. Discard reads with UMIs shorter than this length and truncate to UMIs in each cluster to the shortest UMI in that cluster. """)
   val minUmiLength: Option[Int] = None
 )extends FgBioTool with LazyLogging {
   import GroupReadsByUmi._
@@ -541,7 +539,11 @@ class GroupReadsByUmi
     */
   def assignUmiGroups(templates: Seq[Template]): Unit = {
     val umis    = truncateUmis(templates.map { t => umiForRead(t) })
-    val rawToId = this.assigner.assign(umis)
+    val rawToId = umis
+      .groupBy(u => u.split("-").map(_.length).toSeq)
+      .values
+      .flatMap { _umis => this.assigner.assign(_umis) }
+      .toMap
 
     templates.iterator.zip(umis.iterator).foreach { case (template, umi) =>
       val id  = rawToId(umi)
@@ -549,8 +551,8 @@ class GroupReadsByUmi
     }
   }
 
-  /** When a minimum UMI length is specified, truncates all the UMIs to the length of the shortest UMI.  For the paired
-    * assigner, truncates the first UMI and second UMI separately.*/
+  /** When a minimum UMI length is specified, truncates all the UMIs to the length of the shortest UMI.  Not supported
+    * for the paired assigner. */
   private def truncateUmis(umis: Seq[Umi]): Seq[Umi] = this.minUmiLength match {
     case None => umis
     case Some(length) =>
@@ -596,6 +598,8 @@ class GroupReadsByUmi
         fail(s"Template ${t.name} has only one read, paired-reads required for paired strategy.")
       case (Some(r1), _, _) =>
         r1[String](this.rawTag)
+      case _ =>
+        unreachable("Bug")
     }
   }
 }

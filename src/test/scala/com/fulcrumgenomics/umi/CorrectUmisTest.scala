@@ -24,11 +24,9 @@
 
 package com.fulcrumgenomics.umi
 
-import com.fulcrumgenomics.FgBioDef._
 import com.fulcrumgenomics.testing.{SamBuilder, UnitSpec}
 import com.fulcrumgenomics.umi.CorrectUmis.{UmiCorrectionMetrics, UmiMatch}
 import com.fulcrumgenomics.util.{Io, Metric}
-import com.fulcrumgenomics.sopt.cmdline.ValidationException
 
 class CorrectUmisTest extends UnitSpec {
   private val FixedUmis = Seq("AAAAAA", "CCCCCC", "GGGGGG", "TTTTTT")
@@ -102,12 +100,6 @@ class CorrectUmisTest extends UnitSpec {
     logLines.exists(line => line.contains("Error")) shouldBe true
     readBamRecs(corrected) shouldBe empty
     readBamRecs(rejects) should have size 1
-  }
-
-  it should "throw an exception if all the fixed umis are not the same length " in {
-    an[ValidationException] shouldBe thrownBy {
-      new CorrectUmis(input = NoBam, output = NoBam, maxMismatches = 2, minDistance = 2, umis = Seq("AAAAAA", "CCC")).execute()
-    }
   }
 
   it should "reject reads with incorrect length UMIs and emit an error" in {
@@ -232,5 +224,38 @@ class CorrectUmisTest extends UnitSpec {
     readBamRecs(output).foreach { rec =>
       rec.get(ConsensusTags.OriginalUmiBases) shouldBe None
     }
+  }
+
+  it should "allow for different length UMIs" in {
+    val builder = new SamBuilder(readLength = 10)
+    builder.addFrag(name="q1",  start=1, attrs=Map(ConsensusTags.UmiBases -> "AAAAAA"))
+    builder.addFrag(name="q2",  start=1, attrs=Map(ConsensusTags.UmiBases -> "AAAAAA"))
+    builder.addFrag(name="q3",  start=1, attrs=Map(ConsensusTags.UmiBases -> "AATAAA"))
+    builder.addFrag(name="q4",  start=1, attrs=Map(ConsensusTags.UmiBases -> "AATTAA"))
+    builder.addFrag(name="q5",  start=1, attrs=Map(ConsensusTags.UmiBases -> "AAATGC"))
+    builder.addFrag(name="q6",  start=1, attrs=Map(ConsensusTags.UmiBases -> "CCCCCCC"))
+    builder.addFrag(name="q7",  start=1, attrs=Map(ConsensusTags.UmiBases -> "CCTCCCC"))
+    builder.addFrag(name="q8",  start=1, attrs=Map(ConsensusTags.UmiBases -> "CCTCCCC"))
+    builder.addFrag(name="q9",  start=1, attrs=Map(ConsensusTags.UmiBases -> "CCTGCCC"))
+    builder.addFrag(name="q10", start=1, attrs=Map(ConsensusTags.UmiBases -> "GGGGGGG"))
+
+    val input     = builder.toTempFile()
+    val corrected = makeTempFile("corrected.", ".bam")
+    val rejects   = makeTempFile("rejects.", ".bam")
+    val metrics   = makeTempFile("metrics.", ".txt")
+
+    val corrector = new CorrectUmis(input=input, output=corrected, rejects=Some(rejects), metrics=Some(metrics), maxMismatches=2, minDistance=2, umis=Seq("AAAAAA", "CCCCCCC"))
+    val logLines = executeFgbioTool(corrector)
+    logLines.exists(line => line.contains("Error")) shouldBe false // No errors this time
+
+    readBamRecs(corrected).map(_.name) should contain theSameElementsAs Seq("q1", "q2", "q3", "q4", "q6", "q7", "q8", "q9")
+    readBamRecs(rejects).map(_.name) should contain theSameElementsAs Seq("q5", "q10")
+
+    val metricsByUmi = Metric.read[UmiCorrectionMetrics](metrics).map(m => m.umi -> m).toMap
+    metricsByUmi("AAAAAA")  shouldBe UmiCorrectionMetrics(umi="AAAAAA",  total_matches=4, perfect_matches=2, one_mismatch_matches=1, two_mismatch_matches=1, other_matches=0, fraction_of_matches = 4/10.0, representation = 4.0 / (8.0 / 2))
+    metricsByUmi("CCCCCCC") shouldBe UmiCorrectionMetrics(umi="CCCCCCC", total_matches=4, perfect_matches=1, one_mismatch_matches=2, two_mismatch_matches=1, other_matches=0, fraction_of_matches = 4/10.0, representation = 4.0 / (8.0 / 2))
+    metricsByUmi("NNNNNN")  shouldBe UmiCorrectionMetrics(umi="NNNNNN",  total_matches=1, perfect_matches=0, one_mismatch_matches=0, two_mismatch_matches=0, other_matches=0, fraction_of_matches = 1/10.0, representation = 1.0 / (8.0 / 2))
+    metricsByUmi("NNNNNNN") shouldBe UmiCorrectionMetrics(umi="NNNNNNN", total_matches=1, perfect_matches=0, one_mismatch_matches=0, two_mismatch_matches=0, other_matches=0, fraction_of_matches = 1/10.0, representation = 1.0 / (8.0 / 2))
+
   }
 }
