@@ -83,23 +83,23 @@ object GroupReadsByUmi {
         tmp
       }
       else {
-        val lib     = library(rec)
-        val chrom   = rec.refIndex
-        val recNeg  = rec.negativeStrand
-        val recPos  = if (recNeg) rec.unclippedEnd else rec.unclippedStart
+        val lib       = library(rec)
+        val chrom     = rec.refIndex
+        val mateChrom = rec.mateRefIndex
+        val recNeg    = rec.negativeStrand
+        val recPos    = if (recNeg) rec.unclippedEnd else rec.unclippedStart
 
         val (mateNeg, matePos) = if (!rec.paired) (false, Int.MaxValue) else {
-          require(rec.refIndex == rec.mateRefIndex, s"Mate on different chrom for ${rec.name}.")
           val neg = rec.mateNegativeStrand
           val pos = if (neg) SAMUtils.getMateUnclippedEnd(rec.asSam) else SAMUtils.getMateUnclippedStart(rec.asSam)
           (neg, pos)
         }
 
-        val result = if (recPos < matePos || (recPos == matePos && !recNeg)) {
+        val result = if (chrom < mateChrom || chrom == mateChrom && (recPos < matePos || (recPos == matePos && !recNeg))) {
           new ReadInfo(chrom, recPos, matePos, recNeg, mateNeg, lib)
         }
         else {
-          new ReadInfo(chrom, matePos, recPos, mateNeg, recNeg, lib)
+          new ReadInfo(mateChrom, matePos, recPos, mateNeg, recNeg, lib)
         }
 
         rec.transientAttrs(GroupReadsByUmi.ReadInfoTempAttributeName, result)
@@ -377,9 +377,9 @@ object Strategy extends FgBioEnum[Strategy] {
     |   4. Read Name
     |
     |Reads are aggressively filtered out so that only high quality reads/mappings are taken forward. Single-end
-    |reads must have mapping quality >= `min-map-q`.  Paired-end reads must have both reads mapped to the same
-    |chromosome with both reads having mapping quality >= `min-mapq`.  (Note: the `MQ` tag is required on reads
-    |with mapped mates).
+    |reads must have mapping quality >= `min-map-q`.  Paired-end reads must both have mapping quality >= `min-mapq`
+    |(Note: the `MQ` tag is required on reads with mapped mates). By default, paired-end reads must have both reads
+    |mapped to the same chromosome (to turn off this filter, use `--allow-inter-contig`).
     |
     |This is done with the expectation that the next step is building consensus reads, where
     |it is undesirable to either:
@@ -430,7 +430,10 @@ class GroupReadsByUmi
   @arg(flag='l', doc= """The minimum UMI length. If not specified then all UMIs must have the same length,
                        |otherwise discard reads with UMIs shorter than this length and allow for differing UMI lengths.
                        |""")
-  val minUmiLength: Option[Int] = None
+  val minUmiLength: Option[Int] = None,
+  @arg(flag='x', doc= """Allow read pairs with primary alignments on different contigs to be grouped when using the
+                       |paired assigner (otherwise filtered out).""")
+  val allowInterContig: Boolean = false
 )extends FgBioTool with LazyLogging {
   import GroupReadsByUmi._
 
@@ -465,11 +468,11 @@ class GroupReadsByUmi
     logger.info("Filtering and sorting input.")
     in.iterator
       .filter(r => !r.secondary && !r.supplementary)
-      .filter(r => (includeNonPfReads || r.pf)                      || { filteredNonPf += 1; false })
-      .filter(r => (r.mapped && (r.unpaired || r.mateMapped))       || { filteredPoorAlignment += 1; false })
-      .filter(r => (r.unpaired || r.refIndex == r.mateRefIndex)     || { filteredPoorAlignment += 1; false })
-      .filter(r => mapqOk(r, this.minMapQ)                          || { filteredPoorAlignment += 1; false })
-      .filter(r => !r.get[String](rawTag).exists(_.contains('N'))   || { filteredNsInUmi += 1; false })
+      .filter(r => (includeNonPfReads || r.pf)                                      || { filteredNonPf += 1; false })
+      .filter(r => (r.mapped && (r.unpaired || r.mateMapped))                       || { filteredPoorAlignment += 1; false })
+      .filter(r => (allowInterContig || r.unpaired || r.refIndex == r.mateRefIndex) || { filteredPoorAlignment += 1; false })
+      .filter(r => mapqOk(r, this.minMapQ)                                          || { filteredPoorAlignment += 1; false })
+      .filter(r => !r.get[String](rawTag).exists(_.contains('N'))                   || { filteredNsInUmi += 1; false })
       .filter { r =>
         this.minUmiLength.forall { l =>
           r.get[String](this.rawTag).forall { umi =>
@@ -583,7 +586,7 @@ class GroupReadsByUmi
 
     (t.r1, t.r2, this.assigner) match {
       case (Some(r1), Some(r2), paired: PairedUmiAssigner) =>
-        require(r1.refIndex == r2.refIndex, s"Mates on different references not supported: ${r1.name}")
+        if (!this.allowInterContig) require(r1.refIndex == r2.refIndex, s"Mates on different references not supported: ${r1.name}")
         val pos1 = if (r1.positiveStrand) r1.unclippedStart else r1.unclippedEnd
         val pos2 = if (r2.positiveStrand) r2.unclippedStart else r2.unclippedEnd
         val r1Lower = pos1 < pos2 || pos1 == pos2 && r1.positiveStrand

@@ -114,6 +114,7 @@ class SamBuilder(val readLength: Int=100,
               quals1: String = defaultQuals,
               quals2: String = defaultQuals,
               contig: Int = 0,
+              contig2: Option[Int] = None,
               start1: Int = SAMRecord.NO_ALIGNMENT_START,
               start2: Int = SAMRecord.NO_ALIGNMENT_START,
               unmapped1: Boolean = false,
@@ -159,7 +160,7 @@ class SamBuilder(val readLength: Int=100,
     r2.name           = name
     r2.bases          = bases2
     r2.quals          = quals2
-    r2.refIndex       = if (start2 == SAMRecord.NO_ALIGNMENT_START) SAMRecord.NO_ALIGNMENT_REFERENCE_INDEX else contig
+    r2.refIndex       = if (start2 == SAMRecord.NO_ALIGNMENT_START) SAMRecord.NO_ALIGNMENT_REFERENCE_INDEX else contig2.getOrElse(contig)
     r2.start          = start2
     r2.positiveStrand = strand2 == Plus
     r2.paired         = true
