@@ -665,8 +665,10 @@ class GroupReadsByUmi
 
         if (r1Lower) paired.lowerReadUmiPrefix  + ":" + umis(0) + "-" + paired.higherReadUmiPrefix + ":" + umis(1)
         else         paired.higherReadUmiPrefix + ":" + umis(0) + "-" + paired.lowerReadUmiPrefix  + ":" + umis(1)
-      case (_,        _,        paired: PairedUmiAssigner) =>
-        fail(s"Template ${t.name} has only one read, paired-reads required for paired strategy.")
+      case (Some(r1), None,     paired: PairedUmiAssigner) =>
+        val umis = umi.split('-')
+        require(umis.length == 2, s"Paired strategy used but umi did not contain 2 segments: $umi")
+        paired.lowerReadUmiPrefix  + ":" + umis(0) + "-" + paired.higherReadUmiPrefix + ":" + umis(1)
       case (Some(r1), _, _) =>
         r1[String](this.rawTag)
     }
