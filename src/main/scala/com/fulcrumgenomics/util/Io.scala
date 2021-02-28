@@ -21,15 +21,15 @@
  * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
  * THE SOFTWARE.
  */
+
 package com.fulcrumgenomics.util
 
-import java.io.{InputStream, OutputStream}
-import java.nio.file.{Files, Path, Paths}
-import java.util.zip.{GZIPInputStream, GZIPOutputStream}
-
-import com.fulcrumgenomics.commons.CommonsDef.DirPath
+import com.fulcrumgenomics.commons.CommonsDef._
 import com.fulcrumgenomics.commons.io.{IoUtil, PathUtil}
 import htsjdk.samtools.util.BlockCompressedOutputStream
+
+import java.io.OutputStream
+import java.nio.file.{Files, Path, Paths}
 
 /**
   * Provides common IO utility methods.  Can be instantiated to create a custom factory, or
@@ -51,7 +51,7 @@ class Io(var compressionLevel: Int = 5,
   override def makeTempDir(name: String): DirPath = Files.createTempDirectory(tmpDir, name)
 
   /** Overridden to ensure that tmp files are created within the correct tmpDir. */
-  override def makeTempFile(prefix: String, suffix: String, dir: Option[DirPath] = Some(tmpDir)): DirPath = super.makeTempFile(prefix, suffix, dir)
+  override def makeTempFile(prefix: String, suffix: String, dir: Option[DirPath] = Some(tmpDir)): FilePath = super.makeTempFile(prefix, suffix, dir)
 }
 
 /** Singleton object that can be used when the default buffer size and compression are desired. */

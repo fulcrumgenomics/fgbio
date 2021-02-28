@@ -27,17 +27,23 @@ package com.fulcrumgenomics.util
 
 
 import java.io.{Closeable, File, InputStream}
-
 import com.fulcrumgenomics.FgBioDef.{PathToIntervals, yieldAndThen}
 import com.fulcrumgenomics.commons.CommonsDef.BetterBufferedIteratorScalaWrapper
+import com.fulcrumgenomics.commons.collection.BetterBufferedIterator
 import com.fulcrumgenomics.commons.util.StringUtil
 import com.fulcrumgenomics.fasta.SequenceDictionary
+import com.fulcrumgenomics.util.IntervalListSource.HeaderPrefix
 import htsjdk.samtools.util.{BufferedLineReader, Interval, IntervalList}
 import htsjdk.samtools.{SAMFileHeader, SAMTextHeaderCodec}
 
 import scala.io.Source
+import scala.util.{Failure, Success, Try}
 
+/** Companion object for [[IntervalListSource]]. */
 object IntervalListSource {
+
+  /** The Interval List header line prefix. */
+  val HeaderPrefix: String = "@"
 
   /** Creates a new interval list source from a sequence of lines. */
   def apply(lines: Iterable[String]): IntervalListSource = new IntervalListSource(lines.iterator)
@@ -66,7 +72,10 @@ class IntervalListSource private(lines: Iterator[String],
                                  private[this] val source: Option[{ def close(): Unit }] = None)
   extends Iterator[Interval] with Closeable {
 
-  private val iter = lines.bufferBetter
+  private val iter: BetterBufferedIterator[String] = lines match {
+    case iter: BetterBufferedIterator[String] => iter
+    case iter                                 => iter.bufferBetter
+  }
 
   private var lineNumber = 1L
 
@@ -79,7 +88,7 @@ class IntervalListSource private(lines: Iterator[String],
   // Read the header
   val header: SAMFileHeader = {
     val codec = new SAMTextHeaderCodec
-    val headerLines = iter.takeWhile(_.startsWith("@")).toIndexedSeq
+    val headerLines = iter.takeWhile(_.startsWith(HeaderPrefix)).toIndexedSeq
     require(headerLines.nonEmpty, "No header found")
     lineNumber += headerLines.length
     val lineReader = BufferedLineReader.fromString(headerLines.mkString("\n"))
@@ -100,21 +109,9 @@ class IntervalListSource private(lines: Iterator[String],
   override def close(): Unit = this.source.foreach(_.close())
 
   private def parse(line: String): Interval = {
-    val fieldCount  = StringUtil.split(line, '\t', parseArray)
+    val fieldCount = StringUtil.split(line, '\t', parseArray)
     require(fieldCount == 5, s"Expected 5 fields on line $lineNumber")
-    val Array(refName: String, startString: String, endString: String, strand: String, name: String) = parseArray
-
-    val start = startString.toInt
-    val end   = endString.toInt
-
-    Option(dict(refName)) match {
-      case None =>
-        throw new IllegalArgumentException(f"Reference contig '$refName' not found in the sequence dictionary on line number $lineNumber.")
-      case Some(seq) =>
-        require(1 <= start, s"Start is less than 1 on line number $lineNumber")
-        require(end <= seq.length, s"End is beyond the reference contig length on line number $lineNumber")
-        require(start <= end, f"Start is greater than end on line number $lineNumber")
-    }
+    val Array(refName: String, start: String, end: String, strand: String, name: String) = parseArray
 
     val negative = strand match {
       case "-" => true
@@ -122,7 +119,14 @@ class IntervalListSource private(lines: Iterator[String],
       case _   => throw new IllegalArgumentException(s"Unrecognized strand '$strand' on line number $lineNumber")
     }
 
-    new Interval(refName, start, end, negative, name)
+    val interval = new Interval(refName, start.toInt, end.toInt, negative, name)
+
+    Try(dict.validate(interval)) match {
+      case Success(())                          => interval
+      case Failure(e: NoSuchElementException)   => throw new NoSuchElementException(e.getMessage + s" Failed on line number: $lineNumber")
+      case Failure(e: IllegalArgumentException) => throw new IllegalArgumentException(e.getMessage + s" Failed on line number: $lineNumber")
+      case Failure(e: Throwable)                => throw new IllegalStateException(e.getMessage + s" Failed on line number: $lineNumber")
+    }
   }
 
   /** Reads in the intervals into an [[htsjdk.samtools.util.IntervalList]] */
