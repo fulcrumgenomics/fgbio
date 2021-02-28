@@ -242,6 +242,7 @@ class BedSourceTest extends UnitSpec with Explicitly {
     actual.dict.value shouldBe Dict
     actual.header shouldBe empty
     (actual.toList should contain theSameElementsInOrderAs expected) (decided by equalityByLocatableAndName)
+    actual.close()
   }
 
   it should "allow sourcing BED features from a file of string data" in {

@@ -241,6 +241,7 @@ class IntervalSourceTest extends UnitSpec {
     actual.dict.value shouldBe Dict
     actual.header shouldBe None
     actual.toList should contain theSameElementsInOrderAs expected
+    actual.close()
   }
 
   it should "allow sourcing intervals from a file of string data" in {
