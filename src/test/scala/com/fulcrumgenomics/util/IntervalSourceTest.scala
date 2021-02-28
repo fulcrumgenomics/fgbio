@@ -30,13 +30,25 @@ import com.fulcrumgenomics.fasta.{SequenceDictionary, SequenceMetadata}
 import com.fulcrumgenomics.testing.UnitSpec
 import htsjdk.samtools.SAMFileHeader
 import htsjdk.samtools.util.Interval
+import htsjdk.tribble.annotation.Strand
+import org.scalactic.{Equality, Explicitly}
 import org.scalatest.OptionValues._
 
 import java.io.ByteArrayInputStream
 import scala.io.Source
 
 /** Unit tests for [[IntervalSource]]. */
-class IntervalSourceTest extends UnitSpec {
+class IntervalSourceTest extends UnitSpec with Explicitly {
+
+  /** Equality helper for intervals that fully compares them by contig, start, end, name, and strand. */
+  private val equalityByLocatableNameAndStrand: Equality[Interval] = (a: Interval, b: Any) => b match {
+    case expected: Interval => a.contigsMatch(expected) &&
+      a.getStart        == expected.getStart &&
+      a.getEnd          == expected.getEnd &&
+      a.getStrand       == expected.getStrand &&
+      Option(a.getName) == Option(expected.getName)
+    case _ => false
+  }
 
   /** A sequence dictionary for unit testing. */
   private val Dict: SequenceDictionary = SequenceDictionary(
@@ -140,11 +152,11 @@ class IntervalSourceTest extends UnitSpec {
     val expected = Seq(new Interval("chr1", 101, 101))
     actual.dict shouldBe None
     actual.header shouldBe None
-    actual.toList should contain theSameElementsInOrderAs expected
+    (actual.toList should contain theSameElementsInOrderAs expected) (decided by equalityByLocatableNameAndStrand)
   }
 
   it should "read no intervals at all from an empty iterator" in {
-    val actual   = IntervalSource(Iterator.empty, dict = None)
+    val actual = IntervalSource(Iterator.empty, dict = None)
     actual.dict shouldBe None
     actual.header shouldBe None
     actual.toList shouldBe empty
@@ -154,14 +166,14 @@ class IntervalSourceTest extends UnitSpec {
     val actual = IntervalSource(BedWithoutHeader.linesIterator, dict = None)
     actual.dict shouldBe None
     actual.header shouldBe None
-    actual.toList should contain theSameElementsInOrderAs BedWithoutHeaderExpected
+    (actual.toList should contain theSameElementsInOrderAs BedWithoutHeaderExpected) (decided by equalityByLocatableNameAndStrand)
   }
 
   it should "return BED intervals, skipping a header, from a list of line records" in {
     val actual = IntervalSource(BedWithHeader.linesIterator, dict = None)
     actual.dict shouldBe None
     actual.header shouldBe None
-    actual.toList should contain theSameElementsInOrderAs BedWithHeaderExpected
+    (actual.toList should contain theSameElementsInOrderAs BedWithHeaderExpected) (decided by equalityByLocatableNameAndStrand)
   }
 
   it should "read a single simple Interval List data record into an interval" in {
@@ -172,11 +184,11 @@ class IntervalSourceTest extends UnitSpec {
     header.setSequenceDictionary(dict.asSam)
 
     val source   = IntervalSource(data.linesIterator, dict = None)
-    val expected = Seq(new Interval("chr1", 100, 100, false, null))
+    val expected = Seq(new Interval("chr1", 100, 100, false, "."))
 
     source.dict.value shouldBe dict
     source.header.value shouldBe header
-    source.toList should contain theSameElementsInOrderAs expected
+    (source.toList should contain theSameElementsInOrderAs expected) (decided by equalityByLocatableNameAndStrand)
   }
 
   it should "read multiple intervals from an interval list" in {
@@ -187,7 +199,39 @@ class IntervalSourceTest extends UnitSpec {
 
     source.dict.value shouldBe Dict
     source.header.value shouldBe header
-    source.toList should contain theSameElementsInOrderAs IntervalListExpected
+    (source.toList should contain theSameElementsInOrderAs IntervalListExpected) (decided by equalityByLocatableNameAndStrand)
+  }
+
+  it should "read an interval that has a name intentionally set from a BED source" in {
+    val actual   = IntervalSource("chr1 100 101 interval-name\n".linesIterator, dict = None)
+    val expected = Seq(new Interval("chr1", 101, 101, false, "interval-name"))
+    actual.dict shouldBe None
+    actual.header shouldBe None
+    (actual.toList should contain theSameElementsInOrderAs expected) (decided by equalityByLocatableNameAndStrand)
+  }
+
+  it should "read an interval that has the strand set to positive from a BED source" in {
+    val actual   = IntervalSource("chr1 100 101 interval-name 500 +\n".linesIterator, dict = None)
+    val expected = Seq(new Interval("chr1", 101, 101, false, "interval-name"))
+    actual.dict shouldBe None
+    actual.header shouldBe None
+    (actual.toList should contain theSameElementsInOrderAs expected) (decided by equalityByLocatableNameAndStrand)
+  }
+
+  it should "read an interval that has the strand set to the unknown value from a BED source" in {
+    val actual   = IntervalSource("chr1 100 101 interval-name 500 .\n".linesIterator, dict = None)
+    val expected = Seq(new Interval("chr1", 101, 101, false, "interval-name"))
+    actual.dict shouldBe None
+    actual.header shouldBe None
+    (actual.toList should contain theSameElementsInOrderAs expected) (decided by equalityByLocatableNameAndStrand)
+  }
+
+  it should "read an interval that has the strand set to negative from a BED source" in {
+    val actual   = IntervalSource("chr1 100 101 interval-name 500 -\n".linesIterator, dict = None)
+    val expected = Seq(new Interval("chr1", 101, 101, true, "interval-name"))
+    actual.dict shouldBe None
+    actual.header shouldBe None
+    (actual.toList should contain theSameElementsInOrderAs expected) (decided by equalityByLocatableNameAndStrand)
   }
 
   it should "assert the provided sequence dictionary matches the found sequence dictionary for interval list input" in {
@@ -204,7 +248,7 @@ class IntervalSourceTest extends UnitSpec {
     val actual = IntervalSource(BedWithHeader.linesIterator, dict = Some(dict))
     actual.dict.value shouldBe dict
     actual.header shouldBe None
-    actual.toList should contain theSameElementsInOrderAs BedWithHeaderExpected
+    (actual.toList should contain theSameElementsInOrderAs BedWithHeaderExpected) (decided by equalityByLocatableNameAndStrand)
   }
 
   it should "assert the records match the provided sequence dictionary for BED input" in {
@@ -222,7 +266,7 @@ class IntervalSourceTest extends UnitSpec {
     val expected = Seq(new Interval("chr1", 101, 101))
     actual.dict.value shouldBe Dict
     actual.header shouldBe None
-    actual.toList should contain theSameElementsInOrderAs expected
+    (actual.toList should contain theSameElementsInOrderAs expected) (decided by equalityByLocatableNameAndStrand)
   }
 
   it should "allow sourcing interval from an input stream of string data" in {
@@ -231,7 +275,7 @@ class IntervalSourceTest extends UnitSpec {
     val expected = Seq(new Interval("chr1", 101, 101))
     actual.dict.value shouldBe Dict
     actual.header shouldBe None
-    actual.toList should contain theSameElementsInOrderAs expected
+    (actual.toList should contain theSameElementsInOrderAs expected) (decided by equalityByLocatableNameAndStrand)
   }
 
   it should "allow sourcing intervals from a source of string data" in {
@@ -240,7 +284,7 @@ class IntervalSourceTest extends UnitSpec {
     val expected = Seq(new Interval("chr1", 101, 101))
     actual.dict.value shouldBe Dict
     actual.header shouldBe None
-    actual.toList should contain theSameElementsInOrderAs expected
+    (actual.toList should contain theSameElementsInOrderAs expected) (decided by equalityByLocatableNameAndStrand)
     actual.close()
   }
 
@@ -251,7 +295,7 @@ class IntervalSourceTest extends UnitSpec {
     val expected = Seq(new Interval("chr1", 101, 101))
     actual.dict.value shouldBe Dict
     actual.header shouldBe None
-    actual.toList should contain theSameElementsInOrderAs expected
+    (actual.toList should contain theSameElementsInOrderAs expected) (decided by equalityByLocatableNameAndStrand)
   }
 
   it should "allow sourcing intervals from a path of string data" in {
@@ -261,6 +305,6 @@ class IntervalSourceTest extends UnitSpec {
     val expected = Seq(new Interval("chr1", 101, 101))
     actual.dict.value shouldBe Dict
     actual.header shouldBe None
-    actual.toList should contain theSameElementsInOrderAs expected
+    (actual.toList should contain theSameElementsInOrderAs expected) (decided by equalityByLocatableNameAndStrand)
   }
 }

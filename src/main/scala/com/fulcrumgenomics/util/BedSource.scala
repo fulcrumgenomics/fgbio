@@ -109,7 +109,7 @@ object BedSource {
   }
 
   /** Creates a new BED source from a File. */
-  def apply(file: File, dict: Option[SequenceDictionary]): BedSource = apply(path=file.toPath, dict)
+  def apply(file: File, dict: Option[SequenceDictionary]): BedSource = apply(path = file.toPath, dict)
 
   /** Creates a new BED source from a Path. */
   def apply(path: PathToIntervals, dict: Option[SequenceDictionary]): BedSource = apply(Io.readLines(path), dict)

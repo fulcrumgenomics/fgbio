@@ -31,6 +31,7 @@ import com.fulcrumgenomics.fasta.SequenceDictionary
 import com.fulcrumgenomics.util.IntervalListSource.{HeaderPrefix => IntervalListHeaderPrefix}
 import htsjdk.samtools.SAMFileHeader
 import htsjdk.samtools.util.Interval
+import htsjdk.tribble.annotation.Strand
 
 import java.io.{Closeable, File, InputStream}
 import scala.io.Source
@@ -55,8 +56,18 @@ class IntervalSource private(
     require(sd.forall(wrapped.dict.sameAs), "Provided sequence dictionary does not match the input's dict header!")
     (wrapped, Some(wrapped.dict), Some(wrapped.header))
   } else {
-    val wrapped = BedSource(iter, sd)
-    (wrapped.map(feature => new Interval(feature)), sd, None)
+    val wrapped = BedSource(iter, sd).map { bed =>
+      new Interval(
+        bed.getContig,
+        bed.getStart,
+        bed.getEnd,
+        // BEDFeature.getStrand() can be null so wrap in an option and search for the negative enum.
+        Option(bed.getStrand).contains(Strand.NEGATIVE),
+        // The default name for BEDFeature is the empty string (""), but defaults to null for Interval.
+        if (bed.getName == "") null else bed.getName
+      )
+    }
+    (wrapped, sd, None)
   }
 
   /** The [[SAMFileHeader]] associated with the source, if it exists. */
@@ -95,7 +106,7 @@ object IntervalSource {
   }
 
   /** Creates a new interval source from a File. */
-  def apply(file: File, dict: Option[SequenceDictionary]): IntervalSource = apply(path=file.toPath, dict)
+  def apply(file: File, dict: Option[SequenceDictionary]): IntervalSource = apply(path = file.toPath, dict)
 
   /** Creates a new interval source from a Path. */
   def apply(path: PathToIntervals, dict: Option[SequenceDictionary]): IntervalSource = apply(Io.readLines(path), dict)

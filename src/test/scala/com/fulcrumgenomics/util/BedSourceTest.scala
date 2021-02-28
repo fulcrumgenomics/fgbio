@@ -37,6 +37,15 @@ import scala.io.Source
 /** Unit tests for [[BedSource]]. */
 class BedSourceTest extends UnitSpec with Explicitly {
 
+  /** Equality helper for BED features that only compares contig, start, end, and name. */
+  private val equalityByLocatableAndName: Equality[BEDFeature] = (a: BEDFeature, b: Any) => b match {
+    case expected: BEDFeature => a.contigsMatch(expected) &&
+      a.getStart        == expected.getStart &&
+      a.getEnd          == expected.getEnd &&
+      Option(a.getName) == Option(expected.getName)
+    case _ => false
+  }
+
   /** A sequence dictionary for unit testing. */
   private val Dict: SequenceDictionary = SequenceDictionary(SequenceMetadata("chr1", length = 10000))
 
@@ -45,15 +54,6 @@ class BedSourceTest extends UnitSpec with Explicitly {
     val feature = new FullBEDFeature(contig, start, end)
     feature.setName(name)
     feature
-  }
-
-  /** Equality helper for BED features that only compares contig, start, end, and name. */
-  private val equalityByLocatableAndName: Equality[BEDFeature] = (a: BEDFeature, b: Any) => b match {
-    case expected: BEDFeature => a.contigsMatch(expected) &&
-      a.getStart == expected.getStart &&
-      a.getEnd   == expected.getEnd &&
-      a.getName  == expected.getName
-    case _ => false
   }
 
   /** Contents of a BED file without a header for testing. */
@@ -130,7 +130,7 @@ class BedSourceTest extends UnitSpec with Explicitly {
   }
 
   it should "read no BED features from an empty iterator" in {
-    val actual   = BedSource(Iterator.empty, dict = None)
+    val actual = BedSource(Iterator.empty, dict = None)
     actual.dict shouldBe None
     actual.header shouldBe empty
     actual.toList shouldBe empty
@@ -209,13 +209,13 @@ class BedSourceTest extends UnitSpec with Explicitly {
     caught.getMessage should include ("Failed on line number: 1")
   }
 
-  it should "know which line of input triggered a validation exception" in {
-    val source = BedSource("chr1 100\nchr2 100".linesIterator, dict = Some(Dict))
+  it should "know which line of input triggered a validation exception including header lines" in {
+    val source = BedSource("# comment\nchr1 100\nchr2 100\n".linesIterator, dict = Some(Dict))
     source.dict.value shouldBe Dict
-    source.header shouldBe empty
+    source.header shouldBe Seq("# comment")
     val caught = intercept[NoSuchElementException] { source.toList }
     caught.getMessage should include ("Contig does not exist within dictionary for locatable")
-    caught.getMessage should include ("Failed on line number: 2")
+    caught.getMessage should include ("Failed on line number: 3")
   }
 
   "BedSource.apply" should "allow sourcing BED features from an iterable of string data" in {
