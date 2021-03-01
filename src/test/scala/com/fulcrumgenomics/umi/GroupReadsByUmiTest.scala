@@ -26,12 +26,13 @@
  */
 package com.fulcrumgenomics.umi
 
+import com.fulcrumgenomics.bam.Template
 import com.fulcrumgenomics.bam.api.SamOrder
 import com.fulcrumgenomics.cmdline.FgBioMain.FailureException
 import com.fulcrumgenomics.testing.SamBuilder.{Minus, Plus}
 import com.fulcrumgenomics.testing.{SamBuilder, UnitSpec}
 import com.fulcrumgenomics.umi.GroupReadsByUmi._
-import org.scalatest.OptionValues
+import org.scalatest.{OptionValues, PrivateMethodTester}
 
 import java.nio.file.Files
 import scala.collection.mutable
@@ -40,7 +41,7 @@ import scala.collection.mutable
   * Tests for the tool that groups reads by position and UMI to attempt to identify
   * read pairs that arose from the same original molecule.
   */
-class GroupReadsByUmiTest extends UnitSpec with OptionValues {
+class GroupReadsByUmiTest extends UnitSpec with OptionValues with PrivateMethodTester {
   // Returns a List of the element 't' repeated 'n' times
   private def n[T](t: T, n:Int =1): List[T] = List.tabulate(n)(x => t)
 
@@ -168,6 +169,34 @@ class GroupReadsByUmiTest extends UnitSpec with OptionValues {
         an[IllegalStateException] shouldBe thrownBy { new PairedUmiAssigner(maxMismatches=1).assign(umis) }
       }
     }
+  }
+
+  "GroupReadsByUmi.umiForRead" should "correctly assign a/b for paired UMI prefixes" in {
+    val tool = new GroupReadsByUmi(rawTag="RX", assignTag="MI", strategy=Strategy.Paired, edits = 0, allowInterContig=true)
+    val builder = new SamBuilder(readLength=100)
+    val templates = Seq(
+      // These 4 should be a::AAA-b::TTT since contig1 is lower
+      builder.addPair(contig = 1, contig2 = Some(2), start1=100, start2=300, strand1=Plus,  strand2=Minus, attrs=Map("RX" -> "AAA-TTT")),
+      builder.addPair(contig = 1, contig2 = Some(2), start1=300, start2=100, strand1=Plus,  strand2=Minus, attrs=Map("RX" -> "AAA-TTT")),
+      builder.addPair(contig = 1, contig2 = Some(2), start1=100, start2=100, strand1=Plus,  strand2=Minus, attrs=Map("RX" -> "AAA-TTT")),
+      builder.addPair(contig = 1, contig2 = Some(2), start1=100, start2=100, strand1=Minus,  strand2=Plus, attrs=Map("RX" -> "AAA-TTT")),
+      // These 4 should be b::AAA-a::TTT since contig2 is lower
+      builder.addPair(contig = 2, contig2 = Some(1), start1=100, start2=300, strand1=Plus,  strand2=Minus, attrs=Map("RX" -> "AAA-TTT")),
+      builder.addPair(contig = 2, contig2 = Some(1), start1=300, start2=100, strand1=Plus,  strand2=Minus, attrs=Map("RX" -> "AAA-TTT")),
+      builder.addPair(contig = 2, contig2 = Some(1), start1=100, start2=100, strand1=Plus,  strand2=Minus, attrs=Map("RX" -> "AAA-TTT")),
+      builder.addPair(contig = 2, contig2 = Some(1), start1=100, start2=100, strand1=Minus,  strand2=Plus, attrs=Map("RX" -> "AAA-TTT")),
+      // Should be a::AAA-b::TTT since r1 pos < r2 pos
+      builder.addPair(contig = 1, start1=100, start2=300, strand1=Plus,  strand2=Minus, attrs=Map("RX" -> "AAA-TTT")),
+      // Should be b::AAA-a::TTT since r1 pos < r2 pos
+      builder.addPair(contig = 1, start1=300, start2=100, strand1=Plus,  strand2=Minus, attrs=Map("RX" -> "AAA-TTT")),
+      // Should be a::AAA-b::TTT since same contig/pos, r1 positive strand
+      builder.addPair(contig = 1, start1=100, start2=100, strand1=Plus,  strand2=Minus, attrs=Map("RX" -> "AAA-TTT")),
+      // Should be b::AAA-a::TTT since same contig/pos, r2 positive strand
+      builder.addPair(contig = 1, start1=100, start2=100, strand1=Minus,  strand2=Plus, attrs=Map("RX" -> "AAA-TTT")),
+    ).map { pair => Template(r1 = pair.headOption, r2 = pair.lastOption) }
+    val expected = n("a::AAA-b::TTT", 4) ++ n("b::AAA-a::TTT", 4) ++ n("a::AAA-b::TTT", 1) ++ n("b::AAA-a::TTT", 1) ++ n("a::AAA-b::TTT", 1) ++ n("b::AAA-a::TTT", 1)
+    val umiForRead = PrivateMethod[String](Symbol("umiForRead"))
+    templates.map(t => tool invokePrivate umiForRead(t)) should contain theSameElementsInOrderAs expected
   }
 
   // Test for running the GroupReadsByUmi command line program with some sample input

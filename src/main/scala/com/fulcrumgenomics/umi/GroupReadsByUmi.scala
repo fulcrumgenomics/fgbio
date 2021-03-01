@@ -95,7 +95,7 @@ object GroupReadsByUmi {
           (neg, pos)
         }
 
-        val result = if (chrom < mateChrom || chrom == mateChrom && (recPos < matePos || (recPos == matePos && !recNeg))) {
+        val result = if (chrom < mateChrom || (chrom == mateChrom && (recPos < matePos || (recPos == matePos && !recNeg)))) {
           new ReadInfo(chrom, recPos, matePos, recNeg, mateNeg, lib)
         }
         else {
@@ -589,7 +589,7 @@ class GroupReadsByUmi
         if (!this.allowInterContig) require(r1.refIndex == r2.refIndex, s"Mates on different references not supported: ${r1.name}")
         val pos1 = if (r1.positiveStrand) r1.unclippedStart else r1.unclippedEnd
         val pos2 = if (r2.positiveStrand) r2.unclippedStart else r2.unclippedEnd
-        val r1Lower = pos1 < pos2 || pos1 == pos2 && r1.positiveStrand
+        val r1Lower = r1.refIndex < r2.refIndex || (r1.refIndex == r2.refIndex && (pos1 < pos2 || (pos1 == pos2 && r1.positiveStrand)))
         val umis = umi.split('-')
         require(umis.length == 2, s"Paired strategy used but umi did not contain 2 segments: $umi")
 
