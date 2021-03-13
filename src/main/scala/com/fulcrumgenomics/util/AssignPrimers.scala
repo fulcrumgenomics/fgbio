@@ -1,7 +1,8 @@
 package com.fulcrumgenomics.util
 
 import com.fulcrumgenomics.FgBioDef.{FilePath, PathToBam, SafelyClosable}
-import com.fulcrumgenomics.bam.api.{SamRecord, SamSource, SamWriter}
+import com.fulcrumgenomics.bam.Bams
+import com.fulcrumgenomics.bam.api.{SamOrder, SamRecord, SamSource, SamWriter}
 import com.fulcrumgenomics.cmdline.{ClpGroups, FgBioTool}
 import com.fulcrumgenomics.commons.util.LazyLogging
 import com.fulcrumgenomics.sopt.{arg, clp}
@@ -49,6 +50,11 @@ import com.fulcrumgenomics.sopt.{arg, clp}
     |or choose the primary alignment that has the closest aligned read base to the 5' end of the read in sequencing order.
     |For example, from `bwa` version `0.7.16` onwards, the `-5` option may be used.  Consider also using the `-q` option 
     |for `bwa` `0.7.16` as well, which is standard in `0.7.17` onwards when the `-5` option is used.
+    |
+    |The `--annotate-all` option may be used to annotate all alignments for a given read end (eg. R1) with
+    |the same assignment.  If the assignment differs across alignments for the same read end, no assignment is given.
+    |Furthermore, if the input BAM is neither `queryname` sorted nor `query` grouped, it will be sorted into queryname
+    |order to assign all alignments cross a template simultaneously.  The output is written in coordinate order.
   """)
 class AssignPrimers
 (@arg(flag='i', doc="Input BAM file.")  val input: PathToBam,
@@ -61,6 +67,7 @@ class AssignPrimers
  @arg(doc="The SAM tag for the mate's assigned primer coordinate.") val matePrimerCoordinatesTag: String = AssignPrimers.MatePrimerCoordinateTag,
  @arg(doc="The SAM tag for the assigned amplicon identifier.") val ampliconIdentifierTag: String = AssignPrimers.AmpliconIdentifierTag,
  @arg(doc="The SAM tag for the mate's assigned amplicon identifier.") val mateAmpliconIdentifierTag: String = AssignPrimers.MateAmpliconIdentifierTag,
+ @arg(doc="Annotate all R1 (or R2) with same value.") val annotateAll: Boolean = false
 ) extends FgBioTool with LazyLogging {
 
   Io.assertReadable(input)
@@ -86,17 +93,46 @@ class AssignPrimers
       mateAmpliconIdentifierTag = mateAmpliconIdentifierTag
     )
 
-    reader.foreach { rec =>
-      val recAmplicon = detector.findPrimer(rec=rec)
-      labeller.label(
-        rec = rec,
-        recAmplicon = recAmplicon,
-        mateAmplicon = if (rec.unpaired) None else detector.findMatePrimer(rec=rec)
-      )
-      writer.write(rec)
-      progress.record(rec)
+    if (annotateAll) {
+      // All alignments will be assigned a primer independently, and then grouped by read end. An primer assignment will
+      // be made on a given read end only if there is one and only one unique primer assignment.
+      val sorter = Bams.sorter(SamOrder.Coordinate, reader.header)
+      Bams.templateIterator(reader).foreach { template =>
+        // split into R1s and R2s
+        val (r1s, r2s) = template.allReads.toSeq.partition(r => r.unpaired || r.firstOfPair)
+        // detect the primers for each of the R1s and R2s
+        val r1Amplicons = r1s.flatMap(detector.findPrimer).distinct
+        val r1Amplicon = if (r1Amplicons.length == 1) r1Amplicons.headOption else None
+        val r2Amplicons = r2s.flatMap(detector.findPrimer).distinct
+        val r2Amplicon = if (r2Amplicons.length == 1) r2Amplicons.headOption else None
+        // label the reads
+        r1s.foreach { rec => labeller.label(rec=rec, recAmplicon=r1Amplicon, mateAmplicon=r2Amplicon) }
+        r2s.foreach { rec => labeller.label(rec=rec, recAmplicon=r2Amplicon, mateAmplicon=r1Amplicon) }
+        // write them out
+        template.allReads.foreach { r =>
+          sorter += r
+          progress.record(r)
+        }
+      }
+      progress.logLast()
+      // Write them out after sorting
+      sorter.foreach { rec =>
+        writer += rec
+      }
     }
-    progress.logLast()
+    else {
+      reader.foreach { rec =>
+        val recAmplicon = detector.findPrimer(rec=rec)
+        labeller.label(
+          rec          = rec,
+          recAmplicon  = recAmplicon,
+          mateAmplicon = if (rec.unpaired) None else detector.findMatePrimer(rec=rec)
+        )
+        writer += rec
+        progress.record(rec)
+      }
+      progress.logLast()
+    }
 
     reader.safelyClose()
     writer.close()
@@ -181,9 +217,11 @@ class AmpliconLabeller(val amplicons: Iterator[Amplicon] = Iterator.empty,
     // Process the primer for the current read
     recAmplicon.foreach { amp =>
       // update metrics
-      metrics.get(amp).foreach { metric =>
-        if (rec.positiveStrand) metric.left += 1 else metric.right += 1
-        if (rec.unpaired || rec.firstOfPair) metric.r1s += 1 else metric.r2s += 1
+      if (rec.primary && !rec.supplementary) {
+        metrics.get(amp).foreach { metric =>
+          if (rec.positiveStrand) metric.left += 1 else metric.right += 1
+          if (rec.unpaired || rec.firstOfPair) metric.r1s += 1 else metric.r2s += 1
+        }
       }
       // assign ap/ip
       rec(primerCoordinatesTag)  = if (rec.positiveStrand) amp.leftPrimerLocation else amp.rightPrimerLocation
