@@ -31,7 +31,7 @@ import com.fulcrumgenomics.commons.io.Io
 import com.fulcrumgenomics.commons.util.LazyLogging
 import com.fulcrumgenomics.fastq.FastqSource
 import com.fulcrumgenomics.sopt._
-import com.fulcrumgenomics.util.ProgressLogger
+import com.fulcrumgenomics.util.{ProgressLogger, ReadStructure, SegmentType}
 
 @clp(description =
   """
@@ -42,6 +42,9 @@ import com.fulcrumgenomics.util.ProgressLogger
     |(specified by `attribute`) that contains the read sequence of the UMI.  Trailing read
     |numbers (`/1` or `/2`) are removed from FASTQ read names, as is any text after whitespace,
     |before matching.
+    |
+    |The `--read-structure` option may be used to specify which bases in the FASTQ contain UMI
+    |bases.  Otherwise it is assumed the FASTQ contains only UMI bases.
     |
     |At the end of execution, reports how many records were processed and how many were
     |missing UMIs. If any read from the BAM file did not have a matching UMI read in the
@@ -59,6 +62,8 @@ class AnnotateBamWithUmis(
   @arg(flag='f', doc="Input FASTQ file with UMI reads.")       val fastq: PathToFastq,
   @arg(flag='o', doc="Output BAM file to write.")              val output: PathToBam,
   @arg(flag='t', doc="The BAM attribute to store UMIs in.")    val attribute: String = "RX",
+  @arg(flag='r', doc="The read structure for the FASTQ, otherwise all bases will be used.")
+                                                               val readStructure: Option[ReadStructure] = None,
   @arg(          doc="If set, fail on the first missing UMI.") val failFast: Boolean = false
 ) extends FgBioTool with LazyLogging {
 
@@ -70,6 +75,15 @@ class AnnotateBamWithUmis(
     if (failFast) fail("Record '" + readName + "' in BAM file not found in FASTQ file.")
   }
 
+  /** Extracts the UMI bases given the read structure */
+  private def extractUmis(bases: String, structure: ReadStructure): String = {
+    structure
+      .extract(bases)
+      .filter(_.kind == SegmentType.MolecularBarcode)
+      .map(_.bases)
+      .mkString("")
+  }
+
   /** Main method that does the work of reading input files, matching up reads and writing the output file. */
   override def execute(): Unit = {
     Io.assertReadable(Seq(input, fastq))
@@ -77,13 +91,16 @@ class AnnotateBamWithUmis(
 
     // Read in the fastq file
     logger.info("Reading in UMIs from FASTQ.")
-    val fqIn = FastqSource(fastq)
-    val nameToUmi = fqIn.map(fq => (fq.name, fq.bases)).toMap
+    val fqIn      = FastqSource(fastq)
+    val nameToUmi = this.readStructure match {
+      case None            => fqIn.map(fq => (fq.name, fq.bases)).toMap
+      case Some(structure) => fqIn.map(fq => (fq.name, extractUmis(fq.bases, structure))).toMap
+    }
 
     // Loop through the BAM file an annotate it
     logger.info("Reading input BAM and annotating output BAM.")
-    val in  = SamSource(input)
-    val out = SamWriter(output, in.header)
+    val in       = SamSource(input)
+    val out      = SamWriter(output, in.header)
     val progress = ProgressLogger(logger)
 
     in.foreach(rec => {
