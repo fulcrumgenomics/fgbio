@@ -63,14 +63,14 @@ class AnnotateBamWithUmis(
   @arg(flag='o', doc="Output BAM file to write.")              val output: PathToBam,
   @arg(flag='t', doc="The BAM attribute to store UMIs in.")    val attribute: String = "RX",
   @arg(flag='r', doc="The read structure for the FASTQ, otherwise all bases will be used.")
-                                                               val readStructure: Option[ReadStructure] = None,
+                                                               val readStructure: ReadStructure = ReadStructure("+M"),
   @arg(          doc="If set, fail on the first missing UMI.") val failFast: Boolean = false
 ) extends FgBioTool with LazyLogging {
 
   private var missingUmis: Long = 0
 
   /** Updates the count of missing UMI records, and throws an exception if fail-fast is true. */
-  private def logMissingUmi(readName: String) = {
+  private def logMissingUmi(readName: String): Unit = {
     missingUmis += 1
     if (failFast) fail("Record '" + readName + "' in BAM file not found in FASTQ file.")
   }
@@ -92,10 +92,7 @@ class AnnotateBamWithUmis(
     // Read in the fastq file
     logger.info("Reading in UMIs from FASTQ.")
     val fqIn      = FastqSource(fastq)
-    val nameToUmi = this.readStructure match {
-      case None            => fqIn.map(fq => (fq.name, fq.bases)).toMap
-      case Some(structure) => fqIn.map(fq => (fq.name, extractUmis(fq.bases, structure))).toMap
-    }
+    val nameToUmi =  fqIn.map(fq => (fq.name, extractUmis(fq.bases, readStructure))).toMap
 
     // Loop through the BAM file an annotate it
     logger.info("Reading input BAM and annotating output BAM.")
