@@ -6,6 +6,7 @@ import com.fulcrumgenomics.bam.api.{SamOrder, SamRecord, SamSource, SamWriter}
 import com.fulcrumgenomics.cmdline.{ClpGroups, FgBioTool}
 import com.fulcrumgenomics.commons.util.LazyLogging
 import com.fulcrumgenomics.sopt.{arg, clp}
+import htsjdk.samtools.SAMFileHeader.{GroupOrder, SortOrder}
 
 
 @clp(group = ClpGroups.SamOrBam, description=
@@ -94,33 +95,48 @@ class AssignPrimers
     )
 
     if (annotateAll) {
+      // do not sort if the input order is query name or query grouped or unsorted
+      val sorter = SamOrder(reader.header).flatMap { order =>
+          if (order.sortOrder == SortOrder.queryname) None
+          else if (order.groupOrder == GroupOrder.query ) None
+          else if (order == SamOrder.Unsorted) None
+          else Some(Bams.sorter(order, reader.header))
+      }
+      val writer = SamWriter(output, reader.header)
       // All alignments will be assigned a primer independently, and then grouped by read end. An primer assignment will
       // be made on a given read end only if there is one and only one unique primer assignment.
-      val sorter = Bams.sorter(SamOrder.Coordinate, reader.header)
       Bams.templateIterator(reader).foreach { template =>
         // split into R1s and R2s
         val (r1s, r2s) = template.allReads.toSeq.partition(r => r.unpaired || r.firstOfPair)
         // detect the primers for each of the R1s and R2s
-        val r1Amplicons = r1s.flatMap(detector.findPrimer).distinct
-        val r1Amplicon = if (r1Amplicons.length == 1) r1Amplicons.headOption else None
-        val r2Amplicons = r2s.flatMap(detector.findPrimer).distinct
-        val r2Amplicon = if (r2Amplicons.length == 1) r2Amplicons.headOption else None
+        val r1Amplicon  = r1s.flatMap(detector.findPrimer).distinct match {
+          case Seq(x) => Some(x)
+          case _      => None
+        }
+        val r2Amplicon  = r2s.flatMap(detector.findPrimer).distinct match {
+          case Seq(x) => Some(x)
+          case _      => None
+        }
         // label the reads
         r1s.foreach { rec => labeller.label(rec=rec, recAmplicon=r1Amplicon, mateAmplicon=r2Amplicon) }
         r2s.foreach { rec => labeller.label(rec=rec, recAmplicon=r2Amplicon, mateAmplicon=r1Amplicon) }
         // write them out
         template.allReads.foreach { r =>
-          sorter += r
+          sorter match {
+            case Some(_sorter) => _sorter += r
+            case None          => writer += r
+          }
           progress.record(r)
         }
       }
       progress.logLast()
-      // Write them out after sorting
-      sorter.foreach { rec =>
-        writer += rec
-      }
+      // Write them out after sorting, if necessary
+      sorter.foreach { _sorter => writer ++= _sorter }
+      writer.close()
     }
     else {
+      val writer = SamWriter(output, reader.header)
+
       reader.foreach { rec =>
         val recAmplicon = detector.findPrimer(rec=rec)
         labeller.label(
@@ -132,10 +148,10 @@ class AssignPrimers
         progress.record(rec)
       }
       progress.logLast()
+      writer.close()
     }
 
     reader.safelyClose()
-    writer.close()
 
     // Sum up the values across all amplicons
     val totalMetric = new AssignPrimersMetric(identifier=AssignPrimersMetric.AllAmpliconsIdentifier)

@@ -25,7 +25,7 @@
 
 package com.fulcrumgenomics.util
 
-import com.fulcrumgenomics.bam.api.SamRecord
+import com.fulcrumgenomics.bam.api.{SamOrder, SamRecord}
 import com.fulcrumgenomics.testing.SamBuilder.Minus
 import com.fulcrumgenomics.testing.{SamBuilder, UnitSpec}
 import htsjdk.samtools.SamPairUtil
