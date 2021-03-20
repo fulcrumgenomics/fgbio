@@ -31,7 +31,7 @@ import com.fulcrumgenomics.alignment.Cigar
 import com.fulcrumgenomics.bam.api.{SamOrder, SamRecord}
 import com.fulcrumgenomics.testing.SamBuilder.{Minus, Plus}
 import com.fulcrumgenomics.testing.{SamBuilder, UnitSpec}
-import com.fulcrumgenomics.util.Sequences
+import com.fulcrumgenomics.util.{Io, Sequences}
 import htsjdk.samtools.SAMFileHeader.GroupOrder
 import htsjdk.samtools.SamPairUtil
 import htsjdk.samtools.SamPairUtil.PairOrientation
@@ -85,6 +85,56 @@ class BamsTest extends UnitSpec {
     Bams.queryGroupedIterator(in=builder.toSource).map(_.name).toSeq shouldBe Seq("p1", "p1", "q1", "q2")
   }
 
+  "Bams.querySortedIterator" should "work on a reader that is already query sorted" in {
+    val builder = new SamBuilder(sort=Some(SamOrder.Queryname))
+    builder.addFrag(name="q1", start=100)
+    builder.addPair(name="p1", start1=100, start2=300)
+    builder.addFrag(name="q2", start=200)
+
+    Bams.querySortedIterator(in=builder.toSource).map(_.name).toSeq shouldBe Seq("p1", "p1", "q1", "q2")
+  }
+
+  it should "use the htsjdk sorting of querynames" in {
+    // NB: We expect the queryname sort ordering of SamRecord objects to be stable and to reflect the
+    //     default in both htsjdk and Picard. For more information, see the discussion at:
+    //     https://github.com/samtools/hts-specs/pull/361#issuecomment-447065728
+    val builder = new SamBuilder()
+
+    val actual   = Seq("A1", "A2", "A7", "A9", "A10", "A12", "A88")
+    val expected = Seq("A1", "A10", "A12", "A2", "A7", "A88", "A9")
+
+    actual.foreach(name => builder.addFrag(name, start=100))
+    Bams.querySortedIterator(in=builder.toSource).map(_.name).toSeq shouldBe expected
+  }
+
+  it should "sort a reader that is query grouped" in {
+    val builder = new SamBuilder(sort=None)
+    builder.header.setGroupOrder(GroupOrder.query)
+    builder.addFrag(name="q1", start=100)
+    builder.addPair(name="p1", start1=100, start2=300)
+    builder.addFrag(name="q2", start=200)
+
+    Bams.querySortedIterator(in=builder.toSource).map(_.name).toSeq shouldBe Seq("p1", "p1", "q1", "q2")
+  }
+
+  it should "sort a coordinate sorted input" in {
+    val builder = new SamBuilder(sort=Some(SamOrder.Coordinate))
+    builder.addFrag(name="q1", start=100)
+    builder.addPair(name="p1", start1=100, start2=300)
+    builder.addFrag(name="q2", start=200)
+
+    Bams.querySortedIterator(in=builder.toSource).map(_.name).toSeq shouldBe Seq("p1", "p1", "q1", "q2")
+  }
+
+  it should "sort an unsorted input" in {
+    val builder = new SamBuilder(sort=None)
+    builder.addFrag(name="q1", start=100)
+    builder.addPair(name="p1", start1=100, start2=300)
+    builder.addFrag(name="q2", start=200)
+
+    Bams.querySortedIterator(in=builder.toSource).map(_.name).toSeq shouldBe Seq("p1", "p1", "q1", "q2")
+  }
+
   "Bams.templateIterator" should "return template objects in order" in {
     val builder = new SamBuilder(sort=Some(SamOrder.Queryname))
     builder.addPair(name="p1", start1=100, start2=300)
@@ -107,6 +157,44 @@ class BamsTest extends UnitSpec {
         t.r2.exists(r => r.secondOfPair) shouldBe true
       }
     }
+  }
+
+  "Bams.templateSortedIterator" should "return template objects in a sorted order" in {
+    val builder = new SamBuilder(sort=Some(SamOrder.Coordinate))
+    builder.addPair(name="p1", start1=100, start2=300)
+    builder.addFrag(name="f1", start=100)
+    builder.addPair(name="p2", start1=500, start2=200)
+    builder.addPair(name="p0", start1=700, start2=999)
+
+    val templates = Bams.templateSortedIterator(builder.toSource).toSeq
+    templates should have size 4
+    templates.map(_.name) shouldBe Seq("f1", "p0", "p1", "p2")
+
+    templates.foreach {t =>
+      (t.r1Supplementals ++ t.r1Secondaries ++ t.r2Supplementals ++ t.r2Secondaries).isEmpty shouldBe true
+      if (t.name startsWith "f") {
+        t.r1.exists(r => !r.paired) shouldBe true
+        t.r2.isEmpty shouldBe true
+      }
+      else {
+        t.r1.exists(r => r.firstOfPair) shouldBe true
+        t.r2.exists(r => r.secondOfPair) shouldBe true
+      }
+    }
+  }
+
+  it should "only return templates in a queryname sorted order" in {
+    val builder1 = new SamBuilder(sort = Some(SamOrder.Unknown))
+    builder1.addPair(name = "A9")
+    builder1.addPair(name = "A88")
+    val iterator1 = Bams.templateSortedIterator(builder1.iterator, builder1.header, maxInMemory = 10, Io.tmpDir)
+    iterator1.toList.map(_.name) should contain theSameElementsInOrderAs Seq("A88", "A9")
+
+    val builder2 = new SamBuilder(sort = Some(SamOrder.Unknown))
+    builder2.addPair(name = "A88")
+    builder2.addPair(name = "A9")
+    val iterator2 = Bams.templateSortedIterator(builder2.iterator, builder2.header, maxInMemory = 10, Io.tmpDir)
+    iterator2.toList.map(_.name) should contain theSameElementsInOrderAs Seq("A88", "A9")
   }
 
   it should "handle reads with secondary and supplementary records" in {

@@ -25,11 +25,11 @@
 package com.fulcrumgenomics.bam
 
 import com.fulcrumgenomics.FgBioDef._
+import com.fulcrumgenomics.bam.api.SamOrder.Queryname
 import com.fulcrumgenomics.bam.api.{SamOrder, SamRecord, SamRecordCodec, SamSource}
-import com.fulcrumgenomics.commons.collection.BetterBufferedIterator
-import com.fulcrumgenomics.util.{Io, ProgressLogger, Sorter}
+import com.fulcrumgenomics.commons.collection.{BetterBufferedIterator, SelfClosingIterator}
 import com.fulcrumgenomics.commons.util.LazyLogging
-import com.fulcrumgenomics.commons.collection.SelfClosingIterator
+import com.fulcrumgenomics.util.{Io, ProgressLogger, Sorter}
 import htsjdk.samtools.SAMFileHeader.{GroupOrder, SortOrder}
 import htsjdk.samtools.SamPairUtil.PairOrientation
 import htsjdk.samtools._
@@ -207,17 +207,52 @@ object Bams extends LazyLogging {
         case iter: SelfClosingIterator[SamRecord] => iter
         case _ => new SelfClosingIterator(iterator.bufferBetter, () => CloserUtil.close(iterator))
       }
+    } else {
+      querySortedIterator(iterator, header, maxInMemory, tmpDir)
     }
-    else {
-      logger.info("Sorting into queryname order.")
-      val progress = ProgressLogger(this.logger, "Queryname sorted")
-      val sort     = sorter(SamOrder.Queryname, header, maxInMemory, tmpDir)
-      iterator.foreach { rec =>
-        sort += rec
-        progress.record(rec)
-      }
+  }
 
-      new SelfClosingIterator(sort.iterator, () => sort.close())
+  /** Returns an iterator over records in such a way that all reads with the same query name are adjacent in the
+    * iterator. Although a queryname sort is guaranteed, the sort order may not be consistent with other queryname
+    * sorting implementations, especially in other tool kits.
+    *
+    * @param in a SamReader from which to consume records
+    * @param maxInMemory the maximum number of records to keep and sort in memory, if sorting is needed
+    * @param tmpDir a temp directory to use for temporary sorting files if sorting is needed
+    * @return an Iterator with reads from the same query grouped together
+    */
+  def querySortedIterator(in: SamSource,
+                          maxInMemory: Int = MaxInMemory,
+                          tmpDir: DirPath = Io.tmpDir): BetterBufferedIterator[SamRecord] = {
+    querySortedIterator(in.iterator, in.header, maxInMemory, tmpDir)
+  }
+
+  /** Returns an iterator over records in such a way that all reads with the same query name are adjacent in the
+    * iterator. Although a queryname sort is guaranteed, the sort order may not be consistent with other queryname
+    * sorting implementations, especially in other tool kits.
+    *
+    * @param iterator an iterator from which to consume records
+    * @param header the header associated with the records
+    * @param maxInMemory the maximum number of records to keep and sort in memory, if sorting is needed
+    * @param tmpDir a temp directory to use for temporary sorting files if sorting is needed
+    * @return an Iterator with reads from the same query grouped together
+    */
+  def querySortedIterator(iterator: Iterator[SamRecord],
+                          header: SAMFileHeader,
+                          maxInMemory: Int,
+                          tmpDir: DirPath): SelfClosingIterator[SamRecord] = {
+    (SamOrder(header), iterator) match {
+      case (Some(Queryname), _iterator: SelfClosingIterator[SamRecord]) => _iterator
+      case (Some(Queryname), _) => new SelfClosingIterator(iterator.bufferBetter, () => CloserUtil.close(iterator))
+      case (_, _) =>
+        logger.info(parts = "Sorting into queryname order.")
+        val progress = ProgressLogger(this.logger, "Records", "sorted")
+        val sort     = sorter(Queryname, header, maxInMemory, tmpDir)
+        iterator.foreach { rec =>
+          progress.record(rec)
+          sort.write(rec)
+        }
+        new SelfClosingIterator(sort.iterator, () => sort.close())
     }
   }
 
@@ -261,6 +296,54 @@ object Bams extends LazyLogging {
     }
 
     new SelfClosingIterator(iter, () => queryIterator.close())
+  }
+
+  /** Return an iterator over records sorted and grouped into [[Template]] objects. Although a queryname sort is
+    * guaranteed, the sort order may not be consistent with other queryname sorting implementations, especially in other
+    * tool kits. See [[templateIterator]] for a [[Template]] iterator which emits templates in a non-guaranteed sort
+    * order.
+    *
+    * @see [[templateIterator]]
+    *
+    * @param in a SamReader from which to consume records
+    * @param maxInMemory the maximum number of records to keep and sort in memory, if sorting is needed
+    * @param tmpDir a temp directory to use for temporary sorting files if sorting is needed
+    * @return an Iterator of queryname sorted Template objects
+    */
+  def templateSortedIterator(in: SamSource,
+                             maxInMemory: Int = MaxInMemory,
+                             tmpDir: DirPath = Io.tmpDir): SelfClosingIterator[Template] = {
+    templateSortedIterator(in.iterator, in.header, maxInMemory, tmpDir)
+  }
+
+  /** Return an iterator over records sorted and grouped into [[Template]] objects. Although a queryname sort is
+    * guaranteed, the sort order may not be consistent with other queryname sorting implementations, especially in other
+    * tool kits. See [[templateIterator]] for a [[Template]] iterator which emits templates in a non-guaranteed sort
+    * order.
+    *
+    * @see [[templateIterator]]
+    *
+    * @param iterator an iterator from which to consume records
+    * @param header the header associated with the records
+    * @param maxInMemory the maximum number of records to keep and sort in memory, if sorting is needed
+    * @param tmpDir a temp directory to use for temporary sorting files if sorting is needed
+    * @return an Iterator of queryname sorted Template objects
+    */
+  def templateSortedIterator(iterator: Iterator[SamRecord],
+                             header: SAMFileHeader,
+                             maxInMemory: Int,
+                             tmpDir: DirPath): SelfClosingIterator[Template] = {
+    val queryIterator = querySortedIterator(iterator, header, maxInMemory, tmpDir)
+
+    val _iterator = new Iterator[Template] {
+      override def hasNext: Boolean = queryIterator.hasNext
+      override def next: Template   = {
+        require(hasNext, "next() called on empty iterator")
+        Template(queryIterator)
+      }
+    }
+
+    new SelfClosingIterator(_iterator, () => queryIterator.close())
   }
 
   /** Returns an iterator over the records in the given iterator such that the order of the records returned is
