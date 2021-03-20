@@ -66,6 +66,7 @@ class PickIlluminaIndicesCommand {
     public double MIN_DELTAG;
     public List<String> INDEX_ADAPTER;
     public List<String> AVOID_SEQUENCE;
+    public List<byte[]> CANDIDATES;
 
     final static Log log = Log.getInstance(PickIlluminaIndicesCommand.class);
 
@@ -232,7 +233,7 @@ class PickIlluminaIndicesCommand {
 
     protected int execute() {
         // Generate all kmers
-        final List<byte[]> kmers = generateAllKmers(INDEX_LENGTH);
+        final List<byte[]> kmers = (this.CANDIDATES.isEmpty()) ? generateAllKmers(INDEX_LENGTH) : this.CANDIDATES;
         List<Index> indexes = new LinkedList<>();
         log.info("Generated " + kmers.size() + " kmers.");
 
@@ -318,6 +319,7 @@ class PickIlluminaIndicesCommand {
             if (first.minEditDistance() > lastMinEdit) {
                 lastMinEdit = first.minEditDistance();
                 log.info("There are " + count + " indices with a minimum edit distance of " + lastMinEdit);
+                if (count == N_INDICES) break;
             }
 
             if (rankedIndexes.remove(first)) count--;

@@ -89,6 +89,32 @@ class PickIlluminaIndicesTest extends UnitSpec {
     checkOutput(output=output, expectedNumIndices=2, expectedEditDistance=4)
   }
 
+  it should "ask to pick three indices with length four and edit distance four from provided candidates" in {
+    val candidates = {
+      val path = makeTempFile("candidates", ".txt")
+      Io.writeLines(path=path, lines=Seq("ATATATAT", "ATATATAA", "AAAATTTT", "GGGGGGGG"))
+      path
+    }
+    val output = newOutput
+    new PickIlluminaIndices(
+      length = 8,
+      indices = 3,
+      editDistance=2,
+      output=output,
+      allowReverses=true,
+      allowReverseComplements=true,
+      allowPalindromes=true,
+      minGc=0,
+      maxGc=1,
+      maxHomopolymer=8,
+      threads=1,
+      candidates=Some(candidates)
+    ).execute()
+    checkOutput(output=output, expectedNumIndices=3, expectedEditDistance=2)
+    val indices = Io.readLines(output).drop(1).map(_.split('\t').head).toSeq
+    indices should contain theSameElementsInOrderAs Seq("AAAATTTT", "ATATATAT", "GGGGGGGG")
+  }
+
   // NB: this test fails due to a System.exit(1)
   /*
   it should "ask to pick four indices with length one and edit distance one but fail" in {
