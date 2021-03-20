@@ -491,7 +491,7 @@ class Aligner(val scorer: AlignmentScorer,
           forloop(from = 1, until = tLen + 1) { j =>
             val direction = AllDirections.maxBy(d => matrices(d).scoring(i, j))
             val score = matrices(direction).scoring(i, j)
-            if (score > maxScore) {
+            if (score > maxScore || maxD == Done) {
               maxScore = score
               maxI = i
               maxJ = j
@@ -527,7 +527,7 @@ class Aligner(val scorer: AlignmentScorer,
         forloop(from = 1, until = qLen + 1) { i =>
           forloop(from = 1, until = tLen + 1) { j =>
             val direction = AllDirections.maxBy(d => matrices(d).scoring(i, j))
-            if (matrices(direction).scoring(i, j) >= minScore) hits += MatrixLocation(i, j, direction)
+            if (matrices(direction).scoring(i, j) >= minScore && matrices(direction).trace(i, j) != Done) hits += MatrixLocation(i, j, direction)
           }
         }
     }
