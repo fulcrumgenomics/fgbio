@@ -26,13 +26,12 @@
 package com.fulcrumgenomics.fasta
 
 import java.io.StringWriter
-
 import com.fulcrumgenomics.FgBioDef
 import com.fulcrumgenomics.FgBioDef._
 import com.fulcrumgenomics.fasta.SequenceMetadata.Keys
 import com.fulcrumgenomics.util.Io
 import enumeratum.EnumEntry
-import htsjdk.samtools.util.BufferedLineReader
+import htsjdk.samtools.util.{BufferedLineReader, Locatable}
 import htsjdk.samtools.{SAMSequenceDictionary, SAMSequenceDictionaryCodec, SAMSequenceRecord, SAMTextHeaderCodec}
 import htsjdk.variant.utils.SAMSequenceDictionaryExtractor
 
@@ -245,6 +244,22 @@ case class SequenceDictionary(infos: IndexedSeq[SequenceMetadata]) extends Itera
     * the same MD5 if both have MD5s. */
   def sameAs(that: SequenceDictionary): Boolean = {
     this.length == that.length && this.zip(that).forall { case (thisInfo, thatInfo) => thisInfo.sameAs(thatInfo) }
+  }
+
+  /** Validate the locatable against the sequence dictionary.
+    *
+    * @throws NoSuchElementException when the locatable's contig cannot be found in the sequence dictionary.
+    * @throws IllegalArgumentException when the locatable's start is less than 1.
+    * @throws IllegalArgumentException when the locatable's end is beyond the reference contig length.
+    * @throws IllegalArgumentException when the locatable's start is greater than the end.
+    */
+  def validate(locatable: Locatable): Unit = {
+    val info = infos
+      .find(_.name == locatable.getContig)
+      .getOrElse(throw new NoSuchElementException(s"Contig does not exist within dictionary for locatable: $locatable."))
+    require(1 <= locatable.getStart, s"Start is less than 1 for locatable: $locatable.")
+    require(locatable.getEnd <= info.length, s"End is beyond the reference contig length for locatable: $locatable.")
+    require(locatable.getStart <= locatable.getEnd, f"Start is greater than end for locatable: $locatable.")
   }
 
   /** Writes the sequence dictionary to the given path */

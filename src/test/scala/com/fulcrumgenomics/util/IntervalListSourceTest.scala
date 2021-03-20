@@ -59,42 +59,42 @@ class IntervalListSourceTest extends UnitSpec {
   }
 
   it should "fail if no header is present" in {
-    val exception = intercept[Exception] { IntervalListSource(Seq("chr1\t1\t1\t+\tname")) }
+    val exception = intercept[IllegalArgumentException] { IntervalListSource(Seq("chr1\t1\t1\t+\tname")) }
     exception.getMessage should include("No header found")
   }
 
   it should "fail if no sequence dictionary is present" in {
-    val exception = intercept[Exception] { IntervalListSource(Seq("@HD\tVN:1.0", "chr1\t1\t1\t+\tname")) }
+    val exception = intercept[IllegalArgumentException] { IntervalListSource(Seq("@HD\tVN:1.0", "chr1\t1\t1\t+\tname")) }
     exception.getMessage should include("No reference sequences found")
   }
 
   it should "fail if a line does not have exactly five fields" in {
-    val exception = intercept[Exception] { IntervalListSource(Seq("@HD\tVN:1.0", "@SQ\tSN:chr1\tLN:10000", "chr1")).toSeq }
+    val exception = intercept[IllegalArgumentException] { IntervalListSource(Seq("@HD\tVN:1.0", "@SQ\tSN:chr1\tLN:10000", "chr1")).toSeq }
     exception.getMessage should include("Expected 5 fields on line 3")
   }
 
   it should "fail if an interval's contig is not found the in the sequence dictionary" in {
-    val exception = intercept[Exception] { IntervalListSource(Seq("@HD\tVN:1.0", "@SQ\tSN:chr1\tLN:10000", "chr2\t1\t1\t+\tname")).toSeq }
-    exception.getMessage should include("key not found: chr2")
+    val exception = intercept[NoSuchElementException] { IntervalListSource(Seq("@HD\tVN:1.0", "@SQ\tSN:chr1\tLN:10000", "chr2\t1\t1\t+\tname")).toSeq }
+    exception.getMessage should include("Contig does not exist within dictionary")
   }
 
   it should "fail if an interval's start is less than one" in {
-    val exception = intercept[Exception] { IntervalListSource(Seq("@HD\tVN:1.0", "@SQ\tSN:chr1\tLN:10000", "chr1\t0\t1\t+\tname")).toSeq }
+    val exception = intercept[IllegalArgumentException] { IntervalListSource(Seq("@HD\tVN:1.0", "@SQ\tSN:chr1\tLN:10000", "chr1\t0\t1\t+\tname")).toSeq }
     exception.getMessage should include("Start is less than 1")
   }
 
   it should "fail if an interval's end is beyond the contig's length in the sequence dictionary" in {
-    val exception = intercept[Exception] { IntervalListSource(Seq("@HD\tVN:1.0", "@SQ\tSN:chr1\tLN:10000", "chr1\t1\t10001\t+\tname")).toSeq }
+    val exception = intercept[IllegalArgumentException] { IntervalListSource(Seq("@HD\tVN:1.0", "@SQ\tSN:chr1\tLN:10000", "chr1\t1\t10001\t+\tname")).toSeq }
     exception.getMessage should include("End is beyond")
   }
 
   it should "fail if an interval's start is greater than its end" in {
-    val exception = intercept[Exception] { IntervalListSource(Seq("@HD\tVN:1.0", "@SQ\tSN:chr1\tLN:10000", "chr1\t2\t1\t+\tname")).toSeq }
+    val exception = intercept[IllegalArgumentException] { IntervalListSource(Seq("@HD\tVN:1.0", "@SQ\tSN:chr1\tLN:10000", "chr1\t2\t1\t+\tname")).toSeq }
     exception.getMessage should include("Start is greater than end")
   }
 
   it should "fail if the strand cannot be recognized" in {
-    val exception = intercept[Exception] { IntervalListSource(Seq("@HD\tVN:1.0", "@SQ\tSN:chr1\tLN:10000", "chr1\t1\t1\tN\tname")).toSeq }
+    val exception = intercept[IllegalArgumentException] { IntervalListSource(Seq("@HD\tVN:1.0", "@SQ\tSN:chr1\tLN:10000", "chr1\t1\t1\tN\tname")).toSeq }
     exception.getMessage should include("Unrecognized strand")
   }
 }

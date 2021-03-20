@@ -25,13 +25,14 @@
 
 package com.fulcrumgenomics.fasta
 
+import com.fulcrumgenomics.commons.CommonsDef._
 import com.fulcrumgenomics.fasta.Converters.{FromSAMSequenceDictionary, FromSAMSequenceRecord, ToSAMSequenceDictionary, ToSAMSequenceRecord}
-import com.fulcrumgenomics.testing.UnitSpec
-import org.scalatest.OptionValues
-import com.fulcrumgenomics.fasta.SequenceMetadata.{AlternateLocus, Keys}
+import com.fulcrumgenomics.fasta.SequenceMetadata.AlternateLocus
 import com.fulcrumgenomics.fasta.Topology.{Circular, Linear}
+import com.fulcrumgenomics.testing.UnitSpec
+import htsjdk.samtools.util.Interval
 import htsjdk.samtools.{SAMSequenceDictionary, SAMSequenceRecord}
-import com.fulcrumgenomics.FgBioDef._
+import org.scalatest.OptionValues
 
 class SequenceDictionaryTest extends UnitSpec with OptionValues {
 
@@ -170,6 +171,34 @@ class SequenceDictionaryTest extends UnitSpec with OptionValues {
 
   it should "return true if the name, length, and md5 match" in {
     SequenceMetadata(name="chr1", length=0, md5=Some("1")) sameAs SequenceMetadata(name="chr1", length=0, md5=Some("1")) shouldBe true
+  }
+
+  "SequenceDictionary.validate" should "raise a NoSuchElementException if a locatable has a contig not in the optional sequence dictionary" in {
+    val dict     = SequenceDictionary(SequenceMetadata("chr1", length = 1000))
+    val interval = new Interval("chr2", 200, 200)
+    val caught = intercept[NoSuchElementException] { dict.validate(interval) }
+    caught.getMessage should include ("Contig does not exist within dictionary for locatable")
+  }
+
+  it should "raise a IllegalArgumentException if a locatable has a start value less than 1 (1-based)" in {
+    val dict     = SequenceDictionary(SequenceMetadata("chr1", length = 1000))
+    val interval = new Interval("chr1", 0, 200)
+    val caught = intercept[IllegalArgumentException] { dict.validate(interval) }
+    caught.getMessage should include ("Start is less than 1 for locatable")
+  }
+
+  it should "raise a IllegalArgumentException if a locatable has an end value greater than the contig length" in {
+    val dict     = SequenceDictionary(SequenceMetadata("chr1", length = 1000))
+    val interval = new Interval("chr1", 200, 1000 + 1)
+    val caught = intercept[IllegalArgumentException] { dict.validate(interval) }
+    caught.getMessage should include ("End is beyond the reference contig length for locatable")
+  }
+
+  it should "raise a IllegalArgumentException if a locatable record has a start value greater than an end value" in {
+    val dict     = SequenceDictionary(SequenceMetadata("chr1", length = 1000))
+    val interval = new Interval("chr1", 200 + 1, 200)
+    val caught = intercept[IllegalArgumentException] { dict.validate(interval) }
+    caught.getMessage should include ("Start is greater than end for locatable")
   }
 
   "SequenceDictionary" should "fail to build two sequence metadatas share a name (including aliases)" in {
