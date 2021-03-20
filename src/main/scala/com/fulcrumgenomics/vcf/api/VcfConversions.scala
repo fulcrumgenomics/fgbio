@@ -36,7 +36,6 @@ import htsjdk.variant.vcf._
 
 import scala.collection.JavaConverters.mapAsJavaMapConverter
 import scala.collection.immutable.ListMap
-import scala.collection.mutable
 
 /**
   * Object that provides methods for converting from fgbio's scala VCF classes to HTSJDK's
@@ -195,16 +194,41 @@ private[api] object VcfConversions {
     case VcfFieldType.String    => VCFHeaderLineType.String
   }
 
+  private def addToBuffer(add: ((String, Any)) => Unit,
+                          entry: Option[VcfHeaderInfoOrFormatEntry],
+                          key: String,
+                          value: Any,
+                          fieldType: String,
+                          allowKindMismatch: Boolean = false,
+                          allowExtraFields: Boolean = false): Unit = entry match {
+    case None if allowExtraFields => add(key -> value)
+    case None                     => throw new IllegalStateException(s"$fieldType field $key not described in header.")
+    case Some(hd)                 =>
+      if (!allowKindMismatch) toTypedValue(value, hd.kind, hd.count).foreach(v => add(key -> v))
+      else {
+        try {
+          toTypedValue(value, hd.kind, hd.count).foreach(v => add(key -> v))
+        } catch {
+          case _: Exception => add(key -> value)
+        }
+      }
+  }
+
   /**
     * Converts a [[VariantContext]] and all nested classes into a [[Variant]] and set of [[Genotype]]s.
     *
     * @param in the [[VariantContext]] to be converted
     * @param header the scala [[VcfHeader]] which contains the definitions of all the INFO and FORMAT
     *               fields as well as the ordered list of sample names.
+    * @param allowKindMismatch allow a mismatch between the actual kind and the kind defined in the VCF header
+    * @param allowExtraFields allow fields not defined in the VCF header
     * @return a [[Variant]] instance that is a copy of the [[VariantContext]] and does not rely on it
     *         post-return
     */
-  def toScalaVariant(in: VariantContext, header: VcfHeader): Variant = try {
+  def toScalaVariant(in: VariantContext,
+                     header: VcfHeader,
+                     allowKindMismatch: Boolean = false,
+                     allowExtraFields: Boolean = false): Variant = try {
     // Build up the allele set
     val scalaAlleles = in.getAlleles.iterator.map(a => Allele(a.getDisplayString)).toIndexedSeq
     val alleleMap    = in.getAlleles.iterator().zip(scalaAlleles).toMap
@@ -233,13 +257,19 @@ private[api] object VcfConversions {
         if (g.hasGQ) builder += ("GQ" -> g.getGQ)
         if (g.hasPL) builder += ("PL" -> g.getPL.toIndexedSeq)
 
-        g.getExtendedAttributes.keySet().foreach { key =>
-          val value = g.getExtendedAttribute(key)
+        g.getExtendedAttributes.entrySet().foreach { entry =>
+          val key   = entry.getKey
+          val value = entry.getValue
 
-          header.format.get(key) match {
-            case Some(hd) => toTypedValue(value, hd.kind, hd.count).foreach(v => builder += (key -> v))
-            case None     => throw new IllegalStateException(s"Format field $key not described in header.")
-          }
+          addToBuffer(
+            add               = builder.addOne,
+            entry             = header.format.get(key),
+            key               = key,
+            value             = value,
+            fieldType         = "Format",
+            allowKindMismatch = allowKindMismatch,
+            allowExtraFields  = allowExtraFields
+          )
         }
 
         builder.result()
@@ -255,10 +285,15 @@ private[api] object VcfConversions {
       inInfo.entrySet().foreach { entry =>
         val key   = entry.getKey
         val value = entry.getValue
-        header.info.get(key) match {
-          case Some(hd) => toTypedValue(value, hd.kind, hd.count).foreach(v => builder += (key -> v))
-          case None     => throw new IllegalStateException(s"INFO field $key not described in header.")
-        }
+        addToBuffer(
+          add               = builder.addOne,
+          entry             = header.info.get(key),
+          key               = key,
+          value             = value,
+          fieldType         = "Info",
+          allowKindMismatch = allowKindMismatch,
+          allowExtraFields  = allowExtraFields
+        )
       }
 
       builder.result()
@@ -282,7 +317,7 @@ private[api] object VcfConversions {
     )
   }
   catch {
-    case ex: Throwable => throw new RuntimeException(s"Failed to convert variant: ${in}", ex)
+    case ex: Throwable => throw new RuntimeException(s"Failed to convert variant: $in", ex)
   }
 
   /**

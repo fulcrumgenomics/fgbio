@@ -40,11 +40,15 @@ import htsjdk.variant.vcf.{VCFCodec, VCFFileReader, VCFHeader}
   * for iterating over the entire stream of variants as well as querying by genomic location if an
   * index is present.
   *
-  * @param reader the underlying HTSJDK [[VCFFileReader]]
+  * @param reader the underlying HTSJDK [[VCFFileReader]].
   * @param headerTransformer a method to transform the header after being read in.
+  * @param allowKindMismatch allow a mismatch between the actual kind and the kind defined in the VCF header.
+  * @param allowExtraFields allow fields not defined in the VCF header.
   */
 class VcfSource private(private val reader: AbstractFeatureReader[VariantContext, _],
-                        private val headerTransformer: VcfHeader => VcfHeader) extends View[Variant] with Closeable {
+                        private val headerTransformer: VcfHeader => VcfHeader,
+                        allowKindMismatch: Boolean = false,
+                        allowExtraFields: Boolean = false) extends View[Variant] with Closeable {
   /** The header associated with the VCF being read. */
   val header: VcfHeader = headerTransformer(VcfConversions.toScalaHeader(reader.getHeader.asInstanceOf[VCFHeader]))
 
@@ -58,7 +62,7 @@ class VcfSource private(private val reader: AbstractFeatureReader[VariantContext
   /** Wraps an iterator provided by HTSJDK into a SelfClosingIterator that transforms VariantContexts into Variants. */
   private def wrap(it: CloseableIterator[VariantContext]): VariantIterator = {
     new SelfClosingIterator(
-      iter   = it.map(vc => VcfConversions.toScalaVariant(vc, header)),
+      iter   = it.map(vc => VcfConversions.toScalaVariant(vc, header, allowKindMismatch=allowKindMismatch, allowExtraFields=allowExtraFields)),
       closer = () => it.close())
   }
 
@@ -93,7 +97,7 @@ object VcfSource {
     * Manufactures a variant source for reading from the specified path.  The index, if one exists, will be
     * auto-discovered based on the path to the VCF.
     *
-    * @param path the path to a VCF, gzipped VCF or BCF file
+    * @param path   the path to a VCF, gzipped VCF or BCF file
     * @return a VariantSource for reading from the path given
     */
   def apply(path: PathToVcf): VcfSource = {
@@ -106,9 +110,14 @@ object VcfSource {
     *
     * @param path the path to a VCF, gzipped VCF or BCF file
     * @param headerTransformer a method to transform the header after being read in
+    * @param allowKindMismatch allow a mismatch between the actual kind and the kind defined in the VCF header.
+    * @param allowExtraFields allow fields not defined in the VCF header.
     * @return a VariantSource for reading from the path given
     */
-  def apply(path: PathToVcf, headerTransformer: VcfHeader => VcfHeader): VcfSource = {
+  def apply(path: PathToVcf,
+            headerTransformer: VcfHeader => VcfHeader,
+            allowKindMismatch: Boolean = false,
+            allowExtraFields: Boolean = false): VcfSource = {
     val codec  = if (PathUtil.extensionOf(path).contains(".bcf")) {
       new BCF2Codec
     }
@@ -119,7 +128,13 @@ object VcfSource {
     }
 
     val reader = AbstractFeatureReader.getFeatureReader(path.toUri.toString, codec, false)
-    new VcfSource(reader, headerTransformer=headerTransformer)
+
+    new VcfSource(
+      reader            = reader,
+      headerTransformer = headerTransformer,
+      allowKindMismatch = allowKindMismatch,
+      allowExtraFields  = allowExtraFields
+    )
   }
 }
 
