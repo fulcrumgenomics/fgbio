@@ -156,7 +156,7 @@ case class SequenceMetadata private[fasta]
     this.get(Keys.AlternateLocus).flatMap {
       case "*"   => None
       case range =>
-        val locus = FgBioDef.parseRange(range) match {
+        val locus = FgBioDef.GenomicRange(range) match {
           case GenomicRange("=", start, end) => AlternateLocus(refName=this.name, start=start.toInt, end=end.toInt)
           case _locus                        => _locus
         }
@@ -189,6 +189,14 @@ case class SequenceMetadata private[fasta]
   override def toString: FilenameSuffix = {
     import com.fulcrumgenomics.fasta.Converters.ToSAMSequenceRecord
     this.asSam.getSAMString
+  }
+
+  override lazy val hashCode: Int = {
+    var result = this.name.hashCode
+    result += 31 * this.index
+    result += 31 * this.length
+    result += 31 * this.attributes.hashCode()
+    result
   }
 }
 
@@ -269,25 +277,42 @@ case class SequenceDictionary(infos: IndexedSeq[SequenceMetadata]) extends Itera
     this.write(writer=writer)
     writer.toString
   }
+
+  override lazy val hashCode: Int = this.infos.hashCode()
 }
 
 
-/** Contains useful converters to and from HTSJDK objects. */
+/** Contains useful converters to and from HTSJDK objects.
+  *
+  * These converters are computationally expensive, so it is best to only use them once when converting a sequence
+  * dictionary or sequence record.
+  *
+  *
+  * */
 object Converters {
 
-  /** Converter from a [[SequenceMetadata]] to a [[SAMSequenceRecord]] */
+  /** True to enable caching of previous conversions, false otherwise. */
+  var EnableCache: Boolean = true
+
+  private val toSAMSequenceRecord = scala.collection.mutable.HashMap[SequenceMetadata, SAMSequenceRecord]()
+  private val fromSAMSequenceRecord = scala.collection.mutable.HashMap[SAMSequenceRecord, SequenceMetadata]()
+  private val toSAMSequenceDictionary = scala.collection.mutable.HashMap[SequenceDictionary, SAMSequenceDictionary]()
+  private val fromSAMSequenceDictionary = scala.collection.mutable.HashMap[SAMSequenceDictionary, SequenceDictionary]()
+
+  /** Converter from a [[SequenceMetadata]] to a [[SAMSequenceRecord]].  Warning: this is computationally expensive. */
   implicit class ToSAMSequenceRecord(info: SequenceMetadata) {
-    def asSam: SAMSequenceRecord = {
+    private def asSamImpl: SAMSequenceRecord = {
       val rec = new SAMSequenceRecord(info.name, info.length)
       rec.setSequenceIndex(info.index)
       info.attributes.foreach { case (key, value) => rec.setAttribute(key, value.toString) }
       rec
     }
+    def asSam: SAMSequenceRecord = if (EnableCache) toSAMSequenceRecord.getOrElseUpdate(info, asSamImpl) else asSamImpl
   }
 
-  /** Converter from a [[SAMSequenceRecord]] to a [[SequenceMetadata]] */
+  /** Converter from a [[SAMSequenceRecord]] to a [[SequenceMetadata]].  Warning: this is computationally expensive. */
   implicit class FromSAMSequenceRecord(rec: SAMSequenceRecord) {
-    def fromSam: SequenceMetadata = {
+    def fromSamImpl: SequenceMetadata = {
       val attributes: Map[String, String] = rec.getAttributes.map { entry =>
         entry.getKey -> entry.getValue
       }.toMap
@@ -298,21 +323,37 @@ object Converters {
         attributes = attributes
       )
     }
+    def fromSam: SequenceMetadata =
+      if (EnableCache) fromSAMSequenceRecord.getOrElseUpdate(rec, fromSamImpl) else fromSamImpl
   }
 
-  /** Converter from a [[SequenceDictionary]] to a [[SAMSequenceDictionary]] */
+  /** Converter from a [[SequenceDictionary]] to a [[SAMSequenceDictionary]].  Warning: this is computationally expensive. */
   implicit class ToSAMSequenceDictionary(infos: SequenceDictionary) {
-    def asSam: SAMSequenceDictionary = {
+    def asSamImpl: SAMSequenceDictionary = {
       val recs = infos.iterator.zipWithIndex.map { case (info, index) =>
         info.copy(index=index).asSam
       }.toJavaList
       new SAMSequenceDictionary(recs)
     }
+    def asSam: SAMSequenceDictionary = {
+      if (EnableCache) toSAMSequenceDictionary.getOrElseUpdate(infos, asSamImpl) else asSamImpl
+    }
   }
 
-  /** Converter from a [[SAMSequenceDictionary]] to a [[SequenceDictionary]] */
+  /** Converter from a [[SAMSequenceDictionary]] to a [[SequenceDictionary]].  Warning: this is computationally expensive. */
   implicit class FromSAMSequenceDictionary(dict: SAMSequenceDictionary) {
-    def fromSam: SequenceDictionary = SequenceDictionary(dict.getSequences.map(_.fromSam).toIndexedSeq)
+    def fromSamImpl: SequenceDictionary = SequenceDictionary(dict.getSequences.map(_.fromSam).toIndexedSeq)
+    def fromSam: SequenceDictionary = {
+      if (EnableCache) fromSAMSequenceDictionary.getOrElseUpdate(dict, fromSamImpl) else fromSamImpl
+    }
+  }
+
+  /** Clears the cache. */
+  def clearCache(): Unit = {
+    this.toSAMSequenceRecord.clear()
+    this.fromSAMSequenceRecord.clear()
+    this.toSAMSequenceDictionary.clear()
+    this.fromSAMSequenceDictionary.clear()
   }
 }
 
