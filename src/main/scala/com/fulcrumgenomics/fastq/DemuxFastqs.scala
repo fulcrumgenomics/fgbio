@@ -257,7 +257,7 @@ object DemuxFastqs {
       |
       |```
       |--inputs r1.fq i1.fq i2.fq r2.fq --read-structures 8B92T 8B 8B 100T \
-      |    --sample-sheet SampleSheet.csv --metrics metrics.txt --output output_folder
+      |    --metadata SampleSheet.csv --metrics metrics.txt --output output_folder
       |```
       |
       |## Illumina FASTQ File Naming
