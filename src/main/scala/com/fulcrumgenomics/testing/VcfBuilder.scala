@@ -192,7 +192,7 @@ class VcfBuilder private (initialHeader: VcfHeader) extends Iterable[Variant] {
     variants.put(key, Variant(
       chrom     = chrom,
       pos       = pos,
-      id        = if (id == ".") None else Some(id),
+      id        = if (id == ".") Seq.empty else Seq(id),
       alleles   = alleleSet,
       qual      = if (qual < 0) None else Some(qual),
       attrs     = ListMap(info.toSeq:_*),

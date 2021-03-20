@@ -93,7 +93,7 @@ object Variant {
   */
 final case class Variant(chrom: String,
                          pos: Int,
-                         id: Option[String] = None,
+                         id: Seq[String] = Seq.empty,
                          alleles: AlleleSet,
                          qual: Option[Double] = None,
                          filters: Set[String] = Variant.EmptyFilters,

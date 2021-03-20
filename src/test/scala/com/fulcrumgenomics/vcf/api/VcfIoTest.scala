@@ -90,7 +90,7 @@ class VcfIoTest extends UnitSpec with OptionValues {
     val variant = Variant(
       chrom     = "chr1",
       pos       = 1000,
-      id        = Some("testvar"),
+      id        = Seq("testvar"),
       alleles   = alleles,
       qual      = Some(1234.5),
       attrs     = ListMap("DP" -> 120, "AC" -> Seq(1, 1), "STR" -> "."),
@@ -193,12 +193,12 @@ class VcfIoTest extends UnitSpec with OptionValues {
 
   it should "round-trip variants with a variety of filters" in {
     val vs = Seq(
-      Variant(chrom="chr1", pos=10, alleles=AlleleSet("A", "C"), id=Some("PASS"),  filters=Variant.PassingFilters),
-      Variant(chrom="chr1", pos=20, alleles=AlleleSet("A", "C"), id=None        ,  filters=Variant.EmptyFilters),
-      Variant(chrom="chr1", pos=30, alleles=AlleleSet("A", "C"), id=Some("LowQD"), filters=Set("LowQD")),
+      Variant(chrom="chr1", pos=10, alleles=AlleleSet("A", "C"), id=Seq("PASS"),  filters=Variant.PassingFilters),
+      Variant(chrom="chr1", pos=20, alleles=AlleleSet("A", "C"), id=Seq.empty        ,  filters=Variant.EmptyFilters),
+      Variant(chrom="chr1", pos=30, alleles=AlleleSet("A", "C"), id=Seq("LowQD"), filters=Set("LowQD")),
     )
     val result = roundtrip(vs, header=VcfIoTest.Header.copy(samples=IndexedSeq.empty))
-    result.vs.foreach { v => v.filters.headOption shouldBe v.id }
+    result.vs.foreach { v => v.filters.headOption.toSeq shouldBe v.id }
   }
 
   it should "round-trip variants with many samples and not mess up the genotypes" in {
