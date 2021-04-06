@@ -103,7 +103,7 @@ class FilterSomaticVcf
         else invalid("Must supply --sample when VCF contains more than one sample.")
     }
 
-    val filters = Seq(new EndRepairArtifactLikelihoodFilter(endRepairDistance, endRepairPValue))
+    val filters = Seq(new ATailArtifactLikelihoodFilter(endRepairDistance, endRepairPValue))
     val builder = new PileupBuilder(bamIn.dict, mappedPairsOnly=pairedReadsOnly, minBaseQ=minBaseQuality, minMapQ=minMappingQuality)
     val out = makeWriter(output, vcfIn.header, filters)
 

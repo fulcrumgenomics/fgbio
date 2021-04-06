@@ -85,16 +85,16 @@ class FilterSomaticVcfTest extends UnitSpec {
     builder.toTempFile()
   }
 
-  private val EndRepairInfoKey   = new EndRepairArtifactLikelihoodFilter().Info.id
-  private val EndRepairFilterKey = new EndRepairArtifactLikelihoodFilter().Filter.id
+  private val ATailInfoKey   = new ATailArtifactLikelihoodFilter().Info.id
+  private val ATailFilterKey = new ATailArtifactLikelihoodFilter().Filter.id
 
   "FilterSomaticVcf" should "work on an empty VCF" in {
     val emptyVcf    = VcfBuilder(Seq("tumor")).toTempFile()
     val filteredVcf = makeTempFile("filtered.", ".vcf")
     new FilterSomaticVcf(input=emptyVcf, output=filteredVcf, bam=bam).execute()
     val reader = VcfSource(filteredVcf)
-    reader.header.info.contains(EndRepairInfoKey) shouldBe true
-    reader.header.filter.contains(EndRepairFilterKey) shouldBe true
+    reader.header.info.contains(ATailInfoKey) shouldBe true
+    reader.header.filter.contains(ATailFilterKey) shouldBe true
     reader.safelyClose()
   }
 
@@ -103,11 +103,11 @@ class FilterSomaticVcfTest extends UnitSpec {
     new FilterSomaticVcf(input=tumorOnlyVcf, output=filteredVcf, bam=bam).execute()
     val variants = readVcfRecs(filteredVcf)
     variants should have size 4
-    variants(0).get[Float](EndRepairInfoKey).isDefined shouldBe true
-    variants(1).get[Float](EndRepairInfoKey).isDefined shouldBe false
-    variants(2).get[Float](EndRepairInfoKey).isDefined shouldBe false
-    variants(3).get[Float](EndRepairInfoKey).isDefined shouldBe true
-    variants.exists(_.filters.contains(EndRepairFilterKey)) shouldBe false // no threshold == no filtering
+    variants(0).get[Float](ATailInfoKey).isDefined shouldBe true
+    variants(1).get[Float](ATailInfoKey).isDefined shouldBe false
+    variants(2).get[Float](ATailInfoKey).isDefined shouldBe false
+    variants(3).get[Float](ATailInfoKey).isDefined shouldBe true
+    variants.exists(_.filters.contains(ATailFilterKey)) shouldBe false // no threshold == no filtering
   }
 
   it should "fail on a single-sample VCF if an invalid sample name is provided" in {
@@ -130,11 +130,11 @@ class FilterSomaticVcfTest extends UnitSpec {
     new FilterSomaticVcf(input=tumorNormalVcf, output=filteredVcf, bam=bam, sample=Some("tumor")).execute()
     val variants = readVcfRecs(filteredVcf)
     variants should have size 4
-    variants(0).get[Float](EndRepairInfoKey).isDefined shouldBe true
-    variants(1).get[Float](EndRepairInfoKey).isDefined shouldBe false
-    variants(2).get[Float](EndRepairInfoKey).isDefined shouldBe false
-    variants(3).get[Float](EndRepairInfoKey).isDefined shouldBe true
-    variants.exists(_.filters.contains(EndRepairFilterKey)) shouldBe false // no threshold == no filtering
+    variants(0).get[Float](ATailInfoKey).isDefined shouldBe true
+    variants(1).get[Float](ATailInfoKey).isDefined shouldBe false
+    variants(2).get[Float](ATailInfoKey).isDefined shouldBe false
+    variants(3).get[Float](ATailInfoKey).isDefined shouldBe true
+    variants.exists(_.filters.contains(ATailFilterKey)) shouldBe false // no threshold == no filtering
   }
 
   it should "apply filters if the end repair p-value threshold is supplied" in {
@@ -142,14 +142,14 @@ class FilterSomaticVcfTest extends UnitSpec {
     new FilterSomaticVcf(input=tumorOnlyVcf, output=filteredVcf, bam=bam, sample=Some("tumor"), endRepairDistance=4, endRepairPValue=Some(0.001)).execute()
     val variants = readVcfRecs(filteredVcf)
     variants should have size 4
-    variants(0).get[Float](EndRepairInfoKey).isDefined shouldBe true
-    variants(1).get[Float](EndRepairInfoKey).isDefined shouldBe false
-    variants(2).get[Float](EndRepairInfoKey).isDefined shouldBe false
-    variants(3).get[Float](EndRepairInfoKey).isDefined shouldBe true
+    variants(0).get[Float](ATailInfoKey).isDefined shouldBe true
+    variants(1).get[Float](ATailInfoKey).isDefined shouldBe false
+    variants(2).get[Float](ATailInfoKey).isDefined shouldBe false
+    variants(3).get[Float](ATailInfoKey).isDefined shouldBe true
 
-    variants(0).filters.contains(EndRepairFilterKey) shouldBe true
-    variants(1).filters.contains(EndRepairFilterKey) shouldBe false
-    variants(2).filters.contains(EndRepairFilterKey) shouldBe false
-    variants(3).filters.contains(EndRepairFilterKey) shouldBe true
+    variants(0).filters.contains(ATailFilterKey) shouldBe true
+    variants(1).filters.contains(ATailFilterKey) shouldBe false
+    variants(2).filters.contains(ATailFilterKey) shouldBe false
+    variants(3).filters.contains(ATailFilterKey) shouldBe true
   }
 }

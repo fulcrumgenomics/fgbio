@@ -29,8 +29,9 @@ import com.fulcrumgenomics.bam.{BaseEntry, Pileup, PileupBuilder, PileupEntry}
 import com.fulcrumgenomics.testing.SamBuilder.{Minus, Plus}
 import com.fulcrumgenomics.testing.{SamBuilder, UnitSpec}
 import com.fulcrumgenomics.vcf.api.{AlleleSet, Genotype}
+import com.fulcrumgenomics.vcf.filtration.ReadEndSomaticVariantFilter.{isSnv,priors}
 
-class EndRepairArtifactLikelihoodFilterTest extends UnitSpec {
+class ReadEndSomaticVariantFilterTest extends UnitSpec {
   private val A = 'A'.toByte
   private val C = 'C'.toByte
   private val G = 'G'.toByte
@@ -42,15 +43,87 @@ class EndRepairArtifactLikelihoodFilterTest extends UnitSpec {
     Genotype(as, "s1", as.toIndexedSeq, phased=false)
   }
 
-  "appliesTo" should "return false for any event that is not a SNP" in {
-    val filter  = new EndRepairArtifactLikelihoodFilter()
+  "isSnv" should "return true for any SNV" in {
+    isSnv(singleGenotype("A",  "C")) shouldBe true
+    isSnv(singleGenotype("A",  "G")) shouldBe true
+    isSnv(singleGenotype("A",  "T")) shouldBe true
+    isSnv(singleGenotype("C",  "A")) shouldBe true
+    isSnv(singleGenotype("C",  "G")) shouldBe true
+    isSnv(singleGenotype("C",  "T")) shouldBe true
+    isSnv(singleGenotype("G",  "A")) shouldBe true
+    isSnv(singleGenotype("G",  "C")) shouldBe true
+    isSnv(singleGenotype("G",  "T")) shouldBe true
+    isSnv(singleGenotype("T",  "A")) shouldBe true
+    isSnv(singleGenotype("T",  "C")) shouldBe true
+    isSnv(singleGenotype("T",  "G")) shouldBe true
+  }
+
+  it should "return false for any event that is not a SNP" in {
+    ReadEndSomaticVariantFilter.isSnv(singleGenotype("A",  "AT")) shouldBe false // Insertion
+    ReadEndSomaticVariantFilter.isSnv(singleGenotype("TA", "A"))  shouldBe false // Deletion
+    ReadEndSomaticVariantFilter.isSnv(singleGenotype("AT", "GC")) shouldBe false // MNP
+  }
+
+  "priors" should "return values that prefer artifacts at low MAFs and vice versa" in {
+    val pileup = Pileup("chr1", 0, 100, Seq.empty[PileupEntry])
+
+    priors(pileup, maf=0.01) shouldBe (0.0004, 0.9996)
+
+    Range.inclusive(1, 100).sliding(2).foreach { case Seq(maf1, maf2) =>
+      val (pMut1, pArt1) = priors(pileup, maf1/100.0)
+      val (pMut2, pArt2) = priors(pileup, maf2/100.0)
+
+      pMut1 should be <= pMut2
+      pArt1 should be >= pArt2
+
+      Seq(pMut1, pMut2, pArt1, pArt2).foreach { p =>
+        p should be  > 0.0
+        p should be <= 1.0
+      }
+    }
+  }
+
+  "filters" should "only set the filter if a threshold was provide and the pvalue is <= threshold" in {
+    val filterNoThreshold   = new ATailArtifactLikelihoodFilter(distance=5, pValueThreshold=None)
+    val filterWithThreshold = new ATailArtifactLikelihoodFilter(distance=5, pValueThreshold=Some(0.001))
+    def ann(pvalue: Double) = Map(filterNoThreshold.Info.id -> pvalue)
+
+    filterNoThreshold.filters(ann(1   )) should contain theSameElementsAs Seq()
+    filterNoThreshold.filters(ann(1e-3)) should contain theSameElementsAs Seq()
+    filterNoThreshold.filters(ann(1e-4)) should contain theSameElementsAs Seq()
+    filterNoThreshold.filters(ann(1e-5)) should contain theSameElementsAs Seq()
+    filterNoThreshold.filters(ann(0   )) should contain theSameElementsAs Seq()
+
+    filterWithThreshold.filters(ann(1      )) should contain theSameElementsAs Seq()
+    filterWithThreshold.filters(ann(0.01   )) should contain theSameElementsAs Seq()
+    filterWithThreshold.filters(ann(0.001  )) should contain theSameElementsAs Seq(filterWithThreshold.Filter.id)
+    filterWithThreshold.filters(ann(0.00099)) should contain theSameElementsAs Seq(filterWithThreshold.Filter.id)
+    filterWithThreshold.filters(ann(1e-20  )) should contain theSameElementsAs Seq(filterWithThreshold.Filter.id)
+    filterWithThreshold.filters(ann(0      )) should contain theSameElementsAs Seq(filterWithThreshold.Filter.id)
+  }
+
+  TODO: finish these tests
+  "EndRepairArtifactLikelihoodFilter.appliesTo" should "return false for any event that is not a SNP" in {
+    true
+  }
+
+  "EndRepairArtifactLikelihoodFilter.isArtifactCongruent" should "???" in {
+    true
+  }
+
+  "EndRepairArtifactLikelihoodFilter.annotations" should "???" in {
+    true
+  }
+
+  "ATailArtifactLikelihoodFilter.appliesTo" should "return false for any event that is not a SNP" in {
+    val filter  = new ATailArtifactLikelihoodFilter()
     filter.appliesTo(singleGenotype("A",  "AT")) shouldBe false // Insertion
     filter.appliesTo(singleGenotype("TA", "A"))  shouldBe false // Deletion
     filter.appliesTo(singleGenotype("AT", "GC")) shouldBe false // MNP
   }
 
   it should "return true for *>A and *>T and false for all other SNVs " in {
-    val filter  = new EndRepairArtifactLikelihoodFilter()
+    val filter  = new ATailArtifactLikelihoodFilter()
     filter.appliesTo(singleGenotype("A",  "C")) shouldBe false
     filter.appliesTo(singleGenotype("A",  "G")) shouldBe false
     filter.appliesTo(singleGenotype("A",  "T")) shouldBe true
@@ -65,8 +138,8 @@ class EndRepairArtifactLikelihoodFilterTest extends UnitSpec {
     filter.appliesTo(singleGenotype("T",  "G")) shouldBe false
   }
 
-  "isArtifactCongruent" should "return false for any base in a read that is not near the ends" in {
-    val filter  = new EndRepairArtifactLikelihoodFilter(distance=5)
+  "ATailArtifactLikelihoodFilter.isArtifactCongruent" should "return false for any base in a read that is not near the ends" in {
+    val filter  = new ATailArtifactLikelihoodFilter(distance=5)
     val recs    = new SamBuilder(readLength=50).addPair(start1=101, start2=101, bases1="ACACA"*10, bases2="ACACA"*10)
 
     for (r <- recs; pos <- Range.inclusive(106, 145)) {
@@ -75,7 +148,7 @@ class EndRepairArtifactLikelihoodFilterTest extends UnitSpec {
   }
 
   it should "return false for any base at the ends of the insert that is not allele-matched" in {
-    val filter = new EndRepairArtifactLikelihoodFilter(distance=5)
+    val filter = new ATailArtifactLikelihoodFilter(distance=5)
     val recs   = new SamBuilder(readLength=50).addPair(start1=101, start2=101)
     recs.foreach(_.bases = "CACAC" + ("N" * 40) + "GTGTG")
 
@@ -89,7 +162,7 @@ class EndRepairArtifactLikelihoodFilterTest extends UnitSpec {
   }
 
   it should "return true for bases at the ends of the insert that are allele-matched" in {
-    val filter = new EndRepairArtifactLikelihoodFilter(distance=5)
+    val filter = new ATailArtifactLikelihoodFilter(distance=5)
     val recs   = new SamBuilder(readLength=50).addPair(start1=101, start2=101)
     recs.foreach(_.bases = "GTGTG" + ("N" * 40) + "CACAC")
 
@@ -101,30 +174,9 @@ class EndRepairArtifactLikelihoodFilterTest extends UnitSpec {
     }
   }
 
-  "priors" should "return values that prefer artifacts at low MAFs and vice versa" in {
-    val filter = new EndRepairArtifactLikelihoodFilter(distance=5)
-    val pileup = Pileup("chr1", 0, 100, Seq.empty[PileupEntry])
-    val gt     = singleGenotype("A", "T")
-
-    filter.priors(pileup, maf=0.01) shouldBe (0.0004, 0.9996)
-
-    Range.inclusive(1, 100).sliding(2).foreach { case Seq(maf1, maf2) =>
-      val (pMut1, pArt1) = filter.priors(pileup, maf1/100.0)
-      val (pMut2, pArt2) = filter.priors(pileup, maf2/100.0)
-
-      pMut1 should be <= pMut2
-      pArt1 should be >= pArt2
-
-      Seq(pMut1, pMut2, pArt1, pArt2).foreach { p =>
-        p should be  > 0.0
-        p should be <= 1.0
-      }
-    }
-  }
-
-  "annotations" should "compute a non-significant p-value when data is distributed throughout the reads" in {
+  "ATailArtifactLikelihoodFilter.annotations" should "compute a non-significant p-value when data is distributed throughout the reads" in {
     // Simulate a G>T non-artifact at bp 25
-    val filter  = new EndRepairArtifactLikelihoodFilter(distance=5)
+    val filter  = new ATailArtifactLikelihoodFilter(distance=5)
     val builder = new SamBuilder(readLength=50, baseQuality=40)
 
     // Add a ton of reference allele
@@ -146,7 +198,7 @@ class EndRepairArtifactLikelihoodFilterTest extends UnitSpec {
 
   it should "compute a significant p-value when data is heavily biased" in {
     // Simulate a G>T non-artifact at bp 25
-    val filter  = new EndRepairArtifactLikelihoodFilter(distance=5)
+    val filter  = new ATailArtifactLikelihoodFilter(distance=5)
     val builder = new SamBuilder(readLength=50, baseQuality=40)
 
     // Add a ton of reference allele at various positions
@@ -168,7 +220,7 @@ class EndRepairArtifactLikelihoodFilterTest extends UnitSpec {
 
   it should "compute an intermediate p-value when data is heavily biased for both ref and alt" in {
     // Simulate a G>T non-artifact at bp 25
-    val filter  = new EndRepairArtifactLikelihoodFilter(distance=5)
+    val filter  = new ATailArtifactLikelihoodFilter(distance=5)
     val builder = new SamBuilder(readLength=50, baseQuality=40)
 
     // Add a ton of reference allele, 5/6ths in the first 5bp of the read
@@ -189,7 +241,7 @@ class EndRepairArtifactLikelihoodFilterTest extends UnitSpec {
   }
 
   it should "not throw an exception if there is no alt allele coverage or the pileup is empty" in {
-    val filter  = new EndRepairArtifactLikelihoodFilter(distance=10)
+    val filter  = new ATailArtifactLikelihoodFilter(distance=10)
     val builder = new SamBuilder(readLength=50, baseQuality=40)
     val refName = builder.dict(0).name
 
@@ -207,24 +259,5 @@ class EndRepairArtifactLikelihoodFilterTest extends UnitSpec {
       val annotations = filter.annotations(pile, singleGenotype("G", "T"))
       annotations.contains(filter.Info.id) shouldBe true
     }
-  }
-
-  "filters" should "only set the filter if a threshold was provide and the pvalue is <= threshold" in {
-    val filterNoThreshold   = new EndRepairArtifactLikelihoodFilter(distance=5, pValueThreshold=None)
-    val filterWithThreshold = new EndRepairArtifactLikelihoodFilter(distance=5, pValueThreshold=Some(0.001))
-    def ann(pvalue: Double) = Map(filterNoThreshold.Info.id -> pvalue)
-
-    filterNoThreshold.filters(ann(1   )) should contain theSameElementsAs Seq()
-    filterNoThreshold.filters(ann(1e-3)) should contain theSameElementsAs Seq()
-    filterNoThreshold.filters(ann(1e-4)) should contain theSameElementsAs Seq()
-    filterNoThreshold.filters(ann(1e-5)) should contain theSameElementsAs Seq()
-    filterNoThreshold.filters(ann(0   )) should contain theSameElementsAs Seq()
-
-    filterWithThreshold.filters(ann(1      )) should contain theSameElementsAs Seq()
-    filterWithThreshold.filters(ann(0.01   )) should contain theSameElementsAs Seq()
-    filterWithThreshold.filters(ann(0.001  )) should contain theSameElementsAs Seq(filterWithThreshold.Filter.id)
-    filterWithThreshold.filters(ann(0.00099)) should contain theSameElementsAs Seq(filterWithThreshold.Filter.id)
-    filterWithThreshold.filters(ann(1e-20  )) should contain theSameElementsAs Seq(filterWithThreshold.Filter.id)
-    filterWithThreshold.filters(ann(0      )) should contain theSameElementsAs Seq(filterWithThreshold.Filter.id)
   }
 }
