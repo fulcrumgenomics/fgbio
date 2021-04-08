@@ -102,7 +102,7 @@ class ReadEndSomaticVariantFilterTest extends UnitSpec {
     filterWithThreshold.filters(ann(0      )) should contain theSameElementsAs Seq(filterWithThreshold.Filter.id)
   }
 
-  TODO: finish these tests
+  //TODO: finish these tests
   "EndRepairArtifactLikelihoodFilter.appliesTo" should "return false for any event that is not a SNP" in {
     true
   }

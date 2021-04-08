@@ -32,15 +32,33 @@ import com.fulcrumgenomics.util.Sequences
 import com.fulcrumgenomics.vcf.api.{VcfCount, VcfFieldType, VcfInfoHeader, _}
 import com.fulcrumgenomics.vcf.filtration.ReadEndSomaticVariantFilter.{isSnv, priors}
 
+
+/** Trait for classes that apply filters to somatic variants calls at read ends. */
 trait ReadEndSomaticVariantFilter extends SomaticVariantFilter with LazyLogging {
-  val distance: Int
-  val pValueThreshold: Option[Double] = None
 
-  def isArtifactCongruent(refAllele: Byte, altAllele: Byte, entry : BaseEntry, pileupPosition: Int): Boolean
-
+  /** The VCF header line that describes the INFO key that the filter may reference. */
   val Info: VcfInfoHeader
+
+  /** The VCF header line that describes the FILTER key that the filter may reference. */
   val Filter: VcfFilterHeader
 
+  /** The distance from the end of the template that defines the region where the artifact may occur */
+  val distance: Int
+
+  /** The pvalue at or below which mutations are filtered as being likely caused by the artifact */
+  val pValueThreshold: Option[Double] = None
+
+  /** Function for testing whether a base in the pileup (either ref or alt) has properties that are
+    * congruent with it having formed due to the artifact-generating process germane to the filter.
+    * Depending on the filter, this may be as simple as testing whether the base is positioned within
+    * a threshold distance from the read end. Other filters employ more elaborate tests that consider
+    * multiple criteria, such as the presence of certain allele pairs at specific read ends.
+    */
+  def isArtifactCongruent(refAllele: Byte, altAllele: Byte, entry : BaseEntry, pileupPosition: Int): Boolean
+
+  /** Applies a single filter if a) a threshold was provided at construction, b) the computed
+    * pvalue is present in the <annotations>, and c) the pvalue <= <pValueThreshold>.
+    */
   def filters(annotations: Map[String, Any]): Iterable[String] = {
     (this.pValueThreshold, annotations.get(this.VcfInfoLines.head.id).map(_.asInstanceOf[Double])) match {
       case (Some(threshold), Some(pvalue)) if pvalue <= threshold => List(VcfFilterLines.head.id)
@@ -48,6 +66,7 @@ trait ReadEndSomaticVariantFilter extends SomaticVariantFilter with LazyLogging 
     }
   }
 
+  /** Calculates the p-value and returns it in the map of annotations. */
   def annotations(pileup: Pileup[PileupEntry], gt: Genotype): Map[String,Any] = {
     if (!appliesTo(gt)) {
       Map.empty
@@ -58,10 +77,9 @@ trait ReadEndSomaticVariantFilter extends SomaticVariantFilter with LazyLogging 
       annotations(pileup, refAllele.toByte, altAllele.toByte)
     }
   }
-  /**
-    * Workhorse method that does the majority of the calculation of the p-value.
-    */
-  private[filtration] def annotations(pileup: Pileup[PileupEntry], refAllele: Byte, altAllele: Byte) = {
+
+  /** Workhorse method that does the majority of the calculation of the p-value. */
+  private[filtration] def annotations(pileup: Pileup[PileupEntry], refAllele: Byte, altAllele: Byte): Map[String, Double] = {
     var (refGood, refBad, altGood, altBad) = (0, 0, 0, 0)
     pileup.baseIterator.filter(_.base == refAllele).foreach { rec =>
       if (isArtifactCongruent(refAllele, altAllele, rec, pileup.pos)) refBad += 1
@@ -106,12 +124,24 @@ trait ReadEndSomaticVariantFilter extends SomaticVariantFilter with LazyLogging 
   }
 }
 
-// Companion object to put singletons/statics/stuff without state
+/** The companion object for [[ReadEndSomaticVariantFilter]]. */
 object ReadEndSomaticVariantFilter {
 
-  //TODO Make sure this is actually working how we want it to
+  /** Returns true if <gt> is a heterozygous SNV with one reference allele, else false */
   private[filtration] def isSnv(gt: Genotype) : Boolean = gt.isHet && !gt.isHetNonRef && gt.calls.forall(_.value.length == 1)
 
+  // TODO: consider renaming "priorMutation" to "priorNonArtifact", since passing a single artifact filter does not rule
+  //  out possibility of being an artifact from a different etiology.
+
+  /** Calculates a pair of priors:
+    *   <priorMutation> is the prior that the genotype is the result of a true somatic mutation.
+    *   <priorArtifact> is the prior that the genotype is an artifact resulting from the mechanism specific to the filter
+    *
+    *
+    * Default implementation gives a mutation prior of {{{(maf * 2)^2}}} capped at 0.9999 and an
+    * artifact prior of 1 - mutation prior.  This has the effect of creating priors that are heavily
+    * skewed towards the artifact at very low MAFs, and towards mutations as the MAF increases towards 0.5.
+    */
   private[filtration] def priors(pileup: Pileup[PileupEntry], maf: Double, logger : Option[Logger] = None) : (Double, Double) = {
     require(maf >= 0 && maf <= 1, s"Maf must be between 0 and 1. Observed maf ${maf} at ${pileup.refName}:${pileup.pos}.")
 
