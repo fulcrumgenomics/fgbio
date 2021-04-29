@@ -52,21 +52,40 @@ import scala.collection.immutable.ListMap
     |
     |## Available Filters
     |
-    |### A tail filter
+    |### A-tailing Artifact Filter
     |
-    |The end repair artifact filter attempts to measure the probability that a variant is caused by
-    |errors in the template generated during the end-repair and A-base addition steps that are common
-    |to many Illumina library preparation protocols.  The artifacts occur if/when the end repair creates
-    |a recessed 3' end which is subsequently and incorrectly filled in with As during A-base addition.
-    |This presents specifically as errors to T at the beginning of reads (and in very short templates,
-    |as matching errors to A at the ends of reads).
+    |The A-tailing artifact filter attempts to measure the probability that a SNV is the product of
+    |errors in the template generated during the A-base addition steps that are common to many Illumina
+    |library preparation protocols.  The artifacts occur if/when a recessed 3' end is incorrectly filled
+    |in with one or more adenines during A-base addition. This presents specifically as errors to T at
+    |the beginning of reads (and in very short templates, as matching errors to A at the ends of reads).
     |
-    |The filter creates the `ERAP` info attribute on SNVs with an A or T alternate allele, to record
-    |the p-value for rejecting the possibility that the variant is due to an end repair artifact.
+    |The filter adds the `INFO` field `ATP` to SNVs with an A or T alternate allele. This field records
+    |the p-value for rejecting the possibility that the variant is an A-tailing artifact. If a threshold
+    |p-value is specified, then the `FILTER` tag `ATailingArtifact` will be applied to variants with
+    |p-values below the threshold.
     |
-    |### End repair filter
-    |Description about it
+    |Two options are available:
     |
+    |* `--a-tailing-distance`  allows control over how close to the ends of reads/templates errors can be
+    |                          considered to be candidates for the A-tailing artifact. Higher values
+    |                          decrease the power of the test, so this should be set as low as possible
+    |                          given observed errors.
+    |* `--a-tailing-p-value`   the p-value below which a filter should be applied. If no value is supplied
+    |                           only the annotation is produced and no filtering is performed.
+    |
+    |### End Repair Artifact Filter
+    |
+    |The end repair artifact filter attempts to measure the probability that a SNV is the product of
+    |errors in the template generated during the end repair step that is common to many Illumina library
+    |preparation protocols, in which single-stranded 3' overhands are filled in to create a blunt end.
+    |These artifacts originate from single-stranded templates containing damaged bases, often as a
+    |consequence of chemical/oxidative stress. These DNA lesions, for example 8-oxoguanine, undergo
+    |mismatched pairing, which after PCR appear as mutations at the ends of reads.
+    |
+    |The filter adds the `INFO` field `ERP` to SNVs. This field records the p-value for rejecting the
+    |possibility that the variant is an end repair artifact. If a threshold p-value is specified, then
+    |the `FILTER` tag `EndRepairArtifact` will be applied to variants with p-values below the threshold.
     |
     |Two options are available:
     |
@@ -85,12 +104,11 @@ class FilterSomaticVcf
   @arg(flag='m', doc="Minimum mapping quality for reads.")          val minMappingQuality: Int = 30,
   @arg(flag='q', doc="Minimum base quality.")                       val minBaseQuality: Int    = 20,
   @arg(flag='p', doc="Use only paired reads mapped in pairs.")      val pairedReadsOnly: Boolean = false,
-  @arg(flag='f', doc="The filter(s) to apply.", minElements = 1)    val filtersSelected: Seq[ReadEndSomaticVariantFilter] = Seq(ATail),
   // Developer Note: filter-specific attributes should NOT be given flags as we will likely run
   //                 out of flags that way and end up with a mix of +flag and -flag options.
-  @arg(doc="Distance from end of read to implicate A-base addition artifacts.") val aTailDistance: Int = 2,
-  @arg(doc="Minimum acceptable p-value for A-base addition artifact test.")     val aTailPValue: Option[Double] = None,
-  @arg(doc="Distance from end of read to implicate end repair artifacts.")      val endRepairDistance: Int = 15,
+  @arg(doc="Distance from end of read to implicate A-base addition artifacts.") val aTailingDistance: Option[Int] = Some(2),
+  @arg(doc="Minimum acceptable p-value for A-base addition artifact test.")     val aTailingPValue: Option[Double] = None,
+  @arg(doc="Distance from end of read to implicate end repair artifacts.")      val endRepairDistance: Option[Int] = Some(15),
   @arg(doc="Minimum acceptable p-value for end repair artifact test.")          val endRepairPValue: Option[Double] = None
 ) extends FgBioTool with LazyLogging {
   Io.assertReadable(input)
@@ -110,21 +128,12 @@ class FilterSomaticVcf
         else invalid("Must supply --sample when VCF contains more than one sample.")
     }
 
-    val filters: Seq[ReadEndSomaticVariantFilter] = {
-      if (aTailDistance.isValidInt) Seq(new ATailArtifactLikelihoodFilter(aTailDistance, aTailPValue)) else Seq.empty
-      ++ if (endRepairDistance.isValidInt) Seq(new EndRepairArtifactLikelihoodFilter(endRepairDistance, endRepairPValue)) else Seq.empty
-    }
+    if (aTailingDistance.isEmpty && endRepairDistance.isEmpty) logger.warning("All filters are turned off and tool will no-op!")
 
+    val filters = Seq.empty[ReadEndSomaticVariantFilter] ++
+      aTailingDistance.map { dist => new ATailingArtifactLikelihoodFilter(dist, aTailingPValue) } ++
+      endRepairDistance.map { dist => new EndRepairArtifactLikelihoodFilter(dist, endRepairPValue) }
 
-
-    )
-
-    /*// TODO: Clint's idea - just have 4 params, pvals are optionals, distances have default value Some(Int) = 2/15, but if they are set to None (by user), then filter will not run
-    // Change line below substantially so only
-    // Mike's idea - do something similar to Picard (or SnpEffUnpack), using Enums
-    val filters = Seq(new EndRepairArtifactLikelihoodFilter(endRepairDistance, endRepairPValue), new ATailArtifactLikelihoodFilter(aTailDistance, aTailPValue))
-    */
-    val filters = Seq(new EndRepairArtifactLikelihoodFilter(endRepairDistance, endRepairPValue), new ATailArtifactLikelihoodFilter(endRepairDistance, endRepairPValue))
     val builder = new PileupBuilder(bamIn.dict, mappedPairsOnly=pairedReadsOnly, minBaseQ=minBaseQuality, minMapQ=minMappingQuality)
     val out = makeWriter(output, vcfIn.header, filters)
 

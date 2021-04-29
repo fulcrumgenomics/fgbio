@@ -130,9 +130,6 @@ object ReadEndSomaticVariantFilter {
   /** Returns true if <gt> is a heterozygous SNV with one reference allele, else false */
   private[filtration] def isSnv(gt: Genotype) : Boolean = gt.isHet && !gt.isHetNonRef && gt.calls.forall(_.value.length == 1)
 
-  // TODO: consider renaming "priorMutation" to "priorNonArtifact", since passing a single artifact filter does not rule
-  //  out possibility of being an artifact from a different etiology.
-
   /** Calculates a pair of priors:
     *   <priorMutation> is the prior that the genotype is the result of a true somatic mutation.
     *   <priorArtifact> is the prior that the genotype is an artifact resulting from the mechanism specific to the filter
@@ -155,10 +152,23 @@ object ReadEndSomaticVariantFilter {
   }
 }
 
-class EndRepairArtifactLikelihoodFilter(override val distance: Int, override val pValueThreshold: Option[Double] = None)
+/**
+  * Filter that examines SNVs to see if they are likely end repair artifacts.
+  *
+  * End repair artifacts form during the process of filling in single-stranded 3' overhangs to create a blunt end.
+  * Oxidative stress can damage the single-stranded template and induce the formation of DNA lesions, such as
+  * 8-oxoguanine. These modified bases undergo mismatched pairing, which after PCR appear as mutations at the ends of
+  * reads.
+  *
+  * @param distance The distance from the end of the template that defines the region where this
+  *                 artifact may occur
+  * @param pValueThreshold the pvalue at and below which mutations are filtered as being likely
+  *                        caused by the artifact
+  */
+class EndRepairArtifactLikelihoodFilter(override val distance: Int = 15, override val pValueThreshold: Option[Double] = None)
   extends ReadEndSomaticVariantFilter {
 
-  val Info = VcfInfoHeader("ERAP", VcfCount.Fixed(1), VcfFieldType.Float, "P-Value for the End Repair Artifact test.")
+  val Info = VcfInfoHeader("ERP", VcfCount.Fixed(1), VcfFieldType.Float, "P-Value for the End Repair Artifact Filter test.")
   val Filter = VcfFilterHeader("EndRepairArtifact", "Variant is likely an artifact caused by end repair.")
 
   override val VcfInfoLines: Iterable[VcfInfoHeader]     = Seq(Info)
@@ -168,30 +178,40 @@ class EndRepairArtifactLikelihoodFilter(override val distance: Int, override val
   def appliesTo(gt: Genotype): Boolean = isSnv(gt)
 
   def isArtifactCongruent(refAllele: Byte, altAllele: Byte, entry : BaseEntry, pileupPosition: Int): Boolean = {
-    pileupPosition <= this.distance
+
+    val positionInRead       = entry.positionInReadInReadOrder
+    val positionFromOtherEnd = Bams.positionFromOtherEndOfTemplate(entry.rec, pileupPosition)
+
+    // Pick the position that's closest to an end, and test for congruency based on that
+    val pos = {
+      if (positionFromOtherEnd.exists(_ < positionInRead)) positionFromOtherEnd.get
+      else                                                 positionInRead
+    }
+
+    pos <= this.distance
   }
 }
 
-///**
-//  * Filter that examines SNVs with the alt allele being A or T to see if they are likely the result
-//  * of aberrant A-base addition.
-//  *
-//  * Occurs when end-repair is performed in a way that chews back single-stranded 3' overhangs
-//  * to create a blunt end, but over-digests and ends up creating a recessed 3' end which subsequently
-//  * (and incorrectly) gets filled in with one or more As during the A-base addition step. The result
-//  * is one or more base substitutions to A at the 3' end of molecules, which after PCR also shows up
-//  * as substitutions to T at the 5' end.
-//  *
-//  * @param distance The distance from the end of the template that defines the region where this
-//  *                 artifact may occur
-//  * @param pValueThreshold the pvalue at and below which mutations are filtered as being likely
-//  *                        caused by the artifact
-//  */
-class ATailArtifactLikelihoodFilter(override val distance: Int = 2, override val pValueThreshold: Option[Double] = None)
+/**
+  * Filter that examines SNVs with the alt allele being A or T to see if they are likely the result
+  * of aberrant A-base addition.
+  *
+  * Occurs when end-repair is performed in a way that chews back single-stranded 3' overhangs
+  * to create a blunt end, but over-digests and ends up creating a recessed 3' end which subsequently
+  * (and incorrectly) gets filled in with one or more As during the A-base addition step. The result
+  * is one or more base substitutions to A at the 3' end of molecules, which after PCR also shows up
+  * as substitutions to T at the 5' end.
+  *
+  * @param distance The distance from the end of the template that defines the region where this
+  *                 artifact may occur
+  * @param pValueThreshold the pvalue at and below which mutations are filtered as being likely
+  *                        caused by the artifact
+  */
+class ATailingArtifactLikelihoodFilter(override val distance: Int = 2, override val pValueThreshold: Option[Double] = None)
   extends ReadEndSomaticVariantFilter {
 
-  val Info = VcfInfoHeader("ATAP", VcfCount.Fixed(1), VcfFieldType.Float, "P-Value for the A-Tailing Artifact test.")
-  val Filter = VcfFilterHeader("ATailingArtifact", "Variant is likely an artifact caused by A-Tailing.")
+  val Info = VcfInfoHeader("ATP", VcfCount.Fixed(1), VcfFieldType.Float, "P-Value for the A-tailing Artifact Filter test.")
+  val Filter = VcfFilterHeader("ATailingArtifact", "Variant is likely an artifact caused by A-tailing.")
 
   override val VcfInfoLines: Iterable[VcfInfoHeader]     = Seq(Info)
   override val VcfFilterLines: Iterable[VcfFilterHeader] = Seq(Filter)
