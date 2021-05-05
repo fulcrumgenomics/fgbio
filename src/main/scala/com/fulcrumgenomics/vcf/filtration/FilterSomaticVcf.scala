@@ -54,16 +54,16 @@ import scala.collection.immutable.ListMap
     |
     |### A-tailing Artifact Filter
     |
-    |The A-tailing artifact filter attempts to measure the probability that a SNV is the product of
+    |The A-tailing artifact filter attempts to measure the probability that a single-nucleotide mismatch is the product of
     |errors in the template generated during the A-base addition steps that are common to many Illumina
     |library preparation protocols.  The artifacts occur if/when a recessed 3' end is incorrectly filled
-    |in with one or more adenines during A-base addition. This presents specifically as errors to T at
+    |in with one or more adenines during A-base addition. Incorrect adenine incorporation presents specifically as errors to T at
     |the beginning of reads (and in very short templates, as matching errors to A at the ends of reads).
     |
     |The filter adds the `INFO` field `ATP` to SNVs with an A or T alternate allele. This field records
     |the p-value for rejecting the possibility that the variant is an A-tailing artifact. If a threshold
     |p-value is specified, then the `FILTER` tag `ATailingArtifact` will be applied to variants with
-    |p-values below the threshold.
+    |p-values less than or equal to the threshold.
     |
     |Two options are available:
     |
@@ -76,16 +76,16 @@ import scala.collection.immutable.ListMap
     |
     |### End Repair Artifact Filter
     |
-    |The end repair artifact filter attempts to measure the probability that a SNV is the product of
+    |The end repair artifact filter attempts to measure the probability that a single-nucleotide mismatch is the product of
     |errors in the template generated during the end repair step that is common to many Illumina library
     |preparation protocols, in which single-stranded 3' overhands are filled in to create a blunt end.
     |These artifacts originate from single-stranded templates containing damaged bases, often as a
-    |consequence of chemical/oxidative stress. These DNA lesions, for example 8-oxoguanine, undergo
+    |consequence of oxidative damage. These DNA lesions, for example 8-oxoguanine, undergo
     |mismatched pairing, which after PCR appear as mutations at the ends of reads.
     |
     |The filter adds the `INFO` field `ERP` to SNVs. This field records the p-value for rejecting the
     |possibility that the variant is an end repair artifact. If a threshold p-value is specified, then
-    |the `FILTER` tag `EndRepairArtifact` will be applied to variants with p-values below the threshold.
+    |the `FILTER` tag `EndRepairArtifact` will be applied to variants with p-values less than or equal to the threshold.
     |
     |Two options are available:
     |
