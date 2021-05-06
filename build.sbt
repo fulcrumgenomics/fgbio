@@ -133,7 +133,7 @@ lazy val root = Project(id="fgbio", base=file("."))
       "com.github.samtools"       %  "htsjdk"         % "2.23.0" excludeAll(htsjdkExcludes: _*),
       "org.apache.commons"        %  "commons-math3"  % "3.6.1",
       "com.beachape"              %% "enumeratum"     % "1.6.1",
-      "com.intel.gkl"             %  "gkl"            % "0.8.6",
+      "com.intel.gkl"             %  "gkl"            % "0.8.8",
 
       //---------- Test libraries -------------------//
       "org.scalatest"             %% "scalatest"     % "3.1.3"  % "test->*" excludeAll ExclusionRule(organization="org.junit", name="junit")
