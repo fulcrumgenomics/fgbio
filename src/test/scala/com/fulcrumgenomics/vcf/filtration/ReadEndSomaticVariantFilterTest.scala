@@ -29,7 +29,7 @@ import com.fulcrumgenomics.bam.{BaseEntry, Pileup, PileupBuilder, PileupEntry}
 import com.fulcrumgenomics.testing.SamBuilder.{Minus, Plus}
 import com.fulcrumgenomics.testing.{SamBuilder, UnitSpec}
 import com.fulcrumgenomics.vcf.api.{AlleleSet, Genotype}
-import com.fulcrumgenomics.vcf.filtration.ReadEndSomaticVariantFilter.{isSnv, priors}
+import com.fulcrumgenomics.vcf.filtration.ReadEndSomaticVariantFilter.{isPointMismatch, priors}
 
 class ReadEndSomaticVariantFilterTest extends UnitSpec {
   private val A = 'A'.toByte
@@ -43,25 +43,25 @@ class ReadEndSomaticVariantFilterTest extends UnitSpec {
     Genotype(as, "s1", as.toIndexedSeq, phased=false)
   }
 
-  "isSnv" should "return true for any SNV" in {
-    isSnv(singleGenotype("A",  "C")) shouldBe true
-    isSnv(singleGenotype("A",  "G")) shouldBe true
-    isSnv(singleGenotype("A",  "T")) shouldBe true
-    isSnv(singleGenotype("C",  "A")) shouldBe true
-    isSnv(singleGenotype("C",  "G")) shouldBe true
-    isSnv(singleGenotype("C",  "T")) shouldBe true
-    isSnv(singleGenotype("G",  "A")) shouldBe true
-    isSnv(singleGenotype("G",  "C")) shouldBe true
-    isSnv(singleGenotype("G",  "T")) shouldBe true
-    isSnv(singleGenotype("T",  "A")) shouldBe true
-    isSnv(singleGenotype("T",  "C")) shouldBe true
-    isSnv(singleGenotype("T",  "G")) shouldBe true
+  "isPointMismatch" should "return true for any SNV" in {
+    isPointMismatch(singleGenotype("A",  "C")) shouldBe true
+    isPointMismatch(singleGenotype("A",  "G")) shouldBe true
+    isPointMismatch(singleGenotype("A",  "T")) shouldBe true
+    isPointMismatch(singleGenotype("C",  "A")) shouldBe true
+    isPointMismatch(singleGenotype("C",  "G")) shouldBe true
+    isPointMismatch(singleGenotype("C",  "T")) shouldBe true
+    isPointMismatch(singleGenotype("G",  "A")) shouldBe true
+    isPointMismatch(singleGenotype("G",  "C")) shouldBe true
+    isPointMismatch(singleGenotype("G",  "T")) shouldBe true
+    isPointMismatch(singleGenotype("T",  "A")) shouldBe true
+    isPointMismatch(singleGenotype("T",  "C")) shouldBe true
+    isPointMismatch(singleGenotype("T",  "G")) shouldBe true
   }
 
   it should "return false for any event that is not a SNP" in {
-    ReadEndSomaticVariantFilter.isSnv(singleGenotype("A",  "AT")) shouldBe false // Insertion
-    ReadEndSomaticVariantFilter.isSnv(singleGenotype("TA", "A"))  shouldBe false // Deletion
-    ReadEndSomaticVariantFilter.isSnv(singleGenotype("AT", "GC")) shouldBe false // MNP
+    ReadEndSomaticVariantFilter.isPointMismatch(singleGenotype("A",  "AT")) shouldBe false // Insertion
+    ReadEndSomaticVariantFilter.isPointMismatch(singleGenotype("TA", "A"))  shouldBe false // Deletion
+    ReadEndSomaticVariantFilter.isPointMismatch(singleGenotype("AT", "GC")) shouldBe false // MNP
   }
 
   "priors" should "return values that prefer artifacts at low MAFs and vice versa" in {

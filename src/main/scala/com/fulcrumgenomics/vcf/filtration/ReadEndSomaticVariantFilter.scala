@@ -25,12 +25,14 @@
 package com.fulcrumgenomics.vcf.filtration
 
 import java.lang.Math.{min, pow}
+
 import com.fulcrumgenomics.bam.{Bams, BaseEntry, Pileup, PileupEntry}
 import com.fulcrumgenomics.commons.util.{LazyLogging, Logger}
 import com.fulcrumgenomics.util.NumericTypes.{LogProbability => LnProb}
 import com.fulcrumgenomics.util.Sequences
+import com.fulcrumgenomics.vcf.api.Allele.SimpleAllele
 import com.fulcrumgenomics.vcf.api.{VcfCount, VcfFieldType, VcfInfoHeader, _}
-import com.fulcrumgenomics.vcf.filtration.ReadEndSomaticVariantFilter.{isSnv, priors}
+import com.fulcrumgenomics.vcf.filtration.ReadEndSomaticVariantFilter.{isPointMismatch, priors}
 
 
 /** Trait for classes that apply filters to somatic variants calls at read ends. */
@@ -128,7 +130,13 @@ trait ReadEndSomaticVariantFilter extends SomaticVariantFilter with LazyLogging 
 object ReadEndSomaticVariantFilter {
 
   /** Returns true if <gt> is a heterozygous SNV with one reference allele, else false */
-  private[filtration] def isSnv(gt: Genotype) : Boolean = gt.isHet && !gt.isHetNonRef && gt.calls.forall(_.value.length == 1)
+  private[filtration] def isPointMismatch(gt: Genotype) : Boolean = {
+    if (gt.alleles.ref.length != 1) false else { // No interest in deletions/MNVs, so only consider if ref length is 1
+      gt.alleles.alts.collect { // Collect all the alt alleles
+        case alt: SimpleAllele if alt.length == 1 => alt // No interest in insertions, so only retain alts with length 1
+      }.nonEmpty // If anything remains, at least one of our alleles is a point mismatch
+    }
+  }
 
   /** Calculates a pair of priors:
     *   <priorMutation> is the prior that the genotype is the result of a true somatic mutation.
@@ -175,8 +183,9 @@ class EndRepairArtifactLikelihoodFilter(override val distance: Int = 15, overrid
   override val VcfFilterLines: Iterable[VcfFilterHeader] = Seq(Filter)
 
   /** Applies to all het SNVs. */
-  def appliesTo(gt: Genotype): Boolean = isSnv(gt)
+  def appliesTo(gt: Genotype): Boolean = isPointMismatch(gt)
 
+  /** Returns true if the position of the base from the closest read end does not exceed the filter's defined distance. */
   def isArtifactCongruent(refAllele: Byte, altAllele: Byte, entry : BaseEntry, pileupPosition: Int): Boolean = {
 
     val positionInRead       = entry.positionInReadInReadOrder
@@ -218,7 +227,7 @@ class ATailingArtifactLikelihoodFilter(override val distance: Int = 2, override 
 
   /** Only applies to het SNVs where the alt allele is A or T. */
   def appliesTo(gt: Genotype): Boolean = {
-    isSnv(gt) &&
+    isPointMismatch(gt) &&
       gt.calls.iterator.filter(_ != gt.alleles.ref).exists(a => a.value.equalsIgnoreCase("A") || a.value.equalsIgnoreCase("T"))
   }
 
