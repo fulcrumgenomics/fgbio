@@ -131,10 +131,15 @@ object ReadEndSomaticVariantFilter {
 
   /** Returns true if <gt> is a heterozygous SNV with one reference allele, else false */
   private[filtration] def isPointMismatch(gt: Genotype) : Boolean = {
-    if (gt.alleles.ref.length != 1) false else { // No interest in deletions/MNVs, so only consider if ref length is 1
-      gt.alleles.alts.collect { // Collect all the alt alleles
-        case alt: SimpleAllele if alt.length == 1 => alt // No interest in insertions, so only retain alts with length 1
-      }.nonEmpty // If anything remains, at least one of our alleles is a point mismatch
+    val ref = gt.alleles.ref
+    if (ref.length != 1) false else { // No interest in deletions/MNVs, so only consider if ref length is 1
+      gt
+        .alleles
+        .alts
+        .collect { // Collect all the alt alleles
+          case alt: SimpleAllele // Only interested in simple alleles, no symbolics or other strange stuff
+            if (alt.length == 1 & alt.bases != ref.bases) => alt // No interest in insertions, so only retain alts with length 1
+          }.nonEmpty // If anything remains, at least one of our alleles is a point mismatch
     }
   }
 

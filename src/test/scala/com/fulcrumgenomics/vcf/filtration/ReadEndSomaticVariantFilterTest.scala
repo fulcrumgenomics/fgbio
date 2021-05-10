@@ -44,18 +44,8 @@ class ReadEndSomaticVariantFilterTest extends UnitSpec {
   }
 
   "isPointMismatch" should "return true for any SNV" in {
-    isPointMismatch(singleGenotype("A",  "C")) shouldBe true
-    isPointMismatch(singleGenotype("A",  "G")) shouldBe true
-    isPointMismatch(singleGenotype("A",  "T")) shouldBe true
-    isPointMismatch(singleGenotype("C",  "A")) shouldBe true
-    isPointMismatch(singleGenotype("C",  "G")) shouldBe true
-    isPointMismatch(singleGenotype("C",  "T")) shouldBe true
-    isPointMismatch(singleGenotype("G",  "A")) shouldBe true
-    isPointMismatch(singleGenotype("G",  "C")) shouldBe true
-    isPointMismatch(singleGenotype("G",  "T")) shouldBe true
-    isPointMismatch(singleGenotype("T",  "A")) shouldBe true
-    isPointMismatch(singleGenotype("T",  "C")) shouldBe true
-    isPointMismatch(singleGenotype("T",  "G")) shouldBe true
+    val bases = Seq("A", "C", "G", "T")
+    for (ref <- bases; alt <- bases; if ref != alt) yield isPointMismatch(singleGenotype(ref, alt)) shouldBe true
   }
 
   it should "return false for any event that is not a SNP" in {
