@@ -62,8 +62,8 @@ trait ReadEndSomaticVariantFilter extends SomaticVariantFilter with LazyLogging 
     * pvalue is present in the <annotations>, and c) the pvalue <= <pValueThreshold>.
     */
   def filters(annotations: Map[String, Any]): Iterable[String] = {
-    (this.pValueThreshold, annotations.get(this.VcfInfoLines.head.id).map(_.asInstanceOf[Double])) match {
-      case (Some(threshold), Some(pvalue)) if pvalue <= threshold => List(VcfFilterLines.head.id)
+    (this.pValueThreshold, annotations.get(Info.id).flatMap(_.toString.toDoubleOption)) match {
+      case (Some(threshold), Some(pvalue)) if pvalue <= threshold => List(Filter.id)
       case _ => Nil
     }
   }
