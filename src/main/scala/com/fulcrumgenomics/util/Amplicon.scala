@@ -59,20 +59,23 @@ case class Amplicon
   private val left_start: Int,
   private val left_end: Int,
   private val right_start: Int,
-  private val right_end: Int, private val
-  id: Option[String] = None
+  private val right_end: Int,
+  private val id: Option[String] = None
 ) extends GenomicSpan with Metric {
-  require(leftStart <= leftEnd, f"leftStart is > leftEnd: $this")
-  require(rightStart <= rightEnd, f"rightStart is > rightEnd: $this")
-  require(leftStart <= rightStart, f"leftStart is > rightStart: $this")
+  require((leftStart == -1) == (leftEnd == -1))
+  require((rightStart == -1) == (rightEnd == -1))
+  require(leftStart != -1 || rightStart != -1)
+  require(leftStart == -1 || leftStart <= leftEnd, f"leftStart is > leftEnd: $this")
+  require(rightStart == -1 || rightStart <= rightEnd, f"rightStart is > rightEnd: $this")
+  require(leftStart == -1 || rightStart == -1 || leftStart <= rightStart, f"leftStart is > rightStart: $this")
 
   @inline def leftStart: Int  = left_start
   @inline def leftEnd: Int    = left_end
   @inline def rightStart: Int = right_start
   @inline def rightEnd: Int   = right_end
   @inline def contig: String  = chrom
-  @inline def start: Int      = leftStart
-  @inline def end: Int        = rightEnd
+  @inline def start: Int      = if (leftStart == -1) rightStart else leftStart
+  @inline def end: Int        = if (rightEnd == -1) leftEnd else rightEnd
 
   def leftPrimerLength: Int       = CoordMath.getLength(leftStart, leftEnd)
   def rightPrimerLength: Int      = CoordMath.getLength(rightStart, rightEnd)
