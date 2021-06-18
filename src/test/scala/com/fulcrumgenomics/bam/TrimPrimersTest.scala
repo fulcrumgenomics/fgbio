@@ -25,9 +25,8 @@
 package com.fulcrumgenomics.bam
 
 import java.nio.file.Paths
-
 import com.fulcrumgenomics.FgBioDef._
-import com.fulcrumgenomics.bam.api.SamOrder
+import com.fulcrumgenomics.bam.api.{SamOrder, SamRecord}
 import com.fulcrumgenomics.testing.SamBuilder.{Minus, Plus}
 import com.fulcrumgenomics.testing.{SamBuilder, UnitSpec}
 import com.fulcrumgenomics.util.{Amplicon, Io, Metric}
@@ -198,5 +197,67 @@ class TrimPrimersTest extends UnitSpec {
     an[Exception] shouldBe thrownBy {
       new TrimPrimers(input=bam, output=bam, primers=primerFile, hardClip=false).execute()
     }
+  }
+
+  it should "trim only R1s when --first-of-pair is given" in {
+    val amplicons: Seq[Amplicon] = Seq(
+      Amplicon("chr1", 100, 119, -1, -1),
+      Amplicon("chr1", -1, -1, 300, 320),
+      Amplicon("chr1", -1, -1, 601, 619),
+    )
+    val primers: FilePath = {
+      val tmp = makeTempFile("primers.", ".txt")
+      Metric.write(path=tmp, amplicons)
+      tmp
+    }
+
+    val builder = new SamBuilder(readLength=readLength, sort=Some(SamOrder.Coordinate))
+
+    // amplicon 1 - R1 should be trimmed (matches left primer)
+    builder.addPair("q1", start1=100, start2=CoordMath.getStart(219, readLength), strand1=Plus, strand2=Minus)
+    // amplicon 1 - R1 should be trimmed the maximum, since it matches the right primer (0-length)
+    builder.addPair("q2", start2=100, start1=CoordMath.getStart(200, readLength), strand1=Minus, strand2=Plus)
+    // amplicon 1 - R1 should be trimmed (matches left primer), since R2's coordinate is not considered
+    builder.addPair("q3", start1=100, start2=500, strand1=Plus, strand2=Minus)
+
+    // amplicon 2 - R1 should be trimmed (matches right primer)
+    builder.addPair("q4", start1=CoordMath.getStart(619, readLength), start2=500, strand1=Minus, strand2=Plus)
+    // amplicon 2 - R1 should be trimmed the maximum, since it matches the left primer (0-length)
+    builder.addPair("q5", start2=CoordMath.getStart(619, readLength), start1=500, strand1=Plus, strand2=Minus)
+    // amplicon 2 - R1 should be trimmed (matches right primer), since R2's coordinate is not considered
+    builder.addPair("q6", start1=CoordMath.getStart(619, readLength), start2=400, strand1=Minus, strand2=Plus)
+
+    val bam = builder.toTempFile()
+    val newBam = makeTempFile("trimmed.", ".bam")
+    new TrimPrimers(input=bam, output=newBam, primers=primers, hardClip=false, firstOfPair=true).execute()
+
+    val reads = readBamRecs(newBam).sortBy(rec => (rec.name, rec.secondOfPair))
+    reads should have size 12
+
+    def validate(rec: SamRecord, name: String, firstOfPair: Boolean, fivePrimeSoftClipLength: Int = 0): Unit = {
+      rec.name shouldBe name
+      rec.firstOfPair shouldBe firstOfPair
+      val elem = if (rec.negativeStrand) rec.cigar.elems.last else rec.cigar.elems.head
+      if (rec.firstOfPair) {
+        elem.operator shouldBe Op.SOFT_CLIP
+        elem.length shouldBe fivePrimeSoftClipLength
+      }
+      else {
+        elem.operator should not be Op.SOFT_CLIP
+      }
+    }
+
+    validate(rec=reads(0),  name="q1", firstOfPair=true, fivePrimeSoftClipLength=20) // amplicon 1
+    validate(rec=reads(1),  name="q1", firstOfPair=false)
+    validate(rec=reads(2),  name="q2", firstOfPair=true, fivePrimeSoftClipLength=21) // maximum
+    validate(rec=reads(3),  name="q2", firstOfPair=false)
+    validate(rec=reads(4),  name="q3", firstOfPair=true, fivePrimeSoftClipLength=20) // amplicon 1
+    validate(rec=reads(5),  name="q3", firstOfPair=false)
+    validate(rec=reads(6),  name="q4", firstOfPair=true, fivePrimeSoftClipLength=19) // amplicon 2
+    validate(rec=reads(7),  name="q4", firstOfPair=false)
+    validate(rec=reads(8),  name="q5", firstOfPair=true, fivePrimeSoftClipLength=21) // maximum
+    validate(rec=reads(9),  name="q5", firstOfPair=false)
+    validate(rec=reads(10), name="q6", firstOfPair=true, fivePrimeSoftClipLength=19) // amplicon 2
+    validate(rec=reads(11), name="q6", firstOfPair=false)
   }
 }
