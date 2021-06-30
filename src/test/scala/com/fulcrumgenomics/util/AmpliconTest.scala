@@ -34,8 +34,8 @@ class AmpliconTest extends UnitSpec {
     amplicon.leftPrimerLength shouldBe 2
     amplicon.rightPrimerLength shouldBe 5
     amplicon.longestPrimerLength shouldBe 5
-    amplicon.leftPrimerLocation shouldBe "chr1:1-2"
-    amplicon.rightPrimerLocation shouldBe "chr1:4-8"
+    amplicon.leftPrimerLocation shouldBe Some("chr1:1-2")
+    amplicon.rightPrimerLocation shouldBe Some("chr1:4-8")
     amplicon.ampliconLocation shouldBe "chr1:1-8"
     amplicon.identifier shouldBe "id"
   }

@@ -84,8 +84,16 @@ class AmpliconDetector(val detector: OverlapDetector[Amplicon],
   private[util] def findPrimer(refName: String, start: Int, end: Int, positiveStrand: Boolean): Option[Amplicon] = {
     val interval = new Interval(refName, start, end)
     val hits: Iterator[(Amplicon, Int)] = {
-      if (positiveStrand) detector.getOverlaps(interval).map(amp => (amp, abs(amp.leftStart - start)))
-      else detector.getOverlaps(interval).map(amp => (amp, abs(amp.rightEnd - end)))
+      if (positiveStrand) detector.getOverlaps(interval).map(amp => amp.leftStart match {
+          case Some(leftStart) => (amp, abs(leftStart - start))
+          case None => throw new Exception(s"Left primer positions need to be defined.") //TODO Can this be reached/will getOverlap() find any results if no left primer exists?  
+        }
+      )
+      else detector.getOverlaps(interval).map(amp => amp.rightEnd match {
+          case Some(rightEnd) => (amp, abs(rightEnd - end))
+          case None => throw new Exception(s"Right primer positions need to be defined.") //TODO Can this be reached/will getOverlap() find any results if no right primer exists?
+        }
+      )
     }
     hits.minByOption(_._2).find(_._2 <= slop).map(_._1)
   }
@@ -146,7 +154,14 @@ class AmpliconDetector(val detector: OverlapDetector[Amplicon],
     val (start, end)  = (coordinates.start(left), coordinates.end(right))
     val insert        = new Interval(left.refName, start, end)
     detector.getOverlaps(insert)
-      .map(amp => (amp, abs(amp.leftStart - start), abs(amp.rightEnd - end)))
+      .map(amp => 
+        (amp.leftStart, amp.rightEnd) match {
+          case (Some(left_start), Some(right_end)) => (amp, abs(left_start - start), abs(right_end - end))
+          case (Some(left_start), None) => (amp, abs(left_start - start), 0)
+          case (None, Some(right_end)) => (amp, 0, abs(right_end - end))
+          case (None, None) => throw new Exception(s"Either left or right primer position need to be defined.")
+        }
+      )
       .filter(hit => hit._2 <= slop && hit._3 <= slop)
       .minByOption(hit => (hit._2 + hit._3))
       .map(_._1)
