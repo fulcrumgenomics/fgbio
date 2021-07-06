@@ -121,7 +121,6 @@ trait ReadEndSomaticVariantFilter extends SomaticVariantFilter with LazyLogging 
     val total = LnProb.or(llMutation, llArtifact)
     val pMutation = LnProb.expProb(LnProb.normalizeByLogProbability(llMutation, total))
     val pArtifact = LnProb.expProb(LnProb.normalizeByLogProbability(llArtifact, total))
-
     Map(Info.id -> pMutation)
   }
 }
@@ -168,7 +167,7 @@ object ReadEndSomaticVariantFilter {
 /**
   * Filter that examines SNVs to see if they are likely end repair artifacts.
   *
-  * End repair artifacts form during the process of filling in single-stranded 3' overhangs to create a blunt end.
+  * End repair fill-in artifacts form during the process of filling in single-stranded 3' overhangs to create a blunt end.
   * Oxidative stress can damage the single-stranded template and induce the formation of DNA lesions, such as
   * 8-oxoguanine. These modified bases undergo mismatched pairing, which after PCR appear as mutations at the ends of
   * reads.
@@ -178,11 +177,11 @@ object ReadEndSomaticVariantFilter {
   * @param pValueThreshold the pvalue at and below which mutations are filtered as being likely
   *                        caused by the artifact
   */
-class EndRepairArtifactLikelihoodFilter(override val distance: Int = 15, override val pValueThreshold: Option[Double] = None)
+class EndRepairFillInArtifactLikelihoodFilter(override val distance: Int = 15, override val pValueThreshold: Option[Double] = None)
   extends ReadEndSomaticVariantFilter {
 
-  val Info = VcfInfoHeader("ERP", VcfCount.Fixed(1), VcfFieldType.Float, "P-Value for the End Repair Artifact Filter test.")
-  val Filter = VcfFilterHeader("EndRepairArtifact", "Variant is likely an artifact caused by end repair.")
+  val Info = VcfInfoHeader("ERFAP", VcfCount.Fixed(1), VcfFieldType.Float, "P-Value for the End Repair Fill-in Artifact Filter test.")
+  val Filter = VcfFilterHeader("EndRepairFillInArtifact", "Variant is likely an artifact caused by end repair fill-in.")
 
   override val VcfInfoLines: Iterable[VcfInfoHeader]     = Seq(Info)
   override val VcfFilterLines: Iterable[VcfFilterHeader] = Seq(Filter)
@@ -224,7 +223,7 @@ class EndRepairArtifactLikelihoodFilter(override val distance: Int = 15, overrid
 class ATailingArtifactLikelihoodFilter(override val distance: Int = 2, override val pValueThreshold: Option[Double] = None)
   extends ReadEndSomaticVariantFilter {
 
-  val Info = VcfInfoHeader("ATP", VcfCount.Fixed(1), VcfFieldType.Float, "P-Value for the A-tailing Artifact Filter test.")
+  val Info = VcfInfoHeader("ATAP", VcfCount.Fixed(1), VcfFieldType.Float, "P-Value for the A-tailing Artifact Filter test.")
   val Filter = VcfFilterHeader("ATailingArtifact", "Variant is likely an artifact caused by A-tailing.")
 
   override val VcfInfoLines: Iterable[VcfInfoHeader]     = Seq(Info)

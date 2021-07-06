@@ -92,21 +92,21 @@ class ReadEndSomaticVariantFilterTest extends UnitSpec {
     filterWithThreshold.filters(ann(0      )) should contain theSameElementsAs Seq(filterWithThreshold.Filter.id)
   }
 
-  "EndRepairArtifactLikelihoodFilter.appliesTo" should "return false for any event that is not a SNP" in {
-    val filter  = new EndRepairArtifactLikelihoodFilter(distance = 15)
+  "EndRepairFillInArtifactLikelihoodFilter.appliesTo" should "return false for any event that is not a SNP" in {
+    val filter  = new EndRepairFillInArtifactLikelihoodFilter(distance = 15)
     filter.appliesTo(singleGenotype("G",  "GT")) shouldBe false // Insertion
     filter.appliesTo(singleGenotype("GT", "G"))  shouldBe false // Deletion
     filter.appliesTo(singleGenotype("CT", "GC")) shouldBe false // MNP
   }
 
   it should "return true for any event that is a SNP" in {
-    val filter  = new EndRepairArtifactLikelihoodFilter(distance = 15)
+    val filter  = new EndRepairFillInArtifactLikelihoodFilter(distance = 15)
     filter.appliesTo(singleGenotype("G",  "A")) shouldBe true
   }
 
 
-  "EndRepairArtifactLikelihoodFilter.isArtifactCongruent" should "return false for any base that is not within the defined read end" in {
-    val filter  = new EndRepairArtifactLikelihoodFilter(distance=15)
+  "EndRepairFillInArtifactLikelihoodFilter.isArtifactCongruent" should "return false for any base that is not within the defined read end" in {
+    val filter  = new EndRepairFillInArtifactLikelihoodFilter(distance=15)
     val recs    = new SamBuilder(readLength=50).addPair(start1=101, start2=101, bases1="ACACA"*10, bases2="ACACA"*10)
 
     for (r <- recs; pos <- Range.inclusive(116, 135)) {
@@ -115,7 +115,7 @@ class ReadEndSomaticVariantFilterTest extends UnitSpec {
   }
 
   it should "return true for any base within the defined read end" in {
-    val filter  = new EndRepairArtifactLikelihoodFilter(distance=15)
+    val filter  = new EndRepairFillInArtifactLikelihoodFilter(distance=15)
     val recs    = new SamBuilder(readLength=50).addPair(start1=101, start2=101, bases1="ACACA"*10, bases2="ACACA"*10)
 
     for (r <- recs; pos <- Range.inclusive(101, 115)) {
@@ -126,9 +126,9 @@ class ReadEndSomaticVariantFilterTest extends UnitSpec {
     }
   }
 
-  "EndRepairArtifactLikelihoodFilter.annotations" should "compute a non-significant p-value when data is distributed throughout the reads" in {
+  "EndRepairFillInArtifactLikelihoodFilter.annotations" should "compute a non-significant p-value when data is distributed throughout the reads" in {
     // Simulate a G>T non-artifact at bp 25
-    val filter  = new EndRepairArtifactLikelihoodFilter(distance=15)
+    val filter  = new EndRepairFillInArtifactLikelihoodFilter(distance=15)
     val builder = new SamBuilder(readLength=50, baseQuality=40)
 
     // Add a ton of reference allele
@@ -150,7 +150,7 @@ class ReadEndSomaticVariantFilterTest extends UnitSpec {
 
   it should "compute a significant p-value when data is heavily biased" in {
     // Simulate a G>T non-artifact at bp 25
-    val filter  = new EndRepairArtifactLikelihoodFilter(distance=15)
+    val filter  = new EndRepairFillInArtifactLikelihoodFilter(distance=15)
     val builder = new SamBuilder(readLength=50, baseQuality=40)
 
     // Add a ton of reference allele at various positions

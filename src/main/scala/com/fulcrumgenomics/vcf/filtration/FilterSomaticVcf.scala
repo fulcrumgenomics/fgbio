@@ -60,10 +60,10 @@ import scala.collection.immutable.ListMap
     |in with one or more adenines during A-base addition. Incorrect adenine incorporation presents specifically as errors to T at
     |the beginning of reads (and in very short templates, as matching errors to A at the ends of reads).
     |
-    |The filter adds the `INFO` field `ATP` to SNVs with an A or T alternate allele. This field records
-    |the p-value for rejecting the possibility that the variant is an A-tailing artifact. If a threshold
-    |p-value is specified, then the `FILTER` tag `ATailingArtifact` will be applied to variants with
-    |p-values less than or equal to the threshold.
+    |The filter adds the `INFO` field `ATAP` to SNVs with an A or T alternate allele. This field records
+    |the p-value representing the probability of the null hypothesis (e.g. that the variant is an artifact), so lower
+    |p-values indicate that the variant is more likely an A-tailing artifact. If a threshold p-value is specified, then
+    |the `FILTER` tag `ATailingArtifact` will be applied to variants with p-values less than or equal to the threshold.
     |
     |Two options are available:
     |
@@ -74,27 +74,28 @@ import scala.collection.immutable.ListMap
     |* `--a-tailing-p-value`   the p-value below which a filter should be applied. If no value is supplied
     |                           only the annotation is produced and no filtering is performed.
     |
-    |### End Repair Artifact Filter
+    |### End Repair Fill-in Artifact Filter
     |
-    |The end repair artifact filter attempts to measure the probability that a single-nucleotide mismatch is the product of
-    |errors in the template generated during the end repair step that is common to many Illumina library
+    |The end repair fill-in artifact filter attempts to measure the probability that a single-nucleotide mismatch is the
+    |product of errors in the template generated during the end repair step that is common to many Illumina library
     |preparation protocols, in which single-stranded 3' overhands are filled in to create a blunt end.
     |These artifacts originate from single-stranded templates containing damaged bases, often as a
     |consequence of oxidative damage. These DNA lesions, for example 8-oxoguanine, undergo
     |mismatched pairing, which after PCR appear as mutations at the ends of reads.
     |
-    |The filter adds the `INFO` field `ERP` to SNVs. This field records the p-value for rejecting the
-    |possibility that the variant is an end repair artifact. If a threshold p-value is specified, then
-    |the `FILTER` tag `EndRepairArtifact` will be applied to variants with p-values less than or equal to the threshold.
+    |The filter adds the `INFO` field `ERFAP` to SNVs. This field records the p-value representing the probability of the
+    |null hypothesis (e.g. that the variant is an artifact), so lower p-values indicate that the variant is more likely
+    |an end repair fill-in artifact. If a threshold p-value is specified, then the `FILTER` tag `EndRepairFillInArtifact`
+    |will be applied to variants with p-values less than or equal to the threshold.
     |
     |Two options are available:
     |
-    |* `--end-repair-distance`  allows control over how close to the ends of reads/templates errors can be
-    |                           considered to be candidates for the artifact. Higher values decrease the
-    |                           power of the test, so this should be set as low as possible given observed
-    |                           errors.
-    |* `--end-repair-p-value`   the p-value below which a filter should be applied. If no value is supplied
-    |                           only the annotation is produced and no filtering is performed.
+    |* `--end-repair-fill-in-distance`  allows control over how close to the ends of reads/templates errors can be
+    |                                   considered to be candidates for the artifact. Higher values decrease the
+    |                                   power of the test, so this should be set as low as possible given observed
+    |                                   errors.
+    |* `--end-repair-fill-in-p-value`   the p-value below which a filter should be applied. If no value is supplied
+    |                                   only the annotation is produced and no filtering is performed.
   """)
 class FilterSomaticVcf
 ( @arg(flag='i', doc="Input VCF of somatic variant calls.")         val input: PathToVcf,
@@ -106,10 +107,10 @@ class FilterSomaticVcf
   @arg(flag='p', doc="Use only paired reads mapped in pairs.")      val pairedReadsOnly: Boolean = false,
   // Developer Note: filter-specific attributes should NOT be given flags as we will likely run
   //                 out of flags that way and end up with a mix of +flag and -flag options.
-  @arg(doc="Distance from end of read to implicate A-base addition artifacts.") val aTailingDistance: Option[Int] = Some(2),
-  @arg(doc="Minimum acceptable p-value for A-base addition artifact test.")     val aTailingPValue: Option[Double] = None,
-  @arg(doc="Distance from end of read to implicate end repair artifacts.")      val endRepairDistance: Option[Int] = Some(15),
-  @arg(doc="Minimum acceptable p-value for end repair artifact test.")          val endRepairPValue: Option[Double] = None
+  @arg(doc="Distance from end of read to implicate A-base addition artifacts.")         val aTailingDistance: Option[Int] = Some(2),
+  @arg(doc="Minimum acceptable p-value for A-base addition artifact test.")             val aTailingPValue: Option[Double] = None,
+  @arg(doc="Distance from end of read to implicate end repair fill-in artifacts.")      val endRepairFillInDistance: Option[Int] = Some(15),
+  @arg(doc="Minimum acceptable p-value for end repair fill-in artifact test.")          val endRepairFillInPValue: Option[Double] = None
 ) extends FgBioTool with LazyLogging {
   Io.assertReadable(input)
   Io.assertReadable(bam)
@@ -128,11 +129,11 @@ class FilterSomaticVcf
         else invalid("Must supply --sample when VCF contains more than one sample.")
     }
 
-    if (aTailingDistance.isEmpty && endRepairDistance.isEmpty) logger.warning("All filters are turned off and tool will no-op!")
+    if (aTailingDistance.isEmpty && endRepairFillInDistance.isEmpty) logger.warning("All filters are turned off and tool will no-op!")
 
     val filters = Seq.empty[ReadEndSomaticVariantFilter] ++
       aTailingDistance.map { dist => new ATailingArtifactLikelihoodFilter(dist, aTailingPValue) } ++
-      endRepairDistance.map { dist => new EndRepairArtifactLikelihoodFilter(dist, endRepairPValue) }
+      endRepairFillInDistance.map { dist => new EndRepairFillInArtifactLikelihoodFilter(dist, endRepairFillInPValue) }
 
     val builder = new PileupBuilder(bamIn.dict, mappedPairsOnly=pairedReadsOnly, minBaseQ=minBaseQuality, minMapQ=minMappingQuality)
     val out = makeWriter(output, vcfIn.header, filters)

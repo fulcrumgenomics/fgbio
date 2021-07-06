@@ -115,8 +115,8 @@ class FilterSomaticVcfTest extends UnitSpec {
 
   private val ATailInfoKey       = new ATailingArtifactLikelihoodFilter().Info.id
   private val ATailFilterKey     = new ATailingArtifactLikelihoodFilter().Filter.id
-  private val EndRepairInfoKey   = new EndRepairArtifactLikelihoodFilter().Info.id
-  private val EndRepairFilterKey = new EndRepairArtifactLikelihoodFilter().Filter.id
+  private val EndRepairInfoKey   = new EndRepairFillInArtifactLikelihoodFilter().Info.id
+  private val EndRepairFilterKey = new EndRepairFillInArtifactLikelihoodFilter().Filter.id
 
   "FilterSomaticVcf" should "work on an empty VCF" in {
     val emptyVcf    = VcfBuilder(Seq("tumor")).toTempFile()
@@ -187,7 +187,7 @@ class FilterSomaticVcfTest extends UnitSpec {
 
   it should "apply filters if filter-specific p-value thresholds are supplied" in {
     val filteredVcf = makeTempFile("filtered.", ".vcf")
-    new FilterSomaticVcf(input=tumorOnlyVcf, output=filteredVcf, bam=bam, sample=Some("tumor"), aTailingDistance=Some(4), aTailingPValue=Some(0.001), endRepairPValue = Some(0.001)).execute()
+    new FilterSomaticVcf(input=tumorOnlyVcf, output=filteredVcf, bam=bam, sample=Some("tumor"), aTailingDistance=Some(4), aTailingPValue=Some(0.001), endRepairFillInPValue = Some(0.001)).execute()
     val variants = readVcfRecs(filteredVcf)
     variants should have size 5
     variants(0).get[Float](ATailInfoKey).isDefined shouldBe true
