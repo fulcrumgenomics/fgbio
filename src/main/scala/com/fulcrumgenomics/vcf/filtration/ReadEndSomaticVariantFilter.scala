@@ -27,22 +27,20 @@ package com.fulcrumgenomics.vcf.filtration
 import java.lang.Math.{min, pow}
 
 import com.fulcrumgenomics.bam.{Bams, BaseEntry, Pileup, PileupEntry}
-import com.fulcrumgenomics.commons.util.{LazyLogging, Logger}
+import com.fulcrumgenomics.commons.util.LazyLogging
 import com.fulcrumgenomics.util.NumericTypes.{LogProbability => LnProb}
 import com.fulcrumgenomics.util.Sequences
 import com.fulcrumgenomics.vcf.api.Allele.SimpleAllele
 import com.fulcrumgenomics.vcf.api.{VcfCount, VcfFieldType, VcfInfoHeader, _}
-import com.fulcrumgenomics.vcf.filtration.ReadEndSomaticVariantFilter.{isPointMismatch, priors}
-
 
 /** Trait for classes that apply filters to somatic variants calls at read ends. */
 trait ReadEndSomaticVariantFilter extends SomaticVariantFilter with LazyLogging {
 
   /** The VCF header line that describes the INFO key that the filter may reference. */
-  val Info: VcfInfoHeader
+  def Info: VcfInfoHeader
 
   /** The VCF header line that describes the FILTER key that the filter may reference. */
-  val Filter: VcfFilterHeader
+  def Filter: VcfFilterHeader
 
   /** The distance from the end of the template that defines the region where the artifact may occur */
   val distance: Int
@@ -63,8 +61,8 @@ trait ReadEndSomaticVariantFilter extends SomaticVariantFilter with LazyLogging 
     */
   def filters(annotations: Map[String, Any]): Iterable[String] = {
     (this.pValueThreshold, annotations.get(Info.id).flatMap(_.toString.toDoubleOption)) match {
-      case (Some(threshold), Some(pvalue)) if pvalue <= threshold => List(Filter.id)
-      case _ => Nil
+      case (Some(threshold), Some(pvalue)) if pvalue <= threshold => Some(Filter.id)
+      case _ => None
     }
   }
 
@@ -114,7 +112,7 @@ trait ReadEndSomaticVariantFilter extends SomaticVariantFilter with LazyLogging 
     // Apply a prior based on the MAF
     val totalObs = altGood + altBad + refGood + refBad
     val maf      = if (totalObs > 0) (altGood + altBad) / totalObs.toDouble else 0
-    val (priorMutation, priorArtifact) = priors(pileup, maf, Some(logger))
+    val (priorMutation, priorArtifact) = ReadEndSomaticVariantFilter.priors(pileup, maf)
     llMutation += LnProb.toLogProbability(priorMutation)
     llArtifact += LnProb.toLogProbability(priorArtifact)
 
@@ -126,10 +124,10 @@ trait ReadEndSomaticVariantFilter extends SomaticVariantFilter with LazyLogging 
 }
 
 /** The companion object for [[ReadEndSomaticVariantFilter]]. */
-object ReadEndSomaticVariantFilter {
+object ReadEndSomaticVariantFilter extends LazyLogging {
 
   /** Returns true if <gt> is a heterozygous SNV with one reference allele, else false */
-  private[filtration] def isPointMismatch(gt: Genotype) : Boolean = {
+  private[filtration] def isHetSnv(gt: Genotype) : Boolean = {
     val ref = gt.alleles.ref
     if (ref.length != 1) false else { // No interest in deletions/MNVs, so only consider if ref length is 1
       gt
@@ -151,11 +149,11 @@ object ReadEndSomaticVariantFilter {
     * artifact prior of 1 - mutation prior.  This has the effect of creating priors that are heavily
     * skewed towards the artifact at very low MAFs, and towards mutations as the MAF increases towards 0.5.
     */
-  private[filtration] def priors(pileup: Pileup[PileupEntry], maf: Double, logger : Option[Logger] = None) : (Double, Double) = {
+  private[filtration] def priors(pileup: Pileup[PileupEntry], maf: Double) : (Double, Double) = {
     require(maf >= 0 && maf <= 1, s"Maf must be between 0 and 1. Observed maf ${maf} at ${pileup.refName}:${pileup.pos}.")
 
     val m = if (maf != 0) maf else {
-      logger.foreach(_.warning(s"No alt allele observations found with selected cutoffs at: ${pileup.refName}:${pileup.pos}"))
+      logger.warning(s"No alt allele observations found with selected cutoffs at: ${pileup.refName}:${pileup.pos}")
       1.0 / pileup.depth
     }
     val priorMutation = min(pow(m * 2, 2), 0.9999)
@@ -187,11 +185,10 @@ class EndRepairFillInArtifactLikelihoodFilter(override val distance: Int = 15, o
   override val VcfFilterLines: Iterable[VcfFilterHeader] = Seq(Filter)
 
   /** Applies to all het SNVs. */
-  def appliesTo(gt: Genotype): Boolean = isPointMismatch(gt)
+  def appliesTo(gt: Genotype): Boolean = ReadEndSomaticVariantFilter.isHetSnv(gt)
 
   /** Returns true if the position of the base from the closest read end does not exceed the filter's defined distance. */
   def isArtifactCongruent(refAllele: Byte, altAllele: Byte, entry : BaseEntry, pileupPosition: Int): Boolean = {
-
     val positionInRead       = entry.positionInReadInReadOrder
     val positionFromOtherEnd = Bams.positionFromOtherEndOfTemplate(entry.rec, pileupPosition)
 
@@ -231,7 +228,7 @@ class ATailingArtifactLikelihoodFilter(override val distance: Int = 2, override 
 
   /** Only applies to het SNVs where the alt allele is A or T. */
   def appliesTo(gt: Genotype): Boolean = {
-    isPointMismatch(gt) &&
+    ReadEndSomaticVariantFilter.isHetSnv(gt) &&
       gt.calls.iterator.filter(_ != gt.alleles.ref).exists(a => a.value.equalsIgnoreCase("A") || a.value.equalsIgnoreCase("T"))
   }
 
@@ -274,7 +271,7 @@ class ATailingArtifactLikelihoodFilter(override val distance: Int = 2, override 
     * the read or the A-paired allele at the end of the read - i.e. they are observations that if converted to
     * alt observations would be congruent.
     */
-   def isArtifactCongruent(refAllele: Byte, altAllele: Byte, entry : BaseEntry, pileupPosition: Int): Boolean = {
+  def isArtifactCongruent(refAllele: Byte, altAllele: Byte, entry : BaseEntry, pileupPosition: Int): Boolean = {
     require(entry.base == refAllele || entry.base == altAllele, "Pileup base is neither ref or alt.")
     val isRef                = entry.base == refAllele
     val positionInRead       = entry.positionInReadInReadOrder

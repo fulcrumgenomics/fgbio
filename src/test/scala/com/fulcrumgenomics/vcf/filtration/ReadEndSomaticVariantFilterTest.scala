@@ -29,7 +29,6 @@ import com.fulcrumgenomics.bam.{BaseEntry, Pileup, PileupBuilder, PileupEntry}
 import com.fulcrumgenomics.testing.SamBuilder.{Minus, Plus}
 import com.fulcrumgenomics.testing.{SamBuilder, UnitSpec}
 import com.fulcrumgenomics.vcf.api.{AlleleSet, Genotype}
-import com.fulcrumgenomics.vcf.filtration.ReadEndSomaticVariantFilter.{isPointMismatch, priors}
 
 class ReadEndSomaticVariantFilterTest extends UnitSpec {
   private val A = 'A'.toByte
@@ -43,25 +42,25 @@ class ReadEndSomaticVariantFilterTest extends UnitSpec {
     Genotype(as, "s1", as.toIndexedSeq, phased=false)
   }
 
-  "isPointMismatch" should "return true for any SNV" in {
+  "isHetSnv" should "return true for any SNV" in {
     val bases = Seq("A", "C", "G", "T")
-    for (ref <- bases; alt <- bases; if ref != alt) yield isPointMismatch(singleGenotype(ref, alt)) shouldBe true
+    for (ref <- bases; alt <- bases; if ref != alt) yield ReadEndSomaticVariantFilter.isHetSnv(singleGenotype(ref, alt)) shouldBe true
   }
 
   it should "return false for any event that is not a SNP" in {
-    ReadEndSomaticVariantFilter.isPointMismatch(singleGenotype("A",  "AT")) shouldBe false // Insertion
-    ReadEndSomaticVariantFilter.isPointMismatch(singleGenotype("TA", "A"))  shouldBe false // Deletion
-    ReadEndSomaticVariantFilter.isPointMismatch(singleGenotype("AT", "GC")) shouldBe false // MNP
+    ReadEndSomaticVariantFilter.isHetSnv(singleGenotype("A",  "AT")) shouldBe false // Insertion
+    ReadEndSomaticVariantFilter.isHetSnv(singleGenotype("TA", "A"))  shouldBe false // Deletion
+    ReadEndSomaticVariantFilter.isHetSnv(singleGenotype("AT", "GC")) shouldBe false // MNP
   }
 
   "priors" should "return values that prefer artifacts at low MAFs and vice versa" in {
     val pileup = Pileup("chr1", 0, 100, Seq.empty[PileupEntry])
 
-    priors(pileup, maf=0.01) shouldBe (0.0004, 0.9996)
+    ReadEndSomaticVariantFilter.priors(pileup, maf=0.01) shouldBe (0.0004, 0.9996)
 
     Range.inclusive(1, 100).sliding(2).foreach { case Seq(maf1, maf2) =>
-      val (pMut1, pArt1) = priors(pileup, maf1/100.0)
-      val (pMut2, pArt2) = priors(pileup, maf2/100.0)
+      val (pMut1, pArt1) = ReadEndSomaticVariantFilter.priors(pileup, maf1/100.0)
+      val (pMut2, pArt2) = ReadEndSomaticVariantFilter.priors(pileup, maf2/100.0)
 
       pMut1 should be <= pMut2
       pArt1 should be >= pArt2
