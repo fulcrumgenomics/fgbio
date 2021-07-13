@@ -50,41 +50,47 @@ import scala.collection.immutable.ListMap
     |Each available filter may generate annotations in the `INFO` field of the output VCF and optionally,
     |if a threshold is specified, may apply one or more `FILTER`s to applicable variants.
     |
+    |Note: In the initial version of this tool, the only available filter was specific to A-base addition artifacts and
+    |was referred to as the 'End Repair Artifact Filter.' This filter has been renamed to 'A-tailing Artifact Filter',
+    |but its functionality is unchanged. The filter's associated command-line parameters, `INFO` field key, and `FILTER`
+    |tag have also been renamed accordingly, as described below.
+    |
     |## Available Filters
     |
-    |### A-tailing Artifact Filter
+    |### A-tailing Artifact Filter (previously 'End Repair Artifact Filter')
     |
     |The A-tailing artifact filter attempts to measure the probability that a single-nucleotide mismatch is the product of
-    |errors in the template generated during the A-base addition steps that are common to many Illumina
-    |library preparation protocols.  The artifacts occur if/when a recessed 3' end is incorrectly filled
-    |in with one or more adenines during A-base addition. Incorrect adenine incorporation presents specifically as errors to T at
-    |the beginning of reads (and in very short templates, as matching errors to A at the ends of reads).
+    |errors in the template generated during the A-base addition steps that are common to many Illumina library
+    |preparation protocols.  The artifacts occur if/when a recessed 3' end is incorrectly filled in with one or more
+    |adenines during A-base addition. Incorrect adenine incorporation presents specifically as errors to T at the
+    |beginning of reads (and in very short templates, as matching errors to A at the ends of reads).
     |
-    |The filter adds the `INFO` field `ATAP` to SNVs with an A or T alternate allele. This field records
-    |the p-value representing the probability of the null hypothesis (e.g. that the variant is an artifact), so lower
-    |p-values indicate that the variant is more likely an A-tailing artifact. If a threshold p-value is specified, then
-    |the `FILTER` tag `ATailingArtifact` will be applied to variants with p-values less than or equal to the threshold.
+    |The filter adds the `INFO` field `ATAP` (previously `ERAP`) to SNVs with an A or T alternate allele. This field
+    |records the p-value representing the probability of the null hypothesis that the variant is a true mutation, so
+    |lower p-values indicate that the variant is more likely an A-tailing artifact. If a threshold p-value is specified,
+    |the `FILTER` tag `ATailingArtifact` (previously `EndRepairArtifact`) will be applied to variants with p-values less
+    |than or equal to the threshold.
     |
     |Two options are available:
     |
-    |* `--a-tailing-distance`  allows control over how close to the ends of reads/templates errors can be
-    |                          considered to be candidates for the A-tailing artifact. Higher values
-    |                          decrease the power of the test, so this should be set as low as possible
+    |* `--a-tailing-distance`  (previously `--end-repair-distance`) allows control over how close to the ends of
+    |                          reads/templates errors can be considered to be candidates for the A-tailing artifact.
+    |                          Higher values decrease the power of the test, so this should be set as low as possible
     |                          given observed errors.
-    |* `--a-tailing-p-value`   the p-value below which a filter should be applied. If no value is supplied
-    |                           only the annotation is produced and no filtering is performed.
+    |* `--a-tailing-p-value`   (previously `--end-repair-p-value`) the p-value at or below which a filter should be applied.
+    |                          If no value is supplied only the `INFO` annotation is produced and no `FILTER` is applied.
     |
     |### End Repair Fill-in Artifact Filter
     |
     |The end repair fill-in artifact filter attempts to measure the probability that a single-nucleotide mismatch is the
-    |product of errors in the template generated during the end repair step that is common to many Illumina library
-    |preparation protocols, in which single-stranded 3' overhands are filled in to create a blunt end.
-    |These artifacts originate from single-stranded templates containing damaged bases, often as a
-    |consequence of oxidative damage. These DNA lesions, for example 8-oxoguanine, undergo
-    |mismatched pairing, which after PCR appear as mutations at the ends of reads.
+    |product of an error in the template generated during the end repair fill-in step that is common to many Illumina
+    |library preparation protocols, in which single-stranded 3' overhands are filled in to create a blunt end. These
+    |artifacts originate from single-stranded templates containing damaged bases, often as a consequence of oxidative
+    |damage. These DNA lesions, for example 8-oxoguanine, undergo mismatched pairing, which after PCR appear as mutations
+    |at the ends of reads.
     |
-    |The filter adds the `INFO` field `ERFAP` to SNVs. This field records the p-value representing the probability of the
-    |null hypothesis (e.g. that the variant is an artifact), so lower p-values indicate that the variant is more likely
+    |The filter adds the `INFO` field `ERFAP` to records SNVs. This field records the p-value representing the probability of the
+    |null hypothesis (e.g. that the variant is a true mutation), so lower p-values indicate that the variant is more likely
     |an end repair fill-in artifact. If a threshold p-value is specified, then the `FILTER` tag `EndRepairFillInArtifact`
     |will be applied to variants with p-values less than or equal to the threshold.
     |
