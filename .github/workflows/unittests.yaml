@@ -1,0 +1,64 @@
+name: unit tests
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v2
+        with:
+          fetch-depth: 0
+      - name: Setup Scala
+        uses: olafurpg/setup-scala@v1
+        with:
+          java-version: openjdk@8
+        env:
+          ACTIONS_ALLOW_UNSECURE_COMMANDS: true
+      - name: Unit Tests
+        run: |
+          sbt +clean coverage +test && sbt coverageReport coverageAggregate
+          find $HOME/.sbt -name "*.lock" | xargs rm
+          find $HOME/.ivy2 -name "ivydata-*.properties" | xargs rm
+          #bash <(curl -s https://codecov.io/bash) -c -F unittests -f '!*.txt'
+      - name: Code Coverage
+        uses: codecov/codecov-action@v1
+        with:
+          flags: unittests # optional
+          fail_ci_if_error: true # optional (default = false)
+          verbose: true # optional (default = false)
+      - name: Cache .ivy2
+        uses: actions/cache@v1
+        with:
+          path: ~/.ivy2
+          key: ${{ runner.os }}-ivy2-${{ hashFiles('**/build.sbt') }}
+      - name: Cache .sbt
+        uses: actions/cache@v1
+        with:
+          path: ~/.sbt
+          key: ${{ runner.os }}-sbt-${{ hashFiles('**/build.properties') }}
+  release:
+    if: github.repository == 'fulcrumgenomics/fgbio' && github.ref == 'refs/heads/master'
+    
+    needs: test
+    runs-on: ubuntu-latest
+    env:
+      SONATYPE_USER: ${{ secrets.SONATYPE_USER }}
+      SONATYPE_PASS: ${{ secrets.SONATYPE_PASS }}
+    steps:
+      - uses: actions/checkout@v2
+        with:
+          fetch-depth: 0
+      - name: Setup Scala
+        uses: olafurpg/setup-scala@v1
+        with:
+          java-version: openjdk@8
+        env:
+          ACTIONS_ALLOW_UNSECURE_COMMANDS: true
+      - name: Upload to Sonatype
+        run: |
+          sbt +publish
+
