@@ -42,17 +42,6 @@ class ReadEndSomaticVariantFilterTest extends UnitSpec {
     Genotype(as, "s1", as.toIndexedSeq, phased=false)
   }
 
-  "isHetSnv" should "return true for any SNV" in {
-    val bases = Seq("A", "C", "G", "T")
-    for (ref <- bases; alt <- bases; if ref != alt) yield ReadEndSomaticVariantFilter.isHetSnv(singleGenotype(ref, alt)) shouldBe true
-  }
-
-  it should "return false for any event that is not a SNP" in {
-    ReadEndSomaticVariantFilter.isHetSnv(singleGenotype("A",  "AT")) shouldBe false // Insertion
-    ReadEndSomaticVariantFilter.isHetSnv(singleGenotype("TA", "A"))  shouldBe false // Deletion
-    ReadEndSomaticVariantFilter.isHetSnv(singleGenotype("AT", "GC")) shouldBe false // MNP
-  }
-
   "priors" should "return values that prefer artifacts at low MAFs and vice versa" in {
     val pileup = Pileup("chr1", 0, 100, Seq.empty[PileupEntry])
 
@@ -98,11 +87,29 @@ class ReadEndSomaticVariantFilterTest extends UnitSpec {
     filter.appliesTo(singleGenotype("CT", "GC")) shouldBe false // MNP
   }
 
-  it should "return true for any event that is a SNP" in {
+  it should "return false for homozygous genotypes" in {
+    val mg = Genotype(AlleleSet("A"), "s1", AlleleSet("A", "A").toIndexedSeq)
     val filter  = new EndRepairFillInArtifactLikelihoodFilter(distance = 15)
-    filter.appliesTo(singleGenotype("G",  "A")) shouldBe true
+    filter.appliesTo(mg) shouldBe false
   }
 
+  it should "return false for events with multiple alt alleles if any alts are not SNVs" in {
+    val mg = Genotype(AlleleSet("A", "G"), "s1", AlleleSet("A", "G", "TT").toIndexedSeq)
+    val filter  = new EndRepairFillInArtifactLikelihoodFilter(distance = 15)
+    filter.appliesTo(mg) shouldBe false
+  }
+
+  it should "return true for any event that is a SNP" in {
+    val bases = Seq("A", "C", "G", "T")
+    val filter  = new EndRepairFillInArtifactLikelihoodFilter(distance = 15)
+    for (ref <- bases; alt <- bases; if ref != alt) yield filter.appliesTo(singleGenotype(ref, alt)) shouldBe true
+  }
+
+  it should "return true for events with multiple alt alleles if they are all SNVs" in {
+    val mg = Genotype(AlleleSet("A", "G"), "s1", AlleleSet("A", "G", "T").toIndexedSeq)
+    val filter  = new EndRepairFillInArtifactLikelihoodFilter(distance = 15)
+    filter.appliesTo(mg) shouldBe true
+  }
 
   "EndRepairFillInArtifactLikelihoodFilter.isArtifactCongruent" should "return false for any base that is not within the defined read end" in {
     val filter  = new EndRepairFillInArtifactLikelihoodFilter(distance=15)

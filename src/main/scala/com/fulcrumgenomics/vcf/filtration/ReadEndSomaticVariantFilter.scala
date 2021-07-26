@@ -24,14 +24,13 @@
 
 package com.fulcrumgenomics.vcf.filtration
 
-import java.lang.Math.{min, pow}
-
 import com.fulcrumgenomics.bam.{Bams, BaseEntry, Pileup, PileupEntry}
 import com.fulcrumgenomics.commons.util.LazyLogging
 import com.fulcrumgenomics.util.NumericTypes.{LogProbability => LnProb}
 import com.fulcrumgenomics.util.Sequences
-import com.fulcrumgenomics.vcf.api.Allele.SimpleAllele
 import com.fulcrumgenomics.vcf.api.{VcfCount, VcfFieldType, VcfInfoHeader, _}
+
+import java.lang.Math.{min, pow}
 
 /** Trait for classes that apply filters to somatic variants calls at read ends. */
 trait ReadEndSomaticVariantFilter extends SomaticVariantFilter with LazyLogging {
@@ -126,20 +125,6 @@ trait ReadEndSomaticVariantFilter extends SomaticVariantFilter with LazyLogging 
 /** The companion object for [[ReadEndSomaticVariantFilter]]. */
 object ReadEndSomaticVariantFilter extends LazyLogging {
 
-  /** Returns true if <gt> is a heterozygous SNV with one reference allele, else false */
-  private[filtration] def isHetSnv(gt: Genotype) : Boolean = {
-    val ref = gt.alleles.ref
-    if (ref.length != 1) false else { // No interest in deletions/MNVs, so only consider if ref length is 1
-      gt
-        .alleles
-        .alts
-        .collect { // Collect all the alt alleles
-          case alt: SimpleAllele // Only interested in simple alleles, no symbolics or other strange stuff
-            if (alt.length == 1 & alt.bases != ref.bases) => alt // No interest in insertions, so only retain alts with length 1
-          }.nonEmpty // If anything remains, at least one of our alleles is a point mismatch
-    }
-  }
-
   /** Calculates a pair of priors:
     *   <priorMutation> is the prior that the genotype is the result of a true somatic mutation.
     *   <priorArtifact> is the prior that the genotype is an artifact resulting from the mechanism specific to the filter
@@ -184,8 +169,10 @@ class EndRepairFillInArtifactLikelihoodFilter(override val distance: Int = 15, o
   override val VcfInfoLines: Iterable[VcfInfoHeader]     = Seq(Info)
   override val VcfFilterLines: Iterable[VcfFilterHeader] = Seq(Filter)
 
-  /** Applies to all het SNVs. */
-  def appliesTo(gt: Genotype): Boolean = ReadEndSomaticVariantFilter.isHetSnv(gt)
+  /** Applies only for gt where all alleles are SNVs */
+  def appliesTo(gt: Genotype): Boolean = {
+    gt.isHet && gt.calls.forall(_.value.length == 1)
+  }
 
   /** Returns true if the position of the base from the closest read end does not exceed the filter's defined distance. */
   def isArtifactCongruent(refAllele: Byte, altAllele: Byte, entry : BaseEntry, pileupPosition: Int): Boolean = {
@@ -228,7 +215,7 @@ class ATailingArtifactLikelihoodFilter(override val distance: Int = 2, override 
 
   /** Only applies to het SNVs where the alt allele is A or T. */
   def appliesTo(gt: Genotype): Boolean = {
-    ReadEndSomaticVariantFilter.isHetSnv(gt) &&
+    gt.isHet && !gt.isHetNonRef && gt.calls.forall(_.value.length == 1) &&
       gt.calls.iterator.filter(_ != gt.alleles.ref).exists(a => a.value.equalsIgnoreCase("A") || a.value.equalsIgnoreCase("T"))
   }
 
