@@ -30,7 +30,7 @@ import com.fulcrumgenomics.FgBioDef._
 import com.fulcrumgenomics.commons.collection.BetterBufferedIterator
 import com.fulcrumgenomics.commons.util.LazyLogging
 import com.fulcrumgenomics.fasta.SequenceDictionary
-import com.fulcrumgenomics.util.GeneAnnotations.{Exon, Gene, GeneLocus, Transcript}
+import com.fulcrumgenomics.util.GeneAnnotations.{Exon, Feature, Gene, GeneLocus, Transcript}
 
 import scala.collection.mutable
 
@@ -252,6 +252,8 @@ class NcbiRefSeqGffSource private(lines: Iterator[String],
 
     // Build up the exons of the transcript and sort them into transcription order
     val exons = features.filter(_.kind == "exon").map(rec => Exon(rec.start, rec.end)).sortBy(e => if (txRec.negative) -e.end else e.start)
+    val other = features.filter(_.kind != "exon").map(rec => Feature(rec.id, rec.start, rec.end, rec.kind)).sortBy(e => if (txRec.negative) -e.end else e.start)
+
 
     // Find the coding start and end from the CDS features
     val (cdsStart, cdsEnd) = features.filter(_.kind == "CDS") match {
@@ -259,7 +261,7 @@ class NcbiRefSeqGffSource private(lines: Iterator[String],
       case xs    => (Some(xs.minBy(_.start).start), Some(xs.maxBy(_.end).end))
     }
 
-    Transcript(txRec("transcript_id"), chrom, txRec.start, txRec.end, cdsStart, cdsEnd, txRec.negative, exons)
+    Transcript(txRec("transcript_id"), chrom, txRec.start, txRec.end, cdsStart, cdsEnd, txRec.negative, exons, features=other, kind=Some(txRec.kind))
   }
 
   /**

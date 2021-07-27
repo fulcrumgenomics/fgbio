@@ -118,4 +118,14 @@ class NcbiRefSeqGffSourceTest extends UnitSpec with OptionValues {
       tx.name.charAt(0) should not be 'X'
     }
   }
+
+  it should "include miRNA in Transcript features" in {
+    val source = NcbiRefSeqGffSource(GffFile, includeXs=false, dict=DictChr1)
+    source.get("MIR1302-2").get.iterator.find(tx => tx.name == "NR_036051.1").get.featuresByKind("miRNA").length shouldBe 1
+  }
+
+  it should "include lnc-RNA in Transcript features" in {
+    val source = NcbiRefSeqGffSource(GffFile, includeXs=false, dict=DictChr1)
+    source.get("LOC729737").get.iterator.find(tx => tx.name == "NR_039983.2").get.kind.get shouldBe "lnc_RNA"
+  }
 }
