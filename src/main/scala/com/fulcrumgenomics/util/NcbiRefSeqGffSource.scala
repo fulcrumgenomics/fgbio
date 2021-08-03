@@ -30,7 +30,7 @@ import com.fulcrumgenomics.FgBioDef._
 import com.fulcrumgenomics.commons.collection.BetterBufferedIterator
 import com.fulcrumgenomics.commons.util.LazyLogging
 import com.fulcrumgenomics.fasta.SequenceDictionary
-import com.fulcrumgenomics.util.GeneAnnotations.{Exon, Feature, Gene, GeneLocus, Transcript}
+import com.fulcrumgenomics.util.GeneAnnotations.{Exon, Feature, Gene, GeneBiotype, GeneLocus, Transcript}
 
 import scala.collection.mutable
 
@@ -226,19 +226,28 @@ class NcbiRefSeqGffSource private(lines: Iterator[String],
     * */
   private def parseGene(chrom: String, geneRec: GffRecord, iter: BetterBufferedIterator[GffRecord]): Option[Gene] = {
     val txsBuilder = Seq.newBuilder[Transcript]
+    val kind = geneRec("gene_biotype").map(GeneBiotype(_))
 
-    // Loop while the next record is a child of this gene and is "transcript-like", which includes any
-    // direct children that define the attribute "transcript_id", not just records with kind=transcript.
-    while (iter.hasNext && iter.head.parentId.contains(geneRec.id) && iter.head.has("transcript_id")) {
-      val txRec = iter.next()
-      val tx = parseTranscript(chrom, txRec, iter)
-      if (this.includeXs || !tx.name.startsWith("X")) txsBuilder += tx
+    kind match {
+      case GeneBiotype.LncRna => {
+
+      }
+      case _ => {
+        // Loop while the next record is a child of this gene and is "transcript-like", which includes any
+        // direct children that define the attribute "transcript_id", not just records with kind=transcript.
+        while (iter.hasNext && iter.head.parentId.contains(geneRec.id) && iter.head.has("transcript_id")) {
+          val txRec = iter.next()
+          val tx = parseTranscript(chrom, txRec, iter)
+          if (this.includeXs || !tx.name.startsWith("X")) txsBuilder += tx
+        }
+      }
     }
+
 
     val txs = txsBuilder.result()
     if (txs.isEmpty) None else {
       val locus = GeneLocus(txs)
-      Some(Gene(geneRec.name, Seq(locus)))
+      Some(Gene(geneRec.name, Seq(locus), Some())
     }
   }
 

@@ -27,13 +27,14 @@ package com.fulcrumgenomics.util
 
 import htsjdk.samtools.util.{CoordMath, Locatable}
 import com.fulcrumgenomics.FgBioDef._
+import enumeratum.EnumEntry
 
 /** Stores classes useful for storing annotation information for genes and their transcripts and exons. */
 object GeneAnnotations {
   /**
     * A gene with a collection of gene loci.
     */
-  case class Gene(name: String, loci: Seq[GeneLocus]) extends Iterable[Transcript] {
+  case class Gene(name: String, loci: Seq[GeneLocus], biotype: Option[GeneBiotype] = None) extends Iterable[Transcript] {
     /** Iterate over all transcripts from all GeneLoci (each a collection of transcripts). */
     def iterator: Iterator[Transcript] = this.loci.iterator.flatten
 
@@ -128,4 +129,57 @@ object GeneAnnotations {
 
   /** Defines a generic genomic feature within a transcript. */
   case class Feature(id: String, start: Int, end: Int, kind: String)
+
+
+  /** Trait that gene biotypes will extends */
+  sealed trait GeneBiotype extends EnumEntry {
+    /** The biotype name in the GFF */
+    def key: String
+    /** True if this biotype represents a protein coding feature */
+    def isCoding: Boolean
+  }
+
+  /** Enum to represent gene biotypes in a GFF */
+  object GeneBiotype extends FgBioEnum[GeneBiotype] {
+    /** All values of the GeneBiotype Enum */
+    def values: IndexedSeq[GeneBiotype] = findValues
+
+    /** Allows GeneBiotypes to be built from the Enum name of the biotype name from the GFF */
+    override def apply(str: String): GeneBiotype = values.find(_.key == str).getOrElse(super.apply(str))
+
+    // antisense_RNA -> exon
+    case object AntisenseRna  extends GeneBiotype { val key: String = "antisense_RNA";  val isCoding = false } // TODO: check this
+    // guide_RNA -> exon
+    case object GuideRna      extends GeneBiotype { val key: String = "guide_RNA";      val isCoding = false }
+    // lnc_RNA -> exon
+    case object LncRna        extends GeneBiotype { val key: String = "lncRNA";         val isCoding = false }
+    // primary_transcript -> {exon, miRNA}  <-- odd
+    case object MiRna         extends GeneBiotype { val key: String = "miRNA";          val isCoding = false }
+    // transcript -> exon                   <-- odd
+    case object MiscRna       extends GeneBiotype { val key: String = "misc_RNA";       val isCoding = false } // TODO: check this
+    // *_feature or nothing                 <-- odd
+    case object Other         extends GeneBiotype { val key: String = "other";          val isCoding = false } // TODO: check this
+    // { transcript, mRNA } -> exon         <-- odd
+    case object ProteinCoding extends GeneBiotype { val key: String = "protein_coding"; val isCoding = true  }
+    // RNase_MRP_RNA -> exon
+    case object RNaseMrpRna   extends GeneBiotype { val key: String = "RNase_MRP_RNA";  val isCoding = false }
+    // RNase_P_RNA -> exon
+    case object RNasePRna     extends GeneBiotype { val key: String = "RNase_P_RNA";    val isCoding = false }
+    // rRNA -> exon
+    case object RRna          extends GeneBiotype { val key: String = "rRNA";           val isCoding = false }
+    // scRNA -> exon
+    case object ScRna         extends GeneBiotype { val key: String = "scRNA";          val isCoding = false }
+    // snRNA -> exon
+    case object SnRna         extends GeneBiotype { val key: String = "snRNA";          val isCoding = false }
+    // snoRNA -> exon
+    case object SnoRna        extends GeneBiotype { val key: String = "snoRNA";         val isCoding = false }
+    // tRNA -> exon
+    case object TRna          extends GeneBiotype { val key: String = "tRNA";           val isCoding = false }
+    // vault_RNA -> exon
+    case object VaultRna      extends GeneBiotype { val key: String = "vault_RNA";      val isCoding = false }
+    // V_segment -> exon
+    case object VSegment      extends GeneBiotype { val key: String = "V_segment";      val isCoding = false } // TODO: check this
+    // Y_RNA -> exon
+    case object YRna          extends GeneBiotype { val key: String = "Y_RNA";          val isCoding = false }
+  }
 }
