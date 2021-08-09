@@ -132,7 +132,7 @@ class TrimPrimers
       }
       else {
         require(amplicon.leftStart > 0 && amplicon.rightStart > 0,
-          f"Either the left or right amplicon coordinates must be > 0. Found ${amplicon.mkString("\t")}"
+          f"Both the left and right amplicon coordinates must be > 0. Did you forget to set '--first-of-pair'? Found ${amplicon.mkString("\t")}"
         )
       }
     }
