@@ -101,7 +101,7 @@ ggplot(yieldData) +
 ggplot(yieldData) +
   aes(x=read_pairs) +
   geom_line(aes(y=ds_fraction_duplexes / ds_fraction_duplexes_ideal, color="Actual / Ideal Duplexes")) +
-  scale_fill_manual(values=fgcolors) +
+  scale_color_manual(values=fgcolors) +
   ylim(0, 1) +
   labs(x="Read Pairs", y="Ratio of Actual vs. Ideal Duplexes", title=paste("Ratio of Actual vs. Ideal Duplex Yield by Input Read Pairs for", sampleInfo)) +
   theme(plot.title = element_text(hjust = 0.5), legend.title=element_blank())
