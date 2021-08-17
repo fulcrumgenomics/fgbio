@@ -149,36 +149,64 @@ object GeneAnnotations {
 
     // antisense_RNA -> exon
     case object AntisenseRna  extends GeneBiotype { val key: String = "antisense_RNA";  val isCoding = false } // TODO: check this
+
+    // C_gene_segment -> {exon, CDS}
+    case object CRegion       extends GeneBiotype { val key: String = "C_region";       val isCoding = true }
+
+    // D_gene_segment -> {exon, CDS}
+    case object DSegment      extends GeneBiotype { val key: String = "D_segment";      val isCoding = true }
+
     // guide_RNA -> exon
     case object GuideRna      extends GeneBiotype { val key: String = "guide_RNA";      val isCoding = false }
+
+    // J_gene_segment -> {exon, CDS}
+    case object JSegment      extends GeneBiotype { val key: String = "J_segment";      val isCoding = true }
+
     // lnc_RNA -> exon
     case object LncRna        extends GeneBiotype { val key: String = "lncRNA";         val isCoding = false }
+
     // primary_transcript -> {exon, miRNA}  <-- odd
     case object MiRna         extends GeneBiotype { val key: String = "miRNA";          val isCoding = false }
+
     // transcript -> exon                   <-- odd
     case object MiscRna       extends GeneBiotype { val key: String = "misc_RNA";       val isCoding = false } // TODO: check this
+
     // *_feature or nothing                 <-- odd
     case object Other         extends GeneBiotype { val key: String = "other";          val isCoding = false } // TODO: check this
-    // { transcript, mRNA } -> exon         <-- odd
+
+    // { transcript(for noncoding txs), mRNA(for coding txs) } -> exon         <-- odd
     case object ProteinCoding extends GeneBiotype { val key: String = "protein_coding"; val isCoding = true  }
+
     // RNase_MRP_RNA -> exon
     case object RNaseMrpRna   extends GeneBiotype { val key: String = "RNase_MRP_RNA";  val isCoding = false }
+
     // RNase_P_RNA -> exon
     case object RNasePRna     extends GeneBiotype { val key: String = "RNase_P_RNA";    val isCoding = false }
+
     // rRNA -> exon
     case object RRna          extends GeneBiotype { val key: String = "rRNA";           val isCoding = false }
+
     // scRNA -> exon
     case object ScRna         extends GeneBiotype { val key: String = "scRNA";          val isCoding = false }
+
     // snRNA -> exon
     case object SnRna         extends GeneBiotype { val key: String = "snRNA";          val isCoding = false }
+
     // snoRNA -> exon
     case object SnoRna        extends GeneBiotype { val key: String = "snoRNA";         val isCoding = false }
+
     // tRNA -> exon
     case object TRna          extends GeneBiotype { val key: String = "tRNA";           val isCoding = false }
+
+    // telomerase_RNA -> exon
+    case object TelomeraseRna extends GeneBiotype { val key: String = "telomerase_RNA"; val isCoding = false }
+
     // vault_RNA -> exon
     case object VaultRna      extends GeneBiotype { val key: String = "vault_RNA";      val isCoding = false }
+
     // V_segment -> exon
-    case object VSegment      extends GeneBiotype { val key: String = "V_segment";      val isCoding = false } // TODO: check this
+    case object VSegment      extends GeneBiotype { val key: String = "V_segment";      val isCoding = false }
+
     // Y_RNA -> exon
     case object YRna          extends GeneBiotype { val key: String = "Y_RNA";          val isCoding = false }
   }
