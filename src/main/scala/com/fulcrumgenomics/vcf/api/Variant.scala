@@ -24,6 +24,8 @@
 
 package com.fulcrumgenomics.vcf.api
 
+import com.fulcrumgenomics.util.GenomicSpan
+
 import scala.collection.immutable.ListMap
 import scala.reflect.ClassTag
 
@@ -99,7 +101,13 @@ final case class Variant(chrom: String,
                          filters: Set[String] = Variant.EmptyFilters,
                          attrs: ListMap[String,Any] = Variant.EmptyInfo,
                          genotypes: Map[String, Genotype] = Variant.EmptyGenotypes
-                        ) {
+                        ) extends GenomicSpan {
+
+  /** The chromosome on which a variant resides. */
+  override val contig: String = chrom
+
+  /** The start position of the variant. */
+  override val start: Int = pos
 
   /** The end position of the variant based on either the `END` INFO field _or_ the length of the reference allele. */
   val end: Int = get[Int]("END").getOrElse(pos + alleles.ref.length - 1)
