@@ -364,7 +364,7 @@ private[api] object VcfConversions {
   /**
     * Little container class for a [[Variant]] to make it locatable (see [[Locatable]]).
     */
-  implicit case class VariantLocatable(variant: Variant) extends Locatable {
+  implicit class VariantLocatable(variant: Variant) extends Locatable {
     override def getContig: String = variant.chrom
     override def getStart: Int     = variant.pos
     override def getEnd: Int       = variant.end
