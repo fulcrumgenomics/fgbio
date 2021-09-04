@@ -216,6 +216,7 @@ object Bams extends LazyLogging {
         sort += rec
         progress.record(rec)
       }
+      progress.logLast()
 
       new SelfClosingIterator(sort.iterator, () => sort.close())
     }
