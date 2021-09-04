@@ -24,6 +24,8 @@
 
 package com.fulcrumgenomics.vcf.api
 
+import com.fulcrumgenomics.vcf.api.VcfConversions.VariantLocatable
+
 import scala.collection.immutable.ListMap
 import scala.reflect.ClassTag
 
@@ -118,4 +120,7 @@ final case class Variant(chrom: String,
 
   /** Returns an iterator over the genotypes for this variant. */
   def gts: Iterator[Genotype] = this.genotypes.valuesIterator
+
+  /** Returns a [[VariantLocatable]] for this variant. */
+  def toLocatable: VariantLocatable = new VariantLocatable(this)
 }

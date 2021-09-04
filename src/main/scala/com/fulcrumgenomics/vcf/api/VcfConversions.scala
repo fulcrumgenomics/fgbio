@@ -26,17 +26,16 @@ package com.fulcrumgenomics.vcf.api
 
 import java.util
 import java.util.{List => JavaList}
-
 import com.fulcrumgenomics.FgBioDef._
 import com.fulcrumgenomics.fasta.SequenceMetadata
 import com.fulcrumgenomics.vcf.api.Allele.NoCallAllele
 import com.fulcrumgenomics.vcf.api.VcfCount.Fixed
+import htsjdk.samtools.util.Locatable
 import htsjdk.variant.variantcontext.{GenotypeBuilder, VariantContext, VariantContextBuilder, Allele => JavaAllele}
 import htsjdk.variant.vcf._
 
 import scala.collection.JavaConverters.mapAsJavaMapConverter
 import scala.collection.immutable.ListMap
-import scala.collection.mutable
 
 /**
   * Object that provides methods for converting from fgbio's scala VCF classes to HTSJDK's
@@ -360,5 +359,14 @@ private[api] object VcfConversions {
     }
 
     out
+  }
+
+  /**
+    * Little container class for a [[Variant]] to make it locatable (see [[Locatable]]).
+    */
+  implicit case class VariantLocatable(variant: Variant) extends Locatable {
+    override def getContig: String = variant.chrom
+    override def getStart: Int     = variant.pos
+    override def getEnd: Int       = variant.end
   }
 }
