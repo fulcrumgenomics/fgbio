@@ -24,11 +24,9 @@
 
 package com.fulcrumgenomics.vcf.api
 
-import com.fulcrumgenomics.vcf.api.VcfConversions.VariantLocatable
 import htsjdk.samtools.util.Locatable
 
 import scala.collection.immutable.ListMap
-import scala.reflect.ClassTag
 
 object Variant {
   /** Value used in VCF for values that are missing. */
