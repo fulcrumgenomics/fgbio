@@ -30,7 +30,6 @@ import com.fulcrumgenomics.FgBioDef._
 import com.fulcrumgenomics.fasta.SequenceMetadata
 import com.fulcrumgenomics.vcf.api.Allele.NoCallAllele
 import com.fulcrumgenomics.vcf.api.VcfCount.Fixed
-import htsjdk.samtools.util.Locatable
 import htsjdk.variant.variantcontext.{GenotypeBuilder, VariantContext, VariantContextBuilder, Allele => JavaAllele}
 import htsjdk.variant.vcf._
 
@@ -359,14 +358,5 @@ private[api] object VcfConversions {
     }
 
     out
-  }
-
-  /**
-    * Little container class for a [[Variant]] to make it locatable (see [[Locatable]]).
-    */
-  implicit class VariantLocatable(variant: Variant) extends Locatable {
-    override def getContig: String = variant.chrom
-    override def getStart: Int     = variant.pos
-    override def getEnd: Int       = variant.end
   }
 }

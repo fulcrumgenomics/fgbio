@@ -25,6 +25,7 @@
 package com.fulcrumgenomics.vcf.api
 
 import com.fulcrumgenomics.vcf.api.VcfConversions.VariantLocatable
+import htsjdk.samtools.util.Locatable
 
 import scala.collection.immutable.ListMap
 import scala.reflect.ClassTag
@@ -71,6 +72,15 @@ object Variant {
   private[api] val EmptyInfo:       ListMap[String, Any]  = ListMap.empty
   private[api] val EmptyGtAttrs:    Map[String, Any]      = Map.empty
   private[api] val EmptyGenotypes:  Map[String, Genotype] = Map.empty
+
+  /**
+    * Little container class for a [[Variant]] to make it locatable (see [[Locatable]]).
+    */
+  implicit case class LocatableVariant(variant: Variant) extends Locatable {
+    override def getContig: String = variant.chrom
+    override def getStart: Int     = variant.pos
+    override def getEnd: Int       = variant.end
+  }
 }
 
 
@@ -121,6 +131,6 @@ final case class Variant(chrom: String,
   /** Returns an iterator over the genotypes for this variant. */
   def gts: Iterator[Genotype] = this.genotypes.valuesIterator
 
-  /** Returns a [[VariantLocatable]] for this variant. */
-  def toLocatable: VariantLocatable = new VariantLocatable(this)
+  /** Returns a [[Variant.LocatableVariant]] for this variant. */
+  def toLocatable: Variant.LocatableVariant = new Variant.LocatableVariant(this)
 }
