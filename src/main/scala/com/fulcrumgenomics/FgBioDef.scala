@@ -36,10 +36,6 @@ import scala.math.Ordering
   */
 object FgBioDef extends CommonsDef {
 
-  // TODO: Remove this once it is merged in commons: https://github.com/fulcrumgenomics/commons/pull/63
-  /** Represents a path to a sequence dictionary (.dict). */
-  type PathToSequenceDictionary = java.nio.file.Path
-
   /** Extends this trait in your enumeration object to enable the case objects to be created on the command line.
     * You should implement the [[enumeratum.Enum#values]] method in your object, for example:
     * `def values: IndexedSeq[T] = findValues`.
