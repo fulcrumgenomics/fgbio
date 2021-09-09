@@ -24,11 +24,28 @@
 
 package com.fulcrumgenomics.vcf.api
 
-import com.fulcrumgenomics.FgBioDef._
 import com.fulcrumgenomics.testing.UnitSpec
 import org.scalatest.OptionValues
 
 class VariantTest extends UnitSpec with OptionValues {
+  "Variant" should "not allow you to add genotypes that have a different set of alleles" in {
+    val sample    = "sample"
+    val gtAlleles = AlleleSet(Allele("A"), Allele("T")) // Extra allele compared to its variant.
+    val genotype  = Genotype(alleles = gtAlleles, sample = sample, calls = gtAlleles.toIndexedSeq)
+    an[IllegalArgumentException] shouldBe thrownBy {
+      Variant("chr1", 1, alleles = AlleleSet(Allele("A")), genotypes = Map(sample -> genotype))
+    }
+  }
+
+  it should "allow you to add genotypes that have the same set of alleles" in {
+    val sample   = "sample"
+    val alleles  = AlleleSet(Allele("A"))
+    val genotype = Genotype(alleles = alleles, sample = sample, calls = alleles.toIndexedSeq)
+    noException shouldBe thrownBy {
+      Variant("chr1", 1, alleles = alleles, genotypes = Map(sample -> genotype))
+    }
+  }
+
   "Variant.isMissingValue" should "correctly handle missing and non-missing values" in {
     Variant.isMissingValue(".") shouldBe true
     Variant.isMissingValue('.') shouldBe true
