@@ -100,7 +100,7 @@ final case class Variant(chrom: String,
                          attrs: ListMap[String,Any] = Variant.EmptyInfo,
                          genotypes: Map[String, Genotype] = Variant.EmptyGenotypes
                         ) {
-  require(genotypes.values.forall(_.alleles == alleles), "Genotypes must have the same alleles as their Variant.")
+  require(gts.forall(_.alleles == alleles), "Genotypes must have the same alleles as their Variant.")
 
   /** The end position of the variant based on either the `END` INFO field _or_ the length of the reference allele. */
   val end: Int = get[Int]("END").getOrElse(pos + alleles.ref.length - 1)
