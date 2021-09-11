@@ -79,9 +79,7 @@ object GeneAnnotations {
                         cdsStart: Option[Int] = None,
                         cdsEnd: Option[Int]   = None,
                         negativeStrand: Boolean,
-                        exons: Seq[Exon],
-                        features: Seq[Feature] = Seq(),
-                        kind: Option[String] = None) extends Locatable {
+                        exons: Seq[Exon]) extends Locatable {
     if (exons.length > 1) {
       val exonsOverlap = genomicOrder.sliding(2).map { e => (e.head, e.last) }.exists { case (e1, e2) => CoordMath.overlaps(e1.start, e1.end, e2.start, e2.end) }
       require(!exonsOverlap, s"exons overlap for transcript: $name")
@@ -110,15 +108,6 @@ object GeneAnnotations {
 
     /** True if the transcript is coding, false otherwise. */
     def isCoding: Boolean = cdsStart.isDefined
-
-    /** The order in which features appear in the transcripts */
-    def transcriptOrderFeatures: Iterator[Feature] = features.iterator
-
-    /** The order in which features appear in the genome */
-    def genomicOrderFeatures: Iterator[Feature] = features.sortBy { feature => (feature.start, feature.end) }.iterator
-
-    /** The features grouped by `kind` */
-    def featuresByKind: Map[String, Seq[Feature]] = features.groupBy(f => f.kind)
   }
 
   /** Defines an exonic sequence within a transcript. */
@@ -126,10 +115,6 @@ object GeneAnnotations {
     require(start <= end, "start is greater than end when creating an exon")
     def length: Int = end - start + 1
   }
-
-  /** Defines a generic genomic feature within a transcript. */
-  case class Feature(id: String, start: Int, end: Int, kind: String)
-
 
   /** Trait that gene biotypes will extends */
   sealed trait GeneBiotype extends EnumEntry {

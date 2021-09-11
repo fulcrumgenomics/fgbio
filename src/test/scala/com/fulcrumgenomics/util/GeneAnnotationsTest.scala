@@ -26,7 +26,7 @@
 package com.fulcrumgenomics.util
 
 import com.fulcrumgenomics.testing.UnitSpec
-import com.fulcrumgenomics.util.GeneAnnotations.{Exon, Feature, Transcript}
+import com.fulcrumgenomics.util.GeneAnnotations.{Exon, Transcript}
 
 class GeneAnnotationsTest extends UnitSpec {
   "GeneAnnotations.Exon" should "fail if exon.start > exon.end" in {
@@ -35,13 +35,5 @@ class GeneAnnotationsTest extends UnitSpec {
 
   "GeneAnnotations.Transcript" should "fail if exons overlap" in {
     an[Exception] should be thrownBy Transcript("tx", "chr1", 1, 20, None, None, negativeStrand=false, exons=Seq(Exon(1,10), Exon(10, 20)))
-  }
-
-  "GeneAnnotations.Transcript" should "group like-kind features together" in {
-    val features = Seq(Feature("f1", 3, 6, "lnc-RNA"), Feature("f2", 8, 12, "miRNA"), Feature("f3", 15, 18, "lnc-RNA"))
-    val tx = Transcript("tx", "chr1", 1, 20, None, None, negativeStrand=false, exons=Seq(Exon(1,10), Exon(11, 20)), features=features)
-
-    tx.featuresByKind.get("lnc-RNA").get shouldBe Seq(Feature("f1", 3, 6, "lnc-RNA"), Feature("f3", 15, 18, "lnc-RNA"))
-    tx.featuresByKind.get("miRNA").get shouldBe Seq(Feature("f2", 8, 12, "miRNA"))
   }
 }

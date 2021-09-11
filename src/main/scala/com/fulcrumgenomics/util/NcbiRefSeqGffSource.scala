@@ -30,7 +30,7 @@ import com.fulcrumgenomics.FgBioDef._
 import com.fulcrumgenomics.commons.collection.BetterBufferedIterator
 import com.fulcrumgenomics.commons.util.LazyLogging
 import com.fulcrumgenomics.fasta.SequenceDictionary
-import com.fulcrumgenomics.util.GeneAnnotations.{Exon, Feature, Gene, GeneBiotype, GeneLocus, Transcript}
+import com.fulcrumgenomics.util.GeneAnnotations._
 
 import scala.collection.mutable
 
@@ -226,20 +226,20 @@ class NcbiRefSeqGffSource private(lines: Iterator[String],
     * */
   private def parseGene(chrom: String, geneRec: GffRecord, iter: BetterBufferedIterator[GffRecord]): Option[Gene] = {
     val txsBuilder = Seq.newBuilder[Transcript]
-    val kind = GeneBiotype(geneRec("gene_biotype"))
+    val biotype = GeneBiotype(geneRec("gene_biotype"))
+
     // Loop while the next record is a child of this gene and is "transcript-like", which includes any
     // direct children that define the attribute "transcript_id", not just records with kind=transcript.
-    while (iter.hasNext && iter.head.parentId.contains(geneRec.id) && iter.head.has("transcript_id")) {
+    while (iter.hasNext && iter.head.parentId.contains(geneRec.id)) {
       val txRec = iter.next()
       val tx = parseTranscript(chrom, txRec, iter)
-      if (this.includeXs || !tx.name.startsWith("X")) txsBuilder += tx
+      tx.filter(t => this.includeXs || !t.name.startsWith("X")).foreach(txsBuilder += _)
     }
-
 
     val txs = txsBuilder.result()
     if (txs.isEmpty) None else {
       val locus = GeneLocus(txs)
-      Some(Gene(geneRec.name, Seq(locus), Some(kind)))
+      Some(Gene(geneRec.name, Seq(locus), Some(biotype)))
     }
   }
 
@@ -247,14 +247,14 @@ class NcbiRefSeqGffSource private(lines: Iterator[String],
     * in will be positioned such that the next records is immediately after the last child of this
     * transcript.
     */
-  private def parseTranscript(chrom: String, txRec: GffRecord, iter: BetterBufferedIterator[GffRecord]): Transcript = {
+  private def parseTranscript(chrom: String,
+                              txRec: GffRecord,
+                              iter: BetterBufferedIterator[GffRecord]): Option[Transcript] = {
     // Consume _all_ the children, including ones we may want to ignore
     val features = iter.takeWhile(_.parentId.contains(txRec.id)).toIndexedSeq
 
     // Build up the exons of the transcript and sort them into transcription order
     val exons = features.filter(_.kind == "exon").map(rec => Exon(rec.start, rec.end)).sortBy(e => if (txRec.negative) -e.end else e.start)
-    val other = features.filter(_.kind != "exon").map(rec => Feature(rec.id, rec.start, rec.end, rec.kind)).sortBy(e => if (txRec.negative) -e.end else e.start)
-
 
     // Find the coding start and end from the CDS features
     val (cdsStart, cdsEnd) = features.filter(_.kind == "CDS") match {
@@ -262,7 +262,15 @@ class NcbiRefSeqGffSource private(lines: Iterator[String],
       case xs    => (Some(xs.minBy(_.start).start), Some(xs.maxBy(_.end).end))
     }
 
-    Transcript(txRec("transcript_id"), chrom, txRec.start, txRec.end, cdsStart, cdsEnd, txRec.negative, exons, features=other, kind=Some(txRec.kind))
+    // Figure out the ID of the transcript-like row
+    val id = if (txRec.has("transcript_id")) txRec("transcript_id") else txRec("ID").split('-').drop(1).mkString("-")
+
+    if (exons.nonEmpty) {
+      Some(Transcript(id, chrom, txRec.start, txRec.end, cdsStart, cdsEnd, txRec.negative, exons))
+    }
+    else {
+      None
+    }
   }
 
   /**

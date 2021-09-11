@@ -43,7 +43,7 @@ class SummarizeGff(@arg(flag='i', doc="Input RefSeq GFF") input: FilePath,
 
   override def execute(): Unit = {
     val dict = SequenceDictionary.extract(ref)
-    val parser = NcbiRefSeqGffSource(input, includeXs=false, dict)
+    val parser = NcbiRefSeqGffSource(input, includeXs=true, dict)
 
     val singleExonCounts = new SimpleCounter[String]
     val multiExonCounts  = new SimpleCounter[String]
