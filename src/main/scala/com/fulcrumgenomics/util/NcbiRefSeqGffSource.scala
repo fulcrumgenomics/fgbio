@@ -51,7 +51,7 @@ object NcbiRefSeqGffSource {
     * @param end the end position of the feature (1-based inclusive)
     * @param negative whether the feature is on the negative strand
     * @param frame the coding frame of the feature. If the feature does not have a frame, is set to -1.
-    * @param attrs the string of `;` separated `key=value` dynamic attributes on the record
+    * @param attrs the string of `;` separated `refSeqValue=value` dynamic attributes on the record
     */
   private case class GffRecord(accession: String, source: String, kind: String, start: Int, end: Int, negative: Boolean, frame: Int, attrs: String) {
     // Lazily break the attributes out into a Map; lazy in case it's a feature type we don't need this for
@@ -228,8 +228,9 @@ class NcbiRefSeqGffSource private(lines: Iterator[String],
     val txsBuilder = Seq.newBuilder[Transcript]
     val biotype    = GeneBiotype(geneRec("gene_biotype"))
 
-    // Loop while the next record is a child of this gene and is "transcript-like", which includes any
-    // direct children that define the attribute "transcript_id", not just records with kind=transcript.
+    // Loop while the next record is a child of this gene.  The call to parseTranscript will then consume
+    // all elements that are children of the "transcript" and either return Some(Transcript) if there is
+    // transcript-like structure or None if there is not.
     while (iter.hasNext && iter.head.parentId.contains(geneRec.id)) {
       val txRec = iter.next()
       val tx = parseTranscript(chrom, txRec, iter)
@@ -238,8 +239,7 @@ class NcbiRefSeqGffSource private(lines: Iterator[String],
 
     val txs = txsBuilder.result()
     if (txs.isEmpty) None else {
-      val locus = GeneLocus(txs)
-      Some(Gene(geneRec.name, Seq(locus), Some(biotype)))
+      Some(Gene(name=geneRec.name, loci=Seq(GeneLocus(txs)), biotype=Some(biotype)))
     }
   }
 
