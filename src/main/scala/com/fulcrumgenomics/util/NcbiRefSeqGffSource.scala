@@ -226,7 +226,7 @@ class NcbiRefSeqGffSource private(lines: Iterator[String],
     * */
   private def parseGene(chrom: String, geneRec: GffRecord, iter: BetterBufferedIterator[GffRecord]): Option[Gene] = {
     val txsBuilder = Seq.newBuilder[Transcript]
-    val biotype = GeneBiotype(geneRec("gene_biotype"))
+    val biotype    = GeneBiotype(geneRec("gene_biotype"))
 
     // Loop while the next record is a child of this gene and is "transcript-like", which includes any
     // direct children that define the attribute "transcript_id", not just records with kind=transcript.
