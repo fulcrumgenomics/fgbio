@@ -64,6 +64,7 @@ class AnnotateBamWithUmis(
   @arg(flag='t', doc="The BAM attribute to store UMIs in.")    val attribute: String = "RX",
   @arg(flag='r', doc="The read structure for the FASTQ, otherwise all bases will be used.")
                                                                val readStructure: ReadStructure = ReadStructure("+M"),
+  @arg(flag='s', doc="If set, don't pre-load UMIs.")           val sameOrder: Boolean = false,
   @arg(          doc="If set, fail on the first missing UMI.") val failFast: Boolean = false
 ) extends FgBioTool with LazyLogging {
 
@@ -73,6 +74,15 @@ class AnnotateBamWithUmis(
   private def logMissingUmi(readName: String): Unit = {
     missingUmis += 1
     if (failFast) fail("Record '" + readName + "' in BAM file not found in FASTQ file.")
+  }
+
+  /** Search for the next matching entry and extracts the UMI bases */
+  private def searchAndExtractUmi(fqIn: FastqSource, name: Option[String], structure: ReadStructure): (String, String) = {
+    val fq_record = name match {
+      case Some(i) => fqIn.dropWhile(_.name != i).next()
+      case None => fqIn.next()
+    }
+    fq_record.name -> extractUmis(fq_record.bases, structure)
   }
 
   /** Extracts the UMI bases given the read structure */
@@ -89,26 +99,55 @@ class AnnotateBamWithUmis(
     Io.assertReadable(Seq(input, fastq))
     Io.assertCanWriteFile(output)
 
-    // Read in the fastq file
-    logger.info("Reading in UMIs from FASTQ.")
-    val fqIn      = FastqSource(fastq)
-    val nameToUmi =  fqIn.map(fq => (fq.name, extractUmis(fq.bases, readStructure))).toMap
-
-    // Loop through the BAM file an annotate it
-    logger.info("Reading input BAM and annotating output BAM.")
+    // Prepare bam input and output files
+    logger.info("Opening input and output files.")
+    val fqIn     = FastqSource(fastq)
     val in       = SamSource(input)
     val out      = SamWriter(output, in.header)
     val progress = ProgressLogger(logger)
 
-    in.foreach(rec => {
-      val name = rec.name
-      nameToUmi.get(name) match {
-        case Some(umi) => rec(attribute) = umi
-        case None      => logMissingUmi(name)
-      }
-      out += rec
-      progress.record(rec)
-    })
+    if (sameOrder) {
+      // Loop through the BAM file an annotate it
+      logger.info("Reading input BAM and UMI FASTQ in the same order and annotating output BAM.")
+      var fq_name = None: Option[String]
+      var umi = None: Option[String]
+
+      in.foreach(rec => {
+        val name = rec.name
+        if (
+          fq_name match {
+            case None => true
+            case Some(v) if v != name => true
+            case _ => false
+          }
+        ) {
+          val data = searchAndExtractUmi(fqIn, Some(name), readStructure)
+          fq_name = Some(data._1)
+          umi = Some(data._2)
+        }
+        rec(attribute) = umi.get
+
+        out += rec
+        progress.record(rec)
+      })
+    } else {
+      // Read in the fastq file
+      logger.info("Reading in UMIs from FASTQ.")
+      val nameToUmi =  fqIn.map(fq => (fq.name, extractUmis(fq.bases, readStructure))).toMap
+
+      // Loop through the BAM file an annotate it
+      logger.info("Reading input BAM and annotating output BAM.")
+
+      in.foreach(rec => {
+        val name = rec.name
+        nameToUmi.get(name) match {
+          case Some(umi) => rec(attribute) = umi
+          case None      => logMissingUmi(name)
+        }
+        out += rec
+        progress.record(rec)
+      })
+    }
 
     // Finish up
     out.close()
