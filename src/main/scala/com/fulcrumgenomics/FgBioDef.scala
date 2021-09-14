@@ -81,7 +81,7 @@ object FgBioDef extends CommonsDef {
       * @param range the string to parse.
       */
     def apply(range: String): GenomicRange = {
-      val (refName: String, rest: String) = range.indexOf(':') match {
+      val (refName: String, rest: String) = range.lastIndexOf(':') match {
         case -1  => throw new IllegalArgumentException(f"Missing colon in genomic range: '$range'")
         case idx =>
           val (left, right) = range.splitAt(idx)
