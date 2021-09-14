@@ -125,6 +125,12 @@ object NcbiRefSeqGffSource {
   *   - NC_* accessions other than MT are automatically mapped to "chr{chromsome-number}"
   *   - Other accessions/contigs are skipped
   *
+  * The set of features that are extracted from the GFF are all `gene` features that contain one or more
+  * transcript-like features - i.e. that contain an entry below gene which contains one or more exon entries below
+  * it.  While most such features are bonafide transcripts with transcript IDs, some are not - for example
+  * tRNAs.  For transcript-like features without a transcript-id, the ID field is used as the transcript id/name
+  * _after_ removing the leading `rna-` or similar prefix.
+  *
   * @param lines the GFF lines to parse
   * @param includeXs whether to include experimental transcripts (i.e. XM_* XP_* and XR_*).
   * @param dict a sequence dictionary used to help resolve accessions in the accessions in the GFF
@@ -262,7 +268,8 @@ class NcbiRefSeqGffSource private(lines: Iterator[String],
       case xs    => (Some(xs.minBy(_.start).start), Some(xs.maxBy(_.end).end))
     }
 
-    // Figure out the ID of the transcript-like row
+    // Figure out the ID of the transcript-like row; ideally transcript_id but if that's not present then
+    // use the ID field which has an annoying and non-useful prefix in order to make it file-wide unique.
     val id = if (txRec.has("transcript_id")) txRec("transcript_id") else txRec("ID").split('-').drop(1).mkString("-")
 
     if (exons.nonEmpty) {
