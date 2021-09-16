@@ -483,9 +483,11 @@ private class SamRecordWriter(prefix: PathPrefix,
       record.mateUnmapped = true
       if (rec.readNumber == 1) record.firstOfPair = true else record.secondOfPair = true
     }
-    rec.sampleBarcode.foreach(bc => record("BC") = bc)
+//    rec.sampleBarcode.foreach(bc => record("BC") = bc)
+    if (rec.sampleBarcode.nonEmpty) record("BC") = rec.sampleBarcode.mkString("-")
     record(ReservedTagConstants.READ_GROUP_ID) =  rgId
-    rec.molecularBarcode.foreach(mb => record(umiTag) = mb)
+//    rec.molecularBarcode.foreach(mb => record(umiTag) = mb)
+    if (rec.molecularBarcode.nonEmpty) record(umiTag) = rec.molecularBarcode.mkString("-")
     writer += record
   }
 
@@ -516,9 +518,15 @@ private[fastq] class FastqRecordWriter(prefix: PathPrefix, val pairedEnd: Boolea
       require(rec.name.count(_ == ':') == 6,
         s"Expected the read name format 'Instrument:RunID:FlowCellID:Lane:Tile:X:Y', found '${rec.name}'")
       require(comment.count(_ == ':') == 3,
-        s"Expected the comment format 'ReadNum:FilterFlag:0:SampleNumber', found '${rec.name}'")
+        s"Expected the comment format 'ReadNum:FilterFlag:0:SampleNumber', found '${comment}'")
 
-      s"${rec.name} $comment"
+      val fields = comment.split(' ').toSeq
+      val Seq(readNum, qc, internalControl, sampleBarcode) = fields.head.split(':').toSeq
+      val newSampleBarcode = rec.sampleBarcode.mkString("+")
+      val newFirstTerm = Seq(readNum, qc, internalControl, newSampleBarcode).mkString(":")
+      val newComment = (newFirstTerm +: fields.tail).mkString(" ")
+
+      s"${rec.name} $newComment"
     }
     else {
       Seq(Some(rec.name), rec.sampleBarcode, rec.molecularBarcode).flatten.mkString(":")
@@ -556,8 +564,8 @@ private[fastq] case class SampleInfo(sample: Sample, isUnmatched: Boolean = fals
 private[fastq] object FastqDemultiplexer {
 
   /** Stores the minimal information for a single template read. */
-  case class DemuxRecord(name: String, bases: String, quals: String, molecularBarcode: Option[String],
-                         sampleBarcode: Option[String], readNumber: Int, pairedEnd: Boolean, comment: Option[String],
+  case class DemuxRecord(name: String, bases: String, quals: String, molecularBarcode: Seq[String],
+                         sampleBarcode: Seq[String], readNumber: Int, pairedEnd: Boolean, comment: Option[String],
                          originalBases: Option[String] = None, originalQuals: Option[String] = None)
 
   /** A class to store the [[SampleInfo]] and associated demultiplexed [[DemuxRecord]]s.
@@ -684,9 +692,9 @@ private class FastqDemultiplexer(val sampleInfos: Seq[SampleInfo],
     val (sampleInfo, numMismatches) = matchSampleBarcode(subReads)
 
     // Method to get all the bases of a given type
-    def bases(segmentType: SegmentType): Option[String] = {
-      val b = subReads.filter(_.kind == segmentType).map(_.bases).mkString("-")
-      if (b.isEmpty) None else Some(b)
+    def bases(segmentType: SegmentType): Seq[String] = {
+      subReads.filter(_.kind == segmentType).map(_.bases)
+//       if (b.isEmpty) None else Some(b) // <-- ask about this part, not quite sure what Some does.
     }
 
     // Get the molecular and sample barcodes
