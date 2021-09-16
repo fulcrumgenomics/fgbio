@@ -483,10 +483,8 @@ private class SamRecordWriter(prefix: PathPrefix,
       record.mateUnmapped = true
       if (rec.readNumber == 1) record.firstOfPair = true else record.secondOfPair = true
     }
-//    rec.sampleBarcode.foreach(bc => record("BC") = bc)
     if (rec.sampleBarcode.nonEmpty) record("BC") = rec.sampleBarcode.mkString("-")
     record(ReservedTagConstants.READ_GROUP_ID) =  rgId
-//    rec.molecularBarcode.foreach(mb => record(umiTag) = mb)
     if (rec.molecularBarcode.nonEmpty) record(umiTag) = rec.molecularBarcode.mkString("-")
     writer += record
   }
@@ -694,7 +692,6 @@ private class FastqDemultiplexer(val sampleInfos: Seq[SampleInfo],
     // Method to get all the bases of a given type
     def bases(segmentType: SegmentType): Seq[String] = {
       subReads.filter(_.kind == segmentType).map(_.bases)
-//       if (b.isEmpty) None else Some(b) // <-- ask about this part, not quite sure what Some does.
     }
 
     // Get the molecular and sample barcodes
