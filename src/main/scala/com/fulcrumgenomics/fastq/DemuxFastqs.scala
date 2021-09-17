@@ -332,7 +332,7 @@ class DemuxFastqs
  val includeAllBasesInFastqs: Boolean = false,
  @deprecated(message="Use outputStandards instead", since="1.3.0")
  @arg(doc="Output FASTQs according to Illumina BaseSpace Sequence Hub naming standards.  This is differfent than Illumina naming standards.",
-   mutex=Array("fastqIncludeReadNumbers", "fastqIncludeSampleBarcodes", "illuminaFileNames"))
+   mutex=Array("fastqSkipReadNumbers", "fastqIncludeSampleBarcodes", "illuminaFileNames"))
  val illuminaStandards: Boolean = false,
  @arg(doc="Include a trailing /1 or /2 for R1 and R2 in the FASTQ read name.", mutex=Array("illuminaStandards"))
  var fastqSkipReadNumbers: Boolean = false,
