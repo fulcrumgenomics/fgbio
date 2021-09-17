@@ -276,7 +276,7 @@ object DemuxFastqs {
       |
       |Options (1) and (2) require the FASTQ read names to contain the following elements:
       |
-      |`@<instrument>:<run number>:<flowcell ID>:<lane>:<tile>:<x-pos>:<y-pos>:<UMI> <read>:<is filtered>:<control number>:<index>`
+      |`@<instrument>:<run number>:<flowcell ID>:<lane>:<tile>:<x-pos>:<y-pos> <read>:<is filtered>:<control number>:<index>`
       |
       |[See the Illumina FASTQ conventions for more details.](https://support.illumina.com/help/BaseSpace_OLH_009008/Content/Source/Informatics/BS/FASTQFiles_Intro_swBS.htm)
       |
@@ -791,7 +791,7 @@ object OutputType extends FgBioEnum[OutputType] {
   * @param rest any additional information beyond the comment.
   */
 case class ReadInfo(readNumber: Int, passQc: Boolean, internalControl: Boolean, sampleInfo: String, rest: Seq[String]) {
-  override def toString: FilenameSuffix = {
+  override def toString: String = {
     val leading = f"$readNumber:${if (passQc) "Y" else "N"}:${if (internalControl) 1 else 0}:$sampleInfo"
     if (rest.isEmpty) leading else leading + " " + rest.mkString(" ")
   }
