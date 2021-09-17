@@ -107,7 +107,7 @@ class DemuxFastqsTest extends UnitSpec with OptionValues with ErrorLogLevel {
   /** Helper method to create a [[FastqDemultiplexer]] */
   private def dx(structures: Seq[ReadStructure], mm: Int = 2, md: Int = 1, mn: Int = 1): FastqDemultiplexer = {
     new FastqDemultiplexer(sampleInfos=toSampleInfos(structures), readStructures=structures,
-      maxMismatches=mm, minMismatchDelta=md, maxNoCalls=mn)
+      maxMismatches=mm, minMismatchDelta=md, maxNoCalls=mn, fastqStandards=FastqStandards())
   }
 
   private def fq(name: String, bases: String, quals: Option[String]=None, comment: Option[String] = None, readNumber: Option[Int]=None): FastqRecord =
@@ -516,76 +516,111 @@ class DemuxFastqsTest extends UnitSpec with OptionValues with ErrorLogLevel {
     }
   }
 
-  Seq(true, false).foreach { illuminaStandards =>
-    // A file containing illumina-style read names
+  def testEndToEndWithFastqStandards(fastqStandards: FastqStandards): Unit = {
+    // Build the FASTQ
     val fastqs = new ListBuffer[FastqRecord]()
-    fastqs += fq(name="Instrument:RunID:FlowCellID:Lane:Tile:X:1", comment=Some("ReadNum:FilterFlag:0:SampleNumber"), bases=sampleBarcode1 + "A"*100) // matches the first sample -> first sample
-    fastqs += fq(name="Instrument:RunID:FlowCellID:Lane:Tile:X:2", comment=Some("ReadNum:FilterFlag:0:SampleNumber"), bases="AAAAAAAAGATTACAGT" + "A"*100) // matches the first sample, one mismatch -> first sample
-    fastqs += fq(name="Instrument:RunID:FlowCellID:Lane:Tile:X:3", comment=Some("ReadNum:FilterFlag:0:SampleNumber"), bases="AAAAAAAAGATTACTTT" + "A"*100) // matches the first sample, three mismatches -> unmatched
-    fastqs += fq(name="Instrument:RunID:FlowCellID:Lane:Tile:X:4", comment=Some("ReadNum:FilterFlag:0:SampleNumber"), bases=sampleBarcode4 + "A"*100) // matches the 4th barcode perfectly and the 3rd barcode with two mismatches, delta too small -> unmatched
-    fastqs += fq(name="Instrument:RunID:FlowCellID:Lane:Tile:X:5", comment=Some("ReadNum:FilterFlag:0:SampleNumber"), bases="AAAAAAAAGANNNNNNN" + "A"*100) // matches the first sample, too many Ns -> unmatched
+    val namePrefix = "Instrument:RunID:FlowCellID:Lane:Tile:X"
+    fastqs += fq(name=f"$namePrefix:1", comment=Some("1:N:0:SampleNumber"), bases=sampleBarcode1 + "A"*100) // matches the first sample -> first sample
+    fastqs += fq(name=f"$namePrefix:2", comment=Some("2:N:0:SampleNumber"), bases="AAAAAAAAGATTACAGT" + "A"*100) // matches the first sample, one mismatch -> first sample
+    fastqs += fq(name=f"$namePrefix:3", comment=Some("3:N:0:SampleNumber"), bases="AAAAAAAAGATTACTTT" + "A"*100) // matches the first sample, three mismatches -> unmatched
+    fastqs += fq(name=f"$namePrefix:4", comment=Some("4:N:0:SampleNumber"), bases=sampleBarcode4 + "A"*100) // matches the 4th barcode perfectly and the 3rd barcode with two mismatches, delta too small -> unmatched
+    fastqs += fq(name=f"$namePrefix:5", comment=Some("5:N:0:SampleNumber"), bases="AAAAAAAAGANNNNNNN" + "A"*100) // matches the first sample, too many Ns -> unmatched
     val barcodesPerSample = Seq(
-      Seq(sampleBarcode1, "AAAAAAAAGATTACAGT"),
-      Seq.empty,
-      Seq.empty,
-      Seq.empty
+      Seq(sampleBarcode1, "AAAAAAAAGATTACAGT"), // sample 1
+      Seq.empty, // sample 2
+      Seq.empty, // sample 3
+      Seq.empty, // sample 4
+      Seq("AAAAAAAAGATTACTTT", sampleBarcode4, "AAAAAAAAGANNNNNNN")
+    )
+    val assignmentsPerSample = Seq(
+      Seq("1", "2"), // sample 1
+      Seq.empty, // sample 2
+      Seq.empty, // sample 3
+      Seq.empty, // sample 4
+      Seq("3", "4", "5") // unmatched
     )
     val illuminaReadNamesFastqPath = makeTempFile("test", ".fastq")
     Io.writeLines(illuminaReadNamesFastqPath, fastqs.map(_.toString))
 
-    it should s"${if (illuminaStandards) "not " else ""}append /1 and /2 to read pairs when outputting FASTQs" in {
-      val output     = outputDir()
-      val metrics    = makeTempFile("metrics", ".txt")
-      val structures = Seq(ReadStructure("17B100T"), ReadStructure("117T"))
-      new DemuxFastqs(inputs=Seq(illuminaReadNamesFastqPath, illuminaReadNamesFastqPath), output=output, metadata=sampleSheetPath,
-        readStructures=structures, metrics=Some(metrics), maxMismatches=2, minMismatchDelta=3,
-        outputType=Some(OutputType.Fastq), illuminaStandards=illuminaStandards).execute()
+    // Run the tool
+    val output     = outputDir()
+    val structures = Seq(ReadStructure("17B100T"), ReadStructure("117T"))
+    new DemuxFastqs(
+      inputs                     = Seq(illuminaReadNamesFastqPath, illuminaReadNamesFastqPath),
+      output                     = output,
+      metadata                   = sampleSheetPath,
+      readStructures             = structures,
+      metrics                    = None,
+      maxMismatches              = 2,
+      minMismatchDelta           = 3,
+      outputType                 = Some(OutputType.Fastq),
+      fastqSkipReadNumbers       = !fastqStandards.includeReadNumbers,
+      fastqIncludeSampleBarcodes = fastqStandards.includeSampleBarcodes,
+      illuminaFileNames          = fastqStandards.illuminaFileNames
+    ).execute()
 
-      val sampleInfos = toSampleInfos(structures)
 
-      // Check the fastqs
-      sampleInfos.zip(barcodesPerSample).foreach { case (sampleInfo, barcodes) =>
-        val sample     = sampleInfo.sample
-        val prefix     = toSampleOutputPrefix(sample, isUnmatched=sampleInfo.isUnmatched, illuminaStandards=illuminaStandards, output, UnmatchedSampleId)
-        val extensions = FastqRecordWriter.extensions(pairedEnd=true, illuminaStandards=illuminaStandards)
+    // Check the output FASTQs
+    toSampleInfos(structures).zipWithIndex.foreach { case (sampleInfo, index) =>
+      val barcodes    = barcodesPerSample(index)
+      val assignments = assignmentsPerSample(index)
+      val sample      = sampleInfo.sample
+      val prefix      = toSampleOutputPrefix(sample, isUnmatched=sampleInfo.isUnmatched, illuminaFileNames=fastqStandards.illuminaFileNames, output, UnmatchedSampleId)
+      val extensions  = FastqRecordWriter.extensions(pairedEnd=true, illuminaFileNames=fastqStandards.illuminaFileNames)
+      val fastqs1     = FastqSource(PathUtil.pathTo(s"${prefix}${extensions.head}")).toSeq
+      val fastqs2     = FastqSource(PathUtil.pathTo(s"${prefix}${extensions.last}")).toSeq
 
-        def toHeader(rec: FastqRecord, barcode: String): String = {
-          if (illuminaStandards) withClue(f"'${rec.header}' 'ReadNum:FilterFlag:0:${barcode}'") { rec.header.endsWith(f" ReadNum:FilterFlag:0:${barcode}") shouldBe true }
-          else if (rec.readNumber.value == 1) rec.header.endsWith("/1") shouldBe true
-          else  rec.header.endsWith("/2") shouldBe true
-          rec.header.split(" ").head.replaceAll(".*:", "").replaceAll("/[12]$", "")
-        }
+      // Check the trailing /1 or /2 on the read names
+      if (fastqStandards.includeReadNumbers) {
+        fastqs1.foreach { fastq => fastq.readNumber.value shouldBe 1 }
+        fastqs2.foreach { fastq => fastq.readNumber.value shouldBe 2 }
+        fastqs1.map(_.name.replaceAll("/[12]$", "")) should contain theSameElementsInOrderAs fastqs2.map(_.name.replaceAll("/[12]$", ""))
+        fastqs1.map(_.comment) should contain theSameElementsInOrderAs fastqs2.map(_.comment)
+      }
+      else {
+        fastqs1.foreach { fastq => fastq.readNumber.isEmpty shouldBe true }
+        fastqs2.foreach { fastq => fastq.readNumber.isEmpty shouldBe true }
+        // Read names should match
+        fastqs1.map(_.header) should contain theSameElementsInOrderAs fastqs2.map(_.header)
+      }
 
-        val headersR1 = {
-          val fastq = PathUtil.pathTo(s"${prefix}${extensions.head}")
-          val fastqs = FastqSource(fastq).toSeq
-          fastqs.length shouldBe barcodes.length
-          fastqs.zip(barcodes).map{case (record, barcode) => toHeader(record, barcode)}.toList
-        }
-
-        val headersR2 = {
-          val fastq = PathUtil.pathTo(s"${prefix}${extensions.last}")
-          val fastqs = FastqSource(fastq).toSeq
-          fastqs.length shouldBe barcodes.length
-          fastqs.zip(barcodes).map{case (record, barcode) => toHeader(record, barcode)}.toList
-        }
-        headersR1 should contain theSameElementsInOrderAs headersR2
-
-        if (sample.sampleOrdinal == 1) {
-          headersR1.length shouldBe 2
-          if (illuminaStandards) headersR1 should contain theSameElementsInOrderAs Seq("1", "2")
-          else headersR1 should contain theSameElementsInOrderAs Seq("AAAAAAAAGATTACAGA", "AAAAAAAAGATTACAGT")
-        }
-        else if (sample.sampleId == UnmatchedSampleId) {
-          headersR1.length shouldBe 3
-          if (illuminaStandards) headersR1 should contain theSameElementsInOrderAs Seq("3", "4", "5")
-          else headersR1 should contain theSameElementsInOrderAs Seq("AAAAAAAAGATTACTTT", sampleBarcode4, "AAAAAAAAGANNNNNNN")
-        }
-        else {
-          headersR1.isEmpty shouldBe true
+      // Check the sample barcode is in the comment
+      if (fastqStandards.includeSampleBarcodes) {
+        fastqs1.map(ReadInfo(_).sampleInfo) should contain theSameElementsInOrderAs barcodes
+      }
+      else {
+        fastqs1.foreach { fastq =>
+          fastq.comment.value.endsWith("SampleNumber") shouldBe true
         }
       }
-    }
+
+      // Check the assignment, which we encoded as the last field in the read name
+      val observedAssignments = fastqs1.map { fastq =>
+        fastq.name.replaceAll(".*:", "").replaceAll("/[12]$", "")
+      }
+      if (fastqStandards.includeSampleBarcodes) {
+        observedAssignments should contain theSameElementsInOrderAs assignments
+      }
+      else {
+        observedAssignments should contain theSameElementsInOrderAs barcodes
+      }
+   }
+  }
+
+  it should "demultiplex with --fastqs-include-read-numbers=false --fastqs-includ-sample-barcodes=false" in {
+    testEndToEndWithFastqStandards(FastqStandards(includeReadNumbers=false, includeSampleBarcodes=false))
+  }
+
+  it should "demultiplex with --fastqs-include-read-numbers=true --fastqs-includ-sample-barcodes=false" in {
+    testEndToEndWithFastqStandards(FastqStandards(includeReadNumbers=true, includeSampleBarcodes=false))
+  }
+
+  it should "demultiplex with --fastqs-include-read-numbers=false --fastqs-includ-sample-barcodes=true" in {
+    testEndToEndWithFastqStandards(FastqStandards(includeReadNumbers=false, includeSampleBarcodes=true))
+  }
+
+  it should "demultiplex with --fastqs-include-read-numbers=true --fastqs-includ-sample-barcodes=true" in {
+    testEndToEndWithFastqStandards(FastqStandards(includeReadNumbers=true, includeSampleBarcodes=true))
   }
 
   it should "demultiplex fragment reads with standard qualities" in {
@@ -668,7 +703,6 @@ class DemuxFastqsTest extends UnitSpec with OptionValues with ErrorLogLevel {
     }
   }
 
-
   private def write(rec: FastqRecord): PathToFastq = {
     val path = makeTempFile("fastq", ".fastq")
     val writer = FastqWriter(path)
@@ -747,7 +781,7 @@ class DemuxFastqsTest extends UnitSpec with OptionValues with ErrorLogLevel {
     val prefix = toSampleOutputPrefix(matchedSampleInfo.sample, matchedSampleInfo.isUnmatched, false, output, UnmatchedSampleId)
     prefix.toString shouldBe output.resolve("20000101-EXPID-1-Sample_Name_1-AAAAAAAAGATTACAGA").toString
 
-    val extensions = FastqRecordWriter.extensions(pairedEnd=true, illuminaStandards=false)
+    val extensions = FastqRecordWriter.extensions(pairedEnd=true, false)
     def fastqRecord(which: Int): FastqRecord = {
       val path = PathUtil.pathTo(s"${prefix}${extensions(which-1)}")
       FastqSource(path).toSeq.headOption.value
@@ -766,11 +800,11 @@ class DemuxFastqsTest extends UnitSpec with OptionValues with ErrorLogLevel {
     recR2.basesString shouldBe "T"*90
   }
 
-  it should "set the read name correctly with illuminaStandard = true" in {
-    val fq1 = write(fq(name="frag", bases="AAAAAAAA"))
-    val fq2 = write(fq(name="frag", bases="A"*100))
-    val fq3 = write(fq(name="frag", bases="T"*100))
-    val fq4 = write(fq(name="frag", bases="GATTACAGA"))
+  it should "include dual-index barcodes the read name correctly with --fastq-include-sample-barcodes=true" in {
+    val fq1 = write(fq(name="Instrument:RunID:FlowCellID:Lane:Tile:X:Y", bases="AAAAAAAA", comment=Some("1:N:0:SampleNumber")))
+    val fq2 = write(fq(name="Instrument:RunID:FlowCellID:Lane:Tile:X:Y", bases="A"*100, comment=Some("1:N:0:SampleNumber")))
+    val fq3 = write(fq(name="Instrument:RunID:FlowCellID:Lane:Tile:X:Y", bases="T"*100, comment=Some("1:N:0:SampleNumber")))
+    val fq4 = write(fq(name="Instrument:RunID:FlowCellID:Lane:Tile:X:Y", bases="GATTACAGA", comment=Some("1:N:0:SampleNumber")))
     val structures = Seq(ReadStructure("8B"), ReadStructure("5M10S5M10S70T"), ReadStructure("10S90T"), ReadStructure("9B"))
 
     val output: DirPath = outputDir()
@@ -778,7 +812,7 @@ class DemuxFastqsTest extends UnitSpec with OptionValues with ErrorLogLevel {
 
     new DemuxFastqs(inputs=Seq(fq1, fq2, fq3, fq4), output=output, metadata=sampleSheetPath,
       readStructures=structures, metrics=Some(metrics), maxMismatches=2, minMismatchDelta=3,
-      outputType=Some(OutputType.BamAndFastq), includeAllBasesInFastqs=true, illuminaStandards=true).execute()
+      outputType=Some(OutputType.BamAndFastq), includeAllBasesInFastqs=true, fastqIncludeSampleBarcodes=true).execute()
 
     val sampleInfos         = toSampleInfos(structures)
     val matchedSampleInfo   = sampleInfos.find(!_.isUnmatched).get
@@ -788,7 +822,7 @@ class DemuxFastqsTest extends UnitSpec with OptionValues with ErrorLogLevel {
     val prefix = toSampleOutputPrefix(matchedSampleInfo.sample, matchedSampleInfo.isUnmatched, false, output, UnmatchedSampleId)
     prefix.toString shouldBe output.resolve("20000101-EXPID-1-Sample_Name_1-AAAAAAAAGATTACAGA").toString
 
-    val extensions = FastqRecordWriter.extensions(pairedEnd=true, illuminaStandards=false)
+    val extensions = FastqRecordWriter.extensions(pairedEnd=true, false)
     def fastqRecord(which: Int): FastqRecord = {
       val path = PathUtil.pathTo(s"${prefix}${extensions(which-1)}")
       FastqSource(path).toSeq.headOption.value
@@ -813,80 +847,104 @@ class DemuxFastqsTest extends UnitSpec with OptionValues with ErrorLogLevel {
     recR2.apply[String]("BC") shouldBe "AAAAAAAA-GATTACAGA"
   }
 
-  "FastqRecordWriter.readName" should "set the read name based if it should follow Illumina standards" in {
-    val output = outputDir()
-    val baseRec = DemuxRecord(name="name", bases="", quals="", molecularBarcode=Seq("MB"), sampleBarcode=Seq("SB"), readNumber=1, pairedEnd=false, comment=None)
-
-    {
-      val rec    = baseRec.copy(pairedEnd=false, comment=None)
-      val writer = new FastqRecordWriter(output.resolve("prefix"), pairedEnd=false, illuminaStandards=false)
-      writer.readName(rec) shouldBe "name:SB:MB"
-      writer.readName(rec.copy(molecularBarcode=Seq())) shouldBe "name:SB"
-      writer.readName(rec.copy(sampleBarcode=Seq())) shouldBe "name:MB"
-      writer.readName(rec.copy(molecularBarcode=Seq(), sampleBarcode=Seq())) shouldBe "name"
-    }
-
-    {
-      val rec    = baseRec.copy(pairedEnd=true, name="Instrument:RunID:FlowCellID:Lane:Tile:X:Y", comment=Some("ReadNum:FilterFlag:0:SampleNumber"))
-      val writer = new FastqRecordWriter(output.resolve("prefix"), pairedEnd=true, illuminaStandards=true)
-      writer.readName(rec) shouldBe "Instrument:RunID:FlowCellID:Lane:Tile:X:Y ReadNum:FilterFlag:0:SB"
+  private implicit class WithReadInfo(rec: DemuxRecord) {
+    def withReadInfo: DemuxRecord = {
+      val info = ReadInfo(rec)
+      rec.copy(readInfo=Some(info.copy(sampleInfo="SampleNumber")), comment=None) // remove the comment and overwrite the sample info
     }
   }
 
-  it should "find and replace the sample name when demuxing" in {
-    val output = outputDir()
-    val baseRec = DemuxRecord(name="name", bases="", quals="", molecularBarcode=Seq("MB"), sampleBarcode=Seq("SB"), readNumber=1, pairedEnd=false, comment=None)
-
-    {
-      val rec = baseRec.copy(pairedEnd=true, name="Instrument:RunID:FlowCellID:Lane:Tile:X:Y", comment=Some("ReadNum:Y:0:NNNNNN"))
-      val writer = new FastqRecordWriter(output.resolve("prefix"), pairedEnd=true, illuminaStandards=true)
-      writer.readName(rec) shouldBe "Instrument:RunID:FlowCellID:Lane:Tile:X:Y ReadNum:Y:0:SB"
-    }
-
-    {
-      val rec = baseRec.copy(pairedEnd=true, name="Instrument:RunID:FlowCellID:Lane:Tile:X:Y", comment=Some("ReadNum:Y:0:NNNNNN"), sampleBarcode=Seq("SB1","SB2"), molecularBarcode=Seq("MB1","MB2"))
-      val writer = new FastqRecordWriter(output.resolve("prefix"), pairedEnd=true, illuminaStandards=true)
-      writer.readName(rec) shouldBe "Instrument:RunID:FlowCellID:Lane:Tile:X:Y ReadNum:Y:0:SB1+SB2"
-    }
+  "FastqRecordWriter.add" should "set the read name based if no standards are true" in {
+    val output     = outputDir()
+    val baseRec   = DemuxRecord(name="name", bases="", quals="", molecularBarcode=Seq("MB"), sampleBarcode=Seq("SB"), readNumber=1, pairedEnd=false, comment=None)
+    val standards = FastqStandards()
+    val rec       = baseRec.copy(pairedEnd=false, comment=None)
+    val writer    = new FastqRecordWriter(output.resolve("prefix"), pairedEnd=false, fastqStandards=standards)
+    writer.add(rec).header shouldBe "name:SB:MB"
+    writer.add(rec.copy(molecularBarcode=Seq())).header shouldBe "name:SB"
+    writer.add(rec.copy(sampleBarcode=Seq())).header shouldBe "name:MB"
+    writer.add(rec.copy(molecularBarcode=Seq(), sampleBarcode=Seq())).header shouldBe "name"
   }
 
-  it should "fail if there was no comment in the given record when following Illumina standards" in {
-    val output = outputDir()
-    val baseRec = DemuxRecord(name="name", bases="", quals="", molecularBarcode=Seq("MB"), sampleBarcode=Seq("SB"), readNumber=1, pairedEnd=false, comment=None)
+  it should "set the read name with default fastq standards" in {
+    val output    = outputDir()
+    val baseRec   = DemuxRecord(name="name", bases="", quals="", molecularBarcode=Seq("MB"), sampleBarcode=Seq("SB"), readNumber=1, pairedEnd=false, comment=None)
+    val standards = FastqStandards()
+    val rec       = baseRec.copy(pairedEnd=true, name="Instrument:RunID:FlowCellID:Lane:Tile:X:Y", comment=Some("1:N:0:SampleNumber")).withReadInfo
+    val writer    = new FastqRecordWriter(output.resolve("prefix"), pairedEnd=true, fastqStandards=standards)
+    writer.add(rec).header shouldBe "Instrument:RunID:FlowCellID:Lane:Tile:X:Y:SB:MB 1:N:0:SampleNumber"
+  }
+
+  it should "set the read name to include the sample barcode for single-end" in {
+    val output    = outputDir()
+    val baseRec   = DemuxRecord(name="name", bases="", quals="", molecularBarcode=Seq("MB"), sampleBarcode=Seq("SB"), readNumber=1, pairedEnd=false, comment=None)
+    val standards = FastqStandards(includeSampleBarcodes=true)
+    val rec       = baseRec.copy(pairedEnd=true, name="Instrument:RunID:FlowCellID:Lane:Tile:X:Y", comment=Some("1:N:0:SB")).withReadInfo
+    val writer    = new FastqRecordWriter(output.resolve("prefix"), pairedEnd=false, fastqStandards=standards)
+    writer.add(rec).header shouldBe "Instrument:RunID:FlowCellID:Lane:Tile:X:Y 1:N:0:SB"
+  }
+
+  it should "set the read name to include the sample barcode for paired end" in {
+    val output    = outputDir()
+    val baseRec   = DemuxRecord(name="name", bases="", quals="", molecularBarcode=Seq("MB"), sampleBarcode=Seq("SB"), readNumber=1, pairedEnd=false, comment=None)
+    val standards = FastqStandards(includeSampleBarcodes=true)
+    val rec       = baseRec.copy(pairedEnd=true, name="Instrument:RunID:FlowCellID:Lane:Tile:X:Y", comment=Some("1:Y:0:SB1+SB2"), sampleBarcode=Seq("SB1","SB2"), molecularBarcode=Seq("MB1","MB2")).withReadInfo
+    val writer    = new FastqRecordWriter(output.resolve("prefix"), pairedEnd=true, fastqStandards=standards)
+    writer.add(rec).header shouldBe "Instrument:RunID:FlowCellID:Lane:Tile:X:Y 1:Y:0:SB1+SB2"
+  }
+
+  "ReadInfo" should "not be built if there was no comment in the given record when following Illumina standards" in {
+    val baseRec   = DemuxRecord(name="name", bases="", quals="", molecularBarcode=Seq("MB"), sampleBarcode=Seq("SB"), readNumber=1, pairedEnd=false, comment=None)
 
     {
       val rec    = baseRec.copy(pairedEnd=true, name="Instrument:RunID:FlowCellID:Lane:Tile:X:Y", comment=None)
-      val writer = new FastqRecordWriter(output.resolve("prefix"), pairedEnd=true, illuminaStandards=true)
-      an[Exception] should be thrownBy writer.readName(rec)
+      an[Exception] should be thrownBy ReadInfo(rec)
     }
   }
 
   it should "fail if the read name or comment does not follow Illumina standards" in {
-    val output = outputDir()
-    val baseRec = DemuxRecord(name="name", bases="", quals="", molecularBarcode=Seq("MB"), sampleBarcode=Seq("SB"), readNumber=1, pairedEnd=false, comment=None)
+    val baseRec   = DemuxRecord(name="name", bases="", quals="", molecularBarcode=Seq("MB"), sampleBarcode=Seq("SB"), readNumber=1, pairedEnd=false, comment=None)
 
+    // too few fields in the name
     {
-      val rec    = baseRec.copy(pairedEnd=true, name="RunID:FlowCellID:Lane:Tile:X:Y", comment=Some("ReadNum:FilterFlag:0:SampleNumber"))
-      val writer = new FastqRecordWriter(output.resolve("prefix"), pairedEnd=true, illuminaStandards=true)
-      an[Exception] should be thrownBy writer.readName(rec)
+      val rec    = baseRec.copy(pairedEnd=true, name="RunID:FlowCellID:Lane:Tile:X:Y", comment=Some("1:N:0:SampleNumber"))
+      an[Exception] should be thrownBy ReadInfo(rec)
     }
 
+    // too many fields in the name
     {
-      val rec    = baseRec.copy(pairedEnd=true, name="Instrument:RunID:FlowCellID:Lane:Tile:X:Y:Z", comment=Some("ReadNum:FilterFlag:0:SampleNumber"))
-      val writer = new FastqRecordWriter(output.resolve("prefix"), pairedEnd=true, illuminaStandards=true)
-      an[Exception] should be thrownBy writer.readName(rec)
+      val rec    = baseRec.copy(pairedEnd=true, name="Instrument:RunID:FlowCellID:Lane:Tile:X:Y:Z", comment=Some("1:N:0:SampleNumber"))
+      an[Exception] should be thrownBy ReadInfo(rec)
     }
 
+    // too few fields in the comment
     {
-      val rec    = baseRec.copy(pairedEnd=true, name="Instrument:RunID:FlowCellID:Lane:Tile:X:Y", comment=Some("FilterFlag:0:SampleNumber"))
-      val writer = new FastqRecordWriter(output.resolve("prefix"), pairedEnd=true, illuminaStandards=true)
-      an[Exception] should be thrownBy writer.readName(rec)
+      val rec    = baseRec.copy(pairedEnd=true, name="Instrument:RunID:FlowCellID:Lane:Tile:X:Y", comment=Some("N:0:SampleNumber"))
+      an[Exception] should be thrownBy ReadInfo(rec)
     }
 
+    // too many fields in the comment
     {
-      val rec    = baseRec.copy(pairedEnd=true, name="Instrument:RunID:FlowCellID:Lane:Tile:X:Y", comment=Some("ReadNum:FilterFlag:0:SampleNumber:Z"))
-      val writer = new FastqRecordWriter(output.resolve("prefix"), pairedEnd=true, illuminaStandards=true)
-      an[Exception] should be thrownBy writer.readName(rec)
+      val rec    = baseRec.copy(pairedEnd=true, name="Instrument:RunID:FlowCellID:Lane:Tile:X:Y", comment=Some("1:N:0:SampleNumber:Z"))
+      an[Exception] should be thrownBy ReadInfo(rec)
+    }
+
+    // comment read number was not a number
+    {
+      val rec    = baseRec.copy(pairedEnd=true, name="Instrument:RunID:FlowCellID:Lane:Tile:X:Y", comment=Some("A:N:0:SampleNumber"))
+      an[Exception] should be thrownBy ReadInfo(rec)
+    }
+
+    // comment pass QC was not Y or N
+    {
+      val rec    = baseRec.copy(pairedEnd=true, name="Instrument:RunID:FlowCellID:Lane:Tile:X:Y", comment=Some("1:X:0:SampleNumber"))
+      an[Exception] should be thrownBy ReadInfo(rec)
+    }
+
+    // internal control was not an integer
+    {
+      val rec    = baseRec.copy(pairedEnd=true, name="Instrument:RunID:FlowCellID:Lane:Tile:X:Y", comment=Some("1:N:X:SampleNumber"))
+      an[Exception] should be thrownBy ReadInfo(rec)
     }
   }
 }

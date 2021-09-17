@@ -124,12 +124,12 @@ object DemuxFastqs {
     Sample(sampleOrdinal=sampleOrdinal, sampleId=UnmatchedSampleId, sampleName=UnmatchedSampleId, libraryId=UnmatchedSampleId, i7IndexBases=Some(noMatchBarcode))
   }
 
-  private[fastq] def toSampleOutputPrefix(sample: Sample, isUnmatched: Boolean, illuminaStandards: Boolean, output: DirPath, unmatched: String): PathPrefix = {
-    (isUnmatched, illuminaStandards) match {
-      case (true, true)   => output.resolve(f"${UnmatchedSampleId}_S${sample.sampleOrdinal}_L${sample.lane.getOrElse(1)}%03d")
-      case (false, true)  => output.resolve(f"${sample.sampleName}_S${sample.sampleOrdinal}_L${sample.lane.getOrElse(1)}%03d")
-      case (true, false)  => PathUtil.removeExtension(output.resolve(unmatched))
-      case (false, false) => outputPrefixFrom(output, sample)
+  private[fastq] def toSampleOutputPrefix(sample: Sample, isUnmatched: Boolean, illuminaFileNames: Boolean, output: DirPath, unmatched: String): PathPrefix = {
+    (isUnmatched, illuminaFileNames) match {
+      case (true, true)  => output.resolve(f"${UnmatchedSampleId}_S${sample.sampleOrdinal}_L${sample.lane.getOrElse(1)}%03d")
+      case (false, true) => output.resolve(f"${sample.sampleName}_S${sample.sampleOrdinal}_L${sample.lane.getOrElse(1)}%03d")
+      case (true, _)     => PathUtil.removeExtension(output.resolve(unmatched))
+      case (false, _)    => outputPrefixFrom(output, sample)
     }
   }
 
@@ -201,7 +201,7 @@ object DemuxFastqs {
       |- a dual-index sample with paired end reads should have four FASTQs and four read structures given: two for the
       |  two index reads, and two for the template reads.
       |
-      |If multiple FASTQs are present for each sub-read, then the FASTQs for each sub-read should be concatenated together 
+      |If multiple FASTQs are present for each sub-read, then the FASTQs for each sub-read should be concatenated together
       |prior to running this tool (ex. `cat s_R1_L001.fq.gz s_R1_L002.fq.gz > s_R1.fq.gz`).
       |
       |(Read structures)[https://github.com/fulcrumgenomics/fgbio/wiki/Read-Structures] are made up of `<number><operator>`
@@ -238,8 +238,8 @@ object DemuxFastqs {
       |                    across the samples in the sample sheet.
       |  * Description:    The description of the sample, which will be placed in the description field in the output BAM's
       |                    read group.  This column may be omitted.
-      |  * Sample_Barcode: The sample barcode bases unique to each sample. The name of the column containing the sample barcode 
-      |                    can be changed using the `--column-for-sample-barcode` option.  If the sample barcode is present 
+      |  * Sample_Barcode: The sample barcode bases unique to each sample. The name of the column containing the sample barcode
+      |                    can be changed using the `--column-for-sample-barcode` option.  If the sample barcode is present
       |                    across multiple reads (ex. dual-index, or inline in both reads of a pair), then the expected
       |                    barcode bases from each read should be concatenated in the same order as the order of the reads'
       |                    FASTQs and read structures given to this tool.
@@ -260,15 +260,36 @@ object DemuxFastqs {
       |    --metadata SampleSheet.csv --metrics metrics.txt --output output_folder
       |```
       |
-      |## Illumina FASTQ File Naming
+      |## Output Standards
       |
-      |The output FASTQs will be written according to Illumina naming standards when the `--illumina-standards` option
-      |is specified.  This requires that the input fastq files contain Illumina format read names with comments containing
-      |`<ReadNum>:<FilterFlag>:<0>:<SampleNumber>` (no angle brackets).  The output create output files with Illumina
-      |names:
+      |The following options affect the output format:
       |
-      |1. The file extension will be `_R1_001.fastq.gz` for read one, and `_R2_001.fastq.gz` for read two (if paired end).
-      |2. The per-sample output prefix will be `<SampleName>_S<SampleOrdinal>_L<LaneNumber>` (without angle brackets).
+      |1. If `--fastq-skip-read-numbers` is specified, then trailing /1 and /2 for R1 and R2 respectively, will not be
+      |appended to e FASTQ read name.  By default they will be appended.
+      |2. If `--fastq-include-sample-barcodes` is specified, then sample barcode will replace the last field in the
+      |first comment in the FASTQ header.
+      |3. If `--illumina-file-names` is specified, the output files will be named according to the Illumina FASTQ file
+      |naming conventions:
+      |
+      |  a. The file extension will be `_R1_001.fastq.gz` for read one, and `_R2_001.fastq.gz` for read two (if paired end).
+      |  b. The per-sample output prefix will be `<SampleName>_S<SampleOrdinal>_L<LaneNumber>` (without angle brackets).
+      |
+      |Options (1) and (2) require the FASTQ read names to contain the following elements:
+      |
+      |`@<instrument>:<run number>:<flowcell ID>:<lane>:<tile>:<x-pos>:<y-pos> <read>:<is filtered>:<control number>:<index>`
+      |
+      |[See the Illumina FASTQ conventions for more details.](https://support.illumina.com/help/BaseSpace_OLH_009008/Content/Source/Informatics/BS/FASTQFiles_Intro_swBS.htm)
+      |
+      |The `--illumina-standards` option may not be specified with the three options above.  Use this option if you
+      |intend to upload to Illumina BaseSpace.  This option implies:
+      |
+      |`--fastq-skip-read-numbers=true --fastq-include-sample-barcodes=false --illumina-file-names=true`
+      |
+      |[See the Illumina Basespace standards described here](https://help.basespace.illumina.com/articles/tutorials/upload-data-using-web-uploader/).
+      |
+      |To output with Illumina conventions that match `bcl2fastq` and `BCLconvert`, use:
+      |
+      |`--fastq-skip-read-numbers=true --fastq-include-sample-barcodes=true --illumina-file-names=true`
     """,
   group=ClpGroups.Fastq
 )
@@ -298,18 +319,45 @@ class DemuxFastqs
  @arg(doc="The sequencing center from which the data originated") val sequencingCenter: Option[String] = None,
  @arg(doc="Predicted median insert size, to insert into the read group header") val predictedInsertSize: Option[Integer] = None,
  @arg(doc="Platform model to insert into the group header (ex. miseq, hiseq2500, hiseqX)") val platformModel: Option[String] = None,
+ @arg(doc="Platform to insert into the group header (e.g Illumina)") val platform: String = "Illumina",
  @arg(doc="Comment(s) to include in the merged output file's header.", minElements = 0) val comments: List[String] = Nil,
  @arg(doc="Date the run was produced, to insert into the read group header") val runDate: Option[Iso8601Date] = None,
  @arg(doc="The type of outputs to produce.") val outputType: Option[OutputType] = None,
- @arg(doc="Output FASTQs according to Illumina naming standards, for example, for upload to the BaseSpace Sequence Hub") val illuminaStandards: Boolean = false,
  @arg(
    doc=
      """Output all bases (i.e. all sample barcode, molecular barcode, skipped,
         and template bases) for every read with template bases (ex. read one
         and read two) as defined by the corresponding read structure(s).
      """)
- val includeAllBasesInFastqs: Boolean = false
+ val includeAllBasesInFastqs: Boolean = false,
+ @deprecated(message="Use outputStandards instead", since="1.3.0")
+ @arg(doc="Output FASTQs according to Illumina BaseSpace Sequence Hub naming standards.  This is differfent than Illumina naming standards.",
+   mutex=Array("fastqSkipReadNumbers", "fastqIncludeSampleBarcodes", "illuminaFileNames"))
+ val illuminaStandards: Boolean = false,
+ @arg(doc="Include a trailing /1 or /2 for R1 and R2 in the FASTQ read name.", mutex=Array("illuminaStandards"))
+ var fastqSkipReadNumbers: Boolean = false,
+ @arg(doc="Update the sample barcode in the FASTQ header.", mutex=Array("illuminaStandards"))
+ var fastqIncludeSampleBarcodes: Boolean = false,
+ @arg(doc="Name the output files according to the Illumina file name standards.", mutex=Array("illuminaStandards"))
+ var illuminaFileNames: Boolean = false
 ) extends FgBioTool with LazyLogging {
+
+  // Support the deprecated --illumina-standards option
+  private val fastqStandards: FastqStandards = {
+    if (illuminaStandards) {
+      logger.warning("The `--illumina-standards` option will be removed in a future version, please use `--output-standards=Illumina`")
+      // NB: include read numbers
+      FastqStandards(
+        illuminaFileNames     = true
+      )
+    } else {
+      FastqStandards(
+        includeReadNumbers    = !fastqSkipReadNumbers,
+        includeSampleBarcodes = fastqIncludeSampleBarcodes,
+        illuminaFileNames     = illuminaFileNames
+      )
+    }
+  }
 
   import DemuxFastqs._
 
@@ -328,11 +376,6 @@ class DemuxFastqs
     case 1 => false
     case 2 => true
     case n => invalid(s"Found $n read structures with template bases but expected 1 or 2.")
-  }
-
-  if (illuminaStandards) {
-    validate(this._outputType != OutputType.Bam, s"--illumina-standards may only be used with '--output-type ${OutputType.Fastq}' and '--output-type ${OutputType.BamAndFastq}'.")
-    validate(pairedEnd,  "--illumina-standards may only be used with paired end data")
   }
 
   Io.assertReadable(inputs)
@@ -383,7 +426,8 @@ class DemuxFastqs
       maxMismatches    = maxMismatches,
       minMismatchDelta = minMismatchDelta,
       maxNoCalls       = maxNoCalls,
-      includeOriginal  = this.includeAllBasesInFastqs
+      includeOriginal  = this.includeAllBasesInFastqs,
+      fastqStandards   = this.fastqStandards
     )
 
     val progress = ProgressLogger(this.logger, unit=1e6.toInt)
@@ -420,19 +464,19 @@ class DemuxFastqs
   private def toWriter(sampleInfo: SampleInfo, numSamples: Int): DemuxWriter = {
     val sample = sampleInfo.sample
     val isUnmatched = sample.sampleName == UnmatchedSampleId
-    val prefix = toSampleOutputPrefix(sample, isUnmatched, illuminaStandards, output, this.unmatched)
+    val prefix = toSampleOutputPrefix(sample, isUnmatched, fastqStandards.illuminaFileNames, output, this.unmatched)
 
     val writers = new ListBuffer[DemuxWriter]()
 
     if (this._outputType.producesFastq) {
-      writers += new FastqRecordWriter(prefix, this.pairedEnd, illuminaStandards)
+      writers += new FastqRecordWriter(prefix, this.pairedEnd, fastqStandards)
     }
 
     if (this._outputType.producesBam) {
         val readGroup = new SAMReadGroupRecord(sample.sampleId)
         readGroup.setSample(sample.sampleName)
         readGroup.setLibrary(sample.libraryId)
-        readGroup.setPlatform("Illumina")
+        readGroup.setPlatform(platform)
         sample.description.foreach(readGroup.setDescription)
         platformUnit.foreach(readGroup.setPlatformUnit)
         sequencingCenter.foreach(readGroup.setSequencingCenter)
@@ -457,7 +501,7 @@ class DemuxFastqs
 
 /** A writer than writes [[DemuxRecord]]s */
 private trait DemuxWriter extends Closeable {
-  def add(rec: DemuxRecord): Unit
+  def add(rec: DemuxRecord): Any
 }
 
 /** A writer that writes [[DemuxRecord]]s as [[SamRecord]]s. */
@@ -466,13 +510,13 @@ private class SamRecordWriter(prefix: PathPrefix,
                               val umiTag: String,
                               val numSamples: Int) extends DemuxWriter {
   val order: Option[SamOrder] = if (header.getSortOrder == SortOrder.unsorted) None else SamOrder(header)
-  private val writer = SamWriter(PathUtil.pathTo(s"${prefix}.bam"), header, sort=order,
+  private val writer = SamWriter(PathUtil.pathTo(s"$prefix.bam"), header, sort=order,
     async = DemuxFastqs.UseAsyncIo,
     maxRecordsInRam = Math.max(10000,  DemuxFastqs.MaxRecordsInRam / numSamples))
 
   private val rgId: String = this.header.getReadGroups.get(0).getId
 
-  def add(rec: DemuxRecord): Unit = {
+  def add(rec: DemuxRecord): SamRecord = {
     val record = SamRecord(header)
     record.name     = rec.name
     record.bases    = rec.bases
@@ -487,63 +531,57 @@ private class SamRecordWriter(prefix: PathPrefix,
     record(ReservedTagConstants.READ_GROUP_ID) =  rgId
     if (rec.molecularBarcode.nonEmpty) record(umiTag) = rec.molecularBarcode.mkString("-")
     writer += record
+    record
   }
 
   override def close(): Unit = writer.close()
 }
 
 private[fastq] object FastqRecordWriter {
-  private[fastq] def extensions(pairedEnd: Boolean, illuminaStandards: Boolean = false): Seq[String] = (pairedEnd, illuminaStandards) match {
-    case (true, true)   => Seq("_R1_001.fastq.gz", "_R2_001.fastq.gz")
-    case (true, false)  => Seq("_R1.fastq.gz", "_R2.fastq.gz")
-    case (false, true)  => Seq("_R1_001.fastq.gz")
-    case (false, false) => Seq(".fastq.gz")
+  private[fastq] def extensions(pairedEnd: Boolean, illuminaFileNames: Boolean): Seq[String] = {
+    (pairedEnd, illuminaFileNames) match {
+      case (true, true)   => Seq("_R1_001.fastq.gz", "_R2_001.fastq.gz")
+      case (true, false)  => Seq("_R1.fastq.gz", "_R2.fastq.gz")
+      case (false, true)  => Seq("_R1_001.fastq.gz")
+      case (false, false) => Seq(".fastq.gz")
+    }
   }
 }
 
 /** A writer that writes [[DemuxRecord]]s as [[FastqRecord]]s. */
-private[fastq] class FastqRecordWriter(prefix: PathPrefix, val pairedEnd: Boolean, val illuminaStandards: Boolean = false) extends DemuxWriter {
-  private val writers: IndexedSeq[FastqWriter] = FastqRecordWriter.extensions(pairedEnd=pairedEnd, illuminaStandards=illuminaStandards).map { ext =>
-    FastqWriter(Io.toWriter(PathUtil.pathTo(s"${prefix}${ext}")))
-  }.toIndexedSeq
-
-  private[fastq] def readName(rec: DemuxRecord): String = {
-    if (illuminaStandards) {
-      val comment = rec.comment.getOrElse {
-        throw new IllegalArgumentException(s"Comment required with illumina-standards and read: '${rec.name}'")
-      }
-
-      require(rec.name.count(_ == ':') == 6,
-        s"Expected the read name format 'Instrument:RunID:FlowCellID:Lane:Tile:X:Y', found '${rec.name}'")
-      require(comment.count(_ == ':') == 3,
-        s"Expected the comment format 'ReadNum:FilterFlag:0:SampleNumber', found '${comment}'")
-
-      val fields = comment.split(' ').toSeq
-      val Seq(readNum, qc, internalControl, sampleBarcode) = fields.head.split(':').toSeq
-      val newSampleBarcode = rec.sampleBarcode.mkString("+")
-      val newFirstTerm = Seq(readNum, qc, internalControl, newSampleBarcode).mkString(":")
-      val newComment = (newFirstTerm +: fields.tail).mkString(" ")
-
-      s"${rec.name} $newComment"
-    }
-    else {
-      Seq(Some(rec.name), rec.sampleBarcode, rec.molecularBarcode).flatten.mkString(":")
-    }
+private[fastq] class FastqRecordWriter(prefix: PathPrefix, val pairedEnd: Boolean, val fastqStandards: FastqStandards) extends DemuxWriter {
+  private val writers: IndexedSeq[FastqWriter] = {
+    FastqRecordWriter.extensions(pairedEnd=pairedEnd, illuminaFileNames=fastqStandards.illuminaFileNames).map { ext =>
+      FastqWriter(Io.toWriter(PathUtil.pathTo(s"$prefix$ext")))
+    }.toIndexedSeq
   }
 
-  def add(rec: DemuxRecord): Unit = {
+  def add(rec: DemuxRecord): FastqRecord = {
+    val name = {
+      if (fastqStandards.includeSampleBarcodes) rec.name // the comment is set below, so don't include it here
+      else Seq(Some(rec.name), rec.sampleBarcode, rec.molecularBarcode).flatten.mkString(":")
+    }
+    val comment = rec.readInfo match {
+      case None       => rec.comment
+      case Some(info) =>
+        if (fastqStandards.includeSampleBarcodes && rec.sampleBarcode.nonEmpty) {
+          Some(info.copy(sampleInfo=rec.sampleBarcode.mkString("+")).toString)
+        }
+        else Some(info.toString)
+    }
     val record = FastqRecord(
-      name       = readName(rec),
+      name       = name,
       bases      = rec.originalBases.getOrElse(rec.bases),
       quals      = rec.originalQuals.getOrElse(rec.quals),
-      comment    = None,
-      readNumber = if (illuminaStandards) None else Some(rec.readNumber)
+      comment    = comment,
+      readNumber = if (fastqStandards.includeReadNumbers) Some(rec.readNumber) else None
     )
 
     val writer = this.writers.lift(rec.readNumber-1).getOrElse {
       throw new IllegalStateException(s"Read number was invalid: ${rec.readNumber}")
     }
     writer.write(record)
+    record
   }
 
   override def close(): Unit = this.writers.foreach(_.close())
@@ -564,7 +602,8 @@ private[fastq] object FastqDemultiplexer {
   /** Stores the minimal information for a single template read. */
   case class DemuxRecord(name: String, bases: String, quals: String, molecularBarcode: Seq[String],
                          sampleBarcode: Seq[String], readNumber: Int, pairedEnd: Boolean, comment: Option[String],
-                         originalBases: Option[String] = None, originalQuals: Option[String] = None)
+                         originalBases: Option[String] = None, originalQuals: Option[String] = None,
+                         readInfo: Option[ReadInfo] = None)
 
   /** A class to store the [[SampleInfo]] and associated demultiplexed [[DemuxRecord]]s.
     * @param sampleInfo the [[SampleInfo]] for the matched sample.
@@ -599,6 +638,7 @@ private[fastq] object FastqDemultiplexer {
   *
   * @param sampleInfos the sample information, one per sample.
   * @param readStructures the read structures, one for each read that will be given to [[demultiplex()]].
+  * @param fastqStandards standards for outputting FASTQs
   * @param umiTag the tag to store any molecular barcodes.  The barcodes from reads will be delimited by "-".
   * @param maxMismatches the maximum mismatches to match a sample barcode.
   * @param minMismatchDelta the minimum difference between number of mismatches in the best and second best barcodes for
@@ -610,6 +650,7 @@ private[fastq] object FastqDemultiplexer {
   */
 private class FastqDemultiplexer(val sampleInfos: Seq[SampleInfo],
                                  readStructures: Seq[ReadStructure],
+                                 val fastqStandards: FastqStandards,
                                  val umiTag: String = ConsensusTags.UmiBases,
                                  val maxMismatches: Int = 2,
                                  val minMismatchDelta: Int = 1,
@@ -716,7 +757,8 @@ private class FastqDemultiplexer(val sampleInfos: Seq[SampleInfo],
           pairedEnd        = this.pairedEnd,
           comment          = read.comment,
           originalBases    = if (this.includeOriginal) Some(read.bases) else None,
-          originalQuals    = if (this.includeOriginal) Some(read.quals) else None
+          originalQuals    = if (this.includeOriginal) Some(read.quals) else None,
+          readInfo         = fastqStandards.readInfo(read)
         )
       }
 
@@ -733,4 +775,77 @@ object OutputType extends FgBioEnum[OutputType] {
   case object Fastq extends OutputType { val producesBam: Boolean = false; val producesFastq: Boolean = true; }
   case object Bam extends OutputType { val producesBam: Boolean = true; val producesFastq: Boolean = false; }
   case object BamAndFastq extends OutputType { val producesBam: Boolean = true; val producesFastq: Boolean = true; }
+}
+
+/** A little class to store read-level information from the comment in a FASTQ read name that is in Illumina
+  * standard format:
+  *
+  * `<read>:<is filtered>:<control number>:<barcode-sequence>`
+  *
+  * This is typically inferred from the first comment in the input FASTQ header.
+  *
+  * @param readNumber the read number
+  * @param passQc true if the read passes quality filters, false if it fails
+  * @param internalControl true if the read is an internal control, false otherwise
+  * @param sampleInfo additional sample information, such as sample barcode (bcl2fastq/BCL convert) or sample number (BaseSpace)
+  * @param rest any additional information beyond the comment.
+  */
+case class ReadInfo(readNumber: Int, passQc: Boolean, internalControl: Boolean, sampleInfo: String, rest: Seq[String]) {
+  override def toString: String = {
+    val leading = f"$readNumber:${if (passQc) "Y" else "N"}:${if (internalControl) 1 else 0}:$sampleInfo"
+    if (rest.isEmpty) leading else leading + " " + rest.mkString(" ")
+  }
+}
+
+object ReadInfo {
+  /** Builds the [[ReadInfo]] by parsing a [[FastqRecord]]. */
+  def apply(rec: FastqRecord): ReadInfo = this(rec.name, rec.comment)
+
+  /** Builds the [[ReadInfo]] by parsing a [[DemuxRecord]]. */
+  def apply(rec: DemuxRecord): ReadInfo = this(rec.name, rec.comment)
+
+  /** Builds the [[ReadInfo]] by parsing a standard input FASTQ. */
+  def apply(name: String, comment: Option[String]): ReadInfo = try {
+    val commentFields = comment.getOrElse {
+      throw new IllegalArgumentException(s"Comment not found.")
+    }.split(' ')
+    val readInfo = commentFields.head
+
+    require(name.count(_ == ':') == 6,
+      s"Expected the read name format 'Instrument:RunID:FlowCellID:Lane:Tile:X:Y', found '${name}'")
+    require(readInfo.count(_ == ':') == 3,
+      s"Expected the comment format 'ReadNum:FilterFlag:0:SampleNumber', found '$readInfo'")
+
+    val Seq(readNumber, keep, internalControl, sampleInfo) = readInfo.split(':').toSeq
+    val keepBoolean: Boolean = {
+      if (keep == "Y") true
+      else if (keep == "N") false
+      else throw new IllegalStateException(s"Cannot parse filter/keep flag: $keep")
+    }
+
+    ReadInfo(
+      readNumber      = readNumber.toInt,
+      passQc          = keepBoolean,
+      internalControl = internalControl.toInt == 1,
+      sampleInfo      = sampleInfo,
+      rest            = commentFields.drop(1)
+    )
+  } catch {
+    case ex: Exception => throw new IllegalStateException(f"Could parse read info from read: ${name}", ex)
+  }
+}
+
+/** Stores information on how to name FASTQ output files and format the FASTQ read header.
+  *
+  * @param includeReadNumbers true to including a trailing "/1" or "/2" for R1 and R2 respectively
+  * @param includeSampleBarcodes update the sample barcode in the comment of the FASTQ header
+  * @param illuminaFileNames the output FASTQ file names should follow Illumina standards
+  */
+private case class FastqStandards
+( includeReadNumbers: Boolean    = false,
+  includeSampleBarcodes: Boolean = false,
+  illuminaFileNames: Boolean     = false
+) {
+  /** Build a [[ReadInfo]] according to the standards. */
+  def readInfo(read: FastqRecord): Option[ReadInfo] = if (includeSampleBarcodes) Some(ReadInfo(read)) else None
 }
