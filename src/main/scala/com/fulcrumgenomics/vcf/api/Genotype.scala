@@ -39,7 +39,8 @@ final case class Genotype(alleles: AlleleSet,
                           phased: Boolean = false,
                           attrs: Map[String, Any] = Variant.EmptyGtAttrs
                          ) {
-  require(calls.nonEmpty, "Genotype must have ploidy of at least 1!.")
+
+  require(calls.nonEmpty || attrs.isEmpty, "Genotype must have ploidy of at least 1!.")
 
   /** The indices of the calls within the AlleleSet. If any allele is no-called, that is returned as -1. */
   private [api] lazy val callIndices: IndexedSeq[Int] = calls.map(c => if (c == NoCallAllele) -1 else alleles.indexOf(c))

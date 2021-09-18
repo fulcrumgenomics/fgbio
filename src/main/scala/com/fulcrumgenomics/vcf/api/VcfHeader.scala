@@ -31,20 +31,22 @@ import enumeratum.EnumEntry
 import scala.collection.immutable
 
 /** Trait used to represent how many instances of an attribute are to be expected in a VCFs INFO or genotype fields.*/
-sealed trait VcfCount { }
+sealed trait VcfCount {
+  def number: String
+}
 
 object VcfCount {
   /** VcfCount that indicates there should be exactly one value per alternate allele on the Variant. */
-  case object OnePerAltAllele  extends VcfCount
+  case object OnePerAltAllele  extends VcfCount { val number: String = "A" }
   /** VcfCount that indicates there should be exactly one value per allele, including reference, on the Variant. */
-  case object OnePerAllele     extends VcfCount
+  case object OnePerAllele     extends VcfCount { val number: String = "R" }
   /** VcfCount that indicates there should be exactly one value per possible genotype.  E.g. for a variant with a
     * ref allele and one alt allele, and a diploid sample, there would be three values. */
-  case object OnePerGenotype   extends VcfCount
+  case object OnePerGenotype   extends VcfCount { val number: String = "G" }
   /** The attribute may have any number of values. */
-  case object Unknown          extends VcfCount
+  case object Unknown          extends VcfCount { val number: String = "." }
   /** The attribute must have a fixed number of values, indicated by `count`. */
-  case class Fixed(count: Int) extends VcfCount
+  case class Fixed(count: Int) extends VcfCount { val number: String = count.toString }
 }
 
 /** Trait for the set of acceptable atomic types that can appear in VCF's INFO and genotype fields. */
@@ -68,10 +70,70 @@ object VcfFieldType extends FgBioEnum[VcfFieldType] {
   override def values: immutable.IndexedSeq[VcfFieldType] = findValues
 }
 
+/** Trait for the set of acceptable structural variants that can appear as a symbolic alternate allele */
+sealed trait VcfSymbolicAllele extends EnumEntry { def id: String }
+sealed trait VcfStructuralVariant extends VcfSymbolicAllele
+
+object VcfSymbolicAllele extends FgBioEnum[VcfSymbolicAllele] {
+  /******************************************************************************************************
+  * Structural Variants
+  ******************************************************************************************************/
+  /** Deletion relative to the reference */
+  case object Deletion extends VcfStructuralVariant { val id: String = "DEL" }
+  /** Insertion of novel sequence relative to the reference */
+  case object Insertion extends VcfStructuralVariant { val id: String = "INS" }
+  /** Region of elevated copy number relative to the reference */
+  case object Duplication extends VcfStructuralVariant { val id: String = "DUP" }
+  /** Inversion of reference sequence */
+  case object Inversion extends VcfStructuralVariant { val id: String = "INV" }
+  /** Copy number variable region (may be both deletion and duplication) */
+  case object CopyNumberVariant extends VcfStructuralVariant { val id: String = "CNV" }
+  /** Breakend */
+  case object Breakend extends VcfStructuralVariant { val id: String = "BND" }
+  /** Tandem duplication */
+  case object TandemDuplication extends VcfStructuralVariant { val id: String = "DUP:TANDEM"}
+  /** Deletion of mobile element relative to the reference */
+  case object MobileElementDeletion extends VcfStructuralVariant { val id: String = "DEL:ME"}
+  /** Insertion of a mobile element relative to the reference */
+  case object MobileElementInsertion extends VcfStructuralVariant { val id: String = "INS:ME"}
+
+  /** IUPAC bases: UMRWSYKVHDBN */
+  case class IupacBase(base: Char) extends VcfSymbolicAllele {
+    require(IupacBases.contains(base))
+    val id: String = base.toString
+  }
+
+  /** Catch-all for symbolic alleles. */
+  case class SymbolicAllele(id: String) extends VcfSymbolicAllele
+
+  /** Valid non-ACGT IUPAC bases. */
+  private val IupacBases: Set[Char] = "UMRWSYKVHDBN".toSet
+
+  def build(id: String): VcfSymbolicAllele = {
+    this.values.find(_.id == id) match {
+      case Some(value) => value
+      case None        =>
+        if (id.length == 1 && IupacBases.contains(id.charAt(0))) IupacBase(base=id.charAt(0))
+        else SymbolicAllele(id=id)
+    }
+  }
+
+  override def values: immutable.IndexedSeq[VcfSymbolicAllele] = findValues
+}
+
 /** Trait representing an entry/line in a VCF header. */
 sealed trait VcfHeaderEntry {}
 
-// TODO add subclasses for ALT and PEDIGREE lines
+/** Trait representing all structured entry/lines in a VCF header (those that have their value enclosed in `<>`. */
+sealed trait VcfKeyValHeader extends VcfHeaderEntry { def id: String }
+
+/** Trait representing all structured entry/lines describing a "count" and "kind" (eg. INFO and FORMAT entry/lines) */
+sealed trait VcfCountAndKindHeader extends VcfKeyValHeader {
+  def count: VcfCount
+  def kind: VcfFieldType
+}
+// TODO add subclasses for PEDIGREE lines
+
 
 /** A contig line/entry in the VCF header.
   *
@@ -84,7 +146,9 @@ case class VcfContigHeader(index: Int,
                            name: String,
                            length: Option[Int] = None,
                            assembly: Option[String] = None
-                          ) extends VcfHeaderEntry
+                          ) extends VcfKeyValHeader {
+  def id: String = name
+}
 
 
 /**
@@ -103,7 +167,7 @@ case class VcfInfoHeader(id: String,
                          description: String,
                          source: Option[String] = None,
                          version: Option[String] = None
-                        ) extends VcfHeaderEntry {}
+                        ) extends VcfCountAndKindHeader {}
 
 
 /**
@@ -117,7 +181,7 @@ case class VcfInfoHeader(id: String,
 case class VcfFormatHeader(id: String,
                            count: VcfCount,
                            kind: VcfFieldType,
-                           description: String) extends VcfHeaderEntry {}
+                           description: String) extends VcfCountAndKindHeader {}
 
 
 /**
@@ -126,11 +190,23 @@ case class VcfFormatHeader(id: String,
   * @param id the name of the filter as it will appear in the FILTER or FT fields
   * @param description a human readable description of the filter
   */
-case class VcfFilterHeader(id: String, description: String) extends VcfHeaderEntry {}
+case class VcfFilterHeader(id: String, description: String) extends VcfKeyValHeader {}
 
+
+/**
+  * An entry describing an alternate (non-ACGT) allele.
+  *
+  * @param allele the symbolic allele
+  * @param description the description
+  */
+case class VcfAlternateAlleleHeader(allele: VcfSymbolicAllele, description: String) extends VcfKeyValHeader {
+  /** The identifier for the symbolic allele. */
+  def id: String = allele.id
+}
 
 /** Catch all for header line types we don't care enough to have specific implementations of. */
-case class VcfGeneralHeader(headerType: String, id: String, data: Map[String, String] = Map.empty) extends VcfHeaderEntry
+case class VcfGeneralHeader(headerType: String, id: String, data: Map[String, String] = Map.empty) extends VcfKeyValHeader
+
 
 
 /** The header of a VCF file.
@@ -139,15 +215,17 @@ case class VcfGeneralHeader(headerType: String, id: String, data: Map[String, St
   * @param infos the list of INFO entries in the header
   * @param formats the list of FORMAT entries in the header
   * @param filters the list of FILTER entries in the header
+  * @param alts the list of ALT entries in the header
   * @param others the list of all other header entries
   * @param samples the ordered list of samples that appear in the VCF
   */
-case class VcfHeader(contigs: IndexedSeq[VcfContigHeader],
-                     infos: Seq[VcfInfoHeader],
-                     formats: Seq[VcfFormatHeader],
-                     filters: Seq[VcfFilterHeader],
-                     others: Seq[VcfGeneralHeader],
-                     samples: IndexedSeq[String]
+case class VcfHeader(contigs: IndexedSeq[VcfContigHeader] = IndexedSeq.empty,
+                     infos: Seq[VcfInfoHeader] = Seq.empty,
+                     formats: Seq[VcfFormatHeader] = Seq.empty,
+                     filters: Seq[VcfFilterHeader] = Seq.empty,
+                     alts: Seq[VcfAlternateAlleleHeader] = Seq.empty,
+                     others: Seq[VcfGeneralHeader] = Seq.empty,
+                     samples: IndexedSeq[String] = IndexedSeq.empty
                     ) {
 
   /** A mapping of sample name to the index in samples. */
@@ -169,6 +247,9 @@ case class VcfHeader(contigs: IndexedSeq[VcfContigHeader],
 
   /** The FILTER entries organized as a map where the key is the ID of the FILTER. */
   val filter: Map[String, VcfFilterHeader] = filters.map(f => f.id -> f).toMap
+
+  /** The ALT entries organized as a map where the key is the ID of the ALT. */
+  val alt: Map[String, VcfAlternateAlleleHeader] = alts.map(f => f.id -> f).toMap
 
   /** Returns an iterator over all entries in the header. */
   def entries: Iterator[VcfHeaderEntry] = contigs.iterator ++ infos.iterator ++ formats.iterator ++ filters.iterator ++ others.iterator

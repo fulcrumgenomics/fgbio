@@ -38,7 +38,7 @@ case class AlleleSet(ref: SimpleAllele, alts: IndexedSeq[Allele]) extends Iterab
   /** Provides an iterator over all the alleles. */
   override def iterator: Iterator[Allele] = Iterator(ref) ++ alts.iterator
 
-  /** Retrives the allele at `index`.  The reference allele is given index 0, and alternate
+  /** Retrieves the allele at `index`.  The reference allele is given index 0, and alternate
     * alleles are indexed starting at 1.  Requesting an index  `< 1` or `> size-1` will result
     *  in a [[IndexOutOfBoundsException]].
     *
@@ -46,6 +46,16 @@ case class AlleleSet(ref: SimpleAllele, alts: IndexedSeq[Allele]) extends Iterab
     * @return the allele present at the index
     */
   def apply(index: Int): Allele = if (index == 0) ref else alts(index-1)
+
+  /** Retrieves the allele at `index`.  The reference allele is given index 0, and alternate
+    * alleles are indexed starting at 1.
+    *
+    * @param index The index of the allele to return
+    * @return the allele present at the index, none if not found (i.e. index is  `< 1` or `> size-1`)
+    */
+  def get(index: Int): Option[Allele] = {
+    if (index < 0 || index > size - 1) None else Some(this.apply(index))
+  }
 
   /** Returns the position of the given allele within the allele set. */
   def indexOf(a: Allele): Int = if (a == ref) 0 else alts.indexOf(a) + 1

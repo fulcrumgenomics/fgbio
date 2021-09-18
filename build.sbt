@@ -134,6 +134,7 @@ lazy val root = Project(id="fgbio", base=file("."))
       "org.apache.commons"        %  "commons-math3"  % "3.6.1",
       "com.beachape"              %% "enumeratum"     % "1.6.1",
       "com.intel.gkl"             %  "gkl"            % "0.8.6",
+      "com.lihaoyi"               %% "fastparse"      % "2.2.2",
 
       //---------- Test libraries -------------------//
       "org.scalatest"             %% "scalatest"     % "3.1.3"  % "test->*" excludeAll ExclusionRule(organization="org.junit", name="junit")

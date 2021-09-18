@@ -34,9 +34,8 @@ import com.fulcrumgenomics.vcf.api.VcfCount.Fixed
 import htsjdk.variant.variantcontext.{GenotypeBuilder, VariantContext, VariantContextBuilder, Allele => JavaAllele}
 import htsjdk.variant.vcf._
 
-import scala.collection.JavaConverters.mapAsJavaMapConverter
+import scala.jdk.CollectionConverters.MapHasAsJava
 import scala.collection.immutable.ListMap
-import scala.collection.mutable
 
 /**
   * Object that provides methods for converting from fgbio's scala VCF classes to HTSJDK's
@@ -48,7 +47,7 @@ private[api] object VcfConversions {
   private class ArrayIndexedSeq[T](private val array: Array[T]) extends scala.collection.immutable.IndexedSeq[T] {
     override final def apply(i: Int): T = this.array(i)
     override final def length: Int = this.array.length
-    override final def nonEmpty: Boolean = this.array.length > 0
+    override final def isEmpty: Boolean = this.array.isEmpty
   }
 
   /** Converts a String into Option[String]. Returns `None` if the input string is either
@@ -273,7 +272,7 @@ private[api] object VcfConversions {
     Variant(
       chrom     = in.getContig,
       pos       = in.getStart,
-      id        = Option(if (in.getID == Variant.Missing) null else in.getID),
+      id        = if (in.getID == Variant.Missing) Seq.empty else Seq(in.getID),
       alleles   = alleles,
       qual      = if (in.hasLog10PError) Some(in.getPhredScaledQual) else None,
       filters   = filters,
