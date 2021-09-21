@@ -274,7 +274,7 @@ object DemuxFastqs {
       |  a. The file extension will be `_R1_001.fastq.gz` for read one, and `_R2_001.fastq.gz` for read two (if paired end).
       |  b. The per-sample output prefix will be `<SampleName>_S<SampleOrdinal>_L<LaneNumber>` (without angle brackets).
       |
-      |Options (1) and (2) require the FASTQ read names to contain the following elements:
+      |Options (1) and (2) require the input FASTQ read names to contain the following elements:
       |
       |`@<instrument>:<run number>:<flowcell ID>:<lane>:<tile>:<x-pos>:<y-pos> <read>:<is filtered>:<control number>:<index>`
       |
@@ -287,7 +287,7 @@ object DemuxFastqs {
       |
       |[See the Illumina Basespace standards described here](https://help.basespace.illumina.com/articles/tutorials/upload-data-using-web-uploader/).
       |
-      |To output with Illumina conventions that match `bcl2fastq` and `BCLconvert`, use:
+      |To output with recent Illumina conventions (circa 2021) that match `bcl2fastq` and `BCLconvert`, use:
       |
       |`--fastq-skip-read-numbers=true --fastq-include-sample-barcodes=true --illumina-file-names=true`
     """,
@@ -319,7 +319,7 @@ class DemuxFastqs
  @arg(doc="The sequencing center from which the data originated") val sequencingCenter: Option[String] = None,
  @arg(doc="Predicted median insert size, to insert into the read group header") val predictedInsertSize: Option[Integer] = None,
  @arg(doc="Platform model to insert into the group header (ex. miseq, hiseq2500, hiseqX)") val platformModel: Option[String] = None,
- @arg(doc="Platform to insert into the group header (e.g Illumina)") val platform: String = "Illumina",
+ @arg(doc="Platform to insert into the read group header of BAMs (e.g Illumina)") val platform: String = "Illumina",
  @arg(doc="Comment(s) to include in the merged output file's header.", minElements = 0) val comments: List[String] = Nil,
  @arg(doc="Date the run was produced, to insert into the read group header") val runDate: Option[Iso8601Date] = None,
  @arg(doc="The type of outputs to produce.") val outputType: Option[OutputType] = None,
@@ -334,9 +334,9 @@ class DemuxFastqs
  @arg(doc="Output FASTQs according to Illumina BaseSpace Sequence Hub naming standards.  This is differfent than Illumina naming standards.",
    mutex=Array("fastqSkipReadNumbers", "fastqIncludeSampleBarcodes", "illuminaFileNames"))
  val illuminaStandards: Boolean = false,
- @arg(doc="Include a trailing /1 or /2 for R1 and R2 in the FASTQ read name.", mutex=Array("illuminaStandards"))
- var fastqSkipReadNumbers: Boolean = false,
- @arg(doc="Update the sample barcode in the FASTQ header.", mutex=Array("illuminaStandards"))
+ @arg(doc="Do not include trailing /1 or /2 for R1 and R2 in the FASTQ read name.", mutex=Array("illuminaStandards"))
+ val fastqSkipReadNumbers: Boolean = false,
+ @arg(doc="Insert the sample barcode into the FASTQ header.", mutex=Array("illuminaStandards"))
  var fastqIncludeSampleBarcodes: Boolean = false,
  @arg(doc="Name the output files according to the Illumina file name standards.", mutex=Array("illuminaStandards"))
  var illuminaFileNames: Boolean = false
@@ -600,9 +600,16 @@ private[fastq] case class SampleInfo(sample: Sample, isUnmatched: Boolean = fals
 private[fastq] object FastqDemultiplexer {
 
   /** Stores the minimal information for a single template read. */
-  case class DemuxRecord(name: String, bases: String, quals: String, molecularBarcode: Seq[String],
-                         sampleBarcode: Seq[String], readNumber: Int, pairedEnd: Boolean, comment: Option[String],
-                         originalBases: Option[String] = None, originalQuals: Option[String] = None,
+  case class DemuxRecord(name: String,
+                         bases: String,
+                         quals: String,
+                         molecularBarcode: Seq[String],
+                         sampleBarcode: Seq[String],
+                         readNumber: Int,
+                         pairedEnd: Boolean,
+                         comment: Option[String],
+                         originalBases: Option[String] = None,
+                         originalQuals: Option[String] = None,
                          readInfo: Option[ReadInfo] = None)
 
   /** A class to store the [[SampleInfo]] and associated demultiplexed [[DemuxRecord]]s.

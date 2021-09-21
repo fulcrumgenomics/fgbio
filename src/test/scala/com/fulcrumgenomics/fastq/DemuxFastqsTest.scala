@@ -607,7 +607,7 @@ class DemuxFastqsTest extends UnitSpec with OptionValues with ErrorLogLevel {
    }
   }
 
-  it should "demultiplex with --fastqs-include-read-numbers=false --fastqs-includ-sample-barcodes=false" in {
+  it should "demultiplex with --fastqs-include-read-numbers=false --fastqs-include-sample-barcodes=false" in {
     testEndToEndWithFastqStandards(FastqStandards(includeReadNumbers=false, includeSampleBarcodes=false))
   }
 
