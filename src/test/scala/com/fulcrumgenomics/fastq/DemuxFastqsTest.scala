@@ -546,17 +546,17 @@ class DemuxFastqsTest extends UnitSpec with OptionValues with ErrorLogLevel {
     val output     = outputDir()
     val structures = Seq(ReadStructure("17B100T"), ReadStructure("117T"))
     new DemuxFastqs(
-      inputs                     = Seq(illuminaReadNamesFastqPath, illuminaReadNamesFastqPath),
-      output                     = output,
-      metadata                   = sampleSheetPath,
-      readStructures             = structures,
-      metrics                    = None,
-      maxMismatches              = 2,
-      minMismatchDelta           = 3,
-      outputType                 = Some(OutputType.Fastq),
-      fastqSkipReadNumbers       = !fastqStandards.includeReadNumbers,
-      fastqIncludeSampleBarcodes = fastqStandards.includeSampleBarcodes,
-      illuminaFileNames          = fastqStandards.illuminaFileNames
+      inputs                       = Seq(illuminaReadNamesFastqPath, illuminaReadNamesFastqPath),
+      output                       = output,
+      metadata                     = sampleSheetPath,
+      readStructures               = structures,
+      metrics                      = None,
+      maxMismatches                = 2,
+      minMismatchDelta             = 3,
+      outputType                   = Some(OutputType.Fastq),
+      omitFastqReadNumbers         = !fastqStandards.includeReadNumbers,
+      includeSampleBarcodesInFastq = fastqStandards.includeSampleBarcodes,
+      illuminaFileNames            = fastqStandards.illuminaFileNames
     ).execute()
 
 
@@ -607,19 +607,19 @@ class DemuxFastqsTest extends UnitSpec with OptionValues with ErrorLogLevel {
    }
   }
 
-  it should "demultiplex with --fastqs-include-read-numbers=false --fastqs-include-sample-barcodes=false" in {
+  it should "demultiplex with --omit-fastq-read-numbers=false --include-sample-barcodes-in-fastq=false" in {
     testEndToEndWithFastqStandards(FastqStandards(includeReadNumbers=false, includeSampleBarcodes=false))
   }
 
-  it should "demultiplex with --fastqs-include-read-numbers=true --fastqs-includ-sample-barcodes=false" in {
+  it should "demultiplex with --omit-fastq-read-numbers=true --include-sample-barcodes-in-fastq=false" in {
     testEndToEndWithFastqStandards(FastqStandards(includeReadNumbers=true, includeSampleBarcodes=false))
   }
 
-  it should "demultiplex with --fastqs-include-read-numbers=false --fastqs-includ-sample-barcodes=true" in {
+  it should "demultiplex with --omit-fastq-read-numbers=false --include-sample-barcodes-in-fastq=true" in {
     testEndToEndWithFastqStandards(FastqStandards(includeReadNumbers=false, includeSampleBarcodes=true))
   }
 
-  it should "demultiplex with --fastqs-include-read-numbers=true --fastqs-includ-sample-barcodes=true" in {
+  it should "demultiplex with --omit-fastq-read-numbers=true --include-sample-barcodes-in-fastq=true" in {
     testEndToEndWithFastqStandards(FastqStandards(includeReadNumbers=true, includeSampleBarcodes=true))
   }
 
@@ -812,7 +812,7 @@ class DemuxFastqsTest extends UnitSpec with OptionValues with ErrorLogLevel {
 
     new DemuxFastqs(inputs=Seq(fq1, fq2, fq3, fq4), output=output, metadata=sampleSheetPath,
       readStructures=structures, metrics=Some(metrics), maxMismatches=2, minMismatchDelta=3,
-      outputType=Some(OutputType.BamAndFastq), includeAllBasesInFastqs=true, fastqIncludeSampleBarcodes=true).execute()
+      outputType=Some(OutputType.BamAndFastq), includeAllBasesInFastqs=true, includeSampleBarcodesInFastq=true).execute()
 
     val sampleInfos         = toSampleInfos(structures)
     val matchedSampleInfo   = sampleInfos.find(!_.isUnmatched).get
@@ -904,18 +904,6 @@ class DemuxFastqsTest extends UnitSpec with OptionValues with ErrorLogLevel {
 
   it should "fail if the read name or comment does not follow Illumina standards" in {
     val baseRec   = DemuxRecord(name="name", bases="", quals="", molecularBarcode=Seq("MB"), sampleBarcode=Seq("SB"), readNumber=1, pairedEnd=false, comment=None)
-
-    // too few fields in the name
-    {
-      val rec    = baseRec.copy(pairedEnd=true, name="RunID:FlowCellID:Lane:Tile:X:Y", comment=Some("1:N:0:SampleNumber"))
-      an[Exception] should be thrownBy ReadInfo(rec)
-    }
-
-    // too many fields in the name
-    {
-      val rec    = baseRec.copy(pairedEnd=true, name="Instrument:RunID:FlowCellID:Lane:Tile:X:Y:Z", comment=Some("1:N:0:SampleNumber"))
-      an[Exception] should be thrownBy ReadInfo(rec)
-    }
 
     // too few fields in the comment
     {

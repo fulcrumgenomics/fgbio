@@ -264,10 +264,10 @@ object DemuxFastqs {
       |
       |The following options affect the output format:
       |
-      |1. If `--fastq-skip-read-numbers` is specified, then trailing /1 and /2 for R1 and R2 respectively, will not be
+      |1. If `--omit-fastq-read-numbers` is specified, then trailing /1 and /2 for R1 and R2 respectively, will not be
       |appended to e FASTQ read name.  By default they will be appended.
-      |2. If `--fastq-include-sample-barcodes` is specified, then sample barcode will replace the last field in the
-      |first comment in the FASTQ header.
+      |2. If `--include-sample-barcodes-in-fastq` is specified, then sample barcode will replace the last field in the
+      |first comment in the FASTQ header, e.g. replace 'NNNNNN' in the header `@Instrument:RunID:FlowCellID:Lane:Tile:X:Y 1:N:0:NNNNNN`
       |3. If `--illumina-file-names` is specified, the output files will be named according to the Illumina FASTQ file
       |naming conventions:
       |
@@ -283,13 +283,13 @@ object DemuxFastqs {
       |The `--illumina-standards` option may not be specified with the three options above.  Use this option if you
       |intend to upload to Illumina BaseSpace.  This option implies:
       |
-      |`--fastq-skip-read-numbers=true --fastq-include-sample-barcodes=false --illumina-file-names=true`
+      |`--omit-fastq-read-numbers=true --include-sample-barcodes-in-fastq=false --illumina-file-names=true`
       |
       |[See the Illumina Basespace standards described here](https://help.basespace.illumina.com/articles/tutorials/upload-data-using-web-uploader/).
       |
       |To output with recent Illumina conventions (circa 2021) that match `bcl2fastq` and `BCLconvert`, use:
       |
-      |`--fastq-skip-read-numbers=true --fastq-include-sample-barcodes=true --illumina-file-names=true`
+      |`--omit-fastq-read-numbers=true --include-sample-barcodes-in-fastq=true --illumina-file-names=true`
     """,
   group=ClpGroups.Fastq
 )
@@ -332,14 +332,14 @@ class DemuxFastqs
  val includeAllBasesInFastqs: Boolean = false,
  @deprecated(message="Use outputStandards instead", since="1.3.0")
  @arg(doc="Output FASTQs according to Illumina BaseSpace Sequence Hub naming standards.  This is differfent than Illumina naming standards.",
-   mutex=Array("fastqSkipReadNumbers", "fastqIncludeSampleBarcodes", "illuminaFileNames"))
+   mutex=Array("omitFastqReadNumbers", "includeSampleBarcodesInFastq", "illuminaFileNames"))
  val illuminaStandards: Boolean = false,
  @arg(doc="Do not include trailing /1 or /2 for R1 and R2 in the FASTQ read name.", mutex=Array("illuminaStandards"))
- val fastqSkipReadNumbers: Boolean = false,
+ val omitFastqReadNumbers: Boolean = false,
  @arg(doc="Insert the sample barcode into the FASTQ header.", mutex=Array("illuminaStandards"))
- var fastqIncludeSampleBarcodes: Boolean = false,
+ val includeSampleBarcodesInFastq: Boolean = false,
  @arg(doc="Name the output files according to the Illumina file name standards.", mutex=Array("illuminaStandards"))
- var illuminaFileNames: Boolean = false
+ val illuminaFileNames: Boolean = false
 ) extends FgBioTool with LazyLogging {
 
   // Support the deprecated --illumina-standards option
@@ -352,8 +352,8 @@ class DemuxFastqs
       )
     } else {
       FastqStandards(
-        includeReadNumbers    = !fastqSkipReadNumbers,
-        includeSampleBarcodes = fastqIncludeSampleBarcodes,
+        includeReadNumbers    = !omitFastqReadNumbers,
+        includeSampleBarcodes = includeSampleBarcodesInFastq,
         illuminaFileNames     = illuminaFileNames
       )
     }
@@ -461,12 +461,12 @@ class DemuxFastqs
     Metric.write(metricsPath, sampleInfos.map(_.metric))
   }
 
-  private def toWriter(sampleInfo: SampleInfo, numSamples: Int): DemuxWriter = {
+  private def toWriter(sampleInfo: SampleInfo, numSamples: Int): DemuxWriter[Any] = {
     val sample = sampleInfo.sample
     val isUnmatched = sample.sampleName == UnmatchedSampleId
     val prefix = toSampleOutputPrefix(sample, isUnmatched, fastqStandards.illuminaFileNames, output, this.unmatched)
 
-    val writers = new ListBuffer[DemuxWriter]()
+    val writers = new ListBuffer[DemuxWriter[Any]]()
 
     if (this._outputType.producesFastq) {
       writers += new FastqRecordWriter(prefix, this.pairedEnd, fastqStandards)
@@ -492,7 +492,7 @@ class DemuxFastqs
         writers += new SamRecordWriter(prefix, header, this.umiTag, numSamples)
     }
 
-    new DemuxWriter {
+    new DemuxWriter[Any] {
       def add(rec: DemuxRecord): Unit = writers.foreach { writer => writer.add(rec) }
       override def close(): Unit = writers.foreach(_.close())
     }
@@ -500,17 +500,17 @@ class DemuxFastqs
 }
 
 /** A writer than writes [[DemuxRecord]]s */
-private trait DemuxWriter extends Closeable {
-  def add(rec: DemuxRecord): Any
+private trait DemuxWriter[+T] extends Closeable {
+  def add(rec: DemuxRecord): T
 }
 
 /** A writer that writes [[DemuxRecord]]s as [[SamRecord]]s. */
 private class SamRecordWriter(prefix: PathPrefix,
                               val header: SAMFileHeader,
                               val umiTag: String,
-                              val numSamples: Int) extends DemuxWriter {
+                              val numSamples: Int) extends DemuxWriter[SamRecord] {
   val order: Option[SamOrder] = if (header.getSortOrder == SortOrder.unsorted) None else SamOrder(header)
-  private val writer = SamWriter(PathUtil.pathTo(s"$prefix.bam"), header, sort=order,
+  private val writer = SamWriter(PathUtil.pathTo(s"${prefix}.bam"), header, sort=order,
     async = DemuxFastqs.UseAsyncIo,
     maxRecordsInRam = Math.max(10000,  DemuxFastqs.MaxRecordsInRam / numSamples))
 
@@ -549,7 +549,7 @@ private[fastq] object FastqRecordWriter {
 }
 
 /** A writer that writes [[DemuxRecord]]s as [[FastqRecord]]s. */
-private[fastq] class FastqRecordWriter(prefix: PathPrefix, val pairedEnd: Boolean, val fastqStandards: FastqStandards) extends DemuxWriter {
+private[fastq] class FastqRecordWriter(prefix: PathPrefix, val pairedEnd: Boolean, val fastqStandards: FastqStandards) extends DemuxWriter[FastqRecord] {
   private val writers: IndexedSeq[FastqWriter] = {
     FastqRecordWriter.extensions(pairedEnd=pairedEnd, illuminaFileNames=fastqStandards.illuminaFileNames).map { ext =>
       FastqWriter(Io.toWriter(PathUtil.pathTo(s"$prefix$ext")))
@@ -561,11 +561,13 @@ private[fastq] class FastqRecordWriter(prefix: PathPrefix, val pairedEnd: Boolea
       if (fastqStandards.includeSampleBarcodes) rec.name // the comment is set below, so don't include it here
       else Seq(Some(rec.name), rec.sampleBarcode, rec.molecularBarcode).flatten.mkString(":")
     }
+
+    // update the comment
     val comment = rec.readInfo match {
-      case None       => rec.comment
+      case None       => rec.comment // when not updating sample barcodes, fetch the comment from the record
       case Some(info) =>
-        if (fastqStandards.includeSampleBarcodes && rec.sampleBarcode.nonEmpty) {
-          Some(info.copy(sampleInfo=rec.sampleBarcode.mkString("+")).toString)
+        if (fastqStandards.includeSampleBarcodes && rec.sampleBarcode.nonEmpty) { //
+          Some(info.copy(sampleInfo=rec.sampleBarcode.mkString("+")).toString) // update the barcode in the record's header. In case of dual-indexing, barcodes are combined with a '+'.
         }
         else Some(info.toString)
     }
@@ -806,24 +808,21 @@ case class ReadInfo(readNumber: Int, passQc: Boolean, internalControl: Boolean, 
 
 object ReadInfo {
   /** Builds the [[ReadInfo]] by parsing a [[FastqRecord]]. */
-  def apply(rec: FastqRecord): ReadInfo = this(rec.name, rec.comment)
+  def apply(rec: FastqRecord): ReadInfo = this(rec.name, rec.comment.get)
 
   /** Builds the [[ReadInfo]] by parsing a [[DemuxRecord]]. */
-  def apply(rec: DemuxRecord): ReadInfo = this(rec.name, rec.comment)
+  def apply(rec: DemuxRecord): ReadInfo = this(rec.name, rec.comment.get)
 
   /** Builds the [[ReadInfo]] by parsing a standard input FASTQ. */
-  def apply(name: String, comment: Option[String]): ReadInfo = try {
-    val commentFields = comment.getOrElse {
-      throw new IllegalArgumentException(s"Comment not found.")
-    }.split(' ')
-    val readInfo = commentFields.head
+  def apply(name: String, comment: String): ReadInfo = try { // <- comment is an Option[String] in FastqRecord and DemuxRecord
+    val comments = comment.split(' ')
+    val readInfo = comments.head
 
-    require(name.count(_ == ':') == 6,
-      s"Expected the read name format 'Instrument:RunID:FlowCellID:Lane:Tile:X:Y', found '${name}'")
-    require(readInfo.count(_ == ':') == 3,
+    val commentInfo = readInfo.split(':').toSeq
+    require(commentInfo.length == 4,
       s"Expected the comment format 'ReadNum:FilterFlag:0:SampleNumber', found '$readInfo'")
+    val Seq(readNumber, keep, internalControl, sampleInfo) = commentInfo
 
-    val Seq(readNumber, keep, internalControl, sampleInfo) = readInfo.split(':').toSeq
     val keepBoolean: Boolean = {
       if (keep == "Y") true
       else if (keep == "N") false
@@ -835,10 +834,10 @@ object ReadInfo {
       passQc          = keepBoolean,
       internalControl = internalControl.toInt == 1,
       sampleInfo      = sampleInfo,
-      rest            = commentFields.drop(1)
+      rest            = comments.drop(1)
     )
   } catch {
-    case ex: Exception => throw new IllegalStateException(f"Could parse read info from read: ${name}", ex)
+    case ex: Exception => throw new IllegalStateException(f"Could parse read info from read: ${name} ${comment}", ex)
   }
 }
 
