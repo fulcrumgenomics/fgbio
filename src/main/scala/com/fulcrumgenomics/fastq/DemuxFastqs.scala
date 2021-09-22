@@ -810,10 +810,10 @@ object ReadInfo {
   private def reject(name: String) = throw new IllegalArgumentException(s"Cannot extract ReadInfo due to missing comment: $recname")
 
   /** Builds the [[ReadInfo]] by parsing a [[FastqRecord]]. */
-  def apply(rec: FastqRecord): ReadInfo = this(rec.name, rec.comment.getOrElse(reject(rec.name))
+  def apply(rec: FastqRecord): ReadInfo = this(rec.name, rec.comment.getOrElse(reject(rec.name)))
 
   /** Builds the [[ReadInfo]] by parsing a [[DemuxRecord]]. */
-  def apply(rec: DemuxRecord): ReadInfo = this(rec.name, rec.comment.getOrElse(reject(rec.name))
+  def apply(rec: DemuxRecord): ReadInfo = this(rec.name, rec.comment.getOrElse(reject(rec.name)))
 
   /** Builds the [[ReadInfo]] by parsing a standard input FASTQ. */
   def apply(name: String, comment: String): ReadInfo = try { // <- comment is an Option[String] in FastqRecord and DemuxRecord
