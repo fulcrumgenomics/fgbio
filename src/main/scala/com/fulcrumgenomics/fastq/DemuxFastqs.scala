@@ -807,7 +807,7 @@ case class ReadInfo(readNumber: Int, passQc: Boolean, internalControl: Boolean, 
 }
 
 object ReadInfo {
-  private def reject(name: String) = throw new IllegalArgumentException(s"Cannot extract ReadInfo due to missing comment: $recname")
+  private def reject(name: String) = throw new IllegalArgumentException(s"Cannot extract ReadInfo due to missing comment: $name")
 
   /** Builds the [[ReadInfo]] by parsing a [[FastqRecord]]. */
   def apply(rec: FastqRecord): ReadInfo = this(rec.name, rec.comment.getOrElse(reject(rec.name)))
