@@ -807,11 +807,13 @@ case class ReadInfo(readNumber: Int, passQc: Boolean, internalControl: Boolean, 
 }
 
 object ReadInfo {
+  private def reject(name: String) = throw new IllegalArgumentException(s"Cannot extract ReadInfo due to missing comment: $recname")
+
   /** Builds the [[ReadInfo]] by parsing a [[FastqRecord]]. */
-  def apply(rec: FastqRecord): ReadInfo = this(rec.name, rec.comment.get)
+  def apply(rec: FastqRecord): ReadInfo = this(rec.name, rec.comment.getOrElse(reject(rec.name))
 
   /** Builds the [[ReadInfo]] by parsing a [[DemuxRecord]]. */
-  def apply(rec: DemuxRecord): ReadInfo = this(rec.name, rec.comment.get)
+  def apply(rec: DemuxRecord): ReadInfo = this(rec.name, rec.comment.getOrElse(reject(rec.name))
 
   /** Builds the [[ReadInfo]] by parsing a standard input FASTQ. */
   def apply(name: String, comment: String): ReadInfo = try { // <- comment is an Option[String] in FastqRecord and DemuxRecord
@@ -823,10 +825,10 @@ object ReadInfo {
       s"Expected the comment format 'ReadNum:FilterFlag:0:SampleNumber', found '$readInfo'")
     val Seq(readNumber, keep, internalControl, sampleInfo) = commentInfo
 
-    val keepBoolean: Boolean = {
-      if (keep == "Y") true
-      else if (keep == "N") false
-      else throw new IllegalStateException(s"Cannot parse filter/keep flag: $keep")
+    val keepBoolean = keep match {
+      case "Y" => true
+      case "N" => false
+      case   x => throw new IllegalStateException(s"Cannot parse filter/keep flag: $x")
     }
 
     ReadInfo(
