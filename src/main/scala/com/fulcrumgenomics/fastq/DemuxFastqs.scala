@@ -142,13 +142,14 @@ object DemuxFastqs {
   def demultiplexingIterator(sources: Seq[FastqSource],
                              demultiplexer: FastqDemultiplexer,
                              threads: Int,
-                             batchSize: Int = DemuxBatchRecordsSize): Iterator[DemuxResult] = {
+                             batchSize: Int = DemuxBatchRecordsSize,
+                             omitFailingReads: Boolean): Iterator[DemuxResult] = {
 
     require(demultiplexer.expectedNumberOfReads == sources.length,
       s"The demultiplexer expects ${demultiplexer.expectedNumberOfReads} reads but ${sources.length} FASTQ sources given.")
 
     val zippedIterator = FastqSource.zipped(sources)
-    if (threads > 1) {
+    val resultIterator = if (threads > 1) {
       // Developer Note: Iterator does not support parallel operations, so we need to group together records into a
       // [[List]] or [[Seq]].  A fixed number of records are grouped to reduce memory overhead.
       val pool = new ForkJoinPool(threads)
@@ -164,6 +165,7 @@ object DemuxFastqs {
     else {
       zippedIterator.map { readRecords => demultiplexer.demultiplex(readRecords: _*) }
     }
+    resultIterator.filter(r => r.keep(omitFailingReads))
   }
 }
 
@@ -290,6 +292,8 @@ object DemuxFastqs {
       |To output with recent Illumina conventions (circa 2021) that match `bcl2fastq` and `BCLconvert`, use:
       |
       |`--omit-fastq-read-numbers=true --include-sample-barcodes-in-fastq=true --illumina-file-names=true`
+      |
+      |By default all input reads are output.  If your input FASTQs contain reads that do not pass filter (as defined by the Y/N filter flag in the FASTQ comment) these can be filtered out during demultiplexing using the `--omit-failing-reads` option.
     """,
   group=ClpGroups.Fastq
 )
@@ -339,7 +343,9 @@ class DemuxFastqs
  @arg(doc="Insert the sample barcode into the FASTQ header.", mutex=Array("illuminaStandards"))
  val includeSampleBarcodesInFastq: Boolean = false,
  @arg(doc="Name the output files according to the Illumina file name standards.", mutex=Array("illuminaStandards"))
- val illuminaFileNames: Boolean = false
+ val illuminaFileNames: Boolean = false,
+ @arg(doc="Keep only passing filter reads if true, otherwise keep all reads. Passing filter reads are determined from the comment in the FASTQ header.")
+ val omitFailingReads: Boolean = false
 ) extends FgBioTool with LazyLogging {
 
   // Support the deprecated --illumina-standards option
@@ -427,8 +433,8 @@ class DemuxFastqs
       minMismatchDelta = minMismatchDelta,
       maxNoCalls       = maxNoCalls,
       includeOriginal  = this.includeAllBasesInFastqs,
-      fastqStandards   = this.fastqStandards
-    )
+      fastqStandards   = this.fastqStandards,
+      omitFailingReads = this.omitFailingReads)
 
     val progress = ProgressLogger(this.logger, unit=1e6.toInt)
 
@@ -438,7 +444,8 @@ class DemuxFastqs
     val iterator  = demultiplexingIterator(
       sources       = sources,
       demultiplexer = demultiplexer,
-      threads       = threads
+      threads       = threads,
+      omitFailingReads = this.omitFailingReads
     )
 
     // Write the records out in its own thread
@@ -510,7 +517,7 @@ private class SamRecordWriter(prefix: PathPrefix,
                               val umiTag: String,
                               val numSamples: Int) extends DemuxWriter[SamRecord] {
   val order: Option[SamOrder] = if (header.getSortOrder == SortOrder.unsorted) None else SamOrder(header)
-  private val writer = SamWriter(PathUtil.pathTo(s"${prefix}.bam"), header, sort=order,
+  private val writer = SamWriter(PathUtil.pathTo(s"$prefix.bam"), header, sort=order,
     async = DemuxFastqs.UseAsyncIo,
     maxRecordsInRam = Math.max(10000,  DemuxFastqs.MaxRecordsInRam / numSamples))
 
@@ -566,7 +573,7 @@ private[fastq] class FastqRecordWriter(prefix: PathPrefix, val pairedEnd: Boolea
     val comment = rec.readInfo match {
       case None       => rec.comment // when not updating sample barcodes, fetch the comment from the record
       case Some(info) =>
-        if (fastqStandards.includeSampleBarcodes && rec.sampleBarcode.nonEmpty) { //
+        if (fastqStandards.includeSampleBarcodes && rec.sampleBarcode.nonEmpty) {
           Some(info.copy(sampleInfo=rec.sampleBarcode.mkString("+")).toString) // update the barcode in the record's header. In case of dual-indexing, barcodes are combined with a '+'.
         }
         else Some(info.toString)
@@ -585,6 +592,7 @@ private[fastq] class FastqRecordWriter(prefix: PathPrefix, val pairedEnd: Boolea
     writer.write(record)
     record
   }
+
 
   override def close(): Unit = this.writers.foreach(_.close())
 }
@@ -620,7 +628,20 @@ private[fastq] object FastqDemultiplexer {
     *                      for the unmatched sample.
     * @param records the records, one for each read that has template bases.
     */
-  case class DemuxResult(sampleInfo: SampleInfo, numMismatches: Int, records: Seq[DemuxRecord])
+  case class DemuxResult(sampleInfo: SampleInfo, numMismatches: Int, records: Seq[DemuxRecord], passQc: Boolean = true) {
+
+    /** Returns true if this [[DemuxResult]] should be kept for output, false otherwise.
+     *
+     * Returns true if `omitFailingReads` is fase or if `passQc` is true
+     *
+     * @param omitFailingReads true to keep only passing reads, false to keep all reads
+    */
+    def keep(omitFailingReads: Boolean = false): Boolean = {
+      if (!omitFailingReads) true else passQc
+    }
+  }
+
+
 
   /** Counts the nucleotide mismatches between two strings of the same length.  Ignores no calls in expectedBases. */
   private[fastq] def countMismatches(observedBases: Array[Byte], expectedBases: Array[Byte]): Int = {
@@ -664,7 +685,8 @@ private class FastqDemultiplexer(val sampleInfos: Seq[SampleInfo],
                                  val maxMismatches: Int = 2,
                                  val minMismatchDelta: Int = 1,
                                  val maxNoCalls: Int = 2,
-                                 val includeOriginal: Boolean = false) {
+                                 val includeOriginal: Boolean = false,
+                                 val omitFailingReads: Boolean = false) {
   import FastqDemultiplexer._
 
   require(readStructures.nonEmpty, "No read structures were given")
@@ -771,7 +793,8 @@ private class FastqDemultiplexer(val sampleInfos: Seq[SampleInfo],
         )
       }
 
-    DemuxResult(sampleInfo=sampleInfo, numMismatches=numMismatches, records=demuxRecords)
+    val passQc = demuxRecords.forall(d => d.readInfo.forall(_.passQc))
+    DemuxResult(sampleInfo=sampleInfo, numMismatches=numMismatches, records=demuxRecords, passQc=passQc)
   }
 }
 

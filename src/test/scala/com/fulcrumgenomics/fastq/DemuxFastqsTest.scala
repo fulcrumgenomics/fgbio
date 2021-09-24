@@ -105,9 +105,9 @@ class DemuxFastqsTest extends UnitSpec with OptionValues with ErrorLogLevel {
   }
 
   /** Helper method to create a [[FastqDemultiplexer]] */
-  private def dx(structures: Seq[ReadStructure], mm: Int = 2, md: Int = 1, mn: Int = 1): FastqDemultiplexer = {
+  private def dx(structures: Seq[ReadStructure], mm: Int = 2, md: Int = 1, mn: Int = 1, omitFailingReads: Boolean = false, fastqStandards: FastqStandards = FastqStandards()): FastqDemultiplexer = {
     new FastqDemultiplexer(sampleInfos=toSampleInfos(structures), readStructures=structures,
-      maxMismatches=mm, minMismatchDelta=md, maxNoCalls=mn, fastqStandards=FastqStandards())
+      maxMismatches=mm, minMismatchDelta=md, maxNoCalls=mn, fastqStandards=fastqStandards, omitFailingReads=omitFailingReads)
   }
 
   private def fq(name: String, bases: String, quals: Option[String]=None, comment: Option[String] = None, readNumber: Option[Int]=None): FastqRecord =
@@ -304,6 +304,39 @@ class DemuxFastqsTest extends UnitSpec with OptionValues with ErrorLogLevel {
     verifyFragUnmatchedSample(demuxer.demultiplex(fastqRecord))
   }
 
+  it should "set passQc to false when ---failing-reads=true and filter=N" in {
+    val demuxer     = dx(structures=Seq(ReadStructure("17B5M100T")), omitFailingReads = true, fastqStandards = FastqStandards(includeSampleBarcodes=true))
+    val fastqRecord = fq(name="Instrument:RunID:FlowCellID:Lane:Tile:X:Y", bases=sampleBarcode1 + "A"*100, comment=Some("1:N:0:SampleNumber therest"))
+
+    val demuxRecord = demuxer.demultiplex(fastqRecord)
+    demuxRecord.passQc shouldBe false
+  }
+
+  it should "set passQc to false when ---failing-reads=false and filter=N" in {
+    val demuxer     = dx(structures=Seq(ReadStructure("17B5M100T")), omitFailingReads = false, fastqStandards = FastqStandards(includeSampleBarcodes=true))
+    val fastqRecord = fq(name="Instrument:RunID:FlowCellID:Lane:Tile:X:Y", bases=sampleBarcode1 + "A"*100, comment=Some("1:N:0:SampleNumber therest"))
+
+    val demuxRecord = demuxer.demultiplex(fastqRecord)
+    demuxRecord.passQc shouldBe false
+  }
+
+  it should "set passQc to true when ---failing-reads=true and filter=Y" in {
+    val demuxer     = dx(structures=Seq(ReadStructure("17B5M100T")), omitFailingReads = true, fastqStandards = FastqStandards(includeSampleBarcodes=true))
+    val fastqRecord = fq(name="Instrument:RunID:FlowCellID:Lane:Tile:X:Y", bases=sampleBarcode1 + "A"*100, comment=Some("1:Y:0:SampleNumber therest"))
+
+    val demuxRecord = demuxer.demultiplex(fastqRecord)
+    demuxRecord.passQc shouldBe true
+  }
+
+  it should "set passQc to true when ---failing-reads=false and filter=Y" in {
+    val demuxer     = dx(structures=Seq(ReadStructure("17B5M100T")), omitFailingReads = false, fastqStandards = FastqStandards(includeSampleBarcodes=true))
+    val fastqRecord = fq(name="Instrument:RunID:FlowCellID:Lane:Tile:X:Y", bases=sampleBarcode1 + "A"*100, comment=Some("1:Y:0:SampleNumber therest"))
+
+    val demuxRecord = demuxer.demultiplex(fastqRecord)
+    demuxRecord.passQc shouldBe true
+  }
+
+
   "FastqDemultiplexer.countMismatches" should "find no mismatches" in {
     FastqDemultiplexer.countMismatches("GATTACA".getBytes, "GATTACA".getBytes) shouldBe 0
   }
@@ -346,7 +379,7 @@ class DemuxFastqsTest extends UnitSpec with OptionValues with ErrorLogLevel {
     Io.writeLines(path, fastqs.map(_.toString))
     path
   }
-  
+
   "DemuxFastqs"  should "fail if the number of fastqs does not equal the number of read structures" in {
     val structures = Seq(ReadStructure("8B100T"), ReadStructure("100T"))
     val fastq      = PathUtil.pathTo("/path/to/nowhere", ".fastq")
@@ -516,28 +549,30 @@ class DemuxFastqsTest extends UnitSpec with OptionValues with ErrorLogLevel {
     }
   }
 
-  def testEndToEndWithFastqStandards(fastqStandards: FastqStandards): Unit = {
+
+  def testEndToEndWithFastqStandards(fastqStandards: FastqStandards, omitFailingReads: Boolean = false): Unit = {
     // Build the FASTQ
     val fastqs = new ListBuffer[FastqRecord]()
     val namePrefix = "Instrument:RunID:FlowCellID:Lane:Tile:X"
-    fastqs += fq(name=f"$namePrefix:1", comment=Some("1:N:0:SampleNumber"), bases=sampleBarcode1 + "A"*100) // matches the first sample -> first sample
+    val filterFlag = if (omitFailingReads) "Y" else "N"
+    fastqs += fq(name=f"$namePrefix:1", comment=Some(f"1:$filterFlag:0:SampleNumber"), bases=sampleBarcode1 + "A"*100) // matches the first sample -> first sample
     fastqs += fq(name=f"$namePrefix:2", comment=Some("2:N:0:SampleNumber"), bases="AAAAAAAAGATTACAGT" + "A"*100) // matches the first sample, one mismatch -> first sample
     fastqs += fq(name=f"$namePrefix:3", comment=Some("3:N:0:SampleNumber"), bases="AAAAAAAAGATTACTTT" + "A"*100) // matches the first sample, three mismatches -> unmatched
     fastqs += fq(name=f"$namePrefix:4", comment=Some("4:N:0:SampleNumber"), bases=sampleBarcode4 + "A"*100) // matches the 4th barcode perfectly and the 3rd barcode with two mismatches, delta too small -> unmatched
     fastqs += fq(name=f"$namePrefix:5", comment=Some("5:N:0:SampleNumber"), bases="AAAAAAAAGANNNNNNN" + "A"*100) // matches the first sample, too many Ns -> unmatched
     val barcodesPerSample = Seq(
-      Seq(sampleBarcode1, "AAAAAAAAGATTACAGT"), // sample 1
+      if (omitFailingReads) Seq(sampleBarcode1) else Seq(sampleBarcode1, "AAAAAAAAGATTACAGT"), // sample 1
       Seq.empty, // sample 2
       Seq.empty, // sample 3
       Seq.empty, // sample 4
-      Seq("AAAAAAAAGATTACTTT", sampleBarcode4, "AAAAAAAAGANNNNNNN")
+      if (omitFailingReads) Seq.empty else Seq("AAAAAAAAGATTACTTT", sampleBarcode4, "AAAAAAAAGANNNNNNN")
     )
     val assignmentsPerSample = Seq(
-      Seq("1", "2"), // sample 1
+      if (omitFailingReads) Seq("1") else Seq("1", "2"), // sample 1
       Seq.empty, // sample 2
       Seq.empty, // sample 3
       Seq.empty, // sample 4
-      Seq("3", "4", "5") // unmatched
+      if (omitFailingReads) Seq.empty else Seq("3", "4", "5") // unmatched
     )
     val illuminaReadNamesFastqPath = makeTempFile("test", ".fastq")
     Io.writeLines(illuminaReadNamesFastqPath, fastqs.map(_.toString))
@@ -556,7 +591,8 @@ class DemuxFastqsTest extends UnitSpec with OptionValues with ErrorLogLevel {
       outputType                   = Some(OutputType.Fastq),
       omitFastqReadNumbers         = !fastqStandards.includeReadNumbers,
       includeSampleBarcodesInFastq = fastqStandards.includeSampleBarcodes,
-      illuminaFileNames            = fastqStandards.illuminaFileNames
+      illuminaFileNames            = fastqStandards.illuminaFileNames,
+      omitFailingReads             = omitFailingReads,
     ).execute()
 
 
