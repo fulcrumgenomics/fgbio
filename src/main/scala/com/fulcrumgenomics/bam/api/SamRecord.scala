@@ -27,9 +27,12 @@ package com.fulcrumgenomics.bam.api
 
 import com.fulcrumgenomics.FgBioDef._
 import com.fulcrumgenomics.alignment.Cigar
+import com.fulcrumgenomics.bam.api.SamRecord.McTag
 import htsjdk.samtools
+import htsjdk.samtools.SAMTag.MC
 import htsjdk.samtools.SamPairUtil.PairOrientation
 import htsjdk.samtools._
+import htsjdk.samtools.util.CoordMath
 
 // TODO long-term: methods for 5'end, 3' end, unclipped 5' end and unclipped 3' end
 // TODO long-term: replacement for alignment blocks?
@@ -169,20 +172,28 @@ trait SamRecord {
 
   @inline final def mateStart: Int = getMateAlignmentStart
   @inline final def mateStart_=(s: Int):Unit = setMateAlignmentStart(s)
+
+  @inline final def mateCigar: Option[Cigar] = {
+    require(paired && mateMapped, s"Cannot get a mate cigar with a record missing the $McTag tag.")
+    get[String](McTag).map(Cigar.apply)
+  }
   @inline final def mateEnd: Option[Int] = {
     require(paired && mateMapped, "Cannot get mate end position on read without a mapped mate.")
-    get[String]("MC").map(cig => mateStart + Cigar(cig).lengthOnTarget - 1)
+    mateCigar.map(_.lengthOnTarget + mateStart - 1)
   }
-
   @inline final def mateUnclippedStart: Option[Int] = {
     require(paired && mateMapped, "Cannot get mate unclipped start position on read without a mapped mate.")
-    get[String]("MC").map(cig => mateStart - Cigar(cig).iterator.takeWhile(_.operator.isClipping).map(_.length).sum)
+    mateCigar.map(cigar => mateStart - cigar.iterator.takeWhile(_.operator.isClipping).map(_.length).sum)
   }
   @inline final def mateUnclippedEnd: Option[Int] = {
     require(paired && mateMapped, "Cannot get mate unclipped end position on read without a mapped mate.")
-    get[String]("MC").map { cig =>
-      val cigar = Cigar(cig)
+    mateCigar.map { cigar =>
       mateStart + cigar.lengthOnTarget - 1 + cigar.reverseIterator.takeWhile(_.operator.isClipping).map(_.length).sum
+    }
+  }
+  @inline final def mateOverlaps: Option[Boolean] = {
+    Option.when(mapped && paired && mateMapped) {
+      refIndex == mateRefIndex && mateEnd.exists { mateEnd => CoordMath.overlaps(start, end, mateStart, mateEnd) }
     }
   }
 
@@ -288,6 +299,9 @@ object SamRecord {
 
   /** The maximum insert size that can be stored in a [[SamRecord]]. */
   val MaximumInsertSize: Int = SAMRecord.MAX_INSERT_SIZE
+
+  /** The SAM tag for the mate's cigar. */
+  val McTag: String = MC.toString
 
   /** SAMRecord with mixin to add behaviour. */
   private final class EnhancedSamRecord(header: SAMFileHeader) extends SAMRecord(header) with SamRecordIntermediate with SamRecord

@@ -23,8 +23,9 @@
  */
 package com.fulcrumgenomics.bam
 
-import java.nio.file.Paths
+import com.fulcrumgenomics.bam.api.SamRecord.McTag
 
+import java.nio.file.Paths
 import com.fulcrumgenomics.bam.api.SamSource
 import com.fulcrumgenomics.sopt.cmdline.ValidationException
 import com.fulcrumgenomics.testing.UnitSpec
@@ -46,7 +47,7 @@ class SetMateInformationTest extends UnitSpec {
     fixer.execute()
     val in = SamSource(out)
     in.iterator.filter(r => r.mapped && r.mateMapped).foreach(rec => {
-      rec.get("MC") shouldBe defined
+      rec.get(McTag) shouldBe defined
       rec.get("MQ") shouldBe defined
     })
     in.close()
@@ -58,7 +59,7 @@ class SetMateInformationTest extends UnitSpec {
     fixer.execute()
     val in = SamSource(out)
     in.iterator.filter(r => r.mapped && r.mateMapped).foreach(rec => {
-      rec.get("MC") shouldBe defined
+      rec.get(McTag) shouldBe defined
       rec.get("MQ") shouldBe defined
     })
     in.close()
