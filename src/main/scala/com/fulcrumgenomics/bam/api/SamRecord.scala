@@ -27,9 +27,7 @@ package com.fulcrumgenomics.bam.api
 
 import com.fulcrumgenomics.FgBioDef._
 import com.fulcrumgenomics.alignment.Cigar
-import com.fulcrumgenomics.bam.api.SamRecord.McTag
 import htsjdk.samtools
-import htsjdk.samtools.SAMTag.MC
 import htsjdk.samtools.SamPairUtil.PairOrientation
 import htsjdk.samtools._
 import htsjdk.samtools.util.CoordMath
@@ -174,8 +172,8 @@ trait SamRecord {
   @inline final def mateStart_=(s: Int):Unit = setMateAlignmentStart(s)
 
   @inline final def mateCigar: Option[Cigar] = {
-    require(paired && mateMapped, s"Cannot get a mate cigar with a record missing the $McTag tag.")
-    get[String](McTag).map(Cigar.apply)
+    require(paired && mateMapped, s"Cannot get a mate cigar with a record missing the 'MC' tag.")
+    get[String]("MC").map(Cigar.apply)
   }
   @inline final def mateEnd: Option[Int] = {
     require(paired && mateMapped, "Cannot get mate end position on read without a mapped mate.")
@@ -299,9 +297,6 @@ object SamRecord {
 
   /** The maximum insert size that can be stored in a [[SamRecord]]. */
   val MaximumInsertSize: Int = SAMRecord.MAX_INSERT_SIZE
-
-  /** The SAM tag for the mate's cigar. */
-  val McTag: String = MC.toString
 
   /** SAMRecord with mixin to add behaviour. */
   private final class EnhancedSamRecord(header: SAMFileHeader) extends SAMRecord(header) with SamRecordIntermediate with SamRecord

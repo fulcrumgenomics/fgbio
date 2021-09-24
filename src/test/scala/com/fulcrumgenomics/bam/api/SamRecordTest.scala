@@ -25,10 +25,9 @@
 package com.fulcrumgenomics.bam.api
 
 import com.fulcrumgenomics.alignment.Cigar
-import com.fulcrumgenomics.bam.api.SamRecord.McTag
 import com.fulcrumgenomics.testing.SamBuilder.{Minus, Plus}
 import com.fulcrumgenomics.testing.{SamBuilder, UnitSpec}
-import htsjdk.samtools.{SAMTag, TextCigarCodec}
+import htsjdk.samtools.TextCigarCodec
 import org.scalatest.OptionValues
 
 class SamRecordTest extends UnitSpec with OptionValues {
@@ -199,8 +198,8 @@ class SamRecordTest extends UnitSpec with OptionValues {
 
   it should "return None for a paired read without the 'MC' tag set" in {
     val Seq(rec1, rec2): Seq[SamRecord] = new SamBuilder(readLength = 100).addPair(start1 = 1, start2 = 200)
-    rec1.remove(McTag)
-    rec2.remove(McTag)
+    rec1.remove("MC")
+    rec2.remove("MC")
     rec1.mateCigar shouldBe None
     rec2.mateCigar shouldBe None
   }
@@ -221,7 +220,7 @@ class SamRecordTest extends UnitSpec with OptionValues {
     val recs = builder.addPair(start1=10, start2=50)
 
     recs.foreach { r =>
-      r(McTag) = null // Clear mate cigar
+      r("MC") = null // Clear mate cigar
       r.mateUnclippedStart.isEmpty shouldBe true
       r.mateUnclippedEnd.isEmpty shouldBe true
     }

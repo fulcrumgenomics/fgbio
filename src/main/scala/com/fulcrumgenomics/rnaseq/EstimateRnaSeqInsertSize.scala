@@ -27,7 +27,6 @@ package com.fulcrumgenomics.rnaseq
 
 import com.fulcrumgenomics.FgBioDef._
 import com.fulcrumgenomics.alignment.Cigar
-import com.fulcrumgenomics.bam.api.SamRecord.McTag
 import com.fulcrumgenomics.bam.api.{SamRecord, SamSource}
 import com.fulcrumgenomics.cmdline.{ClpGroups, FgBioTool}
 import com.fulcrumgenomics.commons.CommonsDef.PathToBam
@@ -208,7 +207,7 @@ object EstimateRnaSeqInsertSize {
 
   private[rnaseq] def getAndRequireMateCigar(rec: SamRecord): Cigar = {
     rec.mateCigar.getOrElse {
-      throw new IllegalStateException(s"Mate CIGAR (Tag $McTag) not found for $rec, consider using SetMateInformation.")
+      throw new IllegalStateException(s"Mate CIGAR (Tag 'MC') not found for $rec, consider using SetMateInformation.")
     }
   }
 

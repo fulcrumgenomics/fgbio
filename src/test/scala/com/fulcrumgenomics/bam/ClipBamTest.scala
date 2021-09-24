@@ -26,7 +26,6 @@ package com.fulcrumgenomics.bam
 
 import com.fulcrumgenomics.FgBioDef.unreachable
 import com.fulcrumgenomics.bam.ClippingMode.{Hard, Soft, SoftWithMask}
-import com.fulcrumgenomics.bam.api.SamRecord.McTag
 import com.fulcrumgenomics.bam.api.{SamRecord, SamSource}
 import com.fulcrumgenomics.testing.SamBuilder._
 import com.fulcrumgenomics.testing.{ErrorLogLevel, ReferenceSetBuilder, SamBuilder, UnitSpec}
@@ -302,7 +301,7 @@ class ClipBamTest extends UnitSpec with ErrorLogLevel with OptionValues {
       for ((a,b) <- Seq((lhs, rhs), (rhs, lhs))) {
         a.mateStart shouldBe b.start
         a.mateNegativeStrand shouldBe b.negativeStrand
-        a[String](McTag) shouldBe b.cigar.toString()
+        a[String]("MC") shouldBe b.cigar.toString()
       }
     }
 
