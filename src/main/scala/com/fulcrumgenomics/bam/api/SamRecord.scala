@@ -172,7 +172,7 @@ trait SamRecord {
   @inline final def mateStart_=(s: Int):Unit = setMateAlignmentStart(s)
 
   @inline final def mateCigar: Option[Cigar] = {
-    require(paired && mateMapped, s"Cannot get a mate cigar with a record missing the 'MC' tag.")
+    require(paired && mateMapped, "Cannot get a mate cigar on read without a mapped mate.")
     get[String]("MC").map(Cigar.apply)
   }
   @inline final def mateEnd: Option[Int] = {
