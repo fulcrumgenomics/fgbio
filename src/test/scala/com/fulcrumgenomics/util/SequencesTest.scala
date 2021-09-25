@@ -114,7 +114,7 @@ class SequencesTest extends UnitSpec {
     Sequences.compatible('H', 'C') shouldBe true
     Sequences.compatible('R', 'A') shouldBe true
     Sequences.compatible('S', 'G') shouldBe true
-    bases.foreach(b => Sequences.compatible(b, 'N') shouldBe true)
+    bases.foreach(b => Sequences.compatible(b, 'N'.toByte) shouldBe true)
 
     // Check that incompatible combinations yield false
     Sequences.compatible('A', 'C') shouldBe false
