@@ -189,9 +189,10 @@ trait SamRecord {
       mateStart + cigar.lengthOnTarget - 1 + cigar.reverseIterator.takeWhile(_.operator.isClipping).map(_.length).sum
     }
   }
-  @inline final def mateOverlaps: Option[Boolean] = {
-    Option.when(mapped && paired && mateMapped) {
-      refIndex == mateRefIndex && mateEnd.exists { mateEnd => CoordMath.overlaps(start, end, mateStart, mateEnd) }
+  @inline final def matesOverlap: Option[Boolean] = {
+    if (!mapped || !paired || !mateMapped || refIndex != mateRefIndex) Some(false) else {
+      if (mateStart >= start && mateStart <= end) Some(true)
+      else mateEnd.map(mateEnd => CoordMath.overlaps(start, end, mateStart, mateEnd))
     }
   }
 

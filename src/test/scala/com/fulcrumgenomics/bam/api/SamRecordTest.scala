@@ -251,34 +251,38 @@ class SamRecordTest extends UnitSpec with OptionValues {
     r1.mateUnclippedEnd.value shouldBe r2.unclippedEnd
   }
 
-  "SamRecord.mateOverlaps" should "return None if any pre-requisite check isn't true" in {
-    new SamBuilder(readLength = 100).addFrag(start = 1).value.mateOverlaps shouldBe None
-    new SamBuilder(readLength = 100).addPair(start1 = 1, unmapped2 = true).foreach(_.mateOverlaps shouldBe None)
-    new SamBuilder(readLength = 100).addPair(start2 = 1, unmapped1 = true).foreach(_.mateOverlaps shouldBe None)
-  }
-
-  it should "return false when both reads in a pair are mapped but on different contigs" in {
-    new SamBuilder(readLength = 100).addPair(start1 = 1, start2 = 1, contig = 0, contig2 = Some(1))
-      .foreach(_.mateOverlaps.value shouldBe false)
+  "SamRecord.matesOverlap" should "return false if any pre-requisite check isn't true" in {
+    new SamBuilder(readLength = 100).addFrag(start = 1).value.matesOverlap.value shouldBe false
+    new SamBuilder(readLength = 100).addPair(start1 = 1, unmapped2 = true).foreach(_.matesOverlap.value shouldBe false)
+    new SamBuilder(readLength = 100).addPair(start2 = 1, unmapped1 = true).foreach(_.matesOverlap.value shouldBe false)
+    new SamBuilder(readLength = 100).addPair(start1 = 1, start2 = 1, contig = 0, contig2 = Some(1)).foreach(_.matesOverlap.value shouldBe false)
   }
 
   it should "return false when both reads in a pair are mapped to the same contig but do not overlap" in {
     new SamBuilder(readLength = 100).addPair(start1 = 1, start2 = 101, contig = 0, contig2 = Some(0))
-      .foreach(_.mateOverlaps.value shouldBe false)
+      .foreach(_.matesOverlap.value shouldBe false)
   }
 
   it should "return true when reads overlap by one base pair in FR orientation" in {
     new SamBuilder(readLength = 100).addPair(start1 = 1, start2 = 100, contig = 0, contig2 = Some(0))
-      .foreach(_.mateOverlaps.value shouldBe true)
+      .foreach(_.matesOverlap.value shouldBe true)
   }
 
   it should "return true when reads overlap by one base pair in RF orientation" in {
     new SamBuilder(readLength = 100).addPair(start1 = 100, start2 = 1, contig = 0, contig2 = Some(0))
-      .foreach(_.mateOverlaps.value shouldBe true)
+      .foreach(_.matesOverlap.value shouldBe true)
   }
 
   it should "return true when reads overlap completely" in {
     new SamBuilder(readLength = 100).addPair(start1 = 1, start2 = 1, contig = 0, contig2 = Some(0))
-      .foreach(_.mateOverlaps.value shouldBe true)
+      .foreach(_.matesOverlap.value shouldBe true)
+  }
+
+  it should "return None when the reads overlap but a mate end cannot be determined" in {
+    val List(rec1, rec2) = new SamBuilder(readLength = 100).addPair(start1 = 10, start2 = 1, contig = 0, contig2 = Some(0))
+    rec1.remove("MC")
+    rec2.remove("MC")
+    rec1.matesOverlap shouldBe None // Mate's start is not enclosed by rec, and mate's end cannot be determined
+    rec2.matesOverlap.value shouldBe true // Mate's start is enclosed by rec, regardless of where mate end is
   }
 }
