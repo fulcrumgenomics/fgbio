@@ -811,7 +811,7 @@ private class FastqDemultiplexer(val sampleInfos: Seq[SampleInfo],
     val isControl = demuxRecords.forall(d => d.readInfo.forall(_.internalControl))
 
     val result = DemuxResult(sampleInfo=sampleInfo, numMismatches=numMismatches, records=demuxRecords, passQc=passQc, isControl=isControl)
-    result.sampleInfo.metric.increment(numMismatches = numMismatches, isPf = passQc)
+    result.sampleInfo.metric.increment(numMismatches=numMismatches, isPf=passQc)
 
     result
   }
