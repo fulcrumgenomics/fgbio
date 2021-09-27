@@ -38,6 +38,7 @@ import org.scalatest.OptionValues
 
 import scala.collection.mutable.ListBuffer
 import scala.io.Source
+import scala.reflect.io.Path
 import scala.util.Try
 
 class DemuxFastqsTest extends UnitSpec with OptionValues with ErrorLogLevel {
@@ -972,20 +973,23 @@ class DemuxFastqsTest extends UnitSpec with OptionValues with ErrorLogLevel {
     val qualities = "?"*17 + Range.inclusive(2, 40).map(q => (q + 33).toChar).mkString
     fastqs += fq(name=f"$namePrefix:1", comment=Some("1:Y:0:SampleNumber"), bases=sampleBarcode1 + "A"*39, quals=Some(qualities)) // matches the first sample -> first sample
     fastqs += fq(name=f"$namePrefix:2", comment=Some("2:N:0:SampleNumber"), bases=sampleBarcode1 + "G"*39, quals = Some(qualities)) // matches the first sample -> first sample
-    val metricsFilename = makeTempFile("demux_barcode_metrics", ".txt")
 
     val illuminaReadNamesFastqPath = makeTempFile("test", ".fastq")
     Io.writeLines(illuminaReadNamesFastqPath, fastqs.map(_.toString))
 
+    val metricsFilename = makeTempFile("demux_barcode_metrics", ".txt")
+    println(metricsFilename)
+
     // Run the tool
     val output     = outputDir()
+    println(output)
     val structures = Seq(ReadStructure("17B39T"), ReadStructure("56T"))
     new DemuxFastqs(
       inputs                       = Seq(illuminaReadNamesFastqPath, illuminaReadNamesFastqPath),
       output                       = output,
       metadata                     = sampleSheetPath,
       readStructures               = structures,
-      metrics                      = None,
+      metrics                      = Some(metricsFilename),
       maxMismatches                = 2,
       minMismatchDelta             = 3,
       outputType                   = Some(OutputType.Fastq),
@@ -996,11 +1000,12 @@ class DemuxFastqsTest extends UnitSpec with OptionValues with ErrorLogLevel {
       omitControlReads             = omitControlReads).execute()
 
     // Check the output FASTQs
+
     toSampleInfos(structures).zipWithIndex.foreach { case (sampleInfo, index) =>
       val sample      = sampleInfo.sample
       val prefix      = toSampleOutputPrefix(sample, isUnmatched=sampleInfo.isUnmatched, illuminaFileNames=fastqStandards.illuminaFileNames, output, UnmatchedSampleId)
       val extensions  = FastqRecordWriter.extensions(pairedEnd=true, illuminaFileNames=fastqStandards.illuminaFileNames)
-      val metricsFile = Metric.read[SampleBarcodeMetric](PathUtil.pathTo(s"${output}/${metricsFilename}"))
+      val metricsFile = Metric.read[SampleBarcodeMetric](metricsFilename)
 
       metricsFile(0).pf_templates shouldBe 1
       metricsFile(0).templates shouldBe 2
