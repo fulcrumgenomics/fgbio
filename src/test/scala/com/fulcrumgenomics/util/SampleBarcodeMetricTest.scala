@@ -58,4 +58,24 @@ class SampleBarcodeMetricTest extends UnitSpec {
     noMatch.pf_ratio_this_barcode_to_best_barcode shouldBe 1d
     noMatch.pf_normalized_matches shouldBe 12/7d +- 0.00001
   }
+
+  "SampleBarcodeMetric.increment" should "increment certain variables when the read doesn't pass QC" in {
+    val metric = new SampleBarcodeMetric()
+
+    metric.increment(numMismatches = 1, isPf = false)
+    metric.templates shouldEqual 1
+    metric.pf_templates shouldEqual 0
+    metric.one_mismatch_matches shouldEqual 1
+    metric.pf_one_mismatch_matches shouldEqual 0
+  }
+
+  it should "increment pf variables as well when the read passes QC" in {
+    val metric = new SampleBarcodeMetric()
+
+    metric.increment(numMismatches = 1, isPf = true)
+    metric.templates shouldEqual 1
+    metric.pf_templates shouldEqual 1
+    metric.one_mismatch_matches shouldEqual 1
+    metric.pf_one_mismatch_matches shouldEqual 1
+  }
 }
