@@ -26,7 +26,6 @@
 package com.fulcrumgenomics.fastq
 
 import java.nio.file.Files
-
 import com.fulcrumgenomics.FgBioDef.{DirPath, FilePath, PathToFastq}
 import com.fulcrumgenomics.bam.api.SamSource
 import com.fulcrumgenomics.fastq.FastqDemultiplexer.{DemuxRecord, DemuxResult}
@@ -38,6 +37,7 @@ import com.fulcrumgenomics.sopt.cmdline.ValidationException
 import org.scalatest.OptionValues
 
 import scala.collection.mutable.ListBuffer
+import scala.io.Source
 import scala.util.Try
 
 class DemuxFastqsTest extends UnitSpec with OptionValues with ErrorLogLevel {
@@ -963,6 +963,60 @@ class DemuxFastqsTest extends UnitSpec with OptionValues with ErrorLogLevel {
     recR1.apply[String]("BC") shouldBe "AAAAAAAA-GATTACAGA"
     recR2.apply[String]("BC") shouldBe "AAAAAAAA-GATTACAGA"
   }
+
+
+  def testEndToEndBarcodeMetrics(fastqStandards: FastqStandards, omitFailingReads: Boolean = false, omitControlReads: Boolean = false): Unit = {
+    // Build the FASTQ
+    val fastqs = new ListBuffer[FastqRecord]()
+    val namePrefix = "Instrument:RunID:FlowCellID:Lane:Tile:X"
+    val qualities = "?"*17 + Range.inclusive(2, 40).map(q => (q + 33).toChar).mkString
+    fastqs += fq(name=f"$namePrefix:1", comment=Some("1:Y:0:SampleNumber"), bases=sampleBarcode1 + "A"*39, quals=Some(qualities)) // matches the first sample -> first sample
+    fastqs += fq(name=f"$namePrefix:2", comment=Some("2:N:0:SampleNumber"), bases=sampleBarcode1 + "G"*39, quals = Some(qualities)) // matches the first sample -> first sample
+//    fastqs += fq(name=f"$namePrefix:2", comment=Some("2:Y:0:SampleNumber"), bases=sampleBarcode2 + "G"*39, quals = Some(qualities)) // matches the second sample -> second sample
+    val metricsFilename = "demux_barcode_metrics.txt"
+
+    val illuminaReadNamesFastqPath = makeTempFile("test", ".fastq")
+    Io.writeLines(illuminaReadNamesFastqPath, fastqs.map(_.toString))
+
+    // Run the tool
+    val output     = outputDir()
+    val structures = Seq(ReadStructure("17B39T"), ReadStructure("56T"))
+    new DemuxFastqs(
+      inputs                       = Seq(illuminaReadNamesFastqPath, illuminaReadNamesFastqPath),
+      output                       = output,
+      metadata                     = sampleSheetPath,
+      readStructures               = structures,
+      metrics                      = None,
+      maxMismatches                = 2,
+      minMismatchDelta             = 3,
+      outputType                   = Some(OutputType.Fastq),
+      omitFastqReadNumbers         = !fastqStandards.includeReadNumbers,
+      includeSampleBarcodesInFastq = fastqStandards.includeSampleBarcodes,
+      illuminaFileNames            = fastqStandards.illuminaFileNames,
+      omitFailingReads             = omitFailingReads,
+      omitControlReads             = omitControlReads).execute()
+
+    // Check the output FASTQs
+    toSampleInfos(structures).zipWithIndex.foreach { case (sampleInfo, index) =>
+      val sample      = sampleInfo.sample
+      val prefix      = toSampleOutputPrefix(sample, isUnmatched=sampleInfo.isUnmatched, illuminaFileNames=fastqStandards.illuminaFileNames, output, UnmatchedSampleId)
+      val extensions  = FastqRecordWriter.extensions(pairedEnd=true, illuminaFileNames=fastqStandards.illuminaFileNames)
+      val metricsFile = Metric.read[SampleBarcodeMetric](PathUtil.pathTo(s"${output}/${metricsFilename}"))
+
+      metricsFile(0).pf_templates shouldBe 1
+      metricsFile(0).templates shouldBe 2
+    }
+  }
+
+  "DemuxFastqs" should "only increment the pf fields for passing reads in the sample barcode metrics" in {
+    testEndToEndBarcodeMetrics(FastqStandards(includeReadNumbers=true, includeSampleBarcodes=true), omitFailingReads = true)
+  }
+
+  it should "only increment the pf fields for passing reads even when --omit-failing-reads is false" in {
+    testEndToEndBarcodeMetrics(FastqStandards(includeReadNumbers=true, includeSampleBarcodes=true), omitFailingReads = false)
+  }
+
+
 
   private implicit class WithReadInfo(rec: DemuxRecord) {
     def withReadInfo: DemuxRecord = {
