@@ -459,7 +459,7 @@ class DemuxFastqs
 
     // Write the records out in its own thread
     iterator.foreach { demuxResult =>
-      demuxResult.sampleInfo.metric.increment(numMismatches=demuxResult.numMismatches)
+      demuxResult.sampleInfo.metric.increment(numMismatches=demuxResult.numMismatches, isPf=demuxResult.passQc)
       val writer = sampleToWriter(demuxResult.sampleInfo.sample)
       demuxResult.records.foreach { rec =>
         writer.add(rec.copy(quals=qualityEncoding.toStandardAscii(rec.quals)))
