@@ -972,7 +972,6 @@ class DemuxFastqsTest extends UnitSpec with OptionValues with ErrorLogLevel {
     val qualities = "?"*17 + Range.inclusive(2, 40).map(q => (q + 33).toChar).mkString
     fastqs += fq(name=f"$namePrefix:1", comment=Some("1:Y:0:SampleNumber"), bases=sampleBarcode1 + "A"*39, quals=Some(qualities)) // matches the first sample -> first sample
     fastqs += fq(name=f"$namePrefix:2", comment=Some("2:N:0:SampleNumber"), bases=sampleBarcode1 + "G"*39, quals = Some(qualities)) // matches the first sample -> first sample
-//    fastqs += fq(name=f"$namePrefix:2", comment=Some("2:Y:0:SampleNumber"), bases=sampleBarcode2 + "G"*39, quals = Some(qualities)) // matches the second sample -> second sample
     val metricsFilename = makeTempFile("demux_barcode_metrics", ".txt")
 
     val illuminaReadNamesFastqPath = makeTempFile("test", ".fastq")
