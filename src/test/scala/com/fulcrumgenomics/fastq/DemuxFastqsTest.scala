@@ -26,7 +26,6 @@
 package com.fulcrumgenomics.fastq
 
 import java.nio.file.Files
-
 import com.fulcrumgenomics.FgBioDef.{DirPath, FilePath, PathToFastq}
 import com.fulcrumgenomics.bam.api.SamSource
 import com.fulcrumgenomics.fastq.FastqDemultiplexer.{DemuxRecord, DemuxResult}
@@ -35,6 +34,7 @@ import com.fulcrumgenomics.testing.{ErrorLogLevel, UnitSpec}
 import com.fulcrumgenomics.util.{Io, Metric, ReadStructure, SampleBarcodeMetric}
 import com.fulcrumgenomics.commons.io.PathUtil
 import com.fulcrumgenomics.sopt.cmdline.ValidationException
+import com.fulcrumgenomics.util.NumericTypes.PhredScore
 import org.scalatest.OptionValues
 
 import scala.collection.mutable.ListBuffer
@@ -425,7 +425,108 @@ class DemuxFastqsTest extends UnitSpec with OptionValues with ErrorLogLevel {
 
   }
 
+  def makeDemuxRecord(bases: String, quals: String): DemuxResult = {
+    val structures = Seq(ReadStructure("5B40T"))
+    val sampleInfos = toSampleInfos(structures)
+    val demuxRecord = DemuxRecord(name = "name", bases = bases, quals = quals, molecularBarcode = Seq("MB"), sampleBarcode = Seq("SB"), readNumber = 1, pairedEnd = false, comment = None)
+    DemuxResult(sampleInfo = sampleInfos(0), numMismatches = 0, records = Seq(demuxRecord))
+  }
 
+  "DemuxResult.maskLowQualityBases" should "mask bases that are less than or equal to the quality threshold" in {
+    val detector = new QualityEncodingDetector()
+    val qualities = "?????" + Range.inclusive(2, 40).map(q => (q + 33).toChar).mkString
+    val bases = Seq("GGGGG", "A"*39)
+    val expectedBases = "GGGGG" + "N"*8 + "A"*31
+
+    qualities.foreach(q => detector.add(q))
+    detector.compatibleEncodings(0).toString shouldBe "Standard"
+
+    val demuxResult = makeDemuxRecord(bases = bases.mkString, quals = qualities)
+    val output = demuxResult.maskLowQualityBases(threshold = '+', qualityEncoding = detector.compatibleEncodings(0)).records(0).bases
+
+    output.length shouldEqual qualities.length
+    output shouldEqual expectedBases.mkString
+  }
+
+  it should "mask no bases if the quality threshold is 0" in {
+    val detector = new QualityEncodingDetector()
+    val qualities = "?????" + Range.inclusive(2, 40).map(q => (q + 33).toChar).mkString
+    val bases = Seq("GGGGG", "A"*39)
+
+    qualities.foreach(q => detector.add(q))
+    detector.compatibleEncodings(0).toString shouldBe "Standard"
+
+    val demuxResult = makeDemuxRecord(bases = bases.mkString, quals = qualities)
+    val output = demuxResult.maskLowQualityBases(threshold = '!', qualityEncoding = detector.compatibleEncodings(0)).records(0).bases
+
+    output.length shouldEqual qualities.length
+    output shouldEqual bases.mkString
+  }
+
+  def testEndToEndWithQualityThreshold(threshold: Int = 0, threads: Int = 1): Seq[FastqRecord] = {
+    // Build the FASTQ
+    val output: DirPath = outputDir()
+
+    val metrics = makeTempFile("metrics", ".txt")
+    val structures = Seq(ReadStructure("17B139T"))
+
+    val metadata = sampleSheetPath
+
+    new DemuxFastqs(inputs = Seq(fastqPathSingle), output = output, metadata = metadata,
+      readStructures = structures, metrics = Some(metrics), maxMismatches = 2, minMismatchDelta = 3,
+      threads = threads, outputType = Some(OutputType.Fastq), qualityThreshold = threshold).execute()
+
+    val sampleInfo = toSampleInfos(structures).head
+    val sample = sampleInfo.sample
+
+    val prefix = toSampleOutputPrefix(sample, sampleInfo.isUnmatched, false, output, UnmatchedSampleId)
+
+    val fastq = PathUtil.pathTo(s"${prefix}.fastq.gz")
+    FastqSource(fastq).toSeq
+  }
+
+  "DemuxFastqs" should "run end to end and return the same bases when the threshold is 0 for 1 thread" in {
+    val records = testEndToEndWithQualityThreshold(threshold = 0, threads = 1)
+    records.length shouldBe 1
+    records(0).bases.length shouldBe 39
+    records(0).bases shouldEqual "A"*39
+  }
+
+  it should "run end to end and replace any bases below a specified quality threshold for 1 thread" in {
+    val records = testEndToEndWithQualityThreshold(threshold = 10, threads = 1)
+
+    records.length shouldBe 1
+    records(0).bases.length shouldBe 39
+    records(0).bases shouldEqual "N"*8 + "A"*31
+  }
+
+  it should "run end to end and return the same bases when the threshold is 0 for more than 1 thread" in {
+    val records = testEndToEndWithQualityThreshold(threshold = 0, threads = 2)
+    records.length shouldBe 1
+    records(0).bases.length shouldBe 39
+    records(0).bases shouldEqual "A"*39
+  }
+
+  it should "run end to end and replace any bases below a specified quality threshold for more than 1 thread" in {
+    val records = testEndToEndWithQualityThreshold(threshold = 10, threads = 2)
+
+    records.length shouldBe 1
+    records(0).bases.length shouldBe 39
+    records(0).bases shouldEqual "N"*8 + "A"*31
+  }
+
+  it should "run end to end and and mask bases when the quality threshold at 40, and for more than 1 thread" in {
+    val records = testEndToEndWithQualityThreshold(threshold = 40, threads = 2)
+    records.length shouldBe 1
+    records(0).bases.length shouldBe 39
+    records(0).bases shouldEqual "N"*38 + "A"
+  }
+
+  it should "run throw an exception if a threshold above accepted values is provided" in {
+    throwableMessageShouldInclude(msg = "exceeds max possible value") {
+      testEndToEndWithQualityThreshold(threshold = 100, threads = 2)
+    }
+  }
 
   private def throwableMessageShouldInclude(msg: String)(r: => Unit): Unit = {
     val result = Try(r)
@@ -448,6 +549,16 @@ class DemuxFastqsTest extends UnitSpec with OptionValues with ErrorLogLevel {
     fastqs += fq(name="frag3", bases="AAAAAAAAGATTACTTT" + "A"*100) // matches the first sample, three mismatches -> unmatched
     fastqs += fq(name="frag4", bases=sampleBarcode4 + "A"*100) // matches the 4th barcode perfectly and the 3rd barcode with two mismatches, delta too small -> unmatched
     fastqs += fq(name="frag5", bases="AAAAAAAAGANNNNNNN" + "A"*100) // matches the first sample, too many Ns -> unmatched
+
+    val path = makeTempFile("test", ".fastq")
+    Io.writeLines(path, fastqs.map(_.toString))
+    path
+  }
+
+  // A smaller file containing valid FASTQ records.
+  private val fastqPathSingle = {
+    val fastqs = new ListBuffer[FastqRecord]()
+    fastqs += fq(name="frag1", bases=sampleBarcode1 + "A"*39, quals=Some("?"*17 + Range.inclusive(2, 40).map(q => (q + 33).toChar).mkString)) // matches the first sample -> first sample
 
     val path = makeTempFile("test", ".fastq")
     Io.writeLines(path, fastqs.map(_.toString))
@@ -629,11 +740,11 @@ class DemuxFastqsTest extends UnitSpec with OptionValues with ErrorLogLevel {
     val namePrefix = "Instrument:RunID:FlowCellID:Lane:Tile:X"
     val filterFlag = if (omitFailingReads) "Y" else "N"
     val controlFlag = if (!omitControlReads) "0" else "1"
-    fastqs += fq(name=f"$namePrefix:1", comment=Some(f"1:$filterFlag:$controlFlag:SampleNumber"), bases=sampleBarcode1 + "A"*100) // matches the first sample -> first sample
-    fastqs += fq(name=f"$namePrefix:2", comment=Some("2:N:0:SampleNumber"), bases="AAAAAAAAGATTACAGT" + "A"*100) // matches the first sample, one mismatch -> first sample
-    fastqs += fq(name=f"$namePrefix:3", comment=Some(f"3:N:$controlFlag:SampleNumber"), bases="AAAAAAAAGATTACTTT" + "A"*100) // matches the first sample, three mismatches -> unmatched
-    fastqs += fq(name=f"$namePrefix:4", comment=Some("4:N:0:SampleNumber"), bases=sampleBarcode4 + "A"*100) // matches the 4th barcode perfectly and the 3rd barcode with two mismatches, delta too small -> unmatched
-    fastqs += fq(name=f"$namePrefix:5", comment=Some("5:N:0:SampleNumber"), bases="AAAAAAAAGANNNNNNN" + "A"*100) // matches the first sample, too many Ns -> unmatched
+    fastqs += fq(name = f"$namePrefix:1", comment = Some(f"1:$filterFlag:$controlFlag:SampleNumber"), bases = sampleBarcode1 + "A" * 100) // matches the first sample -> first sample
+    fastqs += fq(name = f"$namePrefix:2", comment = Some("2:N:0:SampleNumber"), bases = "AAAAAAAAGATTACAGT" + "A" * 100) // matches the first sample, one mismatch -> first sample
+    fastqs += fq(name = f"$namePrefix:3", comment = Some(f"3:N:$controlFlag:SampleNumber"), bases = "AAAAAAAAGATTACTTT" + "A" * 100) // matches the first sample, three mismatches -> unmatched
+    fastqs += fq(name = f"$namePrefix:4", comment = Some("4:N:0:SampleNumber"), bases = sampleBarcode4 + "A" * 100) // matches the 4th barcode perfectly and the 3rd barcode with two mismatches, delta too small -> unmatched
+    fastqs += fq(name = f"$namePrefix:5", comment = Some("5:N:0:SampleNumber"), bases = "AAAAAAAAGANNNNNNN" + "A" * 100) // matches the first sample, too many Ns -> unmatched
     val barcodesPerSample = Seq(
       if (omitFailingReads) Seq(sampleBarcode1) else if (omitControlReads) Seq("AAAAAAAAGATTACAGT") else Seq(sampleBarcode1, "AAAAAAAAGATTACAGT"), // sample 1
       Seq.empty, // sample 2
@@ -652,32 +763,32 @@ class DemuxFastqsTest extends UnitSpec with OptionValues with ErrorLogLevel {
     Io.writeLines(illuminaReadNamesFastqPath, fastqs.map(_.toString))
 
     // Run the tool
-    val output     = outputDir()
+    val output = outputDir()
     val structures = Seq(ReadStructure("17B100T"), ReadStructure("117T"))
     new DemuxFastqs(
-      inputs                     = Seq(illuminaReadNamesFastqPath, illuminaReadNamesFastqPath),
-      output                     = output,
-      metadata                   = sampleSheetPath,
-      readStructures             = structures,
-      metrics                    = None,
-      maxMismatches              = 2,
-      minMismatchDelta           = 3,
-      outputType                 = Some(OutputType.Fastq),
-      omitFastqReadNumbers       = !fastqStandards.includeReadNumbers,
+      inputs = Seq(illuminaReadNamesFastqPath, illuminaReadNamesFastqPath),
+      output = output,
+      metadata = sampleSheetPath,
+      readStructures = structures,
+      metrics = None,
+      maxMismatches = 2,
+      minMismatchDelta = 3,
+      outputType = Some(OutputType.Fastq),
+      omitFastqReadNumbers = !fastqStandards.includeReadNumbers,
       includeSampleBarcodesInFastq = fastqStandards.includeSampleBarcodes,
-      illuminaFileNames          = fastqStandards.illuminaFileNames,
-      omitFailingReads            = omitFailingReads,
-      omitControlReads           = omitControlReads).execute()
+      illuminaFileNames = fastqStandards.illuminaFileNames,
+      omitFailingReads = omitFailingReads,
+      omitControlReads = omitControlReads).execute()
 
     // Check the output FASTQs
     toSampleInfos(structures).zipWithIndex.foreach { case (sampleInfo, index) =>
-      val barcodes    = barcodesPerSample(index)
+      val barcodes = barcodesPerSample(index)
       val assignments = assignmentsPerSample(index)
-      val sample      = sampleInfo.sample
-      val prefix      = toSampleOutputPrefix(sample, isUnmatched=sampleInfo.isUnmatched, illuminaFileNames=fastqStandards.illuminaFileNames, output, UnmatchedSampleId)
-      val extensions  = FastqRecordWriter.extensions(pairedEnd=true, illuminaFileNames=fastqStandards.illuminaFileNames)
-      val fastqs1     = FastqSource(PathUtil.pathTo(s"${prefix}${extensions.head}")).toSeq
-      val fastqs2     = FastqSource(PathUtil.pathTo(s"${prefix}${extensions.last}")).toSeq
+      val sample = sampleInfo.sample
+      val prefix = toSampleOutputPrefix(sample, isUnmatched = sampleInfo.isUnmatched, illuminaFileNames = fastqStandards.illuminaFileNames, output, UnmatchedSampleId)
+      val extensions = FastqRecordWriter.extensions(pairedEnd = true, illuminaFileNames = fastqStandards.illuminaFileNames)
+      val fastqs1 = FastqSource(PathUtil.pathTo(s"${prefix}${extensions.head}")).toSeq
+      val fastqs2 = FastqSource(PathUtil.pathTo(s"${prefix}${extensions.last}")).toSeq
 
       // Check the trailing /1 or /2 on the read names
       if (fastqStandards.includeReadNumbers) {
@@ -692,28 +803,7 @@ class DemuxFastqsTest extends UnitSpec with OptionValues with ErrorLogLevel {
         // Read names should match
         fastqs1.map(_.header) should contain theSameElementsInOrderAs fastqs2.map(_.header)
       }
-
-      // Check the sample barcode is in the comment
-      if (fastqStandards.includeSampleBarcodes) {
-        fastqs1.map(ReadInfo(_).sampleInfo) should contain theSameElementsInOrderAs barcodes
-      }
-      else {
-        fastqs1.foreach { fastq =>
-          fastq.comment.value.endsWith("SampleNumber") shouldBe true
-        }
-      }
-
-      // Check the assignment, which we encoded as the last field in the read name
-      val observedAssignments = fastqs1.map { fastq =>
-        fastq.name.replaceAll(".*:", "").replaceAll("/[12]$", "")
-      }
-      if (fastqStandards.includeSampleBarcodes) {
-        observedAssignments should contain theSameElementsInOrderAs assignments
-      }
-      else {
-        observedAssignments should contain theSameElementsInOrderAs barcodes
-      }
-   }
+    }
   }
 
   it should "demultiplex with --omit-fastq-read-numbers=false --include-sample-barcodes-in-fastq=false" in {
