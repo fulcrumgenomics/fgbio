@@ -251,11 +251,15 @@ class SamRecordTest extends UnitSpec with OptionValues {
     r1.mateUnclippedEnd.value shouldBe r2.unclippedEnd
   }
 
-  "SamRecord.matesOverlap" should "return false if any pre-requisite check isn't true" in {
-    new SamBuilder(readLength = 100).addFrag(start = 1).value.matesOverlap.value shouldBe false
-    new SamBuilder(readLength = 100).addPair(start1 = 1, unmapped2 = true).foreach(_.matesOverlap.value shouldBe false)
-    new SamBuilder(readLength = 100).addPair(start2 = 1, unmapped1 = true).foreach(_.matesOverlap.value shouldBe false)
-    new SamBuilder(readLength = 100).addPair(start1 = 1, start2 = 1, contig = 0, contig2 = Some(1)).foreach(_.matesOverlap.value shouldBe false)
+  "SamRecord.matesOverlap" should "raise exceptions if any pre-requisite check isn't true" in {
+    an[IllegalArgumentException] shouldBe thrownBy { new SamBuilder(readLength = 100).addFrag(start = 1).value.matesOverlap }
+    an[IllegalArgumentException] shouldBe thrownBy { new SamBuilder(readLength = 100).addPair(start1 = 1, unmapped2 = true).foreach(_.matesOverlap) }
+    an[IllegalArgumentException] shouldBe thrownBy { new SamBuilder(readLength = 100).addPair(start2 = 1, unmapped1 = true).foreach(_.matesOverlap) }
+  }
+
+  it should "return false when both reads in a pair are mapped but to different contigs" in {
+    new SamBuilder(readLength = 100).addPair(start1 = 1, start2 = 1, contig = 0, contig2 = Some(1))
+      .foreach(_.matesOverlap.value shouldBe false)
   }
 
   it should "return false when both reads in a pair are mapped to the same contig but do not overlap" in {
@@ -278,7 +282,7 @@ class SamRecordTest extends UnitSpec with OptionValues {
       .foreach(_.matesOverlap.value shouldBe true)
   }
 
-  it should "return None when the reads overlap but a mate end cannot be determined" in {
+  it should "return true when mates overlap and we know the start of the mate, and None for when we don't know the end of the mate" in {
     val List(rec1, rec2) = new SamBuilder(readLength = 100).addPair(start1 = 10, start2 = 1, contig = 0, contig2 = Some(0))
     rec1.remove("MC")
     rec2.remove("MC")

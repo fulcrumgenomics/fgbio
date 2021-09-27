@@ -190,10 +190,10 @@ trait SamRecord {
     }
   }
   @inline final def matesOverlap: Option[Boolean] = {
-    if (!mapped || !paired || !mateMapped || refIndex != mateRefIndex) Some(false) else {
-      if (mateStart >= start && mateStart <= end) Some(true)
-      else mateEnd.map(mateEnd => CoordMath.overlaps(start, end, mateStart, mateEnd))
-    }
+    require(mapped && paired && mateMapped, "Cannot determine if a mate overlaps without paired mates that are both mapped")
+    if (refIndex != mateRefIndex) Some(false)
+    else if (mateStart >= start && mateStart <= end) Some(true)
+    else mateEnd.map(mateEnd => CoordMath.overlaps(start, end, mateStart, mateEnd))
   }
 
   @inline final def insertSize: Int = getInferredInsertSize
