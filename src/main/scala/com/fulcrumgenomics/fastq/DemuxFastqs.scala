@@ -167,7 +167,11 @@ object DemuxFastqs {
       zippedIterator.map { readRecords => demultiplexer.demultiplex(readRecords: _*) }
     }
 
-    resultIterator.filter(r => r.keep(omitFailingReads, omitControlReads))
+    resultIterator.map { res =>
+      val considerRead = if (!omitControlReads) true else !res.isControl
+      if (considerRead) res.sampleInfo.metric.increment(numMismatches = res.numMismatches, isPf = res.passQc)
+      res
+    }.filter(r => r.keep(omitFailingReads, omitControlReads))
   }
 }
 
@@ -810,10 +814,7 @@ private class FastqDemultiplexer(val sampleInfos: Seq[SampleInfo],
     val passQc = demuxRecords.forall(d => d.readInfo.forall(_.passQc))
     val isControl = demuxRecords.forall(d => d.readInfo.forall(_.internalControl))
 
-    val result = DemuxResult(sampleInfo=sampleInfo, numMismatches=numMismatches, records=demuxRecords, passQc=passQc, isControl=isControl)
-    result.sampleInfo.metric.increment(numMismatches=numMismatches, isPf=passQc)
-
-    result
+    DemuxResult(sampleInfo=sampleInfo, numMismatches=numMismatches, records=demuxRecords, passQc=passQc, isControl=isControl)
   }
 }
 

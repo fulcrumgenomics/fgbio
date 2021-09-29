@@ -34,29 +34,29 @@ import scala.collection.mutable
 class SampleBarcodeMetricTest extends UnitSpec {
 
   "SampleBarcodeMetric.finalizeMetrics" should "fill out all metrics that require summary counts" in {
-    val metricOne = new SampleBarcodeMetric("Alice", "Alice.lib", "AAAAAAA", 10, 5,   9,  4, 1, 1)
-    val metricTwo = new SampleBarcodeMetric("Bob",   "Bob.lib",   "CCCCCCC", 20, 10, 19,  9, 1, 1)
-    val noMatch   = new SampleBarcodeMetric("Eve",   "Eve.lib",   "NNNNNNN", 30, 20, 29, 19, 1, 1)
+    val metricOne = new SampleBarcodeMetric("Alice", "Alice.lib", "AAAAAAA", 10, 5, 9, 4, 1, 1)
+    val metricTwo = new SampleBarcodeMetric("Bob", "Bob.lib", "CCCCCCC", 20, 10, 19, 9, 1, 1)
+    val noMatch = new SampleBarcodeMetric("Eve", "Eve.lib", "NNNNNNN", 30, 20, 29, 19, 1, 1)
     val barcodeToMetrics = Seq(metricOne, metricTwo, noMatch).map { metric => (metric.barcode, metric) }.toMap
     SampleBarcodeMetric.finalizeMetrics(barcodeToMetrics, noMatch.barcode)
 
-    metricOne.fraction_matches shouldBe 10/60d
-    metricOne.ratio_this_barcode_to_best_barcode shouldBe 5/15d
-    metricOne.pf_fraction_matches shouldBe 5/35d
-    metricOne.pf_ratio_this_barcode_to_best_barcode shouldBe 5/20d
-    metricOne.pf_normalized_matches shouldBe 3/7d +- 0.00001
+    metricOne.fraction_matches shouldBe 10 / 60d
+    metricOne.ratio_this_barcode_to_best_barcode shouldBe 5 / 15d
+    metricOne.pf_fraction_matches shouldBe 5 / 35d
+    metricOne.pf_ratio_this_barcode_to_best_barcode shouldBe 5 / 20d
+    metricOne.pf_normalized_matches shouldBe 3 / 7d +- 0.00001
 
-    metricTwo.fraction_matches shouldBe 20/60d
-    metricTwo.ratio_this_barcode_to_best_barcode shouldBe 10/15d
-    metricTwo.pf_fraction_matches shouldBe 10/35d
-    metricTwo.pf_ratio_this_barcode_to_best_barcode shouldBe 10/20d
-    metricTwo.pf_normalized_matches shouldBe 6/7d +- 0.00001
+    metricTwo.fraction_matches shouldBe 20 / 60d
+    metricTwo.ratio_this_barcode_to_best_barcode shouldBe 10 / 15d
+    metricTwo.pf_fraction_matches shouldBe 10 / 35d
+    metricTwo.pf_ratio_this_barcode_to_best_barcode shouldBe 10 / 20d
+    metricTwo.pf_normalized_matches shouldBe 6 / 7d +- 0.00001
 
-    noMatch.fraction_matches shouldBe 30/60d
+    noMatch.fraction_matches shouldBe 30 / 60d
     noMatch.ratio_this_barcode_to_best_barcode shouldBe 1d
-    noMatch.pf_fraction_matches shouldBe 20/35d
+    noMatch.pf_fraction_matches shouldBe 20 / 35d
     noMatch.pf_ratio_this_barcode_to_best_barcode shouldBe 1d
-    noMatch.pf_normalized_matches shouldBe 12/7d +- 0.00001
+    noMatch.pf_normalized_matches shouldBe 12 / 7d +- 0.00001
   }
 
   "SampleBarcodeMetric.increment" should "not increment `pf_*` variables when the read doesn't pass QC" in {

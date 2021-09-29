@@ -154,8 +154,10 @@ case class SampleBarcodeMetric
 
   /** Increments the counts for the metric. */
   def increment(numMismatches: Int, isPf: Boolean = true): Unit = {
+
     this.templates += 1
     if (isPf) this.pf_templates += 1
+
     if (numMismatches == 0) {
       this.perfect_matches += 1
       if (isPf) this.pf_perfect_matches += 1
