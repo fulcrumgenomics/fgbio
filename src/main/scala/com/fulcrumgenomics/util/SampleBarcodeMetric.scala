@@ -43,11 +43,15 @@ object SampleBarcodeMetric {
     var totalReads: Long           = 0
     var totalPfReads: Long         = 0
     var totalPfReadsAssigned: Long = 0
+    var totalBases: Long           = 0
+    var totalBasesPassQ30: Long    = 0
 
     barcodeToMetrics.foreach { case (barcode, metric) =>
       totalReads           += metric.templates
       totalPfReads         += metric.pf_templates
       totalPfReadsAssigned += metric.pf_templates
+      totalBases           += metric.total_number_of_bases
+      totalBasesPassQ30    += metric.bases_with_q_above_threshold
     }
 
     if (totalReads > 0) {
@@ -90,6 +94,11 @@ object SampleBarcodeMetric {
         metric.pf_normalized_matches = metric.pf_templates / mean
       }
     }
+    if (totalBases > 0) {
+      barcodeToMetrics.foreach { case (barcode, metric) =>
+        if (metric.total_number_of_bases > 0) metric.fraction_bases_above_threshold = metric.bases_with_q_above_threshold / metric.total_number_of_bases.toDouble
+      }
+    }
   }
 }
 
@@ -112,6 +121,8 @@ object SampleBarcodeMetric {
   *                             mismatch.
   * @param pf_one_mismatch_matches the number of pass-filter templates that match the given barcode with exactly
   *                                one mismatch.
+  * @param bases_with_q_above_threshold the number of bases in a template with a quality score 30 or above
+  * @param total_number_of_bases the total number of bases in the templates combined
   * @param fraction_matches the fraction of all templates that match the given barcode.
   * @param ratio_this_barcode_to_best_barcode the rate of all templates matching this barcode to all template
   *                                               reads matching the most prevalent barcode. For the most prevalent
@@ -133,7 +144,7 @@ object SampleBarcodeMetric {
   *                              pass-filter templates matching this barcode over the mean of all pass-filter
   *                              templates matching any barcode (excluding unmatched). If all barcodes are
   *                              represented equally this will be
-  *                              1.
+  * @param fraction_bases_above_threshold The proportion of bases that have a quality score of 30 or above
   */
 case class SampleBarcodeMetric
 ( var barcode_name: String                                     = "",
@@ -145,16 +156,26 @@ case class SampleBarcodeMetric
   var pf_perfect_matches: Metric.Count                         = 0,
   var one_mismatch_matches: Metric.Count                       = 0,
   var pf_one_mismatch_matches: Metric.Count                    = 0,
+  var bases_with_q_above_threshold: Metric.Count               = 0,
+  var total_number_of_bases: Metric.Count                      = 0,
   var fraction_matches: Metric.Proportion                      = 0d,
   var ratio_this_barcode_to_best_barcode: Metric.Proportion    = 0d,
   var pf_fraction_matches: Metric.Proportion                   = 0d,
   var pf_ratio_this_barcode_to_best_barcode: Metric.Proportion = 0d,
-  var pf_normalized_matches: Metric.Proportion                 = 0d
+  var pf_normalized_matches: Metric.Proportion                 = 0d,
+  var fraction_bases_above_threshold: Metric.Proportion        = 0d,
 ) extends Metric {
 
-  /** Increments the counts for the metric. */
-  def increment(numMismatches: Int, isPf: Boolean = true): Unit = {
 
+  /** Increments the counts for a metric
+    *
+    * @param numMismatches number of mismatches
+    * @param isPf true if the template passes QC
+    * @param basesToAdd number of total bases in the record
+    * @param qualitiesPass number of bases that have a quality score of 30 or higher
+    * @param omitFailing if failing reads are to be omitted from the output
+    */
+  def increment(numMismatches: Int, isPf: Boolean = true, basesToAdd: Int, qualitiesPass: Int, omitFailing: Boolean): Unit = {
     this.templates += 1
     if (isPf) this.pf_templates += 1
 
@@ -165,6 +186,11 @@ case class SampleBarcodeMetric
     else if (numMismatches == 1) {
       this.one_mismatch_matches += 1
       if (isPf) this.pf_one_mismatch_matches += 1
+    }
+
+    if (isPf || !omitFailing) {
+      this.total_number_of_bases += basesToAdd
+      this.bases_with_q_above_threshold += qualitiesPass
     }
   }
 }

@@ -65,7 +65,8 @@ object GroupReadsByUmi {
   private val ReadInfoTempAttributeName = "__GRBU_ReadInfo"
 
   /** A case class to represent all the information we need to order reads for duplicate marking / grouping. */
-  case class ReadInfo(refIndex: Int, start1: Int, start2: Int, strand1: Boolean, strand2: Boolean, library: String)
+  case class
+  ReadInfo(refIndex: Int, start1: Int, start2: Int, strand1: Boolean, strand2: Boolean, library: String)
 
   object ReadInfo {
     /** Looks in all the places the library name can be hiding. Returns the library name

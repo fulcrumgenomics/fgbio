@@ -439,12 +439,13 @@ class DemuxFastqsTest extends UnitSpec with OptionValues with ErrorLogLevel {
     val qualities = "?????" + Range.inclusive(2, 40).map(q => (q + 33).toChar).mkString
     val bases = Seq("GGGGG", "A"*39)
     val expectedBases = "GGGGG" + "N"*8 + "A"*31
+    val metricsQualityThreshold = QualityEncoding.Standard.toStandardAscii(PhredScore.cap(30 + QualityEncoding.Standard.asciiOffset).toChar).toByte // can add command line to adjust this if needed
 
     qualities.foreach(q => detector.add(q))
     detector.compatibleEncodings(0).toString shouldBe "Standard"
 
     val demuxResult = makeDemuxRecord(bases = bases.mkString, quals = qualities)
-    val output = demuxResult.maskLowQualityBases(threshold = '+', qualityEncoding = detector.compatibleEncodings(0)).records(0).bases
+    val output = demuxResult.maskLowQualityBases(minBaseQualityForMasking = '+', qualityEncoding = detector.compatibleEncodings(0), baseQualityMetricsThreshold = metricsQualityThreshold, omitFailingReads = false).records(0).bases
 
     output.length shouldEqual qualities.length
     output shouldEqual expectedBases.mkString
@@ -454,18 +455,19 @@ class DemuxFastqsTest extends UnitSpec with OptionValues with ErrorLogLevel {
     val detector = new QualityEncodingDetector()
     val qualities = "?????" + Range.inclusive(2, 40).map(q => (q + 33).toChar).mkString
     val bases = Seq("GGGGG", "A"*39)
+    val metricsQualityThreshold = QualityEncoding.Standard.toStandardAscii(PhredScore.cap(30 + QualityEncoding.Standard.asciiOffset).toChar).toByte // can add command line to adjust this if needed
 
     qualities.foreach(q => detector.add(q))
     detector.compatibleEncodings(0).toString shouldBe "Standard"
 
     val demuxResult = makeDemuxRecord(bases = bases.mkString, quals = qualities)
-    val output = demuxResult.maskLowQualityBases(threshold = '!', qualityEncoding = detector.compatibleEncodings(0)).records(0).bases
+    val output = demuxResult.maskLowQualityBases(minBaseQualityForMasking = '!', qualityEncoding = detector.compatibleEncodings(0), baseQualityMetricsThreshold = metricsQualityThreshold, omitFailingReads = false).records(0).bases
 
     output.length shouldEqual qualities.length
     output shouldEqual bases.mkString
   }
 
-  def testEndToEndWithQualityThreshold(threshold: Int = 0, threads: Int = 1): Seq[FastqRecord] = {
+  def testEndToEndWithQualityThreshold(minBaseQualityForMasking: Int = 0, threads: Int = 1): Seq[FastqRecord] = {
     // Build the FASTQ
     val output: DirPath = outputDir()
 
@@ -474,9 +476,9 @@ class DemuxFastqsTest extends UnitSpec with OptionValues with ErrorLogLevel {
 
     val metadata = sampleSheetPath
 
-    new DemuxFastqs(inputs = Seq(fastqPathSingle), output = output, metadata = metadata,
-      readStructures = structures, metrics = Some(metrics), maxMismatches = 2, minMismatchDelta = 3,
-      threads = threads, outputType = Some(OutputType.Fastq), qualityThreshold = threshold).execute()
+    new DemuxFastqs(inputs=Seq(fastqPathSingle), output=output, metadata=metadata,
+      readStructures=structures, metrics=Some(metrics), maxMismatches=2, minMismatchDelta=3,
+      threads=threads, outputType=Some(OutputType.Fastq), minBaseQualityForMasking = minBaseQualityForMasking).execute()
 
     val sampleInfo = toSampleInfos(structures).head
     val sample = sampleInfo.sample
@@ -485,17 +487,17 @@ class DemuxFastqsTest extends UnitSpec with OptionValues with ErrorLogLevel {
 
     val fastq = PathUtil.pathTo(s"${prefix}.fastq.gz")
     FastqSource(fastq).toSeq
-  }
+}
 
   "DemuxFastqs" should "run end to end and return the same bases when the threshold is 0 for 1 thread" in {
-    val records = testEndToEndWithQualityThreshold(threshold = 0, threads = 1)
+    val records = testEndToEndWithQualityThreshold(minBaseQualityForMasking = 0, threads = 1)
     records.length shouldBe 1
     records(0).bases.length shouldBe 39
     records(0).bases shouldEqual "A"*39
   }
 
   it should "run end to end and replace any bases below a specified quality threshold for 1 thread" in {
-    val records = testEndToEndWithQualityThreshold(threshold = 10, threads = 1)
+    val records = testEndToEndWithQualityThreshold(minBaseQualityForMasking = 10, threads = 1)
 
     records.length shouldBe 1
     records(0).bases.length shouldBe 39
@@ -503,14 +505,14 @@ class DemuxFastqsTest extends UnitSpec with OptionValues with ErrorLogLevel {
   }
 
   it should "run end to end and return the same bases when the threshold is 0 for more than 1 thread" in {
-    val records = testEndToEndWithQualityThreshold(threshold = 0, threads = 2)
+    val records = testEndToEndWithQualityThreshold(minBaseQualityForMasking = 0, threads = 2)
     records.length shouldBe 1
     records(0).bases.length shouldBe 39
     records(0).bases shouldEqual "A"*39
   }
 
   it should "run end to end and replace any bases below a specified quality threshold for more than 1 thread" in {
-    val records = testEndToEndWithQualityThreshold(threshold = 10, threads = 2)
+    val records = testEndToEndWithQualityThreshold(minBaseQualityForMasking = 10, threads = 2)
 
     records.length shouldBe 1
     records(0).bases.length shouldBe 39
@@ -518,16 +520,19 @@ class DemuxFastqsTest extends UnitSpec with OptionValues with ErrorLogLevel {
   }
 
   it should "run end to end and and mask bases when the quality threshold at 40, and for more than 1 thread" in {
-    val records = testEndToEndWithQualityThreshold(threshold = 40, threads = 2)
+    val records = testEndToEndWithQualityThreshold(minBaseQualityForMasking = 40, threads = 2)
+
     records.length shouldBe 1
     records(0).bases.length shouldBe 39
     records(0).bases shouldEqual "N"*38 + "A"
   }
 
-  it should "run throw an exception if a threshold above accepted values is provided" in {
-    throwableMessageShouldInclude(msg = "exceeds max possible value") {
-      testEndToEndWithQualityThreshold(threshold = 100, threads = 2)
-    }
+  it should "run end to end and and mask all bases when the quality threshold is very high, and for more than 1 thread" in {
+    val records = testEndToEndWithQualityThreshold(minBaseQualityForMasking = 100, threads = 2)
+
+    records.length shouldBe 1
+    records(0).bases.length shouldBe 39
+    records(0).bases shouldEqual "N"*39
   }
 
   private def throwableMessageShouldInclude(msg: String)(r: => Unit): Unit = {
@@ -1066,7 +1071,9 @@ class DemuxFastqsTest extends UnitSpec with OptionValues with ErrorLogLevel {
     val namePrefix = "Instrument:RunID:FlowCellID:Lane:Tile:X"
     val qualities = "?"*17 + Range.inclusive(2, 40).map(q => (q + 33).toChar).mkString
     fastqs += fq(name=f"$namePrefix:1", comment=Some("1:Y:0:SampleNumber"), bases=sampleBarcode1 + "A"*39, quals=Some(qualities)) // matches the first sample -> first sample
-    fastqs += fq(name=f"$namePrefix:2", comment=Some("2:N:0:SampleNumber"), bases=sampleBarcode1 + "G"*39, quals=Some(qualities)) // matches the first sample -> first sample
+    fastqs += fq(name=f"$namePrefix:2", comment=Some("2:N:0:SampleNumber"), bases=sampleBarcode1 + "G"*39, quals = Some(qualities)) // matches the first sample -> first sample
+    fastqs += fq(name=f"$namePrefix:3", comment=Some("3:Y:1:SampleNumber"), bases=sampleBarcode1 + "G"*39, quals = Some(qualities)) // matches the first sample -> first sample
+    fastqs += fq(name=f"$namePrefix:4", comment=Some("4:N:1:SampleNumber"), bases=sampleBarcode1 + "G"*39, quals = Some(qualities)) // matches the first sample -> first sample
 
     val illuminaReadNamesFastqPath = makeTempFile("test", ".fastq")
     Io.writeLines(illuminaReadNamesFastqPath, fastqs.map(_.toString))
@@ -1075,9 +1082,9 @@ class DemuxFastqsTest extends UnitSpec with OptionValues with ErrorLogLevel {
 
     // Run the tool
     val output     = outputDir()
-    val structures = Seq(ReadStructure("17B39T"), ReadStructure("56T"))
+    val structures = Seq(ReadStructure("17B39T"))
     new DemuxFastqs(
-      inputs                       = Seq(illuminaReadNamesFastqPath, illuminaReadNamesFastqPath),
+      inputs                       = Seq(illuminaReadNamesFastqPath),
       output                       = output,
       metadata                     = sampleSheetPath,
       readStructures               = structures,
@@ -1091,27 +1098,48 @@ class DemuxFastqsTest extends UnitSpec with OptionValues with ErrorLogLevel {
       omitFailingReads             = omitFailingReads,
       omitControlReads             = omitControlReads).execute()
 
-    // Check the output FASTQs
 
+    // Check the output metrics
     toSampleInfos(structures).zipWithIndex.foreach { case (sampleInfo, index) =>
       val sample      = sampleInfo.sample
       val prefix      = toSampleOutputPrefix(sample, isUnmatched=sampleInfo.isUnmatched, illuminaFileNames=fastqStandards.illuminaFileNames, output, UnmatchedSampleId)
       val extensions  = FastqRecordWriter.extensions(pairedEnd=true, illuminaFileNames=fastqStandards.illuminaFileNames)
       val metricsFile = Metric.read[SampleBarcodeMetric](metricsFilename)
 
-      metricsFile(0).pf_templates shouldBe 1
-      metricsFile(0).templates shouldBe 2
+      val Seq(totNumBases, q30above) = {
+        if (omitFailingReads && omitControlReads) Seq(39, 11)
+        else if (omitFailingReads && !omitControlReads) Seq(78, 22)
+        else if (!omitFailingReads && omitControlReads) Seq(78, 22)
+        else if (!omitFailingReads && !omitControlReads) Seq(156, 44)
+      }
+
+      val pfTemplates = if (omitControlReads) 1 else 2
+      val templates = if (omitControlReads) 2 else 4
+
+      metricsFile(0).pf_templates shouldBe pfTemplates
+      metricsFile(0).templates shouldBe templates
+      metricsFile(0).total_number_of_bases shouldBe totNumBases
+      metricsFile(0).bases_with_q_above_threshold shouldBe q30above
+
+      metricsFile(0).fraction_bases_above_threshold shouldBe 11/39d +- 0.00001
     }
   }
 
   "DemuxFastqs" should "only increment the pf fields for passing reads in the sample barcode metrics" in {
-    testEndToEndBarcodeMetrics(FastqStandards(includeReadNumbers=true, includeSampleBarcodes=true), omitFailingReads = true)
+    testEndToEndBarcodeMetrics(FastqStandards(includeReadNumbers=true, includeSampleBarcodes=true), omitFailingReads = true, omitControlReads = false)
   }
 
-  it should "only increment the pf fields for passing reads even when --omit-failing-reads is false" in {
-    testEndToEndBarcodeMetrics(FastqStandards(includeReadNumbers=true, includeSampleBarcodes=true), omitFailingReads = false)
+  it should "only increment the pf fields for passing reads even when --omit-failing-reads=false" in {
+    testEndToEndBarcodeMetrics(FastqStandards(includeReadNumbers=true, includeSampleBarcodes=true), omitFailingReads = false, omitControlReads = false)
   }
 
+  it should "only increment the appropriate fields when --omit-failing-reads=true and --omit-control-reads=true" in {
+    testEndToEndBarcodeMetrics(FastqStandards(includeReadNumbers=true, includeSampleBarcodes=true), omitFailingReads = true, omitControlReads = true)
+  }
+
+  it should "only increment the pf fields for passing reads even when --omit-failing-reads=false and --omit-control-reads=true" in {
+    testEndToEndBarcodeMetrics(FastqStandards(includeReadNumbers=true, includeSampleBarcodes=true), omitFailingReads = false, omitControlReads = true)
+  }
 
   private implicit class WithReadInfo(rec: DemuxRecord) {
     def withReadInfo: DemuxRecord = {
