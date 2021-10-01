@@ -157,8 +157,8 @@ object DemuxFastqs {
 
     val zippedIterator = FastqSource.zipped(sources)
 
-    val maskingThresholdToByte  = qualityEncoding.toStandardAscii(PhredScore.cap(minBaseQualityForMasking + qualityEncoding.asciiOffset).toChar).toByte
-    val metricsQualityThreshold = qualityEncoding.toStandardAscii(PhredScore.cap(baseQualityMetricsThreshold + qualityEncoding.asciiOffset).toChar).toByte
+    val maskingThresholdToByte  = convertQualToByte(qualityEncoding, minBaseQualityForMasking)
+    val metricsQualityThreshold  = convertQualToByte(qualityEncoding, baseQualityMetricsThreshold)
 
     val resultIterator = if (threads > 1) {
       // Developer Note: Iterator does not support parallel operations, so we need to group together records into a
@@ -193,6 +193,10 @@ object DemuxFastqs {
       }
       res
     }.filter(r => r.keep(omitFailingReads, omitControlReads))
+  }
+
+  def convertQualToByte(qualityEncoding: QualityEncoding, qualityScore: Int): Byte = {
+    qualityEncoding.toStandardAscii(PhredScore.cap(qualityScore + qualityEncoding.asciiOffset).toChar).toByte
   }
 }
 
