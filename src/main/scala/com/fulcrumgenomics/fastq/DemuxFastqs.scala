@@ -168,8 +168,7 @@ object DemuxFastqs {
     }
 
     resultIterator.map { res =>
-      val considerRead = if (!omitControlReads) true else !res.isControl
-      if (considerRead) res.sampleInfo.metric.increment(numMismatches = res.numMismatches, isPf = res.passQc)
+      if (!omitControlReads || !res.isControl) res.sampleInfo.metric.increment(numMismatches = res.numMismatches, isPf = res.passQc)
       res
     }.filter(r => r.keep(omitFailingReads, omitControlReads))
   }

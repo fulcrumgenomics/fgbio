@@ -36,7 +36,7 @@ class SampleBarcodeMetricTest extends UnitSpec {
   "SampleBarcodeMetric.finalizeMetrics" should "fill out all metrics that require summary counts" in {
     val metricOne = new SampleBarcodeMetric("Alice", "Alice.lib", "AAAAAAA", 10, 5, 9, 4, 1, 1)
     val metricTwo = new SampleBarcodeMetric("Bob", "Bob.lib", "CCCCCCC", 20, 10, 19, 9, 1, 1)
-    val noMatch = new SampleBarcodeMetric("Eve", "Eve.lib", "NNNNNNN", 30, 20, 29, 19, 1, 1)
+    val noMatch   = new SampleBarcodeMetric("Eve", "Eve.lib", "NNNNNNN", 30, 20, 29, 19, 1, 1)
     val barcodeToMetrics = Seq(metricOne, metricTwo, noMatch).map { metric => (metric.barcode, metric) }.toMap
     SampleBarcodeMetric.finalizeMetrics(barcodeToMetrics, noMatch.barcode)
 

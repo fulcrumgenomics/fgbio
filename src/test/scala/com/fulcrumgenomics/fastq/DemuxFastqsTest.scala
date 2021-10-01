@@ -444,11 +444,6 @@ class DemuxFastqsTest extends UnitSpec with OptionValues with ErrorLogLevel {
   // A file containing valid FASTQ records.
   private val fastqPath = {
     val fastqs = new ListBuffer[FastqRecord]()
-//    fastqs += fq(name="frag1", bases=sampleBarcode1 + "A"*100) // matches the first sample -> first sample
-//    fastqs += fq(name="frag2", bases="AAAAAAAAGATTACAGT" + "A"*100) // matches the first sample, one mismatch -> first sample
-//    fastqs += fq(name="frag3", bases="AAAAAAAAGATTACTTT" + "A"*100) // matches the first sample, three mismatches -> unmatched
-//    fastqs += fq(name="frag4", bases=sampleBarcode4 + "A"*100) // matches the 4th barcode perfectly and the 3rd barcode with two mismatches, delta too small -> unmatched
-//    fastqs += fq(name="frag5", bases="AAAAAAAAGANNNNNNN" + "A"*100) // matches the first sample, too many Ns -> unmatched
 
     val namePrefix = "RunID:FlowCellID:Lane:Tile:X"
     fastqs += fq(name="frag1", comment=Some(f"1:Y:0:SampleNumber"), bases=sampleBarcode1 + "A"*100) // matches the first sample -> first sample
