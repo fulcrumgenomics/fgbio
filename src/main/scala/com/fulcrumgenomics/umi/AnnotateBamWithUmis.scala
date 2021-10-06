@@ -62,6 +62,8 @@ class AnnotateBamWithUmis(
   @arg(flag='f', doc="Input FASTQ file with UMI reads.")       val fastq: PathToFastq,
   @arg(flag='o', doc="Output BAM file to write.")              val output: PathToBam,
   @arg(flag='t', doc="The BAM attribute to store UMIs in.")    val attribute: String = "RX",
+  @arg(flag='q', doc="The BAM attribute to store UMI qualities in.")
+                                                               val qattribute: Option[String] = None,
   @arg(flag='r', doc="The read structure for the FASTQ, otherwise all bases will be used.")
                                                                val readStructure: ReadStructure = ReadStructure("+M"),
   @arg(flag='s', doc="If set, don't pre-load UMIs.")           val sameOrder: Boolean = false,
@@ -77,21 +79,20 @@ class AnnotateBamWithUmis(
   }
 
   /** Search for the next matching entry and extracts the UMI bases */
-  private def searchAndExtractUmi(fqIn: FastqSource, name: Option[String], structure: ReadStructure): (String, String) = {
-    val fq_record = name match {
-      case Some(i) => fqIn.dropWhile(_.name != i).next()
-      case None => fqIn.next()
-    }
-    fq_record.name -> extractUmis(fq_record.bases, structure)
+  private def searchAndExtractUmi(fqIn: FastqSource, name: String, structure: ReadStructure): (String, String, String) = {
+    val fq_record = fqIn.dropWhile(_.name != name).next()
+    val (umi, quals) = extractUmis(fq_record.bases, fq_record.quals, structure)
+    (fq_record.name, umi, quals)
   }
 
   /** Extracts the UMI bases given the read structure */
-  private def extractUmis(bases: String, structure: ReadStructure): String = {
-    structure
-      .extract(bases)
+  private def extractUmis(bases: String, qualities: String, structure: ReadStructure): (String, String) = {
+    val r = structure
+      .extract(bases, qualities)
       .filter(_.kind == SegmentType.MolecularBarcode)
-      .map(_.bases)
-      .mkString("")
+      .map(x => (x.bases, x.quals))
+      .unzip
+    (r._1.mkString(""), r._2.mkString(""))
   }
 
   /** Main method that does the work of reading input files, matching up reads and writing the output file. */
@@ -110,7 +111,8 @@ class AnnotateBamWithUmis(
       // Loop through the BAM file an annotate it
       logger.info("Reading input BAM and UMI FASTQ in the same order and annotating output BAM.")
       var fq_name = None: Option[String]
-      var umi = None: Option[String]
+      var umi = "": String
+      var qumi = "": String
 
       in.foreach(rec => {
         val name = rec.name
@@ -121,19 +123,22 @@ class AnnotateBamWithUmis(
             case _ => false
           }
         ) {
-          val data = searchAndExtractUmi(fqIn, Some(name), readStructure)
+          val data = searchAndExtractUmi(fqIn, name, readStructure)
           fq_name = Some(data._1)
-          umi = Some(data._2)
+          umi = data._2
+          qumi = data._3
         }
-        rec(attribute) = umi.get
-
+        rec(attribute) = umi
+        qattribute.foreach {
+          qattr => rec(qattr) = qumi
+        }
         out += rec
         progress.record(rec)
       })
     } else {
       // Read in the fastq file
       logger.info("Reading in UMIs from FASTQ.")
-      val nameToUmi =  fqIn.map(fq => (fq.name, extractUmis(fq.bases, readStructure))).toMap
+      val nameToUmi =  fqIn.map(fq => (fq.name, extractUmis(fq.bases, fq.quals, readStructure))).toMap
 
       // Loop through the BAM file an annotate it
       logger.info("Reading input BAM and annotating output BAM.")
@@ -141,7 +146,12 @@ class AnnotateBamWithUmis(
       in.foreach(rec => {
         val name = rec.name
         nameToUmi.get(name) match {
-          case Some(umi) => rec(attribute) = umi
+          case Some(umi) => {
+            rec(attribute) = umi._1
+            qattribute.foreach {
+              qattr => rec(qattr) = umi._2
+            }
+          }
           case None      => logMissingUmi(name)
         }
         out += rec
