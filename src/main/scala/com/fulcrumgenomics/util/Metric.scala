@@ -97,13 +97,13 @@ object Metric {
 
     parser.map { row =>
       forloop(from = 0, until = names.length) { i =>
-        val value = {
-          val tmp = row[String](i)
-          if (tmp.nonEmpty) tmp else ReflectionUtil.SpecialEmptyOrNoneToken
-        }
-
         reflectiveBuilder.argumentLookup.forField(names(i)) match {
           case Some(arg) =>
+            val value = {
+              val tmp = row[String](i)
+              if (tmp.isEmpty && arg.argumentType == classOf[Option[_]]) ReflectionUtil.SpecialEmptyOrNoneToken else tmp
+            }
+
             val argumentValue = ReflectionUtil.constructFromString(arg.argumentType, arg.unitType, value) match {
               case Success(v) => v
               case Failure(thr) => throw thr

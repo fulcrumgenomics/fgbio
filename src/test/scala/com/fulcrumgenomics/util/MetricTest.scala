@@ -103,6 +103,13 @@ class MetricTest extends UnitSpec with OptionValues with TimeLimits {
     testMetric.car shouldBe "default"
   }
 
+  it should "build a metric when omitting a value for a String field and supply the empty string" in {
+    val testMetric = Metric.read[TestMetric](Iterator("foo\tbar\tcar", "\t1\tzoom")).head
+    testMetric.foo shouldBe ""
+    testMetric.bar shouldBe 1
+    testMetric.car shouldBe "zoom"
+  }
+
   it should "fail when an argument is not given and has no default value" in {
     an[Exception] should be thrownBy Metric.read[TestMetric](Iterator("foo", "fooValue")) // bar has no default
   }
