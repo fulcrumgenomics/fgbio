@@ -149,6 +149,7 @@ object GeneAnnotations {
     case object ScRna         extends GeneBiotype { val refSeqValue = "scRNA";          val isCoding = false }
     case object SnRna         extends GeneBiotype { val refSeqValue = "snRNA";          val isCoding = false }
     case object SnoRna        extends GeneBiotype { val refSeqValue = "snoRNA";         val isCoding = false }
+    case object SrpRna        extends GeneBiotype { val refSeqValue = "SRP_RNA";        val isCoding = false }
     case object TRna          extends GeneBiotype { val refSeqValue = "tRNA";           val isCoding = false }
     case object TelomeraseRna extends GeneBiotype { val refSeqValue = "telomerase_RNA"; val isCoding = false }
     case object VaultRna      extends GeneBiotype { val refSeqValue = "vault_RNA";      val isCoding = false }
