@@ -674,10 +674,8 @@ private[fastq] object FastqDemultiplexer {
         this.copy(q20Bases = q20Bases, q30Bases = q30Bases)
       } else {
         val bases = this.bases.toCharArray
-        val maskedBases = bases.zip(quals).map {
-          case (base, qual) => if (qual < minBaseQualityForMasking) 'N' else base
-        }
-        this.copy(bases = maskedBases.mkString, q20Bases = q20Bases, q30Bases = q30Bases)
+        for (i <- Range(0, this.quals.length)) if (quals.charAt(i).toByte < minBaseQualityForMasking) bases(i) = 'N'
+        this.copy(bases = bases.mkString)
       }
     }
   }
