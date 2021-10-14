@@ -445,7 +445,7 @@ class DemuxFastqsTest extends UnitSpec with OptionValues with ErrorLogLevel {
     detector.compatibleEncodings(0).toString shouldBe "Standard"
 
     val demuxResult = makeDemuxRecord(bases = bases.mkString, quals = qualities)
-    val output = demuxResult.maskLowQualityBases(minBaseQualityForMasking = '+', qualityEncoding = detector.compatibleEncodings(0), baseQualityMetricsThreshold = metricsQualityThreshold, omitFailingReads = false).records(0).bases
+    val output = demuxResult.maskLowQualityBases(minBaseQualityForMasking = '+', qualityEncoding = detector.compatibleEncodings(0), omitFailingReads = false).records(0).bases
 
     output.length shouldEqual qualities.length
     output shouldEqual expectedBases.mkString
@@ -461,7 +461,7 @@ class DemuxFastqsTest extends UnitSpec with OptionValues with ErrorLogLevel {
     detector.compatibleEncodings(0).toString shouldBe "Standard"
 
     val demuxResult = makeDemuxRecord(bases = bases.mkString, quals = qualities)
-    val output = demuxResult.maskLowQualityBases(minBaseQualityForMasking = '!', qualityEncoding = detector.compatibleEncodings(0), baseQualityMetricsThreshold = metricsQualityThreshold, omitFailingReads = false).records(0).bases
+    val output = demuxResult.maskLowQualityBases(minBaseQualityForMasking = '!', qualityEncoding = detector.compatibleEncodings(0), omitFailingReads = false).records(0).bases
 
     output.length shouldEqual qualities.length
     output shouldEqual bases.mkString
@@ -478,7 +478,7 @@ class DemuxFastqsTest extends UnitSpec with OptionValues with ErrorLogLevel {
 
     new DemuxFastqs(inputs=Seq(fastqPathSingle), output=output, metadata=metadata,
       readStructures=structures, metrics=Some(metrics), maxMismatches=2, minMismatchDelta=3,
-      threads=threads, outputType=Some(OutputType.Fastq), minBaseQualityForMasking = minBaseQualityForMasking).execute()
+      threads=threads, outputType=Some(OutputType.Fastq), maskBasesBelowQuality = minBaseQualityForMasking).execute()
 
     val sampleInfo = toSampleInfos(structures).head
     val sample = sampleInfo.sample
@@ -1100,28 +1100,28 @@ class DemuxFastqsTest extends UnitSpec with OptionValues with ErrorLogLevel {
 
 
     // Check the output metrics
-    toSampleInfos(structures).zipWithIndex.foreach { case (sampleInfo, index) =>
-      val sample      = sampleInfo.sample
-      val prefix      = toSampleOutputPrefix(sample, isUnmatched=sampleInfo.isUnmatched, illuminaFileNames=fastqStandards.illuminaFileNames, output, UnmatchedSampleId)
-      val extensions  = FastqRecordWriter.extensions(pairedEnd=true, illuminaFileNames=fastqStandards.illuminaFileNames)
+    toSampleInfos(structures).zipWithIndex.foreach { case (sampleInfo, _) =>
       val metricsFile = Metric.read[SampleBarcodeMetric](metricsFilename)
 
-      val Seq(totNumBases, q30above) = {
-        if (omitFailingReads && omitControlReads) Seq(39, 11)
-        else if (omitFailingReads && !omitControlReads) Seq(78, 22)
-        else if (!omitFailingReads && omitControlReads) Seq(78, 22)
-        else if (!omitFailingReads && !omitControlReads) Seq(156, 44)
+      val Seq(totNumBases, q30above, q20above) = {
+        if (omitFailingReads && omitControlReads) Seq(39, 11, 21)
+        else if (omitFailingReads && !omitControlReads) Seq(78, 22, 42)
+        else if (!omitFailingReads && omitControlReads) Seq(78, 22, 42)
+        else if (!omitFailingReads && !omitControlReads) Seq(156, 44, 84)
       }
 
       val pfTemplates = if (omitControlReads) 1 else 2
       val templates = if (omitControlReads) 2 else 4
 
-      metricsFile(0).pf_templates shouldBe pfTemplates
-      metricsFile(0).templates shouldBe templates
-      metricsFile(0).total_number_of_bases shouldBe totNumBases
-      metricsFile(0).bases_with_q_above_threshold shouldBe q30above
+      val headMetric = metricsFile.head
+      headMetric.pf_templates shouldBe pfTemplates
+      headMetric.templates shouldBe templates
+      headMetric.total_number_of_bases shouldBe totNumBases
+      headMetric.q30_bases shouldBe q30above
+      headMetric.q20_bases shouldBe q20above
 
-      metricsFile(0).fraction_bases_above_threshold shouldBe 11/39d +- 0.00001
+      headMetric.frac_q30_bases shouldBe 11/39d +- 0.00001
+      headMetric.frac_q20_bases shouldBe 21/39d +- 0.00001
     }
   }
 

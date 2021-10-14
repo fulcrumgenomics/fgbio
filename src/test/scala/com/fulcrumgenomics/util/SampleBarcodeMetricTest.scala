@@ -34,7 +34,7 @@ import scala.collection.mutable
 class SampleBarcodeMetricTest extends UnitSpec {
 
   "SampleBarcodeMetric.finalizeMetrics" should "fill out all metrics that require summary counts" in {
-    val metricOne = new SampleBarcodeMetric("Alice", "Alice.lib", "AAAAAAA", 10, 5,   9,  4, 1, 1, total_number_of_bases = 10, bases_with_q_above_threshold = 5)
+    val metricOne = new SampleBarcodeMetric("Alice", "Alice.lib", "AAAAAAA", 10, 5,   9,  4, 1, 1, total_number_of_bases = 10, q30_bases = 5, q20_bases = 10)
     val metricTwo = new SampleBarcodeMetric("Bob",   "Bob.lib",   "CCCCCCC", 20, 10, 19,  9, 1, 1)
     val noMatch   = new SampleBarcodeMetric("Eve",   "Eve.lib",   "NNNNNNN", 30, 20, 29, 19, 1, 1)
     val barcodeToMetrics = Seq(metricOne, metricTwo, noMatch).map { metric => (metric.barcode, metric) }.toMap
@@ -45,7 +45,7 @@ class SampleBarcodeMetricTest extends UnitSpec {
     metricOne.pf_fraction_matches shouldBe 5 / 35d
     metricOne.pf_ratio_this_barcode_to_best_barcode shouldBe 5 / 20d
     metricOne.pf_normalized_matches shouldBe 3 / 7d +- 0.00001
-    metricOne.fraction_bases_above_threshold shouldBe 1 / 2d
+    metricOne.frac_q30_bases shouldBe 1 / 2d
 
     metricTwo.fraction_matches shouldBe 20 / 60d
     metricTwo.ratio_this_barcode_to_best_barcode shouldBe 10 / 15d
@@ -63,7 +63,7 @@ class SampleBarcodeMetricTest extends UnitSpec {
   "SampleBarcodeMetric.increment" should "not increment `pf_*` variables when the read doesn't pass QC" in {
     val metric = new SampleBarcodeMetric()
 
-    metric.increment(numMismatches = 1, isPf = false, basesToAdd = 1, qualitiesPass = 1, omitFailing = true)
+    metric.increment(numMismatches = 1, isPf = false, basesToAdd = 1, q30Bases = 1, q20Bases = 1, omitFailing = true)
     metric.templates shouldEqual 1
     metric.pf_templates shouldEqual 0
     metric.one_mismatch_matches shouldEqual 1
@@ -73,7 +73,7 @@ class SampleBarcodeMetricTest extends UnitSpec {
   it should "increment `pf_*` variables as well when the read passes QC" in {
     val metric = new SampleBarcodeMetric()
 
-    metric.increment(numMismatches = 1, isPf = true, basesToAdd = 1, qualitiesPass =  1, omitFailing = true)
+    metric.increment(numMismatches = 1, isPf = true, basesToAdd = 1, q30Bases =  1, q20Bases = 1, omitFailing = true)
     metric.templates shouldEqual 1
     metric.pf_templates shouldEqual 1
     metric.one_mismatch_matches shouldEqual 1
@@ -83,32 +83,36 @@ class SampleBarcodeMetricTest extends UnitSpec {
   it should "increment the total number of bases if the read passes QC, and --omit-failing-reads=false" in {
     val metric = new SampleBarcodeMetric()
 
-    metric.increment(numMismatches = 0, isPf=true, basesToAdd = 1, qualitiesPass = 1, omitFailing = false)
+    metric.increment(numMismatches = 0, isPf=true, basesToAdd = 1, q30Bases = 1, q20Bases = 1, omitFailing = false)
     metric.total_number_of_bases shouldBe 1
-    metric.bases_with_q_above_threshold shouldBe 1
+    metric.q20_bases shouldBe 1
+    metric.q30_bases shouldBe 1
   }
 
   it should "increment the total number of bases if the read passes QC, and --omit-failing-reads=true" in {
     val metric = new SampleBarcodeMetric()
 
-    metric.increment(numMismatches = 0, isPf=true, basesToAdd = 1, qualitiesPass = 1, omitFailing = true)
+    metric.increment(numMismatches = 0, isPf=true, basesToAdd = 1, q30Bases = 1, q20Bases = 1, omitFailing = true)
     metric.total_number_of_bases shouldBe 1
-    metric.bases_with_q_above_threshold shouldBe 1
+    metric.q20_bases shouldBe 1
+    metric.q30_bases shouldBe 1
   }
 
   it should "increment the total number of bases if the read does not pass QC and --omit-failing-reads=false" in {
     val metric = new SampleBarcodeMetric()
 
-    metric.increment(numMismatches = 0, isPf=false, basesToAdd = 1, qualitiesPass = 1, omitFailing = false)
+    metric.increment(numMismatches = 0, isPf=false, basesToAdd = 1, q30Bases = 1, q20Bases = 1, omitFailing = false)
     metric.total_number_of_bases shouldBe 1
-    metric.bases_with_q_above_threshold shouldBe 1
+    metric.q20_bases shouldBe 1
+    metric.q30_bases shouldBe 1
   }
 
   it should "not increment the total number of bases if the read does not pass QC and --omit-failing-reads=true" in {
     val metric = new SampleBarcodeMetric()
 
-    metric.increment(numMismatches = 0, isPf=false, basesToAdd = 1, qualitiesPass = 1, omitFailing = true)
+    metric.increment(numMismatches = 0, isPf=false, basesToAdd = 1, q30Bases = 1, q20Bases = 1, omitFailing = true)
     metric.total_number_of_bases shouldBe 0
-    metric.bases_with_q_above_threshold shouldBe 0
+    metric.q20_bases shouldBe 0
+    metric.q30_bases shouldBe 0
   }
 }

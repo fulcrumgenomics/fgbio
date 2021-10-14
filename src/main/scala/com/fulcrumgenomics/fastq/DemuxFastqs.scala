@@ -25,30 +25,28 @@
 
 package com.fulcrumgenomics.fastq
 
-import java.io.Closeable
-import java.util.concurrent.ForkJoinPool
 import com.fulcrumgenomics.FgBioDef._
 import com.fulcrumgenomics.bam.api.{SamOrder, SamRecord, SamWriter}
 import com.fulcrumgenomics.cmdline.{ClpGroups, FgBioTool}
 import com.fulcrumgenomics.commons.CommonsDef.{DirPath, FilePath, PathPrefix, PathToFastq}
 import com.fulcrumgenomics.commons.io.PathUtil
 import com.fulcrumgenomics.commons.util.{LazyLogging, Logger}
+import com.fulcrumgenomics.fastq.DemuxFastqs.convertQualToByte
 import com.fulcrumgenomics.fastq.FastqDemultiplexer.{DemuxRecord, DemuxResult}
 import com.fulcrumgenomics.illumina.{Sample, SampleSheet}
 import com.fulcrumgenomics.sopt.{arg, clp}
 import com.fulcrumgenomics.umi.ConsensusTags
 import com.fulcrumgenomics.util.NumericTypes.PhredScore
 import com.fulcrumgenomics.util.ReadStructure.SubRead
-import com.fulcrumgenomics.util.{ReadStructure, SampleBarcodeMetric, _}
+import com.fulcrumgenomics.util._
+import enumeratum.EnumEntry
 import htsjdk.samtools.SAMFileHeader.SortOrder
 import htsjdk.samtools._
 import htsjdk.samtools.util.{Iso8601Date, SequenceUtil}
-import enumeratum.EnumEntry
 
+import java.io.Closeable
+import java.util.concurrent.ForkJoinPool
 import scala.collection.mutable.ListBuffer
-import scala.math.Numeric.ByteIsIntegral.mkOrderingOps
-import scala.math.Ordered.orderingToOrdered
-import scala.math.Ordering.Implicits.infixOrderingOps
 
 object DemuxFastqs {
 
@@ -149,8 +147,8 @@ object DemuxFastqs {
                              omitFailingReads: Boolean,
                              omitControlReads: Boolean,
                              minBaseQualityForMasking: Int,
-                             qualityEncoding: QualityEncoding,
-                             baseQualityMetricsThreshold: Int): Iterator[DemuxResult] = {
+                             qualityEncoding: QualityEncoding
+                            ): Iterator[DemuxResult] = {
 
     require(demultiplexer.expectedNumberOfReads == sources.length,
       s"The demultiplexer expects ${demultiplexer.expectedNumberOfReads} reads but ${sources.length} FASTQ sources given.")
@@ -158,7 +156,6 @@ object DemuxFastqs {
     val zippedIterator = FastqSource.zipped(sources)
 
     val maskingThresholdToByte  = convertQualToByte(qualityEncoding, minBaseQualityForMasking)
-    val metricsQualityThreshold  = convertQualToByte(qualityEncoding, baseQualityMetricsThreshold)
 
     val resultIterator = if (threads > 1) {
       // Developer Note: Iterator does not support parallel operations, so we need to group together records into a
@@ -171,7 +168,7 @@ object DemuxFastqs {
             .parWith(pool=pool)
             .map { readRecords => 
                 demultiplexer.demultiplex(readRecords: _*)
-                    .maskLowQualityBases(minBaseQualityForMasking=maskingThresholdToByte, qualityEncoding=qualityEncoding, baseQualityMetricsThreshold=metricsQualityThreshold, omitFailingReads=omitFailingReads)
+                    .maskLowQualityBases(minBaseQualityForMasking=maskingThresholdToByte, qualityEncoding=qualityEncoding, omitFailingReads=omitFailingReads)
             }
             .seq
         }
@@ -179,7 +176,7 @@ object DemuxFastqs {
     else {
       zippedIterator
         .map { readRecords => demultiplexer.demultiplex(readRecords: _*)
-          .maskLowQualityBases(minBaseQualityForMasking=maskingThresholdToByte, qualityEncoding=qualityEncoding, baseQualityMetricsThreshold=metricsQualityThreshold, omitFailingReads=omitFailingReads) }
+          .maskLowQualityBases(minBaseQualityForMasking=maskingThresholdToByte, qualityEncoding=qualityEncoding, omitFailingReads=omitFailingReads) }
     }
 
     resultIterator.map { res =>
@@ -187,7 +184,8 @@ object DemuxFastqs {
        res.sampleInfo.metric.increment(
         numMismatches = res.numMismatches,
         isPf          = res.passQc,
-        qualitiesPass = res.numQualsAboveThreshold,
+        q20Bases      = res.q20Bases,
+        q30Bases      = res.q30Bases,
         basesToAdd    = res.numBases,
         omitFailing   = omitFailingReads)
       }
@@ -381,8 +379,7 @@ class DemuxFastqs
  val omitFailingReads: Boolean = false,
  @arg(doc="Do not keep reads identified as control if true, otherwise keep all reads. Control reads are determined from the comment in the FASTQ header.")
  val omitControlReads: Boolean = false,
- @arg(doc="Mask bases with a quality score below the specified threshold as Ns") val minBaseQualityForMasking: Int = 0,
- @arg(doc="Minimum base quality threshold (inclusive) to use for the sample barcode metrics") val qualityThresholdForMetrics: Int = 30,
+ @arg(doc="Mask bases with a quality score below the specified threshold as Ns") val maskBasesBelowQuality: Int = 0,
 ) extends FgBioTool with LazyLogging {
 
   // Support the deprecated --illumina-standards option
@@ -486,9 +483,8 @@ class DemuxFastqs
       threads                     = threads,
       omitFailingReads            = this.omitFailingReads,
       omitControlReads            = this.omitControlReads,
-      minBaseQualityForMasking    = minBaseQualityForMasking,
-      qualityEncoding             = qualityEncoding,
-      baseQualityMetricsThreshold = qualityThresholdForMetrics
+      minBaseQualityForMasking    = maskBasesBelowQuality,
+      qualityEncoding             = qualityEncoding
     )
 
     // Write the records out in its own thread
@@ -661,29 +657,27 @@ private[fastq] object FastqDemultiplexer {
                          originalBases: Option[String] = None,
                          originalQuals: Option[String] = None,
                          readInfo: Option[ReadInfo] = None,
-                         numAboveQualityThreshold: Int = 0) {
+                         q30Bases: Int = 0,
+                         q20Bases: Int = 0) {
 
     /** Masks bases that have a quality score less than to a specified minBaseQualityForMasking.
       * @param minBaseQualityForMasking The minBaseQualityForMasking for masking bases, exclusive. Bases with a quality score < minBaseQualityForMasking will be masked
       * @param qualityEncoding The encoding used for quality scores in the Fastq file.
       * @return a new DemuxRecord with updated bases
       */
-    def maskLowQualityBases(minBaseQualityForMasking: Byte, qualityEncoding: QualityEncoding, baseQualityMetricsThreshold: Byte): DemuxRecord = {
+    def maskLowQualityBases(minBaseQualityForMasking: Byte, qualityEncoding: QualityEncoding): DemuxRecord = {
+      val quals = this.quals.toCharArray
+      val q30Bases = quals.count(_ >= convertQualToByte(qualityEncoding, 30))
+      val q20Bases = quals.count(_ >= convertQualToByte(qualityEncoding, 20))
 
-      if (baseQualityMetricsThreshold <= 0) this
-      else {
-        val quals = this.quals.toCharArray
-        val numAboveQualityThreshold = quals.filter(_ >= baseQualityMetricsThreshold).size
-
-        if (minBaseQualityForMasking <= 0 || this.quals.forall(_ >= minBaseQualityForMasking)) {
-          this.copy(numAboveQualityThreshold=numAboveQualityThreshold)
-        } else {
-          val bases = this.bases.toCharArray
-          val maskedBases = bases.zip(quals).map {
-            case (base, qual) => if (qual < minBaseQualityForMasking) 'N' else base
-          }
-          this.copy(bases=maskedBases.mkString, numAboveQualityThreshold=numAboveQualityThreshold)
+      if (minBaseQualityForMasking <= 0 || this.quals.forall(_ >= minBaseQualityForMasking)) {
+        this.copy(q20Bases = q20Bases, q30Bases = q30Bases)
+      } else {
+        val bases = this.bases.toCharArray
+        val maskedBases = bases.zip(quals).map {
+          case (base, qual) => if (qual < minBaseQualityForMasking) 'N' else base
         }
+        this.copy(bases = maskedBases.mkString, q20Bases = q20Bases, q30Bases = q30Bases)
       }
     }
   }
@@ -702,7 +696,8 @@ private[fastq] object FastqDemultiplexer {
                          passQc: Boolean = true,
                          isControl: Boolean = false,
                          numBases: Int = 0,
-                         numQualsAboveThreshold: Int = 0) {
+                         q30Bases: Int = 0,
+                         q20Bases: Int = 0) {
 
     /** Returns true if this [[DemuxResult]] should be kept for output, false otherwise.
      * Returns true if `omitFailingReads` is false or if `passQc` is true
@@ -716,17 +711,22 @@ private[fastq] object FastqDemultiplexer {
     }
 
     /** A function to mask bases that have a quality score less to a specified threshold
-      * @param minBaseQualityForMasking The threshold for masking bases, exclusive. Bases with a quality score < minBaseQualityForMasking will be masked
+      *
       * @return a new DemuxResult with updated bases
       */
-    def maskLowQualityBases(minBaseQualityForMasking: Byte, qualityEncoding: QualityEncoding, baseQualityMetricsThreshold: Byte, omitFailingReads: Boolean): DemuxResult = { // using this.type here causes a mismatch error
-      val records =  if (minBaseQualityForMasking <= 0) this.records else {
-        this.records.map(_.maskLowQualityBases(minBaseQualityForMasking = minBaseQualityForMasking, qualityEncoding = qualityEncoding, baseQualityMetricsThreshold = baseQualityMetricsThreshold))
+    def maskLowQualityBases(minBaseQualityForMasking: Byte,
+                            qualityEncoding: QualityEncoding,
+                            omitFailingReads: Boolean): DemuxResult = { // using this.type here causes a mismatch error
+      val records = if (minBaseQualityForMasking <= 0) this.records else {
+        this.records.map(_.maskLowQualityBases(minBaseQualityForMasking = minBaseQualityForMasking,
+                                               qualityEncoding          = qualityEncoding)
+        )
       }
-      val numPass  = records.map(rec => rec.numAboveQualityThreshold).sum
-      val numBases = records.map(rec => rec.bases.length).sum
+      val q20Bases  = records.map(_.q20Bases).sum
+      val q30Bases  = records.map(_.q30Bases).sum
+      val numBases = records.map(_.bases.length).sum
 
-      val result = this.copy(records=records, numBases=numBases, numQualsAboveThreshold=numPass)
+      val result = this.copy(records=records, numBases=numBases, q20Bases=q20Bases, q30Bases=q30Bases)
       result
     }
   }
@@ -765,7 +765,7 @@ private[fastq] object FastqDemultiplexer {
   * @param includeOriginal true if to provide set the values for `originaBases` and `originalQuals` in [[DemuxResult]],
   *                        namely the bases and qualities FOR ALL bases, including molecular barcode, sample barcode,
   *                        and skipped bases.
-  * @param keepOnlyPassing true if to remove reads that don't pass QC, marked as 'N' in the header comment
+  * @param omitFailingReads true if to remove reads that don't pass QC, marked as 'N' in the header comment
   * @param omitControlReads false if to keep reads that are marked as internal control reads in the header comment.
   */
 private class FastqDemultiplexer(val sampleInfos: Seq[SampleInfo],
@@ -952,10 +952,10 @@ object ReadInfo {
       passQc          = keepBoolean,
       internalControl = internalControl.toInt != 0,
       sampleInfo      = sampleInfo,
-      rest            = comments.drop(1)
+      rest            = comments.toIndexedSeq.drop(1)
     )
   } catch {
-    case ex: Exception => throw new IllegalStateException(f"Could parse read info from read: ${name} ${comment}", ex)
+    case ex: Exception => throw new IllegalStateException(f"Could parse read info from read: $name $comment", ex)
   }
 }
 

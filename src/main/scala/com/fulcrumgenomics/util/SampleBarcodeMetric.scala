@@ -44,14 +44,12 @@ object SampleBarcodeMetric {
     var totalPfReads: Long         = 0
     var totalPfReadsAssigned: Long = 0
     var totalBases: Long           = 0
-    var totalBasesPassQ30: Long    = 0
 
-    barcodeToMetrics.foreach { case (barcode, metric) =>
+    barcodeToMetrics.foreach { case (_, metric) =>
       totalReads           += metric.templates
       totalPfReads         += metric.pf_templates
       totalPfReadsAssigned += metric.pf_templates
       totalBases           += metric.total_number_of_bases
-      totalBasesPassQ30    += metric.bases_with_q_above_threshold
     }
 
     if (totalReads > 0) {
@@ -90,13 +88,16 @@ object SampleBarcodeMetric {
     }
     if (totalPfReadsAssigned > 0) {
       val mean: Double = totalPfReadsAssigned.toDouble / barcodeToMetrics.values.size.toDouble
-      barcodeToMetrics.foreach { case (barcode, metric) =>
+      barcodeToMetrics.foreach { case (_, metric) =>
         metric.pf_normalized_matches = metric.pf_templates / mean
       }
     }
     if (totalBases > 0) {
-      barcodeToMetrics.foreach { case (barcode, metric) =>
-        if (metric.total_number_of_bases > 0) metric.fraction_bases_above_threshold = metric.bases_with_q_above_threshold / metric.total_number_of_bases.toDouble
+      barcodeToMetrics.foreach { case (_, metric) =>
+        if (metric.total_number_of_bases > 0) {
+          metric.frac_q20_bases = metric.q20_bases / metric.total_number_of_bases.toDouble
+          metric.frac_q30_bases = metric.q30_bases / metric.total_number_of_bases.toDouble
+        }
       }
     }
   }
@@ -121,7 +122,8 @@ object SampleBarcodeMetric {
   *                             mismatch.
   * @param pf_one_mismatch_matches the number of pass-filter templates that match the given barcode with exactly
   *                                one mismatch.
-  * @param bases_with_q_above_threshold the number of bases in a template with a quality score 30 or above
+  * @param q20_bases the number of bases in a template with a quality score 20 or above
+  * @param q30_bases the number of bases in a template with a quality score 30 or above
   * @param total_number_of_bases the total number of bases in the templates combined
   * @param fraction_matches the fraction of all templates that match the given barcode.
   * @param ratio_this_barcode_to_best_barcode the rate of all templates matching this barcode to all template
@@ -144,7 +146,8 @@ object SampleBarcodeMetric {
   *                              pass-filter templates matching this barcode over the mean of all pass-filter
   *                              templates matching any barcode (excluding unmatched). If all barcodes are
   *                              represented equally this will be
-  * @param fraction_bases_above_threshold The proportion of bases that have a quality score of 30 or above
+  * @param frac_q20_bases the fraction of bases in a template with a quality score 20 or above
+  * @param frac_q30_bases the fraction of bases in a template with a quality score 30 or above
   */
 case class SampleBarcodeMetric
 ( var barcode_name: String                                     = "",
@@ -156,14 +159,16 @@ case class SampleBarcodeMetric
   var pf_perfect_matches: Metric.Count                         = 0,
   var one_mismatch_matches: Metric.Count                       = 0,
   var pf_one_mismatch_matches: Metric.Count                    = 0,
-  var bases_with_q_above_threshold: Metric.Count               = 0,
+  var q20_bases: Metric.Count                                  = 0,
+  var q30_bases: Metric.Count                                  = 0,
   var total_number_of_bases: Metric.Count                      = 0,
   var fraction_matches: Metric.Proportion                      = 0d,
   var ratio_this_barcode_to_best_barcode: Metric.Proportion    = 0d,
   var pf_fraction_matches: Metric.Proportion                   = 0d,
   var pf_ratio_this_barcode_to_best_barcode: Metric.Proportion = 0d,
   var pf_normalized_matches: Metric.Proportion                 = 0d,
-  var fraction_bases_above_threshold: Metric.Proportion        = 0d,
+  var frac_q20_bases: Metric.Proportion                        = 0d,
+  var frac_q30_bases: Metric.Proportion                        = 0d
 ) extends Metric {
 
 
@@ -172,10 +177,16 @@ case class SampleBarcodeMetric
     * @param numMismatches number of mismatches
     * @param isPf true if the template passes QC
     * @param basesToAdd number of total bases in the record
-    * @param qualitiesPass number of bases that have a quality score of 30 or higher
+    * @param q20Bases number of bases that have a quality score of 20 or higher
+    * @param q30Bases number of bases that have a quality score of 30 or higher
     * @param omitFailing if failing reads are to be omitted from the output
     */
-  def increment(numMismatches: Int, isPf: Boolean = true, basesToAdd: Int, qualitiesPass: Int, omitFailing: Boolean): Unit = {
+  def increment(numMismatches: Int,
+                 isPf: Boolean = true,
+                 basesToAdd: Int,
+                 q20Bases: Int,
+                 q30Bases: Int,
+                 omitFailing: Boolean): Unit = {
     this.templates += 1
     if (isPf) this.pf_templates += 1
 
@@ -190,7 +201,8 @@ case class SampleBarcodeMetric
 
     if (isPf || !omitFailing) {
       this.total_number_of_bases += basesToAdd
-      this.bases_with_q_above_threshold += qualitiesPass
+      this.q20_bases += q20Bases
+      this.q30_bases += q30Bases
     }
   }
 }
