@@ -64,7 +64,9 @@ class AnnotateBamWithUmis(
   @arg(flag='t', doc="The BAM attribute to store UMIs in.")    val attribute: String = "RX",
   @arg(flag='r', doc="The read structure for the FASTQ, otherwise all bases will be used.")
                                                                val readStructure: ReadStructure = ReadStructure("+M"),
-  @arg(          doc="If set, fail on the first missing UMI.") val failFast: Boolean = false
+  @arg(flag='s', doc="true if the fastq file is sorted the same as the bam")
+                                                               val isSorted: Boolean = false,
+  @arg(          doc="If set, fail on the first missing UMI.") val failFast: Boolean = false,
 ) extends FgBioTool with LazyLogging {
 
   private var missingUmis: Long = 0
@@ -92,7 +94,6 @@ class AnnotateBamWithUmis(
     // Read in the fastq file
     logger.info("Reading in UMIs from FASTQ.")
     val fqIn      = FastqSource(fastq)
-    val nameToUmi =  fqIn.map(fq => (fq.name, extractUmis(fq.bases, readStructure))).toMap
 
     // Loop through the BAM file an annotate it
     logger.info("Reading input BAM and annotating output BAM.")
@@ -100,16 +101,25 @@ class AnnotateBamWithUmis(
     val out      = SamWriter(output, in.header)
     val progress = ProgressLogger(logger)
 
-    in.foreach(rec => {
-      val name = rec.name
-      nameToUmi.get(name) match {
-        case Some(umi) => rec(attribute) = umi
-        case None      => logMissingUmi(name)
-      }
-      out += rec
-      progress.record(rec)
-    })
+    val nameToUmi =  fqIn.map(fq => (fq.name, extractUmis(fq.bases, readStructure))).toMap
 
+    if (isSorted) {
+      in.zip(fqIn).foreach { case (rec, fq) =>
+        rec(attribute) = extractUmis(fq.bases, readStructure)
+        out += rec
+        progress.record(rec)
+      }
+    } else {
+      in.foreach(rec => {
+        val name = rec.name
+        nameToUmi.get(name) match {
+          case Some(umi) => rec(attribute) = umi
+          case None      => logMissingUmi(name)
+        }
+        out += rec
+        progress.record(rec)
+      })
+    }
     // Finish up
     out.close()
     logger.info(s"Processed ${progress.getCount} records with ${missingUmis} missing UMIs.")

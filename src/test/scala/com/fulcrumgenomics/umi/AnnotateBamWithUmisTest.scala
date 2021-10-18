@@ -33,6 +33,7 @@ import com.fulcrumgenomics.util.{Io, ReadStructure}
 /**
   * Tests for AnnotateBamWithUmis
   */
+
 class AnnotateBamWithUmisTest extends UnitSpec {
   private val dir = PathUtil.pathTo("src/test/resources/com/fulcrumgenomics/umi")
   private val sam = dir.resolve("annotate_umis.sam")
@@ -64,4 +65,5 @@ class AnnotateBamWithUmisTest extends UnitSpec {
       rec[String](umiTag) shouldBe rec.basesString.substring(2,6)
     })
   }
+
 }
