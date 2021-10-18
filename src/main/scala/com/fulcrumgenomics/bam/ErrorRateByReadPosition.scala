@@ -134,7 +134,6 @@ class ErrorRateByReadPosition
     val ilist    = this.intervals.map(p => IntervalList.fromFile(p.toFile).uniqued(false))
 
     val refWalker     = new ReferenceSequenceFileWalker(this.ref.toFile)
-
     val locusIterator = buildSamLocusIterator(in, ilist).iterator()
     val variantMask   = buildVariantMask(variants, ilist, refWalker.getSequenceDictionary.fromSam)
 
