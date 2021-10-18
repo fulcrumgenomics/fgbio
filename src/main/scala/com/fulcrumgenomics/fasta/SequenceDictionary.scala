@@ -312,6 +312,7 @@ object Converters {
 
   /** Converter from a [[SAMSequenceDictionary]] to a [[SequenceDictionary]] */
   implicit class FromSAMSequenceDictionary(dict: SAMSequenceDictionary) {
+    require(dict != null, "The reference provided does not have a sequence dictionary (.dict)")
     def fromSam: SequenceDictionary = SequenceDictionary(dict.getSequences.map(_.fromSam).toIndexedSeq)
   }
 }
