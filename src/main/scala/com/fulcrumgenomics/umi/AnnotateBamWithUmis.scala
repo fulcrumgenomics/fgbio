@@ -94,15 +94,15 @@ class AnnotateBamWithUmis(
 
     // Read in the fastq file
     logger.info("Reading in UMIs from FASTQ.")
-    val fqIn      = FastqSource(fastq)
+    val fqIn     = FastqSource(fastq)
 
-    // Loop through the BAM file an annotate it
     logger.info("Reading input BAM and annotating output BAM.")
     val in       = SamSource(input)
     val out      = SamWriter(output, in.header)
     val progress = ProgressLogger(logger)
 
     if (isSorted) {
+      // Loop through fastq and annotate corresponding BAM entries
       val samIter = in.iterator.bufferBetter
       fqIn.foreach { fqRec =>
         val records = samIter.takeWhile(_.name == fqRec.name).toIndexedSeq
@@ -117,6 +117,7 @@ class AnnotateBamWithUmis(
       }
       samIter.foreach(rec => logMissingUmi(rec.name))
     } else {
+      // Loop through the BAM file an annotate it
       val nameToUmi = fqIn.map(fq => (fq.name, extractUmis(fq.bases, readStructure))).toMap
       in.foreach { rec => 
         val name = rec.name
