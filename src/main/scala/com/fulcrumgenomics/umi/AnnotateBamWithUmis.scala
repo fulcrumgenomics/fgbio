@@ -135,6 +135,7 @@ class AnnotateBamWithUmis(
         progress.record(rec)
       }
     }
+    progress.logLast()
     // Finish up
     out.close()
     logger.info(s"Processed ${progress.getCount} records with ${missingUmis} missing UMIs.")
