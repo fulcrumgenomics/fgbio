@@ -193,7 +193,7 @@ object DemuxFastqs {
     }.filter(r => r.keep(omitFailingReads, omitControlReads))
   }
 
-  def convertQualToByte(qualityEncoding: QualityEncoding, qualityScore: Int): Byte = {
+  private def convertQualToByte(qualityEncoding: QualityEncoding, qualityScore: Int): Byte = {
     qualityEncoding.toStandardAscii(PhredScore.cap(qualityScore + qualityEncoding.asciiOffset).toChar).toByte
   }
 }
@@ -722,10 +722,9 @@ private[fastq] object FastqDemultiplexer {
       }
       val q20Bases  = records.map(_.q20Bases).sum
       val q30Bases  = records.map(_.q30Bases).sum
-      val numBases = records.map(_.bases.length).sum
+      val numBases  = records.map(_.bases.length).sum
 
-      val result = this.copy(records=records, numBases=numBases, q20Bases=q20Bases, q30Bases=q30Bases)
-      result
+      this.copy(records=records, numBases=numBases, q20Bases=q20Bases, q30Bases=q30Bases)
     }
   }
 
