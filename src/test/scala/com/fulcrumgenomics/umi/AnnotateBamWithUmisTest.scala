@@ -91,5 +91,4 @@ class AnnotateBamWithUmisTest extends UnitSpec {
       rec[String](umiTag) shouldBe rec.basesString.substring(2,6)
     })
   }
-
 }
