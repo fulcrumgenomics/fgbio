@@ -118,8 +118,8 @@ class AnnotateBamWithUmis(
           }
         }
       }
-      samIter.foreach { 
-        rec => logMissingUmi(rec.name)
+      samIter.foreach { rec =>
+        logMissingUmi(rec.name)
         progress.record(rec)
       }
     } else {
