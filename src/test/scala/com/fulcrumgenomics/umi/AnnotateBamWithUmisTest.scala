@@ -51,7 +51,7 @@ class AnnotateBamWithUmisTest extends UnitSpec {
 
   it should "successfully add UMIs to a BAM in when the fastq is sorted" in {
     val out       = makeTempFile("with_umis.", ".bam")
-    val annotator = new AnnotateBamWithUmis(input=sam, fastq=fq, output=out, attribute=umiTag, sorted = true)
+    val annotator = new AnnotateBamWithUmis(input=sam, fastq=fq, output=out, attribute=umiTag, sorted=true)
     annotator.execute()
     SamSource(out).foreach(rec => {
       rec[String](umiTag) shouldBe rec.basesString.substring(0,8)
@@ -70,7 +70,7 @@ class AnnotateBamWithUmisTest extends UnitSpec {
     val out     = makeTempFile("with_umis.", ".bam")
     val shortFq = makeTempFile(s"missing_umis.", ".fq.gz")
     Io.writeLines(shortFq, Io.readLines(fq).toSeq.dropRight(8))
-    val annotator = new AnnotateBamWithUmis(input=sam, fastq=shortFq, output=out, attribute=umiTag, sorted = true)
+    val annotator = new AnnotateBamWithUmis(input=sam, fastq=shortFq, output=out, attribute=umiTag, sorted=true)
     an[FailureException] shouldBe thrownBy { annotator.execute() }
   }
 
@@ -79,7 +79,7 @@ class AnnotateBamWithUmisTest extends UnitSpec {
     val longFq = makeTempFile(s"extra_umis.", ".fq.gz")
     Io.writeLines(longFq, Io.readLines(fq))
     Io.writeLines(longFq, Seq("@not_a_flowcell:1:1101:10060:3200/2 2:N:0:19","GATCTTGG","+","-,86,,;:"))
-    val annotator = new AnnotateBamWithUmis(input=sam, fastq=longFq, output=out, attribute=umiTag, sorted = true)
+    val annotator = new AnnotateBamWithUmis(input=sam, fastq=longFq, output=out, attribute=umiTag, sorted=true)
     an[FailureException] shouldBe thrownBy { annotator.execute() }
   }
 
