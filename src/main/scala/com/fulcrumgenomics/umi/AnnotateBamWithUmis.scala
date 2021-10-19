@@ -32,6 +32,7 @@ import com.fulcrumgenomics.commons.util.LazyLogging
 import com.fulcrumgenomics.fastq.FastqSource
 import com.fulcrumgenomics.sopt._
 import com.fulcrumgenomics.util.{ProgressLogger, ReadStructure, SegmentType}
+import com.fulcrumgenomics.FgBioDef.BetterBufferedIteratorScalaWrapper
 
 @clp(description =
   """
@@ -101,15 +102,22 @@ class AnnotateBamWithUmis(
     val out      = SamWriter(output, in.header)
     val progress = ProgressLogger(logger)
 
-    val nameToUmi =  fqIn.map(fq => (fq.name, extractUmis(fq.bases, readStructure))).toMap
-
     if (isSorted) {
-      in.zip(fqIn).foreach { case (rec, fq) =>
-        rec(attribute) = extractUmis(fq.bases, readStructure)
-        out += rec
-        progress.record(rec)
+      val samIter = in.iterator.bufferBetter
+      fqIn.foreach { fqRec =>
+        val records = samIter.takeWhile(_.name == fqRec.name).toIndexedSeq
+        if (records.isEmpty) logMissingUmi(fqRec.name) else {
+          val umi = extractUmis(fqRec.bases, structure=readStructure)
+          records.foreach { rec =>
+            rec(attribute) = umi
+            out += rec
+            progress.record(rec)
+          }
+        }
       }
+      if (samIter.nonEmpty) fail(exit=missingUmis.toInt)
     } else {
+      val nameToUmi =  fqIn.map(fq => (fq.name, extractUmis(fq.bases, readStructure))).toMap
       in.foreach(rec => {
         val name = rec.name
         nameToUmi.get(name) match {
