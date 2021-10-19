@@ -65,7 +65,7 @@ class AnnotateBamWithUmis(
   @arg(flag='t', doc="The BAM attribute to store UMIs in.")    val attribute: String = "RX",
   @arg(flag='r', doc="The read structure for the FASTQ, otherwise all bases will be used.")
                                                                val readStructure: ReadStructure = ReadStructure("+M"),
-  @arg(flag='s', doc="true if the fastq file is sorted the same as the bam")
+  @arg(flag='s', doc="Whether the FASTQ file is sorted in the same order as the BAM.")
                                                                val isSorted: Boolean = false,
   @arg(          doc="If set, fail on the first missing UMI.") val failFast: Boolean = false,
 ) extends FgBioTool with LazyLogging {
@@ -117,8 +117,8 @@ class AnnotateBamWithUmis(
       }
       samIter.foreach(rec => logMissingUmi(rec.name))
     } else {
-      val nameToUmi =  fqIn.map(fq => (fq.name, extractUmis(fq.bases, readStructure))).toMap
-      in.foreach(rec => {
+      val nameToUmi = fqIn.map(fq => (fq.name, extractUmis(fq.bases, readStructure))).toMap
+      in.foreach { rec => 
         val name = rec.name
         nameToUmi.get(name) match {
           case Some(umi) => rec(attribute) = umi
@@ -126,7 +126,7 @@ class AnnotateBamWithUmis(
         }
         out += rec
         progress.record(rec)
-      })
+      }
     }
     // Finish up
     out.close()

@@ -40,7 +40,7 @@ class AnnotateBamWithUmisTest extends UnitSpec {
   private val fq  = dir.resolve("annotate_umis.fastq")
   private val umiTag    = "RX"
 
-  "AnnotateBamWithUmis" should "successfully add UMIs to a BAM in" in {
+  it should "successfully add UMIs to a BAM in" in {
     val out       = makeTempFile("with_umis.", ".bam")
     val annotator = new AnnotateBamWithUmis(input=sam, fastq=fq, output=out, attribute=umiTag)
     annotator.execute()
