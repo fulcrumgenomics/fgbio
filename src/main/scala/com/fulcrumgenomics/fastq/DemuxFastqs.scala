@@ -31,7 +31,6 @@ import com.fulcrumgenomics.cmdline.{ClpGroups, FgBioTool}
 import com.fulcrumgenomics.commons.CommonsDef.{DirPath, FilePath, PathPrefix, PathToFastq}
 import com.fulcrumgenomics.commons.io.PathUtil
 import com.fulcrumgenomics.commons.util.{LazyLogging, Logger}
-import com.fulcrumgenomics.fastq.DemuxFastqs.convertQualToByte
 import com.fulcrumgenomics.fastq.FastqDemultiplexer.{DemuxRecord, DemuxResult}
 import com.fulcrumgenomics.illumina.{Sample, SampleSheet}
 import com.fulcrumgenomics.sopt.{arg, clp}
@@ -193,7 +192,7 @@ object DemuxFastqs {
     }.filter(r => r.keep(omitFailingReads, omitControlReads))
   }
 
-  private def convertQualToByte(qualityEncoding: QualityEncoding, qualityScore: Int): Byte = {
+  def convertQualToByte(qualityEncoding: QualityEncoding, qualityScore: Int): Byte = {
     qualityEncoding.toStandardAscii(PhredScore.cap(qualityScore + qualityEncoding.asciiOffset).toChar).toByte
   }
 }
@@ -666,9 +665,9 @@ private[fastq] object FastqDemultiplexer {
       * @return a new DemuxRecord with updated bases
       */
     def maskLowQualityBases(minBaseQualityForMasking: Byte, qualityEncoding: QualityEncoding): DemuxRecord = {
-      val quals = this.quals.toCharArray
-      val q30Bases = quals.count(_ >= convertQualToByte(qualityEncoding, 30))
-      val q20Bases = quals.count(_ >= convertQualToByte(qualityEncoding, 20))
+      val quals = this.quals
+      val q30Bases = quals.count(_ >= DemuxFastqs.convertQualToByte(qualityEncoding, 30))
+      val q20Bases = quals.count(_ >= DemuxFastqs.convertQualToByte(qualityEncoding, 20))
 
       if (minBaseQualityForMasking <= 0 || this.quals.forall(_ >= minBaseQualityForMasking)) {
         this.copy(q20Bases = q20Bases, q30Bases = q30Bases)
