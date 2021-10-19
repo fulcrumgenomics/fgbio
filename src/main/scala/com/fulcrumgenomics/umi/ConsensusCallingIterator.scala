@@ -24,12 +24,11 @@
 
 package com.fulcrumgenomics.umi
 
-import java.util.concurrent.ForkJoinPool
-
 import com.fulcrumgenomics.FgBioDef._
 import com.fulcrumgenomics.bam.api.SamRecord
 import com.fulcrumgenomics.commons.async.AsyncIterator
 import com.fulcrumgenomics.commons.util.LazyLogging
+import com.fulcrumgenomics.commons.util.Threads.IterableThreadLocal
 import com.fulcrumgenomics.umi.UmiConsensusCaller.SimpleRead
 import com.fulcrumgenomics.util.ProgressLogger
 
@@ -104,22 +103,6 @@ class ConsensusCallingIterator[ConsensusRead <: SimpleRead](sourceIterator: Iter
   override def hasNext: Boolean = this.iter.hasNext
   override def next(): SamRecord = this.iter.next
 }
-
-// TODO: migrate to the commons version of this class after the next commons release
-// TODO: https://github.com/fulcrumgenomics/commons/pull/51
-private class IterableThreadLocal[A](factory: () => A) extends ThreadLocal[A] with Iterable[A] {
-  private val all = new java.util.concurrent.ConcurrentLinkedQueue[A]()
-
-  override def initialValue(): A = {
-    val a = factory()
-    all.add(a)
-    a
-  }
-
-  /** Care should be taken accessing the iterator since objects may be in use by other threads. */
-  def iterator: Iterator[A] = all.iterator
-}
-
 
 /** Groups consecutive records based on a method to group records. */
 private class SamRecordGroupedIterator[Key](sourceIterator: Iterator[SamRecord],
