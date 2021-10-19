@@ -47,6 +47,9 @@ import com.fulcrumgenomics.FgBioDef.BetterBufferedIteratorScalaWrapper
     |The `--read-structure` option may be used to specify which bases in the FASTQ contain UMI
     |bases.  Otherwise it is assumed the FASTQ contains only UMI bases.
     |
+    |The `--sorted` option may be used to indicate that the FASTQ has the same reads and is
+    |sorted in the same order as the BAM file.
+    |
     |At the end of execution, reports how many records were processed and how many were
     |missing UMIs. If any read from the BAM file did not have a matching UMI read in the
     |FASTQ file, the program will exit with a non-zero exit status.  The `--fail-fast` option
@@ -66,7 +69,7 @@ class AnnotateBamWithUmis(
   @arg(flag='r', doc="The read structure for the FASTQ, otherwise all bases will be used.")
                                                                val readStructure: ReadStructure = ReadStructure("+M"),
   @arg(flag='s', doc="Whether the FASTQ file is sorted in the same order as the BAM.")
-                                                               val isSorted: Boolean = false,
+                                                               val sorted: Boolean = false,
   @arg(          doc="If set, fail on the first missing UMI.") val failFast: Boolean = false,
 ) extends FgBioTool with LazyLogging {
 
@@ -101,7 +104,7 @@ class AnnotateBamWithUmis(
     val out      = SamWriter(output, in.header)
     val progress = ProgressLogger(logger)
 
-    if (isSorted) {
+    if (sorted) {
       // Loop through fastq and annotate corresponding BAM entries
       val samIter = in.iterator.bufferBetter
       fqIn.foreach { fqRec =>

@@ -35,10 +35,10 @@ import com.fulcrumgenomics.util.{Io, ReadStructure}
   */
 
 class AnnotateBamWithUmisTest extends UnitSpec {
-  private val dir = PathUtil.pathTo("src/test/resources/com/fulcrumgenomics/umi")
-  private val sam = dir.resolve("annotate_umis.sam")
-  private val fq  = dir.resolve("annotate_umis.fastq")
-  private val umiTag    = "RX"
+  private val dir    = PathUtil.pathTo("src/test/resources/com/fulcrumgenomics/umi")
+  private val sam    = dir.resolve("annotate_umis.sam")
+  private val fq     = dir.resolve("annotate_umis.fastq")
+  private val umiTag = "RX"
 
   it should "successfully add UMIs to a BAM in" in {
     val out       = makeTempFile("with_umis.", ".bam")
