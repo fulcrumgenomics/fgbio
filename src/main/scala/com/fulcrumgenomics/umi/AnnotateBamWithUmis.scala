@@ -118,7 +118,10 @@ class AnnotateBamWithUmis(
           }
         }
       }
-      samIter.foreach(rec => logMissingUmi(rec.name))
+      samIter.foreach { 
+        rec => logMissingUmi(rec.name)
+        progress.record(rec)
+      }
     } else {
       // Loop through the BAM file an annotate it
       val nameToUmi = fqIn.map(fq => (fq.name, extractUmis(fq.bases, readStructure))).toMap
