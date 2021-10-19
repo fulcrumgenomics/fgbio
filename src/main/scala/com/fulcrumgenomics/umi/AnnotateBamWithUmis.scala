@@ -115,7 +115,7 @@ class AnnotateBamWithUmis(
           }
         }
       }
-      if (samIter.nonEmpty) fail(exit=missingUmis.toInt)
+      samIter.foreach(rec => logMissingUmi(rec.name))
     } else {
       val nameToUmi =  fqIn.map(fq => (fq.name, extractUmis(fq.bases, readStructure))).toMap
       in.foreach(rec => {

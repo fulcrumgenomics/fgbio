@@ -74,6 +74,15 @@ class AnnotateBamWithUmisTest extends UnitSpec {
     an[FailureException] shouldBe thrownBy { annotator.execute() }
   }
 
+  it should "fail there are extra reads in the fastq not in the bam when the fastq is sorted" in {
+    val out    = makeTempFile("with_umis.", ".bam")
+    val longFq = makeTempFile(s"extra_umis.", ".fq.gz")
+    Io.writeLines(longFq, Io.readLines(fq))
+    Io.writeLines(longFq, Seq("@not_a_flowcell:1:1101:10060:3200/2 2:N:0:19","GATCTTGG","+","-,86,,;:"))
+    val annotator = new AnnotateBamWithUmis(input=sam, fastq=longFq, output=out, attribute=umiTag, isSorted = true)
+    an[FailureException] shouldBe thrownBy { annotator.execute() }
+  }
+
   it should "successfully add UMIs to a BAM with a given read structure in" in {
     val out       = makeTempFile("with_umis.", ".bam")
     val annotator = new AnnotateBamWithUmis(input=sam, fastq=fq, output=out, attribute=umiTag, readStructure=ReadStructure("2B4M+B"))
