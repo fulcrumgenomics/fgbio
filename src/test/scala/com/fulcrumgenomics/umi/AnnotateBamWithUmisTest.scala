@@ -35,10 +35,11 @@ import com.fulcrumgenomics.util.{Io, ReadStructure}
   */
 
 class AnnotateBamWithUmisTest extends UnitSpec {
-  private val dir    = PathUtil.pathTo("src/test/resources/com/fulcrumgenomics/umi")
-  private val sam    = dir.resolve("annotate_umis.sam")
-  private val fq     = dir.resolve("annotate_umis.fastq")
-  private val umiTag = "RX"
+  private val dir     = PathUtil.pathTo("src/test/resources/com/fulcrumgenomics/umi")
+  private val sam     = dir.resolve("annotate_umis.sam")
+  private val fq      = dir.resolve("annotate_umis.fastq")
+  private val umiTag  = "RX"
+  private val qualTag = "QX"
 
   "AnnotateBamWithUmis" should "successfully add UMIs to a BAM in" in {
     val out       = makeTempFile("with_umis.", ".bam")
@@ -55,6 +56,24 @@ class AnnotateBamWithUmisTest extends UnitSpec {
     annotator.execute()
     SamSource(out).foreach(rec => {
       rec[String](umiTag) shouldBe rec.basesString.substring(0,8)
+    })
+  }
+
+  it should "successfully add UMI qualities to a BAM" in {
+    val out       = makeTempFile("with_umis.", ".bam")
+    val annotator = new AnnotateBamWithUmis(input=sam, fastq=fq, output=out, attribute=umiTag, qualAttribute=Some(qualTag))
+    annotator.execute()
+    SamSource(out).foreach(rec => {
+      rec[String](qualTag) shouldBe rec.qualsString.substring(0,8)
+    })
+  }
+
+  it should "successfully add UMI qualities to a BAM when the fastq is sorted" in {
+    val out       = makeTempFile("with_umis.", ".bam")
+    val annotator = new AnnotateBamWithUmis(input=sam, fastq=fq, output=out, attribute=umiTag, qualAttribute=Some(qualTag), sorted=true)
+    annotator.execute()
+    SamSource(out).foreach(rec => {
+      rec[String](qualTag) shouldBe rec.qualsString.substring(0,8)
     })
   }
 
