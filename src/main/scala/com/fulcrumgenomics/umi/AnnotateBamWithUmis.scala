@@ -31,7 +31,9 @@ import com.fulcrumgenomics.commons.io.Io
 import com.fulcrumgenomics.commons.util.LazyLogging
 import com.fulcrumgenomics.fastq.{FastqSource, FastqRecord}
 import com.fulcrumgenomics.sopt._
+import com.fulcrumgenomics.umi.ConsensusTags
 import com.fulcrumgenomics.util.{ProgressLogger, ReadStructure, SegmentType}
+import com.fulcrumgenomics.util.ReadStructure.SubReadWithQuals
 import com.fulcrumgenomics.FgBioDef.BetterBufferedIteratorScalaWrapper
 
 @clp(description =
@@ -65,9 +67,10 @@ class AnnotateBamWithUmis(
   @arg(flag='i', doc="The input SAM or BAM file.")             val input: PathToBam,
   @arg(flag='f', doc="Input FASTQ file with UMI reads.")       val fastq: PathToFastq,
   @arg(flag='o', doc="Output BAM file to write.")              val output: PathToBam,
-  @arg(flag='t', doc="The BAM attribute to store UMIs in.")    val attribute: String = "RX",
+  @arg(flag='t', doc="The BAM attribute to store UMI bases in.")
+                                                               val seqAttribute: String = ConsensusTags.UmiBases,
   @arg(flag='q', doc="The BAM attribute to store UMI qualitiess in.")
-                                                               val qattribute: Option[String] = None,
+                                                               val qualAttribute: Option[String] = None,
   @arg(flag='r', doc="The read structure for the FASTQ, otherwise all bases will be used.")
                                                                val readStructure: ReadStructure = ReadStructure("+M"),
   @arg(flag='s', doc="Whether the FASTQ file is sorted in the same order as the BAM.")
@@ -84,7 +87,7 @@ class AnnotateBamWithUmis(
   }
 
   /** Extracts the UMI bases and qualities given the read structure */
-  private def extractUmis(fqRec: FastqRecord, structure: ReadStructure): ReadStructure.SubReadWithQuals = {
+  private def extractUmis(fqRec: FastqRecord, structure: ReadStructure): SubReadWithQuals = {
     structure
       .extract(fqRec.bases, fqRec.quals)
       .filter(_.kind == SegmentType.MolecularBarcode)
@@ -113,8 +116,8 @@ class AnnotateBamWithUmis(
         if (records.isEmpty) logMissingUmi(fqRec.name) else {
           val umi = extractUmis(fqRec, structure=readStructure)
           records.foreach { rec =>
-            rec(attribute) = umi.bases
-            qattribute.foreach(qtag => rec(qtag) = umi.quals)
+            rec(seqAttribute) = umi.bases
+            qualAttribute.foreach(qtag => rec(qtag) = umi.quals)
             out += rec
             progress.record(rec)
           }
@@ -131,8 +134,8 @@ class AnnotateBamWithUmis(
         val name = rec.name
         nameToUmi.get(name) match {
           case Some(umi) =>
-            rec(attribute) = umi.bases
-            qattribute.foreach(qtag => rec(qtag) = umi.quals)
+            rec(seqAttribute) = umi.bases
+            qualAttribute.foreach(qtag => rec(qtag) = umi.quals)
           case None      => logMissingUmi(name)
         }
         out += rec
