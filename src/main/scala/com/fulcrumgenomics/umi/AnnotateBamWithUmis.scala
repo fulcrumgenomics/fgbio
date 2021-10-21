@@ -68,7 +68,7 @@ class AnnotateBamWithUmis(
   @arg(flag='f', doc="Input FASTQ file with UMI reads.")       val fastq: PathToFastq,
   @arg(flag='o', doc="Output BAM file to write.")              val output: PathToBam,
   @arg(flag='t', doc="The BAM attribute to store UMI bases in.")
-                                                               val seqAttribute: String = ConsensusTags.UmiBases,
+                                                               val attribute: String = ConsensusTags.UmiBases,
   @arg(flag='q', doc="The BAM attribute to store UMI qualitiess in.")
                                                                val qualAttribute: Option[String] = None,
   @arg(flag='r', doc="The read structure for the FASTQ, otherwise all bases will be used.")
@@ -116,7 +116,7 @@ class AnnotateBamWithUmis(
         if (records.isEmpty) logMissingUmi(fqRec.name) else {
           val umi = extractUmis(fqRec, structure=readStructure)
           records.foreach { rec =>
-            rec(seqAttribute) = umi.bases
+            rec(attribute) = umi.bases
             qualAttribute.foreach(qtag => rec(qtag) = umi.quals)
             out += rec
             progress.record(rec)
@@ -134,7 +134,7 @@ class AnnotateBamWithUmis(
         val name = rec.name
         nameToUmi.get(name) match {
           case Some(umi) =>
-            rec(seqAttribute) = umi.bases
+            rec(attribute) = umi.bases
             qualAttribute.foreach(qtag => rec(qtag) = umi.quals)
           case None      => logMissingUmi(name)
         }
