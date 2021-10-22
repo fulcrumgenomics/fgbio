@@ -60,7 +60,11 @@ import com.fulcrumgenomics.FgBioDef.BetterBufferedIteratorScalaWrapper
     |
     |In order to avoid sorting the input files, the entire UMI fastq file is read into
     |memory. As a result the program needs to be run with memory proportional the size of
-    |the (uncompressed) fastq.
+    |the (uncompressed) fastq.  Use the `--sorted` option to traverse the UMI fastq and BAM
+    |files assuming they are in the same order.  More precisely, the UMI fastq file will be
+    |traversed first, reading in the next set of BAM reads with same read name as the
+    |UMI's read name.  Those BAM reads will be annotated.  If no BAM reads exist for the UMI,
+    |no logging or error will be reported.
   """,
   group = ClpGroups.SamOrBam)
 class AnnotateBamWithUmis(
@@ -69,7 +73,7 @@ class AnnotateBamWithUmis(
   @arg(flag='o', doc="Output BAM file to write.")              val output: PathToBam,
   @arg(flag='t', doc="The BAM attribute to store UMI bases in.")
                                                                val attribute: String = ConsensusTags.UmiBases,
-  @arg(flag='q', doc="The BAM attribute to store UMI qualitiess in.")
+  @arg(flag='q', doc="The BAM attribute to store UMI qualities in.")
                                                                val qualAttribute: Option[String] = None,
   @arg(flag='r', doc="The read structure for the FASTQ, otherwise all bases will be used.")
                                                                val readStructure: ReadStructure = ReadStructure("+M"),
@@ -113,7 +117,7 @@ class AnnotateBamWithUmis(
       val samIter = in.iterator.bufferBetter
       fqIn.foreach { fqRec =>
         val records = samIter.takeWhile(_.name == fqRec.name).toIndexedSeq
-        if (records.isEmpty) logMissingUmi(fqRec.name) else {
+        if (records.nonEmpty) {
           val umi = extractUmis(fqRec, structure=readStructure)
           records.foreach { rec =>
             rec(attribute) = umi.bases
@@ -123,6 +127,7 @@ class AnnotateBamWithUmis(
           }
         }
       }
+      // Log any BAM records that were not annotated
       samIter.foreach { rec =>
         logMissingUmi(rec.name)
         progress.record(rec)
