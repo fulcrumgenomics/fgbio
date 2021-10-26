@@ -64,6 +64,7 @@ class AnnotateBamWithUmisTest extends UnitSpec {
     val annotator = new AnnotateBamWithUmis(input=sam, fastq=fq, output=out, attribute=umiTag, qualAttribute=Some(qualTag))
     annotator.execute()
     SamSource(out).foreach(rec => {
+      rec[String](umiTag) shouldBe rec.basesString.substring(0,8)
       rec[String](qualTag) shouldBe rec.qualsString.substring(0,8)
     })
   }
@@ -73,6 +74,7 @@ class AnnotateBamWithUmisTest extends UnitSpec {
     val annotator = new AnnotateBamWithUmis(input=sam, fastq=fq, output=out, attribute=umiTag, qualAttribute=Some(qualTag), sorted=true)
     annotator.execute()
     SamSource(out).foreach(rec => {
+      rec[String](umiTag) shouldBe rec.basesString.substring(0,8)
       rec[String](qualTag) shouldBe rec.qualsString.substring(0,8)
     })
   }
@@ -93,13 +95,26 @@ class AnnotateBamWithUmisTest extends UnitSpec {
     an[FailureException] shouldBe thrownBy { annotator.execute() }
   }
 
-  it should "fail there are extra reads in the fastq not in the bam when the fastq is sorted" in {
+  it should "not fail if there are extra reads in the fastq not in the bam" in {
     val out    = makeTempFile("with_umis.", ".bam")
     val longFq = makeTempFile(s"extra_umis.", ".fq.gz")
-    Io.writeLines(longFq, Io.readLines(fq))
-    Io.writeLines(longFq, Seq("@not_a_flowcell:1:1101:10060:3200/2 2:N:0:19","GATCTTGG","+","-,86,,;:"))
+    val lines  = Io.readLines(fq) ++ Seq("@not_a_flowcell:1:1101:10060:3200/2 2:N:0:19","GATCTTGG","+","-,86,,;:")
+    Io.writeLines(longFq, lines)
+    val annotator = new AnnotateBamWithUmis(input=sam, fastq=longFq, output=out, attribute=umiTag)
+    SamSource(out).foreach(rec => {
+      rec[String](umiTag) shouldBe rec.basesString.substring(0,8)
+    })
+  }
+
+  it should "not fail if there are extra reads in the fastq not in the bam when the fastq is sorted" in {
+    val out    = makeTempFile("with_umis.", ".bam")
+    val longFq = makeTempFile(s"extra_umis.", ".fq.gz")
+    val lines  = Io.readLines(fq) ++ Seq("@not_a_flowcell:1:1101:10060:3200/2 2:N:0:19","GATCTTGG","+","-,86,,;:")
+    Io.writeLines(longFq, lines)
     val annotator = new AnnotateBamWithUmis(input=sam, fastq=longFq, output=out, attribute=umiTag, sorted=true)
-    an[FailureException] shouldBe thrownBy { annotator.execute() }
+    SamSource(out).foreach(rec => {
+      rec[String](umiTag) shouldBe rec.basesString.substring(0,8)
+    })
   }
 
   it should "successfully add UMIs to a BAM with a given read structure in" in {
