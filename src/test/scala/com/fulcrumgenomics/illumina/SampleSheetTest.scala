@@ -27,9 +27,10 @@
 
 package com.fulcrumgenomics.illumina
 
-import java.nio.file.Paths
-
+import com.fulcrumgenomics.util.Io
 import org.scalatest.{FlatSpec, Matchers, OptionValues}
+
+import java.nio.file.Paths
 
 class SampleSheetTest extends FlatSpec with Matchers with OptionValues {
   private val testDir = Paths.get("src/test/resources/com/fulcrumgenomics/util/miseq/")
@@ -76,12 +77,50 @@ class SampleSheetTest extends FlatSpec with Matchers with OptionValues {
     SampleSheet(testDir.resolve("SampleSheet.lanes.csv"), lane=None).size shouldBe 12
   }
 
+  it should "load a sample sheet with empty lines at the end" in {
+    val samples          = SampleSheet(testDir.resolve("SampleSheet.csv")).toSeq
+    val sampleSheetLines = Io.readLines(testDir.resolve("SampleSheet.csv")).toSeq
+
+    // Sample sheet with empty lines at the bottom
+    val emptyLines = sampleSheetLines.iterator ++ Seq("", "")
+    SampleSheet(lines = emptyLines, lane = None).toSeq should contain theSameElementsInOrderAs samples
+
+    // Sample sheet with comma-only lines at the bottom (sometimes added by spreadsheet editors)
+    val commaLines = sampleSheetLines.iterator ++ Seq(",,,,,,,", ",,,,,,,,")
+    SampleSheet(lines = commaLines, lane = None).toSeq should contain theSameElementsInOrderAs samples
+
+    // Sample sheet with mix of empty and comma-only lines at the bottom
+    val commaAndEmptyLines = sampleSheetLines.iterator ++ Seq(",,,,,,,", ",,,,,,,,", "", "", ",,,,,,,,", "")
+    SampleSheet(lines = commaAndEmptyLines, lane = None).toSeq should contain theSameElementsInOrderAs samples
+  }
+
   it should "throw an exception when no sample section is found" in {
     an[Exception] should be thrownBy SampleSheet(testDir.resolve("SampleSheetNoSampleSection.csv"))
   }
 
   it should "throw an exception when a row in the sample section has fewer entries than expected" in {
     an[Exception] should be thrownBy SampleSheet(testDir.resolve("SampleSheetSampleMissingColumns.csv"))
+  }
+
+  it should "throw an exception when empty rows are mixed in with sample data rows" in {
+    val sampleSheetLines = Io.readLines(testDir.resolve("SampleSheet.csv")).toSeq
+    val sampleSheetPre   = sampleSheetLines.take(28) // gets us to Sample_Name_6
+    val sampleSheetPost  = sampleSheetLines.drop(28) // Sample_Name_7 and later
+
+    // Sample sheet with empty lines in the middle of sample data section
+    val emptyLines     = sampleSheetPre.iterator ++ Seq("", "") ++ sampleSheetPost
+    val emptyLineError = the [IllegalArgumentException] thrownBy SampleSheet(lines = emptyLines, None)
+    emptyLineError.getMessage should startWith ("Found empty line on row")
+
+    // Sample sheet with comma-only lines in the middle of sample data section
+    val commaLines     = sampleSheetPre.iterator ++ Seq(",,,,,,,", ",,,,,,,,") ++ sampleSheetPost
+    val commaLineError = the [IllegalArgumentException] thrownBy SampleSheet(lines = commaLines, lane = None)
+    commaLineError.getMessage should startWith ("Found empty line on row")
+
+    // Sample sheet with mix of empty and comma-only lines in the middle of sample data section
+    val commaAndEmptyLines     = sampleSheetPre.iterator ++ Seq(",,,,,,,", ",,,,,,,,", "", "", ",,,,,,,,", "") ++ sampleSheetPost
+    val commaAndEmptyLineError = the [IllegalArgumentException] thrownBy SampleSheet(lines = commaAndEmptyLines, lane = None)
+    commaAndEmptyLineError.getMessage should startWith ("Found empty line on row")
   }
 
   it should "throw an exception if sample ids are not unique " in {
