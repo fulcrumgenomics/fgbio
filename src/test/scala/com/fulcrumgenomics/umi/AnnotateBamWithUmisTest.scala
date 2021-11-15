@@ -117,12 +117,24 @@ class AnnotateBamWithUmisTest extends UnitSpec {
     })
   }
 
-  it should "successfully add UMIs to a BAM with a given read structure in" in {
+  it should "successfully add UMIs to a BAM with a given read structure" in {
     val out       = makeTempFile("with_umis.", ".bam")
     val annotator = new AnnotateBamWithUmis(input=sam, fastq=fq, output=out, attribute=umiTag, readStructure=ReadStructure("2B4M+B"))
     annotator.execute()
     SamSource(out).foreach(rec => {
       rec[String](umiTag) shouldBe rec.basesString.substring(2,6)
+    })
+  }
+
+  it should "successfully add UMIs to a BAM with a given read structure with multiple molecular barcodes" in {
+    val out       = makeTempFile("with_umis.", ".bam")
+    val annotator = new AnnotateBamWithUmis(input=sam, fastq=fq, output=out, attribute=umiTag, qualAttribute=Some(qualTag), readStructure=ReadStructure("2M2B+M"))
+    annotator.execute()
+    SamSource(out).foreach(rec => {
+      val bases = rec.basesString
+      val quals = rec.qualsString
+      rec[String](umiTag) shouldBe bases.substring(0,2) + "-" + bases.substring(4, 8)
+      rec[String](qualTag) shouldBe quals.substring(0,2) + " " + quals.substring(4, 8)
     })
   }
 }

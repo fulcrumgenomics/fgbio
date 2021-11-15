@@ -91,11 +91,10 @@ class AnnotateBamWithUmis(
   }
 
   /** Extracts the UMI bases and qualities given the read structure */
-  private def extractUmis(fqRec: FastqRecord, structure: ReadStructure): SubReadWithQuals = {
+  private def extractUmis(fqRec: FastqRecord, structure: ReadStructure): Seq[SubReadWithQuals] = {
     structure
       .extract(fqRec.bases, fqRec.quals)
       .filter(_.kind == SegmentType.MolecularBarcode)
-      .head
   }
 
   /** Main method that does the work of reading input files, matching up reads and writing the output file. */
@@ -118,10 +117,10 @@ class AnnotateBamWithUmis(
       fqIn.foreach { fqRec =>
         val records = samIter.takeWhile(_.name == fqRec.name).toIndexedSeq
         if (records.nonEmpty) {
-          val umi = extractUmis(fqRec, structure=readStructure)
+          val umis = extractUmis(fqRec, structure=readStructure)
           records.foreach { rec =>
-            rec(attribute) = umi.bases
-            qualAttribute.foreach(qtag => rec(qtag) = umi.quals)
+            rec(attribute) = umis.map(_.bases).mkString("-")
+            qualAttribute.foreach(qtag => rec(qtag) = umis.map(_.quals).mkString(" "))
             out += rec
             progress.record(rec)
           }
@@ -138,9 +137,9 @@ class AnnotateBamWithUmis(
       in.foreach { rec =>
         val name = rec.name
         nameToUmi.get(name) match {
-          case Some(umi) =>
-            rec(attribute) = umi.bases
-            qualAttribute.foreach(qtag => rec(qtag) = umi.quals)
+          case Some(umis) =>
+            rec(attribute) = umis.map(_.bases).mkString("-")
+            qualAttribute.foreach(qtag => rec(qtag) = umis.map(_.quals).mkString(" "))
           case None      => logMissingUmi(name)
         }
         out += rec
