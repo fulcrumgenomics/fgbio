@@ -113,10 +113,10 @@ class FilterSomaticVcf
   @arg(flag='p', doc="Use only paired reads mapped in pairs.")      val pairedReadsOnly: Boolean = false,
   // Developer Note: filter-specific attributes should NOT be given flags as we will likely run
   //                 out of flags that way and end up with a mix of +flag and -flag options.
-  @arg(doc="Distance from end of read to implicate A-base addition artifacts.")         val aTailingDistance: Option[Int] = Some(2),
-  @arg(doc="Minimum acceptable p-value for A-base addition artifact test.")             val aTailingPValue: Option[Double] = None,
-  @arg(doc="Distance from end of read to implicate end repair fill-in artifacts.")      val endRepairFillInDistance: Option[Int] = Some(15),
-  @arg(doc="Minimum acceptable p-value for end repair fill-in artifact test.")          val endRepairFillInPValue: Option[Double] = None
+  @arg(doc="Distance from end of read to implicate A-base addition artifacts. Set to :none: to deactivate the filter.")    val aTailingDistance: Option[Int] = Some(2),
+  @arg(doc="Minimum acceptable p-value for the A-base addition artifact test.")                                            val aTailingPValue: Option[Double] = None,
+  @arg(doc="Distance from end of read to implicate end repair fill-in artifacts. Set to :none: to deactivate the filter.") val endRepairFillInDistance: Option[Int] = Some(15),
+  @arg(doc="Minimum acceptable p-value for the end repair fill-in artifact test.")                                         val endRepairFillInPValue: Option[Double] = None
 ) extends FgBioTool with LazyLogging {
   Io.assertReadable(input)
   Io.assertReadable(bam)
@@ -125,7 +125,6 @@ class FilterSomaticVcf
   override def execute(): Unit = {
     val vcfIn = VcfSource(input)
     val bamIn = SamSource(bam)
-    val dict  = bamIn.dict
     val vcfSample = sample match {
       case Some(s) =>
         validate(vcfIn.header.samples.contains(s), s"Sample $s not present in VCF.")
@@ -135,17 +134,17 @@ class FilterSomaticVcf
         else invalid("Must supply --sample when VCF contains more than one sample.")
     }
 
-    if (aTailingDistance.isEmpty && endRepairFillInDistance.isEmpty) logger.warning("All filters are turned off and tool will no-op!")
-
     val filters = Seq.empty[ReadEndSomaticVariantFilter] ++
       aTailingDistance.map { dist => new ATailingArtifactLikelihoodFilter(dist, aTailingPValue) } ++
       endRepairFillInDistance.map { dist => new EndRepairFillInArtifactLikelihoodFilter(dist, endRepairFillInPValue) }
 
+    if (filters.isEmpty) logger.warning("All filters are disabled and this tool will no-op!")
+
     val builder = new PileupBuilder(bamIn.dict, mappedPairsOnly=pairedReadsOnly, minBaseQ=minBaseQuality, minMapQ=minMappingQuality)
-    val out = makeWriter(output, vcfIn.header, filters)
+    val out     = makeWriter(output, vcfIn.header, filters)
 
     vcfIn.foreach { variant =>
-      val gt    = variant.genotypes(vcfSample)
+      val gt                = variant.genotypes(vcfSample)
       val applicableFilters = filters.filter(_.appliesTo(gt))
 
       val variantOut = if (applicableFilters.isEmpty) variant else {

@@ -1,6 +1,6 @@
-JeanLuc.iml
+**/*.iml
 .idea
 .java-version
+.DS_Store
 target
 project/project
-.DS_Store
