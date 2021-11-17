@@ -147,7 +147,7 @@ object ReadEndSomaticVariantFilter extends LazyLogging {
 }
 
 /**
-  * Filter that examines SNVs to see if they are likely end repair artifacts.
+  * Filter that examines SNVs to see if they are likely end repair fill-in artifacts.
   *
   * End repair fill-in artifacts form during the process of filling in single-stranded 3' overhangs to create a blunt end.
   * Oxidative stress can damage the single-stranded template and induce the formation of DNA lesions, such as
@@ -169,9 +169,7 @@ class EndRepairFillInArtifactLikelihoodFilter(override val distance: Int = 15, o
   override val VcfFilterLines: Iterable[VcfFilterHeader] = Seq(Filter)
 
   /** Applies only for gt where all alleles are SNVs */
-  def appliesTo(gt: Genotype): Boolean = {
-    gt.isHet && gt.calls.forall(_.value.length == 1)
-  }
+  def appliesTo(gt: Genotype): Boolean = gt.isHet && gt.calls.forall(_.value.length == 1)
 
   /** Returns true if the position of the base from the closest read end does not exceed the filter's defined distance. */
   def isArtifactCongruent(refAllele: Byte, altAllele: Byte, entry : BaseEntry, pileupPosition: Int): Boolean = {
