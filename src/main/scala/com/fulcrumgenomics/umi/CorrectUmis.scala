@@ -94,9 +94,12 @@ object CorrectUmis {
     |  2. Optionally a set of metrics about the representation of each UMI in the set
     |  3. Optionally a second BAM file of reads whose UMIs could not be corrected within the specific parameters
     |
-    |All of the fixed UMIs must be of he same length, and all UMIs in the BAM file must also have the same
-    |length.  Multiple UMIs that are concatenated with hyphens (e.g. `AACCAGT-AGGTAGA`) are split apart,
-    |corrected individually and then re-assembled.  A read is accepted only if all the UMIs can be corrected.
+    |The fixed UMIs may have differing lengths, and all UMIs in the BAM file must have the same length as at least one
+    |of the fixed UMIs.  Only UMIs of the same length will be compared (i.e. a fixed UMI of length 5 will not be
+    |compared to a UMI in the BAM of length 6).
+    |
+    |Multiple UMIs that are concatenated with hyphens (e.g. `AACCAGT-AGGTAGA`) are split apart, corrected individually
+    |and then re-assembled.  A read is accepted only if all the UMIs can be corrected.
     |
     |Correction is controlled by two parameters that are applied per-UMI:
     |
@@ -148,24 +151,24 @@ class CorrectUmis
 
   override def execute(): Unit = {
     // Construct the full set of UMI sequences to match again
-    val (umiSequences, umiLength) = {
+    val umiSequencesByLength = {
       val set = mutable.HashSet[String](umis:_*)
       umiFiles.foreach(Io.readLines(_).map(_.trim).filter(_.nonEmpty).foreach(set.add))
       validate(set.nonEmpty, s"At least one UMI sequence must be provided; none found in files ${umiFiles.mkString(", ")}")
-
-      val lengths = set.map(_.length)
-      validate(lengths.size == 1, s"UMIs of multiple lengths found. Lengths: ${lengths.mkString(", ")}")
-      (set.toArray, lengths.head)
+      set.toArray.groupBy(_.length)
     }
 
     // Warn if any of the UMIs are too close together
-    CorrectUmis.findUmiPairsWithinDistance(umiSequences.toSeq, minDistance-1).foreach { case (umi1, umi2, distance) =>
+    umiSequencesByLength.values.foreach { umiSequences =>
+      CorrectUmis.findUmiPairsWithinDistance(umiSequences.toSeq, minDistance - 1).foreach { case (umi1, umi2, distance) =>
         logger.warning(s"Umis $umi1 and $umi2 are $distance edits apart which is less than the min distance: $minDistance")
+      }
     }
 
     // Construct the UMI metrics objects
-    val unmatchedUmi = "N" * umiLength
-    val umiMetrics   = (umiSequences ++ Seq(unmatchedUmi)).map(umi => umi -> UmiCorrectionMetrics(umi)).toMap
+    val umiLengths = umiSequencesByLength.keys.toSeq
+    val unmatchedUmiByLength = umiLengths.map { umiLength => umiLength -> "N" * umiLength }.toMap
+    val umiMetrics = (umiSequencesByLength.values.flatten ++ unmatchedUmiByLength.values).map(umi => umi -> UmiCorrectionMetrics(umi)).toMap
 
     // Now go through and correct the UMIs in the BAM
     var (totalRecords, missingUmisRecords, wrongLengthRecords, mismatchedRecords) = (0L, 0L, 0L, 0L)
@@ -184,14 +187,14 @@ class CorrectUmis
           rejectOut.foreach(w => w += rec)
         case Some(umi: String) =>
           val sequences = umi.split('-')
-          if (sequences.exists(_.length != umiLength)) {
+          if (sequences.exists(seq => !umiSequencesByLength.contains(seq.length))) {
             if (wrongLengthRecords == 0) logger.warning(s"Read (${rec.name}) detected with unexpected length UMI(s): ${sequences.mkString(" ")}")
             wrongLengthRecords += 1
             rejectOut.foreach(w => w += rec)
           }
           else {
             // Find matches for all the UMIs
-            val matches = sequences.map(findBestMatch(_, umiSequences))
+            val matches = sequences.map(s => findBestMatch(s, umiSequencesByLength(s.length)))
 
             // Update the metrics
             matches.foreach { m =>
@@ -206,7 +209,7 @@ class CorrectUmis
                 }
               }
               else {
-                umiMetrics(unmatchedUmi).total_matches += 1
+                umiMetrics(unmatchedUmiByLength(m.umi.length)).total_matches += 1
               }
             }
 
@@ -238,7 +241,7 @@ class CorrectUmis
     // Finalize the metrics
     val sortedMetrics        = umiMetrics.values.toSeq.sortBy(_.umi)
     val totalWithUnmatched   = sortedMetrics.map(_.total_matches).sum.toDouble
-    val meanWithoutUnmatched = sortedMetrics.filter(_.umi != unmatchedUmi).map(_.total_matches).sum / (sortedMetrics.size - 1d)
+    val meanWithoutUnmatched = sortedMetrics.filter(m => m.umi != unmatchedUmiByLength(m.umi.length)).map(_.total_matches).sum / (sortedMetrics.size - unmatchedUmiByLength.size.toDouble)
     sortedMetrics.foreach { m =>
       m.fraction_of_matches = m.total_matches / totalWithUnmatched
       m.representation      = m.total_matches / meanWithoutUnmatched
