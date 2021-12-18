@@ -11,9 +11,14 @@ import com.fulcrumgenomics.sopt.{arg, clp}
   *
   * @author Tim Fennell
   */
-@clp(
- description = "Picks a set of molecular indices that should work well together.",
- group = ClpGroups.Utilities)
+@clp(description =  
+  """
+    |Picks a set of molecular indices that should work well together.
+    |
+    |The indexes to evaluate are generated randomly, unless the `--candidates` option is given.  The latter
+    |specifies a path to a file with one index per line from which indices are picked.
+  """,
+  group = ClpGroups.Utilities)
 class PickIlluminaIndices
 (
   @arg(flag='l', doc="The length of each barcode sequence.")                           val length: Int = 8,
@@ -33,7 +38,7 @@ class PickIlluminaIndices
   val adapters: Seq[String] = IlluminaAdapters.DualIndexed.both,
   @arg(          doc="Sequences that should be avoided.  Any kmer of `length` that appears in these sequences and their reverse complements will be thrown out.")
   val avoidSequence: Seq[String] = IlluminaAdapters.all.flatMap(_.both),
-  @arg(          doc="The candidate indices from which to choose, otherwise generate all possible indices")
+  @arg(          doc="The candidate indices from which to choose with one index per line (nothing else), otherwise generate all possible indices")
   val candidates: Option[FilePath] = None
 ) extends FgBioTool{
 
