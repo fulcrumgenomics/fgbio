@@ -183,7 +183,7 @@ class SampleSheet(samples: Seq[Sample]) extends Iterable[Sample] {
 
   // Validate samples
   samples.flatMap(_.lane).toSet[Int].toList.foreach { lane =>
-    SampleSheet.validateSamplesFromTheSameLane(samples.filter(_.lane.contains(lane)))
+    SampleSheet.validateSamplesFromTheSameLane(samples.filter(s => s.lane.contains(lane) || s.lane.isEmpty))
   }
   SampleSheet.validateSamplesFromTheSameLane(samples.filter(_.lane.isEmpty))
 

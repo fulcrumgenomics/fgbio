@@ -174,7 +174,7 @@ class ConsensusCaller(errorRatePreLabeling:  PhredScore,
 
   /** Pre-computes the the log-scale probabilities of an error for each a phred-scaled base quality from 0-127. */
   private val phredToAdjustedLogProbError: Array[LogProbability] = Range(0, Byte.MaxValue).toArray.map(q => {
-    val e1 = LogProbability.fromPhredScore(this.errorRatePostLabeling)
+    val e1 = LnErrorRatePostLabeling
     val e2 = LogProbability.fromPhredScore(q.toByte)
     LogProbability.probabilityOfErrorTwoTrials(e1, e2)
   })

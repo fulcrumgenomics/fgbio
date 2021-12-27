@@ -24,8 +24,9 @@
 
 package com.fulcrumgenomics.vcf.api
 
+import htsjdk.samtools.util.Locatable
+
 import scala.collection.immutable.ListMap
-import scala.reflect.ClassTag
 
 object Variant {
   /** Value used in VCF for values that are missing. */
@@ -69,6 +70,15 @@ object Variant {
   private[api] val EmptyInfo:       ListMap[String, Any]  = ListMap.empty
   private[api] val EmptyGtAttrs:    Map[String, Any]      = Map.empty
   private[api] val EmptyGenotypes:  Map[String, Genotype] = Map.empty
+
+  /**
+    * Little container class for a [[Variant]] to make it locatable (see [[Locatable]]).
+    */
+  implicit class LocatableVariant(variant: Variant) extends Locatable {
+    override def getContig: String = variant.chrom
+    override def getStart: Int     = variant.pos
+    override def getEnd: Int       = variant.end
+  }
 }
 
 
@@ -100,6 +110,7 @@ final case class Variant(chrom: String,
                          attrs: ListMap[String,Any] = Variant.EmptyInfo,
                          genotypes: Map[String, Genotype] = Variant.EmptyGenotypes
                         ) {
+  require(gts.forall(gt => gt.alleles.eq(alleles) || gt.alleles == alleles), "Genotypes must have the same alleles as their Variant.")
 
   /** The end position of the variant based on either the `END` INFO field _or_ the length of the reference allele. */
   val end: Int = get[Int]("END").getOrElse(pos + alleles.ref.length - 1)
@@ -118,4 +129,7 @@ final case class Variant(chrom: String,
 
   /** Returns an iterator over the genotypes for this variant. */
   def gts: Iterator[Genotype] = this.genotypes.valuesIterator
+
+  /** Returns a [[Variant.LocatableVariant]] for this variant. */
+  def toLocatable: Variant.LocatableVariant = new Variant.LocatableVariant(this)
 }

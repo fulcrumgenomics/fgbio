@@ -29,9 +29,32 @@ import java.io.StringWriter
 import java.nio.file.Path
 
 import com.fulcrumgenomics.testing.UnitSpec
+import enumeratum.EnumEntry.Uppercase
+import enumeratum.{Enum, EnumEntry}
 import org.scalatest.OptionValues
 import org.scalatest.concurrent.TimeLimits
 import org.scalatest.time.SpanSugar._
+
+/** Mixin to provide access to field formatting for [[Metric]] classes. */
+trait Formatted { self: Metric => def formatted(x: Any): String = formatValue(x) }
+
+/** Manual override of EnumEntry string serialization
+  * @see https://github.com/lloydmeta/enumeratum#manual-override-of-name
+  */
+private sealed abstract class TestEnumOverride(override val entryName: String) extends EnumEntry
+private object TestEnumOverride extends Enum[TestEnumOverride] {
+  val values:  scala.collection.immutable.IndexedSeq[TestEnumOverride] = findValues
+  case object TestUpperCase extends TestEnumOverride("TESTUPPERCASE")
+}
+
+/** Mixin override of EnumEntry string serialization
+  * @see https://github.com/lloydmeta/enumeratum#mixins-to-override-the-name
+  */
+private sealed trait TestEnumMixin extends EnumEntry
+private object TestEnumMixin extends Enum[TestEnumMixin] {
+  val values:  scala.collection.immutable.IndexedSeq[TestEnumMixin] = findValues
+  case object TestUpperCase extends TestEnumMixin with Uppercase
+}
 
 private case class TestMetric(foo: String, bar: Int, car: String = "default") extends Metric
 
@@ -39,12 +62,15 @@ private case class TestMetricWithOption(foo: String, bar: Int, option: Option[St
 
 private case class TestMetricWithIntOption(foo: String, bar: Int, option: Option[Int]) extends Metric
 
-private case class TestMetricWithDouble(foo: String, bar: Double, option: Option[Float]) extends Metric {
-  def formatted(x: Any): String = formatValue(x)
-}
+private case class TestMetricWithDouble(foo: String, bar: Double, option: Option[Float]) extends Metric with Formatted
+
+private case class TestMetricWithEnumEntryOverride(foo: TestEnumOverride) extends Metric with Formatted
+
+private case class TestMetricWithEnumEntryMixin(foo: TestEnumMixin) extends Metric with Formatted
 
 private case class TestDoubleMetric(d: Double) extends Metric
 private case class TestFloatMetric(f: Float) extends Metric
+private case class TestCharMetric(c: Char) extends Metric
 
 /**
   * Tests for Metric.
@@ -75,6 +101,13 @@ class MetricTest extends UnitSpec with OptionValues with TimeLimits {
     testMetric.foo shouldBe "fooValue"
     testMetric.bar shouldBe 1
     testMetric.car shouldBe "default"
+  }
+
+  it should "build a metric when omitting a value for a String field and supply the empty string" in {
+    val testMetric = Metric.read[TestMetric](Iterator("foo\tbar\tcar", "\t1\tzoom")).head
+    testMetric.foo shouldBe ""
+    testMetric.bar shouldBe 1
+    testMetric.car shouldBe "zoom"
   }
 
   it should "fail when an argument is not given and has no default value" in {
@@ -248,6 +281,18 @@ class MetricTest extends UnitSpec with OptionValues with TimeLimits {
     testMetric.iterator.toSeq should contain theSameElementsInOrderAs Seq(("foo", "fooValue"), ("bar", "1"), ("car", "default"))
   }
 
+  it should "read and write a char" in {
+    val path = makeTempFile("char_test", ".txt")
+
+    Seq('X', '$', 'a').foreach { c => 
+      val expected = TestCharMetric(c=c)
+      Metric.write(path, expected)
+      val actual = Metric.read[TestCharMetric](path)
+      actual should have size 1
+      actual.head shouldEqual expected
+    }
+  }
+
   it should "write and read special values for Double and Float" in {
     val path = makeTempFile("test.", ".txt")
 
@@ -266,5 +311,15 @@ class MetricTest extends UnitSpec with OptionValues with TimeLimits {
       actual should have size 1
       if (f.isNaN) actual.head.f.isNaN shouldBe true else actual.head.f shouldBe f
     }
+  }
+
+  it should "use the `entryName` property of [[EnumEntry]] fields when serializing to string" in {
+    val metricOverride = TestMetricWithEnumEntryOverride(TestEnumOverride.TestUpperCase)
+    metricOverride.formatted(metricOverride.foo)            shouldBe "TESTUPPERCASE"                // Serialization
+    TestEnumOverride.withName(metricOverride.foo.entryName) shouldBe TestEnumOverride.TestUpperCase // De-serialization
+
+    val metricMixin = TestMetricWithEnumEntryMixin(TestEnumMixin.TestUpperCase)
+    metricMixin.formatted(metricMixin.foo)            shouldBe "TESTUPPERCASE"             // Serialization
+    TestEnumMixin.withName(metricMixin.foo.entryName) shouldBe TestEnumMixin.TestUpperCase // De-serialization
   }
 }

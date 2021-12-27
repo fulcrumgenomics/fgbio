@@ -25,7 +25,7 @@
 package com.fulcrumgenomics.vcf
 
 import com.fulcrumgenomics.FgBioDef._
-import htsjdk.samtools.SAMSequenceDictionary
+import com.fulcrumgenomics.fasta.SequenceDictionary
 import htsjdk.variant.variantcontext.VariantContext
 import htsjdk.variant.vcf.VCFFileReader
 
@@ -37,13 +37,14 @@ object VariantMask {
 
   /** Generate a variant mask from the provided VCF reader. */
   def apply(reader: VCFFileReader): VariantMask = {
-    val dict = reader.getFileHeader.getSequenceDictionary
-    require(dict != null && dict.getSequences.size() > 0, "Generating a VariantMask requires VCFs contain contig lines.")
+    import com.fulcrumgenomics.fasta.Converters.FromSAMSequenceDictionary
+    val dict = reader.getFileHeader.getSequenceDictionary.fromSam
+    require(dict != null && dict.length > 0, "Generating a VariantMask requires VCFs contain contig lines.")
     apply(reader.iterator(), dict)
   }
 
   /** Generates a VariantMask from the variants in the provided iterator. */
-  def apply(variants: Iterator[VariantContext], dict: SAMSequenceDictionary) = new VariantMask(variants, dict)
+  def apply(variants: Iterator[VariantContext], dict: SequenceDictionary) = new VariantMask(variants, dict)
 }
 
 /**
@@ -54,7 +55,7 @@ object VariantMask {
   * @param variants a coordinate sorted iterator of variants
   * @param dict the sequence dictionary for the reference
   */
-class VariantMask(variants: Iterator[VariantContext], val dict: SAMSequenceDictionary) {
+class VariantMask(variants: Iterator[VariantContext], val dict: SequenceDictionary) {
   private val iterator                    = variants.bufferBetter
   private var currentMask: mutable.BitSet = new mutable.BitSet(0)
   private var currentIndex: Int           = -1
@@ -67,12 +68,12 @@ class VariantMask(variants: Iterator[VariantContext], val dict: SAMSequenceDicti
     */
   private def advanceTo(refIndex: Int): Unit = {
     require(refIndex > this.currentIndex, "Requested to navigate to an earlier contig. Is your VCF sorted?")
-    require(refIndex >= 0 && refIndex < dict.size(), s"Requested navigation to contig #${refIndex} which is invalid.")
+    require(refIndex >= 0 && refIndex < dict.length, s"Requested navigation to contig #$refIndex which is invalid.")
 
-    val ref  = dict.getSequence(refIndex)
-    val bits = new mutable.BitSet(ref.getSequenceLength)
-    iterator.dropWhile(v => dict.getSequenceIndex(v.getContig) < refIndex)
-      .takeWhile(v => dict.getSequenceIndex(v.getContig) == refIndex)
+    val ref  = dict(refIndex)
+    val bits = new mutable.BitSet(ref.length)
+    iterator.dropWhile(v => dict(v.getContig).index < refIndex)
+      .takeWhile(v => dict(v.getContig).index == refIndex)
       .filterNot(v => v.isFiltered)
       .foreach { v =>
         forloop (from=v.getStart, until=v.getEnd+1) { i => bits(i-1) = true }
@@ -80,8 +81,8 @@ class VariantMask(variants: Iterator[VariantContext], val dict: SAMSequenceDicti
 
     this.currentMask   = bits
     this.currentIndex  = refIndex
-    this.currentContig = dict.getSequence(refIndex).getSequenceName
-    this.currentRefLength = dict.getSequence(refIndex).getSequenceLength
+    this.currentContig = dict(refIndex).name
+    this.currentRefLength = dict(refIndex).length
   }
 
   /** Returns true if the position is overlapped by one or more variants, false otherwise. */
@@ -92,5 +93,5 @@ class VariantMask(variants: Iterator[VariantContext], val dict: SAMSequenceDicti
   }
 
   /** Returns true if the position is overlapped by one or more variants, false otherwise. */
-  def isVariant(refName: String, position: Int): Boolean = isVariant(dict.getSequenceIndex(refName), position)
+  def isVariant(refName: String, position: Int): Boolean = isVariant(dict(refName).index, position)
 }

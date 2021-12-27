@@ -28,22 +28,22 @@ import java.nio.file.Paths
 import java.util
 import java.util.Comparator
 
-import com.fulcrumgenomics.cmdline.{ClpGroups, FgBioTool}
-import com.fulcrumgenomics.util.{GenomicSpan, Metric, ProgressLogger}
 import com.fulcrumgenomics.FgBioDef._
-import com.fulcrumgenomics.vcf.PhaseCigarOp.PhaseCigarOp
+import com.fulcrumgenomics.cmdline.{ClpGroups, FgBioTool}
 import com.fulcrumgenomics.commons.io.{Io, PathUtil}
 import com.fulcrumgenomics.commons.util.{LazyLogging, NumericCounter}
+import com.fulcrumgenomics.fasta.SequenceDictionary
 import com.fulcrumgenomics.sopt._
-import htsjdk.samtools.SAMSequenceDictionary
+import com.fulcrumgenomics.util.{GenomicSpan, Metric, ProgressLogger}
+import com.fulcrumgenomics.vcf.PhaseCigarOp.PhaseCigarOp
 import htsjdk.samtools.util.{IntervalList, OverlapDetector}
-import htsjdk.variant.variantcontext.{Genotype, GenotypeBuilder, VariantContext, VariantContextBuilder}
 import htsjdk.variant.variantcontext.writer.{Options, VariantContextWriter, VariantContextWriterBuilder}
+import htsjdk.variant.variantcontext.{Genotype, GenotypeBuilder, VariantContext, VariantContextBuilder}
 import htsjdk.variant.vcf._
 
 import scala.annotation.tailrec
-import scala.collection.mutable.ListBuffer
 import scala.collection.JavaConverters._
+import scala.collection.mutable.ListBuffer
 
 @clp(
   description =
@@ -91,12 +91,13 @@ class AssessPhasing
 
     // check the sequence dictionaries.
     val dict = {
+      import com.fulcrumgenomics.fasta.Converters.FromSAMSequenceDictionary
       val calledReader = new VCFFileReader(calledVcf.toFile, true)
       val truthReader = new VCFFileReader(truthVcf.toFile, true)
       calledReader.getFileHeader.getSequenceDictionary.assertSameDictionary(truthReader.getFileHeader.getSequenceDictionary)
       calledReader.close()
       truthReader.close()
-      calledReader.getFileHeader.getSequenceDictionary
+      calledReader.getFileHeader.getSequenceDictionary.fromSam
     }
 
     val knownIntervalList        = knownIntervals.map { intv => IntervalList.fromFile(intv.toFile).uniqued() }
@@ -124,7 +125,7 @@ class AssessPhasing
       val intervalList = IntervalList.fromFile(intv.toFile)
       // Developer Note: warn the user if the supplied intervals do not span entire chromosomes.
       intervalList.getIntervals.find { interval =>
-        interval.getStart != 1 || interval.getEnd != dict.getSequence(interval.getContig).getSequenceLength
+        interval.getStart != 1 || interval.getEnd != dict(interval.getContig).length
       }.foreach { interval =>
         logger.warning(s"Interval list (--intervals) given with intervals that do not span entire chromosomes (ex. '$interval').  Start/end will be ignored and entire chromosome analyzed.")
       }
@@ -133,18 +134,18 @@ class AssessPhasing
     }
 
     // NB: could parallelize!
-    dict.getSequences
+    dict
       .iterator
       .filter { sequence => chromosomes match {
-          case Some(set) => set.contains(sequence.getSequenceName)
+          case Some(set) => set.contains(sequence.name)
           case None      => true
         }
       }
       .foreach { sequence =>
       executeContig(
         dict                     = dict,
-        contig                   = sequence.getSequenceName,
-        contigLength             = sequence.getSequenceLength,
+        contig                   = sequence.name,
+        contigLength             = sequence.length,
         knownIntervalList        = knownIntervalList,
         metric                   = metric,
         calledBlockLengthCounter = calledBlockLengthCounter,
@@ -186,7 +187,7 @@ class AssessPhasing
     writer.foreach(_.close())
   }
 
-  private def executeContig(dict: SAMSequenceDictionary,
+  private def executeContig(dict: SequenceDictionary,
                             contig: String,
                             contigLength: Int,
                             knownIntervalList: Option[IntervalList],
@@ -285,9 +286,10 @@ class AssessPhasing
                                        contig: String,
                                        contigLength: Int,
                                        intervalList: Option[IntervalList] = None): Iterator[VariantContext] = {
+    import com.fulcrumgenomics.fasta.Converters.FromSAMSequenceDictionary
     val sampleName = reader.getFileHeader.getSampleNamesInOrder.iterator().next()
     val baseIter: Iterator[VariantContext] = intervalList match {
-      case Some(intv) => ByIntervalListVariantContextIterator(reader.iterator(), intv, dict=reader.getFileHeader.getSequenceDictionary)
+      case Some(intv) => ByIntervalListVariantContextIterator(reader.iterator(), intv, dict=reader.getFileHeader.getSequenceDictionary.fromSam)
       case None       => reader.query(contig, 1, contigLength)
     }
 
@@ -325,8 +327,8 @@ private object AssemblyStatistics {
 
     val blockLengthsAndCounts = blockLengthCounter.toSeq.sortBy(_._1)
     var blockLengthSum = 0d
-    var n50: BlockLength = 0
-    var n90: BlockLength = 0
+    var n50: BlockLength = 0L
+    var n90: BlockLength = 0L
     var l50: Long = 0
     forloop (blockLengthsAndCounts.length - 1) (0 <= _) (_ - 1) { i =>
       val (length, count)   = blockLengthsAndCounts(i)
@@ -394,7 +396,7 @@ object PhaseBlock extends LazyLogging {
   /** Creates an overlap detector for blocks of phased variants.  Variants from the same block are found using the
     * "PS" tag.  The modify blocks option resolves overlapping blocks
     */
-  private[vcf] def buildOverlapDetector(iterator: Iterator[VariantContext], dict: SAMSequenceDictionary, modifyBlocks: Boolean = true): OverlapDetector[PhaseBlock] = {
+  private[vcf] def buildOverlapDetector(iterator: Iterator[VariantContext], dict: SequenceDictionary, modifyBlocks: Boolean = true): OverlapDetector[PhaseBlock] = {
     val detector = new OverlapDetector[PhaseBlock](0, 0)
     val progress = new ProgressLogger(logger)
 
@@ -606,8 +608,8 @@ private object PhaseCigarOp extends Enumeration {
 }
 
 private[vcf] object PhaseCigar {
-  import PhaseCigarOp._
   import AssessPhasing.{CalledSampleName, TruthSampleName}
+  import PhaseCigarOp._
 
   private type VCtx = VariantContext
 

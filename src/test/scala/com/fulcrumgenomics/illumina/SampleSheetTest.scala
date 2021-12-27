@@ -85,12 +85,18 @@ class SampleSheetTest extends FlatSpec with Matchers with OptionValues {
   }
 
   it should "throw an exception if sample ids are not unique " in {
+    // with no lane defined
     val sample = Sample(sampleOrdinal=0, sampleId="ID", sampleName="NAMEA", libraryId="LIBRARY")
     an[IllegalArgumentException] should be thrownBy new SampleSheet(Seq(sample, sample.copy(sampleName="NAMEB")))
 
     // within a lane
     val sampleForLane = Sample(sampleOrdinal=0, sampleId="ID", sampleName="NAMEA", libraryId="LIBRARY", lane=Some(1))
     an[IllegalArgumentException] should be thrownBy new SampleSheet(Seq(sampleForLane, sampleForLane.copy(sampleName="NAMEB")))
+
+    // where one sample defines lane, another does not
+    val sampleWithLane = Sample(sampleOrdinal=0, sampleId="ID", sampleName="NAMEA", libraryId="LIBRARY", lane=Some(1))
+    val sampleNoLane   = sampleWithLane.copy(sampleName="NAMEB", lane=None)
+    an[IllegalArgumentException] should be thrownBy new SampleSheet(Seq(sampleWithLane, sampleNoLane))
   }
 
   it should "throw an exception if the combination of sample name and library id are not unique" in {

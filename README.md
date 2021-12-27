@@ -1,4 +1,4 @@
-[![Build Status](https://travis-ci.org/fulcrumgenomics/fgbio.svg?branch=master)](https://travis-ci.org/fulcrumgenomics/fgbio)
+[![Build Status](https://github.com/fulcrumgenomics/fgbio/workflows/unit%20tests/badge.svg)](https://github.com/fulcrumgenomics/fgbio/actions?query=workflow%3A%22unit+tests%22)
 [![codecov](https://codecov.io/gh/fulcrumgenomics/fgbio/branch/master/graph/badge.svg)](https://codecov.io/gh/fulcrumgenomics/fgbio)
 [![Codacy Badge](https://api.codacy.com/project/badge/Grade/fc4f5fe8dbe34bf784114435b202fab4)](https://www.codacy.com/app/contact_32/fgbio?utm_source=github.com&amp;utm_medium=referral&amp;utm_content=fulcrumgenomics/fgbio&amp;utm_campaign=Badge_Grade)
 [![Maven Central](https://maven-badges.herokuapp.com/maven-central/com.fulcrumgenomics/fgbio_2.13/badge.svg)](https://maven-badges.herokuapp.com/maven-central/com.fulcrumgenomics/fgbio_2.13)
@@ -23,6 +23,7 @@ Detailed user documentation is available on the [project website](http://fulcrum
   * [Contributing](#contributing)
   * [Authors](#authors)
   * [License](#license)
+  * [Sponsorship](#sponsorship)
 
 <!---toc end-->
 
@@ -125,4 +126,39 @@ For urgent matters, please contact us directly.
 ## License
 
 `fgbio` is open source software released under the [MIT License](https://github.com/fulcrumgenomics/fgbio/blob/master/LICENSE).
+
+## Sponsorship
+
+### Become a sponsor
+
+As a free and open source project, `fgbio` relies on the support of the community of users for its development. If you work for an organization that uses and benefits from `fgbio`, please consider supporting `fgbio`. There are different ways, such as employing people to work on `fgbio`, funding the project, or becoming a [sponsor](https://github.com/sponsors/fulcrumgenomics) to support the broader ecosystem. Please [contact@fulcrumgenomics.com](https://www.fulcrumgenomics.com/contact/) to discuss.
+
+### Sponsors
+
+Sponsors provide support for `fgbio` through direct funding or employing contributors.
+Public sponsors include:
+
+<p>
+<a href float="left"="https://fulcrumgenomics.com"><img src=".github/logos/fulcrumgenomics.svg" alt="Fulcrum Genomics" height="35"/></a>
+&nbsp;
+<a href float="left"="https://twinstrandbio.com/"><img src=".github/logos/twinstrandbio.svg" alt="TwinStrand Biosciences" height="45"/></a>
+&nbsp;
+<a href float="left"="https://www.jumpcodegenomics.com//"><img src=".github/logos/jumpcodegenomics.png" alt="Jumpcode Genomics" height="30"/></a>
+&nbsp;
+<a href float="left"="https://www.igenomx.com//"><img src=".github/logos/igenomx.png" alt="iGenomX" height="30"/></a>
+&nbsp;
+<a href float="left"="https://myriad.com"><img src=".github/logos/myriad.png" alt="Myriad Genetics" height="35"/></a>
+&nbsp;
+<a href float="left"="https://missionbio.com"><img src=".github/logos/missionbio.svg" alt="Mission Bio" height="30"/></a>
+&nbsp;
+<a href float="left"="https://singulargenomics.com"><img src=".github/logos/singulargenomics.svg" alt="Singular Genomics" height="30"/></a>
+&nbsp;
+<a href float="left"="https://verogen.com"><img src=".github/logos/verogen.jpg" alt="Verogen" height="30"/></a>
+&nbsp;
+<a href float="left"="https://idtdna.com"><img src=".github/logos/idtdna.png" alt="Integrated DNA Technologies" height="30"/></a>
+&nbsp;
+<a href float="left"="https://strataoncology.com"><img src=".github/logos/strataoncology.png" alt="Strata Oncology" height="30"/></a>
+</p>
+
+The full list of sponsors supporting `fgbio` is available in the [sponsor](https://github.com/sponsors/fulcrumgenomics) page.
 

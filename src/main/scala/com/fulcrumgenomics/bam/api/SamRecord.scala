@@ -30,6 +30,7 @@ import com.fulcrumgenomics.alignment.Cigar
 import htsjdk.samtools
 import htsjdk.samtools.SamPairUtil.PairOrientation
 import htsjdk.samtools._
+import htsjdk.samtools.util.CoordMath
 
 // TODO long-term: methods for 5'end, 3' end, unclipped 5' end and unclipped 3' end
 // TODO long-term: replacement for alignment blocks?
@@ -90,6 +91,9 @@ trait SamRecord {
   @inline final def paired: Boolean = getReadPairedFlag
   @inline final def paired_=(paired: Boolean):Unit = setReadPairedFlag(paired)
 
+  @inline final def unpaired: Boolean = !paired
+  @inline final def unpaired_=(unpaired: Boolean): Unit = this.paired = !unpaired
+
   @inline final def properlyPaired: Boolean = getProperPairFlag
   @inline final def properlyPaired_=(paired: Boolean):Unit = setProperPairFlag(paired)
 
@@ -121,6 +125,8 @@ trait SamRecord {
 
   @inline final def secondary: Boolean = isSecondaryAlignment
   @inline final def secondary_=(secondary: Boolean):Unit = setSecondaryAlignment(secondary)
+  @inline final def primary: Boolean = !this.secondary
+  @inline final def primary_=(primary: Boolean):Unit = this.secondary = !primary
 
   @inline final def pf: Boolean = !getReadFailsVendorQualityCheckFlag
   @inline final def pf_=(pf: Boolean):Unit = setReadFailsVendorQualityCheckFlag(!pf)
@@ -164,9 +170,32 @@ trait SamRecord {
 
   @inline final def mateStart: Int = getMateAlignmentStart
   @inline final def mateStart_=(s: Int):Unit = setMateAlignmentStart(s)
+
+  @inline final def mateCigar: Option[Cigar] = {
+    require(paired && mateMapped, "Cannot get a mate cigar on read without a mapped mate.")
+    get[String]("MC").map(Cigar.apply)
+  }
   @inline final def mateEnd: Option[Int] = {
     require(paired && mateMapped, "Cannot get mate end position on read without a mapped mate.")
     get[String]("MC").map(cig => mateStart + Cigar(cig).lengthOnTarget - 1)
+  }
+  @inline final def mateUnclippedStart: Option[Int] = {
+    require(paired && mateMapped, "Cannot get mate unclipped start position on read without a mapped mate.")
+    get[String]("MC").map(cig => mateStart - Cigar(cig).iterator.takeWhile(_.operator.isClipping).map(_.length).sum)
+  }
+  @inline final def mateUnclippedEnd: Option[Int] = {
+    require(paired && mateMapped, "Cannot get mate unclipped end position on read without a mapped mate.")
+    get[String]("MC").map { cig =>
+      val cigar = Cigar(cig)
+      mateStart + cigar.lengthOnTarget - 1 + cigar.reverseIterator.takeWhile(_.operator.isClipping).map(_.length).sum
+    }
+  }
+  @inline final def matesOverlap: Option[Boolean] = {
+    require(mapped && paired && mateMapped, "Cannot determine if mates overlap without paired mates that are both mapped.")
+    if (refIndex != mateRefIndex) Some(false)
+    else if (mateStart > end) Some(false)
+    else if (mateStart >= start && mateStart <= end) Some(true)
+    else mateEnd.map(mateEnd => CoordMath.overlaps(start, end, mateStart, mateEnd))
   }
 
   @inline final def insertSize: Int = getInferredInsertSize

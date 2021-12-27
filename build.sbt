@@ -78,16 +78,19 @@ val docScalacOptions = Seq("-groups", "-implicits")
 // Common settings 
 ////////////////////////////////////////////////////////////////////////////////////////////////
 
+val primaryScalaVersion = "2.13.3"
+
 lazy val commonSettings = Seq(
   organization         := "com.fulcrumgenomics",
   organizationName     := "Fulcrum Genomics LLC",
   homepage             := Some(url("http://github.com/fulcrumgenomics/fgbio")),
   startYear            := Some(2015),
-  scalaVersion         := "2.13.0",
-  crossScalaVersions   :=  Seq("2.12.8", "2.13.0"),
+  scalaVersion         := primaryScalaVersion,
+  crossScalaVersions   :=  Seq(primaryScalaVersion),
   scalacOptions        ++= Seq("-target:jvm-1.8", "-deprecation", "-unchecked"),
   scalacOptions in (Compile, doc) ++= docScalacOptions,
   scalacOptions in (Test, doc) ++= docScalacOptions,
+  useCoursier :=  false,
   autoAPIMappings := true,
   testOptions in Test  += Tests.Argument(TestFrameworks.ScalaTest, "-h", Option(System.getenv("TEST_HTML_REPORTS")).getOrElse(htmlReportsDirectory)),
   // uncomment for full stack traces
@@ -95,6 +98,7 @@ lazy val commonSettings = Seq(
   fork in Test         := true,
   resolvers            += Resolver.sonatypeRepo("public"),
   resolvers            += Resolver.mavenLocal,
+  resolvers            += "broad-snapshots" at "https://artifactory.broadinstitute.org/artifactory/libs-snapshot/",
   shellPrompt          := { state => "%s| %s> ".format(GitCommand.prompt.apply(state), version.value) },
   updateOptions        := updateOptions.value.withCachedResolution(true)
 ) ++ Defaults.coreDefaultSettings
@@ -124,16 +128,20 @@ lazy val root = Project(id="fgbio", base=file("."))
       "org.scala-lang"            %  "scala-compiler" % scalaVersion.value,
       "org.scala-lang.modules"    %% "scala-xml"      % "1.2.0",
       "org.scala-lang.modules"    %% "scala-collection-compat" % "2.1.1",
-      "com.fulcrumgenomics"       %% "commons"        % "1.0.0",
-      "com.fulcrumgenomics"       %% "sopt"           % "1.0.0",
-      "com.github.samtools"       %  "htsjdk"         % "2.19.0" excludeAll(htsjdkExcludes: _*),
+      "com.fulcrumgenomics"       %% "commons"        % "1.2.0",
+      "com.fulcrumgenomics"       %% "sopt"           % "1.1.0",
+      "com.github.samtools"       %  "htsjdk"         % "2.23.0" excludeAll(htsjdkExcludes: _*),
       "org.apache.commons"        %  "commons-math3"  % "3.6.1",
-      "com.beachape"              %% "enumeratum"     % "1.5.13",
+      "com.beachape"              %% "enumeratum"     % "1.6.1",
       "com.intel.gkl"             %  "gkl"            % "0.8.6",
 
       //---------- Test libraries -------------------//
-      "org.scalatest"             %% "scalatest"     % "3.0.8"  % "test->*" excludeAll ExclusionRule(organization="org.junit", name="junit")
-    ))
+      "org.scalatest"             %% "scalatest"     % "3.1.3"  % "test->*" excludeAll ExclusionRule(organization="org.junit", name="junit")
+  ))
+  .settings(dependencyOverrides ++= Seq(
+      "org.apache.logging.log4j" % "log4j-api"  % "[2.17.0,)",
+      "org.apache.logging.log4j" % "log4j-core" % "[2.17.0,)",
+  ))
 
 
 ////////////////////////////////////////////////////////////////////////////////////////////////

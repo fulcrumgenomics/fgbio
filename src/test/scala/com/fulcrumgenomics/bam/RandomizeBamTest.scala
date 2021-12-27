@@ -36,7 +36,7 @@ import scala.util.Random
   * Tests for RandomizeBam
   */
 class RandomizeBamTest extends UnitSpec {
-  val bam = Paths.get("src/test/resources/com/fulcrumgenomics/bam/200reads.bam")
+  private val bam = Paths.get("src/test/resources/com/fulcrumgenomics/bam/200reads.bam")
 
   /** Slurps read names with /1 or /2 suffixes, in order, from a BAM file. */
   def slurp(p: PathToBam): IndexedSeq[String] = readBamRecs(p).map(_.id)

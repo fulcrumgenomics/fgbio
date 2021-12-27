@@ -29,10 +29,13 @@ import com.fulcrumgenomics.commons.CommonsDef
 import com.fulcrumgenomics.commons.io.PathUtil
 import enumeratum.{Enum, EnumEntry}
 
+import scala.math.Ordering
+
 /** FgBioDef that is just an extension of the commons CommonsDef. Here in case
   * there's a need for FgBio specific defs later.
   */
 object FgBioDef extends CommonsDef {
+
   /** Extends this trait in your enumeration object to enable the case objects to be created on the command line.
     * You should implement the [[enumeratum.Enum#values]] method in your object, for example:
     * `def values: IndexedSeq[T] = findValues`.
@@ -52,6 +55,71 @@ object FgBioDef extends CommonsDef {
     (samples, libraries) match {
       case (Seq(sample), Seq(library)) => s"$sample / $library"
       case _                           => PathUtil.basename(input, trimExt=true).toString
+    }
+  }
+
+
+  /** Stores information about the coordinates of the alternate locus
+    *
+    * @param refName the name of the reference sequence (or chromosome)
+    * @param start position of the genomic range (1-based)
+    * @param end position of the gneomic range (1-based inclusive).
+    */
+  case class GenomicRange(refName: String, start: Int, end: Int) {
+    override def toString: String = f"$refName:$start-$end"
+  }
+
+  object GenomicRange {
+    /** Parses a genomic range of the form `<chr>:<start>-<end>` or `<chr>:<start>`, assuming the range is 1-based
+      * inclusive (closed-ended).  If only a start position is included the range includes just the single base.
+      * Coordinates may include commas in the numbers.
+      *
+      * @param range the string to parse.
+      */
+    def apply(range: String): GenomicRange = {
+      val (refName: String, rest: String) = range.lastIndexOf(':') match {
+        case -1  => throw new IllegalArgumentException(f"Missing colon in genomic range: '$range'")
+        case idx =>
+          val (left, right) = range.splitAt(idx)
+          (left, right.drop(1).replace(",", ""))
+      }
+
+      val (start, end) = rest.indexOf('-') match {
+        case -1  => (rest, rest)
+        case idx =>
+          val (left, right) = rest.splitAt(idx)
+          (left, right.drop(1))
+      }
+
+      GenomicRange(refName=refName, start=start.toInt, end=end.toInt)
+    }
+  }
+
+  /** Parses a genomic range of the form `<chr>:<start>-<end>` or `<chr>:<start>`, assuming the range is 1-based
+    * inclusive (closed-ended).  If only a start position is included the range includes just the single base.
+    * Coordinates may include commas in the numbers.
+    *
+    * @param range the string to parse.
+    * @deprecated use GenomicRange(string) instead
+    */
+  @deprecated(message="Use GenomicRange() instead", since="1.3.0") def parseRange(range: String): GenomicRange = {
+    GenomicRange(range)
+  }
+
+  // Developer note: move this to commons as scala 2.12 does not have this method on an [[IterableOnce]]/[[Iterator]]
+  implicit class IterableOnceMinByOption[A](iter: Iterator[A]) {
+    /** Finds the first element which yields the smallest value measured by function f.
+      *
+      * @param    cmp An ordering to be used for comparing elements.
+      * @tparam   B The result type of the function f.
+      * @param    f The measuring function.
+      * @return an option value containing the first element of this $coll
+      *         with the smallest value measured by function f
+      *         with respect to the ordering `cmp`.
+      */
+    def minByOption[B](f: A => B)(implicit cmp: Ordering[B]): Option[A] = {
+      if (iter.iterator.isEmpty) None
+      else Some(iter.iterator.minBy(f)(cmp))
     }
   }
 }

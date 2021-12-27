@@ -28,8 +28,10 @@ import java.nio.file.Files
 import java.util.concurrent.{Callable, Executors, TimeUnit}
 
 import com.fulcrumgenomics.FgBioDef._
+import com.fulcrumgenomics.fasta.{SequenceDictionary, SequenceMetadata}
 import com.fulcrumgenomics.testing.{SamBuilder, UnitSpec}
 import com.fulcrumgenomics.util.Io
+import htsjdk.samtools.GenomicIndexUtil
 
 import scala.util.Random
 
@@ -118,11 +120,25 @@ class SamIoTest extends UnitSpec {
     count shouldBe future.get()
   }
 
+  it should "not explode when asked to index a file with chroms too long" in {
+    val dict    = SequenceDictionary(SequenceMetadata(name="chr1", length=GenomicIndexUtil.BIN_GENOMIC_SPAN + 100000))
+    val builder = new SamBuilder(sd=Some(dict), sort=Some(SamOrder.Coordinate))
+    builder.addFrag(start=GenomicIndexUtil.BIN_GENOMIC_SPAN + 500)
+
+    val bam = makeTempFile("long.", ".bam")
+    val out = SamWriter(bam, header=builder.header, index=true)
+    out ++= builder
+    out.close()
+
+    val in = SamSource(bam)
+    in.indexed shouldBe false
+  }
+
   "HeaderHelper" should "provide tidy access to things in the header" in {
     val builder = new SamBuilder()
     val source = builder.toSource
     source.readGroups should contain theSameElementsInOrderAs source.header.getReadGroups.toSeq
-    source.dict shouldBe source.header.getSequenceDictionary
+    source.dict shouldBe source.dict
     source.programGroups should contain theSameElementsInOrderAs source.header.getProgramRecords.toSeq
   }
 

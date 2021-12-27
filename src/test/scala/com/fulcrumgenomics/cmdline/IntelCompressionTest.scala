@@ -26,18 +26,18 @@ package com.fulcrumgenomics.cmdline
 
 import java.nio.file.Paths
 
-import com.fulcrumgenomics.bam.api.SamSource
-import com.fulcrumgenomics.testing.UnitSpec
-import htsjdk.samtools.util.zip.{DeflaterFactory, InflaterFactory}
-import htsjdk.samtools.util._
 import com.fulcrumgenomics.FgBioDef.SafelyClosable
+import com.fulcrumgenomics.bam.api.SamSource
+import com.fulcrumgenomics.commons.util.SystemUtil.IntelCompressionLibrarySupported
+import com.fulcrumgenomics.testing.UnitSpec
 import com.intel.gkl.compression.{IntelDeflaterFactory, IntelInflaterFactory}
 import htsjdk.samtools.BAMRecordCodec
-import htsjdk.samtools.util.zip.InflaterFactory
+import htsjdk.samtools.util._
+import htsjdk.samtools.util.zip.{DeflaterFactory, InflaterFactory}
 
 
 class IntelCompressionTest extends UnitSpec {
-  private val intelSupported = SystemUtils.IntelCompressionLibrarySupported
+  private val intelSupported = IntelCompressionLibrarySupported
   private val testBam        = Paths.get("src/test/resources/com/fulcrumgenomics/bam/estimate_pooling_fractions/HG01583.bam")
   private val levels         = Seq(2, 5, 9)
 

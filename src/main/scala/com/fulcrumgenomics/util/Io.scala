@@ -39,20 +39,9 @@ class Io(var compressionLevel: Int = 5,
          override val bufferSize: Int = 128*1024,
          var tmpDir: DirPath = Paths.get(System.getProperty("java.io.tmpdir"))) extends IoUtil {
 
-  /** Adds the automatic handling of gzipped files when opening files for reading. */
-  override def toInputStream(path: Path): InputStream = {
-    PathUtil.extensionOf(path) match {
-      case Some(".gz") | Some(".bgz") | Some(".bgzip") =>
-        new GZIPInputStream(Files.newInputStream(path), bufferSize)
-      case _ =>
-        super.toInputStream(path)
-    }
-  }
-
   /** Adds the automatic handling of gzipped files when opening files for writing. */
   override def toOutputStream(path: Path): OutputStream = {
     PathUtil.extensionOf(path) match {
-      case Some(".gz") => new GZIPOutputStream(Files.newOutputStream(path), bufferSize) { this.`def`.setLevel(compressionLevel) }
       case Some(".bgz") | Some(".bgzip") => new BlockCompressedOutputStream(super.toOutputStream(path), path.toFile, compressionLevel)
       case _           => super.toOutputStream(path)
     }
@@ -61,7 +50,7 @@ class Io(var compressionLevel: Int = 5,
   /** Overridden to ensure tmp directories are created within the given tmpDir. */
   override def makeTempDir(name: String): DirPath = Files.createTempDirectory(tmpDir, name)
 
-  /** Overridden to ensure that tmp fiels are created within the correct tmpDir. */
+  /** Overridden to ensure that tmp files are created within the correct tmpDir. */
   override def makeTempFile(prefix: String, suffix: String, dir: Option[DirPath] = Some(tmpDir)): DirPath = super.makeTempFile(prefix, suffix, dir)
 }
 

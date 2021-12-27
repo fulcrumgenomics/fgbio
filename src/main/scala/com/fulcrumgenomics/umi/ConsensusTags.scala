@@ -42,11 +42,13 @@ package com.fulcrumgenomics.umi
   * The second letter in the tag is lower case if it is per-base, upper case if it is per-read.
   */
 object ConsensusTags {
-  /** The default field in which to look for UMI sequences. */
+  /** The default field in which to look for UMI sequences and qualities. */
   val UmiBases    = "RX"
+  val UmiQuals    = "QX"
 
-  /** The field in which the original UMI bases are stored post-correction. */
+  /** The field in which the original UMI bases and qualities are stored post-correction. */
   val OriginalUmiBases = "OX"
+  val OriginalUmiQuals = "BZ"
 
   /** Post-grouping ID that is file-wide unique per source molecule. */
   val MolecularId = "MI"

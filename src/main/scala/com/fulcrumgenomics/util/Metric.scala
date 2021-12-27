@@ -29,14 +29,15 @@ import java.io.{Closeable, Writer}
 import java.nio.file.Path
 import java.text.{DecimalFormat, NumberFormat, SimpleDateFormat}
 import java.util.Date
-
 import com.fulcrumgenomics.commons.CommonsDef._
 import com.fulcrumgenomics.commons.reflect.{ReflectionUtil, ReflectiveBuilder}
 import com.fulcrumgenomics.commons.util.DelimitedDataParser
 import htsjdk.samtools.util.{FormatUtil, Iso8601Date}
 import com.fulcrumgenomics.commons.io.{Writer => CommonsWriter}
+import enumeratum.EnumEntry
 
 import scala.collection.compat._
+import scala.collection.concurrent.TrieMap
 import scala.reflect.runtime.{universe => ru}
 import scala.util.{Failure, Success}
 
@@ -59,6 +60,9 @@ object Metric {
   /** A format object for Dates. Should be sync'd over. */
   private val DateFormat = new SimpleDateFormat("yyyy-MM-dd")
 
+  /** Add a cache of names for metric classes. */
+  private val nameCache = new TrieMap[Class[_ <: Metric], Seq[String]]()
+
   /** A class that provides streaming writing capability for metrics. */
   class MetricWriter[T <: Metric] private[Metric](val writer: Writer)(implicit tt: ru.TypeTag[T]) extends CommonsWriter[T] {
     this.writer.write(names[T].mkString(DelimiterAsString))
@@ -79,9 +83,19 @@ object Metric {
 
   /** Get the names of the arguments in the order they were defined for the type [T]. */
   def names[T <: Metric](implicit tt: ru.TypeTag[T]): Seq[String] = {
-    val clazz             = ReflectionUtil.typeTagToClass[T]
-    val reflectiveBuilder = new ReflectiveBuilder(clazz)
-    reflectiveBuilder.argumentLookup.ordered.map(_.name)
+    names(ReflectionUtil.typeTagToClass[T])
+  }
+
+  /** Get the names of the arguments in the order they were defined for the class T. */
+  def names[T <: Metric](clazz: Class[T]): Seq[String] = {
+    this.nameCache.get(clazz) match {
+      case Some(names) => names
+      case None        =>
+        val reflectiveBuilder = new ReflectiveBuilder(clazz)
+        val names = reflectiveBuilder.argumentLookup.ordered.map(_.name)
+        this.nameCache.put(clazz, names)
+        names
+    }
   }
 
   /** Reads metrics from a set of lines.  The first line should be the header with the field names.  Each subsequent
@@ -96,13 +110,13 @@ object Metric {
 
     parser.map { row =>
       forloop(from = 0, until = names.length) { i =>
-        val value = {
-          val tmp = row[String](i)
-          if (tmp.nonEmpty) tmp else ReflectionUtil.SpecialEmptyOrNoneToken
-        }
-
         reflectiveBuilder.argumentLookup.forField(names(i)) match {
           case Some(arg) =>
+            val value = {
+              val tmp = row[String](i)
+              if (tmp.isEmpty && arg.argumentType == classOf[Option[_]]) ReflectionUtil.SpecialEmptyOrNoneToken else tmp
+            }
+
             val argumentValue = ReflectionUtil.constructFromString(arg.argumentType, arg.unitType, value) match {
               case Success(v) => v
               case Failure(thr) => throw thr
@@ -180,12 +194,8 @@ object Metric {
   * words separated by underscores.
   */
 trait Metric extends Product with Iterable[(String,String)] {
-  private lazy val reflectiveBuilder = new ReflectiveBuilder(this.getClass)
-
   /** Get the names of the arguments in the order they were defined. */
-  def names: Seq[String] = {
-    this.reflectiveBuilder.argumentLookup.ordered.map(_.name)
-  }
+  def names: Seq[String] = Metric.names(getClass)
 
   /** Get the values of the arguments in the order they were defined. */
   def values: Seq[String] = productIterator.map(formatValue).toSeq
@@ -222,6 +232,7 @@ trait Metric extends Product with Iterable[(String,String)] {
       Metric.SmallDoubleFormat.synchronized { Metric.SmallDoubleFormat.format(d) }
     case d: Double if d.isNaN || d.isInfinity => d.toString
     case d: Double      => Metric.BigDoubleFormat.synchronized { Metric.BigDoubleFormat.format(d) }
+    case e: EnumEntry   => e.entryName
     case other          => other.toString
   }
 

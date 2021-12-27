@@ -27,11 +27,11 @@ package com.fulcrumgenomics.vcf
 
 import java.util.NoSuchElementException
 
-import htsjdk.samtools.SAMSequenceDictionary
+import com.fulcrumgenomics.FgBioDef._
+import com.fulcrumgenomics.fasta.SequenceDictionary
 import htsjdk.samtools.util._
 import htsjdk.variant.variantcontext.VariantContext
 import htsjdk.variant.vcf.VCFFileReader
-import com.fulcrumgenomics.FgBioDef._
 
 import scala.annotation.tailrec
 
@@ -44,7 +44,7 @@ object ByIntervalListVariantContextIterator {
     */
   def apply(iterator: Iterator[VariantContext],
             intervalList: IntervalList,
-            dict: SAMSequenceDictionary): Iterator[VariantContext] = {
+            dict: SequenceDictionary): Iterator[VariantContext] = {
     new OverlapDetectionVariantContextIterator(iterator, intervalList, dict)
   }
 
@@ -64,7 +64,7 @@ object ByIntervalListVariantContextIterator {
 
 private class OverlapDetectionVariantContextIterator(val iter: Iterator[VariantContext],
                                                      val intervalList: IntervalList,
-                                                     val dict: SAMSequenceDictionary)
+                                                     val dict: SequenceDictionary)
   extends Iterator[VariantContext] {
 
   require(dict != null)
@@ -84,7 +84,7 @@ private class OverlapDetectionVariantContextIterator(val iter: Iterator[VariantC
 
   def remove(): Unit = throw new UnsupportedOperationException
 
-  private def contigIdx(locatable: Locatable): Int = dict.getSequenceIndex(locatable.getContig)
+  private def contigIdx(locatable: Locatable): Int = dict(locatable.getContig).index
 
   private def coordLessThan(left: Locatable, right: Locatable): Boolean = {
     val leftContigIdx = contigIdx(left)

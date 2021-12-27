@@ -26,22 +26,22 @@
  */
 package com.fulcrumgenomics.umi
 
-import java.nio.file.Files
-
+import com.fulcrumgenomics.bam.Template
 import com.fulcrumgenomics.bam.api.SamOrder
 import com.fulcrumgenomics.cmdline.FgBioMain.FailureException
 import com.fulcrumgenomics.testing.SamBuilder.{Minus, Plus}
 import com.fulcrumgenomics.testing.{SamBuilder, UnitSpec}
 import com.fulcrumgenomics.umi.GroupReadsByUmi._
-import org.scalatest.OptionValues
+import org.scalatest.{OptionValues, PrivateMethodTester}
 
+import java.nio.file.Files
 import scala.collection.mutable
 
 /**
   * Tests for the tool that groups reads by position and UMI to attempt to identify
   * read pairs that arose from the same original molecule.
   */
-class GroupReadsByUmiTest extends UnitSpec with OptionValues {
+class GroupReadsByUmiTest extends UnitSpec with OptionValues with PrivateMethodTester {
   // Returns a List of the element 't' repeated 'n' times
   private def n[T](t: T, n:Int =1): List[T] = List.tabulate(n)(x => t)
 
@@ -171,6 +171,34 @@ class GroupReadsByUmiTest extends UnitSpec with OptionValues {
     }
   }
 
+  "GroupReadsByUmi.umiForRead" should "correctly assign a/b for paired UMI prefixes" in {
+    val tool = new GroupReadsByUmi(rawTag="RX", assignTag="MI", strategy=Strategy.Paired, edits = 0, allowInterContig=true)
+    val builder = new SamBuilder(readLength=100)
+    val templates = Seq(
+      // These 4 should be a::AAA-b::TTT since contig1 is lower
+      builder.addPair(contig = 1, contig2 = Some(2), start1=100, start2=300, strand1=Plus,  strand2=Minus, attrs=Map("RX" -> "AAA-TTT")),
+      builder.addPair(contig = 1, contig2 = Some(2), start1=300, start2=100, strand1=Plus,  strand2=Minus, attrs=Map("RX" -> "AAA-TTT")),
+      builder.addPair(contig = 1, contig2 = Some(2), start1=100, start2=100, strand1=Plus,  strand2=Minus, attrs=Map("RX" -> "AAA-TTT")),
+      builder.addPair(contig = 1, contig2 = Some(2), start1=100, start2=100, strand1=Minus,  strand2=Plus, attrs=Map("RX" -> "AAA-TTT")),
+      // These 4 should be b::AAA-a::TTT since contig2 is lower
+      builder.addPair(contig = 2, contig2 = Some(1), start1=100, start2=300, strand1=Plus,  strand2=Minus, attrs=Map("RX" -> "AAA-TTT")),
+      builder.addPair(contig = 2, contig2 = Some(1), start1=300, start2=100, strand1=Plus,  strand2=Minus, attrs=Map("RX" -> "AAA-TTT")),
+      builder.addPair(contig = 2, contig2 = Some(1), start1=100, start2=100, strand1=Plus,  strand2=Minus, attrs=Map("RX" -> "AAA-TTT")),
+      builder.addPair(contig = 2, contig2 = Some(1), start1=100, start2=100, strand1=Minus,  strand2=Plus, attrs=Map("RX" -> "AAA-TTT")),
+      // Should be a::AAA-b::TTT since r1 pos < r2 pos
+      builder.addPair(contig = 1, start1=100, start2=300, strand1=Plus,  strand2=Minus, attrs=Map("RX" -> "AAA-TTT")),
+      // Should be b::AAA-a::TTT since r1 pos < r2 pos
+      builder.addPair(contig = 1, start1=300, start2=100, strand1=Plus,  strand2=Minus, attrs=Map("RX" -> "AAA-TTT")),
+      // Should be a::AAA-b::TTT since same contig/pos, r1 positive strand
+      builder.addPair(contig = 1, start1=100, start2=100, strand1=Plus,  strand2=Minus, attrs=Map("RX" -> "AAA-TTT")),
+      // Should be b::AAA-a::TTT since same contig/pos, r2 positive strand
+      builder.addPair(contig = 1, start1=100, start2=100, strand1=Minus,  strand2=Plus, attrs=Map("RX" -> "AAA-TTT")),
+    ).map { pair => Template(r1 = pair.headOption, r2 = pair.lastOption) }
+    val expected = n("a::AAA-b::TTT", 4) ++ n("b::AAA-a::TTT", 4) ++ n("a::AAA-b::TTT", 1) ++ n("b::AAA-a::TTT", 1) ++ n("a::AAA-b::TTT", 1) ++ n("b::AAA-a::TTT", 1)
+    val umiForRead = PrivateMethod[String](Symbol("umiForRead"))
+    templates.map(t => tool invokePrivate umiForRead(t)) should contain theSameElementsInOrderAs expected
+  }
+
   // Test for running the GroupReadsByUmi command line program with some sample input
   "GroupReadsByUmi" should "group reads correctly" in {
     val builder = new SamBuilder(readLength=100, sort=Some(SamOrder.Coordinate))
@@ -222,6 +250,57 @@ class GroupReadsByUmiTest extends UnitSpec with OptionValues {
 
     aIds.head.takeWhile(_ != '/') shouldBe bIds.head.takeWhile(_ != '/')
     aIds.head should not equal bIds.head
+  }
+
+  it should "correctly group reads with the paired assigner when the two UMIs are the same in cross-contig read pairs" in {
+    val builder = new SamBuilder(readLength=100, sort=Some(SamOrder.Coordinate))
+    builder.addPair(name="a01", contig = 1, contig2 = Some(2), start1=100, start2=300, strand1=Plus,  strand2=Minus, attrs=Map("RX" -> "ACT-ACT"))
+    builder.addPair(name="a02", contig = 1, contig2 = Some(2), start1=100, start2=300, strand1=Plus,  strand2=Minus, attrs=Map("RX" -> "ACT-ACT"))
+    builder.addPair(name="a03", contig = 1, contig2 = Some(2), start1=100, start2=300, strand1=Plus,  strand2=Minus, attrs=Map("RX" -> "ACT-ACT"))
+    builder.addPair(name="a04", contig = 1, contig2 = Some(2), start1=100, start2=300, strand1=Plus,  strand2=Minus, attrs=Map("RX" -> "ACT-ACT"))
+    builder.addPair(name="b01", contig = 2, contig2 = Some(1), start1=300, start2=100, strand1=Minus, strand2=Plus,  attrs=Map("RX" -> "ACT-ACT"))
+    builder.addPair(name="b02", contig = 2, contig2 = Some(1), start1=300, start2=100, strand1=Minus, strand2=Plus,  attrs=Map("RX" -> "ACT-ACT"))
+    builder.addPair(name="b03", contig = 2, contig2 = Some(1), start1=300, start2=100, strand1=Minus, strand2=Plus,  attrs=Map("RX" -> "ACT-ACT"))
+    builder.addPair(name="b04", contig = 2, contig2 = Some(1), start1=300, start2=100, strand1=Minus, strand2=Plus,  attrs=Map("RX" -> "ACT-ACT"))
+
+    val in   = builder.toTempFile()
+    val out  = Files.createTempFile("umi_grouped.", ".sam")
+    val hist = Files.createTempFile("umi_grouped.", ".histogram.txt")
+    new GroupReadsByUmi(input=in, output=out, familySizeHistogram=Some(hist), rawTag="RX", assignTag="MI", strategy=Strategy.Paired, edits=1, allowInterContig=true).execute()
+
+    val recs = readBamRecs(out)
+    val aIds = recs.filter(_.name.startsWith("a")).map(r => r[String]("MI")).distinct
+    val bIds = recs.filter(_.name.startsWith("b")).map(r => r[String]("MI")).distinct
+
+    aIds should have size 1
+    bIds should have size 1
+
+    aIds.head.takeWhile(_ != '/') shouldBe bIds.head.takeWhile(_ != '/')
+    aIds.head should not equal bIds.head
+  }
+
+  it should "correctly group together single-end reads with UMIs" in {
+    val builder = new SamBuilder(readLength=100, sort=Some(SamOrder.Coordinate))
+    builder.addFrag(name="a01", start=100, attrs=Map("RX" -> "AAAAAAAA"))
+    builder.addFrag(name="a02", start=100, attrs=Map("RX" -> "AAAAAAAA"))
+    builder.addFrag(name="a03", start=100, attrs=Map("RX" -> "CACACACA"))
+    builder.addFrag(name="a04", start=100, attrs=Map("RX" -> "CACACACC"))
+    builder.addFrag(name="a05", start=105, attrs=Map("RX" -> "GTAGTAGG"))
+    builder.addFrag(name="a06", start=105, attrs=Map("RX" -> "GTAGTAGG"))
+    builder.addFrag(name="a07", start=107, attrs=Map("RX" -> "AAAAAAAA"))
+    builder.addFrag(name="a08", start=107, attrs=Map("RX" -> "AAAAAAAA"))
+
+    val in  = builder.toTempFile()
+    val out = Files.createTempFile("umi_grouped.", ".sam")
+    val hist = Files.createTempFile("umi_grouped.", ".histogram.txt")
+    new GroupReadsByUmi(input=in, output=out, familySizeHistogram=Some(hist), rawTag="RX", assignTag="MI", strategy=Strategy.Edit, edits=1).execute()
+
+    val recs = readBamRecs(out)
+    recs should have size 8
+
+    val groups = recs.groupBy(r => r[String]("MI")).values.map(rs => rs.map(_.name).toSet)
+    groups should have size 4
+    groups should contain theSameElementsAs Seq(Set("a01", "a02"), Set("a03", "a04"), Set("a05", "a06"), Set("a07", "a08"))
   }
 
   it should "exclude reads that contain an N in the UMI" in {

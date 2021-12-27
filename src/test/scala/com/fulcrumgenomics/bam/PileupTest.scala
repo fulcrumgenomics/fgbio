@@ -24,7 +24,6 @@
 
 package com.fulcrumgenomics.bam
 
-import com.fulcrumgenomics.FgBioDef._
 import com.fulcrumgenomics.testing.{ReferenceSetBuilder, SamBuilder, UnitSpec}
 import htsjdk.samtools.reference.ReferenceSequenceFileFactory
 
@@ -38,7 +37,10 @@ class PileupTest extends UnitSpec {
     ReferenceSequenceFileFactory.getReferenceSequenceFile(path)
   }
 
-  private val dict = ref.getSequenceDictionary
+  private val dict = {
+    import com.fulcrumgenomics.fasta.Converters.FromSAMSequenceDictionary
+    ref.getSequenceDictionary.fromSam
+  }
 
   "PileupBuilder.build" should "build a simple pileup from fragment reads" in {
     val piler = new PileupBuilder(dict, mappedPairsOnly=false)

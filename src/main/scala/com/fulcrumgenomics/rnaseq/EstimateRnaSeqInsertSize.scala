@@ -82,13 +82,13 @@ class EstimateRnaSeqInsertSize
   Io.assertReadable(refFlat)
   prefix.foreach(Io.assertCanWriteFile(_))
 
-  private val geneOverlapDetector = new OverlapDetector[Gene](0, 0)
+  private val geneOverlapDetector = new OverlapDetector[GeneLocus](0, 0)
 
   override def execute(): Unit = {
     val progress            = ProgressLogger(logger, verb = "read", unit = 5e6.toInt)
     val pairOrientations    = PairOrientation.values()
     val in                  = SamSource(input)
-    val refFlatSource       = RefFlatSource(refFlat, Some(in.header.getSequenceDictionary))
+    val refFlatSource       = RefFlatSource(refFlat, Some(in.dict))
     val counters            = pairOrientations.map { pairOrientation => (pairOrientation, new NumericCounter[Long]()) }.toMap
     val filter              = new AggregateFilter(EstimateRnaSeqInsertSize.filters(minimumMappingQuality=minimumMappingQuality, includeDuplicates=includeDuplicates).asJava)
     var numReadPairs        = 0L
@@ -98,7 +98,9 @@ class EstimateRnaSeqInsertSize
       !filter.filterOut(rec.asSam)
     }
 
-    refFlatSource.foreach { gene => geneOverlapDetector.addLhs(gene, gene) }
+    for (gene <- refFlatSource; locus <- gene.loci) {
+      geneOverlapDetector.addLhs(locus, locus)
+    }
 
     recordIterator.foreach { rec =>
       calculateInsertSize(rec=rec) match {
@@ -204,9 +206,8 @@ object EstimateRnaSeqInsertSize {
   private def DifferentReferenceIndexFilter                = filter(r => r.refIndex != r.mateRefIndex)
 
   private[rnaseq] def getAndRequireMateCigar(rec: SamRecord): Cigar = {
-    rec.get[String](SAMTag.MC.name()) match {
-      case None => throw new IllegalStateException(s"Mate CIGAR (Tag MC) not found for $rec, consider using SetMateInformation.")
-      case Some(mc) => Cigar(mc)
+    rec.mateCigar.getOrElse {
+      throw new IllegalStateException(s"Mate CIGAR (Tag 'MC') not found for $rec, consider using SetMateInformation.")
     }
   }
 
@@ -232,12 +233,12 @@ object EstimateRnaSeqInsertSize {
   /** Calculates the insert size from a gene.  Returns None if the record's span is not enclosed in the gene or if
     * the insert size disagree across transcripts.  Assumes the record and gene are mapped to the same chromosome. */
   private[rnaseq] def insertSizeFromGene(rec: SamRecord,
-                                      gene: Gene,
-                                      minimumOverlap: Double,
-                                      recInterval: Interval,
-                                      recBlocks: List[AlignmentBlock],
-                                      mateBlocks: List[AlignmentBlock],
-                                      mateAlignmentEnd: Int): Option[Int] = {
+                                         gene: GeneLocus,
+                                         minimumOverlap: Double,
+                                         recInterval: Interval,
+                                         recBlocks: List[AlignmentBlock],
+                                         mateBlocks: List[AlignmentBlock],
+                                         mateAlignmentEnd: Int): Option[Int] = {
     if (!CoordMath.encloses(gene.start, gene.end, recInterval.getStart, recInterval.getEnd)) return None
 
     // Check the insert size of each transcript, making sure they all have the same value

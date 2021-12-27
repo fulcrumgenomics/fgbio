@@ -35,15 +35,15 @@ import com.fulcrumgenomics.sopt.cmdline.CommandLineProgramParser
 import com.fulcrumgenomics.sopt.util.ParsingUtil
 import com.fulcrumgenomics.util.Io
 import com.fulcrumgenomics.vcf.api.{Variant, VcfSource}
-import htsjdk.variant.variantcontext.VariantContext
-import htsjdk.variant.vcf.VCFFileReader
-import org.scalatest.{BeforeAndAfterAll, FlatSpec, Matchers}
+import org.scalatest.{BeforeAndAfterAll, OptionValues}
+import org.scalatest.flatspec.AnyFlatSpec
+import org.scalatest.matchers.should.Matchers
 
 import scala.reflect.ClassTag
 import scala.reflect.runtime.universe._
 
 /** Base class for unit and integration testing */
-trait UnitSpec extends FlatSpec with Matchers {
+trait UnitSpec extends AnyFlatSpec with Matchers with OptionValues {
   // Turn down HTSJDK logging
   htsjdk.samtools.util.Log.setGlobalLogLevel(htsjdk.samtools.util.Log.LogLevel.WARNING)
 

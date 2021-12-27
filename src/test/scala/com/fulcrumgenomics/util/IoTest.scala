@@ -34,28 +34,6 @@ import htsjdk.samtools.util.BlockCompressedInputStream
   */
 class IoTest extends UnitSpec {
 
-  "Io" should "open a file for gzip writing if it ends with .gz" in {
-    val text = "This is a stupid little text fragment for compression. Yay compression!"
-    val in   = Seq(text, text, text)
-    val f = makeTempFile("test", ".gz")
-    Io.writeLines(f, in)
-
-    // Manually read it back as gzipped data
-    val reader = new BufferedReader(new InputStreamReader(new GZIPInputStream(new FileInputStream(f.toFile))))
-    val out = Seq(reader.readLine(), reader.readLine(), reader.readLine())
-    out shouldBe in
-    reader.close()
-  }
-
-  it should "round trip data to a gzipped file if it ends with .gz" in {
-    val text = "This is a stupid little text fragment for compression. Yay compression!"
-    val in   = Seq(text, text, text)
-    val f = makeTempFile("test", ".gz")
-    Io.writeLines(f, in)
-    val out = Io.readLines(f).toSeq
-    out shouldBe in
-  }
-
   Seq(".bgz", ".bgzip").foreach { ext =>
     it should s"round trip data to a bgzipped file with extension ${ext}" in {
       val text = "This is a stupid little text fragment for compression. Yay compression!"

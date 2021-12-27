@@ -28,6 +28,7 @@ import com.fulcrumgenomics.umi.ConsensusTags
 import htsjdk.samtools.SAMFileHeader.{GroupOrder, SortOrder}
 import htsjdk.samtools.util.Murmur3
 import htsjdk.samtools.{SAMFileHeader, SAMUtils}
+import org.apache.commons.math3.genetics.RandomKey
 
 
 /** Trait for specifying BAM orderings. */
@@ -133,20 +134,31 @@ object SamOrder {
     override val sortkey: (SamRecord => A)  = rec => RandomKey(hasher.hashUnencodedChars(rec.id + rec.basesString), rec.flags)
   }
 
-  /** Ordering object for generating a random order with queryname grouping. */
-  case object RandomQuery extends SamOrder {
-    override type A = RandomKey
-    private  val hasher = new Murmur3(42)
-    override val sortOrder:  SortOrder      = SortOrder.unsorted
-    override val groupOrder: GroupOrder     = GroupOrder.query
-    override val subSort:    Option[String] = Some("random-query")
-    override val sortkey: SamRecord => A    = rec => RandomKey(hasher.hashUnencodedChars(rec.name), rec.flags)
-  }
-
-  /** Key object used by Random and RandomQuery sorts. */
+  /** Key object used by Random sort. */
   final case class RandomKey(hash: Int, flags: Int) extends Ordered[RandomKey] {
     override def compare(that: RandomKey): Int = {
       var retval = Integer.compare(this.hash, that.hash)
+      if (retval == 0) retval = Integer.compare(this.flags, that.flags)
+      retval
+    }
+  }
+
+  /** Ordering object for generating a random order with queryname grouping. */
+  case object RandomQuery extends SamOrder {
+    val HashSeed: Int = 42
+    override type A = RandomQueryKey
+    private  val hasher = new Murmur3(HashSeed)
+    override val sortOrder:  SortOrder      = SortOrder.unsorted
+    override val groupOrder: GroupOrder     = GroupOrder.query
+    override val subSort:    Option[String] = Some("random-query")
+    override val sortkey: SamRecord => A    = rec => RandomQueryKey(hasher.hashUnencodedChars(rec.name), rec.name, rec.flags)
+  }
+
+  /** Key object used by RandomQuery sort. */
+  final case class RandomQueryKey(hash: Int, name: String, flags: Int) extends Ordered[RandomQueryKey] {
+    override def compare(that: RandomQueryKey): Int = {
+      var retval = Integer.compare(this.hash, that.hash)
+      if (retval == 0) retval = this.name.compareTo(that.name)
       if (retval == 0) retval = Integer.compare(this.flags, that.flags)
       retval
     }
@@ -164,11 +176,11 @@ object SamOrder {
     override val subSort:    Option[String] = Some("template-coordinate")
     override val sortkey: SamRecord => A = rec => {
       val readChrom = if (rec.unmapped)     Int.MaxValue else rec.refIndex
-      val mateChrom = if (rec.mateUnmapped) Int.MaxValue else rec.mateRefIndex
+      val mateChrom = if (rec.unpaired || rec.mateUnmapped) Int.MaxValue else rec.mateRefIndex
       val readNeg   = rec.negativeStrand
-      val mateNeg   = rec.mateNegativeStrand
+      val mateNeg   = if (rec.paired) rec.mateNegativeStrand else false
       val readPos   = if (rec.unmapped)     Int.MaxValue else if (readNeg) rec.unclippedEnd else rec.unclippedStart
-      val matePos   = if (rec.mateUnmapped) Int.MaxValue else if (mateNeg) SAMUtils.getMateUnclippedEnd(rec.asSam) else SAMUtils.getMateUnclippedStart(rec.asSam)
+      val matePos   = if (rec.unpaired || rec.mateUnmapped) Int.MaxValue else if (mateNeg) SAMUtils.getMateUnclippedEnd(rec.asSam) else SAMUtils.getMateUnclippedStart(rec.asSam)
       val lib       = Option(rec.readGroup).flatMap(rg => Option(rg.getLibrary)).getOrElse("Unknown")
       val mid       = rec.get[String](ConsensusTags.MolecularId).map { m =>
         val index: Int = m.lastIndexOf('/')

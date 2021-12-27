@@ -30,8 +30,9 @@ import java.util.concurrent.atomic.AtomicLong
 
 import com.fulcrumgenomics.FgBioDef._
 import com.fulcrumgenomics.alignment.Cigar
-import com.fulcrumgenomics.bam.api.{SamOrder, SamRecord, SamSource, SamWriter}
 import com.fulcrumgenomics.bam.api.SamRecord.{MissingBases, MissingQuals}
+import com.fulcrumgenomics.bam.api.{SamOrder, SamRecord, SamSource, SamWriter}
+import com.fulcrumgenomics.fasta.{SequenceDictionary, SequenceMetadata}
 import com.fulcrumgenomics.testing.SamBuilder._
 import htsjdk.samtools._
 
@@ -45,34 +46,40 @@ object SamBuilder {
   }
   object Plus  extends Strand { val isNegative = false }
   object Minus extends Strand { val isNegative = true }
+  val DefaultSampleName: String = "Sample"
+  val DefaultReadGroupId: String = "A"
 }
 
 /** Class to create sets of [[com.fulcrumgenomics.bam.api.SamRecord]]s for testing. */
 class SamBuilder(val readLength: Int=100,
                  val baseQuality: Int=30,
+                 val sampleName: String = DefaultSampleName,
                  val sort: Option[SamOrder] = None,
                  val readGroupId: Option[String] = None,
-                 sd: Option[SAMSequenceDictionary] = None,
+                 sd: Option[SequenceDictionary] = None,
                  seed: Int = 42
                 ) extends Iterable[SamRecord] {
+  import com.fulcrumgenomics.fasta.Converters._
 
   // Setup the header, sequence dictionary and read group
   val header = new SAMFileHeader()
   sort.getOrElse(SamOrder.Unsorted).applyTo(header)
 
   { // Build the default dictionary
-    val dict: SAMSequenceDictionary = sd.getOrElse {
-      val seqs = (Range.inclusive(1, 22) ++ Seq("X", "Y", "M")).map { chr => new SAMSequenceRecord("chr" + chr, 200e6.toInt) }
-      new SAMSequenceDictionary(seqs.iterator.toJavaList)
+    val dict: SequenceDictionary = sd.getOrElse {
+      val seqs = (Range.inclusive(1, 22) ++ Seq("X", "Y", "M")).map { chr =>
+        SequenceMetadata(name="chr" + chr, length=200e6.toInt)
+      }
+      SequenceDictionary(seqs:_*)
     }
-    header.setSequenceDictionary(dict)
+    header.setSequenceDictionary(dict.asSam)
   }
 
   /** Shorter accessor for the sequence dictionary. */
-  def dict: SAMSequenceDictionary = header.getSequenceDictionary
+  lazy val dict: SequenceDictionary = header.getSequenceDictionary.fromSam
 
-  val rg = new SAMReadGroupRecord(readGroupId.getOrElse("A"))
-  rg.setSample("Sample")
+  val rg = new SAMReadGroupRecord(readGroupId.getOrElse(DefaultReadGroupId))
+  rg.setSample(sampleName)
   header.addReadGroup(rg)
 
   private val random  = new Random(seed)
@@ -107,6 +114,7 @@ class SamBuilder(val readLength: Int=100,
               quals1: String = defaultQuals,
               quals2: String = defaultQuals,
               contig: Int = 0,
+              contig2: Option[Int] = None,
               start1: Int = SAMRecord.NO_ALIGNMENT_START,
               start2: Int = SAMRecord.NO_ALIGNMENT_START,
               unmapped1: Boolean = false,
@@ -120,16 +128,14 @@ class SamBuilder(val readLength: Int=100,
               attrs: Map[String,Any] = Map.empty
              ): Seq[SamRecord] = {
 
-    require(bases1.length == quals1.length, "bases1 and quals1 were different lengths.")
-    require(bases2.length == quals2.length, "bases2 and quals2 were different lengths.")
-    require((bases1 == MissingBases && quals1 == MissingQuals) || (bases1 != MissingBases && quals1 != MissingQuals),
-      s"bases1 and quals1 must both either be missing or not missing: bases1=$bases1 quals1=$quals1")
-    require((bases2 == MissingBases && quals2 == MissingQuals) || (bases2 != MissingBases && quals2 != MissingQuals),
-      s"bases2 and quals2 must both either be missing or not missing: bases2=$bases2 quals2=$quals2")
     val cig1 = Cigar(cigar1)
     val cig2 = Cigar(cigar2)
+    require(bases1 == MissingBases || quals1 == MissingQuals || bases1.length == quals1.length, "bases1 and quals1 were different lengths.")
+    require(bases2 == MissingBases || quals2 == MissingQuals || bases2.length == quals2.length, "bases2 and quals2 were different lengths.")
     require(unmapped1 || bases1 == MissingBases || bases1.length == cig1.lengthOnQuery, "bases1 doesn't agree with cigar on length.")
     require(unmapped2 || bases2 == MissingBases || bases2.length == cig2.lengthOnQuery, "bases2 doesn't agree with cigar on length.")
+    require(unmapped1 || quals1 == MissingQuals || quals1.length == cig1.lengthOnQuery, "quals1 doesn't agree with cigar on length.")
+    require(unmapped2 || quals2 == MissingQuals || quals2.length == cig2.lengthOnQuery, "quals2 doesn't agree with cigar on length.")
 
     val r1            = SamRecord(header)
     r1.pf             = true
@@ -154,7 +160,7 @@ class SamBuilder(val readLength: Int=100,
     r2.name           = name
     r2.bases          = bases2
     r2.quals          = quals2
-    r2.refIndex       = if (start2 == SAMRecord.NO_ALIGNMENT_START) SAMRecord.NO_ALIGNMENT_REFERENCE_INDEX else contig
+    r2.refIndex       = if (start2 == SAMRecord.NO_ALIGNMENT_START) SAMRecord.NO_ALIGNMENT_REFERENCE_INDEX else contig2.getOrElse(contig)
     r2.start          = start2
     r2.positiveStrand = strand2 == Plus
     r2.paired         = true

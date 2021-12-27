@@ -95,6 +95,34 @@ class FastqToBamTest extends UnitSpec {
     r2.readGroup.getLibrary shouldBe "pop"
   }
 
+  it should "make a BAM from two fastq files without any read structures and ignore UMI qualities tag parameter" in {
+    val r1s = fq(FastqRecord("q1", "AAAAAAAAAA", "==========", readNumber=Some(1)))
+    val r2s = fq(FastqRecord("q1", "CCCCCCCCCC", "##########", readNumber=Some(2)))
+    val bam = makeTempFile("fastqToBamTest.", ".bam")
+    new FastqToBam(input=Seq(r1s, r2s), output=bam, sample="pip", library="pop", umiQualTag=Some(ConsensusTags.UmiQuals)).execute()
+    val recs = readBamRecs(bam)
+
+    recs should have size 2
+    val Seq(r1, r2) = recs
+    r1.name shouldBe "q1"
+    r1.paired shouldBe true
+    r1.firstOfPair shouldBe true
+    r1.secondOfPair shouldBe false
+    r1.basesString shouldBe "AAAAAAAAAA"
+    r1.quals.forall(_ == 28) shouldBe true
+    r1.readGroup.getSample shouldBe "pip"
+    r1.readGroup.getLibrary shouldBe "pop"
+
+    r2.name shouldBe "q1"
+    r2.paired shouldBe true
+    r2.firstOfPair shouldBe false
+    r2.secondOfPair shouldBe true
+    r2.basesString shouldBe "CCCCCCCCCC"
+    r2.quals.forall(_ == 2) shouldBe true
+    r2.readGroup.getSample shouldBe "pip"
+    r2.readGroup.getLibrary shouldBe "pop"
+  }
+
   it should "make a BAM file with two fastqs with an inline UMI in R1" in {
     val r1s = fq(FastqRecord("q1", "ACGTAAAAAA", "==========", readNumber=Some(1)))
     val r2s = fq(FastqRecord("q1", "CCCCCCCCCC", "##########", readNumber=Some(2)))
@@ -113,6 +141,28 @@ class FastqToBamTest extends UnitSpec {
     r2.basesString shouldBe "CCCCCCCCCC"
     r2.qualsString shouldBe "##########"
     r2[String](ConsensusTags.UmiBases) shouldBe "ACGT"
+  }
+
+  it should "make a BAM file with two fastqs with an inline UMI in R1 and keep UMI qualities" in {
+    val r1s = fq(FastqRecord("q1", "ACGTAAAAAA", "IIII======", readNumber=Some(1)))
+    val r2s = fq(FastqRecord("q1", "CCCCCCCCCC", "##########", readNumber=Some(2)))
+    val bam = makeTempFile("fastqToBamTest.", ".bam")
+    new FastqToBam(input=Seq(r1s, r2s), readStructures=Seq(rs("4M+T"), rs("+T")), output=bam, sample="s", library="l", umiQualTag=Some(ConsensusTags.UmiQuals)).execute()
+    val recs = readBamRecs(bam)
+
+    recs should have size 2
+    val Seq(r1, r2) = recs
+    r1.name shouldBe "q1"
+    r1.basesString shouldBe "AAAAAA"
+    r1.qualsString shouldBe "======"
+    r1[String](ConsensusTags.UmiBases) shouldBe "ACGT"
+    r1[String](ConsensusTags.UmiQuals) shouldBe "IIII"
+
+    r2.name shouldBe "q1"
+    r2.basesString shouldBe "CCCCCCCCCC"
+    r2.qualsString shouldBe "##########"
+    r2[String](ConsensusTags.UmiBases) shouldBe "ACGT"
+    r2[String](ConsensusTags.UmiQuals) shouldBe "IIII"
   }
 
   it should "correctly handle complicated read structures with multiple UMI and sample barcode segments" in {
@@ -137,6 +187,30 @@ class FastqToBamTest extends UnitSpec {
     r2[String]("BC") shouldBe "AAA-TTT-GGG-AAA"
   }
 
+  it should "correctly handle complicated read structures with multiple UMI and sample barcode segments and keep UMI qualities" in {
+    val r1s = fq(FastqRecord("q1", "AAACCCTTTAAAAA", "===III========", readNumber=Some(1)))
+    val r2s = fq(FastqRecord("q1", "GGGTTTAAACCCCC", "###JJJ########", readNumber=Some(2)))
+    val bam = makeTempFile("fastqToBamTest.", ".bam")
+    new FastqToBam(input=Seq(r1s, r2s), readStructures=Seq(rs("3B3M3B5T"), rs("3B3M3B5T")), output=bam, sample="s", library="l", umiQualTag=Some(ConsensusTags.UmiQuals)).execute()
+    val recs = readBamRecs(bam)
+
+    recs should have size 2
+    val Seq(r1, r2) = recs
+    r1.name shouldBe "q1"
+    r1.basesString shouldBe "AAAAA"
+    r1.qualsString shouldBe "====="
+    r1[String](ConsensusTags.UmiBases) shouldBe "CCC-TTT"
+    r1[String](ConsensusTags.UmiQuals) shouldBe "III JJJ"
+    r1[String]("BC") shouldBe "AAA-TTT-GGG-AAA"
+
+    r2.name shouldBe "q1"
+    r2.basesString shouldBe "CCCCC"
+    r2.qualsString shouldBe "#####"
+    r2[String](ConsensusTags.UmiBases) shouldBe "CCC-TTT"
+    r2[String](ConsensusTags.UmiQuals) shouldBe "III JJJ"
+    r2[String]("BC") shouldBe "AAA-TTT-GGG-AAA"
+  }
+
   it should "use four fastqs to make reads" in {
     val r1s = fq(FastqRecord("q1", "AAAAAAAAAA", "==========", readNumber=Some(1)))
     val r2s = fq(FastqRecord("q1", "CCCCCCCCCC", "##########", readNumber=Some(2)))
@@ -158,6 +232,32 @@ class FastqToBamTest extends UnitSpec {
     r2.basesString shouldBe "CCCCCCCCCC"
     r2.qualsString shouldBe "##########"
     r2[String](ConsensusTags.UmiBases) shouldBe "GAGA"
+    r2[String]("BC") shouldBe "ACGT"
+  }
+
+  it should "use four fastqs to make reads and keep UMI qualities" in {
+    val r1s = fq(FastqRecord("q1", "AAAAAAAAAA", "==========", readNumber=Some(1)))
+    val r2s = fq(FastqRecord("q1", "CCCCCCCCCC", "##########", readNumber=Some(2)))
+    val r3s = fq(FastqRecord("q1", "ACGT", "????"))
+    val r4s = fq(FastqRecord("q1", "GAGA", "????"))
+    val bam = makeTempFile("fastqToBamTest.", ".bam")
+    new FastqToBam(input=Seq(r1s, r2s, r3s, r4s), readStructures=Seq(rs("+T"), rs("+T"), rs("4B"), rs("4M")), output=bam, sample="s", library="l", umiQualTag=Some(ConsensusTags.UmiQuals)).execute()
+    val recs = readBamRecs(bam)
+
+    recs should have size 2
+    val Seq(r1, r2) = recs
+    r1.name shouldBe "q1"
+    r1.basesString shouldBe "AAAAAAAAAA"
+    r1.qualsString shouldBe "=========="
+    r1[String](ConsensusTags.UmiBases) shouldBe "GAGA"
+    r1[String](ConsensusTags.UmiQuals) shouldBe "????"
+    r1[String]("BC") shouldBe "ACGT"
+
+    r2.name shouldBe "q1"
+    r2.basesString shouldBe "CCCCCCCCCC"
+    r2.qualsString shouldBe "##########"
+    r2[String](ConsensusTags.UmiBases) shouldBe "GAGA"
+    r2[String](ConsensusTags.UmiQuals) shouldBe "????"
     r2[String]("BC") shouldBe "ACGT"
   }
 

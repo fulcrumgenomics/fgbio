@@ -39,8 +39,8 @@ import scala.util.Try
 object VcfBuilder {
   /** The default header that is used when making a new [[VcfBuilder]]. */
   val DefaultHeader: VcfHeader = {
-    val contigs = new SamBuilder().dict.getSequences
-      .map(s => VcfContigHeader(s.getSequenceIndex, s.getSequenceName, length=Some(s.getSequenceLength), assembly=Option(s.getAssembly)))
+    val contigs = new SamBuilder().dict
+      .map(s => VcfContigHeader(s.index, s.name, length=Some(s.length), assembly=s.assembly))
       .toIndexedSeq
 
     VcfHeader(
@@ -159,8 +159,8 @@ class VcfBuilder private (initialHeader: VcfHeader) extends Iterable[Variant] {
           gts: Seq[Gt] = Seq.empty
          ): this.type = {
 
-    require(_header.dict.getSequenceIndex(chrom) >= 0, s"Unknown chrom: $chrom")
-    val key = (_header.dict.getSequenceIndex(chrom), pos)
+    require(_header.dict(chrom).index >= 0, s"Unknown chrom: $chrom")
+    val key = (_header.dict(chrom).index, pos)
 
     // Make sure things are relatively valid
     require(!variants.contains(key), s"Variant already exists at position $chrom:$pos")

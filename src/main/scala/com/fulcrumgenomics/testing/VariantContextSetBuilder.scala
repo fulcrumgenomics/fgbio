@@ -29,14 +29,14 @@ import java.nio.file.Files
 import java.util.Collections
 
 import com.fulcrumgenomics.FgBioDef._
-import htsjdk.samtools.SAMSequenceDictionary
+import com.fulcrumgenomics.fasta.SequenceDictionary
 import htsjdk.variant.variantcontext._
 import htsjdk.variant.variantcontext.writer.{Options, VariantContextWriterBuilder}
 import htsjdk.variant.vcf.{VCFFileReader, VCFHeader, VCFHeaderLine}
 
-import scala.collection.mutable.ListBuffer
-import scala.collection.compat._
 import scala.collection.JavaConverters._
+import scala.collection.compat._
+import scala.collection.mutable.ListBuffer
 import scala.reflect.ClassTag
 
 object VariantContextSetBuilder {
@@ -66,11 +66,19 @@ class VariantContextSetBuilder(sampleNames: Seq[String] = List("Sample")) extend
 
   def header: VCFHeader = this._header
 
+  lazy val dict: SequenceDictionary = {
+    import com.fulcrumgenomics.fasta.Converters.FromSAMSequenceDictionary
+    this.header.getSequenceDictionary.fromSam
+  }
+
   /** Sets the VCF header for this builder.  This should be set before adding variants. */
   def setHeader(header: VCFHeader): this.type = yieldingThis(this._header = header)
 
   /** Sets the sequence dictionary for this builder.  This should be set before adding variants. */
-  def setSequenceDictionary(dict: SAMSequenceDictionary): this.type = yieldingThis(this._header.setSequenceDictionary(dict))
+  def setSequenceDictionary(dict: SequenceDictionary): this.type = {
+    import com.fulcrumgenomics.fasta.Converters.ToSAMSequenceDictionary
+    yieldingThis(this._header.setSequenceDictionary(dict.asSam))
+  }
 
   /** Adds the header line to the header for this builder.  This should be set before adding variants. */
   def addMetaDataLine(headerLine: VCFHeaderLine): this.type = yieldingThis(this._header.addMetaDataLine(headerLine))
@@ -119,9 +127,9 @@ class VariantContextSetBuilder(sampleNames: Seq[String] = List("Sample")) extend
     if (!genotypeAlleles.forall(a => a == Allele.NO_CALL_STRING || variantAlleles.contains(a))) {
       throw new IllegalArgumentException("A genotype allele not found in variant alleles")
     }
-    val contig          = this.dict.getSequence(refIdx).getSequenceName
-    val alleles         = toAlleles(variantAlleles)
-    val stop            = VariantContextUtils.computeEndFromAlleles(alleles.asJava, start.toInt, -1)
+    val contig  = this.dict(refIdx).name
+    val alleles = toAlleles(variantAlleles)
+    val stop    = VariantContextUtils.computeEndFromAlleles(alleles.asJava, start.toInt, -1)
     // check to see if there are already genotypes for this variant
     val (ctxBuilder, prevGenotypes) = this.variants.find { ctx =>
       ctx.getContig == contig &&
@@ -197,7 +205,7 @@ class VariantContextSetBuilder(sampleNames: Seq[String] = List("Sample")) extend
   /** Writes the contents of the record set to the provided file path. */
   def write(path: PathToVcf) : Unit = {
     val writer = new VariantContextWriterBuilder()
-      .setReferenceDictionary(this.dict)
+      .setReferenceDictionary(this.header.getSequenceDictionary)
       .setOutputFile(path.toFile)
       .setOption(Options.INDEX_ON_THE_FLY)
       .setOption(Options.ALLOW_MISSING_FIELDS_IN_HEADER)
@@ -234,8 +242,6 @@ class VariantContextSetBuilder(sampleNames: Seq[String] = List("Sample")) extend
         alleles.zipWithIndex.map { case (allele: String, idx: Int) => Allele.create(allele, idx == 0) }
     }
   }
-
-  private def dict = _header.getSequenceDictionary
 
   private def yieldingThis(f: => Unit): this.type = { f; this}
 }

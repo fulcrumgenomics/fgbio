@@ -298,9 +298,9 @@ class CollectDuplexSeqMetricsTest extends UnitSpec {
     (1 to 6).foreach { _ => builder.addPair(contig=1, start1=6000, start2=6100, attrs=Map(RX -> "GGT-CGA", MI -> "6/A")) }
 
     val intervals = new IntervalList(builder.header)
-    intervals.add(new Interval(builder.dict.getSequence(0).getSequenceName, 900,  1001)) // Captures the first insert by overlapping R1
-    intervals.add(new Interval(builder.dict.getSequence(0).getSequenceName, 3150, 3500)) // Captures the third insert by overlapping R1
-    intervals.add(new Interval(builder.dict.getSequence(1).getSequenceName, 5050, 6050)) // Captures the fifth and sixth inserts
+    intervals.add(new Interval(builder.dict(0).name, 900,  1001)) // Captures the first insert by overlapping R1
+    intervals.add(new Interval(builder.dict(0).name, 3150, 3500)) // Captures the third insert by overlapping R1
+    intervals.add(new Interval(builder.dict(1).name, 5050, 6050)) // Captures the fifth and sixth inserts
     val path = makeTempFile("targets.", ".interval_list")
     intervals.write(path.toFile)
 

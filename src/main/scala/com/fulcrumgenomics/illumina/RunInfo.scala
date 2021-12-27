@@ -24,10 +24,13 @@
 
 package com.fulcrumgenomics.illumina
 
+import java.text.{ParseException, SimpleDateFormat}
+
 import com.fulcrumgenomics.FgBioDef.FilePath
 import com.fulcrumgenomics.bam.Template
 import com.fulcrumgenomics.util.SegmentType.SampleBarcode
 import com.fulcrumgenomics.util.{Metric, ReadSegment, ReadStructure, SegmentType}
+import htsjdk.samtools.util.DateParser.InvalidDateException
 import htsjdk.samtools.util.Iso8601Date
 
 /** Stores the result of parsing the run info (RunInfo.xml) file from an Illumina run folder.
@@ -52,6 +55,14 @@ case class RunInfo
 ) extends Metric
 
 object RunInfo {
+  /** A set of functions to parse dates in various formats. */
+  val DateParsers: Seq[String => Option[Iso8601Date]] = Seq(
+    d => {if (d.length == 6) Some(new Iso8601Date("20" + d.substring(0,2) + "-" + d.substring(2,4) + "-" + d.substring(4))) else None },
+    d => {if (d.length == 8) Some(new Iso8601Date(d.substring(0,4) + "-" + d.substring(4,6) + "-" + d.substring(6))) else None},
+    d => {try {Some(new Iso8601Date(new SimpleDateFormat("M/d/yyyy h:mm:ss a").parse(d)))} catch { case _: ParseException => None }},
+    d => {try {Some(new Iso8601Date(d))} catch {case _: InvalidDateException => None}}
+  )
+
   /** Parses the run info file for the flowcell barcode, instrument name, run date, and read structure.
     *
     * @param runInfo the path to the RunInfo.xml file, typically in the run folder.
@@ -80,12 +91,13 @@ object RunInfo {
     )
   }
 
-  /** Formats the given date string.  The date string should be six or eight characters long with formats YYMMDD or
-    * YYYYMMDD respectively.
+  /** Parses the date string from the RunInfo file into a date object based on the various formats Illumina
+    * has used over the years.
     */
   private def parseDate(date: String): Iso8601Date = {
-    if (date.length == 6) new Iso8601Date("20" + date.substring(0,2) + "-" + date.substring(2,4) + "-" + date.substring(4))
-    else if (date.length == 8) new Iso8601Date(date.substring(0,4) + "-" + date.substring(4,6) + "-" + date.substring(6))
-    else throw new IllegalArgumentException(s"Could not parse date: $date")
+    DateParsers.iterator.flatMap(p => p(date)).buffered.headOption match {
+      case Some(d) => d
+      case None    => throw new IllegalArgumentException(s"Could not parse date: $date")
+    }
   }
 }

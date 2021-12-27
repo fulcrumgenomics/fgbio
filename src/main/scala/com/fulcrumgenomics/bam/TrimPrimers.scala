@@ -24,26 +24,18 @@
 
 package com.fulcrumgenomics.bam
 
-import java.lang.Math.abs
-
 import com.fulcrumgenomics.FgBioDef._
 import com.fulcrumgenomics.bam.api.{SamOrder, SamRecord, SamSource, SamWriter}
 import com.fulcrumgenomics.cmdline.{ClpGroups, FgBioTool}
-import com.fulcrumgenomics.commons.util.{DelimitedDataParser, LazyLogging}
+import com.fulcrumgenomics.commons.util.LazyLogging
 import com.fulcrumgenomics.sopt.{arg, clp}
-import com.fulcrumgenomics.util.{Io, ProgressLogger}
+import com.fulcrumgenomics.util.{Amplicon, AmpliconDetector, Io, ProgressLogger}
 import htsjdk.samtools.SAMFileHeader.SortOrder
-import htsjdk.samtools.SamPairUtil.PairOrientation
 import htsjdk.samtools._
 import htsjdk.samtools.reference.ReferenceSequenceFileWalker
 import htsjdk.samtools.util._
 
 import scala.collection.BufferedIterator
-
-object TrimPrimers {
-  val Headers: Seq[String] = Seq("chrom", "left_start", "left_end", "right_start", "right_end")
-  val Seq(hdChrom, hdleftStart, hdLeftEnd, hdRightStart, hdRightEnd) = Headers
-}
 
 @clp(group=ClpGroups.SamOrBam, description=
   """
@@ -67,6 +59,19 @@ object TrimPrimers {
     |
     |If the input BAM is not `queryname` sorted it will be sorted internally so that mate
     |information between paired-end reads can be corrected before writing the output file.
+    |
+    |The `--first-of-pair` option will cause only the first of pair (R1) reads to be trimmed
+    |based solely on the primer location of R1.  This is useful when there is a target
+    |specific primer on the 5' end of R1 but no primer sequenced on R2 (eg. single gene-specific
+    |primer target enrichment).  In this case, the location of each target specific primer should
+    |be specified in an amplicons left or right primer exclusively.  The coordinates of the
+    |non-specific-target primer should be `-1` for both start and end, e.g:
+    |
+    |```
+    |chrom  left_start  left_end  right_start right_end
+    |chr1   1010873     1010894   -1          -1
+    |chr2   -1          -1        1011118     1011137
+    |```
   """)
 class TrimPrimers
 ( @arg(flag='i', doc="Input BAM file.")  val input: PathToBam,
@@ -76,7 +81,9 @@ class TrimPrimers
   @arg(flag='S', doc="Match to primer locations +/- this many bases.") val slop: Int = 5,
   @arg(flag='s', doc="Sort order of output BAM file (defaults to input sort order).") val sortOrder: Option[SamOrder] = None,
   @arg(flag='r', doc="Optional reference fasta for recalculating NM, MD and UQ tags.") val ref: Option[PathToFasta] = None,
-  @arg(flag='a', doc="Automatically trim extended attributes that are the same length as bases.") val autoTrimAttributes: Boolean = false
+  @arg(flag='a', doc="Automatically trim extended attributes that are the same length as bases.") val autoTrimAttributes: Boolean = false,
+  @arg(doc="Trim only first of pair reads (R1s), otherwise both ends of a pair") val firstOfPair: Boolean = false
+
 )extends FgBioTool with LazyLogging {
   private val clipper = new SamRecordClipper(mode=if (hardClip) ClippingMode.Hard else ClippingMode.Soft, autoClipAttributes=autoTrimAttributes)
 
@@ -84,20 +91,8 @@ class TrimPrimers
   Io.assertReadable(primers)
   Io.assertCanWriteFile(output)
 
-  /** A Locatable Amplicon class. */
-  private case class Amplicon(chrom: String, leftStart: Int, leftEnd: Int, rightStart: Int, rightEnd: Int) extends Locatable {
-    def leftPrimerLength: Int    = CoordMath.getLength(leftStart, leftEnd)
-    def rightPrimerLength: Int   = CoordMath.getLength(rightStart, rightEnd)
-    def longestPrimerLength: Int = Math.max(leftPrimerLength, rightPrimerLength)
-
-    override def getContig: String = chrom
-    override def getStart: Int = leftStart
-    override def getEnd: Int = rightEnd
-  }
-
   override def execute(): Unit = {
     val in = SamSource(input)
-    val isSortOrder = SamOrder(in.header)
     val outSortOrder = sortOrder.orElse(SamOrder(in.header)).getOrElse(SamOrder.Unknown)
     val outHeader = in.header.clone()
     outSortOrder.applyTo(outHeader)
@@ -112,7 +107,7 @@ class TrimPrimers
     //        ii) A reference was given (so the last sort is coordinate) and the output sort order is coordinate
     //      else, we'll have to sort for potentially a third time in the SAMFileWriter
     val (sorter, write: (SamRecord => Any), out: SamWriter) = ref match {
-      case Some(path) =>
+      case Some(_) =>
         val sorter = Bams.sorter(SamOrder.Coordinate, outHeader)
         val out = SamWriter(output, outHeader, sort= if (outSortOrder == SamOrder.Coordinate) None else Some(outSortOrder))
         (Some(sorter), sorter.write _, out)
@@ -121,15 +116,33 @@ class TrimPrimers
         (None, out += _, out)
     }
 
-    val detector = loadPrimerFile(primers)
-    val maxPrimerLength = detector.getAll.map(_.longestPrimerLength).max
+    val detector = new AmpliconDetector(
+      detector             = Amplicon.overlapDetector(path=primers),
+      slop                 = slop,
+      unclippedCoordinates = true
+    )
+
+    // Validate that if we are trimming the first of pair, all amplicons have -1 coordinates for either the left or the
+    // right primer.  Otherwise, coordinates must be > 0.
+    detector.detector.getAll.iterator().foreach { amplicon =>
+      if (firstOfPair) {
+        require(amplicon.leftStart == -1 || amplicon.rightStart == -1,
+          f"Either the left or right amplicon coordinates must be -1 when using --first-of-pair. Found ${amplicon.mkString("\t")}"
+        )
+      }
+      else {
+        require(amplicon.leftStart > 0 && amplicon.rightStart > 0,
+          f"Both the left and right amplicon coordinates must be > 0. Did you forget to set '--first-of-pair'? Found ${amplicon.mkString("\t")}"
+        )
+      }
+    }
 
     // Main processing loop
     val iterator = queryNameOrderIterator(in)
     val trimProgress = ProgressLogger(this.logger, "Trimmed")
     while (iterator.hasNext) {
       val reads = nextTemplate(iterator)
-      trimReadsForTemplate(detector, maxPrimerLength, reads)
+      trimReadsForTemplate(detector, reads)
       reads.foreach(write)
       reads.foreach(trimProgress.record)
     }
@@ -165,34 +178,34 @@ class TrimPrimers
   }
 
   /** Trims all the reads for a given template. */
-  def trimReadsForTemplate(detector: OverlapDetector[Amplicon], maxPrimerLength: Int, reads: Seq[SamRecord]): Unit = {
+  def trimReadsForTemplate(detector: AmpliconDetector, reads: Seq[SamRecord]): Unit = {
     val rec1 = reads.find(r => r.paired && r.firstOfPair  && !r.secondary && !r.supplementary)
     val rec2 = reads.find(r => r.paired && r.secondOfPair && !r.secondary && !r.supplementary)
+
+    val readsToClip = if (firstOfPair) reads.filter(_.firstOfPair) else reads
 
     (rec1, rec2) match {
       case (Some(r1), Some(r2)) =>
         // FR mapped pairs get the full treatment
-        if (r1.mapped && r2.mapped && r1.refIndex == r2.refIndex && r1.pairOrientation == PairOrientation.FR) {
-          val (left, right) = if (r1.negativeStrand) (r2, r1) else (r1, r2)
-          val (start, end) = (left.unclippedStart, right.unclippedEnd)
-          val insert = new Interval(left.refName, start, end)
-          detector.getOverlaps(insert).find(amp => abs(amp.leftStart - start) <= slop && abs(amp.rightEnd - end) <= slop) match {
+        if (r1.isFrPair) {
+          (if (firstOfPair) detector.findPrimer(rec=r1) else detector.find(r1=r1, r2=r2)) match {
             case Some(amplicon) =>
-              val leftClip = amplicon.leftPrimerLength
+              val leftClip  = amplicon.leftPrimerLength
               val rightClip = amplicon.rightPrimerLength
-              reads.foreach { rec =>
-                val toClip = if (rec.firstOfPair == left.firstOfPair) leftClip else rightClip
+              readsToClip.foreach { rec =>
+                // Note: r1.positiveStrand means that r1 is the "left" read, so we should clip on the left
+                val toClip = if (rec.firstOfPair == r1.positiveStrand) leftClip else rightClip
                 this.clipper.clip5PrimeEndOfRead(rec, toClip)
               }
             case None =>
-              reads.foreach(r => this.clipper.clip5PrimeEndOfRead(r, maxPrimerLength))
+              readsToClip.foreach(r => this.clipper.clip5PrimeEndOfRead(r, detector.maxPrimerLength))
           }
 
           clipFullyOverlappedFrReads(r1, r2)
         }
         // Pairs without both reads mapped in FR orientation are just maximally clipped
         else {
-          reads.foreach(r => this.clipper.clip5PrimeEndOfRead(r, maxPrimerLength))
+          readsToClip.foreach(r => this.clipper.clip5PrimeEndOfRead(r, detector.maxPrimerLength))
         }
 
         SamPairUtil.setMateInfo(r1.asSam, r2.asSam, true)
@@ -202,7 +215,7 @@ class TrimPrimers
         }
       case _ =>
         // Just trim each read independently
-        reads.foreach(r => this.clipper.clip5PrimeEndOfRead(r, maxPrimerLength))
+        readsToClip.foreach(r => this.clipper.clip5PrimeEndOfRead(r, detector.maxPrimerLength))
     }
   }
 
@@ -228,29 +241,6 @@ class TrimPrimers
     val first    = iterator.next()
     val template = first.name
     first :: iterator.takeWhile(_.name == template).toList
-  }
-
-  /** Creates an overlap detector for all the amplicons from the input file. */
-  private def loadPrimerFile(path: FilePath): OverlapDetector[Amplicon] = {
-    val parser = DelimitedDataParser(path, '\t')
-    TrimPrimers.Headers.foreach { h => require(parser.headers.contains(h), s"Could not find column header '$h' in $path.") }
-    require(parser.hasNext, "Primer file contained no data.")
-    require(parser.headers.contains("chrom"), "Could not find column header 'chrom'")
-    
-    val detector = new OverlapDetector[Amplicon](0,0)
-    parser.foreach { row =>
-      val amp = Amplicon(
-        chrom      = row[String](TrimPrimers.hdChrom),
-        leftStart  = row[Int](TrimPrimers.hdleftStart),
-        leftEnd    = row[Int](TrimPrimers.hdLeftEnd),
-        rightStart = row[Int](TrimPrimers.hdRightStart),
-        rightEnd   = row[Int](TrimPrimers.hdRightEnd)
-      )
-
-      detector.addLhs(amp, amp)
-    }
-
-    detector
   }
 
   /**

@@ -25,16 +25,15 @@
 package com.fulcrumgenomics.bam
 
 import java.nio.file.Paths
-
 import com.fulcrumgenomics.FgBioDef._
 import com.fulcrumgenomics.bam.api.{SamRecord, SamSource, SamWriter}
 import com.fulcrumgenomics.testing.UnitSpec
 import com.fulcrumgenomics.util.Metric
+import com.fulcrumgenomics.vcf.api
+import com.fulcrumgenomics.vcf.api.{Genotype, VcfCount, VcfFieldType, VcfFormatHeader, VcfSource, VcfWriter}
 import htsjdk.samtools.SAMFileHeader.SortOrder
 import htsjdk.samtools.{MergingSamRecordIterator, SamFileHeaderMerger}
 import org.scalatest.ParallelTestExecution
-
-import scala.collection.JavaConverters._
 
 class EstimatePoolingFractionsTest extends UnitSpec with ParallelTestExecution {
   private val Samples = Seq("HG01879", "HG01112", "HG01583", "HG01500", "HG03742", "HG03052")
@@ -105,6 +104,65 @@ class EstimatePoolingFractionsTest extends UnitSpec with ParallelTestExecution {
     metrics should have size 2
     metrics.foreach {m =>
       val expected = if (m.sample == samples.head) 0.75 else 0.25
+      expected should (be >= m.ci99_low and be <= m.ci99_high)
+    }
+  }
+
+  it should "accurately estimate a three sample mixture using the AF genotype field" in {
+    val samples         = Samples.take(3)
+    val Seq(s1, s2, s3) = samples
+    val bams            = Bams.take(3)
+    val bam             = merge(bams)
+
+    val vcf = {
+      val vcf = makeTempFile("mixture.", ".vcf.gz")
+      val in  = api.VcfSource(Vcf)
+      val hd  = in.header.copy(
+        samples = IndexedSeq(s1, "two_sample_mixture"),
+        formats = VcfFormatHeader("AF", VcfCount.OnePerAltAllele, kind=VcfFieldType.Float, description="Allele Frequency") +: in.header.formats
+      )
+      val out = VcfWriter(vcf, hd)
+
+      in.filter(_.alleles.size == 2).foreach { v =>
+        val gts = samples.map(v.gt)
+
+        // Only bother with sites where all samples have called genotypes and there is variation
+        if (gts.forall((_.isFullyCalled)) && gts.flatMap(_.calls).toSet.size > 1) {
+          // Make a mixture of the 2nd and 3rd samples
+          val (mixCalls, mixAf) = {
+            val input = gts.drop(1)
+            if      (input.forall(_.isHomRef)) (IndexedSeq(v.alleles.ref, v.alleles.ref), 0.0)
+            else if (input.forall(_.isHomVar)) (IndexedSeq(v.alleles.alts.head, v.alleles.alts.head), 1.0)
+            else {
+              val calls = input.flatMap(_.calls)
+              (IndexedSeq(v.alleles.ref, v.alleles.alts.head), calls.count(_ != v.alleles.ref) / calls.size.toDouble)
+            }
+          }
+
+          val mixtureGt = Genotype(
+            alleles = v.alleles,
+            sample  = "two_sample_mixture",
+            calls   = mixCalls,
+            attrs   = Map("AF" -> IndexedSeq[Float](mixAf.toFloat))
+          )
+
+          out += v.copy(genotypes=Map(s1 -> gts.head, mixtureGt.sample -> mixtureGt))
+        }
+      }
+
+      in.safelyClose()
+      out.close()
+      vcf
+    }
+
+    // Run the estimator and test the outputs
+    val out = makeTempFile("pooling_metrics.", ".txt")
+    new EstimatePoolingFractions(vcf=vcf, bam=bam, output=out, minGenotypeQuality = -1).execute()
+    val metrics = Metric.read[PoolingFractionMetric](out)
+
+    metrics should have size 2
+    metrics.foreach {m =>
+      val expected = if (m.sample == samples.head) 1/3.0 else 2/3.0
       expected should (be >= m.ci99_low and be <= m.ci99_high)
     }
   }

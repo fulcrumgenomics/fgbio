@@ -39,18 +39,30 @@ ggplot(data) + aes(x=position) +
   labs(x="Position in Read", y="Error Rate", title=paste(name, "-", "Error Rate by Position In Read")) +
   theme(plot.title = element_text(hjust = 0.5))
 
-ggplot(data) + aes(x=position) +
+# The error rate plot is conditional on the presence and value of the collapsed column, which is not present in previous
+# versions of fgbio
+error_rate_plot = ggplot(data) + aes(x=position) +
   geom_line(aes(y=a_to_c_error_rate, color="A>C")) +
   geom_line(aes(y=a_to_g_error_rate, color="A>G")) +
   geom_line(aes(y=a_to_t_error_rate, color="A>T")) +
   geom_line(aes(y=c_to_a_error_rate, color="C>A")) +
   geom_line(aes(y=c_to_g_error_rate, color="C>G")) +
-  geom_line(aes(y=c_to_t_error_rate, color="C>T")) +
+  geom_line(aes(y=c_to_t_error_rate, color="C>T"))
+if ("collapsed" %in% names(data) && data$collapsed[[1]] == "false") {
+  error_rate_plot = error_rate_plot +
+    geom_line(aes(y=g_to_a_error_rate, color="G>A")) +
+    geom_line(aes(y=g_to_c_error_rate, color="G>C")) +
+    geom_line(aes(y=g_to_t_error_rate, color="G>T")) +
+    geom_line(aes(y=t_to_a_error_rate, color="T>A")) +
+    geom_line(aes(y=t_to_c_error_rate, color="T>C")) +
+    geom_line(aes(y=t_to_g_error_rate, color="T>G"))
+}
+error_rate_plot = error_rate_plot +
   facet_wrap("read_number") +
   scale_y_sqrt() + 
   labs(x="Position in Read", y="Error Rate", title=paste(name, "-", "Error Rate by Position in Read and Type")) +
   theme(plot.title = element_text(hjust = 0.5))
-
+print(error_rate_plot)
 
 # The cumulative plot is more awkward because cumsum will do the wrong thing if we use ggplots aes(color=read_number),
 # the R2 numbers will include the total at the end of R1!!  So instead we plot each read number separately!

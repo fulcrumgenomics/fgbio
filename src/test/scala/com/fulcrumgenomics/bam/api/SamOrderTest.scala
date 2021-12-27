@@ -32,6 +32,7 @@ import com.fulcrumgenomics.testing.SamBuilder.{Minus, Plus}
 import com.fulcrumgenomics.testing.{SamBuilder, UnitSpec}
 import htsjdk.samtools.{SAMFileHeader, SAMRecordCoordinateComparator, SAMRecordQueryNameComparator}
 import htsjdk.samtools.SAMFileHeader.{GroupOrder, SortOrder}
+import htsjdk.samtools.util.Murmur3
 
 import scala.collection.mutable.ListBuffer
 
@@ -137,6 +138,33 @@ class SamOrderTest extends UnitSpec {
     }
 
     counts.foreach { case (name, count) => count shouldBe 1}
+  }
+
+  it should "keep querynames together even when there are has collisions" in {
+    val f      = SamOrder.RandomQuery.sortkey
+    val builder = new SamBuilder()
+    val name1 = "000000000-CHG2G:1:1102:14353:13008"
+    val name2 = "000000000-CHG2G:1:2108:16511:13017"
+
+    // Show that there is a hash collision
+    val hasher = new Murmur3(SamOrder.RandomQuery.HashSeed)
+    hasher.hashUnencodedChars(name1) shouldBe hasher.hashUnencodedChars(name2)
+
+    builder.addFrag(name=name1, start=100)
+    builder.addFrag(name=name1, start=150).foreach(_.supplementary = true)
+    builder.addFrag(name=name2, start=100)
+    builder.addFrag(name=name2, start=150).foreach(_.supplementary = true)
+
+    val recs   = builder.toIndexedSeq.sortBy(f(_))
+    val counts = new SimpleCounter[String]
+    val iter   = recs.iterator.bufferBetter
+    while (iter.hasNext) {
+      val name = iter.head.name
+      iter.takeWhile(_.name == name).foreach { r => () }
+      counts.count(name)
+    }
+
+    counts.foreach { case (name, count) => count shouldBe 1 }
   }
 
   "SamOrder.TemplateCoordinate" should "sort by molecular identifier then name" in {

@@ -87,7 +87,7 @@ ggplot(subset(duplexFamilyData, duplexFamilyData$ba_size > 0)) +
   labs(x="AB Reads", y="BA Reads", title=paste("Duplex Tag Family Size Distribution for ", sampleInfo, " ; Only Families with AB>0 & BA>0", sep="")) +
   theme(plot.title = element_text(hjust = 0.5))
 
-# Plot #4 - Duplex Yield
+# Plot #4a - Duplex Yield
 ggplot(yieldData) +
   aes(x=read_pairs) +
   geom_area(aes(y=ds_families, fill="DS Families")) +
@@ -96,6 +96,16 @@ ggplot(yieldData) +
   scale_fill_manual(values=fgcolors) +
   labs(x="Read Pairs", y="Count of Double-Strand Families and Duplexes", title=paste("Duplex Yield by Input Read Pairs for", sampleInfo)) +
   theme(plot.title = element_text(hjust = 0.5), legend.title=element_blank())
+
+# Plot #4b - Duplex Yield
+ggplot(yieldData) +
+  aes(x=read_pairs) +
+  geom_line(aes(y=ds_fraction_duplexes / ds_fraction_duplexes_ideal, color="Actual / Ideal Duplexes")) +
+  scale_color_manual(values=fgcolors) +
+  ylim(0, 1) +
+  labs(x="Read Pairs", y="Ratio of Actual vs. Ideal Duplexes", title=paste("Ratio of Actual vs. Ideal Duplex Yield by Input Read Pairs for", sampleInfo)) +
+  theme(plot.title = element_text(hjust = 0.5), legend.title=element_blank())
+
 
 # Plot #5 UMI distribution (for UMIs that don't contain any no-calls)
 ggplot(subset(umiData, !grepl("N", umiData$umi, fixed=T))) +

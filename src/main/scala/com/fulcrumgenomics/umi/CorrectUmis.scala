@@ -27,6 +27,7 @@ package com.fulcrumgenomics.umi
 import com.fulcrumgenomics.FgBioDef._
 import com.fulcrumgenomics.bam.api.{SamSource, SamWriter}
 import com.fulcrumgenomics.cmdline.{ClpGroups, FgBioTool}
+import com.fulcrumgenomics.commons.collection.LeastRecentlyUsedCache
 import com.fulcrumgenomics.commons.util.LazyLogging
 import com.fulcrumgenomics.sopt.{arg, clp}
 import com.fulcrumgenomics.umi.CorrectUmis._
@@ -34,6 +35,7 @@ import com.fulcrumgenomics.util.Metric.{Count, Proportion}
 import com.fulcrumgenomics.util.{Metric, _}
 
 import scala.collection.mutable
+
 
 object CorrectUmis {
   /**
@@ -117,6 +119,9 @@ object CorrectUmis {
     |Records which have their UMIs corrected (i.e. the UMI is not identical to one of the expected UMIs but is
     |close enough to be corrected) will by default have their original UMI stored in the `OX` tag. This can be
     |disabled with the `--dont-store-original-umis` option.
+    |
+    |For a large number of input UMIs, the `--cache-size` option may used to speed up the tool.  To disable
+    |using a cache, set the value to `0`.
   """)
 class CorrectUmis
 ( @arg(flag='i', doc="Input SAM or BAM file.")  val input: PathToBam,
@@ -128,7 +133,8 @@ class CorrectUmis
   @arg(flag='u', doc="Expected UMI sequences.", minElements=0) val umis: Seq[String] = Seq.empty,
   @arg(flag='U', doc="File of UMI sequences, one per line.", minElements=0) val umiFiles: Seq[FilePath] = Seq.empty,
   @arg(flag='t', doc="Tag in which UMIs are stored.") val umiTag: String = ConsensusTags.UmiBases,
-  @arg(flag='x', doc="Don't store original UMIs upon correction.") val dontStoreOriginalUmis: Boolean = false
+  @arg(flag='x', doc="Don't store original UMIs upon correction.") val dontStoreOriginalUmis: Boolean = false,
+  @arg(doc="The number of uncorrected UMIs to cache; zero will disable the cache.") val cacheSize: Int = 100000
 ) extends FgBioTool with LazyLogging {
 
   validate(umis.nonEmpty || umiFiles.nonEmpty, "At least one UMI or UMI file must be provided.")
@@ -136,6 +142,9 @@ class CorrectUmis
   Io.assertReadable(umiFiles)
   Io.assertCanWriteFile(output)
   rejects.foreach(Io.assertCanWriteFile(_))
+
+  // Construct the cache
+  private val cache = new LeastRecentlyUsedCache[String,UmiMatch](maxEntries = cacheSize)
 
   override def execute(): Unit = {
     // Construct the full set of UMI sequences to match again
@@ -252,12 +261,16 @@ class CorrectUmis
 
   /** Given a UMI sequence and a set of fixed UMIs, report the best match. */
   private[umi] def findBestMatch(bases: String, umis: Array[String]): UmiMatch = {
-    val mismatchLimit = this.maxMismatches + minDistance
-    val mismatches    = umis.map(umi => Sequences.countMismatches(bases, umi))
-    val min           = mismatches.min
-    val matched       = (min <= maxMismatches) && (mismatches.count(m => m < min + this.minDistance) == 1)
-
-    UmiMatch(matched, umis(mismatches.indexOf(min)), min)
+    val cachedResult = if (this.cacheSize > 0) cache.get(bases) else None
+    cachedResult match {
+      case Some(result) => result
+      case None         =>
+        val mismatches = umis.map(umi => Sequences.countMismatches(bases, umi))
+        val min        = mismatches.min
+        val matched    = (min <= maxMismatches) && (mismatches.count(m => m < min + this.minDistance) == 1)
+        val umiMatch   = UmiMatch(matched, umis(mismatches.indexOf(min)), min)
+        if (cacheSize > 0) cache.put(bases, umiMatch)
+        umiMatch
+    }
   }
 }
-

@@ -24,8 +24,8 @@
 
 package com.fulcrumgenomics.vcf.api
 
-import com.fulcrumgenomics.FgBioDef._
-import com.fulcrumgenomics.testing.UnitSpec
+import com.fulcrumgenomics.testing.{UnitSpec, VcfBuilder}
+import com.fulcrumgenomics.testing.VcfBuilder.Gt
 import com.fulcrumgenomics.vcf.api.Allele.NoCallAllele
 import org.scalatest.OptionValues
 
@@ -99,7 +99,7 @@ class VcfIoTest extends UnitSpec with OptionValues {
 
     val Result(header, variants) = roundtrip(Seq(variant))
     header.samples should contain theSameElementsInOrderAs Seq("s1")
-    header.dict.getSequence(0).getSequenceName shouldBe "chr1"
+    header.dict(0).name shouldBe "chr1"
 
     variants should have size 1
 
@@ -189,5 +189,40 @@ class VcfIoTest extends UnitSpec with OptionValues {
     out.vs.size shouldBe 2
     out.vs.find(_.pos == 10).value.gt("s1").gtWithBases shouldBe "./."
     out.vs.find(_.pos == 20).value.gt("s1").gtWithBases shouldBe "G/."
+  }
+
+  it should "round-trip variants with a variety of filters" in {
+    val vs = Seq(
+      Variant(chrom="chr1", pos=10, alleles=AlleleSet("A", "C"), id=Some("PASS"),  filters=Variant.PassingFilters),
+      Variant(chrom="chr1", pos=20, alleles=AlleleSet("A", "C"), id=None        ,  filters=Variant.EmptyFilters),
+      Variant(chrom="chr1", pos=30, alleles=AlleleSet("A", "C"), id=Some("LowQD"), filters=Set("LowQD")),
+    )
+    val result = roundtrip(vs, header=VcfIoTest.Header.copy(samples=IndexedSeq.empty))
+    result.vs.foreach { v => v.filters.headOption shouldBe v.id }
+  }
+
+  it should "round-trip variants with many samples and not mess up the genotypes" in {
+    val samples = Seq("F", "E", "G", "C", "D", "0")
+    val builder = VcfBuilder(samples=samples)
+    builder.add(chrom="chr1", pos=100, alleles=Seq("A", "C", "G", "T"), gts=Seq(
+      Gt(sample="F", gt="0/1"),
+      Gt(sample="E", gt="0/2"),
+      Gt(sample="G", gt="0/3"),
+      Gt(sample="C", gt="0/0"),
+      Gt(sample="D", gt="1/3"),
+      Gt(sample="0", gt="2/3")
+    ))
+
+    val vcf = builder.toTempFile()
+    val in  = VcfSource(vcf)
+    in.header.samples should contain theSameElementsInOrderAs samples
+    val v   = in.iterator.next()
+
+    v.gt("F").callIndices.mkString("/") shouldBe "0/1"
+    v.gt("E").callIndices.mkString("/") shouldBe "0/2"
+    v.gt("G").callIndices.mkString("/") shouldBe "0/3"
+    v.gt("C").callIndices.mkString("/") shouldBe "0/0"
+    v.gt("D").callIndices.mkString("/") shouldBe "1/3"
+    v.gt("0").callIndices.mkString("/") shouldBe "2/3"
   }
 }

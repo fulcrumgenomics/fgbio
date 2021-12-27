@@ -83,18 +83,24 @@ object SamWriter extends LazyLogging {
         Some(new Sorter(maxRecordsInRam, new SamRecordCodec(header), so.sortkey))
     }
 
+    // Only index the output file if the sort order is right, indexing is requested, and no chrom is too long
+    val actuallyIndex = if (header.getSortOrder != SortOrder.coordinate || !index) false else {
+      val hasChromsTooLong = header.getSequenceDictionary.getSequences.exists(_.getSequenceLength > GenomicIndexUtil.BIN_GENOMIC_SPAN)
+      if (hasChromsTooLong) logger.warning(s"Cannot index $path as one or more chromosomes is too long.")
+      !hasChromsTooLong
+    }
+
     val factory = new SAMFileWriterFactory()
     factory.setUseAsyncIo(async)
     factory.setBufferSize(buffer)
     factory.setCompressionLevel(compression)
-    factory.setCreateIndex(header.getSortOrder == SortOrder.coordinate && index)
+    factory.setCreateIndex(actuallyIndex)
     factory.setCreateMd5File(md5)
     tmp.foreach(dir => factory.setTempDirectory(dir.toFile))
 
     new SamWriter(writer=factory.makeWriter(header, true, path.toFile, ref.map(_.toFile).orNull),
       sorter=sorter, sortProgress=sortProgress, writeProgress=writeProgress)
   }
-
 }
 
 /** Provides the ability to write [[SamRecord]]s to an output Path. */
@@ -120,10 +126,12 @@ final class SamWriter private (private val writer: SAMFileWriter,
   /** Closes the writer. */
   override def close(): Unit = {
     this.sorter.foreach { s =>
+      sortProgress.foreach(_.logLast)
       s.iterator.foreach { rec =>
         this.writer.addAlignment(rec.asSam)
         writeProgress.foreach(_.record(rec))
       }
+      writeProgress.foreach(_.logLast)
 
       s.close()
     }

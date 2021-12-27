@@ -58,12 +58,22 @@ class RandomizeBam(
   Io.assertCanWriteFile(output)
 
   override def execute(): Unit = {
-    val extractor  = if (queryGroup) (rec: SamRecord) => rec.name
-                     else            (rec: SamRecord) => rec.name + ":" + rec.basesString + ":" + rec.qualsString
     val in = SamSource(input)
     val hasher = new Murmur3(seed)
-    val keyfunc = (r: SamRecord) => SamOrder.RandomKey(hasher.hashUnencodedChars(extractor.apply(r)), r.asSam.getFlags)
-    val sorter = new Sorter(2e6.toInt, new SamRecordCodec(in.header), keyfunc)
+
+    val sorter = {
+      if (queryGroup) {
+        val f = (r: SamRecord) => SamOrder.RandomQueryKey(hasher.hashUnencodedChars(r.name), r.name, r.asSam.getFlags)
+        new Sorter(2e6.toInt, new SamRecordCodec(in.header), f)
+      }
+      else {
+        val f = (r: SamRecord) => {
+          val key = s"${r.name}:${r.basesString}:${r.qualsString}"
+          SamOrder.RandomKey(hasher.hashUnencodedChars(key), r.asSam.getFlags)
+        }
+        new Sorter(2e6.toInt, new SamRecordCodec(in.header), f)
+      }
+    }
 
     logger.info("Sorting reads into random order.")
     val sortProgress = ProgressLogger(logger, verb="sorted", unit=5e6.toInt)

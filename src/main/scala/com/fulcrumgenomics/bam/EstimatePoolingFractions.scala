@@ -33,11 +33,9 @@ import com.fulcrumgenomics.commons.util.LazyLogging
 import com.fulcrumgenomics.sopt.{arg, clp}
 import com.fulcrumgenomics.util.Metric.{Count, Proportion}
 import com.fulcrumgenomics.util.{Io, Metric, Sequences}
-import com.fulcrumgenomics.vcf.ByIntervalListVariantContextIterator
+import com.fulcrumgenomics.vcf.api.{Variant, VcfSource}
 import htsjdk.samtools.util.SamLocusIterator.LocusInfo
 import htsjdk.samtools.util._
-import htsjdk.variant.variantcontext.VariantContext
-import htsjdk.variant.vcf.VCFFileReader
 import org.apache.commons.math3.stat.regression.OLSMultipleLinearRegression
 
 @clp(group=ClpGroups.SamOrBam, description=
@@ -47,6 +45,11 @@ import org.apache.commons.math3.stat.regression.OLSMultipleLinearRegression
     |mixture along with a BAM of sequencing data derived from the pool.  Performs a multiple regression
     |for the alternative allele fractions at each SNP locus, using as inputs the individual sample's genotypes.
     |Only SNPs that are bi-allelic within the pooled samples are used.
+    |
+    |Each sample's contribution of REF vs. ALT alleles at each site is derived in one of two ways: (1) if
+    |the sample's genotype in the VCF has the `AF` attribute then the value from that field will be used, (2) if the
+    |genotype has no `AF` attribute then the contribution is estimated based on the genotype (e.g. 0/0 will be 100%
+    |ref, 0/1 will be 50% ref and 50% alt, etc.).
     |
     |Various filtering parameters can be used to control which loci are used:
     |
@@ -76,23 +79,30 @@ class EstimatePoolingFractions
   case class Locus(chrom: String, pos: Int, ref: Char, alt: Char, expectedSampleFractions: Array[Double], var observedFraction: Option[Double] = None)
 
   override def execute(): Unit = {
-    val vcfReader   = new VCFFileReader(vcf.toFile)
+    val vcfReader   = VcfSource(vcf)
     val sampleNames = pickSamplesToUse(vcfReader)
     val intervals   = loadIntervals
 
     // Get the expected fractions from the VCF
     val vcfIterator = constructVcfIterator(vcfReader, intervals, sampleNames)
-    val loci = vcfIterator.filterNot(v => this.nonAutosomes.contains(v.getContig)).map { v => Locus(
-      chrom = v.getContig,
-      pos = v.getStart,
-      ref = v.getReference.getBaseString.charAt(0),
-      alt = v.getAlternateAllele(0).getBaseString.charAt(0),
-      expectedSampleFractions = sampleNames.map { s => val gt = v.getGenotype(s); if (gt.isHomRef) 0 else if (gt.isHet) 0.5 else 1.0 }
+    val loci = vcfIterator.filterNot(v => this.nonAutosomes.contains(v.chrom)).map { v => Locus(
+      chrom = v.chrom,
+      pos   = v.pos,
+      ref   = v.alleles.ref.bases.charAt(0),
+      alt   = v.alleles.alts.head.value.charAt(0),
+      expectedSampleFractions = sampleNames.map { s =>
+        val gt = v.gt(s)
+        gt.get[IndexedSeq[Float]]("AF") match {
+          case None      => if (gt.isHomRef) 0 else if (gt.isHet) 0.5 else 1.0  // requires bi-allelic sites and ploidy=2
+          case Some(afs) => afs(0)
+        }
+      }
     )}.toArray
+    vcfReader.safelyClose()
 
     logger.info(s"Loaded ${loci.length} bi-allelic SNPs from VCF.")
 
-    val coveredLoci = fillObserveredFractionAndFilter(loci, this.minMeanSampleCoverage * sampleNames.length)
+    val coveredLoci = fillObservedFractionAndFilter(loci, this.minMeanSampleCoverage * sampleNames.length)
 
     logger.info(s"Regressing on ${coveredLoci.length} of ${loci.length} that met coverage requirements.")
     val regression = new OLSMultipleLinearRegression
@@ -134,15 +144,12 @@ class EstimatePoolingFractions
   }
 
   /** Verify a provided sample list, or if none provided retrieve the set of samples from the VCF. */
-  private def pickSamplesToUse(vcfReader: VCFFileReader): Array[String] = {
-    if (samples.nonEmpty) {
-      val samplesInVcf = vcfReader.getFileHeader.getSampleNamesInOrder.iterator.toSet
-      val missingSamples = samples.filterNot(samplesInVcf.contains)
+  private def pickSamplesToUse(vcfIn: VcfSource): Array[String] = {
+    if (this.samples.isEmpty) vcfIn.header.samples.toArray else {
+      val samplesInVcf   = vcfIn.header.samples
+      val missingSamples = samples.toSet -- samplesInVcf.toSet
       if (missingSamples.nonEmpty) fail(s"Samples not present in VCF: ${missingSamples.mkString(", ")}")
       else samples.toArray.sorted
-    }
-    else {
-      vcfReader.getFileHeader.getSampleNamesInOrder.iterator.toSeq.toArray.sorted // toSeq.toArray is necessary cos util.ArrayList.toArray() exists
     }
   }
 
@@ -163,20 +170,18 @@ class EstimatePoolingFractions
   }
 
   /** Generates an iterator over non-filtered bi-allelic SNPs where all the required samples are genotyped. */
-  def constructVcfIterator(in: VCFFileReader, intervals: Option[IntervalList], samples: Array[String]): Iterator[VariantContext] = {
-    val vcfIterator: Iterator[VariantContext] = intervals match {
+  def constructVcfIterator(in: VcfSource, intervals: Option[IntervalList], samples: Seq[String]): Iterator[Variant] = {
+    val iterator: Iterator[Variant] = intervals match {
       case None     => in.iterator
-      case Some(is) => ByIntervalListVariantContextIterator(in, is)
+      case Some(is) => is.flatMap(i => in.query(i.getContig, i.getStart, i.getEnd))
     }
 
-    val samplesAsUtilSet = CollectionUtil.makeSet(samples:_*)
-
-    vcfIterator
-      .filterNot(_.isFiltered)
-      .map(_.subContextFromSamples(samplesAsUtilSet, true))
-      .filter(v => v.isSNP && v.isBiallelic && !v.isMonomorphicInSamples)
-      .filter(_.getNoCallCount == 0)
-      .filter(v => v.getGenotypesOrderedByName.iterator.forall(gt => gt.getGQ >= this.minGenotypeQuality))
+    iterator
+      .filter(v => v.filters.isEmpty || v.filters == Variant.PassingFilters)
+      .filter(v => v.alleles.size == 2 && v.alleles.forall(a => a.value.length == 1))  // Just biallelic SNPs
+      .filter(v => samples.map(v.gt).forall(gt => gt.isFullyCalled && (this.minGenotypeQuality <= 0 || gt.get[Int]("GQ").exists(_ >= this.minGenotypeQuality))))
+      .map   (v => v.copy(genotypes=v.genotypes.filter { case (s, _) => samples.contains(s)} ))
+      .filter(v => v.gts.flatMap(_.calls).distinct.size > 1)  // Not monomorphic
   }
 
   /** Constructs a SamLocusIterator that will visit every locus in the input. */
@@ -196,13 +201,13 @@ class EstimatePoolingFractions
     * Fills in the observedFraction field for each locus that meets coverage and then returns
     * the subset of loci that met coverage.
     */
-  def fillObserveredFractionAndFilter(loci: Array[Locus], minCoverage: Int): Array[Locus] = {
+  def fillObservedFractionAndFilter(loci: Array[Locus], minCoverage: Int): Array[Locus] = {
     val locusIterator = constructBamIterator(loci)
     locusIterator.zip(loci.iterator).foreach { case (locusInfo, locus) =>
       if (locusInfo.getSequenceName != locus.chrom || locusInfo.getPosition != locus.pos) fail("VCF and BAM iterators out of sync.")
 
       // A gross coverage check here to avoid a lot of work; better check below
-      if (locusInfo.getRecordAndOffsets.size() > minCoverage) {
+      if (locusInfo.getRecordAndOffsets.size() >= minCoverage) {
         val counts = BaseCounts(locusInfo)
         val (ref, alt) = (counts(locus.ref), counts(locus.alt))
 
