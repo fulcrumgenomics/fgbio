@@ -24,6 +24,7 @@
 
 package com.fulcrumgenomics.vcf.api
 
+import com.fulcrumgenomics.commons.io.Io
 import com.fulcrumgenomics.testing.{UnitSpec, VcfBuilder}
 import com.fulcrumgenomics.testing.VcfBuilder.Gt
 import com.fulcrumgenomics.vcf.api.Allele.NoCallAllele
@@ -224,5 +225,14 @@ class VcfIoTest extends UnitSpec with OptionValues {
     v.gt("C").callIndices.mkString("/") shouldBe "0/0"
     v.gt("D").callIndices.mkString("/") shouldBe "1/3"
     v.gt("0").callIndices.mkString("/") shouldBe "2/3"
+  }
+
+  it should "not attempt to index a VCF when streaming to a file handle or other kind of non-regular file" in {
+    val samples = Seq("sample")
+    val builder = VcfBuilder(samples=samples)
+    val writer  = VcfWriter(Io.DevNull, header = builder.header)
+    builder.add(chrom = "chr1", pos = 100, alleles = Seq("A", "C"), gts = Seq(Gt(sample="sample", gt="0/1")))
+    noException shouldBe thrownBy { writer.write(builder.toSeq) }
+    writer.close()
   }
 }

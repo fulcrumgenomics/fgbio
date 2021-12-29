@@ -30,6 +30,9 @@ import com.fulcrumgenomics.util.Io
 import htsjdk.samtools.Defaults
 import htsjdk.variant.variantcontext.writer.{Options, VariantContextWriter, VariantContextWriterBuilder}
 
+import java.nio.file.Files
+import java.nio.file.LinkOption.NOFOLLOW_LINKS
+
 /**
   * Writes [[Variant]]s to a file or other storage mechanism.
   *
@@ -61,10 +64,16 @@ object VcfWriter {
 
     val builder = new VariantContextWriterBuilder()
       .setOutputPath(path)
-      .setOption(Options.INDEX_ON_THE_FLY)
       .setReferenceDictionary(header.dict.asSam)
       .setOption(Options.ALLOW_MISSING_FIELDS_IN_HEADER)
       .setBuffer(Io.bufferSize)
+
+    if (Files.isRegularFile(path, NOFOLLOW_LINKS)) {
+      builder.setOption(Options.INDEX_ON_THE_FLY)
+    } else {
+      builder.unsetOption(Options.INDEX_ON_THE_FLY)
+      builder.setIndexCreator(null)
+    }
 
     if (async) builder.setOption(Options.USE_ASYNC_IO) else builder.unsetOption(Options.USE_ASYNC_IO)
     val writer = builder.build()
