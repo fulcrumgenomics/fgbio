@@ -24,9 +24,6 @@
 
 package com.fulcrumgenomics.vcf.api
 
-import java.util
-import java.util.{List => JavaList}
-
 import com.fulcrumgenomics.FgBioDef._
 import com.fulcrumgenomics.fasta.SequenceMetadata
 import com.fulcrumgenomics.vcf.api.Allele.NoCallAllele
@@ -34,9 +31,10 @@ import com.fulcrumgenomics.vcf.api.VcfCount.Fixed
 import htsjdk.variant.variantcontext.{GenotypeBuilder, VariantContext, VariantContextBuilder, Allele => JavaAllele}
 import htsjdk.variant.vcf._
 
+import java.util
+import java.util.{List => JavaList}
 import scala.collection.JavaConverters.mapAsJavaMapConverter
 import scala.collection.immutable.ListMap
-import scala.collection.mutable
 
 /**
   * Object that provides methods for converting from fgbio's scala VCF classes to HTSJDK's

@@ -85,6 +85,7 @@ class FastqToBam
   @arg(flag='r', doc="Read structures, one for each of the FASTQs.", minElements=0)            val readStructures: Seq[ReadStructure] = Seq(),
   @arg(flag='s', doc="If true, queryname sort the BAM file, otherwise preserve input order.")  val sort: Boolean = false,
   @arg(flag='u', doc="Tag in which to store molecular barcodes/UMIs.")                         val umiTag: String = ConsensusTags.UmiBases,
+  @arg(flag='q', doc="Tag in which to store molecular barcode/UMI qualities.")                 val umiQualTag: Option[String] = None,
   @arg(          doc="Read group ID to use in the file header.")                               val readGroupId: String = "A",
   @arg(          doc="The name of the sequenced sample.")                                      val sample: String,
   @arg(          doc="The name/ID of the sequenced library.")                                  val library: String,
@@ -149,6 +150,7 @@ class FastqToBam
       val subs = fqs.iterator.zip(structures.iterator).flatMap { case(fq, rs) => rs.extract(fq.bases, fq.quals) }.toIndexedSeq
       val sampleBarcode = subs.iterator.filter(_.kind == SampleBarcode).map(_.bases).mkString("-")
       val umi           = subs.iterator.filter(_.kind == MolecularBarcode).map(_.bases).mkString("-")
+      val umiQual       = subs.iterator.filter(_.kind == MolecularBarcode).map(_.quals).mkString(" ")
       val templates     = subs.iterator.filter(_.kind == Template).toList
 
       templates.zipWithIndex.map { case (read, index) =>
@@ -168,7 +170,10 @@ class FastqToBam
         }
 
         if (sampleBarcode.nonEmpty) rec("BC") = sampleBarcode
-        if (umi.nonEmpty) rec(this.umiTag) = umi
+        if (umi.nonEmpty) {
+          rec(this.umiTag) = umi
+          this.umiQualTag.foreach(rec(_) = umiQual)
+        }
 
         rec
       }

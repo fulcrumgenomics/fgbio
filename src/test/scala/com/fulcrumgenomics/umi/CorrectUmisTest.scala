@@ -24,7 +24,6 @@
 
 package com.fulcrumgenomics.umi
 
-import com.fulcrumgenomics.FgBioDef._
 import com.fulcrumgenomics.testing.{SamBuilder, UnitSpec}
 import com.fulcrumgenomics.umi.CorrectUmis.{UmiCorrectionMetrics, UmiMatch}
 import com.fulcrumgenomics.util.{Io, Metric}

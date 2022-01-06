@@ -30,7 +30,7 @@ import com.fulcrumgenomics.FgBioDef._
 import com.fulcrumgenomics.commons.collection.BetterBufferedIterator
 import com.fulcrumgenomics.commons.util.LazyLogging
 import com.fulcrumgenomics.fasta.SequenceDictionary
-import com.fulcrumgenomics.util.GeneAnnotations.{Exon, Gene, GeneLocus, Transcript}
+import com.fulcrumgenomics.util.GeneAnnotations._
 
 import scala.collection.mutable
 
@@ -51,7 +51,7 @@ object NcbiRefSeqGffSource {
     * @param end the end position of the feature (1-based inclusive)
     * @param negative whether the feature is on the negative strand
     * @param frame the coding frame of the feature. If the feature does not have a frame, is set to -1.
-    * @param attrs the string of `;` separated `key=value` dynamic attributes on the record
+    * @param attrs the string of `;` separated `refSeqValue=value` dynamic attributes on the record
     */
   private case class GffRecord(accession: String, source: String, kind: String, start: Int, end: Int, negative: Boolean, frame: Int, attrs: String) {
     // Lazily break the attributes out into a Map; lazy in case it's a feature type we don't need this for
@@ -124,6 +124,12 @@ object NcbiRefSeqGffSource {
   *   - NC_* accessions with name MT in the GFF are translated to chrM
   *   - NC_* accessions other than MT are automatically mapped to "chr{chromsome-number}"
   *   - Other accessions/contigs are skipped
+  *
+  * The set of features that are extracted from the GFF are all `gene` features that contain one or more
+  * transcript-like features - i.e. that contain an entry below gene which contains one or more exon entries below
+  * it.  While most such features are bonafide transcripts with transcript IDs, some are not - for example
+  * tRNAs.  For transcript-like features without a transcript-id, the ID field is used as the transcript id/name
+  * _after_ removing the leading `rna-` or similar prefix.
   *
   * @param lines the GFF lines to parse
   * @param includeXs whether to include experimental transcripts (i.e. XM_* XP_* and XR_*).
@@ -226,19 +232,20 @@ class NcbiRefSeqGffSource private(lines: Iterator[String],
     * */
   private def parseGene(chrom: String, geneRec: GffRecord, iter: BetterBufferedIterator[GffRecord]): Option[Gene] = {
     val txsBuilder = Seq.newBuilder[Transcript]
+    val biotype    = GeneBiotype(geneRec("gene_biotype"))
 
-    // Loop while the next record is a child of this gene and is "transcript-like", which includes any
-    // direct children that define the attribute "transcript_id", not just records with kind=transcript.
-    while (iter.hasNext && iter.head.parentId.contains(geneRec.id) && iter.head.has("transcript_id")) {
+    // Loop while the next record is a child of this gene.  The call to parseTranscript will then consume
+    // all elements that are children of the "transcript" and either return Some(Transcript) if there is
+    // transcript-like structure or None if there is not.
+    while (iter.hasNext && iter.head.parentId.contains(geneRec.id)) {
       val txRec = iter.next()
       val tx = parseTranscript(chrom, txRec, iter)
-      if (this.includeXs || !tx.name.startsWith("X")) txsBuilder += tx
+      tx.filter(t => this.includeXs || !t.name.startsWith("X")).foreach(txsBuilder += _)
     }
 
     val txs = txsBuilder.result()
     if (txs.isEmpty) None else {
-      val locus = GeneLocus(txs)
-      Some(Gene(geneRec.name, Seq(locus)))
+      Some(Gene(name=geneRec.name, loci=Seq(GeneLocus(txs)), biotype=Some(biotype)))
     }
   }
 
@@ -246,7 +253,9 @@ class NcbiRefSeqGffSource private(lines: Iterator[String],
     * in will be positioned such that the next records is immediately after the last child of this
     * transcript.
     */
-  private def parseTranscript(chrom: String, txRec: GffRecord, iter: BetterBufferedIterator[GffRecord]): Transcript = {
+  private def parseTranscript(chrom: String,
+                              txRec: GffRecord,
+                              iter: BetterBufferedIterator[GffRecord]): Option[Transcript] = {
     // Consume _all_ the children, including ones we may want to ignore
     val features = iter.takeWhile(_.parentId.contains(txRec.id)).toIndexedSeq
 
@@ -259,7 +268,16 @@ class NcbiRefSeqGffSource private(lines: Iterator[String],
       case xs    => (Some(xs.minBy(_.start).start), Some(xs.maxBy(_.end).end))
     }
 
-    Transcript(txRec("transcript_id"), chrom, txRec.start, txRec.end, cdsStart, cdsEnd, txRec.negative, exons)
+    // Figure out the ID of the transcript-like row; ideally transcript_id but if that's not present then
+    // use the ID field which has an annoying and non-useful prefix in order to make it file-wide unique.
+    val id = if (txRec.has("transcript_id")) txRec("transcript_id") else txRec("ID").split('-').drop(1).mkString("-")
+
+    if (exons.nonEmpty) {
+      Some(Transcript(id, chrom, txRec.start, txRec.end, cdsStart, cdsEnd, txRec.negative, exons))
+    }
+    else {
+      None
+    }
   }
 
   /**

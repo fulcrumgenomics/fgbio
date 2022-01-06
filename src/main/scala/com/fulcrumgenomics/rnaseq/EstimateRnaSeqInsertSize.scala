@@ -206,9 +206,8 @@ object EstimateRnaSeqInsertSize {
   private def DifferentReferenceIndexFilter                = filter(r => r.refIndex != r.mateRefIndex)
 
   private[rnaseq] def getAndRequireMateCigar(rec: SamRecord): Cigar = {
-    rec.get[String](SAMTag.MC.name()) match {
-      case None => throw new IllegalStateException(s"Mate CIGAR (Tag MC) not found for $rec, consider using SetMateInformation.")
-      case Some(mc) => Cigar(mc)
+    rec.mateCigar.getOrElse {
+      throw new IllegalStateException(s"Mate CIGAR (Tag 'MC') not found for $rec, consider using SetMateInformation.")
     }
   }
 

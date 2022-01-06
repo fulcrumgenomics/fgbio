@@ -27,7 +27,7 @@ package com.fulcrumgenomics.bam.api
 import com.fulcrumgenomics.alignment.Cigar
 import com.fulcrumgenomics.testing.SamBuilder.{Minus, Plus}
 import com.fulcrumgenomics.testing.{SamBuilder, UnitSpec}
-import htsjdk.samtools.{SAMTag, TextCigarCodec}
+import htsjdk.samtools.TextCigarCodec
 import org.scalatest.OptionValues
 
 class SamRecordTest extends UnitSpec with OptionValues {
@@ -186,12 +186,41 @@ class SamRecordTest extends UnitSpec with OptionValues {
     rec.basesString should not be clone.basesString
   }
 
+  "SamRecord.mateCigar" should "raise an exception for a fragment without a mate" in {
+    val Some(rec) = new SamBuilder(readLength = 100).addFrag(start = 1, cigar = "100M")
+    an[IllegalArgumentException] shouldBe thrownBy { rec.mateCigar }
+  }
+
+  it should "raise an exception for a paired read if the mate is unmapped" in {
+    val Seq(rec1, _): Seq[SamRecord] = new SamBuilder(readLength = 100).addPair(start1 = 1, unmapped2 = true)
+    an[IllegalArgumentException] shouldBe thrownBy { rec1.mateCigar }
+  }
+
+  it should "return None for a paired read without the 'MC' tag set" in {
+    val Seq(rec1, rec2): Seq[SamRecord] = new SamBuilder(readLength = 100).addPair(start1 = 1, start2 = 200)
+    rec1.remove("MC")
+    rec2.remove("MC")
+    rec1.mateCigar shouldBe None
+    rec2.mateCigar shouldBe None
+  }
+
+  it should "return the mates cigar for a paired read with the 'MC' tag set" in {
+    val Seq(rec1, rec2): Seq[SamRecord] = new SamBuilder(readLength = 100).addPair(
+      start1 = 1,
+      start2 = 200,
+      cigar1 = "50M1I49M",
+      cigar2 = "49M1I50M"
+    )
+    rec1.mateCigar.value shouldBe Cigar("49M1I50M")
+    rec2.mateCigar.value shouldBe Cigar("50M1I49M")
+  }
+
   "SamRecord.mateUnclippedStart/End" should "return None if no mate cigar set" in {
     val builder = new SamBuilder(readLength=50)
     val recs = builder.addPair(start1=10, start2=50)
 
     recs.foreach { r =>
-      r(SAMTag.MC.name) = null // Clear mate cigar
+      r("MC") = null // Clear mate cigar
       r.mateUnclippedStart.isEmpty shouldBe true
       r.mateUnclippedEnd.isEmpty shouldBe true
     }
@@ -220,5 +249,44 @@ class SamRecordTest extends UnitSpec with OptionValues {
     r2.mateUnclippedEnd.value shouldBe r1.unclippedEnd
     r2.unclippedEnd shouldBe 94
     r1.mateUnclippedEnd.value shouldBe r2.unclippedEnd
+  }
+
+  "SamRecord.matesOverlap" should "raise exceptions if any pre-requisite check isn't true" in {
+    an[IllegalArgumentException] shouldBe thrownBy { new SamBuilder(readLength = 100).addFrag(start = 1).value.matesOverlap }
+    an[IllegalArgumentException] shouldBe thrownBy { new SamBuilder(readLength = 100).addPair(start1 = 1, unmapped2 = true).foreach(_.matesOverlap) }
+    an[IllegalArgumentException] shouldBe thrownBy { new SamBuilder(readLength = 100).addPair(start2 = 1, unmapped1 = true).foreach(_.matesOverlap) }
+  }
+
+  it should "return false when both reads in a pair are mapped but to different contigs" in {
+    new SamBuilder(readLength = 100).addPair(start1 = 1, start2 = 1, contig = 0, contig2 = Some(1))
+      .foreach(_.matesOverlap.value shouldBe false)
+  }
+
+  it should "return false when both reads in a pair are mapped to the same contig but do not overlap" in {
+    new SamBuilder(readLength = 100).addPair(start1 = 1, start2 = 101, contig = 0, contig2 = Some(0))
+      .foreach(_.matesOverlap.value shouldBe false)
+  }
+
+  it should "return true when reads overlap by one base pair in FR orientation" in {
+    new SamBuilder(readLength = 100).addPair(start1 = 1, start2 = 100, contig = 0, contig2 = Some(0))
+      .foreach(_.matesOverlap.value shouldBe true)
+  }
+
+  it should "return true when reads overlap by one base pair in RF orientation" in {
+    new SamBuilder(readLength = 100).addPair(start1 = 100, start2 = 1, contig = 0, contig2 = Some(0))
+      .foreach(_.matesOverlap.value shouldBe true)
+  }
+
+  it should "return true when reads overlap completely" in {
+    new SamBuilder(readLength = 100).addPair(start1 = 1, start2 = 1, contig = 0, contig2 = Some(0))
+      .foreach(_.matesOverlap.value shouldBe true)
+  }
+
+  it should "return true when mates overlap and we know the start of the mate, and None for when we don't know the end of the mate" in {
+    val List(rec1, rec2) = new SamBuilder(readLength = 100).addPair(start1 = 10, start2 = 1, contig = 0, contig2 = Some(0))
+    rec1.remove("MC")
+    rec2.remove("MC")
+    rec1.matesOverlap shouldBe None // Mate's start is not enclosed by rec, and mate's end cannot be determined
+    rec2.matesOverlap.value shouldBe true // Mate's start is enclosed by rec, regardless of where mate end is
   }
 }

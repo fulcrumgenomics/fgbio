@@ -59,6 +59,19 @@ import scala.collection.BufferedIterator
     |
     |If the input BAM is not `queryname` sorted it will be sorted internally so that mate
     |information between paired-end reads can be corrected before writing the output file.
+    |
+    |The `--first-of-pair` option will cause only the first of pair (R1) reads to be trimmed
+    |based solely on the primer location of R1.  This is useful when there is a target
+    |specific primer on the 5' end of R1 but no primer sequenced on R2 (eg. single gene-specific
+    |primer target enrichment).  In this case, the location of each target specific primer should
+    |be specified in an amplicons left or right primer exclusively.  The coordinates of the
+    |non-specific-target primer should be `-1` for both start and end, e.g:
+    |
+    |```
+    |chrom  left_start  left_end  right_start right_end
+    |chr1   1010873     1010894   -1          -1
+    |chr2   -1          -1        1011118     1011137
+    |```
   """)
 class TrimPrimers
 ( @arg(flag='i', doc="Input BAM file.")  val input: PathToBam,
@@ -68,7 +81,9 @@ class TrimPrimers
   @arg(flag='S', doc="Match to primer locations +/- this many bases.") val slop: Int = 5,
   @arg(flag='s', doc="Sort order of output BAM file (defaults to input sort order).") val sortOrder: Option[SamOrder] = None,
   @arg(flag='r', doc="Optional reference fasta for recalculating NM, MD and UQ tags.") val ref: Option[PathToFasta] = None,
-  @arg(flag='a', doc="Automatically trim extended attributes that are the same length as bases.") val autoTrimAttributes: Boolean = false
+  @arg(flag='a', doc="Automatically trim extended attributes that are the same length as bases.") val autoTrimAttributes: Boolean = false,
+  @arg(doc="Trim only first of pair reads (R1s), otherwise both ends of a pair") val firstOfPair: Boolean = false
+
 )extends FgBioTool with LazyLogging {
   private val clipper = new SamRecordClipper(mode=if (hardClip) ClippingMode.Hard else ClippingMode.Soft, autoClipAttributes=autoTrimAttributes)
 
@@ -106,6 +121,21 @@ class TrimPrimers
       slop                 = slop,
       unclippedCoordinates = true
     )
+
+    // Validate that if we are trimming the first of pair, all amplicons have -1 coordinates for either the left or the
+    // right primer.  Otherwise, coordinates must be > 0.
+    detector.detector.getAll.iterator().foreach { amplicon =>
+      if (firstOfPair) {
+        require(amplicon.leftStart == -1 || amplicon.rightStart == -1,
+          f"Either the left or right amplicon coordinates must be -1 when using --first-of-pair. Found ${amplicon.mkString("\t")}"
+        )
+      }
+      else {
+        require(amplicon.leftStart > 0 && amplicon.rightStart > 0,
+          f"Both the left and right amplicon coordinates must be > 0. Did you forget to set '--first-of-pair'? Found ${amplicon.mkString("\t")}"
+        )
+      }
+    }
 
     // Main processing loop
     val iterator = queryNameOrderIterator(in)
@@ -152,28 +182,30 @@ class TrimPrimers
     val rec1 = reads.find(r => r.paired && r.firstOfPair  && !r.secondary && !r.supplementary)
     val rec2 = reads.find(r => r.paired && r.secondOfPair && !r.secondary && !r.supplementary)
 
+    val readsToClip = if (firstOfPair) reads.filter(_.firstOfPair) else reads
+
     (rec1, rec2) match {
       case (Some(r1), Some(r2)) =>
         // FR mapped pairs get the full treatment
         if (r1.isFrPair) {
-          detector.find(r1=r1, r2=r2) match {
+          (if (firstOfPair) detector.findPrimer(rec=r1) else detector.find(r1=r1, r2=r2)) match {
             case Some(amplicon) =>
               val leftClip  = amplicon.leftPrimerLength
               val rightClip = amplicon.rightPrimerLength
-              reads.foreach { rec =>
+              readsToClip.foreach { rec =>
                 // Note: r1.positiveStrand means that r1 is the "left" read, so we should clip on the left
                 val toClip = if (rec.firstOfPair == r1.positiveStrand) leftClip else rightClip
                 this.clipper.clip5PrimeEndOfRead(rec, toClip)
               }
             case None =>
-              reads.foreach(r => this.clipper.clip5PrimeEndOfRead(r, detector.maxPrimerLength))
+              readsToClip.foreach(r => this.clipper.clip5PrimeEndOfRead(r, detector.maxPrimerLength))
           }
 
           clipFullyOverlappedFrReads(r1, r2)
         }
         // Pairs without both reads mapped in FR orientation are just maximally clipped
         else {
-          reads.foreach(r => this.clipper.clip5PrimeEndOfRead(r, detector.maxPrimerLength))
+          readsToClip.foreach(r => this.clipper.clip5PrimeEndOfRead(r, detector.maxPrimerLength))
         }
 
         SamPairUtil.setMateInfo(r1.asSam, r2.asSam, true)
@@ -183,7 +215,7 @@ class TrimPrimers
         }
       case _ =>
         // Just trim each read independently
-        reads.foreach(r => this.clipper.clip5PrimeEndOfRead(r, detector.maxPrimerLength))
+        readsToClip.foreach(r => this.clipper.clip5PrimeEndOfRead(r, detector.maxPrimerLength))
     }
   }
 

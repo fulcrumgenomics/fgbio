@@ -11,9 +11,14 @@ import com.fulcrumgenomics.sopt.{arg, clp}
   *
   * @author Tim Fennell
   */
-@clp(
- description = "Picks a set of molecular indices that should work well together.",
- group = ClpGroups.Utilities)
+@clp(description =  
+  """
+    |Picks a set of molecular indices that should work well together.
+    |
+    |The indexes to evaluate are generated randomly, unless the `--candidates` option is given.  The latter
+    |specifies a path to a file with one index per line from which indices are picked.
+  """,
+  group = ClpGroups.Utilities)
 class PickIlluminaIndices
 (
   @arg(flag='l', doc="The length of each barcode sequence.")                           val length: Int = 8,
@@ -27,17 +32,27 @@ class PickIlluminaIndices
   @arg(          doc="The minimum GC fraction for a barcode to be accepted.")          val minGc: Double = 0,
   @arg(          doc="The maximum GC fraction for a barcode to be accepted.")          val maxGc: Double = 0.7,
   @arg(flag='t', doc="Number of threads to use.")                                      val threads: Int = 4,
-  @arg(          doc="The installation directory for `ViennaRNA`.")                      val viennaRnaDir: Option[DirPath] = None,
-  @arg(          doc="The lowest acceptable secondary structure `deltaG`.")              val minDeltaG: Double = -10,
+  @arg(          doc="The installation directory for `ViennaRNA`.")                    val viennaRnaDir: Option[DirPath] = None,
+  @arg(          doc="The lowest acceptable secondary structure `deltaG`.")            val minDeltaG: Double = -10,
   @arg(          doc="The indexed adapter sequence into which the indices will be integrated.")
   val adapters: Seq[String] = IlluminaAdapters.DualIndexed.both,
   @arg(          doc="Sequences that should be avoided.  Any kmer of `length` that appears in these sequences and their reverse complements will be thrown out.")
-  val avoidSequence: Seq[String] = IlluminaAdapters.all.flatMap(_.both)
+  val avoidSequence: Seq[String] = IlluminaAdapters.all.flatMap(_.both),
+  @arg(          doc="The candidate indices from which to choose with one index per line (nothing else), otherwise generate all possible indices")
+  val candidates: Option[FilePath] = None
 ) extends FgBioTool{
 
   override def execute(): Unit = {
     // Get logging messages from PickIlluminaIndicesCommand
     htsjdk.samtools.util.Log.setGlobalLogLevel(htsjdk.samtools.util.Log.LogLevel.INFO)
+
+    // Read in existing candidates if desired
+    val candidates: Seq[Array[Byte]] = this.candidates.map { path =>
+      Io.readLines(path).map(_.trim.toUpperCase).filter(_.nonEmpty).map(_.getBytes).toSeq
+    }.getOrElse(Seq.empty)
+    candidates.foreach { candidate =>
+      require(candidate.length == this.length, s"Candidate length was ${candidate.length} but expected $length: ${new String(candidate)}")
+    }
 
     val cmd = new PickIlluminaIndicesCommand()
     cmd.INDEX_LENGTH              = length
@@ -55,6 +70,7 @@ class PickIlluminaIndices
     cmd.MIN_DELTAG                = minDeltaG
     cmd.INDEX_ADAPTER             = adapters.asJava
     cmd.AVOID_SEQUENCE            = avoidSequence.asJava
+    cmd.CANDIDATES                = candidates.asJava
     cmd.execute()
   }
 }

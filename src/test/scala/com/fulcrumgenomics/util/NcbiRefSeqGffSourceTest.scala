@@ -42,7 +42,7 @@ class NcbiRefSeqGffSourceTest extends UnitSpec with OptionValues {
 
   "NcbiRefSeqSource" should "auto-map the accession to chr1 when given an empty sequence dictionary" in {
     val source = NcbiRefSeqGffSource(GffFile, includeXs=true, dict=DictEmpty)
-    source should have size 7
+    source should have size 8
 
     // Pseudo-gene should not have been included
     source.get("DDX11L1") shouldBe None
@@ -94,7 +94,7 @@ class NcbiRefSeqGffSourceTest extends UnitSpec with OptionValues {
 
   it should "still load all genes when given a dictionary that has all the used chroms in it" in {
     val source = NcbiRefSeqGffSource(GffFile, includeXs=true, dict=DictChr1)
-    source should have size 7
+    source should have size 8
     for (gene <- source; locus <- gene.loci; tx <- locus) {
       locus.chrom shouldBe "chr1"
       tx.chrom shouldBe "chr1"
@@ -103,7 +103,7 @@ class NcbiRefSeqGffSourceTest extends UnitSpec with OptionValues {
 
   it should "map the chromosome name using the dictionary" in {
     val source = NcbiRefSeqGffSource(GffFile, includeXs=true, dict=DictAlt1)
-    source should have size 7
+    source should have size 8
     for (gene <- source; locus <- gene.loci; tx <- locus) {
       locus.chrom shouldBe "1"
       tx.chrom shouldBe "1"
@@ -112,10 +112,20 @@ class NcbiRefSeqGffSourceTest extends UnitSpec with OptionValues {
 
   it should "exclude experimental transcripts (and genes with only exp transcripts)" in {
     val source = NcbiRefSeqGffSource(GffFile, includeXs=false, dict=DictChr1)
-    source should have size 5
+    source should have size 6
 
     for (gene <- source; locus <- gene.loci; tx <- locus) {
       tx.name.charAt(0) should not be 'X'
     }
+  }
+
+  it should "parse out a tRNA that doesn't have a transcript ID" in {
+    val source = NcbiRefSeqGffSource(GffFile, includeXs=false, dict=DictChr1)
+
+    val gene = source.get("TRN-GTT5-1")
+    gene.isDefined shouldBe true
+    gene.value.loci.size shouldBe 1
+    gene.value.loci.head.transcripts.size shouldBe 1
+    gene.value.loci.head.transcripts.head.exons.size shouldBe 1
   }
 }
