@@ -57,7 +57,7 @@ object Cigar {
 
   /** Constructs a Cigar object from a Cigar string. */
   def apply(cigar: String): Cigar = {
-    require(cigar != null && cigar.length > 0, "Can't parse a null or empty cigar string.")
+    require(cigar != null && cigar.nonEmpty, "Can't parse a null or empty cigar string.")
     val elements = new ArrayBuffer[CigarElem]
     val chars    = cigar.toCharArray
 
@@ -96,7 +96,7 @@ object Cigar {
   */
 case class Cigar(elems: IndexedSeq[CigarElem]) extends Iterable[CigarElem] {
   // Cache whether or not the Cigar is coalesced already (i.e. has no pair of adjacent elements with the same operator)
-  private val isCoalesced: Boolean = {
+  private lazy val isCoalesced: Boolean = {
     var itIs = true
     var index = 0
     while (index < elems.length-1 && itIs) {
@@ -113,10 +113,10 @@ case class Cigar(elems: IndexedSeq[CigarElem]) extends Iterable[CigarElem] {
   def reverseIterator: Iterator[CigarElem] = elems.reverseIterator
 
   /** Returns the length of the alignment on the query sequence. */
-  def lengthOnQuery: Int = elems.foldLeft(0)((sum, elem) => sum + elem.lengthOnQuery)
+  lazy val lengthOnQuery: Int = elems.foldLeft(0)((sum, elem) => sum + elem.lengthOnQuery)
 
   /** Returns the length of the alignment on the query sequence. */
-  def lengthOnTarget: Int = elems.foldLeft(0)((sum, elem) => sum + elem.lengthOnTarget)
+  lazy val lengthOnTarget: Int = elems.foldLeft(0)((sum, elem) => sum + elem.lengthOnTarget)
 
   /** Yields a new cigar that is truncated to the given ength on the query. */
   def truncateToQueryLength(len: Int): Cigar = truncate(len, e => e.operator.consumesReadBases())
@@ -125,10 +125,10 @@ case class Cigar(elems: IndexedSeq[CigarElem]) extends Iterable[CigarElem] {
   def truncateToTargetLength(len: Int): Cigar = truncate(len, e => e.operator.consumesReferenceBases())
 
   /** Returns the number of bases that are directly aligned between the two sequences. */
-  def alignedBases: Int = elems.filter(_.operator.isAlignment).foldLeft(0)((sum,elem) => sum + elem.length)
+  lazy val alignedBases: Int = elems.filter(_.operator.isAlignment).foldLeft(0)((sum,elem) => sum + elem.length)
 
   /** Returns the number of bases that are clipped between the two sequences. */
-  def clippedBases: Int = elems.filter(_.operator.isClipping).foldLeft(0)((sum,elem) => sum + elem.length)
+  lazy val clippedBases: Int = elems.filter(_.operator.isClipping).foldLeft(0)((sum,elem) => sum + elem.length)
 
   /** Truncates the cigar based on either query or target length cutoff. */
   private def truncate(len: Int, shouldCount: CigarElem => Boolean): Cigar = {
