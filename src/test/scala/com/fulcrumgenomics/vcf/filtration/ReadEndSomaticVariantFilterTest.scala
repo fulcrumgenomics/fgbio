@@ -25,7 +25,7 @@
 package com.fulcrumgenomics.vcf.filtration
 
 import com.fulcrumgenomics.FgBioDef._
-import com.fulcrumgenomics.bam.{BaseEntry, Pileup, PileupBuilder, PileupEntry}
+import com.fulcrumgenomics.bam.{BaseEntry, PileupBuilder}
 import com.fulcrumgenomics.testing.SamBuilder.{Minus, Plus}
 import com.fulcrumgenomics.testing.{SamBuilder, UnitSpec}
 import com.fulcrumgenomics.vcf.api.{AlleleSet, Genotype}
@@ -39,32 +39,13 @@ class ReadEndSomaticVariantFilterTest extends UnitSpec {
   /** Function to make a single well-formed genotype. */
   def singleGenotype(alleles: String*): Genotype = {
     val as = AlleleSet(alleles:_*)
-    Genotype(as, "s1", as.toIndexedSeq, phased=false)
-  }
-
-  "priors" should "return values that prefer artifacts at low MAFs and vice versa" in {
-    val pileup = Pileup("chr1", 0, 100, Seq.empty[PileupEntry])
-
-    ReadEndSomaticVariantFilter.priors(pileup, maf=0.01) shouldBe (0.0004, 0.9996)
-
-    Range.inclusive(1, 100).sliding(2).foreach { case Seq(maf1, maf2) =>
-      val (pMut1, pArt1) = ReadEndSomaticVariantFilter.priors(pileup, maf1/100.0)
-      val (pMut2, pArt2) = ReadEndSomaticVariantFilter.priors(pileup, maf2/100.0)
-
-      pMut1 should be <= pMut2
-      pArt1 should be >= pArt2
-
-      Seq(pMut1, pMut2, pArt1, pArt2).foreach { p =>
-        p should be  > 0.0
-        p should be <= 1.0
-      }
-    }
+    Genotype(as, "s1", as.toIndexedSeq)
   }
 
   "filters" should "only set the filter if a threshold was provide and the pvalue is <= threshold" in {
     val filterNoThreshold   = new ATailingArtifactLikelihoodFilter(distance=5, pValueThreshold=None)
     val filterWithThreshold = new ATailingArtifactLikelihoodFilter(distance=5, pValueThreshold=Some(0.001))
-    def ann(pvalue: Double) = Map(filterNoThreshold.Info.id -> pvalue)
+    def ann(pvalue: Double) = Map(filterNoThreshold.readEndInfoLine.id -> pvalue)
 
     filterNoThreshold.filters(ann(1   )) should contain theSameElementsAs Seq()
     filterNoThreshold.filters(ann(1e-3)) should contain theSameElementsAs Seq()
@@ -74,10 +55,10 @@ class ReadEndSomaticVariantFilterTest extends UnitSpec {
 
     filterWithThreshold.filters(ann(1      )) should contain theSameElementsAs Seq()
     filterWithThreshold.filters(ann(0.01   )) should contain theSameElementsAs Seq()
-    filterWithThreshold.filters(ann(0.001  )) should contain theSameElementsAs Seq(filterWithThreshold.Filter.id)
-    filterWithThreshold.filters(ann(0.00099)) should contain theSameElementsAs Seq(filterWithThreshold.Filter.id)
-    filterWithThreshold.filters(ann(1e-20  )) should contain theSameElementsAs Seq(filterWithThreshold.Filter.id)
-    filterWithThreshold.filters(ann(0      )) should contain theSameElementsAs Seq(filterWithThreshold.Filter.id)
+    filterWithThreshold.filters(ann(0.001  )) should contain theSameElementsAs Seq(filterWithThreshold.readEndFilterLine.id)
+    filterWithThreshold.filters(ann(0.00099)) should contain theSameElementsAs Seq(filterWithThreshold.readEndFilterLine.id)
+    filterWithThreshold.filters(ann(1e-20  )) should contain theSameElementsAs Seq(filterWithThreshold.readEndFilterLine.id)
+    filterWithThreshold.filters(ann(0      )) should contain theSameElementsAs Seq(filterWithThreshold.readEndFilterLine.id)
   }
 
   "EndRepairFillInArtifactLikelihoodFilter.appliesTo" should "return false for any event that is not a SNP" in {
@@ -150,8 +131,8 @@ class ReadEndSomaticVariantFilterTest extends UnitSpec {
     val refName     = builder.dict(0).name
     val pile        = new PileupBuilder(dict=builder.dict, mappedPairsOnly=false).build(builder.iterator, refName, 25)
     val annotations = filter.annotations(pile, singleGenotype("G", "T"))
-    annotations.contains(filter.Info.id) shouldBe true
-    annotations(filter.Info.id).asInstanceOf[Double] should be > 0.5
+    annotations.contains(filter.readEndInfoLine.id) shouldBe true
+    annotations(filter.readEndInfoLine.id).asInstanceOf[Double] should be > 0.5
   }
 
   it should "compute a significant p-value when data is heavily biased" in {
@@ -172,8 +153,8 @@ class ReadEndSomaticVariantFilterTest extends UnitSpec {
     val refName     = builder.dict(0).name
     val pile        = new PileupBuilder(dict=builder.dict, mappedPairsOnly=false).build(builder.iterator, refName, 25)
     val annotations = filter.annotations(pile, singleGenotype("G", "T"))
-    annotations.contains(filter.Info.id) shouldBe true
-    annotations(filter.Info.id).asInstanceOf[Double] should be < 1e-6
+    annotations.contains(filter.readEndInfoLine.id) shouldBe true
+    annotations(filter.readEndInfoLine.id).asInstanceOf[Double] should be < 1e-6
   }
 
 
@@ -254,8 +235,8 @@ class ReadEndSomaticVariantFilterTest extends UnitSpec {
     val refName     = builder.dict(0).name
     val pile        = new PileupBuilder(dict=builder.dict, mappedPairsOnly=false).build(builder.iterator, refName, 25)
     val annotations = filter.annotations(pile, singleGenotype("G", "T"))
-    annotations.contains(filter.Info.id) shouldBe true
-    annotations(filter.Info.id).asInstanceOf[Double] should be > 0.5
+    annotations.contains(filter.readEndInfoLine.id) shouldBe true
+    annotations(filter.readEndInfoLine.id).asInstanceOf[Double] should be > 0.5
   }
 
   it should "compute a significant p-value when data is heavily biased" in {
@@ -276,8 +257,8 @@ class ReadEndSomaticVariantFilterTest extends UnitSpec {
     val refName     = builder.dict(0).name
     val pile        = new PileupBuilder(dict=builder.dict, mappedPairsOnly=false).build(builder.iterator, refName, 25)
     val annotations = filter.annotations(pile, singleGenotype("G", "T"))
-    annotations.contains(filter.Info.id) shouldBe true
-    annotations(filter.Info.id).asInstanceOf[Double] should be < 1e-6
+    annotations.contains(filter.readEndInfoLine.id) shouldBe true
+    annotations(filter.readEndInfoLine.id).asInstanceOf[Double] should be < 1e-6
   }
 
   it should "compute an intermediate p-value when data is heavily biased for both ref and alt" in {
@@ -298,8 +279,8 @@ class ReadEndSomaticVariantFilterTest extends UnitSpec {
     val refName     = builder.dict(0).name
     val pile        = new PileupBuilder(dict=builder.dict, mappedPairsOnly=false).build(builder.iterator, refName, 25)
     val annotations = filter.annotations(pile, singleGenotype("G", "T"))
-    annotations.contains(filter.Info.id) shouldBe true
-    annotations(filter.Info.id).asInstanceOf[Double] should be < 1e-4
+    annotations.contains(filter.readEndInfoLine.id) shouldBe true
+    annotations(filter.readEndInfoLine.id).asInstanceOf[Double] should be < 1e-4
   }
 
   it should "not throw an exception if there is no alt allele coverage or the pileup is empty" in {
@@ -310,7 +291,7 @@ class ReadEndSomaticVariantFilterTest extends UnitSpec {
     { // Test with just an empty pileup
       val pile        = new PileupBuilder(dict = builder.dict, mappedPairsOnly = false).build(builder.iterator, refName, 25)
       val annotations = filter.annotations(pile, singleGenotype("G", "T"))
-      annotations.contains(filter.Info.id) shouldBe true
+      annotations.contains(filter.readEndInfoLine.id) shouldBe true
     }
 
     { // And again with just a bunch of ref allele
@@ -319,7 +300,7 @@ class ReadEndSomaticVariantFilterTest extends UnitSpec {
       }
       val pile        = new PileupBuilder(dict = builder.dict, mappedPairsOnly = false).build(builder.iterator, refName, 25)
       val annotations = filter.annotations(pile, singleGenotype("G", "T"))
-      annotations.contains(filter.Info.id) shouldBe true
+      annotations.contains(filter.readEndInfoLine.id) shouldBe true
     }
   }
 }

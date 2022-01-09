@@ -28,18 +28,24 @@ import com.fulcrumgenomics.bam.{Bams, BaseEntry, Pileup, PileupEntry}
 import com.fulcrumgenomics.commons.util.LazyLogging
 import com.fulcrumgenomics.util.NumericTypes.{LogProbability => LnProb}
 import com.fulcrumgenomics.util.Sequences
-import com.fulcrumgenomics.vcf.api.{VcfCount, VcfFieldType, VcfInfoHeader, _}
+import com.fulcrumgenomics.vcf.api._
 
 import java.lang.Math.{min, pow}
 
 /** Trait for classes that apply filters to somatic variants calls at read ends. */
 trait ReadEndSomaticVariantFilter extends SomaticVariantFilter with LazyLogging {
 
-  /** The VCF header line that describes the INFO key that the filter may reference. */
-  def Info: VcfInfoHeader
+  /** The VCF header line that describes the INFO key that the read-end filter references. */
+  def readEndInfoLine: VcfInfoHeader
 
-  /** The VCF header line that describes the FILTER key that the filter may reference. */
-  def Filter: VcfFilterHeader
+  /** The VCF header line that describes the FILTER key that the read-end filter references. */
+  def readEndFilterLine: VcfFilterHeader
+
+  /** The collection of VCF INFO header lines that the somatic variant filter references. */
+  lazy val VcfInfoLines: Iterable[VcfInfoHeader] = Seq(readEndInfoLine)
+
+  /** The collection of VCF FORMAT header lines that the somatic variant filter references. */
+  lazy val VcfFilterLines: Iterable[VcfFilterHeader] = Seq(readEndFilterLine)
 
   /** The distance from the end of the template that defines the region where the artifact may occur */
   val distance: Int
@@ -59,9 +65,9 @@ trait ReadEndSomaticVariantFilter extends SomaticVariantFilter with LazyLogging 
     * pvalue is present in the <annotations>, and c) the pvalue <= <pValueThreshold>.
     */
   def filters(annotations: Map[String, Any]): Iterable[String] = {
-    (this.pValueThreshold, annotations.get(Info.id).flatMap(_.toString.toDoubleOption)) match {
-      case (Some(threshold), Some(pvalue)) if pvalue <= threshold => Some(Filter.id)
-      case _ => None
+    (this.pValueThreshold, annotations.get(readEndInfoLine.id).map(_.asInstanceOf[Double])) match {
+      case (Some(threshold), Some(pvalue)) if pvalue <= threshold => List(readEndFilterLine.id)
+      case _ => Nil
     }
   }
 
@@ -78,7 +84,7 @@ trait ReadEndSomaticVariantFilter extends SomaticVariantFilter with LazyLogging 
   }
 
   /** Workhorse method that does the majority of the calculation of the p-value. */
-  private[filtration] def annotations(pileup: Pileup[PileupEntry], refAllele: Byte, altAllele: Byte): Map[String, Double] = {
+  protected def annotations(pileup: Pileup[PileupEntry], refAllele: Byte, altAllele: Byte): Map[String, Double] = {
     var (refGood, refBad, altGood, altBad) = (0, 0, 0, 0)
     pileup.baseIterator.filter(_.base == refAllele).foreach { rec =>
       if (isArtifactCongruent(refAllele, altAllele, rec, pileup.pos)) refBad += 1
@@ -111,29 +117,25 @@ trait ReadEndSomaticVariantFilter extends SomaticVariantFilter with LazyLogging 
     // Apply a prior based on the MAF
     val totalObs = altGood + altBad + refGood + refBad
     val maf      = if (totalObs > 0) (altGood + altBad) / totalObs.toDouble else 0
-    val (priorMutation, priorArtifact) = ReadEndSomaticVariantFilter.priors(pileup, maf)
+    val (priorMutation, priorArtifact) = this.priors(pileup, maf)
     llMutation += LnProb.toLogProbability(priorMutation)
     llArtifact += LnProb.toLogProbability(priorArtifact)
 
     val total = LnProb.or(llMutation, llArtifact)
     val pMutation = LnProb.expProb(LnProb.normalizeByLogProbability(llMutation, total))
-    Map(Info.id -> pMutation)
+    Map(readEndInfoLine.id -> pMutation)
   }
-}
-
-/** The companion object for [[ReadEndSomaticVariantFilter]]. */
-object ReadEndSomaticVariantFilter extends LazyLogging {
 
   /** Calculates a pair of priors:
-    *   <priorMutation> is the prior that the genotype is the result of a true somatic mutation.
-    *   <priorArtifact> is the prior that the genotype is an artifact resulting from the mechanism specific to the filter
     *
+    *   - `priorMutation` is the prior that the genotype is the result of a true somatic mutation.
+    *   - `priorArtifact` is the prior that the genotype is an artifact resulting from the mechanism specific to the filter
     *
     * Default implementation gives a mutation prior of {{{(maf * 2)^2}}} capped at 0.9999 and an
     * artifact prior of 1 - mutation prior.  This has the effect of creating priors that are heavily
     * skewed towards the artifact at very low MAFs, and towards mutations as the MAF increases towards 0.5.
     */
-  private[filtration] def priors(pileup: Pileup[PileupEntry], maf: Double) : (Double, Double) = {
+  protected def priors(pileup: Pileup[PileupEntry], maf: Double) : (Double, Double) = {
     require(maf >= 0 && maf <= 1, s"Maf must be between 0 and 1. Observed maf $maf at ${pileup.refName}:${pileup.pos}.")
 
     val m = if (maf != 0) maf else {
@@ -162,11 +164,19 @@ object ReadEndSomaticVariantFilter extends LazyLogging {
 class EndRepairFillInArtifactLikelihoodFilter(override val distance: Int = 15, override val pValueThreshold: Option[Double] = None)
   extends ReadEndSomaticVariantFilter {
 
-  val Info: VcfInfoHeader = VcfInfoHeader("ERFAP", VcfCount.Fixed(1), VcfFieldType.Float, "P-Value for the End Repair Fill-in Artifact Filter test.")
-  val Filter: VcfFilterHeader = VcfFilterHeader("EndRepairFillInArtifact", "Variant is likely an artifact caused by end repair fill-in.")
+  /** The VCF header line that describes the INFO key that the read-end filter references. */
+  val readEndInfoLine: VcfInfoHeader = VcfInfoHeader(
+    id          = "ERFAP",
+    count       = VcfCount.Fixed(1),
+    kind        = VcfFieldType.Float,
+    description = s"P-Value for the End Repair Fill-in Artifact Filter test, parameterized with a 5-prime distance of ${distance}bp."
+  )
 
-  override val VcfInfoLines: Iterable[VcfInfoHeader]     = Seq(Info)
-  override val VcfFilterLines: Iterable[VcfFilterHeader] = Seq(Filter)
+  /** The VCF header line that describes the FORMAT key that the read-end filter references. */
+  val readEndFilterLine: VcfFilterHeader = VcfFilterHeader(
+    id          = "EndRepairFillInArtifact",
+    description = s"Variant is likely an artifact caused by end repair fill-in, parameterized with a 5-prime distance of ${distance}bp."
+  )
 
   /** Applies only for gt where all alleles are SNVs */
   def appliesTo(gt: Genotype): Boolean = gt.isHet && gt.calls.forall(_.value.length == 1)
@@ -177,12 +187,7 @@ class EndRepairFillInArtifactLikelihoodFilter(override val distance: Int = 15, o
     val positionFromOtherEnd = Bams.positionFromOtherEndOfTemplate(entry.rec, pileupPosition)
 
     // Pick the position that's closest to an end, and test for congruency based on that
-    val pos = {
-      if (positionFromOtherEnd.exists(_ < positionInRead)) positionFromOtherEnd.get
-      else                                                 positionInRead
-    }
-
-    pos <= this.distance
+    (Some(positionInRead) ++ positionFromOtherEnd).min <= this.distance
   }
 }
 
@@ -204,11 +209,19 @@ class EndRepairFillInArtifactLikelihoodFilter(override val distance: Int = 15, o
 class ATailingArtifactLikelihoodFilter(override val distance: Int = 2, override val pValueThreshold: Option[Double] = None)
   extends ReadEndSomaticVariantFilter {
 
-  val Info: VcfInfoHeader = VcfInfoHeader("ATAP", VcfCount.Fixed(1), VcfFieldType.Float, "P-Value for the A-tailing Artifact Filter test.")
-  val Filter: VcfFilterHeader = VcfFilterHeader("ATailingArtifact", "Variant is likely an artifact caused by A-tailing.")
+  /** The VCF header line that describes the INFO key that the read-end filter references. */
+  val readEndInfoLine: VcfInfoHeader = VcfInfoHeader(
+    id          = "ATAP",
+    count       = VcfCount.Fixed(1),
+    kind        = VcfFieldType.Float,
+    description = s"P-Value for the A-tailing Artifact Filter test, parameterized with a 5-prime distance of ${distance}bp."
+  )
 
-  override val VcfInfoLines: Iterable[VcfInfoHeader]     = Seq(Info)
-  override val VcfFilterLines: Iterable[VcfFilterHeader] = Seq(Filter)
+  /** The VCF header line that describes the FORMAT key that the read-end filter references. */
+  val readEndFilterLine: VcfFilterHeader = VcfFilterHeader(
+    id          = "ATailingArtifact",
+    description = s"Variant is likely an artifact caused by A-tailing, parameterized with a 5-prime distance of ${distance}bp."
+  )
 
   /** Only applies to het SNVs where the alt allele is A or T. */
   def appliesTo(gt: Genotype): Boolean = {

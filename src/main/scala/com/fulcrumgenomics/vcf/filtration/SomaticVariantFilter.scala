@@ -26,13 +26,13 @@ package com.fulcrumgenomics.vcf.filtration
 
 import com.fulcrumgenomics.bam.{Pileup, PileupEntry}
 import com.fulcrumgenomics.vcf.api.{Genotype, VcfFilterHeader, VcfInfoHeader}
-import htsjdk.variant.vcf.{VCFFilterHeaderLine, VCFHeaderLineType, VCFInfoHeaderLine}
 
 /**
   * Trait for classes that can compute annotations on a somatic variant call and optionally
   * apply one or more filters to the calls.
   */
 trait SomaticVariantFilter {
+
   /** The collection of VCF INFO header lines that the filter may reference. */
   val VcfInfoLines: Iterable[VcfInfoHeader]
 

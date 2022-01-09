@@ -113,10 +113,10 @@ class FilterSomaticVcfTest extends UnitSpec {
     builder.toTempFile()
   }
 
-  private val ATailInfoKey       = new ATailingArtifactLikelihoodFilter().Info.id
-  private val ATailFilterKey     = new ATailingArtifactLikelihoodFilter().Filter.id
-  private val EndRepairInfoKey   = new EndRepairFillInArtifactLikelihoodFilter().Info.id
-  private val EndRepairFilterKey = new EndRepairFillInArtifactLikelihoodFilter().Filter.id
+  private val ATailInfoKey       = new ATailingArtifactLikelihoodFilter().readEndInfoLine.id
+  private val ATailFilterKey     = new ATailingArtifactLikelihoodFilter().readEndFilterLine.id
+  private val EndRepairInfoKey   = new EndRepairFillInArtifactLikelihoodFilter().readEndInfoLine.id
+  private val EndRepairFilterKey = new EndRepairFillInArtifactLikelihoodFilter().readEndFilterLine.id
 
   "FilterSomaticVcf" should "work on an empty VCF" in {
     val emptyVcf    = VcfBuilder(Seq("tumor")).toTempFile()

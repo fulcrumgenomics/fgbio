@@ -39,6 +39,10 @@ import scala.collection.immutable.ListMap
   """
     |Applies one or more filters to a VCF of somatic variants.
     |
+    |The VCF must contain genotype information for the tumor sample. If the VCF also contains genotypes for one or more
+    |other samples, the `--sample` option must be provided to specify the sample whose genotypes to examine and whose
+    |reads are present in the BAM file.
+    |
     |If the VCF also contains genotypes for more than one sample, then the `--sample` option must be provided to specify
     |which genotypes to examine as they relate to the reads in the BAM file (`--bam`).
     |
@@ -50,10 +54,10 @@ import scala.collection.immutable.ListMap
     |Each available filter may generate annotations in the `INFO` field of the output VCF and optionally,
     |if a threshold is specified, may apply one or more `FILTER`s to applicable variants.
     |
-    |Note: In the initial version of this tool, the only available filter was specific to A-base addition artifacts and
-    |was referred to as the 'End Repair Artifact Filter.' This filter has been renamed to 'A-tailing Artifact Filter',
-    |but its functionality is unchanged. The filter's associated command-line parameters, `INFO` field key, and `FILTER`
-    |tag have also been renamed accordingly, as described below.
+    |In previous versions of this tool, the only available filter was specific to A-base addition artifacts and was
+    |referred to as the 'End Repair Artifact Filter.' This filter has been renamed to 'A-tailing Artifact Filter', but
+    |its functionality is unchanged. The filter's associated command-line parameters, `INFO` field key, and `FILTER` tag
+    |have also been renamed accordingly, as described below.
     |
     |## Available Filters
     |
@@ -84,7 +88,7 @@ import scala.collection.immutable.ListMap
     |
     |The end repair fill-in artifact filter attempts to measure the probability that a single-nucleotide mismatch is the
     |product of an error in the template generated during the end repair fill-in step that is common to many Illumina
-    |library preparation protocols, in which single-stranded 3' overhands are filled in to create a blunt end. These
+    |library preparation protocols, in which single-stranded 3' overhangs are filled in to create a blunt end. These
     |artifacts originate from single-stranded templates containing damaged bases, often as a consequence of oxidative
     |damage. These DNA lesions, for example 8-oxoguanine, undergo mismatched pairing, which after PCR appear as mutations
     |at the ends of reads.
