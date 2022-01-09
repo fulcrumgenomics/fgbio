@@ -43,9 +43,6 @@ import scala.collection.immutable.ListMap
     |other samples, the `--sample` option must be provided to specify the sample whose genotypes to examine and whose
     |reads are present in the BAM file.
     |
-    |If the VCF also contains genotypes for more than one sample, then the `--sample` option must be provided to specify
-    |which genotypes to examine as they relate to the reads in the BAM file (`--bam`).
-    |
     |Various options are available for filtering the reads coming from the BAM file, including
     |`--min-mapping-quality`, `--min-base-quality` and `--paired-reads-only`.  The latter filters to only
     |paired end reads where both reads are mapped.  Reads marked as duplicates, secondary alignments
