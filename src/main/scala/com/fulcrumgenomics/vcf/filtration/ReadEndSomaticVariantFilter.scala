@@ -175,7 +175,7 @@ class EndRepairFillInArtifactLikelihoodFilter(override val distance: Int = 15, o
   /** The VCF header line that describes the FORMAT key that the read-end filter references. */
   val readEndFilterLine: VcfFilterHeader = VcfFilterHeader(
     id          = "EndRepairFillInArtifact",
-    description = s"Variant is likely an artifact caused by end repair fill-in, parameterized with a 5-prime distance of ${distance}bp."
+    description = s"Variant is likely an artifact caused by end repair fill-in, parameterized with a 5-prime distance of ${distance}bp and p-value threshold of $pValueThreshold."
   )
 
   /** Applies only for gt where all alleles are SNVs */
@@ -220,7 +220,7 @@ class ATailingArtifactLikelihoodFilter(override val distance: Int = 2, override 
   /** The VCF header line that describes the FORMAT key that the read-end filter references. */
   val readEndFilterLine: VcfFilterHeader = VcfFilterHeader(
     id          = "ATailingArtifact",
-    description = s"Variant is likely an artifact caused by A-tailing, parameterized with a 5-prime distance of ${distance}bp."
+    description = s"Variant is likely an artifact caused by A-tailing, parameterized with a 5-prime distance of ${distance}bp and p-value threshold of $pValueThreshold."
   )
 
   /** Only applies to het SNVs where the alt allele is A or T. */
