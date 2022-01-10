@@ -53,7 +53,7 @@ object FgBioMain {
     * Exception class intended to be used by [[FgBioMain]] and [[FgBioTool]] to communicate
     * non-exceptional(!) failures when running a tool.
     */
-  case class FailureException private[cmdline] (exit:Int = 1, message: Option[String] = None) extends RuntimeException
+  case class FailureException private[cmdline] (exit: Int = 1, message: Option[String] = None) extends RuntimeException
 }
 
 class FgBioCommonArgs
