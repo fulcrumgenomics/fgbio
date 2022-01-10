@@ -25,9 +25,9 @@
 package com.fulcrumgenomics.alignment
 
 import com.fulcrumgenomics.FgBioDef._
+import htsjdk.samtools.{CigarElement, CigarOperator, SAMRecord, Cigar => HtsJdkCigar}
 
 import scala.collection.mutable.ArrayBuffer
-import htsjdk.samtools.{CigarElement, CigarOperator, SAMRecord, Cigar => HtsJdkCigar}
 
 /**
   * Represents an element in a Cigar.
@@ -90,6 +90,36 @@ object Cigar {
   def apply(ciggy: HtsJdkCigar): Cigar = Cigar(ciggy.iterator().map(e => CigarElem(e.getOperator, e.getLength)).toIndexedSeq)
 }
 
+/** A data class for holding statistics about a [[Cigar]]. */
+private[alignment] case class CigarStats(lengthOnQuery: Int, lengthOnTarget: Int, alignedBases: Int, clippedBases: Int)
+
+/** Companion object for [[Cigar]]. */
+private[alignment] object CigarStats {
+
+  /** Build a [[CigarStats]] from a [[Cigar]]. */
+  private[alignment] def apply(cigar: Cigar): CigarStats = {
+    var lengthOnQuery  = 0
+    var lengthOnTarget = 0
+    var alignedBases   = 0
+    var clippedBases   = 0
+
+    forloop(0, cigar.elems.length) { index =>
+      val elem = cigar.elems(index)
+      lengthOnQuery  += elem.lengthOnQuery
+      lengthOnTarget += elem.lengthOnTarget
+      if (elem.operator.isAlignment)     alignedBases += elem.length
+      else if (elem.operator.isClipping) clippedBases += elem.length
+    }
+
+    CigarStats(
+      lengthOnQuery  = lengthOnQuery,
+      lengthOnTarget = lengthOnTarget,
+      alignedBases   = alignedBases,
+      clippedBases   = clippedBases
+    )
+  }
+}
+
 /**
   * Object representation of a Cigar string representing an alignment between two sequences.
   * @param elems the ordered sequence of elements in the Cigar
@@ -106,6 +136,9 @@ case class Cigar(elems: IndexedSeq[CigarElem]) extends Iterable[CigarElem] {
     itIs
   }
 
+  /** Statistics about this cigar which are computed once on first access and then cached. */
+  private lazy val stats: CigarStats = CigarStats(this)
+
   /** Provides an iterator over the elements in the cigar. */
   override def iterator: Iterator[CigarElem] = elems.iterator
 
@@ -113,22 +146,22 @@ case class Cigar(elems: IndexedSeq[CigarElem]) extends Iterable[CigarElem] {
   def reverseIterator: Iterator[CigarElem] = elems.reverseIterator
 
   /** Returns the length of the alignment on the query sequence. */
-  lazy val lengthOnQuery: Int = elems.foldLeft(0)((sum, elem) => sum + elem.lengthOnQuery)
+  def lengthOnQuery: Int = stats.lengthOnQuery
 
-  /** Returns the length of the alignment on the query sequence. */
-  lazy val lengthOnTarget: Int = elems.foldLeft(0)((sum, elem) => sum + elem.lengthOnTarget)
+  /** Returns the length of the alignment on the target sequence. */
+  def lengthOnTarget: Int = stats.lengthOnTarget
 
-  /** Yields a new cigar that is truncated to the given ength on the query. */
+  /** Yields a new cigar that is truncated to the given length on the query. */
   def truncateToQueryLength(len: Int): Cigar = truncate(len, e => e.operator.consumesReadBases())
 
   /** Yields a new cigar that is truncated to the given length on the target. */
   def truncateToTargetLength(len: Int): Cigar = truncate(len, e => e.operator.consumesReferenceBases())
 
   /** Returns the number of bases that are directly aligned between the two sequences. */
-  lazy val alignedBases: Int = elems.filter(_.operator.isAlignment).foldLeft(0)((sum,elem) => sum + elem.length)
+  def alignedBases: Int = stats.alignedBases
 
   /** Returns the number of bases that are clipped between the two sequences. */
-  lazy val clippedBases: Int = elems.filter(_.operator.isClipping).foldLeft(0)((sum,elem) => sum + elem.length)
+  def clippedBases: Int = stats.clippedBases
 
   /** Truncates the cigar based on either query or target length cutoff. */
   private def truncate(len: Int, shouldCount: CigarElem => Boolean): Cigar = {
