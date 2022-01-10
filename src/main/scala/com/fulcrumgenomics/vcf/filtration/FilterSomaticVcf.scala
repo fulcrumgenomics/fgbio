@@ -37,11 +37,10 @@ import scala.collection.immutable.ListMap
 
 @clp(group=ClpGroups.VcfOrBcf, description=
   """
-    |Applies one or more filters to a VCF of somatic variants.
-    |
-    |The VCF must contain genotype information for the tumor sample. If the VCF also contains genotypes for one or more
-    |other samples, the `--sample` option must be provided to specify the sample whose genotypes to examine and whose
-    |reads are present in the BAM file.
+    |Applies one or more filters to a VCF of somatic variants. The VCF must contain genotype information
+    |for the tumor sample.  If the VCF also contains genotypes for one or more other samples, the
+    |`--sample` option must be provided to specify the sample whose genotypes to examine and whose reads
+    |are present in the BAM file.
     |
     |Various options are available for filtering the reads coming from the BAM file, including
     |`--min-mapping-quality`, `--min-base-quality` and `--paired-reads-only`.  The latter filters to only

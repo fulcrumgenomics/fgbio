@@ -42,10 +42,10 @@ trait ReadEndSomaticVariantFilter extends SomaticVariantFilter with LazyLogging 
   def readEndFilterLine: VcfFilterHeader
 
   /** The collection of VCF INFO header lines that the somatic variant filter references. */
-  lazy val VcfInfoLines: Iterable[VcfInfoHeader] = Seq(readEndInfoLine)
+  override lazy val VcfInfoLines: Iterable[VcfInfoHeader] = Seq(readEndInfoLine)
 
   /** The collection of VCF FORMAT header lines that the somatic variant filter references. */
-  lazy val VcfFilterLines: Iterable[VcfFilterHeader] = Seq(readEndFilterLine)
+  override lazy val VcfFilterLines: Iterable[VcfFilterHeader] = Seq(readEndFilterLine)
 
   /** The distance from the end of the template that defines the region where the artifact may occur */
   val distance: Int
@@ -64,7 +64,7 @@ trait ReadEndSomaticVariantFilter extends SomaticVariantFilter with LazyLogging 
   /** Applies a single filter if a) a threshold was provided at construction, b) the computed
     * pvalue is present in the <annotations>, and c) the pvalue <= <pValueThreshold>.
     */
-  def filters(annotations: Map[String, Any]): Iterable[String] = {
+  override def filters(annotations: Map[String, Any]): Iterable[String] = {
     (this.pValueThreshold, annotations.get(readEndInfoLine.id).map(_.asInstanceOf[Double])) match {
       case (Some(threshold), Some(pvalue)) if pvalue <= threshold => List(readEndFilterLine.id)
       case _ => Nil
@@ -72,7 +72,7 @@ trait ReadEndSomaticVariantFilter extends SomaticVariantFilter with LazyLogging 
   }
 
   /** Calculates the p-value and returns it in the map of annotations. */
-  def annotations(pileup: Pileup[PileupEntry], gt: Genotype): Map[String,Any] = {
+  override def annotations(pileup: Pileup[PileupEntry], gt: Genotype): Map[String,Any] = {
     if (!appliesTo(gt)) {
       Map.empty
     }
@@ -165,7 +165,7 @@ class EndRepairFillInArtifactLikelihoodFilter(override val distance: Int = 15, o
   extends ReadEndSomaticVariantFilter {
 
   /** The VCF header line that describes the INFO key that the read-end filter references. */
-  val readEndInfoLine: VcfInfoHeader = VcfInfoHeader(
+  override val readEndInfoLine: VcfInfoHeader = VcfInfoHeader(
     id          = "ERFAP",
     count       = VcfCount.Fixed(1),
     kind        = VcfFieldType.Float,
@@ -173,16 +173,16 @@ class EndRepairFillInArtifactLikelihoodFilter(override val distance: Int = 15, o
   )
 
   /** The VCF header line that describes the FORMAT key that the read-end filter references. */
-  val readEndFilterLine: VcfFilterHeader = VcfFilterHeader(
+  override val readEndFilterLine: VcfFilterHeader = VcfFilterHeader(
     id          = "EndRepairFillInArtifact",
     description = s"Variant is likely an artifact caused by end repair fill-in, parameterized with a 5-prime distance of ${distance}bp and p-value threshold of $pValueThreshold."
   )
 
   /** Applies only for gt where all alleles are SNVs */
-  def appliesTo(gt: Genotype): Boolean = gt.isHet && gt.calls.forall(_.value.length == 1)
+  override def appliesTo(gt: Genotype): Boolean = gt.isHet && gt.calls.forall(_.value.length == 1)
 
   /** Returns true if the position of the base from the closest read end does not exceed the filter's defined distance. */
-  def isArtifactCongruent(refAllele: Byte, altAllele: Byte, entry : BaseEntry, pileupPosition: Int): Boolean = {
+  override def isArtifactCongruent(refAllele: Byte, altAllele: Byte, entry : BaseEntry, pileupPosition: Int): Boolean = {
     val positionInRead       = entry.positionInReadInReadOrder
     val positionFromOtherEnd = Bams.positionFromOtherEndOfTemplate(entry.rec, pileupPosition)
 
@@ -210,7 +210,7 @@ class ATailingArtifactLikelihoodFilter(override val distance: Int = 2, override 
   extends ReadEndSomaticVariantFilter {
 
   /** The VCF header line that describes the INFO key that the read-end filter references. */
-  val readEndInfoLine: VcfInfoHeader = VcfInfoHeader(
+  override val readEndInfoLine: VcfInfoHeader = VcfInfoHeader(
     id          = "ATAP",
     count       = VcfCount.Fixed(1),
     kind        = VcfFieldType.Float,
@@ -218,13 +218,13 @@ class ATailingArtifactLikelihoodFilter(override val distance: Int = 2, override 
   )
 
   /** The VCF header line that describes the FORMAT key that the read-end filter references. */
-  val readEndFilterLine: VcfFilterHeader = VcfFilterHeader(
+  override val readEndFilterLine: VcfFilterHeader = VcfFilterHeader(
     id          = "ATailingArtifact",
     description = s"Variant is likely an artifact caused by A-tailing, parameterized with a 5-prime distance of ${distance}bp and p-value threshold of $pValueThreshold."
   )
 
   /** Only applies to het SNVs where the alt allele is A or T. */
-  def appliesTo(gt: Genotype): Boolean = {
+  override def appliesTo(gt: Genotype): Boolean = {
     gt.isHet && !gt.isHetNonRef && gt.calls.forall(_.value.length == 1) &&
       gt.calls.iterator.filter(_ != gt.alleles.ref).exists(a => a.value.equalsIgnoreCase("A") || a.value.equalsIgnoreCase("T"))
   }
@@ -268,7 +268,7 @@ class ATailingArtifactLikelihoodFilter(override val distance: Int = 2, override 
     * the read or the A-paired allele at the end of the read - i.e. they are observations that if converted to
     * alt observations would be congruent.
     */
-  def isArtifactCongruent(refAllele: Byte, altAllele: Byte, entry : BaseEntry, pileupPosition: Int): Boolean = {
+  override def isArtifactCongruent(refAllele: Byte, altAllele: Byte, entry : BaseEntry, pileupPosition: Int): Boolean = {
     require(entry.base == refAllele || entry.base == altAllele, "Pileup base is neither ref or alt.")
     val isRef                = entry.base == refAllele
     val positionInRead       = entry.positionInReadInReadOrder
