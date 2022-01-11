@@ -97,11 +97,6 @@ class FgMetricsDoclet extends Doclet(reporter = new ConsoleReporter(new Settings
        |
        |* `Count` is an integer representing the count of some item
        |* `Proportion` is a real number with a value between 0 and 1 representing a proportion or fraction
-       |
-       |## Table of Contents
-       |
-       ||Metric Type|Description|
-       ||-----------|-----------|""".stripMargin
   }
 
   /** Locates the metrics documentation templates and turns them into simple case classes with comments as markdown. */
