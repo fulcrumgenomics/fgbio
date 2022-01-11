@@ -25,7 +25,6 @@
 package com.fulcrumgenomics.cmdline
 
 import java.nio.file.Paths
-
 import com.fulcrumgenomics.FgBioDef.SafelyClosable
 import com.fulcrumgenomics.bam.api.SamSource
 import com.fulcrumgenomics.commons.util.SystemUtil.IntelCompressionLibrarySupported
@@ -34,19 +33,28 @@ import com.intel.gkl.compression.{IntelDeflaterFactory, IntelInflaterFactory}
 import htsjdk.samtools.BAMRecordCodec
 import htsjdk.samtools.util._
 import htsjdk.samtools.util.zip.{DeflaterFactory, InflaterFactory}
+import org.scalatest.Retries
+import org.scalatest.tagobjects.Retryable
 
 
-class IntelCompressionTest extends UnitSpec {
+class IntelCompressionTest extends UnitSpec with Retries {
   private val intelSupported = IntelCompressionLibrarySupported
   private val testBam        = Paths.get("src/test/resources/com/fulcrumgenomics/bam/estimate_pooling_fractions/HG01583.bam")
   private val levels         = Seq(2, 5, 9)
+
+  override def withFixture(test: NoArgTest) = {
+    if (isRetryable(test))
+      withRetry { super.withFixture(test) }
+    else
+      super.withFixture(test)
+  }
 
   "IntelDeflater" should "be available" in {
     if (!intelSupported) cancel("IntelDeflater is not available on this platform")
   }
 
   levels.foreach { level =>
-    it should s"deflate faster than the JDK Deflater on level $level" in {
+    it should s"deflate faster than the JDK Deflater on level $level" taggedAs(Retryable) in {
       if (!intelSupported) cancel("IntelDeflater is not available on this platform")
       val source = SamSource(testBam)
       val records = source.toList
