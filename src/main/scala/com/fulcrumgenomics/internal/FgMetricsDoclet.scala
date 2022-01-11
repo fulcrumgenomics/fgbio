@@ -122,7 +122,7 @@ class FgMetricsDoclet extends Doclet(reporter = new ConsoleReporter(new Settings
   }
 
   /** Finds the [[scala.tools.nsc.doc.model.DocTemplateEntity]] instances that correspond to subclasses of [[Metric]] */
-  protected def findMetricsClasses: List[DocTemplateEntity] = {
+  private def findMetricsClasses: List[DocTemplateEntity] = {
     def find(template: DocTemplateEntity): List[DocTemplateEntity] = {
       template :: template.templates.collect { case d: DocTemplateEntity => find(d) }.flatten
     }
