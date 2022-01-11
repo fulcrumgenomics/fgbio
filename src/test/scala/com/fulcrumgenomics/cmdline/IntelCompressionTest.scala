@@ -84,7 +84,7 @@ class IntelCompressionTest extends UnitSpec with Retries {
 
       info(f"Intel: ${intelTime}ms JDK: ${jdkTime}ms speedup: ${jdkTime/intelTime.toFloat}%.2fx")
 
-      intelTime should be <= jdkTime
+      intelTime should be <= (jdkTime * 1.05)
     }
   }
 
