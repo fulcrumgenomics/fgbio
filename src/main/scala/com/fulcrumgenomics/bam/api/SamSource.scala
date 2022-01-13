@@ -42,10 +42,10 @@ object SamSource {
     *
     * @param path the path to read the SAM/BAM/CRAM from
     * @param index an optional path to read the index from
-    * @param ref an optional reference sequencing for decoding CRAM files
+    * @param ref an optional reference sequence for decoding CRAM files
     * @param async if true use extra thread(s) to speed up reading
     * @param stringency the validation stringency to apply when reading the data
-    * @param factory a SAMRecordFactory; MUST return classes that mix in [[SamRecord]]
+    * @param factory a [[SAMRecordFactory]]; MUST return classes that mix in [[SamRecord]]
     */
   def apply(path: PathToBam,
             index: Option[FilePath] = None,
@@ -69,10 +69,10 @@ object SamSource {
   /** Constructs a [[SamSource]] to read from the provided input stream.
     *
     * @param stream the input stream of SAM/BAM/CRAM bytes
-    * @param ref an optional reference sequencing for decoding CRAM files
+    * @param ref an optional reference sequence for decoding CRAM files
     * @param async if true use extra thread(s) to speed up reading
     * @param stringency the validation stringency to apply when reading the data
-    * @param factory a SAMRecordFactory; MUST return classes that mix in [[SamRecord]]
+    * @param factory a [[SAMRecordFactory]]; MUST return classes that mix in [[SamRecord]]
     */
   def apply(
     stream: InputStream,
