@@ -24,13 +24,12 @@
 
 package com.fulcrumgenomics.bam.api
 
-import java.io.Closeable
-
 import com.fulcrumgenomics.FgBioDef._
 import com.fulcrumgenomics.bam.api.QueryType.QueryType
 import htsjdk.samtools._
 import htsjdk.samtools.util.{Interval, Locatable}
 
+import java.io.{Closeable, InputStream}
 import scala.collection.compat._
 
 /** Companion to the [[SamSource]] class that provides factory methods for sources. */
@@ -66,6 +65,29 @@ object SamSource {
     index.foreach(i => input.index(i))
     new SamSource(fac.open(input))
   }
+
+  /** Constructs a [[SamSource]] to read from the provided input stream.
+    *
+    * @param stream the input stream of SAM/BAM/CRAM bytes
+    * @param ref an optional reference sequencing for decoding CRAM files
+    * @param async if true use extra thread(s) to speed up reading
+    * @param stringency the validation stringency to apply when reading the data
+    * @param factory a SAMRecordFactory; MUST return classes that mix in [[SamRecord]]
+    */
+  def apply(
+    stream: InputStream,
+    ref: Option[PathToFasta],
+    async: Boolean,
+    stringency: ValidationStringency,
+    factory: SAMRecordFactory,
+  ): SamSource = {
+    val fac = SamReaderFactory.make()
+    fac.samRecordFactory(factory)
+    fac.setUseAsyncIo(async)
+    fac.validationStringency(stringency)
+    ref.foreach(fasta => fac.referenceSequence(fasta.toFile))
+    new SamSource(fac.open(SamInputResource.of(stream)), closer = Some(() => stream.close()))
+  }
 }
 
 /** Describes the two types of queries that can be performed. */
@@ -78,7 +100,9 @@ object QueryType extends Enumeration {
   * A source class for reading SAM/BAM/CRAM files and for querying them.
   * @param reader the underlying [[SamReader]]
   */
-class SamSource private(private val reader: SamReader) extends View[SamRecord] with HeaderHelper with Closeable {
+class SamSource private(private val reader: SamReader, private val closer: Option[Closeable] = None)
+  extends View[SamRecord] with HeaderHelper with Closeable {
+
   /** The [[htsjdk.samtools.SAMFileHeader]] associated with the source. */
   override val header: SAMFileHeader = reader.getFileHeader
 
@@ -109,7 +133,11 @@ class SamSource private(private val reader: SamReader) extends View[SamRecord] w
   /** Provides a string that shows where the source is reading from. */
   override def toString: String = s"SamReader(${reader.getResourceDescription})"
 
-  override def close(): Unit = this.reader.close()
+  /** Close an optional wrapped closeable and release the SAM reader. */
+  override def close(): Unit = {
+    this.closer.foreach(_.close())
+    this.reader.close()
+  }
 
   /**
     * Returns the underlying SamReader. This should be avoided as much as possible, and the
