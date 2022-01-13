@@ -37,8 +37,22 @@ object SamSource {
   var DefaultUseAsyncIo: Boolean = false
   var DefaultValidationStringency: ValidationStringency = ValidationStringency.STRICT
 
-  /**
-    * Constructs a [[SamSource]] to read from the provided path.
+  /** Configure a [[SAMRecordFactory]] with a variety of parameters. */
+  private def buildSamRecordFactory(
+    factory: SAMRecordFactory,
+    ref: Option[PathToFasta],
+    async: Boolean,
+    stringency: ValidationStringency,
+  ): SamReaderFactory = {
+    val fac = SamReaderFactory.make()
+    fac.samRecordFactory(factory)
+    fac.setUseAsyncIo(async)
+    fac.validationStringency(stringency)
+    ref.foreach(fac.referenceSequence)
+    fac
+  }
+
+  /** Constructs a [[SamSource]] to read from the provided path.
     *
     * @param path the path to read the SAM/BAM/CRAM from
     * @param index an optional path to read the index from
@@ -53,16 +67,9 @@ object SamSource {
             async: Boolean = DefaultUseAsyncIo,
             stringency: ValidationStringency = DefaultValidationStringency,
             factory: SAMRecordFactory = SamRecord.Factory): SamSource = {
-    // Configure the factory
-    val fac = SamReaderFactory.make()
-    fac.samRecordFactory(factory)
-    fac.setUseAsyncIo(async)
-    fac.validationStringency(stringency)
-    ref.foreach(r => fac.referenceSequence(r.toFile))
-
-    // Open the input(s)
+    val fac   = buildSamRecordFactory(factory = factory, ref = ref, async = async, stringency = stringency)
     val input = SamInputResource.of(path)
-    index.foreach(i => input.index(i))
+    index.foreach(input.index)
     new SamSource(fac.open(input))
   }
 
@@ -81,11 +88,7 @@ object SamSource {
     stringency: ValidationStringency,
     factory: SAMRecordFactory,
   ): SamSource = {
-    val fac = SamReaderFactory.make()
-    fac.samRecordFactory(factory)
-    fac.setUseAsyncIo(async)
-    fac.validationStringency(stringency)
-    ref.foreach(fasta => fac.referenceSequence(fasta.toFile))
+    val fac = buildSamRecordFactory(factory = factory, ref = ref, async = async, stringency = stringency)
     new SamSource(fac.open(SamInputResource.of(stream)), closer = Some(() => stream.close()))
   }
 }
