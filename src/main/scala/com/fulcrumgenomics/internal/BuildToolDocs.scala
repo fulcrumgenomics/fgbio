@@ -34,7 +34,8 @@ import com.fulcrumgenomics.util.Io
 class BuildToolDocs
 ( @arg(flag='o', doc="Output directory") val output: DirPath,
   @arg(flag='p', doc="The packages to document") val packages: Seq[String] = Seq("com.fulcrumgenomics"),
-  @arg(flag='n', doc="The name of the tool chain") val name: String = "fgbio"
+  @arg(flag='n', doc="The name of the tool chain") val name: String = "fgbio",
+  @arg(doc="Skip adding the version string in output") val skipVersion: Boolean = false
 ) extends InternalTool {
   
   override def execute(): Unit = {
@@ -45,6 +46,11 @@ class BuildToolDocs
     
     val toolsByGroup = classes.map(c => Sopt.inspect(c)).filter(_.group.name != "Personal").groupBy(_.group.name)
     
+    val toolDescription = {
+      val desc = s"The following tools are available in $name"
+      if (skipVersion) desc else s"$desc version $version"
+    }
+    
     val indexHeader =
       s"""
         |---
@@ -53,7 +59,7 @@ class BuildToolDocs
         |
         |# $name tools
         |
-        |The following tools are available in $name version $version.
+        |$toolDescription.
         |
       """.trim.stripMargin
     
