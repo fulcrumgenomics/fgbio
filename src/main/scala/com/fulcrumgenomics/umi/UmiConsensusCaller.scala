@@ -36,7 +36,7 @@ import htsjdk.samtools.util.{Murmur3, SequenceUtil, TrimmingUtil}
 
 import scala.collection.mutable
 import scala.collection.mutable.ArrayBuffer
-import scala.math.{abs, min}
+import scala.math.{abs, min, max}
 /**
   * Contains shared types and functions used when writing UMI-driven consensus
   * callers that take in SamRecords and emit SamRecords.
@@ -245,11 +245,36 @@ trait UmiConsensusCaller[ConsensusRead <: SimpleRead] {
     // end of the read, or the end of the insert, whichever is shorter!
     val len = {
       var index = if (!rec.isFrPair) trimToLength - 1 else {
-        // Adjust the insert size based on clipping on the 5' end of the given read.
-        // This *does not* consider any clipping on the 5' end of its mate.
-        val fivePrimeClipping  = cigar.takeWhile(_.operator.isClipping).filter(_.operator == CigarOperator.S).sumBy(_.length)
-        val adjustedInsertSize = abs(rec.insertSize) + fivePrimeClipping
-        min(adjustedInsertSize, trimToLength) - 1
+        // If this read reads through the template (i.e. past the start of the mate), then we need to trim bases on the
+        // 3' end.  If not, then we can use the full read. This *does not* consider any clipping on the 5' end of its mate.
+        val adjustedReadLength = {
+          if (rec.positiveStrand) {
+            val mateEnd = rec.mateEnd.getOrElse(rec.start + abs(rec.insertSize) - 1)
+            if (rec.end >= mateEnd) {
+              // the # of bases to keep is the last read base of where the mate ends
+              rec.readPosAtRefPos(pos=mateEnd, returnLastBaseIfDeleted=false)
+            } else {
+              // Find where the end of the read goes past the mate start, if at all
+              val refPosAtReadEnd  = min(mateEnd, rec.end) // last 3' base
+              rec.readPosAtRefPos(pos=refPosAtReadEnd, returnLastBaseIfDeleted=false)
+            }
+          } else {
+            // Find where the start of the read that goes before the mate start, if at all
+            if (rec.start <= rec.mateStart) {
+              // the # of bases to keep is the last read base of where the mate ends
+              rec.length - rec.readPosAtRefPos(pos=rec.mateStart, returnLastBaseIfDeleted=false) + 1
+            } else {
+              // The # of bases soft-clipped on the 3' end of the read (3' end in sequencing order)
+              val threePrimeClipping = cigar.reverseIterator.takeWhile(_.operator.isClipping).filter(_.operator == CigarOperator.S).sumBy(_.length)
+              // get the maximum # of allowable clipped bases on the 3' end
+              val maxThreePrimeClipping = rec.start - rec.mateStart
+              // if we have more than allowed, trim the read
+              if (threePrimeClipping <= maxThreePrimeClipping) bases.length
+              else bases.length - threePrimeClipping + maxThreePrimeClipping
+            }
+          }
+        }
+        min(adjustedReadLength, trimToLength) - 1
       }
       while (index >= 0 && (bases(index) == NoCall)) index -= 1
       index + 1

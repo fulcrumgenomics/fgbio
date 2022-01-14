@@ -513,13 +513,13 @@ class VanillaUmiConsensusCallerTest extends UnitSpec with OptionValues {
     val s1          = cc().toSourceRead(r1, minBaseQuality=2.toByte, trim=false).value
     val s2          = cc().toSourceRead(r2, minBaseQuality=2.toByte, trim=false).value
 
-    s1.baseString shouldBe "A"*2 + "C"*38 // trimmed by ten bases at the 3' end
+    s1.baseString shouldBe "A"*2 + "C"*38 // trimmed by ten bases at the 3' end, 5 due to soft-clipping and the other due to past mate start
     s1.cigar.toString shouldBe "10S30M"
     s2.baseString shouldBe "C"*2 + "G"*36 // trimmed by twelve bases at the 3' end
     s2.cigar.toString shouldBe "8S30M" // NB: cigar is reversed in toSourceRead
   }
 
-  it should "not to trim based on insert size in the presence of soft-clipping" in {
+  it should "not to trim based on insert size in the presence of soft-clipping (-/+)" in {
     val builder     = new SamBuilder(readLength=142)
     val Seq(r1, r2) = builder.addPair(start1=545, start2=493, strand1=Minus, strand2=Plus, cigar1="47S72M23S", cigar2="46S96M")
       .map { r => r.bases = "A"*142; r }
@@ -530,6 +530,20 @@ class VanillaUmiConsensusCallerTest extends UnitSpec with OptionValues {
     s1.cigar.toString shouldBe "23S72M47S"  // NB: cigar is reversed in toSourceRead
     s2.baseString shouldBe "A"*142
     s2.cigar.toString shouldBe "46S96M"
+  }
+
+  it should "not to trim based on insert size in the presence of soft-clipping (+/-)" in {
+    val builder     = new SamBuilder(readLength=142)
+    val Seq(r1, r2) = builder.addPair(start2=545, start1=493, strand2=Minus, strand1=Plus, cigar2="47S72M23S", cigar1="46S96M")
+      .map { r => r.bases = "A"*142; r }
+    val s1          = cc().toSourceRead(r1, minBaseQuality=2.toByte, trim=false).value
+    val s2          = cc().toSourceRead(r2, minBaseQuality=2.toByte, trim=false).value
+
+    // for R2, the leading 47S in the alignment is trimmed because
+    s1.baseString shouldBe "A"*142
+    s1.cigar.toString shouldBe "46S96M"
+    s2.baseString shouldBe "T"*142
+    s2.cigar.toString shouldBe "23S72M47S"  // NB: cigar is reversed in toSourceRead
   }
 
   it should "not trim the source read based on insert size if the read is not an FR pair" in {
@@ -559,5 +573,19 @@ class VanillaUmiConsensusCallerTest extends UnitSpec with OptionValues {
     source.quals should have length 3
     source.cigar.toString() shouldBe "3M"
     source.sam shouldBe Some(rec)
+  }
+
+  it should "not trim reads with an insert size shorter than the read length when there's an insertion in the middle" in {
+    val builder = new SamBuilder(readLength=100)
+    val Seq(r1, r2) = builder.addPair(
+      start1=1, start2=1, strand1=Plus, strand2=Minus, cigar1="40M20I40M", cigar2="40M20I40M"
+    ).map { r => r.bases = "A"*100; r }
+    val s1          = cc().toSourceRead(r1, minBaseQuality=2.toByte, trim=false).value
+    val s2          = cc().toSourceRead(r2, minBaseQuality=2.toByte, trim=false).value
+
+    s1.baseString shouldBe "A"*100
+    s1.cigar.toString shouldBe "40M20I40M"
+    s2.baseString shouldBe "T"*100
+    s2.cigar.toString shouldBe "40M20I40M"
   }
 }
