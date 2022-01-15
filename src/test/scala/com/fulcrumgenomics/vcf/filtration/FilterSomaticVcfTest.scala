@@ -24,13 +24,16 @@
 
 package com.fulcrumgenomics.vcf.filtration
 
-import com.fulcrumgenomics.FgBioDef._
 import com.fulcrumgenomics.bam.api.SamOrder
+import com.fulcrumgenomics.bam.api.SamOrder.Coordinate
+import com.fulcrumgenomics.commons.CommonsDef._
 import com.fulcrumgenomics.testing.VcfBuilder.Gt
 import com.fulcrumgenomics.testing.{SamBuilder, UnitSpec, VcfBuilder}
-import com.fulcrumgenomics.vcf.api.VcfSource
+import com.fulcrumgenomics.vcf.api._
 
+/** Unit tests for [[FilterSomaticVcf]]. */
 class FilterSomaticVcfTest extends UnitSpec {
+
   // A pair of (paths to) VCFs for use in testing below
   private lazy val Seq(tumorOnlyVcf, tumorNormalVcf) = {
     Seq(Seq("tumor"), Seq("tumor", "normal")).map { samples =>
@@ -121,7 +124,7 @@ class FilterSomaticVcfTest extends UnitSpec {
   "FilterSomaticVcf" should "work on an empty VCF" in {
     val emptyVcf    = VcfBuilder(Seq("tumor")).toTempFile()
     val filteredVcf = makeTempFile("filtered.", ".vcf")
-    new FilterSomaticVcf(input=emptyVcf, output=filteredVcf, bam=bam).execute()
+    new FilterSomaticVcf(input = emptyVcf, output = filteredVcf, bam = bam).execute()
     val reader = VcfSource(filteredVcf)
     reader.header.info.contains(ATailInfoKey) shouldBe true
     reader.header.filter.contains(ATailFilterKey) shouldBe true
@@ -130,88 +133,155 @@ class FilterSomaticVcfTest extends UnitSpec {
     reader.safelyClose()
   }
 
-  it should "work on a single sample VCF" in {
-    val filteredVcf = makeTempFile("filtered.", ".vcf")
-    new FilterSomaticVcf(input=tumorOnlyVcf, output=filteredVcf, bam=bam).execute()
-    val variants = readVcfRecs(filteredVcf)
-    variants should have size 5
-    variants(0).get[Float](ATailInfoKey).isDefined shouldBe true
-    variants(1).get[Float](ATailInfoKey).isDefined shouldBe true
-    variants(2).get[Float](ATailInfoKey).isDefined shouldBe false
-    variants(3).get[Float](ATailInfoKey).isDefined shouldBe true
-    variants(4).get[Float](ATailInfoKey).isDefined shouldBe false
-    variants.exists(_.filters.contains(ATailFilterKey)) shouldBe false // no threshold == no filtering
+  it should "raise an exception when stream BAM is true and variant records are not coordinate ordered" in {
+    val alleles = AlleleSet(Allele("C"), Allele("A"))
+    val attrs   = Map("AD" -> Seq(8, 2))
+    val gt      = Genotype(alleles, sample = "sample1", calls = alleles.toIndexedSeq, attrs = attrs)
 
-    variants(0).get[Float](EndRepairInfoKey).isDefined shouldBe true
-    variants(1).get[Float](EndRepairInfoKey).isDefined shouldBe true
-    variants(2).get[Float](EndRepairInfoKey).isDefined shouldBe false
-    variants(3).get[Float](EndRepairInfoKey).isDefined shouldBe true
-    variants(4).get[Float](EndRepairInfoKey).isDefined shouldBe true
-    variants.exists(_.filters.contains(EndRepairFilterKey)) shouldBe false // no threshold == no filtering
+    val builder = new SamBuilder(sort = Some(Coordinate))
+    builder.addFrag(start = 1)
+
+    val input  = makeTempFile(getClass.getSimpleName, ".vcf")
+    val output = makeTempFile(getClass.getSimpleName, ".vcf")
+    val bam    = builder.toTempFile()
+
+    val writer = VcfWriter(input, VcfBuilder.DefaultHeader.copy(samples = IndexedSeq("sample1")))
+
+    writer.write(Variant(builder.dict.head.name, pos = 2, alleles = alleles, genotypes = Map("sample1" -> gt)))
+    writer.write(Variant(builder.dict.head.name, pos = 1, alleles = alleles, genotypes = Map("sample1" -> gt)))
+    writer.close()
+
+    an[IllegalArgumentException] shouldBe  thrownBy {
+      new FilterSomaticVcf(
+        input     = input,
+        output    = output,
+        bam       = bam,
+        streamBam = true
+      ).execute()
+    }
   }
 
-  it should "fail on a single-sample VCF if an invalid sample name is provided" in {
-    val filteredVcf = makeTempFile("filtered.", ".vcf")
-    an[Exception] shouldBe thrownBy { new FilterSomaticVcf(input=tumorOnlyVcf, output=filteredVcf, bam=bam, sample=Some("WhoDis")).execute() }
-  }
+  Seq(true, false).foreach { streamBam =>
+    it should s"work on a single sample VCF when BAM streaming is: $streamBam" in {
+      val filteredVcf = makeTempFile("filtered.", ".vcf")
+      new FilterSomaticVcf(input = tumorOnlyVcf, output = filteredVcf, bam = bam, streamBam = streamBam).execute()
+      val variants = readVcfRecs(filteredVcf)
+      variants should have size 5
+      variants(0).get[Float](ATailInfoKey).isDefined shouldBe true
+      variants(1).get[Float](ATailInfoKey).isDefined shouldBe true
+      variants(2).get[Float](ATailInfoKey).isDefined shouldBe false
+      variants(3).get[Float](ATailInfoKey).isDefined shouldBe true
+      variants(4).get[Float](ATailInfoKey).isDefined shouldBe false
+      variants.exists(_.filters.contains(ATailFilterKey)) shouldBe false // no threshold == no filtering
 
-  it should "fail on a multi-sample VCF if no sample name is provided" in {
-    val filteredVcf = makeTempFile("filtered.", ".vcf")
-    an[Exception] shouldBe thrownBy { new FilterSomaticVcf(input=tumorNormalVcf, output=filteredVcf, bam=bam).execute() }
-  }
+      variants(0).get[Float](EndRepairInfoKey).isDefined shouldBe true
+      variants(1).get[Float](EndRepairInfoKey).isDefined shouldBe true
+      variants(2).get[Float](EndRepairInfoKey).isDefined shouldBe false
+      variants(3).get[Float](EndRepairInfoKey).isDefined shouldBe true
+      variants(4).get[Float](EndRepairInfoKey).isDefined shouldBe true
+      variants.exists(_.filters.contains(EndRepairFilterKey)) shouldBe false // no threshold == no filtering
+    }
 
-  it should "fail on a multi-sample VCF if an invalid sample name is provided" in {
-    val filteredVcf = makeTempFile("filtered.", ".vcf")
-    an[Exception] shouldBe thrownBy { new FilterSomaticVcf(input=tumorNormalVcf, output=filteredVcf, bam=bam, sample=Some("WhoDis")).execute() }
-  }
+    it should s"fail on a single-sample VCF if an invalid sample name is provided when BAM streaming is: $streamBam" in {
+      val filteredVcf = makeTempFile("filtered.", ".vcf")
+      an[AssertionError] shouldBe thrownBy {
+        new FilterSomaticVcf(
+          input     = tumorOnlyVcf,
+          output    = filteredVcf,
+          bam       = bam,
+          sample    = Some("WhoDis"),
+          streamBam = streamBam
+        ).execute()
+      }
+    }
 
-  it should "work on a multi-sample VCF if a sample name is given" in {
-    val filteredVcf = makeTempFile("filtered.", ".vcf")
-    new FilterSomaticVcf(input=tumorNormalVcf, output=filteredVcf, bam=bam, sample=Some("tumor")).execute()
-    val variants = readVcfRecs(filteredVcf)
-    variants should have size 5
-    variants(0).get[Float](ATailInfoKey).isDefined shouldBe true
-    variants(1).get[Float](ATailInfoKey).isDefined shouldBe true
-    variants(2).get[Float](ATailInfoKey).isDefined shouldBe false
-    variants(3).get[Float](ATailInfoKey).isDefined shouldBe true
-    variants(4).get[Float](ATailInfoKey).isDefined shouldBe false
-    variants.exists(_.filters.contains(ATailFilterKey)) shouldBe false // no threshold == no filtering
+    it should s"fail on a multi-sample VCF if no sample name is provided when BAM streaming is: $streamBam" in {
+      val filteredVcf = makeTempFile("filtered.", ".vcf")
+      an[IllegalArgumentException] shouldBe thrownBy {
+        new FilterSomaticVcf(input = tumorNormalVcf, output = filteredVcf, bam = bam, streamBam = streamBam).execute()
+      }
+    }
 
-    variants(0).get[Float](EndRepairInfoKey).isDefined shouldBe true
-    variants(1).get[Float](EndRepairInfoKey).isDefined shouldBe true
-    variants(2).get[Float](EndRepairInfoKey).isDefined shouldBe false
-    variants(3).get[Float](EndRepairInfoKey).isDefined shouldBe true
-    variants(4).get[Float](EndRepairInfoKey).isDefined shouldBe true
-    variants.exists(_.filters.contains(EndRepairFilterKey)) shouldBe false // no threshold == no filtering
-  }
+    it should s"fail on a multi-sample VCF if an invalid sample name is provided when BAM streaming is: $streamBam" in {
+      val filteredVcf = makeTempFile("filtered.", ".vcf")
+      an[AssertionError] shouldBe thrownBy {
+        new FilterSomaticVcf(
+          input     = tumorNormalVcf,
+          output    = filteredVcf,
+          bam       = bam,
+          sample    = Some("WhoDis"),
+          streamBam = streamBam
+        ).execute()
+      }
+    }
 
-  it should "apply filters if filter-specific p-value thresholds are supplied" in {
-    val filteredVcf = makeTempFile("filtered.", ".vcf")
-    new FilterSomaticVcf(input=tumorOnlyVcf, output=filteredVcf, bam=bam, sample=Some("tumor"), aTailingDistance=Some(4), aTailingPValue=Some(0.001), endRepairFillInPValue = Some(0.001)).execute()
-    val variants = readVcfRecs(filteredVcf)
-    variants should have size 5
-    variants(0).get[Float](ATailInfoKey).isDefined shouldBe true
-    variants(1).get[Float](ATailInfoKey).isDefined shouldBe true
-    variants(2).get[Float](ATailInfoKey).isDefined shouldBe false
-    variants(3).get[Float](ATailInfoKey).isDefined shouldBe true
-    variants(4).get[Float](ATailInfoKey).isDefined shouldBe false
+    it should s"work on a multi-sample VCF if a sample name is given when BAM streaming is: $streamBam" in {
+      val filteredVcf = makeTempFile("filtered.", ".vcf")
 
-    variants(0).filters.contains(ATailFilterKey) shouldBe true
-    variants(1).filters.contains(ATailFilterKey) shouldBe false
-    variants(2).filters.contains(ATailFilterKey) shouldBe false
-    variants(3).filters.contains(ATailFilterKey) shouldBe true
-    variants(4).filters.contains(ATailFilterKey) shouldBe false
+      new FilterSomaticVcf(
+        input     = tumorNormalVcf,
+        output    = filteredVcf,
+        bam       = bam,
+        sample    = Some("tumor"),
+        streamBam = streamBam
+      ).execute()
 
-    variants(0).get[Float](EndRepairInfoKey).isDefined shouldBe true
-    variants(1).get[Float](EndRepairInfoKey).isDefined shouldBe true
-    variants(2).get[Float](EndRepairInfoKey).isDefined shouldBe false
-    variants(3).get[Float](EndRepairInfoKey).isDefined shouldBe true
-    variants(4).get[Float](EndRepairInfoKey).isDefined shouldBe true
+      val variants = readVcfRecs(filteredVcf)
+      variants should have size 5
+      variants(0).get[Float](ATailInfoKey).isDefined shouldBe true
+      variants(1).get[Float](ATailInfoKey).isDefined shouldBe true
+      variants(2).get[Float](ATailInfoKey).isDefined shouldBe false
+      variants(3).get[Float](ATailInfoKey).isDefined shouldBe true
+      variants(4).get[Float](ATailInfoKey).isDefined shouldBe false
+      variants.exists(_.filters.contains(ATailFilterKey)) shouldBe false // no threshold == no filtering
 
-    variants(0).filters.contains(EndRepairFilterKey) shouldBe true
-    variants(1).filters.contains(EndRepairFilterKey) shouldBe false
-    variants(2).filters.contains(EndRepairFilterKey) shouldBe false
-    variants(3).filters.contains(EndRepairFilterKey) shouldBe true
-    variants(4).filters.contains(EndRepairFilterKey) shouldBe true
+      variants(0).get[Float](EndRepairInfoKey).isDefined shouldBe true
+      variants(1).get[Float](EndRepairInfoKey).isDefined shouldBe true
+      variants(2).get[Float](EndRepairInfoKey).isDefined shouldBe false
+      variants(3).get[Float](EndRepairInfoKey).isDefined shouldBe true
+      variants(4).get[Float](EndRepairInfoKey).isDefined shouldBe true
+      variants.exists(_.filters.contains(EndRepairFilterKey)) shouldBe false // no threshold == no filtering
+    }
+
+    it should s"apply filters if filter-specific p-value thresholds are supplied when BAM streaming is: $streamBam" in {
+      val filteredVcf = makeTempFile("filtered.", ".vcf")
+
+      new FilterSomaticVcf(
+        input                 = tumorOnlyVcf,
+        output                = filteredVcf,
+        bam                   = bam,
+        sample                = Some("tumor"),
+        aTailingDistance      = Some(4),
+        aTailingPValue        = Some(0.001),
+        endRepairFillInPValue = Some(0.001),
+        streamBam             = streamBam
+      ).execute()
+
+      val variants = readVcfRecs(filteredVcf)
+      variants should have size 5
+      variants(0).get[Float](ATailInfoKey).isDefined shouldBe true
+      variants(1).get[Float](ATailInfoKey).isDefined shouldBe true
+      variants(2).get[Float](ATailInfoKey).isDefined shouldBe false
+      variants(3).get[Float](ATailInfoKey).isDefined shouldBe true
+      variants(4).get[Float](ATailInfoKey).isDefined shouldBe false
+
+      variants(0).filters.contains(ATailFilterKey) shouldBe true
+      variants(1).filters.contains(ATailFilterKey) shouldBe false
+      variants(2).filters.contains(ATailFilterKey) shouldBe false
+      variants(3).filters.contains(ATailFilterKey) shouldBe true
+      variants(4).filters.contains(ATailFilterKey) shouldBe false
+
+      variants(0).get[Float](EndRepairInfoKey).isDefined shouldBe true
+      variants(1).get[Float](EndRepairInfoKey).isDefined shouldBe true
+      variants(2).get[Float](EndRepairInfoKey).isDefined shouldBe false
+      variants(3).get[Float](EndRepairInfoKey).isDefined shouldBe true
+      variants(4).get[Float](EndRepairInfoKey).isDefined shouldBe true
+
+      variants(0).filters.contains(EndRepairFilterKey) shouldBe true
+      variants(1).filters.contains(EndRepairFilterKey) shouldBe false
+      variants(2).filters.contains(EndRepairFilterKey) shouldBe false
+      variants(3).filters.contains(EndRepairFilterKey) shouldBe true
+      variants(4).filters.contains(EndRepairFilterKey) shouldBe true
+    }
   }
 }

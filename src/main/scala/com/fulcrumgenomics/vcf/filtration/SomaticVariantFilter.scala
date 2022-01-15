@@ -24,7 +24,7 @@
 
 package com.fulcrumgenomics.vcf.filtration
 
-import com.fulcrumgenomics.bam.{Pileup, PileupEntry}
+import com.fulcrumgenomics.bam.pileup.{Pileup, PileupEntry}
 import com.fulcrumgenomics.vcf.api.{Genotype, VcfFilterHeader, VcfInfoHeader}
 
 /**

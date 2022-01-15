@@ -24,7 +24,8 @@
 
 package com.fulcrumgenomics.vcf.filtration
 
-import com.fulcrumgenomics.bam.{Bams, BaseEntry, Pileup, PileupEntry}
+import com.fulcrumgenomics.bam.Bams
+import com.fulcrumgenomics.bam.pileup.{BaseEntry, Pileup, PileupEntry}
 import com.fulcrumgenomics.commons.util.LazyLogging
 import com.fulcrumgenomics.util.NumericTypes.{LogProbability => LnProb}
 import com.fulcrumgenomics.util.Sequences
