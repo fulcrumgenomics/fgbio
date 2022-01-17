@@ -287,6 +287,23 @@ class PileupBuilderTest extends UnitSpec {
     source.safelyClose()
   }
 
+  it should "filter out records and entries with custom filters" in {
+    val builder = new SamBuilder(readLength = ReadLength, sd = Some(TestSequenceDictionary))
+    val piler   = new PileupBuilder(TestSequenceDictionary, mappedPairsOnly = false)
+      .withReadFilter(r => !r.name.startsWith("x"))
+      .withEntryFilter(_.offset > 5)
+
+    builder.addFrag(name = "q1", start = 100)
+    builder.addFrag(name = "x2", start = 104)
+    builder.addFrag(name = "q3", start = 108)
+    builder.addFrag(name = "q4", start = 112)
+
+    val pile = piler.build(builder, Chr1, 115)
+
+    pile.depth shouldBe 2
+    pile.map(_.rec.name) should contain theSameElementsAs Seq("q1", "q3")
+  }
+
   it should "report the correct positions and offsets from pileup entries" in {
     val builder = new SamBuilder(readLength = ReadLength, sd = Some(TestSequenceDictionary), baseQuality = 35)
 
