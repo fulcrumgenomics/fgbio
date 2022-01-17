@@ -176,7 +176,7 @@ import scala.collection.immutable.ListMap
       val updated = SomaticFilters.filter(_.appliesTo(variant.genotypes(name))) match {
         case Nil     => variant
         case filters =>
-          val pileup = if (streamBam) { piler.skipTo(refName = variant.chrom, pos = variant.pos) } else {
+          val pileup = if (streamBam) { piler.advanceTo(refName = variant.chrom, pos = variant.pos) } else {
             val overlapping = records.query(variant.chrom, start = variant.pos, end = variant.pos, Overlapping)
             piler.build(overlapping, refName = variant.chrom, pos = variant.pos)
           }

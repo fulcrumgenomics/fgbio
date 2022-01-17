@@ -114,7 +114,7 @@ class PileupBuilder(
         if (compare) compare = rec.end >= pos
         if (compare) compare = rec.start <= pos || startsWithInsertion
         if (compare) compare = if (excludeMapPositionOutsideFrInsert && rec.isFrPair) {
-          PileupBuilder.positionInsideFrInsert(rec, refName = refName, pos = pos).contains(true)
+          PileupBuilder.positionInsideFrInsert(rec, refIndex = refIndex, pos = pos).contains(true)
         } else { compare }
         compare
       }
@@ -140,11 +140,14 @@ class PileupBuilder(
 /** Companion object for [[PileupBuilder]]. */
 object PileupBuilder {
 
-  /** Returns true if the position <refName>:<pos> is inside the insert of <rec>, if <rec> is in a mapped FR pair. */
-  private def positionInsideFrInsert(rec: SamRecord, refName: String, pos: Int): Option[Boolean] = {
-    Option.when(rec.refName == refName && rec.isFrPair) {
+  /** Returns true if <rec> is in a mapped FR pair and the position <pos> is inside the insert coordinates of <rec>.
+    * Returns false if <rec> is in a mapped FR pair but the position <pos> is outside the insert coordinates of <rec>.
+    * Returns None if <rec> is not in a mapped FR pair regardless of where <pos> is located.
+    */
+  private def positionInsideFrInsert(rec: SamRecord, refIndex: Int, pos: Int): Option[Boolean] = {
+    Option.when(rec.isFrPair) {
       val (start, end) = Bams.insertCoordinates(rec)
-      pos >= start && pos <= end
+      rec.refIndex == refIndex && pos >= start && pos <= end
     }
   }
 

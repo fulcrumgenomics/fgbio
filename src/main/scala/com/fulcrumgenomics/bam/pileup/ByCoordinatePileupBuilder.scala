@@ -68,7 +68,7 @@ class ByCoordinatePileupBuilder private(
   includeSecondaryAlignments        = includeSecondaryAlignments,
   includeSupplementalAlignments     = includeSupplementalAlignments,
   excludeMapPositionOutsideFrInsert = excludeMapPositionOutsideFrInsert,
-) with Closeable { // TODO: One could extend AbstractIterator[Pileup[PileupEntry]] and scan the loci one-by-one as well!
+) with Closeable {
   import com.fulcrumgenomics.bam.pileup.ByCoordinatePileupBuilder.LocatablePileup
 
   /** Whether this builder is able to pileup more records from the input iterator of SAM records or not. */
@@ -78,7 +78,7 @@ class ByCoordinatePileupBuilder private(
   private var lastPileup: Option[Pileup[PileupEntry]] = None
 
   /** Advance this builder to the next requested locus and add all possibly overlapping records to the cache. */
-  @inline private def advanceTo(refIndex: Int, pos: Int): Unit = {
+  @inline private def seek(refIndex: Int, pos: Int): Unit = {
     // Drop records up until the next record stands a chance of overlapping the requested locus. Then, take records up
     // until the next record stands a chance of having a start greater than the requested locus plus one. All records in
     // this query have a chance of overlapping the locus so we must then filter down to only those that have an end
@@ -95,15 +95,15 @@ class ByCoordinatePileupBuilder private(
   /** A genomic ordering for any locatable that utilizes the sequence dictionary corresponding to the input records. */
   private lazy val byCoordinate: Ordering[Locatable] = GenomicOrdering(dict)
 
-  /** Records that we've accumulated that could overlap another coordinate-advancing call to <skipTo>. */
+  /** Records that we've accumulated that could overlap another coordinate-advancing call to <advanceTo>. */
   private lazy val cache: mutable.ArrayBuffer[SamRecord] = new mutable.ArrayBuffer[SamRecord](initialCacheSize)
 
   /** The underlying buffered stream of input SAM records which is lazily summoned. */
   private lazy val underlying: Iterator[SamRecord] = records.filter(_.mapped).bufferBetter
 
-  /** Efficiently skip to the next coordinate-maintaining or coordinate-advancing locus and build a pileup there. */
-  def skipTo(refName: String, pos: Int): Pileup[PileupEntry] = {
-    require(!closed, "Cannot skip to a new locus if the pileup builder was closed!")
+  /** Efficiently advance to the next coordinate-maintaining or coordinate-advancing locus and build a pileup there. */
+  def advanceTo(refName: String, pos: Int): Pileup[PileupEntry] = {
+    require(!closed, "Cannot advance to a new locus if the pileup builder was closed!")
     val currentLocus = new Interval(refName, pos, pos)
     val refIndex     = dict(refName).index.ensuring(_ >= 0, s"Reference name not in sequence dictionary: $refName")
 
@@ -119,7 +119,7 @@ class ByCoordinatePileupBuilder private(
       case Some(last) if byCoordinate.lt(last, currentLocus) =>
         lastPileup = None // Set to `None` now so we can drop the object reference ASAP for garbage collection.
         cache.filterInPlace(rec => (rec.refIndex == refIndex && rec.end >= pos) || rec.refIndex > refIndex)
-        this.advanceTo(refIndex = refIndex, pos = pos)
+        this.seek(refIndex = refIndex, pos = pos)
         this.build(cache, refName = refName, pos = pos)
       case Some(last) if byCoordinate.equiv(last, currentLocus) => last
       case Some(last) =>
@@ -128,7 +128,7 @@ class ByCoordinatePileupBuilder private(
           s"greater than or equal to: ${last.refName}:${last.pos}"
         )
       case None =>
-        this.advanceTo(refIndex = refIndex, pos = pos)
+        this.seek(refIndex = refIndex, pos = pos)
         this.build(cache, refName = refName, pos = pos)
     }
 
