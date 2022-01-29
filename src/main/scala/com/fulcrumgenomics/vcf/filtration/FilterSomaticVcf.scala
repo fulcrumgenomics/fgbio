@@ -24,18 +24,38 @@
 
 package com.fulcrumgenomics.vcf.filtration
 
+import com.fulcrumgenomics.FgBioDef.FgBioEnum
 import com.fulcrumgenomics.bam.api.QueryType.Overlapping
 import com.fulcrumgenomics.bam.api.SamSource
-import com.fulcrumgenomics.bam.pileup.ByCoordinatePileupBuilder
+import com.fulcrumgenomics.bam.pileup.StreamingPileupBuilder
 import com.fulcrumgenomics.cmdline.{ClpGroups, FgBioTool}
 import com.fulcrumgenomics.commons.CommonsDef._
+import com.fulcrumgenomics.commons.io.Io
 import com.fulcrumgenomics.commons.util.LazyLogging
 import com.fulcrumgenomics.sopt.{arg, clp}
 import com.fulcrumgenomics.util.ProgressLogger
-import com.fulcrumgenomics.vcf.VcfUtil
 import com.fulcrumgenomics.vcf.api.{VcfSource, VcfWriter}
+import enumeratum.EnumEntry
 
 import scala.collection.immutable.ListMap
+
+/** Companion object for [[FilterSomaticVcf]]. */
+object FilterSomaticVcf {
+
+  /** A trait that all enumerations of BAM access pattern must extend. */
+  sealed trait BamAccessPattern extends EnumEntry
+
+  /** The various types of BAM access patterns */
+  object BamAccessPattern extends FgBioEnum[BamAccessPattern] {
+    override def values: IndexedSeq[BamAccessPattern] = findValues
+
+    /** The type of BAM access pattern when queries are completed using random access. */
+    case object RandomAccess extends BamAccessPattern
+
+    /** The type of BAM access pattern when queries are completed using full BAM streaming. */
+    case object Streaming extends BamAccessPattern
+  }
+}
 
 @clp(
   description =
@@ -142,18 +162,21 @@ import scala.collection.immutable.ListMap
 ) extends FgBioTool with LazyLogging {
 
   /** All somatic variant filters that will be applied to the input VCF. If none are set, a warning will be logged. */
-  val SomaticFilters: Seq[ReadEndSomaticVariantFilter] = Seq.empty ++
+  private val somaticFilters: Seq[ReadEndSomaticVariantFilter] = Seq.empty ++
     aTailingDistance.map(dist => new ATailingArtifactLikelihoodFilter(dist, aTailingPValue)) ++
     endRepairFillInDistance.map(dist => new EndRepairFillInArtifactLikelihoodFilter(dist, endRepairFillInPValue))
-  if (SomaticFilters.isEmpty) logger.warning(s"${getClass.getSimpleName} filters are disabled and this tool will no-op!")
+  if (somaticFilters.isEmpty) logger.warning(s"${getClass.getSimpleName} filters are disabled and this tool will no-op!")
 
   /** Execute the tool [[FilterSomaticVcf]]. */
   override def execute(): Unit = {
+    Io.assertReadable(input)
+    Io.assertReadable(bam)
+    Io.assertCanWriteFile(output)
     val records  = SamSource(bam)
     val source   = VcfSource(input)
     val progress = ProgressLogger(logger = logger, noun = "variants", verb = "written", unit = 1000)
 
-    val piler = ByCoordinatePileupBuilder(
+    val piler = StreamingPileupBuilder(
       source          = records,
       mappedPairsOnly = pairedReadsOnly,
       minBaseQ        = minBaseQuality,
@@ -161,11 +184,11 @@ import scala.collection.immutable.ListMap
     )
 
     val header = source.header.copy(
-      infos   = source.header.infos ++ SomaticFilters.flatMap(_.VcfInfoLines),
-      filters = source.header.filters ++ SomaticFilters.flatMap(_.VcfFilterLines),
+      infos   = source.header.infos ++ somaticFilters.flatMap(_.VcfInfoLines),
+      filters = source.header.filters ++ somaticFilters.flatMap(_.VcfFilterLines),
     )
 
-    val name = sample.getOrElse(VcfUtil.onlySample(source)).ensuring(
+    val name = sample.getOrElse(VcfSource.onlySample(source)).ensuring(
       sample => source.header.samples.contains(sample),
       s"There is no genotype with the following sample in the input VCF/BCF: $sample"
     )
@@ -173,10 +196,10 @@ import scala.collection.immutable.ListMap
     val writer = VcfWriter(output, header = header)
 
     source.tapEach(progress.record).foreach { variant =>
-      val updated = SomaticFilters.filter(_.appliesTo(variant.genotypes(name))) match {
+      val updated = somaticFilters.filter(_.appliesTo(variant.genotypes(name))) match {
         case Nil     => variant
         case filters =>
-          val pileup = if (streamBam) { piler.advanceTo(refName = variant.chrom, pos = variant.pos) } else {
+          val pileup = if (streamBam) { piler.pileup(refName = variant.chrom, pos = variant.pos) } else {
             val overlapping = records.query(variant.chrom, start = variant.pos, end = variant.pos, Overlapping)
             piler.build(overlapping, refName = variant.chrom, pos = variant.pos)
           }

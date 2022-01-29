@@ -261,7 +261,7 @@ class PileupBuilderTest extends UnitSpec {
     builder.addPair(name = "q2", start1 = 101, start2 = 100)
 
     val source = builder.toSource
-    val piler  = new PileupBuilder(source.dict, excludeMapPositionOutsideFrInsert = false)
+    val piler  = new PileupBuilder(source.dict, includeMapPositionsOutsideFrInsert = true)
 
     piler.build(source, Chr1, 100).depth shouldBe 1
     piler.build(source, Chr1, 101).depth shouldBe 2

@@ -24,13 +24,12 @@
 
 package com.fulcrumgenomics.coord
 
-import com.fulcrumgenomics.coord.LocatableUtil.GenomicOrdering
 import com.fulcrumgenomics.fasta.{SequenceDictionary, SequenceMetadata}
 import com.fulcrumgenomics.testing.UnitSpec
-import htsjdk.samtools.util.Interval
+import htsjdk.samtools.util.{Interval, Locatable}
 
-/** Unit tests for [[LocatableUtil]]. */
-class LocatableUtilTest extends UnitSpec {
+/** Unit tests for [[LocatableOrdering]]. */
+class LocatableOrderingTest extends UnitSpec {
 
   /** The reference sequence name for chromosome 1. */
   private val Chr1: String = "chr1"
@@ -38,13 +37,13 @@ class LocatableUtilTest extends UnitSpec {
   /** The reference sequence name for chromosome 2. */
   private val Chr2: String = "chr2"
 
-  /** The SequenceDictionary for the ordering. */
+  /** The sequence dictionary for the ordering. */
   private val Dict: SequenceDictionary = SequenceDictionary(SequenceMetadata(Chr1), SequenceMetadata(Chr2))
 
-  /** The ordering of the given Dict. */
-  private val Ordering: GenomicOrdering = GenomicOrdering(Dict)
+  /** The ordering of the given <Dict>. */
+  private val Ordering: Ordering[Locatable] = LocatableOrdering(Dict)
 
-  "LocatableUtil.GenomicOrdering" should "know when two locatables are equivalent" in {
+  "LocatableOrdering" should "know when two locatables are equivalent" in {
     val interval1 = new Interval(Chr1, 1, 1)
     val interval2 = new Interval(Chr1, 1, 1)
     Ordering.compare(interval1, interval2) shouldBe 0
@@ -77,7 +76,7 @@ class LocatableUtilTest extends UnitSpec {
   it should "raise an exception when any of the locatables are aligned to contigs that don't exist" in {
     val interval1 = new Interval(Chr1, 1, 1)
     val interval2 = new Interval("ChrDoesNotExist", 1, 1)
-    an[IllegalArgumentException] shouldBe thrownBy { Ordering.compare(interval1, interval2) }
+    a[NoSuchElementException] shouldBe thrownBy { Ordering.compare(interval1, interval2) }
   }
 
   it should "order genomic locatables first by contig, then start, then end" in {

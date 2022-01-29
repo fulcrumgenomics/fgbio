@@ -32,26 +32,45 @@ import htsjdk.samtools.CigarOperator.{INSERTION => Insertion}
 
 import scala.collection.mutable.ArrayBuffer
 
+/** Companion object for [[PileupBuilder]]. */
+object PileupBuilder {
+
+  /** Returns true if <rec> is in a mapped FR pair but the position <pos> is outside the insert coordinates of <rec>.
+    * Returns false if <rec> is in a mapped FR pair and the position <pos> is inside the insert coordinates of <rec>.
+    */
+  private def positionIsOutsideFrInsert(rec: SamRecord, refIndex: Int, pos: Int): Boolean = {
+    rec.isFrPair && {
+      val (start, end) = Bams.insertCoordinates(rec)
+      rec.refIndex == refIndex && pos >= start && pos <= end
+    }
+  }
+
+  /** Returns true if the read is mapped and the first non-clipping operator is an insertion. */
+  private def startsWithInsertion(rec: SamRecord): Boolean = {
+    rec.cigar.find(c => !c.operator.isClipping).exists(_.operator == Insertion)
+  }
+}
+
 /** Class that provides methods to build and filter pileups.
   *
   * @param dict the sequence dictionary associated with the reference sequences.
   * @param minBaseQ the minimum base quality that a base must have to contribute to a pileup.
-  * @param minMapQ the minimum mapping quality a read must have to contribute to a pileup.
-  * @param mappedPairsOnly if true, only allow read-pairs with both records mapped to contribute to a pileup.
+  * @param minMapQ the minimum mapping quality a record must have to contribute to a pileup.
+  * @param mappedPairsOnly if true, only allow paired records with both records mapped to contribute to a pileup.
   * @param includeDuplicates if true, allow records flagged as duplicates to contribute to a pileup.
   * @param includeSecondaryAlignments if true, allow records flagged as secondary alignments to contribute to a pileup.
   * @param includeSupplementalAlignments if true, allow records flagged as supplementary alignments to contribute to a pileup.
-  * @param excludeMapPositionOutsideFrInsert if true, exclude any record of an FR pair where the site requested is outside the insert.
+  * @param includeMapPositionsOutsideFrInsert if true, include any record of an FR pair where the site requested is outside the insert.
   */
 class PileupBuilder(
   val dict: SequenceDictionary,
-  val minMapQ: Int                               = 20,
-  val minBaseQ: Int                              = 20,
-  val mappedPairsOnly: Boolean                   = true,
-  val includeDuplicates: Boolean                 = false,
-  val includeSecondaryAlignments: Boolean        = false,
-  val includeSupplementalAlignments: Boolean     = false,
-  val excludeMapPositionOutsideFrInsert: Boolean = true,
+  val minMapQ: Int                                = 20,
+  val minBaseQ: Int                               = 20,
+  val mappedPairsOnly: Boolean                    = true,
+  val includeDuplicates: Boolean                  = false,
+  val includeSecondaryAlignments: Boolean         = false,
+  val includeSupplementalAlignments: Boolean      = false,
+  val includeMapPositionsOutsideFrInsert: Boolean = false,
 ) {
 
   /** Quickly check the SAM record to see if all the simple static per-read filters accept the read. */
@@ -79,10 +98,10 @@ class PileupBuilder(
   /** Custom pileup entry filters to further filter down pileups made from this builder. */
   private val entryFilters = ArrayBuffer.empty[PileupEntry => Boolean]
 
-  /** Adds a filter to the set of SAM record filters. */
+  /** Adds a filter to the set of SAM record filters; filters should return true to retain records and false to discard. */
   def withReadFilter(fn: SamRecord => Boolean): PileupBuilder = yieldAndThen(this) { recFilters += fn }
 
-  /** Adds a filter to the set of pileup entry filters. */
+  /** Adds a filter to the set of pileup entry filters; filters should return true to retain entries and false to discard. */
   def withEntryFilter(fn: PileupEntry => Boolean): PileupBuilder = yieldAndThen(this) { entryFilters += fn }
 
   /** Checks to see if all SAM record filters accept the record. */
@@ -108,13 +127,12 @@ class PileupBuilder(
       .dropWhile(rec => rec.refIndex < refIndex)
       .takeWhile(rec => rec.refIndex == refIndex && rec.start <= pos + 1)
       .filter { rec =>
-        lazy val startsWithInsertion = PileupBuilder.startsWithInsertion(rec)
         var compare: Boolean = !rec.unmapped
         if (compare) compare = this.acceptRecord(rec)
         if (compare) compare = rec.end >= pos
-        if (compare) compare = rec.start <= pos || startsWithInsertion
-        if (compare) compare = if (excludeMapPositionOutsideFrInsert && rec.isFrPair) {
-          PileupBuilder.positionInsideFrInsert(rec, refIndex = refIndex, pos = pos).contains(true)
+        if (compare) compare = rec.start <= pos || PileupBuilder.startsWithInsertion(rec)
+        if (compare) compare = if (!includeMapPositionsOutsideFrInsert && rec.isFrPair) {
+          PileupBuilder.positionIsOutsideFrInsert(rec, refIndex = refIndex, pos = pos)
         } else { compare }
         compare
       }
@@ -126,34 +144,14 @@ class PileupBuilder(
           if (offset == 0) { // This site must be deleted within the read.
             val deletionPosition = rec.readPosAtRefPos(pos, returnLastBaseIfDeleted = true)
             testAndAdd(DeletionEntry(rec, deletionPosition - 1))
-          } else { // This site must be a matched site within the read. Also check and add read-end insertions.
+          } else { // This site must be a matched site within the read.
             testAndAdd(BaseEntry(rec, offset - 1))
+            // Also check to see if the subsequent base represents an insertion.
             if (offset < rec.length - 1 && rec.refPosAtReadPos(offset + 1) == 0) testAndAdd(InsertionEntry(rec, offset))
           }
         }
       }
 
     Pileup(refName = refName, refIndex = refIndex, pos = pos, pile = pile.result())
-  }
-}
-
-/** Companion object for [[PileupBuilder]]. */
-object PileupBuilder {
-
-  /** Returns true if <rec> is in a mapped FR pair and the position <pos> is inside the insert coordinates of <rec>.
-    * Returns false if <rec> is in a mapped FR pair but the position <pos> is outside the insert coordinates of <rec>.
-    * Returns None if <rec> is not in a mapped FR pair regardless of where <pos> is located.
-    */
-  private def positionInsideFrInsert(rec: SamRecord, refIndex: Int, pos: Int): Option[Boolean] = {
-    Option.when(rec.isFrPair) {
-      val (start, end) = Bams.insertCoordinates(rec)
-      rec.refIndex == refIndex && pos >= start && pos <= end
-    }
-  }
-
-  /** Returns true if the read is mapped and the first non-clipping operator is an insertion. */
-  private def startsWithInsertion(rec: SamRecord): Boolean = {
-    rec.mapped &&
-      rec.cigar.iterator.bufferBetter.dropWhile(_.operator.isClipping).headOption.exists(_.operator == Insertion)
   }
 }

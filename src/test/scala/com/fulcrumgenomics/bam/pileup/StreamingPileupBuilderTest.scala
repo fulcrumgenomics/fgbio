@@ -30,8 +30,8 @@ import com.fulcrumgenomics.fasta.{SequenceDictionary, SequenceMetadata}
 import com.fulcrumgenomics.testing.SamBuilder.{Minus, Plus}
 import com.fulcrumgenomics.testing.{SamBuilder, UnitSpec}
 
-/** Unit tests for [[ByCoordinatePileupBuilder]]. */
-class ByCoordinatePileupBuilderTest extends UnitSpec {
+/** Unit tests for [[StreamingPileupBuilder]]. */
+class StreamingPileupBuilderTest extends UnitSpec {
 
   /** The name for chromosome 1. */
   private val Chr1: String = "chr1"
@@ -59,14 +59,14 @@ class ByCoordinatePileupBuilderTest extends UnitSpec {
     )
   }
 
-  "ByCoordinatePileupBuilder" should "raise an exception if the input SAM source is not coordinate ordered" in {
+  "StreamingPileupBuilder" should "raise an exception if the input SAM source is not coordinate ordered" in {
     val builder = new SamBuilder(readLength = ReadLength, sd = Some(TestSequenceDictionary), sort = Some(Unknown))
     val source  = builder.toSource
-    an[IllegalArgumentException] shouldBe thrownBy { ByCoordinatePileupBuilder(source) }
+    an[IllegalArgumentException] shouldBe thrownBy { StreamingPileupBuilder(source) }
     source.safelyClose()
   }
 
-  "ByCoordinatePileupBuilder.advanceTo" should "build a simple pileup of only matched/mismatched fragment reads" in {
+  "StreamingPileupBuilder.pileup" should "build a simple pileup of only matched/mismatched fragment reads" in {
     val builder = new SamBuilder(readLength = ReadLength, sd = Some(TestSequenceDictionary), sort = Some(Coordinate))
 
     1 to 5 foreach { _ => builder.addFrag(start = 5).foreach(_.bases = "A" * ReadLength) }
@@ -76,8 +76,8 @@ class ByCoordinatePileupBuilderTest extends UnitSpec {
     1 to 1 foreach { _ => builder.addFrag(start = 5).foreach(_.bases = "N" * ReadLength) }
 
     val source = builder.toSource
-    val piler  = ByCoordinatePileupBuilder(source, mappedPairsOnly = false)
-    val pile   = piler.advanceTo(Chr1, 5).withoutIndels
+    val piler  = StreamingPileupBuilder(source, mappedPairsOnly = false)
+    val pile   = piler.pileup(Chr1, 5).withoutIndels
 
     pile.depth shouldBe 5 + 4 + 3 + 2 + 1
     pile.count(_.base == 'A') shouldBe 5
@@ -105,8 +105,8 @@ class ByCoordinatePileupBuilderTest extends UnitSpec {
     1 to 1 foreach { _ => builder.addFrag(start = 55, contig = Chr2Index).foreach(_.bases = "N" * ReadLength) }
 
     val source = builder.toSource
-    val piler  = ByCoordinatePileupBuilder(source, mappedPairsOnly = false)
-    val pile   = piler.advanceTo(Chr2, 55).withoutIndels
+    val piler  = StreamingPileupBuilder(source, mappedPairsOnly = false)
+    val pile   = piler.pileup(Chr2, 55).withoutIndels
 
     pile.depth shouldBe 5 + 4 + 3 + 2 + 1
     pile.count(_.base == 'A') shouldBe 5
@@ -128,13 +128,13 @@ class ByCoordinatePileupBuilderTest extends UnitSpec {
     builder.addFrag(name = "q5", start = 141, cigar = "10I40M"  ).foreach(_.bases = "N" * ReadLength)
 
     val source = builder.toSource
-    val piler  = ByCoordinatePileupBuilder(source, mappedPairsOnly = false)
+    val piler  = StreamingPileupBuilder(source, mappedPairsOnly = false)
 
     // Before any of the indels, we should have 4 _bases_
-    piler.advanceTo(Chr1, 105).baseIterator.size shouldBe 4
+    piler.pileup(Chr1, 105).baseIterator.size shouldBe 4
 
     // The locus before the first insertion and deletion (should include the insertion)
-    val p1 = piler.advanceTo(Chr1, 110)
+    val p1 = piler.pileup(Chr1, 110)
     p1.depth shouldBe 4
     p1.iterator.size shouldBe 5
     p1.baseIterator.map(_.base.toChar).toSeq.sorted.mkString shouldBe "ACGT"
@@ -142,7 +142,7 @@ class ByCoordinatePileupBuilderTest extends UnitSpec {
     p1.baseIterator.toSeq should contain theSameElementsAs p1.withoutIndels.iterator.toSeq
 
     // The locus of the first deleted base
-    val p2 = piler.advanceTo(Chr1, 111)
+    val p2 = piler.pileup(Chr1, 111)
     p2.depth shouldBe 4
     p2.iterator.size shouldBe 4
     p2.baseIterator.size shouldBe 3
@@ -151,7 +151,7 @@ class ByCoordinatePileupBuilderTest extends UnitSpec {
     p2.baseIterator.toSeq should contain theSameElementsAs p2.withoutIndels.iterator.toSeq
 
     // The locus of the bigger indels
-    val p3 = piler.advanceTo(Chr1, 131)
+    val p3 = piler.pileup(Chr1, 131)
     p3.depth shouldBe 4
     p3.iterator.size shouldBe 5
     p3.baseIterator.size shouldBe 3
@@ -161,7 +161,7 @@ class ByCoordinatePileupBuilderTest extends UnitSpec {
     p3.baseIterator.toSeq should contain theSameElementsAs p3.withoutIndels.iterator.toSeq
 
     // Locus where there is a read with a leading indel
-    val p4 = piler.advanceTo(Chr1, 140)
+    val p4 = piler.pileup(Chr1, 140)
     p4.depth shouldBe 4  // shouldn't count the leading indel
     p4.iterator.size shouldBe 5
     p4.baseIterator.size shouldBe 4
@@ -179,13 +179,13 @@ class ByCoordinatePileupBuilderTest extends UnitSpec {
     builder.addFrag(start = 5).foreach(_.bases = "N" * ReadLength)
 
     val source = builder.toSource
-    val piler  = ByCoordinatePileupBuilder(source, mappedPairsOnly = false)
+    val piler  = StreamingPileupBuilder(source, mappedPairsOnly = false)
 
-    val pile1 = piler.advanceTo(Chr1, 5).withoutIndels
+    val pile1 = piler.pileup(Chr1, 5).withoutIndels
     pile1.depth shouldBe 1
     pile1.count(_.base == 'N') shouldBe 1
 
-    val pile2 = piler.advanceTo(Chr1, 5).withoutIndels
+    val pile2 = piler.pileup(Chr1, 5).withoutIndels
     pile2.depth shouldBe 1
     pile2.count(_.base == 'N') shouldBe 1
 
@@ -199,13 +199,13 @@ class ByCoordinatePileupBuilderTest extends UnitSpec {
     builder.addFrag(start = 5).foreach(_.bases = "N" * ReadLength)
 
     val source = builder.toSource
-    val piler  = ByCoordinatePileupBuilder(source, mappedPairsOnly = false)
+    val piler  = StreamingPileupBuilder(source, mappedPairsOnly = false)
 
-    val pile1 = piler.advanceTo(Chr1, 6).withoutIndels
+    val pile1 = piler.pileup(Chr1, 6).withoutIndels
     pile1.depth shouldBe 1
     pile1.count(_.base == 'N') shouldBe 1
 
-    an[IllegalArgumentException] shouldBe thrownBy { piler.advanceTo(Chr1, 5) }
+    an[IllegalArgumentException] shouldBe thrownBy { piler.pileup(Chr1, 5) }
 
     source.safelyClose()
     piler.safelyClose()
@@ -219,8 +219,8 @@ class ByCoordinatePileupBuilderTest extends UnitSpec {
     builder.addFrag(name = "q3", start = 101, mapq = 11)
 
     val source = builder.toSource
-    val piler  = ByCoordinatePileupBuilder(source, minMapQ = 10, mappedPairsOnly = false)
-    val pile   = piler.advanceTo(Chr1, 105)
+    val piler  = StreamingPileupBuilder(source, minMapQ = 10, mappedPairsOnly = false)
+    val pile   = piler.pileup(Chr1, 105)
 
     pile.depth shouldBe 2
     pile.exists(_.rec.name == "q1") shouldBe false
@@ -245,8 +245,8 @@ class ByCoordinatePileupBuilderTest extends UnitSpec {
     ).addFrag(name = "q3", start = 101)
 
     val source = builder.toSource
-    val piler  = ByCoordinatePileupBuilder(source, mappedPairsOnly = false)
-    val pile   = piler.advanceTo(Chr1, 105)
+    val piler  = StreamingPileupBuilder(source, mappedPairsOnly = false)
+    val pile   = piler.pileup(Chr1, 105)
 
     pile.depth shouldBe 2
     pile.exists(_.rec.name == "q1") shouldBe false
@@ -263,8 +263,8 @@ class ByCoordinatePileupBuilderTest extends UnitSpec {
     builder.addPair(name = "q3", start1 = 101, start2 = 300)
 
     val source = builder.toSource
-    val piler  = ByCoordinatePileupBuilder(source)
-    val pile   = piler.advanceTo(Chr1, 105)
+    val piler  = StreamingPileupBuilder(source)
+    val pile   = piler.pileup(Chr1, 105)
 
     pile.depth shouldBe 1
     pile.exists(r => r.rec.name == "q3" && r.rec.firstOfPair) shouldBe true
@@ -281,8 +281,8 @@ class ByCoordinatePileupBuilderTest extends UnitSpec {
     builder.addPair(name = "q3", start1 = 50, start2 = 100)
 
     val source = builder.toSource
-    val piler  = ByCoordinatePileupBuilder(source)
-    val pile   = piler.advanceTo(Chr1, 125)
+    val piler  = StreamingPileupBuilder(source)
+    val pile   = piler.pileup(Chr1, 125)
 
     pile.depth shouldBe 5
     pile.withoutOverlaps.depth shouldBe 3
@@ -298,12 +298,12 @@ class ByCoordinatePileupBuilderTest extends UnitSpec {
     builder.addPair(name = "q2", start1 = 101, start2 = 100)
 
     val source = builder.toSource
-    val piler  = ByCoordinatePileupBuilder(source)
+    val piler  = StreamingPileupBuilder(source)
 
-    piler.advanceTo(Chr1, 100).depth shouldBe 0
-    piler.advanceTo(Chr1, 101).depth shouldBe 2
-    piler.advanceTo(Chr1, 100 + ReadLength - 1).depth shouldBe 2
-    piler.advanceTo(Chr1, 101 + ReadLength - 1).depth shouldBe 0
+    piler.pileup(Chr1, 100).depth shouldBe 0
+    piler.pileup(Chr1, 101).depth shouldBe 2
+    piler.pileup(Chr1, 100 + ReadLength - 1).depth shouldBe 2
+    piler.pileup(Chr1, 101 + ReadLength - 1).depth shouldBe 0
 
     source.safelyClose()
     piler.safelyClose()
@@ -315,12 +315,12 @@ class ByCoordinatePileupBuilderTest extends UnitSpec {
     builder.addPair(name = "q2", start1 = 101, start2 = 100)
 
     val source = builder.toSource
-    val piler  = ByCoordinatePileupBuilder(source, excludeMapPositionOutsideFrInsert = false)
+    val piler  = StreamingPileupBuilder(source, includeMapPositionsOutsideFrInsert = true)
 
-    piler.advanceTo(Chr1, 100).depth shouldBe 1
-    piler.advanceTo(Chr1, 101).depth shouldBe 2
-    piler.advanceTo(Chr1, 100 + ReadLength - 1).depth shouldBe 2
-    piler.advanceTo(Chr1, 101 + ReadLength - 1).depth shouldBe 1
+    piler.pileup(Chr1, 100).depth shouldBe 1
+    piler.pileup(Chr1, 101).depth shouldBe 2
+    piler.pileup(Chr1, 100 + ReadLength - 1).depth shouldBe 2
+    piler.pileup(Chr1, 101 + ReadLength - 1).depth shouldBe 1
 
     source.safelyClose()
     piler.safelyClose()
@@ -332,12 +332,12 @@ class ByCoordinatePileupBuilderTest extends UnitSpec {
     builder.addPair(name = "q2", start1 = 101, start2 = 100, strand1 = Minus, strand2 = Plus)
 
     val source = builder.toSource
-    val piler  = ByCoordinatePileupBuilder(source)
+    val piler  = StreamingPileupBuilder(source)
 
-    piler.advanceTo(Chr1, 100).depth shouldBe 1
-    piler.advanceTo(Chr1, 101).depth shouldBe 2
-    piler.advanceTo(Chr1, 100 + ReadLength - 1).depth shouldBe 2
-    piler.advanceTo(Chr1, 101 + ReadLength - 1).depth shouldBe 1
+    piler.pileup(Chr1, 100).depth shouldBe 1
+    piler.pileup(Chr1, 101).depth shouldBe 2
+    piler.pileup(Chr1, 100 + ReadLength - 1).depth shouldBe 2
+    piler.pileup(Chr1, 101 + ReadLength - 1).depth shouldBe 1
 
     source.safelyClose()
     piler.safelyClose()
@@ -350,8 +350,8 @@ class ByCoordinatePileupBuilderTest extends UnitSpec {
 
     val source = builder.toSource
 
-    val piler1 = ByCoordinatePileupBuilder(source)
-    val pile1  = piler1.advanceTo(Chr1, 105)
+    val piler1 = StreamingPileupBuilder(source)
+    val pile1  = piler1.pileup(Chr1, 105)
     val p1     = pile1.pile.head.asInstanceOf[BaseEntry]
 
     pile1.depth shouldBe 1
@@ -362,8 +362,8 @@ class ByCoordinatePileupBuilderTest extends UnitSpec {
     p1.positionInRead shouldBe 5
     p1.positionInReadInReadOrder shouldBe 5
 
-    val piler2 = ByCoordinatePileupBuilder(source)
-    val pile2  = piler2.advanceTo(Chr1, 205)
+    val piler2 = StreamingPileupBuilder(source)
+    val pile2  = piler2.pileup(Chr1, 205)
     val p2     = pile2.pile.head.asInstanceOf[BaseEntry]
 
     pile2.depth shouldBe 1

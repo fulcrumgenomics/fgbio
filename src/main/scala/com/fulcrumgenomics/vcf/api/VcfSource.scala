@@ -121,5 +121,12 @@ object VcfSource {
     val reader = AbstractFeatureReader.getFeatureReader(path.toUri.toString, codec, false)
     new VcfSource(reader, headerTransformer=headerTransformer)
   }
-}
 
+  /** Return the only sample in the VCF source otherwise raise an exception. */
+  def onlySample(source: VcfSource): String = {
+    source.header.samples.toList match {
+      case head :: Nil => head
+      case _ => throw new IllegalArgumentException(s"Source is not single-sample. Found samples: ${source.header.samples.mkString(", ")}")
+    }
+  }
+}
