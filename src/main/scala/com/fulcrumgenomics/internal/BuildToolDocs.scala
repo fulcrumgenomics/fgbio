@@ -103,8 +103,8 @@ class BuildToolDocs
          |
          |## Arguments
          |
-         ||Name|Flag|Type|Description|Required?|Max Values|Default Value(s)|
-         ||----|----|----|-----------|---------|----------|----------------|
+         ||Name|Flag|Type|Description|Required?|Max # of Values|Default Value(s)|
+         ||----|----|----|-----------|---------|---------------|----------------|
         """.stripMargin.trim
         
     val builder = new StringBuilder(doc).append('\n')
