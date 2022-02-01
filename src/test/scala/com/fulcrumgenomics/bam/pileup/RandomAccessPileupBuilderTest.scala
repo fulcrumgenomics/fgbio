@@ -25,13 +25,13 @@
 package com.fulcrumgenomics.bam.pileup
 
 import com.fulcrumgenomics.bam.api.SamOrder.Coordinate
-import com.fulcrumgenomics.bam.pileup.StreamingPileupBuilderTest._
+import com.fulcrumgenomics.bam.pileup.RandomAccessPileupBuilderTest._
 import com.fulcrumgenomics.commons.CommonsDef._
 import com.fulcrumgenomics.fasta.{SequenceDictionary, SequenceMetadata}
 import com.fulcrumgenomics.testing.{SamBuilder, UnitSpec}
 
-/** Companion object for [[StreamingPileupBuilderTest]]. */
-object StreamingPileupBuilderTest {
+/** Companion object for [[RandomAccessPileupBuilderTest]]. */
+object RandomAccessPileupBuilderTest {
 
   /** The name for chromosome 1. */
   private val Chr1: String = "chr1"
@@ -60,22 +60,24 @@ object StreamingPileupBuilderTest {
   }
 }
 
-/** Unit tests for [[StreamingPileupBuilder]]. */
-class StreamingPileupBuilderTest extends UnitSpec {
+/** Unit tests for [[RandomAccessPileupBuilder]]. */
+class RandomAccessPileupBuilderTest extends UnitSpec {
 
-  "StreamingPileupBuilder" should "raise an exception if asked to query a locus prior to the last locus" in {
+  "RandomAccessPileupBuilder" should "allow for query of a locus prior to the last locus" in {
     val builder = new SamBuilder(readLength = ReadLength, sd = Some(TestSequenceDictionary), sort = Some(Coordinate))
 
     builder.addFrag(start = 5).foreach(_.bases = "N" * ReadLength)
 
     val source   = builder.toSource
-    val piler    = StreamingPileupBuilder(source, mappedPairsOnly = false)
+    val piler    = RandomAccessPileupBuilder(source, mappedPairsOnly = false)
 
     val pile1 = piler.pileup(Chr1, 6).withoutIndels
     pile1.depth shouldBe 1
     pile1.count(_.base == 'N') shouldBe 1
 
-    an[IllegalArgumentException] shouldBe thrownBy { piler.pileup(Chr1, 5) }
+    val pile2 = piler.pileup(Chr1, 5).withoutIndels
+    pile2.depth shouldBe 1
+    pile2.count(_.base == 'N') shouldBe 1
 
     source.safelyClose()
     piler.safelyClose()

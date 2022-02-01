@@ -24,6 +24,8 @@
 
 package com.fulcrumgenomics.vcf.filtration
 
+import com.fulcrumgenomics.bam.api.SamOrder.Coordinate
+import com.fulcrumgenomics.bam.pileup.PileupBuilder.BamAccessPattern.{RandomAccess, Streaming}
 import com.fulcrumgenomics.bam.pileup._
 import com.fulcrumgenomics.commons.CommonsDef._
 import com.fulcrumgenomics.testing.SamBuilder.{Minus, Plus}
@@ -116,7 +118,7 @@ class ReadEndSomaticVariantFilterTest extends UnitSpec {
   "EndRepairFillInArtifactLikelihoodFilter.annotations" should "compute a non-significant p-value when data is distributed throughout the reads" in {
     // Simulate a G>T non-artifact at bp 25
     val filter  = new EndRepairFillInArtifactLikelihoodFilter(distance=15)
-    val builder = new SamBuilder(readLength=50, baseQuality=40)
+    val builder = new SamBuilder(readLength=50, baseQuality=40, sort=Some(Coordinate))
 
     // Add a ton of reference allele
     for (start <- Range.inclusive(1, 25); i <- Range.inclusive(1, 10); strand <- Seq(Plus, Minus)) {
@@ -129,16 +131,18 @@ class ReadEndSomaticVariantFilterTest extends UnitSpec {
     }
 
     val refName     = builder.dict(0).name
-    val pile        = new PileupBuilder(dict=builder.dict, mappedPairsOnly=false).build(builder.iterator, refName, 25)
+    val source      = builder.toSource
+    val pile        = PileupBuilder(source, accessPattern=Streaming, mappedPairsOnly=false).build(builder.iterator, refName, 25)
     val annotations = filter.annotations(pile, singleGenotype("G", "T"))
     annotations.contains(filter.readEndInfoLine.id) shouldBe true
     annotations(filter.readEndInfoLine.id).asInstanceOf[Double] should be > 0.5
+    source.safelyClose()
   }
 
   it should "compute a significant p-value when data is heavily biased" in {
     // Simulate a G>T non-artifact at bp 25
     val filter  = new EndRepairFillInArtifactLikelihoodFilter(distance=15)
-    val builder = new SamBuilder(readLength=50, baseQuality=40)
+    val builder = new SamBuilder(readLength=50, baseQuality=40, sort=Some(Coordinate))
 
     // Add a ton of reference allele at various positions
     for (start <- Range.inclusive(1, 25); i <- Range.inclusive(1, 5); strand <- Seq(Plus, Minus)) {
@@ -151,10 +155,12 @@ class ReadEndSomaticVariantFilterTest extends UnitSpec {
     }
 
     val refName     = builder.dict(0).name
-    val pile        = new PileupBuilder(dict=builder.dict, mappedPairsOnly=false).build(builder.iterator, refName, 25)
+    val source      = builder.toSource
+    val pile        = PileupBuilder(source, accessPattern=Streaming, mappedPairsOnly=false).build(builder.iterator, refName, 25)
     val annotations = filter.annotations(pile, singleGenotype("G", "T"))
     annotations.contains(filter.readEndInfoLine.id) shouldBe true
     annotations(filter.readEndInfoLine.id).asInstanceOf[Double] should be < 1e-6
+    source.safelyClose()
   }
 
 
@@ -220,7 +226,7 @@ class ReadEndSomaticVariantFilterTest extends UnitSpec {
   "ATailingArtifactLikelihoodFilter.annotations" should "compute a non-significant p-value when data is distributed throughout the reads" in {
     // Simulate a G>T non-artifact at bp 25
     val filter  = new ATailingArtifactLikelihoodFilter(distance=5)
-    val builder = new SamBuilder(readLength=50, baseQuality=40)
+    val builder = new SamBuilder(readLength=50, baseQuality=40, sort=Some(Coordinate))
 
     // Add a ton of reference allele
     for (start <- Range.inclusive(1, 25); i <- Range.inclusive(1, 10); strand <- Seq(Plus, Minus)) {
@@ -233,16 +239,18 @@ class ReadEndSomaticVariantFilterTest extends UnitSpec {
     }
 
     val refName     = builder.dict(0).name
-    val pile        = new PileupBuilder(dict=builder.dict, mappedPairsOnly=false).build(builder.iterator, refName, 25)
+    val source      = builder.toSource
+    val pile        = PileupBuilder(source, accessPattern=Streaming, mappedPairsOnly=false).build(builder.iterator, refName, 25)
     val annotations = filter.annotations(pile, singleGenotype("G", "T"))
     annotations.contains(filter.readEndInfoLine.id) shouldBe true
     annotations(filter.readEndInfoLine.id).asInstanceOf[Double] should be > 0.5
+    source.safelyClose()
   }
 
   it should "compute a significant p-value when data is heavily biased" in {
     // Simulate a G>T non-artifact at bp 25
     val filter  = new ATailingArtifactLikelihoodFilter(distance=5)
-    val builder = new SamBuilder(readLength=50, baseQuality=40)
+    val builder = new SamBuilder(readLength=50, baseQuality=40, sort=Some(Coordinate))
 
     // Add a ton of reference allele at various positions
     for (start <- Range.inclusive(1, 25); i <- Range.inclusive(1, 5); strand <- Seq(Plus, Minus)) {
@@ -255,7 +263,8 @@ class ReadEndSomaticVariantFilterTest extends UnitSpec {
     }
 
     val refName     = builder.dict(0).name
-    val pile        = new PileupBuilder(dict=builder.dict, mappedPairsOnly=false).build(builder.iterator, refName, 25)
+    val source      = builder.toSource
+    val pile        = PileupBuilder(source, accessPattern=Streaming, mappedPairsOnly=false).build(builder.iterator, refName, 25)
     val annotations = filter.annotations(pile, singleGenotype("G", "T"))
     annotations.contains(filter.readEndInfoLine.id) shouldBe true
     annotations(filter.readEndInfoLine.id).asInstanceOf[Double] should be < 1e-6
@@ -264,7 +273,7 @@ class ReadEndSomaticVariantFilterTest extends UnitSpec {
   it should "compute an intermediate p-value when data is heavily biased for both ref and alt" in {
     // Simulate a G>T non-artifact at bp 25
     val filter  = new ATailingArtifactLikelihoodFilter(distance=5)
-    val builder = new SamBuilder(readLength=50, baseQuality=40)
+    val builder = new SamBuilder(readLength=50, baseQuality=40, sort=Some(Coordinate))
 
     // Add a ton of reference allele, 5/6ths in the first 5bp of the read
     for (start <- Range.inclusive(20, 25); i <- Range.inclusive(1, 10); strand <- Seq(Plus, Minus)) {
@@ -277,30 +286,36 @@ class ReadEndSomaticVariantFilterTest extends UnitSpec {
     }
 
     val refName     = builder.dict(0).name
-    val pile        = new PileupBuilder(dict=builder.dict, mappedPairsOnly=false).build(builder.iterator, refName, 25)
+    val source      = builder.toSource
+    val pile        = PileupBuilder(source, accessPattern=Streaming, mappedPairsOnly=false).build(builder.iterator, refName, 25)
     val annotations = filter.annotations(pile, singleGenotype("G", "T"))
     annotations.contains(filter.readEndInfoLine.id) shouldBe true
     annotations(filter.readEndInfoLine.id).asInstanceOf[Double] should be < 1e-4
+    source.safelyClose()
   }
 
   it should "not throw an exception if there is no alt allele coverage or the pileup is empty" in {
     val filter  = new ATailingArtifactLikelihoodFilter(distance=10)
-    val builder = new SamBuilder(readLength=50, baseQuality=40)
+    val builder = new SamBuilder(readLength=50, baseQuality=40, sort=Some(Coordinate))
     val refName = builder.dict(0).name
 
     { // Test with just an empty pileup
-      val pile        = new PileupBuilder(dict = builder.dict, mappedPairsOnly = false).build(builder.iterator, refName, 25)
+      val source      = builder.toSource
+      val pile        = PileupBuilder(source, accessPattern=RandomAccess, mappedPairsOnly = false).build(builder.iterator, refName, 25)
       val annotations = filter.annotations(pile, singleGenotype("G", "T"))
       annotations.contains(filter.readEndInfoLine.id) shouldBe true
+      source.safelyClose()
     }
 
     { // And again with just a bunch of ref allele
       for (start <- Range.inclusive(1, 20); i <- Range.inclusive(1, 10); strand <- Seq(Plus, Minus)) {
         builder.addFrag(start = start, strand = strand, bases = "G" * 50)
       }
-      val pile        = new PileupBuilder(dict = builder.dict, mappedPairsOnly = false).build(builder.iterator, refName, 25)
+      val source      = builder.toSource
+      val pile        = PileupBuilder(source, accessPattern=RandomAccess, mappedPairsOnly = false).build(builder.iterator, refName, 25)
       val annotations = filter.annotations(pile, singleGenotype("G", "T"))
       annotations.contains(filter.readEndInfoLine.id) shouldBe true
+      source.safelyClose()
     }
   }
 }

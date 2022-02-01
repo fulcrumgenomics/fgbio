@@ -24,10 +24,10 @@
 
 package com.fulcrumgenomics.vcf.filtration
 
-import com.fulcrumgenomics.FgBioDef.FgBioEnum
-import com.fulcrumgenomics.bam.api.QueryType.Overlapping
 import com.fulcrumgenomics.bam.api.SamSource
-import com.fulcrumgenomics.bam.pileup.StreamingPileupBuilder
+import com.fulcrumgenomics.bam.pileup.PileupBuilder
+import com.fulcrumgenomics.bam.pileup.PileupBuilder.BamAccessPattern
+import com.fulcrumgenomics.bam.pileup.PileupBuilder.BamAccessPattern.RandomAccess
 import com.fulcrumgenomics.cmdline.{ClpGroups, FgBioTool}
 import com.fulcrumgenomics.commons.CommonsDef._
 import com.fulcrumgenomics.commons.io.Io
@@ -35,27 +35,8 @@ import com.fulcrumgenomics.commons.util.LazyLogging
 import com.fulcrumgenomics.sopt.{arg, clp}
 import com.fulcrumgenomics.util.ProgressLogger
 import com.fulcrumgenomics.vcf.api.{VcfSource, VcfWriter}
-import enumeratum.EnumEntry
 
 import scala.collection.immutable.ListMap
-
-/** Companion object for [[FilterSomaticVcf]]. */
-object FilterSomaticVcf {
-
-  /** A trait that all enumerations of BAM access pattern must extend. */
-  sealed trait BamAccessPattern extends EnumEntry
-
-  /** The various types of BAM access patterns */
-  object BamAccessPattern extends FgBioEnum[BamAccessPattern] {
-    override def values: IndexedSeq[BamAccessPattern] = findValues
-
-    /** The type of BAM access pattern when queries are completed using random access. */
-    case object RandomAccess extends BamAccessPattern
-
-    /** The type of BAM access pattern when queries are completed using full BAM streaming. */
-    case object Streaming extends BamAccessPattern
-  }
-}
 
 @clp(
   description =
@@ -127,19 +108,18 @@ object FilterSomaticVcf {
       |
       |## Performance Expectations
       |
-      |By default `--stream-bam` will be set to false. When this tool is not asked to stream the input BAM, the BAM
-      |will be queried using random access via the BAM index file. Random access is mandatory if the input VCF is not
-      |coordinate sorted or the input BAM is not coordinate sorted as well as indexed. If the VCF is not coordinate
-      |sorted and `--stream-bam` is set to true, then an exception will be raised on the first non-coordinate increasing
-      |VCF record.
+      |By default `--access-pattern` will be set to `RandomAccess` and the input BAM will be queried using index-based
+      |random access. Random access is mandatory if the input VCF is not coordinate sorted. If random access is
+      |requested and the input VCF is not coordinate sorted, then an exception will be raised on the first
+      |non-coordinate increasing VCF record found.
       |
       |Often, a VCF file will contain a sparse set of records that are scattered across a given territory within a
-      |genome or the records will be scattered genome-wide. If the territory of the VCF records is markedly smaller than
-      |the territory of all aligned SAM records in the BAM file, then random access may be the most efficient access
-      |pattern. However, there are cases where random access will be much less efficient such as when the VCF is
-      |coordinate sorted and the variant call records are very densely packed across a similar territory as compared to
-      |all aligned SAM records. Such a case is common in deeply sequenced hybrid selection NGS experiments and setting
-      |`--stream-bam` to true will often be more efficient.
+      |genome (or the records will be sparsely scattered genome-wide). If the territory of the VCF records is markedly
+      |smaller than the territory of all aligned SAM records in the BAM file, then random access may be the most
+      |efficient BAM  access pattern. However, there are cases where random access will be less efficient such as when
+      |the VCF is coordinate sorted and the variant call records are very densely packed across a similar territory as
+      |compared to all aligned SAM records. Such a case is common in deeply sequenced hybrid selection NGS experiments
+      |and setting `--access-pattern` to `Streaming` will often be the most efficient BAM access pattern.
     """,
   group = ClpGroups.VcfOrBcf
 ) class FilterSomaticVcf(
@@ -150,7 +130,7 @@ object FilterSomaticVcf {
   @arg(flag = 'm', doc = "Minimum mapping quality for reads.")          val minMappingQuality: Int   = 20,
   @arg(flag = 'q', doc = "Minimum base quality.")                       val minBaseQuality: Int      = 20,
   @arg(flag = 'p', doc = "Use only paired reads mapped in pairs.")      val pairedReadsOnly: Boolean = false,
-  @arg(flag = 'R', doc = "Whether to stream the BAM input or use BAM random access.") val streamBam: Boolean = false,
+  @arg(flag = 'R', doc = "The type of BAM access to use.")              val accessPattern: BamAccessPattern = RandomAccess,
   @arg(doc = "Distance from 5-prime end of read to implicate A-base addition artifacts. Set to :none: to deactivate the filter.")
   val aTailingDistance: Option[Int] = Some(2),
   @arg(doc = "Minimum acceptable p-value for the A-base addition artifact test.")
@@ -176,8 +156,9 @@ object FilterSomaticVcf {
     val source   = VcfSource(input)
     val progress = ProgressLogger(logger = logger, noun = "variants", verb = "written", unit = 1000)
 
-    val piler = StreamingPileupBuilder(
-      source          = records,
+    val piler = PileupBuilder(
+      records,
+      accessPattern   = accessPattern,
       mappedPairsOnly = pairedReadsOnly,
       minBaseQ        = minBaseQuality,
       minMapQ         = minMappingQuality,
@@ -199,17 +180,12 @@ object FilterSomaticVcf {
       val updated = somaticFilters.filter(_.appliesTo(variant.genotypes(name))) match {
         case Nil     => variant
         case filters =>
-          val pileup = if (streamBam) { piler.pileup(refName = variant.chrom, pos = variant.pos) } else {
-            val overlapping = records.query(variant.chrom, start = variant.pos, end = variant.pos, Overlapping)
-            piler.build(overlapping, refName = variant.chrom, pos = variant.pos)
-          }
-
-          val nonOverlapping = pileup.withoutOverlaps
+          val pileup         = piler.pileup(refName = variant.chrom, pos = variant.pos).withoutOverlaps
           val allAnnotations = variant.attrs.toBuffer
           val allFilters     = variant.filters.toBuffer
 
           filters.foreach { filter =>
-            val annotations = filter.annotations(nonOverlapping, variant.genotypes(name))
+            val annotations = filter.annotations(pileup, variant.genotypes(name))
             allAnnotations ++= annotations
             allFilters     ++= filter.filters(annotations)
           }

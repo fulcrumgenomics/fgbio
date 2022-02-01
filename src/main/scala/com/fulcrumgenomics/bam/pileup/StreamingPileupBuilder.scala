@@ -26,41 +26,31 @@ package com.fulcrumgenomics.bam.pileup
 
 import com.fulcrumgenomics.bam.api.SamOrder.Coordinate
 import com.fulcrumgenomics.bam.api.{SamOrder, SamRecord, SamSource}
+import com.fulcrumgenomics.bam.pileup.PileupBuilder._
 import com.fulcrumgenomics.bam.pileup.StreamingPileupBuilder.DefaultInitialCacheSize
 import com.fulcrumgenomics.commons.CommonsDef._
 import com.fulcrumgenomics.coord.LocatableOrdering
 import com.fulcrumgenomics.fasta.SequenceDictionary
 import htsjdk.samtools.util.{Interval, Locatable}
 
-import java.io.Closeable
 import scala.collection.mutable
 import scala.language.reflectiveCalls
 
 /** Companion object for [[StreamingPileupBuilder]]. */
 object StreamingPileupBuilder {
 
-  /** The default initial cache size for pre-allocating an array for a pileup of reads. Set to 300x coverage by default. */
-  val DefaultInitialCacheSize: Int = 300
-
-  /** Helper class to ensure pileups are locatable and can be used in coordinate comparison and ordering. */
-  private implicit class LocatablePileup(pileup: Pileup[PileupEntry]) extends Locatable {
-    override def getContig: String = pileup.refName
-    override def getStart: Int     = pileup.pos
-    override def getEnd: Int       = pileup.pos
-  }
-
-  /** Build a [[StreamingPileupBuilder]] from a coordinate-sorted [[SamSource]]. */
+  /** Build a streaming pileup builder from a coordinate sorted SAM source. */
   def apply(
-     source: SamSource,
-     minMapQ: Int                                = 20,
-     minBaseQ: Int                               = 20,
-     mappedPairsOnly: Boolean                    = true,
-     includeDuplicates: Boolean                  = false,
-     includeSecondaryAlignments: Boolean         = false,
-     includeSupplementalAlignments: Boolean      = false,
-     includeMapPositionsOutsideFrInsert: Boolean = false,
-     initialCacheSize: Int                       = DefaultInitialCacheSize,
-   ): StreamingPileupBuilder = {
+    source: SamSource,
+    minMapQ: Int                                = DefaultMinMapQ,
+    minBaseQ: Int                               = DefaultMinBaseQ,
+    mappedPairsOnly: Boolean                    = DefaultMappedPairsOnly,
+    includeDuplicates: Boolean                  = DefaultIncludeDuplicates,
+    includeSecondaryAlignments: Boolean         = DefaultIncludeSecondaryAlignments,
+    includeSupplementalAlignments: Boolean      = DefaultIncludeSupplementalAlignments,
+    includeMapPositionsOutsideFrInsert: Boolean = DefaultIncludeMapPositionsOutsideFrInsert,
+    initialCacheSize: Int                       = DefaultInitialCacheSize,
+  ): StreamingPileupBuilder = {
     require(SamOrder(source.header).contains(Coordinate), "SAM source must be coordinate sorted!")
     lazy val iterator = source.iterator
     new StreamingPileupBuilder(
@@ -73,13 +63,22 @@ object StreamingPileupBuilder {
       includeSecondaryAlignments         = includeSecondaryAlignments,
       includeSupplementalAlignments      = includeSupplementalAlignments,
       includeMapPositionsOutsideFrInsert = includeMapPositionsOutsideFrInsert,
-      initialCacheSize                   = initialCacheSize,
       source                             = Some(iterator)
     )
   }
+
+  /** The default initial cache size for pre-allocating an array for a pileup of reads. Set to 300x coverage by default. */
+  val DefaultInitialCacheSize: Int = 300
+
+  /** Helper class to ensure pileups are locatable and can be used in coordinate comparison and ordering. */
+  private implicit class LocatablePileup(pileup: Pileup[PileupEntry]) extends Locatable {
+    override def getContig: String = pileup.refName
+    override def getStart: Int     = pileup.pos
+    override def getEnd: Int       = pileup.pos
+  }
 }
 
-/** A class to lazily pileup SAM records for coordinate-maintaining or coordinate-advancing loci.
+/** A pileup builder that builds coordinate-maintaining or advancing pileups using lazy end-to-end BAM streaming.
   *
   * For every call to <pileup>, this class will advance <records> until SAM records are found that overlap the requested
   * locus. These records will be loaded into an internal cache and then a pileup will be built from them. The pileup
@@ -89,38 +88,29 @@ object StreamingPileupBuilder {
   * the requested locus.
   *
   * @param records a by-name iterator of SAM records that is assumed to be coordinate-sorted.
-  * @param dict the sequence dictionary associated with the reference sequences.
+  * @param dict the sequence dictionary associated with the records we will pileup.
   * @param minBaseQ the minimum base quality that a base must have to contribute to a pileup.
-  * @param minMapQ the minimum mapping quality a read must have to contribute to a pileup.
-  * @param mappedPairsOnly if true, only allow read-pairs with both reads mapped to contribute to a pileup.
-  * @param includeDuplicates if true, allow reads flagged as duplicates to contribute to a pileup.
-  * @param includeSecondaryAlignments if true, allow reads flagged as secondary alignments to contribute to a pileup.
-  * @param includeSupplementalAlignments if true, allow reads flagged as supplementary alignments to contribute to a pileup.
+  * @param minMapQ the minimum mapping quality a record must have to contribute to a pileup.
+  * @param mappedPairsOnly if true, only allow paired records with both records mapped to contribute to a pileup.
+  * @param includeDuplicates if true, allow records flagged as duplicates to contribute to a pileup.
+  * @param includeSecondaryAlignments if true, allow records flagged as secondary alignments to contribute to a pileup.
+  * @param includeSupplementalAlignments if true, allow records flagged as supplementary alignments to contribute to a pileup.
   * @param includeMapPositionsOutsideFrInsert if true, include any record of an FR pair where the site requested is outside the insert.
   * @param initialCacheSize the initial size for the internal SAM record cache, set this to your expected pileup depth.
   */
 class StreamingPileupBuilder private(
   records: => Iterator[SamRecord],
   override val dict: SequenceDictionary,
-  override val minMapQ: Int                                = 20,
-  override val minBaseQ: Int                               = 20,
-  override val mappedPairsOnly: Boolean                    = true,
-  override val includeDuplicates: Boolean                  = false,
-  override val includeSecondaryAlignments: Boolean         = false,
-  override val includeSupplementalAlignments: Boolean      = false,
-  override val includeMapPositionsOutsideFrInsert: Boolean = false,
+  override val minMapQ: Int                                = DefaultMinMapQ,
+  override val minBaseQ: Int                               = DefaultMinBaseQ,
+  override val mappedPairsOnly: Boolean                    = DefaultMappedPairsOnly,
+  override val includeDuplicates: Boolean                  = DefaultIncludeDuplicates,
+  override val includeSecondaryAlignments: Boolean         = DefaultIncludeSecondaryAlignments,
+  override val includeSupplementalAlignments: Boolean      = DefaultIncludeSupplementalAlignments,
+  override val includeMapPositionsOutsideFrInsert: Boolean = DefaultIncludeMapPositionsOutsideFrInsert,
   initialCacheSize: Int                                    = DefaultInitialCacheSize,
   source: => Option[{ def close(): Unit }]                 = None,
-) extends PileupBuilder(
-  dict                               = dict,
-  minMapQ                            = minMapQ,
-  minBaseQ                           = minBaseQ,
-  mappedPairsOnly                    = mappedPairsOnly,
-  includeDuplicates                  = includeDuplicates,
-  includeSecondaryAlignments         = includeSecondaryAlignments,
-  includeSupplementalAlignments      = includeSupplementalAlignments,
-  includeMapPositionsOutsideFrInsert = includeMapPositionsOutsideFrInsert,
-) with Closeable {
+) extends CloseablePileupBuilder {
   import com.fulcrumgenomics.bam.pileup.StreamingPileupBuilder.LocatablePileup
 
   /** Whether this builder is able to pileup more records from the input iterator of SAM records or not. */

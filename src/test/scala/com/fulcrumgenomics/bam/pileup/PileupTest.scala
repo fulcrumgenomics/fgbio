@@ -24,11 +24,13 @@
 
 package com.fulcrumgenomics.bam.pileup
 
+import com.fulcrumgenomics.bam.api.SamOrder.Coordinate
+import com.fulcrumgenomics.bam.pileup.PileupTest._
 import com.fulcrumgenomics.fasta.{SequenceDictionary, SequenceMetadata}
 import com.fulcrumgenomics.testing.{SamBuilder, UnitSpec}
 
-/** Unit tests for [[Pileup]]. */
-class PileupTest extends UnitSpec {
+/** Companion object for [[PileupTest]]. */
+object PileupTest {
 
   /** The name for chromosome 1. */
   private val Chr1: String = "chr1"
@@ -46,12 +48,17 @@ class PileupTest extends UnitSpec {
   private val TestSequenceDictionary: SequenceDictionary = {
     SequenceDictionary(SequenceMetadata(Chr1, SmallContigSequence.length, index = Chr1Index))
   }
+}
+
+/** Unit tests for [[Pileup]]. */
+class PileupTest extends UnitSpec {
 
   "BaseEntry" should "report the correct offsets/positions/bases" in {
-    val builder = new SamBuilder(readLength = ReadLength, sd = Some(TestSequenceDictionary), baseQuality = 35)
+    val builder = new SamBuilder(readLength = ReadLength, sd = Some(TestSequenceDictionary), baseQuality = 35, sort = Some(Coordinate))
     builder.addPair(name = "q1", start1 = 101, start2 = 201, bases1 = "A" * ReadLength, bases2 = "C" * ReadLength)
+    val source = builder.toSource
 
-    val pile1 = new PileupBuilder(TestSequenceDictionary, mappedPairsOnly = true).build(builder.iterator, "chr1", 105)
+    val pile1 = PileupBuilder(source, mappedPairsOnly = true).build(builder.iterator, "chr1", 105)
     pile1.depth shouldBe 1
     val p1 = pile1.pile.head.asInstanceOf[BaseEntry]
     p1.base shouldBe 'A'
@@ -61,7 +68,7 @@ class PileupTest extends UnitSpec {
     p1.positionInRead shouldBe 5
     p1.positionInReadInReadOrder shouldBe 5
 
-    val pile2 = new PileupBuilder(TestSequenceDictionary, mappedPairsOnly = true).build(builder.iterator, "chr1", 205)
+    val pile2 = PileupBuilder(source, mappedPairsOnly = true).build(builder.iterator, "chr1", 205)
     pile2.depth shouldBe 1
     val p2 = pile2.pile.head.asInstanceOf[BaseEntry]
     p2.base shouldBe 'C'

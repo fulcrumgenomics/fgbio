@@ -26,6 +26,8 @@ package com.fulcrumgenomics.vcf.filtration
 
 import com.fulcrumgenomics.bam.api.SamOrder
 import com.fulcrumgenomics.bam.api.SamOrder.Coordinate
+import com.fulcrumgenomics.bam.pileup.PileupBuilder.BamAccessPattern
+import com.fulcrumgenomics.bam.pileup.PileupBuilder.BamAccessPattern.Streaming
 import com.fulcrumgenomics.commons.CommonsDef._
 import com.fulcrumgenomics.testing.VcfBuilder.Gt
 import com.fulcrumgenomics.testing.{SamBuilder, UnitSpec, VcfBuilder}
@@ -153,18 +155,18 @@ class FilterSomaticVcfTest extends UnitSpec {
 
     an[IllegalArgumentException] shouldBe  thrownBy {
       new FilterSomaticVcf(
-        input     = input,
-        output    = output,
-        bam       = bam,
-        streamBam = true
+        input         = input,
+        output        = output,
+        bam           = bam,
+        accessPattern = Streaming
       ).execute()
     }
   }
 
-  Seq(true, false).foreach { streamBam =>
-    it should s"work on a single sample VCF when BAM streaming is: $streamBam" in {
+  BamAccessPattern.values.foreach { accessPattern =>
+    it should s"work on a single sample VCF when BAM access is: $accessPattern" in {
       val filteredVcf = makeTempFile("filtered.", ".vcf")
-      new FilterSomaticVcf(input = tumorOnlyVcf, output = filteredVcf, bam = bam, streamBam = streamBam).execute()
+      new FilterSomaticVcf(input = tumorOnlyVcf, output = filteredVcf, bam = bam, accessPattern = accessPattern).execute()
       val variants = readVcfRecs(filteredVcf)
       variants should have size 5
       variants(0).get[Float](ATailInfoKey).isDefined shouldBe true
@@ -182,48 +184,53 @@ class FilterSomaticVcfTest extends UnitSpec {
       variants.exists(_.filters.contains(EndRepairFilterKey)) shouldBe false // no threshold == no filtering
     }
 
-    it should s"fail on a single-sample VCF if an invalid sample name is provided when BAM streaming is: $streamBam" in {
+    it should s"fail on a single-sample VCF if an invalid sample name is provided when BAM access is: $accessPattern" in {
       val filteredVcf = makeTempFile("filtered.", ".vcf")
       an[AssertionError] shouldBe thrownBy {
         new FilterSomaticVcf(
-          input     = tumorOnlyVcf,
-          output    = filteredVcf,
-          bam       = bam,
-          sample    = Some("WhoDis"),
-          streamBam = streamBam
+          input         = tumorOnlyVcf,
+          output        = filteredVcf,
+          bam           = bam,
+          sample        = Some("WhoDis"),
+          accessPattern = accessPattern
         ).execute()
       }
     }
 
-    it should s"fail on a multi-sample VCF if no sample name is provided when BAM streaming is: $streamBam" in {
+    it should s"fail on a multi-sample VCF if no sample name is provided when BAM access is: $accessPattern" in {
       val filteredVcf = makeTempFile("filtered.", ".vcf")
       an[IllegalArgumentException] shouldBe thrownBy {
-        new FilterSomaticVcf(input = tumorNormalVcf, output = filteredVcf, bam = bam, streamBam = streamBam).execute()
-      }
-    }
-
-    it should s"fail on a multi-sample VCF if an invalid sample name is provided when BAM streaming is: $streamBam" in {
-      val filteredVcf = makeTempFile("filtered.", ".vcf")
-      an[AssertionError] shouldBe thrownBy {
         new FilterSomaticVcf(
-          input     = tumorNormalVcf,
-          output    = filteredVcf,
-          bam       = bam,
-          sample    = Some("WhoDis"),
-          streamBam = streamBam
+          input         = tumorNormalVcf,
+          output        = filteredVcf,
+          bam           = bam,
+          accessPattern = accessPattern
         ).execute()
       }
     }
 
-    it should s"work on a multi-sample VCF if a sample name is given when BAM streaming is: $streamBam" in {
+    it should s"fail on a multi-sample VCF if an invalid sample name is provided when BAM access is: $accessPattern" in {
+      val filteredVcf = makeTempFile("filtered.", ".vcf")
+      an[AssertionError] shouldBe thrownBy {
+        new FilterSomaticVcf(
+          input         = tumorNormalVcf,
+          output        = filteredVcf,
+          bam           = bam,
+          sample        = Some("WhoDis"),
+          accessPattern = accessPattern
+        ).execute()
+      }
+    }
+
+    it should s"work on a multi-sample VCF if a sample name is given when BAM access is: $accessPattern" in {
       val filteredVcf = makeTempFile("filtered.", ".vcf")
 
       new FilterSomaticVcf(
-        input     = tumorNormalVcf,
-        output    = filteredVcf,
-        bam       = bam,
-        sample    = Some("tumor"),
-        streamBam = streamBam
+        input         = tumorNormalVcf,
+        output        = filteredVcf,
+        bam           = bam,
+        sample        = Some("tumor"),
+        accessPattern = accessPattern
       ).execute()
 
       val variants = readVcfRecs(filteredVcf)
@@ -243,7 +250,7 @@ class FilterSomaticVcfTest extends UnitSpec {
       variants.exists(_.filters.contains(EndRepairFilterKey)) shouldBe false // no threshold == no filtering
     }
 
-    it should s"apply filters if filter-specific p-value thresholds are supplied when BAM streaming is: $streamBam" in {
+    it should s"apply filters if filter-specific p-value thresholds are supplied when BAM access is: $accessPattern" in {
       val filteredVcf = makeTempFile("filtered.", ".vcf")
 
       new FilterSomaticVcf(
@@ -254,7 +261,7 @@ class FilterSomaticVcfTest extends UnitSpec {
         aTailingDistance      = Some(4),
         aTailingPValue        = Some(0.001),
         endRepairFillInPValue = Some(0.001),
-        streamBam             = streamBam
+        accessPattern         = accessPattern
       ).execute()
 
       val variants = readVcfRecs(filteredVcf)

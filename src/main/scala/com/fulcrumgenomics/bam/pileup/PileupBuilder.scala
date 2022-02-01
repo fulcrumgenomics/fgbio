@@ -24,16 +24,94 @@
 
 package com.fulcrumgenomics.bam.pileup
 
+import com.fulcrumgenomics.FgBioDef.FgBioEnum
 import com.fulcrumgenomics.bam.Bams
-import com.fulcrumgenomics.bam.api.SamRecord
+import com.fulcrumgenomics.bam.api.{SamRecord, SamSource}
+import com.fulcrumgenomics.bam.pileup.PileupBuilder.BamAccessPattern.{RandomAccess, Streaming}
+import com.fulcrumgenomics.bam.pileup.PileupBuilder._
 import com.fulcrumgenomics.commons.CommonsDef._
 import com.fulcrumgenomics.fasta.SequenceDictionary
+import enumeratum.EnumEntry
 import htsjdk.samtools.CigarOperator.{INSERTION => Insertion}
 
+import java.io.Closeable
 import scala.collection.mutable.ArrayBuffer
 
 /** Companion object for [[PileupBuilder]]. */
 object PileupBuilder {
+
+  /** The minimum base quality that a base must have to contribute to a pileup by default. */
+  val DefaultMinMapQ: Int = 20
+
+  /** The minimum mapping quality a record must have to contribute to a pileup by default. */
+  val DefaultMinBaseQ: Int = 20
+
+  /** Only allow paired records with both records mapped to contribute to a pileup by default. */
+  val DefaultMappedPairsOnly: Boolean = true
+
+  /** Allow records flagged as duplicates to contribute to a pileup by default. */
+  val DefaultIncludeDuplicates: Boolean = false
+
+  /** Allow records flagged as secondary alignments to contribute to a pileup by default. */
+  val DefaultIncludeSecondaryAlignments: Boolean = false
+
+  /** Allow records flagged as supplementary alignments to contribute to a pileup by default. */
+  val DefaultIncludeSupplementalAlignments: Boolean = false
+
+  /** Include any record of an FR pair where the site requested is outside the insert by default. */
+  val DefaultIncludeMapPositionsOutsideFrInsert: Boolean = false
+
+  /** A trait that all enumerations of BAM access pattern must extend. */
+  sealed trait BamAccessPattern extends EnumEntry
+
+  /** The various types of BAM pileup access patterns */
+  object BamAccessPattern extends FgBioEnum[BamAccessPattern] {
+    override def values: IndexedSeq[BamAccessPattern] = findValues
+
+    /** The type of BAM access pattern when queries are completed using random access. */
+    case object RandomAccess extends BamAccessPattern
+
+    /** The type of BAM access pattern when queries are completed using full BAM streaming. */
+    case object Streaming extends BamAccessPattern
+  }
+
+  /** Build a [[PileupBuilder]] from a [[SamSource]]. */
+  def apply(
+    source: SamSource,
+    accessPattern: BamAccessPattern             = RandomAccess,
+    minMapQ: Int                                = DefaultMinMapQ,
+    minBaseQ: Int                               = DefaultMinBaseQ,
+    mappedPairsOnly: Boolean                    = DefaultMappedPairsOnly,
+    includeDuplicates: Boolean                  = DefaultIncludeDuplicates,
+    includeSecondaryAlignments: Boolean         = DefaultIncludeSecondaryAlignments,
+    includeSupplementalAlignments: Boolean      = DefaultIncludeSupplementalAlignments,
+    includeMapPositionsOutsideFrInsert: Boolean = DefaultIncludeMapPositionsOutsideFrInsert,
+  ): CloseablePileupBuilder = {
+    accessPattern match {
+      case RandomAccess =>
+        RandomAccessPileupBuilder(
+          source                             = source,
+          minMapQ                            = minMapQ,
+          minBaseQ                           = minBaseQ,
+          mappedPairsOnly                    = mappedPairsOnly,
+          includeDuplicates                  = includeDuplicates,
+          includeSecondaryAlignments         = includeSecondaryAlignments,
+          includeSupplementalAlignments      = includeSupplementalAlignments,
+          includeMapPositionsOutsideFrInsert = includeMapPositionsOutsideFrInsert,
+        )
+      case Streaming =>
+        StreamingPileupBuilder(
+          source                             = source,
+          minMapQ                            = minMapQ,
+          minBaseQ                           = minBaseQ,
+          mappedPairsOnly                    = mappedPairsOnly,
+          includeDuplicates                  = includeDuplicates,
+          includeSecondaryAlignments         = includeSecondaryAlignments,
+          includeSupplementalAlignments      = includeSupplementalAlignments,
+          includeMapPositionsOutsideFrInsert = includeMapPositionsOutsideFrInsert,
+        )
+    }
+  }
 
   /** Returns true if <rec> is in a mapped FR pair but the position <pos> is outside the insert coordinates of <rec>.
     * Returns false if <rec> is in a mapped FR pair and the position <pos> is inside the insert coordinates of <rec> or
@@ -52,27 +130,35 @@ object PileupBuilder {
   }
 }
 
-/** Class that provides methods to build and filter pileups.
-  *
-  * @param dict the sequence dictionary associated with the reference sequences.
-  * @param minBaseQ the minimum base quality that a base must have to contribute to a pileup.
-  * @param minMapQ the minimum mapping quality a record must have to contribute to a pileup.
-  * @param mappedPairsOnly if true, only allow paired records with both records mapped to contribute to a pileup.
-  * @param includeDuplicates if true, allow records flagged as duplicates to contribute to a pileup.
-  * @param includeSecondaryAlignments if true, allow records flagged as secondary alignments to contribute to a pileup.
-  * @param includeSupplementalAlignments if true, allow records flagged as supplementary alignments to contribute to a pileup.
-  * @param includeMapPositionsOutsideFrInsert if true, include any record of an FR pair where the site requested is outside the insert.
-  */
-class PileupBuilder(
-  val dict: SequenceDictionary,
-  val minMapQ: Int                                = 20,
-  val minBaseQ: Int                               = 20,
-  val mappedPairsOnly: Boolean                    = true,
-  val includeDuplicates: Boolean                  = false,
-  val includeSecondaryAlignments: Boolean         = false,
-  val includeSupplementalAlignments: Boolean      = false,
-  val includeMapPositionsOutsideFrInsert: Boolean = false,
-) {
+/** A trait that all pileup builders must extends. */
+trait PileupBuilder {
+
+  /** The sequence dictionary associated with the records we will pileup. */
+  val dict: SequenceDictionary
+
+  /** The minimum base quality that a base must have to contribute to a pileup. */
+  val minMapQ: Int = DefaultMinMapQ
+
+  /** The minimum mapping quality a record must have to contribute to a pileup. */
+  val minBaseQ: Int = DefaultMinBaseQ
+
+  /** If true, only allow paired records with both records mapped to contribute to a pileup. */
+  val mappedPairsOnly: Boolean = DefaultMappedPairsOnly
+
+  /** If true, allow records flagged as duplicates to contribute to a pileup. */
+  val includeDuplicates: Boolean = DefaultIncludeDuplicates
+
+  /** If true, allow records flagged as secondary alignments to contribute to a pileup. */
+  val includeSecondaryAlignments: Boolean = DefaultIncludeSecondaryAlignments
+
+  /** If true, allow records flagged as supplementary alignments to contribute to a pileup. */
+  val includeSupplementalAlignments: Boolean = DefaultIncludeSupplementalAlignments
+
+  /** If true, include any record of an FR pair where the site requested is outside the insert. */
+  val includeMapPositionsOutsideFrInsert: Boolean = DefaultIncludeMapPositionsOutsideFrInsert
+
+  /** Pileup records at this position. */
+  def pileup(refName: String, pos: Int): Pileup[PileupEntry]
 
   /** Quickly check the SAM record to see if all the simple static per-read filters accept the read. */
   @inline private final def quickAcceptRecord(rec: SamRecord): Boolean = {
@@ -94,10 +180,10 @@ class PileupBuilder(
   }
 
   /** Custom SAM record filters to further filter down pileups made from this builder. */
-  private val recFilters = ArrayBuffer.empty[SamRecord => Boolean]
+  protected val recFilters: ArrayBuffer[SamRecord => Boolean] = ArrayBuffer.empty[SamRecord => Boolean]
 
   /** Custom pileup entry filters to further filter down pileups made from this builder. */
-  private val entryFilters = ArrayBuffer.empty[PileupEntry => Boolean]
+  protected val entryFilters: ArrayBuffer[PileupEntry => Boolean] = ArrayBuffer.empty[PileupEntry => Boolean]
 
   /** Adds a filter to the set of SAM record filters; filters should return true to retain records and false to discard. */
   def withReadFilter(fn: SamRecord => Boolean): PileupBuilder = yieldAndThen(this) { recFilters += fn }
@@ -154,5 +240,21 @@ class PileupBuilder(
       }
 
     Pileup(refName = refName, refIndex = refIndex, pos = pos, pile = pile.result())
+  }
+}
+
+/** A closeable pileup builder that is implemented to refine the types of many self-returning methods. */
+trait CloseablePileupBuilder extends PileupBuilder with Closeable {
+
+  /** Adds a filter to the set of SAM record filters; filters should return true to retain records and false to discard. */
+  override def withReadFilter(fn: SamRecord => Boolean): CloseablePileupBuilder = {
+    super.withReadFilter(fn)
+    this // Implemented to refine the return type.
+  }
+
+  /** Adds a filter to the set of pileup entry filters; filters should return true to retain entries and false to discard. */
+  override def withEntryFilter(fn: PileupEntry => Boolean): CloseablePileupBuilder = {
+    super.withEntryFilter(fn)
+    this // Implemented to refine the return type.
   }
 }
