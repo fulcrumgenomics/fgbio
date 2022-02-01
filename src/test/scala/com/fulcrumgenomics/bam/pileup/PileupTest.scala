@@ -24,6 +24,7 @@
 
 package com.fulcrumgenomics.bam.pileup
 
+import com.fulcrumgenomics.FgBioDef.SafelyClosable
 import com.fulcrumgenomics.bam.api.SamOrder.Coordinate
 import com.fulcrumgenomics.bam.pileup.PileupTest._
 import com.fulcrumgenomics.fasta.{SequenceDictionary, SequenceMetadata}
@@ -56,9 +57,10 @@ class PileupTest extends UnitSpec {
   "BaseEntry" should "report the correct offsets/positions/bases" in {
     val builder = new SamBuilder(readLength = ReadLength, sd = Some(TestSequenceDictionary), baseQuality = 35, sort = Some(Coordinate))
     builder.addPair(name = "q1", start1 = 101, start2 = 201, bases1 = "A" * ReadLength, bases2 = "C" * ReadLength)
-    val source = builder.toSource
 
-    val pile1 = PileupBuilder(source, mappedPairsOnly = true).build(builder.iterator, "chr1", 105)
+    val source1 = builder.toSource
+    val piler1  = PileupBuilder(source1, mappedPairsOnly = true)
+    val pile1   = piler1.pileup(Chr1, 105)
     pile1.depth shouldBe 1
     val p1 = pile1.pile.head.asInstanceOf[BaseEntry]
     p1.base shouldBe 'A'
@@ -67,8 +69,12 @@ class PileupTest extends UnitSpec {
     p1.offset shouldBe 4
     p1.positionInRead shouldBe 5
     p1.positionInReadInReadOrder shouldBe 5
+    source1.safelyClose()
+    piler1.safelyClose()
 
-    val pile2 = PileupBuilder(source, mappedPairsOnly = true).build(builder.iterator, "chr1", 205)
+    val source2 = builder.toSource
+    val piler2  = PileupBuilder(source2, mappedPairsOnly = true)
+    val pile2   = piler2.pileup(Chr1, 205)
     pile2.depth shouldBe 1
     val p2 = pile2.pile.head.asInstanceOf[BaseEntry]
     p2.base shouldBe 'C'
@@ -77,5 +83,7 @@ class PileupTest extends UnitSpec {
     p2.offset shouldBe 4
     p2.positionInRead shouldBe 5
     p2.positionInReadInReadOrder shouldBe 46
+    source2.safelyClose()
+    piler2.safelyClose()
   }
 }

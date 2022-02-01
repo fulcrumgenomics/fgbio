@@ -24,12 +24,13 @@
 
 package com.fulcrumgenomics.coord
 
+import com.fulcrumgenomics.coord.LocatableOrderingTest._
 import com.fulcrumgenomics.fasta.{SequenceDictionary, SequenceMetadata}
 import com.fulcrumgenomics.testing.UnitSpec
 import htsjdk.samtools.util.{Interval, Locatable}
 
-/** Unit tests for [[LocatableOrdering]]. */
-class LocatableOrderingTest extends UnitSpec {
+/** Companion object for [[LocatableOrderingTest]]. */
+object LocatableOrderingTest {
 
   /** The reference sequence name for chromosome 1. */
   private val Chr1: String = "chr1"
@@ -42,6 +43,10 @@ class LocatableOrderingTest extends UnitSpec {
 
   /** The ordering of the given <Dict>. */
   private val Ordering: Ordering[Locatable] = LocatableOrdering(Dict)
+}
+
+/** Unit tests for [[LocatableOrdering]]. */
+class LocatableOrderingTest extends UnitSpec {
 
   "LocatableOrdering" should "know when two locatables are equivalent" in {
     val interval1 = new Interval(Chr1, 1, 1)

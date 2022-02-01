@@ -109,14 +109,14 @@ import scala.collection.immutable.ListMap
       |## Performance Expectations
       |
       |By default `--access-pattern` will be set to `RandomAccess` and the input BAM will be queried using index-based
-      |random access. Random access is mandatory if the input VCF is not coordinate sorted. If random access is
+      |random access. Random access is mandatory if the input VCF is not coordinate sorted. If random access is not
       |requested and the input VCF is not coordinate sorted, then an exception will be raised on the first
       |non-coordinate increasing VCF record found.
       |
       |Often, a VCF file will contain a sparse set of records that are scattered across a given territory within a
       |genome (or the records will be sparsely scattered genome-wide). If the territory of the VCF records is markedly
       |smaller than the territory of all aligned SAM records in the BAM file, then random access may be the most
-      |efficient BAM  access pattern. However, there are cases where random access will be less efficient such as when
+      |efficient BAM access pattern. However, there are cases where random access will be less efficient such as when
       |the VCF is coordinate sorted and the variant call records are very densely packed across a similar territory as
       |compared to all aligned SAM records. Such a case is common in deeply sequenced hybrid selection NGS experiments
       |and setting `--access-pattern` to `Streaming` will often be the most efficient BAM access pattern.
@@ -130,7 +130,7 @@ import scala.collection.immutable.ListMap
   @arg(flag = 'm', doc = "Minimum mapping quality for reads.")          val minMappingQuality: Int   = 20,
   @arg(flag = 'q', doc = "Minimum base quality.")                       val minBaseQuality: Int      = 20,
   @arg(flag = 'p', doc = "Use only paired reads mapped in pairs.")      val pairedReadsOnly: Boolean = false,
-  @arg(flag = 'R', doc = "The type of BAM access to use.")              val accessPattern: BamAccessPattern = RandomAccess,
+  @arg(flag = 'A', doc = "The type of BAM access to use.")              val accessPattern: BamAccessPattern = RandomAccess,
   @arg(doc = "Distance from 5-prime end of read to implicate A-base addition artifacts. Set to :none: to deactivate the filter.")
   val aTailingDistance: Option[Int] = Some(2),
   @arg(doc = "Minimum acceptable p-value for the A-base addition artifact test.")
@@ -140,6 +140,9 @@ import scala.collection.immutable.ListMap
   @arg(doc = "Minimum acceptable p-value for the end repair fill-in artifact test.")
   val endRepairFillInPValue: Option[Double] = None
 ) extends FgBioTool with LazyLogging {
+  Io.assertReadable(input)
+  Io.assertReadable(bam)
+  Io.assertCanWriteFile(output)
 
   /** All somatic variant filters that will be applied to the input VCF. If none are set, a warning will be logged. */
   private val somaticFilters: Seq[ReadEndSomaticVariantFilter] = Seq.empty ++
@@ -149,9 +152,6 @@ import scala.collection.immutable.ListMap
 
   /** Execute the tool [[FilterSomaticVcf]]. */
   override def execute(): Unit = {
-    Io.assertReadable(input)
-    Io.assertReadable(bam)
-    Io.assertCanWriteFile(output)
     val records  = SamSource(bam)
     val source   = VcfSource(input)
     val progress = ProgressLogger(logger = logger, noun = "variants", verb = "written", unit = 1000)
@@ -195,10 +195,10 @@ import scala.collection.immutable.ListMap
       writer.write(updated)
     }
 
-    progress.logLast()
     piler.safelyClose()
     records.safelyClose()
     source.safelyClose()
     writer.close()
+    progress.logLast()
   }
 }

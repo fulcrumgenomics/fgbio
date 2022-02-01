@@ -33,6 +33,7 @@ import com.fulcrumgenomics.coord.LocatableOrdering
 import com.fulcrumgenomics.fasta.SequenceDictionary
 import htsjdk.samtools.util.{Interval, Locatable}
 
+import java.io.Closeable
 import scala.collection.mutable
 import scala.language.reflectiveCalls
 
@@ -110,7 +111,7 @@ class StreamingPileupBuilder private(
   override val includeMapPositionsOutsideFrInsert: Boolean = DefaultIncludeMapPositionsOutsideFrInsert,
   initialCacheSize: Int                                    = DefaultInitialCacheSize,
   source: => Option[{ def close(): Unit }]                 = None,
-) extends CloseablePileupBuilder {
+) extends PileupBuilder with Closeable {
   import com.fulcrumgenomics.bam.pileup.StreamingPileupBuilder.LocatablePileup
 
   /** Whether this builder is able to pileup more records from the input iterator of SAM records or not. */
@@ -180,5 +181,5 @@ class StreamingPileupBuilder private(
   }
 
   /** Close this pileup builder and clear internal state so that all object references can be garbage collected. */
-  override def close(): Unit = { source.foreach(_.close()); cache.clear(); lastPileup = None; closed = true }
+  override def close(): Unit = { closed = true; source.foreach(_.close()); cache.clear(); lastPileup = None }
 }

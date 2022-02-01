@@ -50,8 +50,8 @@ case class Pileup[A <: PileupEntry](refName: String, refIndex: Int, pos: Int, pi
   def withoutOverlaps: Pileup[A] = {
     val builder = IndexedSeq.newBuilder[A]
     val names   = mutable.HashSet.empty[String]
-    names.sizeHint(this.pile.length)
-    this.pile.foreach { p => if (names.add(p.rec.name)) builder += p }
+    names.sizeHint(pile.length)
+    pile.foreach { p => if (names.add(p.rec.name)) builder += p }
     copy(pile = builder.result())
   }
 

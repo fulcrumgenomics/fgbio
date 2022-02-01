@@ -132,11 +132,13 @@ class ReadEndSomaticVariantFilterTest extends UnitSpec {
 
     val refName     = builder.dict(0).name
     val source      = builder.toSource
-    val pile        = PileupBuilder(source, accessPattern=Streaming, mappedPairsOnly=false).build(builder.iterator, refName, 25)
+    val piler       = PileupBuilder(source, accessPattern=Streaming, mappedPairsOnly=false)
+    val pile        = piler.pileup(refName, 25)
     val annotations = filter.annotations(pile, singleGenotype("G", "T"))
     annotations.contains(filter.readEndInfoLine.id) shouldBe true
     annotations(filter.readEndInfoLine.id).asInstanceOf[Double] should be > 0.5
     source.safelyClose()
+    piler.safelyClose()
   }
 
   it should "compute a significant p-value when data is heavily biased" in {
@@ -156,11 +158,13 @@ class ReadEndSomaticVariantFilterTest extends UnitSpec {
 
     val refName     = builder.dict(0).name
     val source      = builder.toSource
-    val pile        = PileupBuilder(source, accessPattern=Streaming, mappedPairsOnly=false).build(builder.iterator, refName, 25)
+    val piler       = PileupBuilder(source, accessPattern=Streaming, mappedPairsOnly=false)
+    val pile        = piler.pileup(refName, 25)
     val annotations = filter.annotations(pile, singleGenotype("G", "T"))
     annotations.contains(filter.readEndInfoLine.id) shouldBe true
     annotations(filter.readEndInfoLine.id).asInstanceOf[Double] should be < 1e-6
     source.safelyClose()
+    piler.safelyClose()
   }
 
 
@@ -240,11 +244,13 @@ class ReadEndSomaticVariantFilterTest extends UnitSpec {
 
     val refName     = builder.dict(0).name
     val source      = builder.toSource
-    val pile        = PileupBuilder(source, accessPattern=Streaming, mappedPairsOnly=false).build(builder.iterator, refName, 25)
+    val piler       = PileupBuilder(source, accessPattern=Streaming, mappedPairsOnly=false)
+    val pile        = piler.pileup(refName, 25)
     val annotations = filter.annotations(pile, singleGenotype("G", "T"))
     annotations.contains(filter.readEndInfoLine.id) shouldBe true
     annotations(filter.readEndInfoLine.id).asInstanceOf[Double] should be > 0.5
     source.safelyClose()
+    piler.safelyClose()
   }
 
   it should "compute a significant p-value when data is heavily biased" in {
@@ -264,10 +270,13 @@ class ReadEndSomaticVariantFilterTest extends UnitSpec {
 
     val refName     = builder.dict(0).name
     val source      = builder.toSource
-    val pile        = PileupBuilder(source, accessPattern=Streaming, mappedPairsOnly=false).build(builder.iterator, refName, 25)
+    val piler       = PileupBuilder(source, accessPattern=Streaming, mappedPairsOnly=false)
+    val pile        = piler.pileup(refName, 25)
     val annotations = filter.annotations(pile, singleGenotype("G", "T"))
     annotations.contains(filter.readEndInfoLine.id) shouldBe true
     annotations(filter.readEndInfoLine.id).asInstanceOf[Double] should be < 1e-6
+    source.safelyClose()
+    piler.safelyClose()
   }
 
   it should "compute an intermediate p-value when data is heavily biased for both ref and alt" in {
@@ -287,11 +296,13 @@ class ReadEndSomaticVariantFilterTest extends UnitSpec {
 
     val refName     = builder.dict(0).name
     val source      = builder.toSource
-    val pile        = PileupBuilder(source, accessPattern=Streaming, mappedPairsOnly=false).build(builder.iterator, refName, 25)
+    val piler       = PileupBuilder(source, accessPattern=Streaming, mappedPairsOnly=false)
+    val pile        = piler.pileup(refName, 25)
     val annotations = filter.annotations(pile, singleGenotype("G", "T"))
     annotations.contains(filter.readEndInfoLine.id) shouldBe true
     annotations(filter.readEndInfoLine.id).asInstanceOf[Double] should be < 1e-4
     source.safelyClose()
+    piler.safelyClose()
   }
 
   it should "not throw an exception if there is no alt allele coverage or the pileup is empty" in {
@@ -301,10 +312,12 @@ class ReadEndSomaticVariantFilterTest extends UnitSpec {
 
     { // Test with just an empty pileup
       val source      = builder.toSource
-      val pile        = PileupBuilder(source, accessPattern=RandomAccess, mappedPairsOnly = false).build(builder.iterator, refName, 25)
+      val piler       = PileupBuilder(source, accessPattern=RandomAccess, mappedPairsOnly = false)
+      val pile        = piler.pileup(refName, 25)
       val annotations = filter.annotations(pile, singleGenotype("G", "T"))
       annotations.contains(filter.readEndInfoLine.id) shouldBe true
       source.safelyClose()
+      piler.safelyClose()
     }
 
     { // And again with just a bunch of ref allele
@@ -312,10 +325,12 @@ class ReadEndSomaticVariantFilterTest extends UnitSpec {
         builder.addFrag(start = start, strand = strand, bases = "G" * 50)
       }
       val source      = builder.toSource
-      val pile        = PileupBuilder(source, accessPattern=RandomAccess, mappedPairsOnly = false).build(builder.iterator, refName, 25)
+      val piler       = PileupBuilder(source, accessPattern=RandomAccess, mappedPairsOnly = false)
+      val pile        = piler.pileup(refName, 25)
       val annotations = filter.annotations(pile, singleGenotype("G", "T"))
       annotations.contains(filter.readEndInfoLine.id) shouldBe true
       source.safelyClose()
+      piler.safelyClose()
     }
   }
 }

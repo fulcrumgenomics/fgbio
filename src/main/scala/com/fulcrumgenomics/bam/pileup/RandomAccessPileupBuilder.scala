@@ -29,6 +29,8 @@ import com.fulcrumgenomics.bam.api.SamSource
 import com.fulcrumgenomics.bam.pileup.PileupBuilder._
 import com.fulcrumgenomics.fasta.SequenceDictionary
 
+import java.io.Closeable
+
 /** Companion object for [[RandomAccessPileupBuilder]]. */
 object RandomAccessPileupBuilder {
 
@@ -77,7 +79,7 @@ class RandomAccessPileupBuilder private(
   override val includeSecondaryAlignments: Boolean         = DefaultIncludeSecondaryAlignments,
   override val includeSupplementalAlignments: Boolean      = DefaultIncludeSupplementalAlignments,
   override val includeMapPositionsOutsideFrInsert: Boolean = DefaultIncludeMapPositionsOutsideFrInsert,
-) extends CloseablePileupBuilder {
+) extends PileupBuilder with Closeable {
 
   /** The sequence dictionary associated with the records we will pileup. */
   override val dict: SequenceDictionary = source.dict

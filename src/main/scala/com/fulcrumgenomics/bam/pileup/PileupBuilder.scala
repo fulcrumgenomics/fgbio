@@ -64,7 +64,7 @@ object PileupBuilder {
   /** A trait that all enumerations of BAM access pattern must extend. */
   sealed trait BamAccessPattern extends EnumEntry
 
-  /** The various types of BAM pileup access patterns */
+  /** The various types of BAM access patterns. */
   object BamAccessPattern extends FgBioEnum[BamAccessPattern] {
     override def values: IndexedSeq[BamAccessPattern] = findValues
 
@@ -86,31 +86,27 @@ object PileupBuilder {
     includeSecondaryAlignments: Boolean         = DefaultIncludeSecondaryAlignments,
     includeSupplementalAlignments: Boolean      = DefaultIncludeSupplementalAlignments,
     includeMapPositionsOutsideFrInsert: Boolean = DefaultIncludeMapPositionsOutsideFrInsert,
-  ): CloseablePileupBuilder = {
-    accessPattern match {
-      case RandomAccess =>
-        RandomAccessPileupBuilder(
-          source                             = source,
-          minMapQ                            = minMapQ,
-          minBaseQ                           = minBaseQ,
-          mappedPairsOnly                    = mappedPairsOnly,
-          includeDuplicates                  = includeDuplicates,
-          includeSecondaryAlignments         = includeSecondaryAlignments,
-          includeSupplementalAlignments      = includeSupplementalAlignments,
-          includeMapPositionsOutsideFrInsert = includeMapPositionsOutsideFrInsert,
-        )
-      case Streaming =>
-        StreamingPileupBuilder(
-          source                             = source,
-          minMapQ                            = minMapQ,
-          minBaseQ                           = minBaseQ,
-          mappedPairsOnly                    = mappedPairsOnly,
-          includeDuplicates                  = includeDuplicates,
-          includeSecondaryAlignments         = includeSecondaryAlignments,
-          includeSupplementalAlignments      = includeSupplementalAlignments,
-          includeMapPositionsOutsideFrInsert = includeMapPositionsOutsideFrInsert,
-        )
-    }
+  ): PileupBuilder with Closeable = accessPattern match {
+    case RandomAccess => RandomAccessPileupBuilder(
+      source                             = source,
+      minMapQ                            = minMapQ,
+      minBaseQ                           = minBaseQ,
+      mappedPairsOnly                    = mappedPairsOnly,
+      includeDuplicates                  = includeDuplicates,
+      includeSecondaryAlignments         = includeSecondaryAlignments,
+      includeSupplementalAlignments      = includeSupplementalAlignments,
+      includeMapPositionsOutsideFrInsert = includeMapPositionsOutsideFrInsert,
+    )
+    case Streaming => StreamingPileupBuilder(
+      source                             = source,
+      minMapQ                            = minMapQ,
+      minBaseQ                           = minBaseQ,
+      mappedPairsOnly                    = mappedPairsOnly,
+      includeDuplicates                  = includeDuplicates,
+      includeSecondaryAlignments         = includeSecondaryAlignments,
+      includeSupplementalAlignments      = includeSupplementalAlignments,
+      includeMapPositionsOutsideFrInsert = includeMapPositionsOutsideFrInsert,
+    )
   }
 
   /** Returns true if <rec> is in a mapped FR pair but the position <pos> is outside the insert coordinates of <rec>.
@@ -126,7 +122,7 @@ object PileupBuilder {
 
   /** Returns true if the first non-clipping operator is an insertion. */
   private def startsWithInsertion(rec: SamRecord): Boolean = {
-    rec.cigar.find(c => !c.operator.isClipping).exists(_.operator == Insertion)
+    rec.cigar.find(elem => !elem.operator.isClipping).exists(_.operator == Insertion)
   }
 }
 
@@ -171,7 +167,7 @@ trait PileupBuilder {
     compare
   }
 
-  /** Quickly check the pileup entry to see if all the simple static per-base filters accept the read. */
+  /** Quickly check the pileup entry to see if all the simple static per-base filters accept the entry. */
   @inline private final def quickAcceptEntry(entry: PileupEntry): Boolean = {
     entry match {
       case p: BaseEntry => p.qual >= minBaseQ
@@ -186,10 +182,10 @@ trait PileupBuilder {
   protected val entryFilters: ArrayBuffer[PileupEntry => Boolean] = ArrayBuffer.empty[PileupEntry => Boolean]
 
   /** Adds a filter to the set of SAM record filters; filters should return true to retain records and false to discard. */
-  def withReadFilter(fn: SamRecord => Boolean): PileupBuilder = yieldAndThen(this) { recFilters += fn }
+  def withReadFilter(fn: SamRecord => Boolean): this.type = { recFilters.addOne(fn); this }
 
   /** Adds a filter to the set of pileup entry filters; filters should return true to retain entries and false to discard. */
-  def withEntryFilter(fn: PileupEntry => Boolean): PileupBuilder = yieldAndThen(this) { entryFilters += fn }
+  def withEntryFilter(fn: PileupEntry => Boolean): this.type = { entryFilters.addOne(fn); this }
 
   /** Checks to see if all SAM record filters accept the record. */
   protected def acceptRecord(rec: SamRecord): Boolean = quickAcceptRecord(rec) && recFilters.forall(fn => fn(rec))
@@ -203,7 +199,7 @@ trait PileupBuilder {
     * @param refName the name of the reference sequence on which the position resides
     * @param pos the 1-based position on the reference sequence at which to construct the pileup
     */
-  def build(recs: IterableOnce[SamRecord], refName: String, pos: Int): Pileup[PileupEntry] = {
+  protected def build(recs: IterableOnce[SamRecord], refName: String, pos: Int): Pileup[PileupEntry] = {
     val refIndex = dict(refName).index.ensuring(_ >= 0, s"Unknown reference sequence name: $refName")
     val pile     = IndexedSeq.newBuilder[PileupEntry]
     if (recs.knownSize >= 0) pile.sizeHint(pile.knownSize)
@@ -240,21 +236,5 @@ trait PileupBuilder {
       }
 
     Pileup(refName = refName, refIndex = refIndex, pos = pos, pile = pile.result())
-  }
-}
-
-/** A closeable pileup builder that is implemented to refine the types of many self-returning methods. */
-trait CloseablePileupBuilder extends PileupBuilder with Closeable {
-
-  /** Adds a filter to the set of SAM record filters; filters should return true to retain records and false to discard. */
-  override def withReadFilter(fn: SamRecord => Boolean): CloseablePileupBuilder = {
-    super.withReadFilter(fn)
-    this // Implemented to refine the return type.
-  }
-
-  /** Adds a filter to the set of pileup entry filters; filters should return true to retain entries and false to discard. */
-  override def withEntryFilter(fn: PileupEntry => Boolean): CloseablePileupBuilder = {
-    super.withEntryFilter(fn)
-    this // Implemented to refine the return type.
   }
 }

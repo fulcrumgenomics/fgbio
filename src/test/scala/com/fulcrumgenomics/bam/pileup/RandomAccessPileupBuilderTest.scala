@@ -39,12 +39,6 @@ object RandomAccessPileupBuilderTest {
   /** The reference sequence index for chromosome 1. */
   private val Chr1Index: Int = 0
 
-  /** The name for chromosome 2. */
-  private val Chr2: String = "chr2"
-
-  /** The reference sequence index for chromosome 2. */
-  private val Chr2Index: Int = 1
-
   /** The read length to use for most tests. */
   private val ReadLength: Int = 50
 
@@ -53,10 +47,7 @@ object RandomAccessPileupBuilderTest {
 
   /** The custom SAM/BAM sequence dictionary to use for all tests. */
   private val TestSequenceDictionary: SequenceDictionary = {
-    SequenceDictionary(
-      SequenceMetadata(Chr1, SmallContigSequence.length, index = Chr1Index),
-      SequenceMetadata(Chr2, SmallContigSequence.length, index = Chr2Index),
-    )
+    SequenceDictionary(SequenceMetadata(Chr1, SmallContigSequence.length, index = Chr1Index))
   }
 }
 
