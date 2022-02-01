@@ -36,7 +36,8 @@ import scala.collection.mutable.ArrayBuffer
 object PileupBuilder {
 
   /** Returns true if <rec> is in a mapped FR pair but the position <pos> is outside the insert coordinates of <rec>.
-    * Returns false if <rec> is in a mapped FR pair and the position <pos> is inside the insert coordinates of <rec>.
+    * Returns false if <rec> is in a mapped FR pair and the position <pos> is inside the insert coordinates of <rec> or
+    * <rec> is not in a mapped FR pair.
     */
   private def positionIsOutsideFrInsert(rec: SamRecord, refIndex: Int, pos: Int): Boolean = {
     rec.isFrPair && {
@@ -45,7 +46,7 @@ object PileupBuilder {
     }
   }
 
-  /** Returns true if the read is mapped and the first non-clipping operator is an insertion. */
+  /** Returns true if the first non-clipping operator is an insertion. */
   private def startsWithInsertion(rec: SamRecord): Boolean = {
     rec.cigar.find(c => !c.operator.isClipping).exists(_.operator == Insertion)
   }
