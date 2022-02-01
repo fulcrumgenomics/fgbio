@@ -39,6 +39,9 @@ import scala.language.reflectiveCalls
 /** Companion object for [[StreamingPileupBuilder]]. */
 object StreamingPileupBuilder {
 
+  /** The default initial cache size for pre-allocating an array for a pileup of reads. Set to 300x coverage by default. */
+  val DefaultInitialCacheSize: Int = 300
+
   /** Build a streaming pileup builder from a coordinate sorted SAM source. */
   def apply(
     source: SamSource,
@@ -66,9 +69,6 @@ object StreamingPileupBuilder {
       source                             = Some(iterator)
     )
   }
-
-  /** The default initial cache size for pre-allocating an array for a pileup of reads. Set to 300x coverage by default. */
-  val DefaultInitialCacheSize: Int = 300
 
   /** Helper class to ensure pileups are locatable and can be used in coordinate comparison and ordering. */
   private implicit class LocatablePileup(pileup: Pileup[PileupEntry]) extends Locatable {
