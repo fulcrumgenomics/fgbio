@@ -120,6 +120,15 @@ class StreamingPileupBuilder private(
   /** The last pileup we built over the input SAM records and is cached to save time if the locus is re-requested. */
   private var lastPileup: Option[Pileup[PileupEntry]] = None
 
+  /** A genomic ordering for any locatable that utilizes the sequence dictionary corresponding to the input records. */
+  private val byCoordinate: Ordering[Locatable] = LocatableOrdering(dict)
+
+  /** Records that we've accumulated that could overlap another coordinate-advancing call to <advanceTo>. */
+  private val cache: mutable.ArrayBuffer[SamRecord] = new mutable.ArrayBuffer[SamRecord](initialCacheSize)
+
+  /** The underlying buffered stream of input SAM records which is lazily summoned. */
+  private lazy val underlying: Iterator[SamRecord] = records.filter(_.mapped).bufferBetter
+
   /** Advance this builder to the next requested locus and add all possibly overlapping records to the cache. */
   @inline private def seekAndFillCache(refIndex: Int, pos: Int): Unit = {
     // Drop records up until the next record stands a chance of overlapping the requested locus. Then, take records up
@@ -134,15 +143,6 @@ class StreamingPileupBuilder private(
       .filter(rec => rec.end >= pos)
     cache.addAll(maybeOverlapping)
   }
-
-  /** A genomic ordering for any locatable that utilizes the sequence dictionary corresponding to the input records. */
-  private val byCoordinate: Ordering[Locatable] = LocatableOrdering(dict)
-
-  /** Records that we've accumulated that could overlap another coordinate-advancing call to <advanceTo>. */
-  private val cache: mutable.ArrayBuffer[SamRecord] = new mutable.ArrayBuffer[SamRecord](initialCacheSize)
-
-  /** The underlying buffered stream of input SAM records which is lazily summoned. */
-  private lazy val underlying: Iterator[SamRecord] = records.filter(_.mapped).bufferBetter
 
   /** Efficiently advance to the next coordinate-maintaining or coordinate-advancing locus and build a pileup there. */
   def pileup(refName: String, pos: Int): Pileup[PileupEntry] = {
