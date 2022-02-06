@@ -199,6 +199,21 @@ class GroupReadsByUmiTest extends UnitSpec with OptionValues with PrivateMethodT
     templates.map(t => tool invokePrivate umiForRead(t)) should contain theSameElementsInOrderAs expected
   }
 
+  "GroupReads.ReadInfo" should "extract the same ReadEnds from a Template as from an R1 with mate cigar" in {
+    val builder = new SamBuilder(readLength=100, sort=None)
+    val Seq(r1, r2) = builder.addPair(contig=2, contig2=Some(1), start1=300, start2=400, cigar1="10S90M", cigar2="90M10S")
+    val template    = Template(r1=Some(r1), r2=Some(r2))
+
+    val tReadInfo = ReadInfo(template)
+    val rReadInfo = ReadInfo(r1)
+    rReadInfo shouldBe tReadInfo
+
+    tReadInfo.refIndex1 shouldBe 1
+    tReadInfo.start1    shouldBe 499
+    tReadInfo.refIndex2 shouldBe 2
+    tReadInfo.start2    shouldBe 290
+  }
+
   // Test for running the GroupReadsByUmi command line program with some sample input
   "GroupReadsByUmi" should "group reads correctly" in {
     val builder = new SamBuilder(readLength=100, sort=Some(SamOrder.Coordinate))
@@ -206,20 +221,28 @@ class GroupReadsByUmiTest extends UnitSpec with OptionValues with PrivateMethodT
     builder.addPair(name="a02", start1=100, start2=300, attrs=Map("RX" -> "AAAAgAAA"))
     builder.addPair(name="a03", start1=100, start2=300, attrs=Map("RX" -> "AAAAAAAA"))
     builder.addPair(name="a04", start1=100, start2=300, attrs=Map("RX" -> "AAAAAAAt"))
-    builder.addPair(name="a05", start1=100, start2=300, unmapped2=true, attrs=Map("RX" -> "AAAAAAAt"))
-    builder.addPair(name="a06", start1=100, start2=300, mapq1=5)
+    builder.addPair(name="b01", start1=100, start2=100, unmapped2=true, attrs=Map("RX" -> "AAAAAAAt"))
+    builder.addPair(name="c01", start1=100, start2=300, mapq1=5)
 
     val in  = builder.toTempFile()
     val out = Files.createTempFile("umi_grouped.", ".sam")
     val hist = Files.createTempFile("umi_grouped.", ".histogram.txt")
-    new GroupReadsByUmi(input=in, output=out, familySizeHistogram=Some(hist), rawTag="RX", assignTag="MI", strategy=Strategy.Edit, edits=1).execute()
+    new GroupReadsByUmi(input=in, output=out, familySizeHistogram=Some(hist), rawTag="RX", assignTag="MI", strategy=Strategy.Edit, edits=1, minMapQ=30).execute()
 
     val groups = readBamRecs(out).groupBy(_.name.charAt(0))
 
-    // Group A: Read 5 out for unmapped mate, 6 out for low mapq, 1-4 all passed through into one umi group
+    // Group A: 1-4 all passed through into one umi group
     groups('a') should have size 4*2
     groups('a').map(_.name).toSet shouldEqual Set("a01", "a02", "a03", "a04")
     groups('a').map(r => r[String]("MI")).toSet should have size 1
+
+    // 5 separated out into another group due to unmapped mate
+    groups('b') should have size 2
+    groups('b').map(r => r[String]("MI")).toSet should have size 1
+    groups('b').map(r => r[String]("MI")).head should not be groups('a').map(r => r[String]("MI")).head
+
+    // 6 out for low mapq,
+    groups.contains('c') shouldBe false
 
     hist.toFile.exists() shouldBe true
   }

@@ -65,6 +65,13 @@ class TransientAttrs(private val rec: SamRecord) {
     case null => default
     case value => value.asInstanceOf[A]
   }
+  def getOrElseUpdate[A](key: Any, default: => A): A = rec.asSam.getTransientAttribute(key) match {
+    case null  =>
+      val value: A = default
+      update(key, value)
+      value
+    case value => value.asInstanceOf[A]
+  }
 }
 
 /**

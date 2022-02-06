@@ -334,7 +334,7 @@ trait UmiConsensusCaller[ConsensusRead <: SimpleRead] {
     *
     * NOTE: filtered out reads are sent to the [[rejectRecords]] method and do not need further handling
     */
-  protected[umi] def filterToMostCommonAlignment(recs: Seq[SourceRead]): Seq[SourceRead] = {
+  protected[umi] def filterToMostCommonAlignment(recs: Seq[SourceRead]): Seq[SourceRead] = if (recs.size < 2) recs else {
     val groups = new ArrayBuffer[AlignmentGroup]
     val sorted = recs.sortBy(r => -r.length).toIndexedSeq
 
