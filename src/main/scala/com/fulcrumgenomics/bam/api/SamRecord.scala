@@ -227,7 +227,7 @@ trait SamRecord {
   @inline final def remove(name: String): Unit                   = setAttribute(name, null)
 
   // transient attributes
-  @inline final def transientAttrs: TransientAttrs = new TransientAttrs(this)
+  @inline final val transientAttrs: TransientAttrs = new TransientAttrs(this)
 
   // TODO long-term: replace these two methods with methods on [[Cigar]] to save creating alignment blocks in memory
   @inline final def refPosAtReadPos(pos: Int) = getReferencePositionAtReadPosition(pos)
