@@ -37,13 +37,13 @@ object RandomAccessPileupBuilder {
   /** Build a random access pileup builder from an indexed SAM source. */
   def apply(
     source: SamSource,
-    minMapQ: Int                                = DefaultMinMapQ,
-    minBaseQ: Int                               = DefaultMinBaseQ,
-    mappedPairsOnly: Boolean                    = DefaultMappedPairsOnly,
-    includeDuplicates: Boolean                  = DefaultIncludeDuplicates,
-    includeSecondaryAlignments: Boolean         = DefaultIncludeSecondaryAlignments,
-    includeSupplementalAlignments: Boolean      = DefaultIncludeSupplementalAlignments,
-    includeMapPositionsOutsideFrInsert: Boolean = DefaultIncludeMapPositionsOutsideFrInsert,
+    minMapQ: Int                                = PileupDefaults.minMapQ,
+    minBaseQ: Int                               = PileupDefaults.minBaseQ,
+    mappedPairsOnly: Boolean                    = PileupDefaults.mappedPairsOnly,
+    includeDuplicates: Boolean                  = PileupDefaults.includeDuplicates,
+    includeSecondaryAlignments: Boolean         = PileupDefaults.includeSecondaryAlignments,
+    includeSupplementalAlignments: Boolean      = PileupDefaults.includeSupplementalAlignments,
+    includeMapPositionsOutsideFrInsert: Boolean = PileupDefaults.includeMapPositionsOutsideFrInsert,
   ): RandomAccessPileupBuilder = {
     require(source.indexed, "SAM source must be indexed for random access!")
     new RandomAccessPileupBuilder(
@@ -72,13 +72,13 @@ object RandomAccessPileupBuilder {
   */
 class RandomAccessPileupBuilder private(
   source: SamSource,
-  override val minMapQ: Int                                = DefaultMinMapQ,
-  override val minBaseQ: Int                               = DefaultMinBaseQ,
-  override val mappedPairsOnly: Boolean                    = DefaultMappedPairsOnly,
-  override val includeDuplicates: Boolean                  = DefaultIncludeDuplicates,
-  override val includeSecondaryAlignments: Boolean         = DefaultIncludeSecondaryAlignments,
-  override val includeSupplementalAlignments: Boolean      = DefaultIncludeSupplementalAlignments,
-  override val includeMapPositionsOutsideFrInsert: Boolean = DefaultIncludeMapPositionsOutsideFrInsert,
+  override val minMapQ: Int                                = PileupDefaults.minMapQ,
+  override val minBaseQ: Int                               = PileupDefaults.minBaseQ,
+  override val mappedPairsOnly: Boolean                    = PileupDefaults.mappedPairsOnly,
+  override val includeDuplicates: Boolean                  = PileupDefaults.includeDuplicates,
+  override val includeSecondaryAlignments: Boolean         = PileupDefaults.includeSecondaryAlignments,
+  override val includeSupplementalAlignments: Boolean      = PileupDefaults.includeSupplementalAlignments,
+  override val includeMapPositionsOutsideFrInsert: Boolean = PileupDefaults.includeMapPositionsOutsideFrInsert,
 ) extends PileupBuilder with Closeable {
 
   /** The sequence dictionary associated with the records we will pileup. */

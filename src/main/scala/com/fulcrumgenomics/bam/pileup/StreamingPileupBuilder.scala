@@ -46,13 +46,13 @@ object StreamingPileupBuilder {
   /** Build a streaming pileup builder from a coordinate sorted SAM source. */
   def apply(
     source: SamSource,
-    minMapQ: Int                                = DefaultMinMapQ,
-    minBaseQ: Int                               = DefaultMinBaseQ,
-    mappedPairsOnly: Boolean                    = DefaultMappedPairsOnly,
-    includeDuplicates: Boolean                  = DefaultIncludeDuplicates,
-    includeSecondaryAlignments: Boolean         = DefaultIncludeSecondaryAlignments,
-    includeSupplementalAlignments: Boolean      = DefaultIncludeSupplementalAlignments,
-    includeMapPositionsOutsideFrInsert: Boolean = DefaultIncludeMapPositionsOutsideFrInsert,
+    minMapQ: Int                                = PileupDefaults.minMapQ,
+    minBaseQ: Int                               = PileupDefaults.minBaseQ,
+    mappedPairsOnly: Boolean                    = PileupDefaults.mappedPairsOnly,
+    includeDuplicates: Boolean                  = PileupDefaults.includeDuplicates,
+    includeSecondaryAlignments: Boolean         = PileupDefaults.includeSecondaryAlignments,
+    includeSupplementalAlignments: Boolean      = PileupDefaults.includeSupplementalAlignments,
+    includeMapPositionsOutsideFrInsert: Boolean = PileupDefaults.includeMapPositionsOutsideFrInsert,
     initialCacheSize: Int                       = DefaultInitialCacheSize,
   ): StreamingPileupBuilder = {
     require(SamOrder(source.header).contains(Coordinate), "SAM source must be coordinate sorted!")
@@ -102,29 +102,29 @@ object StreamingPileupBuilder {
 class StreamingPileupBuilder private(
   records: => Iterator[SamRecord],
   override val dict: SequenceDictionary,
-  override val minMapQ: Int                                = DefaultMinMapQ,
-  override val minBaseQ: Int                               = DefaultMinBaseQ,
-  override val mappedPairsOnly: Boolean                    = DefaultMappedPairsOnly,
-  override val includeDuplicates: Boolean                  = DefaultIncludeDuplicates,
-  override val includeSecondaryAlignments: Boolean         = DefaultIncludeSecondaryAlignments,
-  override val includeSupplementalAlignments: Boolean      = DefaultIncludeSupplementalAlignments,
-  override val includeMapPositionsOutsideFrInsert: Boolean = DefaultIncludeMapPositionsOutsideFrInsert,
+  override val minMapQ: Int                                = PileupDefaults.minMapQ,
+  override val minBaseQ: Int                               = PileupDefaults.minBaseQ,
+  override val mappedPairsOnly: Boolean                    = PileupDefaults.mappedPairsOnly,
+  override val includeDuplicates: Boolean                  = PileupDefaults.includeDuplicates,
+  override val includeSecondaryAlignments: Boolean         = PileupDefaults.includeSecondaryAlignments,
+  override val includeSupplementalAlignments: Boolean      = PileupDefaults.includeSupplementalAlignments,
+  override val includeMapPositionsOutsideFrInsert: Boolean = PileupDefaults.includeMapPositionsOutsideFrInsert,
   initialCacheSize: Int                                    = DefaultInitialCacheSize,
   source: => Option[{ def close(): Unit }]                 = None,
 ) extends PileupBuilder with Closeable {
   import com.fulcrumgenomics.bam.pileup.StreamingPileupBuilder.LocatablePileup
 
+  /** Records that we've accumulated that could overlap another coordinate-advancing call to <advanceTo>. */
+  private val cache: mutable.ArrayBuffer[SamRecord] = new mutable.ArrayBuffer[SamRecord](initialCacheSize)
+
   /** Whether this builder is able to pileup more records from the input iterator of SAM records or not. */
   private var closed: Boolean = false
-
-  /** The last pileup we built over the input SAM records and is cached to save time if the locus is re-requested. */
-  private var lastPileup: Option[Pileup[PileupEntry]] = None
 
   /** A genomic ordering for any locatable that utilizes the sequence dictionary corresponding to the input records. */
   private val byCoordinate: Ordering[Locatable] = LocatableOrdering(dict)
 
-  /** Records that we've accumulated that could overlap another coordinate-advancing call to <advanceTo>. */
-  private val cache: mutable.ArrayBuffer[SamRecord] = new mutable.ArrayBuffer[SamRecord](initialCacheSize)
+  /** The last pileup we built over the input SAM records and is cached to save time if the locus is re-requested. */
+  private var lastPileup: Option[Pileup[PileupEntry]] = None
 
   /** The underlying buffered stream of input SAM records which is lazily summoned. */
   private lazy val underlying: Iterator[SamRecord] = records.filter(_.mapped).bufferBetter

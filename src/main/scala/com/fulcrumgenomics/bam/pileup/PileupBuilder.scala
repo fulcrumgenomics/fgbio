@@ -28,7 +28,7 @@ import com.fulcrumgenomics.FgBioDef.FgBioEnum
 import com.fulcrumgenomics.bam.Bams
 import com.fulcrumgenomics.bam.api.{SamRecord, SamSource}
 import com.fulcrumgenomics.bam.pileup.PileupBuilder.BamAccessPattern.{RandomAccess, Streaming}
-import com.fulcrumgenomics.bam.pileup.PileupBuilder._
+import com.fulcrumgenomics.bam.pileup.PileupBuilder.PileupParameters
 import com.fulcrumgenomics.commons.CommonsDef._
 import com.fulcrumgenomics.fasta.SequenceDictionary
 import enumeratum.EnumEntry
@@ -40,26 +40,33 @@ import scala.collection.mutable.ArrayBuffer
 /** Companion object for [[PileupBuilder]]. */
 object PileupBuilder {
 
-  /** The minimum base quality that a base must have to contribute to a pileup by default. */
-  val DefaultMinMapQ: Int = 20
+  /** Sensible defaults for various implementations of [[PileupBuilder]]. */
+  trait PileupParameters {
 
-  /** The minimum mapping quality a record must have to contribute to a pileup by default. */
-  val DefaultMinBaseQ: Int = 20
+    /** The minimum mapping quality a record must have to contribute to a pileup by default. */
+    val minMapQ: Int = 20
 
-  /** Only allow paired records with both records mapped to contribute to a pileup by default. */
-  val DefaultMappedPairsOnly: Boolean = true
+    /** The minimum base quality that a base must have to contribute to a pileup by default. */
+    val minBaseQ: Int = 20
 
-  /** Allow records flagged as duplicates to contribute to a pileup by default. */
-  val DefaultIncludeDuplicates: Boolean = false
+    /** Only allow paired records with both records mapped to contribute to a pileup by default. */
+    val mappedPairsOnly: Boolean = true
 
-  /** Allow records flagged as secondary alignments to contribute to a pileup by default. */
-  val DefaultIncludeSecondaryAlignments: Boolean = false
+    /** Allow records flagged as duplicates to contribute to a pileup by default. */
+    val includeDuplicates: Boolean = false
 
-  /** Allow records flagged as supplementary alignments to contribute to a pileup by default. */
-  val DefaultIncludeSupplementalAlignments: Boolean = false
+    /** Allow records flagged as secondary alignments to contribute to a pileup by default. */
+    val includeSecondaryAlignments: Boolean = false
 
-  /** Include any record of an FR pair where the site requested is outside the insert by default. */
-  val DefaultIncludeMapPositionsOutsideFrInsert: Boolean = false
+    /** Allow records flagged as supplementary alignments to contribute to a pileup by default. */
+    val includeSupplementalAlignments: Boolean = false
+
+    /** Exclude any record of an FR pair where the site requested is outside the insert by default. */
+    val includeMapPositionsOutsideFrInsert: Boolean = false
+  }
+
+  /** A singleton version of all sensible default pileup parameters. */
+  object PileupDefaults extends PileupParameters
 
   /** A trait that all enumerations of BAM access pattern must extend. */
   sealed trait BamAccessPattern extends EnumEntry
@@ -79,13 +86,13 @@ object PileupBuilder {
   def apply(
     source: SamSource,
     accessPattern: BamAccessPattern             = RandomAccess,
-    minMapQ: Int                                = DefaultMinMapQ,
-    minBaseQ: Int                               = DefaultMinBaseQ,
-    mappedPairsOnly: Boolean                    = DefaultMappedPairsOnly,
-    includeDuplicates: Boolean                  = DefaultIncludeDuplicates,
-    includeSecondaryAlignments: Boolean         = DefaultIncludeSecondaryAlignments,
-    includeSupplementalAlignments: Boolean      = DefaultIncludeSupplementalAlignments,
-    includeMapPositionsOutsideFrInsert: Boolean = DefaultIncludeMapPositionsOutsideFrInsert,
+    minMapQ: Int                                = PileupDefaults.minMapQ,
+    minBaseQ: Int                               = PileupDefaults.minBaseQ,
+    mappedPairsOnly: Boolean                    = PileupDefaults.mappedPairsOnly,
+    includeDuplicates: Boolean                  = PileupDefaults.includeDuplicates,
+    includeSecondaryAlignments: Boolean         = PileupDefaults.includeSecondaryAlignments,
+    includeSupplementalAlignments: Boolean      = PileupDefaults.includeSupplementalAlignments,
+    includeMapPositionsOutsideFrInsert: Boolean = PileupDefaults.includeMapPositionsOutsideFrInsert,
   ): PileupBuilder with Closeable = accessPattern match {
     case RandomAccess => RandomAccessPileupBuilder(
       source                             = source,
@@ -127,31 +134,10 @@ object PileupBuilder {
 }
 
 /** A trait that all pileup builders must extends. */
-trait PileupBuilder {
+trait PileupBuilder extends PileupParameters {
 
   /** The sequence dictionary associated with the records we will pileup. */
   val dict: SequenceDictionary
-
-  /** The minimum base quality that a base must have to contribute to a pileup. */
-  val minMapQ: Int = DefaultMinMapQ
-
-  /** The minimum mapping quality a record must have to contribute to a pileup. */
-  val minBaseQ: Int = DefaultMinBaseQ
-
-  /** If true, only allow paired records with both records mapped to contribute to a pileup. */
-  val mappedPairsOnly: Boolean = DefaultMappedPairsOnly
-
-  /** If true, allow records flagged as duplicates to contribute to a pileup. */
-  val includeDuplicates: Boolean = DefaultIncludeDuplicates
-
-  /** If true, allow records flagged as secondary alignments to contribute to a pileup. */
-  val includeSecondaryAlignments: Boolean = DefaultIncludeSecondaryAlignments
-
-  /** If true, allow records flagged as supplementary alignments to contribute to a pileup. */
-  val includeSupplementalAlignments: Boolean = DefaultIncludeSupplementalAlignments
-
-  /** If true, include any record of an FR pair where the site requested is outside the insert. */
-  val includeMapPositionsOutsideFrInsert: Boolean = DefaultIncludeMapPositionsOutsideFrInsert
 
   /** Pileup records at this position. */
   def pileup(refName: String, pos: Int): Pileup[PileupEntry]

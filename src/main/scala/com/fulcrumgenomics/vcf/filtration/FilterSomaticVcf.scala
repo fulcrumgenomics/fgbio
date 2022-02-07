@@ -26,7 +26,7 @@ package com.fulcrumgenomics.vcf.filtration
 
 import com.fulcrumgenomics.bam.api.SamSource
 import com.fulcrumgenomics.bam.pileup.PileupBuilder
-import com.fulcrumgenomics.bam.pileup.PileupBuilder.BamAccessPattern
+import com.fulcrumgenomics.bam.pileup.PileupBuilder.{BamAccessPattern, PileupDefaults}
 import com.fulcrumgenomics.bam.pileup.PileupBuilder.BamAccessPattern.RandomAccess
 import com.fulcrumgenomics.cmdline.{ClpGroups, FgBioTool}
 import com.fulcrumgenomics.commons.CommonsDef._
@@ -111,7 +111,8 @@ import scala.collection.immutable.ListMap
       |By default `--access-pattern` will be set to `RandomAccess` and the input BAM will be queried using index-based
       |random access. Random access is mandatory if the input VCF is not coordinate sorted. If random access is not
       |requested and the input VCF is not coordinate sorted, then an exception will be raised on the first
-      |non-coordinate increasing VCF record found.
+      |non-coordinate increasing VCF record found. The BAM must be coordinate sorted in all cases and additionally be
+      |indexed if random access is requested.
       |
       |Often, a VCF file will contain a sparse set of records that are scattered across a given territory within a
       |genome (or the records will be sparsely scattered genome-wide). If the territory of the VCF records is markedly
@@ -127,10 +128,10 @@ import scala.collection.immutable.ListMap
   @arg(flag = 'o', doc = "Output VCF of filtered somatic variants.")    val output: PathToVcf,
   @arg(flag = 'b', doc = "BAM file for the tumor sample.")              val bam: PathToBam,
   @arg(flag = 's', doc = "Sample name in VCF if `> 1` sample present.") val sample: Option[String]   = None,
-  @arg(flag = 'm', doc = "Minimum mapping quality for reads.")          val minMappingQuality: Int   = 20,
-  @arg(flag = 'q', doc = "Minimum base quality.")                       val minBaseQuality: Int      = 20,
+  @arg(flag = 'm', doc = "Minimum mapping quality for reads.")          val minMappingQuality: Int   = PileupDefaults.minMapQ,
+  @arg(flag = 'q', doc = "Minimum base quality.")                       val minBaseQuality: Int      = PileupDefaults.minBaseQ,
   @arg(flag = 'p', doc = "Use only paired reads mapped in pairs.")      val pairedReadsOnly: Boolean = false,
-  @arg(flag = 'A', doc = "The type of BAM access to use.")              val accessPattern: BamAccessPattern = RandomAccess,
+  @arg(flag = 'A', doc = "The type of BAM access pattern to use.")      val accessPattern: BamAccessPattern = RandomAccess,
   @arg(doc = "Distance from 5-prime end of read to implicate A-base addition artifacts. Set to :none: to deactivate the filter.")
   val aTailingDistance: Option[Int] = Some(2),
   @arg(doc = "Minimum acceptable p-value for the A-base addition artifact test.")
