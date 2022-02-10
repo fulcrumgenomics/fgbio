@@ -41,59 +41,63 @@ import scala.collection.mutable.{ListBuffer, Builder}
     |The inputs are to two `*.dict` files.  One to be sorted, and the other to provide the order for the sorting.
     |
     |If there is a contig in the input dictionary that is not in the sorting dictionary, that contig will be appended
-    |to the end of the sequence dictionary, unless appendMissingContigs is set to false, in which case such contigs will be ignored.
+    |to the end of the sequence dictionary in the same relative order to other appended contigs as in the input dictionary.
+    |Missing contigs can be omitted by setting `--skip-missing-contigs` to true.
     |
     |If there is a contig in the sorting dictionary that is not in the input dictionary, that contig will be ignored.
     |
-    |The output will be a "sequence dictionary", which is a valid SAM file, containing the version header line and one
+    |The output will be a sequence dictionary, containing the version header line and one
     |line per contig.  The fields of the entries in this dictionary will be the same as in input, but in the order of
-    |`sortDictionary`.
+    |`--sort-dictionary`.
   """,
   group = ClpGroups.Fasta)
 class SortSequenceDictionary
 (@arg(flag='i', doc="Input sequence dictionary file to be sorted.") val input: PathToSequenceDictionary,
  @arg(flag='d', doc="Input sequence dictionary file containing contigs in the desired sort order.") val sortDictionary: PathToSequenceDictionary,
  @arg(flag='o', doc="Output sequence dictionary file.") val output: PathToSequenceDictionary,
- @arg(doc="Append input contigs that have no matching contig in the sort dictionary to the end of the output dictionary. If false, such contigs will not be output.") val appendMissingContigs: Boolean = true,
+ @arg(doc="Skip input contigs that have no matching contig in the sort dictionary rather than appending to the end of the output dictionary.") val skipMissingContigs: Boolean = false,
 ) extends FgBioTool with LazyLogging {
+  
   Io.assertReadable(input)
   Io.assertReadable(sortDictionary)
   Io.assertCanWriteFile(output)
 
   override def execute(): Unit = {
-      val inputDict = SequenceDictionary(input)
+      val inputDict     = SequenceDictionary(input)
       val sortOrderDict = SequenceDictionary(sortDictionary)
 
-      val newOrder = IndexedSeq.newBuilder[SequenceMetadata]
+      // Iterate through the sort dictionary collecting metas from the input that match by name
+      val metasBuilder = IndexedSeq.newBuilder[SequenceMetadata]
       sortOrderDict.foreach { sortMeta =>
           sortMeta.allNames.find { name => inputDict.contains(name) } match {
-            case Some(name) => {
-              val inMeta = inputDict.get(name).getOrElse(throw new java.lang.RuntimeException(s"Contig '${sortMeta.name}' alias '${name}' not found in input dictionary after initially being found (This should never happen)"))
-              newOrder += inMeta.copy()
-            }
+            case Some(name) =>  metasBuilder += inputDict(name)
             case None => logger.info(s"Contig '${sortMeta.name}' corresponded to no contig in input dictionary, skipping")
           }
       }
 
-      val tmpDict = {
-          val metadata = newOrder.result().zipWithIndex.map {
+      // build a dictionary from the input contigs found in the sort dictionary
+      val metasFoundInSortDictDict = {
+          val metadata = metasBuilder.result().zipWithIndex.map {
             case (meta, index) => meta.copy(index=index)
           }.toSeq
           SequenceDictionary(metadata:_*)
       }
 
+      // maybe append input contigs not found in the sort dictionary.  Their index will be reset after aggregation.
       inputDict.foreach { inMeta =>
-        if (!tmpDict.contains(inMeta.name)) {
-          val skipBehavior = if (appendMissingContigs) "appending." else "skipping."
-          logger.info(s"Contig '${inMeta.name}' was not found in sort order dictionary: ${skipBehavior}")
-          if (appendMissingContigs) {
-              newOrder += inMeta.copy()
+        if (!metasFoundInSortDictDict.contains(inMeta.name)) {
+          val skipBehavior = if (skipMissingContigs) "skipping." else "appending."
+          logger.warning(s"Contig '${inMeta.name}' was not found in sort order dictionary: $skipBehavior")
+          // Append if desired. The index will be reset later.
+          if (!skipMissingContigs) {
+              metasBuilder += inMeta.copy()
           }
         }
       }
-      val metadata = newOrder.result().zipWithIndex.map {
+      // Finally we have all the contigs, so reset the index and write out the dictionary. 
+      val finalMetadataDict = metasBuilder.result().zipWithIndex.map {
           case (meta, index) => meta.copy(index=index)
       }.toSeq
-      SequenceDictionary(metadata:_*).write(output)
+      SequenceDictionary(finalMetadataDict:_*).write(output)
   }
 }
