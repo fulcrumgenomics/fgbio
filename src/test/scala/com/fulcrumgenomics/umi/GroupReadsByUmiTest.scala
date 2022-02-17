@@ -348,7 +348,7 @@ class GroupReadsByUmiTest extends UnitSpec with OptionValues with PrivateMethodT
 
       val in   = builder.toTempFile()
       val out  = Files.createTempFile("umi_grouped.", ".sam")
-      new GroupReadsByUmi(input=in, output=out, familySizeHistogram=None, rawTag="RX", assignTag="MI", strategy=Strategy.Identity, edits=0, minUmiLength=Some(6)).execute()
+      new GroupReadsByUmi(input=in, output=out, familySizeHistogram=None, rawTag="RX", assignTag="MI", strategy=strategy, edits=0, minUmiLength=Some(6)).execute()
 
       val recs = readBamRecs(out)
       recs should have length 2
@@ -363,7 +363,7 @@ class GroupReadsByUmiTest extends UnitSpec with OptionValues with PrivateMethodT
 
       val in   = builder.toTempFile()
       val out  = Files.createTempFile("umi_grouped.", ".sam")
-      new GroupReadsByUmi(input=in, output=out, familySizeHistogram=None, rawTag="RX", assignTag="MI", strategy=Strategy.Identity, edits=0, minUmiLength=Some(5)).execute()
+      new GroupReadsByUmi(input=in, output=out, familySizeHistogram=None, rawTag="RX", assignTag="MI", strategy=strategy, edits=0, minUmiLength=Some(5)).execute()
 
       val recs = readBamRecs(out)
       recs should have length 4

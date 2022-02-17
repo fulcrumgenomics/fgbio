@@ -118,6 +118,9 @@ object GroupReadsByUmi {
     /** Returns true if the two UMIs are the same. */
     def isSameUmi(a: Umi, b: Umi): Boolean = a == b
 
+    /** Returns a canonical form of the UMI that is the same for all reads with the same UMI. */
+    def canonicalize(u: Umi): Umi = u
+
     /** Default implementation of a method to retrieve the next ID based on a counter. */
     protected def nextId: MoleculeId = this.counter.getAndIncrement().toString
 
@@ -270,6 +273,12 @@ object GroupReadsByUmi {
         val (b1, b2) = split(b)
         a1 == b2 && a2 == b1
       }
+    }
+
+    /** Returns the UMI with the lexically lower half first. */
+    override def canonicalize(u: Umi): Umi = {
+      val (a, b) = split(u)
+      if (a < b) u else s"${b}-${a}"
     }
 
     /** Splits the paired UMI into it's two parts. */
@@ -460,15 +469,16 @@ class GroupReadsByUmi
 
   private val assigner = strategy.newStrategy(this.edits)
 
-  /** True if no differences in UMIs are tolerated and the UMI tag is RX, false otherwise. True here enables
+  /** True if no differences in UMIs are tolerated and the Molecular ID tag is MI, false otherwise. True here enables
     * an optimization where, when bringing groups of reads into memory, we can _also_ group by UMI thus
     * reducing the number in memory.  This is helpful since edits=0 is often used for data that has
     * high numbers of reads with the same start/stop coordinates.
+    * We do this be setting the MI tag to the canonicalized, (optionally truncated) UMI prior to sorting, so that
+    * reads with the same UMI are grouped together in the sorted stream of records.
     */
   private val canTakeNextGroupByUmi =
-    (this.rawTag == ConsensusTags.UmiBases) &&
-    (this.edits == 0 || this.strategy == Strategy.Identity) &&
-      this.minUmiLength.isEmpty
+    (this.assignTag == ConsensusTags.MolecularId) &&
+    (this.edits == 0 || this.strategy == Strategy.Identity)
 
   /** Checks that the read's mapq is over a minimum, and if the read is paired, that the mate mapq is also over the min. */
   private def mapqOk(rec: SamRecord, minMapQ: Int): Boolean = {
@@ -509,7 +519,24 @@ class GroupReadsByUmi
           }
         } || { filterUmisTooShort += 1; false}
       }
-      .foreach(r => { sorter += r; kept += 1; sortProgress.record(r) })
+      .foreach { r =>
+        // If we're able to also group by the UMI because edits aren't allowed, push the trimmed, canonicalized UMI
+        // into the assign tag (which must be MI if cantakeNextGroupByUmi is true), since that is used by the
+        // SamOrder to sort the reads _and_ we'll overwrite it on the way out!
+        if (this.canTakeNextGroupByUmi) {
+          val umi = this.assigner.canonicalize(r[String](rawTag).toUpperCase)
+          val truncated = this.minUmiLength match {
+            case None    => umi
+            case Some(n) => umi.substring(0, n)
+          }
+
+          r(this.assignTag) = truncated
+        }
+
+        sorter += r
+        kept += 1
+        sortProgress.record(r)
+      }
 
     logger.info(f"Accepted $kept%,d reads for grouping.")
     if (filteredNonPf > 0) logger.info(f"Filtered out $filteredNonPf%,d non-PF reads.")
@@ -562,14 +589,15 @@ class GroupReadsByUmi
   def takeNextGroup(iterator: BufferedIterator[Template]) : Seq[Template] = {
     val first     = iterator.next()
     val firstEnds = ReadInfo(first.r1.getOrElse(fail(s"R1 missing for template ${first.name}")))
-    val firstUmi  = first.r1.get.apply[String](this.rawTag)
+    val firstUmi  = first.r1.get.apply[String](this.assignTag)
     val builder   = IndexedSeq.newBuilder[Template]
     builder    += first
 
     while (
       iterator.hasNext &&
       firstEnds == ReadInfo(iterator.head.r1.get) &&
-      (!canTakeNextGroupByUmi || this.assigner.isSameUmi(firstUmi, iterator.head.r1.get.apply[String](rawTag)))
+      // This last condition only works because we put a canonicalized UMI into rec(assignTag) if canTakeNextGroupByUmi
+      (!canTakeNextGroupByUmi || firstUmi == iterator.head.r1.get.apply[String](this.assignTag))
     ) {
       builder += iterator.next()
     }
