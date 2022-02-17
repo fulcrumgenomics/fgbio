@@ -139,9 +139,9 @@ lazy val root = Project(id="fgbio", base=file("."))
       "org.scalatest"             %% "scalatest"     % "3.1.3"  % "test->*" excludeAll ExclusionRule(organization="org.junit", name="junit")
   ))
   .settings(dependencyOverrides ++= Seq(
-      "org.apache.logging.log4j" % "log4j-api"  % "[2.17.0,)",
-      "org.apache.logging.log4j" % "log4j-core" % "[2.17.0,)",
-	  "org.xerial.snappy"        % "snappy-java" % "[1.1.8.4,)"
+      "org.apache.logging.log4j" % "log4j-api"   % "[2.17.0,)",
+      "org.apache.logging.log4j" % "log4j-core"  % "[2.17.0,)",
+      "org.xerial.snappy"        % "snappy-java" % "[1.1.8.4,)"
   ))
 
 
