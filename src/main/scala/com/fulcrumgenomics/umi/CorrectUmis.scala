@@ -158,8 +158,6 @@ class CorrectUmis
       (set.toArray, lengths.head)
     }
 
-    logger.info(s"UMI length = ${umiLength}; UMIs=${umiSequences.mkString(", ")}")
-
     // Warn if any of the UMIs are too close together
     CorrectUmis.findUmiPairsWithinDistance(umiSequences.toSeq, minDistance-1).foreach { case (umi1, umi2, distance) =>
         logger.warning(s"Umis $umi1 and $umi2 are $distance edits apart which is less than the min distance: $minDistance")
@@ -187,7 +185,10 @@ class CorrectUmis
         case Some(umi: String) =>
           val sequences = umi.split('-')
           if (sequences.exists(_.length != umiLength)) {
-            if (wrongLengthRecords == 0) logger.warning(s"Read (${rec.name}) detected with unexpected length UMI(s): [${sequences.mkString(",")}]")
+            if (wrongLengthRecords == 0) {
+              logger.warning(s"Read (${rec.name}) detected with unexpected length UMI(s): ${sequences.mkString(" ")}.")
+              logger.warning(s"Expected UMI length: ${umiLength}")
+            }
             wrongLengthRecords += 1
             rejectOut.foreach(w => w += rec)
           }
