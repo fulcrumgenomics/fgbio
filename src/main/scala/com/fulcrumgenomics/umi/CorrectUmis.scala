@@ -144,7 +144,7 @@ class CorrectUmis
   rejects.foreach(Io.assertCanWriteFile(_))
 
   // Construct the cache
-  private val cache = new LeastRecentlyUsedCache[String,UmiMatch](maxEntries = cacheSize)
+  private lazy val cache = new LeastRecentlyUsedCache[String,UmiMatch](maxEntries = cacheSize)
 
   override def execute(): Unit = {
     // Construct the full set of UMI sequences to match again
