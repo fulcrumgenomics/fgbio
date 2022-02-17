@@ -185,7 +185,7 @@ object SamOrder {
       val mid       = rec.get[String](ConsensusTags.MolecularId).map { m =>
         val index: Int = m.lastIndexOf('/')
         if (index >= 0) m.substring(0, index) else m
-      }.getOrElse("")
+      }.getOrElse(rec.get[String](ConsensusTags.UmiBases).getOrElse(""))
 
       if (readChrom < mateChrom || (readChrom == mateChrom && readPos < matePos) ||
            (readChrom == mateChrom && readPos == matePos && !readNeg)) {
