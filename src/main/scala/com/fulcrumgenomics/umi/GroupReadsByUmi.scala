@@ -522,8 +522,10 @@ class GroupReadsByUmi
       }
       .foreach { r =>
         // If we're able to also group by the UMI because edits aren't allowed, push the trimmed, canonicalized UMI
-        // into the assign tag (which must be MI if cantakeNextGroupByUmi is true), since that is used by the
+        // into the assign tag (which must be MI if canTakeNextGroupByUmi is true), since that is used by the
         // SamOrder to sort the reads _and_ we'll overwrite it on the way out!
+        // Note that here we trim UMIs (if enabled) to the minimum UMI length for sorting, but that when doing the
+        // actual grouping later we go back to the raw tag (RX) and use as much of the UMI as possible.
         if (this.canTakeNextGroupByUmi) {
           val umi = this.assigner.canonicalize(r[String](rawTag).toUpperCase)
           val truncated = this.minUmiLength match {
