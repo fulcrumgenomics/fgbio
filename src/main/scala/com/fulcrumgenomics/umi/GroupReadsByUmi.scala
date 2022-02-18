@@ -269,6 +269,7 @@ object GroupReadsByUmi {
     /** Returns true if the two UMIs are the same. */
     final override def isSameUmi(a: Umi, b: Umi): Boolean = {
       if (a == b) true else {
+        // same as `a == reverse(b)` but more efficient than creating new strings
         val (a1, a2) = split(a)
         val (b1, b2) = split(b)
         a1 == b2 && a2 == b1
@@ -281,7 +282,7 @@ object GroupReadsByUmi {
       if (a < b) u else s"${b}-${a}"
     }
 
-    /** Splits the paired UMI into it's two parts. */
+    /** Splits the paired UMI into its two parts. */
     @inline private def split(umi: Umi): (Umi, Umi) = {
       val index = umi.indexOf('-')
       if (index == -1) throw new IllegalStateException(s"UMI $umi is not a paired UMI.")
@@ -471,9 +472,9 @@ class GroupReadsByUmi
 
   /** True if no differences in UMIs are tolerated and the Molecular ID tag is MI, false otherwise. True here enables
     * an optimization where, when bringing groups of reads into memory, we can _also_ group by UMI thus
-    * reducing the number in memory.  This is helpful since edits=0 is often used for data that has
+    * reducing the number of reads in memory.  This is helpful since edits=0 is often used for data that has
     * high numbers of reads with the same start/stop coordinates.
-    * We do this be setting the MI tag to the canonicalized, (optionally truncated) UMI prior to sorting, so that
+    * We do this by setting the MI tag to the canonicalized (optionally truncated) UMI prior to sorting, so that
     * reads with the same UMI are grouped together in the sorted stream of records.
     */
   private val canTakeNextGroupByUmi =
