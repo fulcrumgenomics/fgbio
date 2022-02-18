@@ -53,13 +53,7 @@ class CopyUmiFromReadName
     val progress = new ProgressLogger(logger)
     source.foreach { rec =>
       progress.record(rec)
-      val fields = rec.name.split(':')
-      require(fields.length > 1, s"Read did not have multiple fields: ${rec.name}")
-      rec("RX") = fields.last
-      if (removeUmi) {
-        rec.name = fields.iterator.take(fields.length - 1).mkString(":")
-      }
-      writer += rec
+      writer += copyUmiFromReadName(rec)
     }
     progress.logLast()
     source.safelyClose()

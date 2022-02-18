@@ -33,24 +33,16 @@ class CopyUmiFromReadNameTest extends UnitSpec with OptionValues {
   "CopyUmiFromReadName" should "copy the UMI from a read name" in {
     val builder = new SamBuilder()
 
-    builder.addFrag(name="1:UMI1", unmapped=true)
-    builder.addFrag(name="1:2:UMI2", unmapped=true)
-    builder.addFrag(name="1:2:3:UMI3", unmapped=true)
-    builder.addFrag(name="blah:GATC+TACG", unmapped=true)
+    builder.addFrag(name="1:AAAA", unmapped=true)
+    builder.addFrag(name="1:2:CCCC", unmapped=true)
+    builder.addFrag(name="1:2:3:GGGG", unmapped=true)
+    builder.addFrag(name="blah:AAAA+CCCC", unmapped=true)
 
     val out  = makeTempFile("test.", ".bam")
     val tool = new CopyUmiFromReadName(input=builder.toTempFile(), output=out)
     executeFgbioTool(tool)
 
     val umis = readBamRecs(out).map(rec => rec[String]("RX"))
-    umis should contain theSameElementsInOrderAs Seq("UMI1", "UMI2", "UMI3", "GATC+TACG")
-  }
-
-  it should "fail if no UMI was found at the end of the read name" in {
-    val builder = new SamBuilder()
-    builder.addFrag(name="readname", unmapped=true)
-    val out  = makeTempFile("test.", ".bam")
-    val tool = new CopyUmiFromReadName(input=builder.toTempFile(), output=out)
-    an[Exception] should be thrownBy tool.execute()
+    umis should contain theSameElementsInOrderAs Seq("AAAA", "CCCC", "GGGG", "AAAA-CCCC")
   }
 }
