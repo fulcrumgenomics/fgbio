@@ -73,6 +73,11 @@ case class Template(r1: Option[SamRecord],
   /** Returns an iterator of all reads for the template. */
   def allReads: Iterator[SamRecord] = r1.iterator ++ r2.iterator ++ allSupplementaryAndSecondary
 
+  /** Returns an iterator of all read 1s for the template. */
+  def allR1s: Iterator[SamRecord] = r1.iterator ++ r1Secondaries.iterator ++ r1Supplementals.iterator
+
+  /** Returns an iterator of all read 2s for the template. */
+  def allR2s: Iterator[SamRecord] = r2.iterator ++ r2Secondaries.iterator ++ r2Supplementals.iterator
   /**
     * Produces a copy of the template that has had mapping information removed.  Discards secondary and supplementary
     * records, and retains the primary records after un-mapping them.  Auxillary tags listed in [[Bams.AlignmentTags]]
@@ -96,6 +101,19 @@ case class Template(r1: Option[SamRecord],
     }
 
     Template(x1, x2)
+  }
+
+  /** Fixes mate information and sets mate cigar on all primary and supplementary (but not secondary) records. */
+  def fixMateInfo(): Unit = {
+    for (primary <- r1; supp <- r2Supplementals) {
+      SamPairUtil.setMateInformationOnSupplementalAlignment(supp.asSam, primary.asSam, true)
+    }
+    for (primary <- r2; supp <- r1Supplementals) {
+      SamPairUtil.setMateInformationOnSupplementalAlignment(supp.asSam, primary.asSam, true)
+    }
+    for (first <- r1; second <- r2) {
+      SamPairUtil.setMateInfo(first.asSam, second.asSam)
+    }
   }
 
   /** The total count of records for the template. */

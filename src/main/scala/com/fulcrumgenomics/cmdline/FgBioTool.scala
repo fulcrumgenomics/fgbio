@@ -24,11 +24,11 @@
 package com.fulcrumgenomics.cmdline
 
 import com.fulcrumgenomics.cmdline.FgBioMain.FailureException
+import com.fulcrumgenomics.commons.util.LazyLogging
 import com.fulcrumgenomics.sopt.cmdline.ValidationException
 
 /** All fgbio tools should extend this. */
-// Todo: extend Lazy Logging?
-trait FgBioTool {
+trait FgBioTool extends LazyLogging {
   def execute(): Unit
 
   /** Fail with just an exit code. */

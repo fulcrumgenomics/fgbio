@@ -1,0 +1,191 @@
+/*
+ * The MIT License
+ *
+ * Copyright (c) 2022 Fulcrum Genomics LLC
+ *
+ * Permission is hereby granted, free of charge, to any person obtaining a copy
+ * of this software and associated documentation files (the "Software"), to deal
+ * in the Software without restriction, including without limitation the rights
+ * to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+ * copies of the Software, and to permit persons to whom the Software is
+ * furnished to do so, subject to the following conditions:
+ *
+ * The above copyright notice and this permission notice shall be included in
+ * all copies or substantial portions of the Software.
+ *
+ * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+ * IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+ * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+ * AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+ * LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+ * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
+ * THE SOFTWARE.
+ */
+
+package com.fulcrumgenomics.bam
+
+import com.fulcrumgenomics.FgBioDef._
+import com.fulcrumgenomics.bam.ZipperBams.{buildOutputHeader, checkSort, templateIterator}
+import com.fulcrumgenomics.bam.api.{SamOrder, SamRecord, SamSource, SamWriter}
+import com.fulcrumgenomics.cmdline.{ClpGroups, FgBioTool}
+import com.fulcrumgenomics.commons.async.AsyncIterator
+import com.fulcrumgenomics.commons.collection.BetterBufferedIterator
+import com.fulcrumgenomics.commons.util.LazyLogging
+import com.fulcrumgenomics.sopt.{arg, clp}
+import com.fulcrumgenomics.util.Io
+import htsjdk.samtools.SAMFileHeader.{GroupOrder, SortOrder}
+import htsjdk.samtools.{SAMFileHeader, SAMSequenceDictionary}
+import htsjdk.variant.utils.SAMSequenceDictionaryExtractor
+
+/*
+Feature List
+
+    Trim back reads that are FR pairs that extend past each other's starts
+ */
+
+object ZipperBams extends LazyLogging {
+  /** Class to hold info about all the extended tags/attrs we want to manipulate. */
+  case class TagInfo(remove: IndexedSeq[String], reverse: IndexedSeq[String], revcomp: IndexedSeq[String]) {
+    val setToReverse: java.util.Set[String] = remove.iterator.toJavaSet
+    val setToRevcomp: java.util.Set[String] = revcomp.iterator.toJavaSet
+
+    val hasRevsOrRevcomps: Boolean = reverse.nonEmpty || revcomp.nonEmpty
+  }
+
+  /** Checks the source's header declares it is queryname sorted or grouped and logs a warning if not. */
+  def checkSort(source: SamSource, path: FilePath, name: String): Unit = {
+    if (source.header.getSortOrder != SortOrder.queryname && source.header.getGroupOrder != GroupOrder.query) {
+      logger.warning(s"${name} file ${path} does not appear to be queryname sorted or grouped.")
+    }
+  }
+
+  def buildOutputHeader(unmapped: SAMFileHeader,
+                        mapped: SAMFileHeader,
+                        sort: Option[SamOrder],
+                        dict: SAMSequenceDictionary): SAMFileHeader = {
+    // Build a new header using the given sequence dictionary
+    val header = new SAMFileHeader(dict)
+
+    // Copy over comments, RGs and PGs, letting mapped override unmapped if there are conflicts
+    Iterator(unmapped, mapped).foreach { old =>
+      old.getComments.iterator().foreach(header.addComment)
+      old.getReadGroups.iterator().foreach(header.addReadGroup)
+      old.getProgramRecords.iterator().foreach(header.addProgramRecord)
+    }
+
+    // Set the sort and group order
+    header.setSortOrder(unmapped.getSortOrder)
+    header.setGroupOrder(unmapped.getGroupOrder)
+    sort.foreach(s => s.applyTo(header))
+
+    header
+  }
+
+  /** Constructs a template iterator that assumes the input is sorted or grouped, and turns it into an async iter. */
+  def templateIterator(source: SamSource, bufferSize: Int): BetterBufferedIterator[Template] = {
+    val recs = source.iterator.bufferBetter
+    val templates = new Iterator[Template] {
+      override def hasNext: Boolean = recs.hasNext
+      override def next(): Template = Template(recs)
+    }
+
+    if (bufferSize > 0) {
+      AsyncIterator(templates, Some(bufferSize)).bufferBetter
+    }
+    else {
+      templates.bufferBetter
+    }
+  }
+
+  /** Merge information from the unmapped template into the mapped template. */
+  def merge(unmapped: Template, mapped: Template, tagInfo: TagInfo): Template = {
+    // Fix mate info first
+    mapped.fixMateInfo()
+
+    // Remove tags from the mapped records
+    for (rec <- mapped.allReads; tag <- tagInfo.remove) rec.remove(tag)
+
+    // Copy tags over from the unmapped record
+    for (u <- unmapped.primaryReads) {
+      // Get all the mapped records for the unmapped record
+      val ms = if (u.unpaired || u.firstOfPair) mapped.allR1s.toSeq else mapped.allR1s.toSeq
+      // Copy over tags on any positive strand reads first
+      ms.iterator.filter(_.positiveStrand).foreach(m => copyTags(u, m))
+
+      // Then reverse complement the unmapped read if we need to
+      if (tagInfo.hasRevsOrRevcomps && ms.exists(_.negativeStrand)) {
+        u.asSam.reverseComplement(tagInfo.setToRevcomp, tagInfo.setToReverse, true)
+      }
+
+      // And deal with the negative strand mappings
+      ms.iterator.filter(_.negativeStrand).foreach(m => copyTags(u, m))
+    }
+
+    mapped
+  }
+
+  /** Copies all tags from read to another. */
+  def copyTags(src: SamRecord, dest: SamRecord): Unit = {
+    src.attributes.foreach { case (tag, value) => dest(tag) = value }
+  }
+}
+
+@clp(group=ClpGroups.SamOrBam, description=
+  """
+    |Zips together an unmapped and mapped BAM to transfer metadata into the output BAM.
+    |
+    |Both the unmapped and mapped BAMs _must_ be a) queryname sorted or grouped (i.e. all records with the same
+    |name are grouped together in the file), and b) have the same ordering of querynames.  If either of these are
+    |violated the output is undefined!
+    |
+    |By default the mapped BAM is read from stdin and the output BAM is written to stdout. This can be changed
+    |using the `--input/-i` and `--output/-o` options.
+    |
+    |By default the output BAM file is emitted in the same order as the input BAMs.  This can be overridden
+    |using the `--sort` option, though in practice it may be faster to do the following:
+    |
+    |  `fgbio --compression 0 ZipperBams -i mapped.bam -u unmapped.bam -r ref.fa | samtools sort -@ 16`
+    |
+    |
+  """)
+class ZipperBams
+( @arg(flag='i', doc="Mapped SAM or BAM.") val input: PathToBam = Io.StdIn,
+  @arg(flag='u', doc="Unmapped SAM or BAM.") val unmapped: PathToBam,
+  @arg(flag='r', doc="Path to the reference used in alignment.") val ref: PathToFasta,
+  @arg(flag='o', doc="Output SAM or BAM file.") val output: PathToBam = Io.StdOut,
+  @arg(doc="Tags to remove from the mapped BAM records.", minElements=0) val tagsToRemove: IndexedSeq[String] = IndexedSeq.empty,
+  @arg(doc="Set of optional tags to reverse on reads mapped to the negative strand.", minElements=0) val tagsToReverse: IndexedSeq[String] = IndexedSeq.empty,
+  @arg(doc="Set of optional tags to reverse complement on reads mapped to the negative strand.", minElements=0) val tagsToRevcomp: IndexedSeq[String] = IndexedSeq.empty,
+  @arg(flag='s', doc="Sort the output BAM into the given order.") val sort: Option[SamOrder] = None,
+  @arg(flag='b', doc="Buffer this many read-pairs while reading the input BAMs.") val buffer: Int = 5000
+) extends FgBioTool {
+  import ZipperBams._
+
+  override def execute(): Unit = {
+    val unmappedSource = SamSource(unmapped)
+    val mappedSource   = SamSource(input)
+    checkSort(unmappedSource, unmapped, "unmapped")
+    checkSort(mappedSource,  input, "input")
+
+    val dict    = SAMSequenceDictionaryExtractor.extractDictionary(this.ref)
+    val header  = buildOutputHeader(unmappedSource.header, mappedSource.header, this.sort, dict)
+    val out     = SamWriter(output, header, sort=this.sort, async=true)
+    val tagInfo = TagInfo(remove=tagsToRemove, reverse=tagsToReverse, revcomp=tagsToRevcomp)
+
+    val unmappedIter = templateIterator(unmappedSource, bufferSize=buffer)
+    val mappedIter   = templateIterator(mappedSource, bufferSize=buffer)
+
+    unmappedIter.foreach { template =>
+      if (mappedIter.hasNext && mappedIter.head.name == template.name) {
+        out ++= merge(unmapped=template, mapped=mappedIter.next(), tagInfo=tagInfo).allReads
+      }
+      else {
+        out ++= template.allReads
+      }
+    }
+
+    out.close()
+    unmappedSource.safelyClose()
+    mappedSource.safelyClose()
+  }
+}
