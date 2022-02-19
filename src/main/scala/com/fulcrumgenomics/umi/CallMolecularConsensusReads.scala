@@ -122,7 +122,8 @@ class CallMolecularConsensusReads
  val maxReads: Option[Int] = None,
  @arg(flag='B', doc="If true produce tags on consensus reads that contain per-base information.") val outputPerBaseTags: Boolean = DefaultProducePerBaseTags,
  @arg(flag='S', doc="The sort order of the output, if `:none:` then the same as the input.") val sortOrder: Option[SamOrder] = Some(SamOrder.Queryname),
- @arg(flag='D', doc="Turn on debug logging.") val debug: Boolean = false
+ @arg(flag='D', doc="Turn on debug logging.") val debug: Boolean = false,
+ @arg(doc="The number of threads to use while consensus calling.") val threads: Int = 1
 ) extends FgBioTool with LazyLogging {
 
   if (debug) Logger.level = LogLevel.Debug
@@ -163,7 +164,7 @@ class CallMolecularConsensusReads
       rejects        = rej
     )
 
-    val iterator = new ConsensusCallingIterator(in.iterator, caller, Some(ProgressLogger(logger, unit=5e5.toInt)))
+    val iterator = new ConsensusCallingIterator(in.iterator, caller, Some(ProgressLogger(logger, unit=5e5.toInt)), threads=threads)
     out ++= iterator
 
     in.safelyClose()
