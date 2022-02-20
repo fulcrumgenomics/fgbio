@@ -27,21 +27,24 @@ package com.fulcrumgenomics.umi
 
 import com.fulcrumgenomics.FgBioDef.{PathToBam, SafelyClosable}
 import com.fulcrumgenomics.bam.api.{SamSource, SamWriter}
-import com.fulcrumgenomics.sopt.{arg, clp}
-import com.fulcrumgenomics.util.{Io, ProgressLogger}
 import com.fulcrumgenomics.cmdline.{ClpGroups, FgBioTool}
 import com.fulcrumgenomics.commons.util.LazyLogging
+import com.fulcrumgenomics.sopt.{arg, clp}
+import com.fulcrumgenomics.util.{Io, ProgressLogger}
 
 @clp(group=ClpGroups.Umi, description=
   """
     |Copies the UMI at the end of the BAM's read name to the RX tag.
     |
-    |The UMI is assumed to be at the end of the read name, with colon preceding it.
+    |The read name is split by the given name delimiter, and the last field is assumed to be the UMI sequence.  The UMI
+    |will be copied to the `RX` tag as per the SAM specification.
   """)
 class CopyUmiFromReadName
 ( @arg(flag='i', doc="The input BAM file") input: PathToBam,
   @arg(flag='o', doc="The output BAM file") output: PathToBam,
-  @arg(doc="Remove the UMI from the read name") removeUmi: Boolean = false
+  @arg(doc="Remove the UMI from the read name") removeUmi: Boolean = false,
+  @arg(doc="Replaces any occurrences of this delimiter found in the UMI with a dash ('-') as per the SAM specification")
+  umiDelimiter: Option[Char] = None
 ) extends FgBioTool with LazyLogging {
 
   Io.assertReadable(input)
@@ -53,7 +56,7 @@ class CopyUmiFromReadName
     val progress = new ProgressLogger(logger)
     source.foreach { rec =>
       progress.record(rec)
-      writer += copyUmiFromReadName(rec)
+      writer += Umis.copyUmiFromReadName(rec=rec, removeUmi=removeUmi, umiDelimiter=umiDelimiter)
     }
     progress.logLast()
     source.safelyClose()

@@ -25,11 +25,13 @@
 
 package com.fulcrumgenomics.umi
 
+import com.fulcrumgenomics.bam.api.SamRecord
 import com.fulcrumgenomics.testing.{SamBuilder, UnitSpec}
 import org.scalatest.OptionValues
-import com.fulcrumgenomics.bam.api.SamRecord
 
-class UmiPackageTest extends UnitSpec with OptionValues {
+class UmisTest extends UnitSpec with OptionValues {
+  import Umis.copyUmiFromReadName
+
   private val builder = new SamBuilder()
   private def rec(name: String): SamRecord = builder.addFrag(name=name, unmapped=true).value
 

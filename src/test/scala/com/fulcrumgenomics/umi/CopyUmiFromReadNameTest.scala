@@ -30,19 +30,43 @@ import org.scalatest.OptionValues
 
 class CopyUmiFromReadNameTest extends UnitSpec with OptionValues {
 
-  "CopyUmiFromReadName" should "copy the UMI from a read name" in {
+  private case class Result(name: String, umi: String)
+
+  /** Runs CopyUmiFromReadName using the given read names returning the output read names and UMIs. */
+  private def run(names: Iterable[String], removeUmi: Boolean, umiDelimiter: Option[Char]): IndexedSeq[Result] = {
+    // build the reads
     val builder = new SamBuilder()
+    names.foreach { name => builder.addFrag(name=name, unmapped=true) }
 
-    builder.addFrag(name="1:AAAA", unmapped=true)
-    builder.addFrag(name="1:2:CCCC", unmapped=true)
-    builder.addFrag(name="1:2:3:GGGG", unmapped=true)
-    builder.addFrag(name="blah:AAAA+CCCC", unmapped=true)
-
+    // run the tool
     val out  = makeTempFile("test.", ".bam")
-    val tool = new CopyUmiFromReadName(input=builder.toTempFile(), output=out)
+    val tool = new CopyUmiFromReadName(input=builder.toTempFile(), output=out, removeUmi=removeUmi, umiDelimiter=umiDelimiter)
     executeFgbioTool(tool)
 
-    val umis = readBamRecs(out).map(rec => rec[String]("RX"))
-    umis should contain theSameElementsInOrderAs Seq("AAAA", "CCCC", "GGGG", "AAAA-CCCC")
+    // slurp the results
+    val recs = readBamRecs(out)
+    recs.length shouldBe builder.size
+    recs.map { rec => Result(name=rec.name, umi=rec[String](ConsensusTags.UmiBases)) }
+  }
+
+  "CopyUmiFromReadName" should "copy the UMI from a read name" in {
+    val names   = Seq("1:AAAA", "1:2:CCCC", "1:2:3:GGGG", "blah:AAAA-CCCC")
+    val results = run(names=names, removeUmi=false, umiDelimiter=None)
+    results.map(_.name) should contain theSameElementsInOrderAs names
+    results.map(_.umi) should contain theSameElementsInOrderAs Seq("AAAA", "CCCC", "GGGG", "AAAA-CCCC")
+  }
+
+  it should "remove the UMI from the read name when --remove-umi=true" in {
+    val names   = Seq("1:AAAA", "1:2:CCCC", "1:2:3:GGGG", "blah:AAAA-CCCC")
+    val results = run(names=names, removeUmi=true, umiDelimiter=None)
+    results.map(_.name) should contain theSameElementsInOrderAs Seq("1", "1:2", "1:2:3", "blah")
+    results.map(_.umi) should contain theSameElementsInOrderAs Seq("AAAA", "CCCC", "GGGG", "AAAA-CCCC")
+  }
+
+  it should "update the UMI delimiter in the read name when --umi-delimiter=+" in {
+    val names   = Seq("1:AAAA", "1:2:CCCC", "1:2:3:GGGG", "blah:AAAA+CCCC")
+    val results = run(names=names, removeUmi=true, umiDelimiter=Some('+'))
+    results.map(_.name) should contain theSameElementsInOrderAs Seq("1", "1:2", "1:2:3", "blah")
+    results.map(_.umi) should contain theSameElementsInOrderAs Seq("AAAA", "CCCC", "GGGG", "AAAA-CCCC")
   }
 }
