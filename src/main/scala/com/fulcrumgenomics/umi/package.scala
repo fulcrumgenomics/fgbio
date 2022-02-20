@@ -37,7 +37,7 @@ package object umi {
     *
     * @param rec the record to modify
     * @param removeUmi true to remove the UMI from the read name, otherwise only copy the UMI to the tag
-    * @param umiDelimiter if not None, replaces any delimiter found in the UMI with a dash ('-') as per the SAM spec
+    * @param umiDelimiter if not None, replaces any occurrences of this delimiter found in the UMI with a dash ('-') as per the SAM spec
     * @return the modified record
     */
   def copyUmiFromReadName(rec: SamRecord,
