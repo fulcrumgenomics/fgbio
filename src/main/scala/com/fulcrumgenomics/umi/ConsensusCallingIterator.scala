@@ -25,6 +25,7 @@
 package com.fulcrumgenomics.umi
 
 import com.fulcrumgenomics.FgBioDef._
+import com.fulcrumgenomics.bam.api
 import com.fulcrumgenomics.bam.api.SamRecord
 import com.fulcrumgenomics.commons.async.AsyncIterator
 import com.fulcrumgenomics.commons.util.LazyLogging
@@ -52,7 +53,7 @@ class ConsensusCallingIterator[ConsensusRead <: SimpleRead](sourceIterator: Iter
   extends Iterator[SamRecord] with LazyLogging {
 
   private val progressIterator = progress match {
-    case Some(p) => sourceIterator.map { r => p.record(r); r }
+    case Some(p) => sourceIterator.tapEach { r => p.record(r) }
     case None    => sourceIterator
   }
 
@@ -63,41 +64,43 @@ class ConsensusCallingIterator[ConsensusRead <: SimpleRead](sourceIterator: Iter
     }
     else {
       val halfMaxRecords   = maxRecordsInRam / 2
-      val groupingIterator = new SamRecordGroupedIterator(new AsyncIterator(progressIterator, Some(halfMaxRecords)).start(), caller.sourceMoleculeId)
       val pool             = new ForkJoinPool(threads - 1, ForkJoinPool.defaultForkJoinWorkerThreadFactory, null, true)
-      val bufferedIter     = groupingIterator.bufferBetter
       val callers          = new IterableThreadLocal[UmiConsensusCaller[ConsensusRead]](() => caller.emptyClone())
-
-      // Create an infinite length iterator that will pull input records (up to the half the maximum number in memory)
-      // to be consensus called.  Each chunk of records will then be called in parallel.  If no more input records are
-      // available, an empty sequence will be returned by the iterator.
-      val iterator = Iterator.continually {
-        // Pull input reads to be consensus called.  We have to be careful to pull all the raw reads for each source
-        // molecule, so we pull from a [[SamRecordGroupedIterator]] above.
-        var total = 0L
-        bufferedIter
-          .takeWhile { chunk => if (halfMaxRecords <= total) false else {total += chunk.length; true } }
-          .toSeq
-          .parWith(pool)
-          .flatMap { records =>
-            val caller = callers.get()
-            caller.synchronized { caller.consensusReadsFromSamRecords(records) }
-          }
-          .seq
+      val groupingIterator = {
+        val async   = AsyncIterator(progressIterator, Some(halfMaxRecords))
+        val grouped = new SamRecordGroupedIterator(async, caller.sourceMoleculeId)
+        grouped.bufferBetter
       }
 
-      // Take from the iterator until an empty sequence of records is returned, which indicates that there were no more
-      // input records on which to call consensus reads.  When this happens, update the consensus calling statistics
-      // and stop iteration.
-      iterator.takeWhile { records =>
-        if (records.nonEmpty) true else {
-          // add the statistics to the original caller since there are no more reads
-          require(bufferedIter.isEmpty, "Bug: input is not empty")
-          callers.foreach(caller.addStatistics)
-          false
+      // Create an iterator that will pull in input records (up to the half the maximum number in memory)
+      // to be consensus called.  Each chunk of records will then be called in parallel.
+      new Iterator[Seq[SamRecord]] {
+        private var statisticsCollected = false
+
+        override def hasNext: Boolean = {
+          if (groupingIterator.hasNext) true else {
+            // If we've hit the end then aggregate statistics
+            if (!statisticsCollected) {
+              callers.foreach(caller.addStatistics)
+              statisticsCollected = true
+            }
+            false
+          }
+        }
+
+        override def next(): Seq[SamRecord] = {
+          var total = 0L
+          groupingIterator
+            .takeWhile { chunk => if (halfMaxRecords <= total) false else {total += chunk.length; true } }
+            .toSeq
+            .parWith(pool)
+            .flatMap { records =>
+              val caller = callers.get()
+              caller.synchronized { caller.consensusReadsFromSamRecords(records) }
+            }
+            .seq
         }
       }.flatten
-
     }
   }
   override def hasNext: Boolean = this.iter.hasNext
