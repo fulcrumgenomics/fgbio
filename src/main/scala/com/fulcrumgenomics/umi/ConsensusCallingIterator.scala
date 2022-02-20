@@ -86,11 +86,12 @@ class ConsensusCallingIterator[ConsensusRead <: SimpleRead](sourceIterator: Iter
           .seq
       }
 
-      // Take from the iterator until an empty sequence of records is returned, which indicates that there were no more
+      // Take from the iterator until both the bufferedIter is nonEmpty, which indicates there are more records to process, 
+      // and an empty sequence of records is returned, which indicates that there were no more
       // input records on which to call consensus reads.  When this happens, update the consensus calling statistics
       // and stop iteration.
       iterator.takeWhile { records =>
-        if (records.nonEmpty) true else {
+        if (records.nonEmpty || bufferedIter.nonEmpty) true else {
           // add the statistics to the original caller since there are no more reads
           require(bufferedIter.isEmpty, "Bug: input is not empty")
           callers.foreach(caller.addStatistics)
