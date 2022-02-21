@@ -26,7 +26,6 @@
 package com.fulcrumgenomics.bam
 
 import java.util
-
 import com.fulcrumgenomics.FgBioDef._
 import com.fulcrumgenomics.bam.api.SamSource
 import com.fulcrumgenomics.cmdline.{ClpGroups, FgBioTool}
@@ -35,9 +34,9 @@ import com.fulcrumgenomics.commons.util.{LazyLogging, SimpleCounter}
 import com.fulcrumgenomics.fasta.SequenceDictionary
 import com.fulcrumgenomics.sopt._
 import com.fulcrumgenomics.util.Metric.Count
-import com.fulcrumgenomics.util.{Metric, ProgressLogger, Rscript, Sequences}
+import com.fulcrumgenomics.util.{IntervalListSource, Metric, ProgressLogger, Rscript, Sequences}
 import com.fulcrumgenomics.vcf.{ByIntervalListVariantContextIterator, VariantMask}
-import htsjdk.samtools.SAMRecord
+import htsjdk.samtools.{SAMRecord, SAMSequenceDictionary}
 import htsjdk.samtools.filter.{DuplicateReadFilter, FailsVendorReadQualityFilter, SamRecordFilter, SecondaryOrSupplementaryFilter}
 import htsjdk.samtools.reference.ReferenceSequenceFileWalker
 import htsjdk.samtools.util.{IntervalList, SamLocusIterator, SequenceUtil}
@@ -46,6 +45,7 @@ import htsjdk.variant.vcf.VCFFileReader
 import scala.annotation.switch
 import scala.collection.mutable
 import scala.util.Failure
+import htsjdk.samtools.util.{BufferedLineReader, Interval, IntervalList}
 
 @clp(group=ClpGroups.SamOrBam, description =
   """
@@ -87,6 +87,7 @@ class ErrorRateByReadPosition
   @arg(flag='r', doc="Reference sequence fasta file.") val ref: PathToFasta,
   @arg(flag='v', doc="Optional file of variant sites to ignore.") val variants: Option[PathToVcf] = None,
   @arg(flag='l', doc="Optional list of intervals to restrict analysis to.") val intervals: Option[PathToIntervals] = None,
+  @arg(flag='x', doc="Optional list of intervals to ignore.") val ignoreIntervals: Option[PathToIntervals] = None,
   @arg(flag='d', doc="Include duplicate reads, otherwise ignore.") val includeDuplicates: Boolean = false,
   @arg(flag='m', doc="The minimum mapping quality for a read to be included.") val minMappingQuality: Int = 20,
   @arg(flag='q', doc="The minimum base quality for a base to be included.") val minBaseQuality: Int = 0,
@@ -127,13 +128,25 @@ class ErrorRateByReadPosition
     }
   }
 
+  /** Builds the option intervals over which analysis is restricted. */
+  private def buildIntervalList(dict: SequenceDictionary): Option[IntervalList] = {
+    val intervalsToKeep   = this.intervals.map { path => IntervalListSource(path).toIntervalList.uniqued(false) }
+    val intervalsToIgnore = this.ignoreIntervals.map { path => IntervalListSource(path).toIntervalList.uniqued(false) }
+    (intervalsToKeep, intervalsToIgnore) match {
+      case (None, None)              => None // no intervals
+      case (Some(left), None)        => Some(left) // just the intervals to keep
+      case (Some(left), Some(right)) => Some(IntervalList.subtract(left, right)) // remove the ignore intervals from the keep intervals
+      case (None, Some(right))       => Some(IntervalList.invert(right)) // invert the ignore intervals
+    }
+  }
+
   /** Computes the metrics from the BAM file. */
   private[bam] def computeMetrics(in: SamSource = SamSource(input, ref=Some(ref))): Seq[ErrorRateByReadPositionMetric] = {
     import com.fulcrumgenomics.fasta.Converters.FromSAMSequenceDictionary
-    val progress = ProgressLogger(logger, verb="Processed", noun="loci", unit=50000)
-    val ilist    = this.intervals.map(p => IntervalList.fromFile(p.toFile).uniqued(false))
-
+    val progress      = ProgressLogger(logger, verb="Processed", noun="loci", unit=50000)
     val refWalker     = new ReferenceSequenceFileWalker(this.ref.toFile)
+    val dict          = refWalker.getSequenceDictionary.fromSam
+    val ilist         = buildIntervalList(dict=dict)
     val locusIterator = buildSamLocusIterator(in, ilist).iterator()
     val variantMask   = buildVariantMask(variants, ilist, refWalker.getSequenceDictionary.fromSam)
 
@@ -174,7 +187,7 @@ class ErrorRateByReadPosition
   /** Generates a SamLocusIterator that will traverse over the relevant parts of the BAM. */
   private def buildSamLocusIterator(in: SamSource, intervals: Option[IntervalList]): SamLocusIterator = {
     val iterator = intervals match {
-      case None => new SamLocusIterator(in.toSamReader)
+      case None    => new SamLocusIterator(in.toSamReader)
       case Some(i) => new SamLocusIterator(in.toSamReader, i)
     }
 
