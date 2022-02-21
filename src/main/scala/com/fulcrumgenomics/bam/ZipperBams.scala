@@ -84,7 +84,7 @@ object ZipperBams extends LazyLogging {
 
   /** Constructs a template iterator that assumes the input is sorted or grouped, and turns it into an async iter. */
   def templateIterator(source: SamSource, bufferSize: Int): BetterBufferedIterator[Template] = {
-    val recs = source.iterator.bufferBetter
+    val recs      = source.iterator.bufferBetter
     val templates = new Iterator[Template] {
       override def hasNext: Boolean = recs.hasNext
       override def next(): Template = Template(recs)
@@ -139,14 +139,13 @@ object ZipperBams extends LazyLogging {
     |name are grouped together in the file), and b) have the same ordering of querynames.  If either of these are
     |violated the output is undefined!
     |
-    |By default the mapped BAM is read from stdin and the output BAM is written to stdout. This can be changed
+    |By default the mapped BAM is read from standard input (stdin) and the output BAM is written to standard output (stdout). This can be changed
     |using the `--input/-i` and `--output/-o` options.
     |
     |By default the output BAM file is emitted in the same order as the input BAMs.  This can be overridden
     |using the `--sort` option, though in practice it may be faster to do the following:
     |
-    |  `fgbio --compression 0 ZipperBams -i mapped.bam -u unmapped.bam -r ref.fa | samtools sort -@ 16`
-    |
+    |  `fgbio --compression 0 ZipperBams -i mapped.bam -u unmapped.bam -r ref.fa | samtools sort -@ $(nproc)`
     |
   """)
 class ZipperBams
@@ -181,6 +180,7 @@ class ZipperBams
         out ++= merge(unmapped=template, mapped=mappedIter.next(), tagInfo=tagInfo).allReads
       }
       else {
+        logger.debug("Found an unmapped read with no corresponding mapped read: ${template.name}")
         out ++= template.allReads
       }
     }
