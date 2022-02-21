@@ -56,6 +56,7 @@ object ZipperBams extends LazyLogging {
   def checkSort(source: SamSource, path: FilePath, name: String): Unit = {
     if (source.header.getSortOrder != SortOrder.queryname && source.header.getGroupOrder != GroupOrder.query) {
       logger.warning(s"${name} file ${path} does not appear to be queryname sorted or grouped.")
+      logger.warning(s"Continuing, but your output may be incorrect.")
     }
   }
 
