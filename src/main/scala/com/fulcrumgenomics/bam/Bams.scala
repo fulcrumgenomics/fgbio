@@ -36,7 +36,6 @@ import htsjdk.samtools._
 import htsjdk.samtools.reference.ReferenceSequenceFileWalker
 import htsjdk.samtools.util.{CloserUtil, CoordMath, SequenceUtil}
 
-import scala.collection.mutable.{ArrayBuffer, ListBuffer}
 import scala.math.{max, min}
 
 /**
@@ -112,7 +111,7 @@ case class Template(r1: Option[SamRecord],
       SamPairUtil.setMateInformationOnSupplementalAlignment(supp.asSam, primary.asSam, true)
     }
     for (first <- r1; second <- r2) {
-      SamPairUtil.setMateInfo(first.asSam, second.asSam)
+      SamPairUtil.setMateInfo(first.asSam, second.asSam, true)
     }
   }
 

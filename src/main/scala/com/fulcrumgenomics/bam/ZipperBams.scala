@@ -25,7 +25,6 @@
 package com.fulcrumgenomics.bam
 
 import com.fulcrumgenomics.FgBioDef._
-import com.fulcrumgenomics.bam.ZipperBams.{buildOutputHeader, checkSort, templateIterator}
 import com.fulcrumgenomics.bam.api.{SamOrder, SamRecord, SamSource, SamWriter}
 import com.fulcrumgenomics.cmdline.{ClpGroups, FgBioTool}
 import com.fulcrumgenomics.commons.async.AsyncIterator
@@ -37,18 +36,12 @@ import htsjdk.samtools.SAMFileHeader.{GroupOrder, SortOrder}
 import htsjdk.samtools.{SAMFileHeader, SAMSequenceDictionary}
 import htsjdk.variant.utils.SAMSequenceDictionaryExtractor
 
-/*
-Feature List
-
-    Trim back reads that are FR pairs that extend past each other's starts
- */
-
-object ZipperBams extends LazyLogging {
+/** Companion object that holds implementation methods for the ZipperBams command line tool. */
+private[bam] object ZipperBams extends LazyLogging {
   /** Class to hold info about all the extended tags/attrs we want to manipulate. */
   case class TagInfo(remove: IndexedSeq[String], reverse: IndexedSeq[String], revcomp: IndexedSeq[String]) {
     val setToReverse: java.util.Set[String] = remove.iterator.toJavaSet
     val setToRevcomp: java.util.Set[String] = revcomp.iterator.toJavaSet
-
     val hasRevsOrRevcomps: Boolean = reverse.nonEmpty || revcomp.nonEmpty
   }
 
@@ -60,6 +53,13 @@ object ZipperBams extends LazyLogging {
     }
   }
 
+  /** Builds the header for the output BAM from the headers of the unmapped and mapped BAM.
+    *
+    * @param unmapped the header from the unmapped BAM
+    * @param mapped the header from the mapped BAM
+    * @param sort optionally, the sort order specified for the output BAM
+    * @param dict the sequence dictionary of the reference genome to insert into the output header
+    */
   def buildOutputHeader(unmapped: SAMFileHeader,
                         mapped: SAMFileHeader,
                         sort: Option[SamOrder],
@@ -87,7 +87,16 @@ object ZipperBams extends LazyLogging {
     val recs      = source.iterator.bufferBetter
     val templates = new Iterator[Template] {
       override def hasNext: Boolean = recs.hasNext
-      override def next(): Template = Template(recs)
+      override def next(): Template = {
+        try {
+          Template(recs)
+        }
+        catch {
+          case iae: IllegalArgumentException => throw new IllegalStateException(
+            s"Error reading from ${source.toSamReader.getResourceDescription}: ${iae.getMessage}"
+          )
+        }
+      }
     }
 
     if (bufferSize > 0) {
@@ -110,16 +119,18 @@ object ZipperBams extends LazyLogging {
     for (u <- unmapped.primaryReads) {
       // Get all the mapped records for the unmapped record
       val ms = if (u.unpaired || u.firstOfPair) mapped.allR1s.toSeq else mapped.allR1s.toSeq
+
+      // Copy over pass/fail qc flag
+      ms.foreach(_.pf = u.pf)
+
       // Copy over tags on any positive strand reads first
       ms.iterator.filter(_.positiveStrand).foreach(m => copyTags(u, m))
 
-      // Then reverse complement the unmapped read if we need to
-      if (tagInfo.hasRevsOrRevcomps && ms.exists(_.negativeStrand)) {
-        u.asSam.reverseComplement(tagInfo.setToRevcomp, tagInfo.setToReverse, true)
+      // Then reverse complement the unmapped read if we need to and do the negative strand reads
+      if (ms.exists(_.negativeStrand)) {
+        if (tagInfo.hasRevsOrRevcomps) u.asSam.reverseComplement(tagInfo.setToRevcomp, tagInfo.setToReverse, true)
+        ms.iterator.filter(_.negativeStrand).foreach(m => copyTags(u, m))
       }
-
-      // And deal with the negative strand mappings
-      ms.iterator.filter(_.negativeStrand).foreach(m => copyTags(u, m))
     }
 
     mapped
@@ -153,9 +164,12 @@ class ZipperBams
   @arg(flag='u', doc="Unmapped SAM or BAM.") val unmapped: PathToBam,
   @arg(flag='r', doc="Path to the reference used in alignment.") val ref: PathToFasta,
   @arg(flag='o', doc="Output SAM or BAM file.") val output: PathToBam = Io.StdOut,
-  @arg(doc="Tags to remove from the mapped BAM records.", minElements=0) val tagsToRemove: IndexedSeq[String] = IndexedSeq.empty,
-  @arg(doc="Set of optional tags to reverse on reads mapped to the negative strand.", minElements=0) val tagsToReverse: IndexedSeq[String] = IndexedSeq.empty,
-  @arg(doc="Set of optional tags to reverse complement on reads mapped to the negative strand.", minElements=0) val tagsToRevcomp: IndexedSeq[String] = IndexedSeq.empty,
+  @arg(doc="Tags to remove from the mapped BAM records.", minElements=0)
+  val tagsToRemove: IndexedSeq[String] = IndexedSeq.empty,
+  @arg(doc="Set of optional tags to reverse on reads mapped to the negative strand.", minElements=0)
+  val tagsToReverse: IndexedSeq[String] = IndexedSeq.empty,
+  @arg(doc="Set of optional tags to reverse complement on reads mapped to the negative strand.", minElements=0)
+  val tagsToRevcomp: IndexedSeq[String] = IndexedSeq.empty,
   @arg(flag='s', doc="Sort the output BAM into the given order.") val sort: Option[SamOrder] = None,
   @arg(flag='b', doc="Buffer this many read-pairs while reading the input BAMs.") val buffer: Int = 5000
 ) extends FgBioTool {
@@ -169,7 +183,7 @@ class ZipperBams
 
     val dict    = SAMSequenceDictionaryExtractor.extractDictionary(this.ref)
     val header  = buildOutputHeader(unmappedSource.header, mappedSource.header, this.sort, dict)
-    val out     = SamWriter(output, header, sort=this.sort, async=true)
+    val out     = SamWriter(output, header, sort=this.sort)
     val tagInfo = TagInfo(remove=tagsToRemove, reverse=tagsToReverse, revcomp=tagsToRevcomp)
 
     val unmappedIter = templateIterator(unmappedSource, bufferSize=buffer)
