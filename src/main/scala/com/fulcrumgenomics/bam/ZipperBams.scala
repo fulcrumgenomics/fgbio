@@ -31,6 +31,7 @@ import com.fulcrumgenomics.commons.async.AsyncIterator
 import com.fulcrumgenomics.commons.collection.BetterBufferedIterator
 import com.fulcrumgenomics.commons.util.LazyLogging
 import com.fulcrumgenomics.sopt.{arg, clp}
+import com.fulcrumgenomics.umi.ConsensusTags
 import com.fulcrumgenomics.util.Io
 import htsjdk.samtools.SAMFileHeader.{GroupOrder, SortOrder}
 import htsjdk.samtools.{SAMFileHeader, SAMSequenceDictionary}
@@ -38,8 +39,26 @@ import htsjdk.variant.utils.SAMSequenceDictionaryExtractor
 
 /** Companion object that holds implementation methods for the ZipperBams command line tool. */
 private[bam] object ZipperBams extends LazyLogging {
+  /** Named sets of tags for reversing. */
+  val TagSetsForReversing = Map(
+    "Consensus" -> ConsensusTags.PerBase.TagsToReverse
+  )
+
+  /** Named sets of tags for reverse complementing. */
+  val TagSetsForRevcomping = Map(
+    "Consensus" -> ConsensusTags.PerBase.TagsToReverseComplement
+  )
+
+  object TagInfo {
+    def apply(remove: IndexedSeq[String], reverse: IndexedSeq[String], revcomp: IndexedSeq[String]): TagInfo = {
+      val r  = reverse.flatMap(t => TagSetsForReversing.getOrElse(t, Some(t)))
+      val rc = revcomp.flatMap(t => TagSetsForReversing.getOrElse(t, Some(t)))
+      new TagInfo(remove=remove, reverse=r, revcomp=rc)
+    }
+  }
+
   /** Class to hold info about all the extended tags/attrs we want to manipulate. */
-  case class TagInfo(remove: IndexedSeq[String], reverse: IndexedSeq[String], revcomp: IndexedSeq[String]) {
+  case class TagInfo private (remove: IndexedSeq[String], reverse: IndexedSeq[String], revcomp: IndexedSeq[String]) {
     val setToReverse: java.util.Set[String] = remove.iterator.toJavaSet
     val setToRevcomp: java.util.Set[String] = revcomp.iterator.toJavaSet
     val hasRevsOrRevcomps: Boolean = reverse.nonEmpty || revcomp.nonEmpty
@@ -136,9 +155,13 @@ private[bam] object ZipperBams extends LazyLogging {
     mapped
   }
 
-  /** Copies all tags from read to another. */
+  /** Copies all tags from read to another, with the exception that PG is only copied if not already present on dest. */
   def copyTags(src: SamRecord, dest: SamRecord): Unit = {
-    src.attributes.foreach { case (tag, value) => dest(tag) = value }
+    src.attributes.foreach { case (tag, value) =>
+      if (tag != "PG" || !dest.contains("PG")) {
+        dest(tag) = value
+      }
+    }
   }
 }
 
@@ -150,14 +173,21 @@ private[bam] object ZipperBams extends LazyLogging {
     |name are grouped together in the file), and b) have the same ordering of querynames.  If either of these are
     |violated the output is undefined!
     |
-    |By default the mapped BAM is read from standard input (stdin) and the output BAM is written to standard output (stdout). This can be changed
-    |using the `--input/-i` and `--output/-o` options.
+    |All tags present on the unmapped reads are transferred to the mapped reads.  The options `--tags-to-reverse`
+    |and `--tags-to-revcomp` will cause tags on the unmapped reads to be reversed or reverse complemented before
+    |being copied to reads mapped to the negative strand.  These options can take a mixture of two-letter tag names
+    |and the names of tag sets, which will be expanded into sets of tag names.  Currently the only named tag set
+    |is "Consensus" which contains all the per-base consensus tags produced by fgbio consensus callers.
+    |
+    |By default the mapped BAM is read from standard input (stdin) and the output BAM is written to standard
+    |output (stdout). This can be changed using the `--input/-i` and `--output/-o` options.
     |
     |By default the output BAM file is emitted in the same order as the input BAMs.  This can be overridden
     |using the `--sort` option, though in practice it may be faster to do the following:
     |
-    |  `fgbio --compression 0 ZipperBams -i mapped.bam -u unmapped.bam -r ref.fa | samtools sort -@ $(nproc)`
-    |
+    |```
+    |fgbio --compression 0 ZipperBams -i mapped.bam -u unmapped.bam -r ref.fa | samtools sort -@ $(nproc)
+    |```
   """)
 class ZipperBams
 ( @arg(flag='i', doc="Mapped SAM or BAM.") val input: PathToBam = Io.StdIn,
@@ -185,6 +215,10 @@ class ZipperBams
     val header  = buildOutputHeader(unmappedSource.header, mappedSource.header, this.sort, dict)
     val out     = SamWriter(output, header, sort=this.sort)
     val tagInfo = TagInfo(remove=tagsToRemove, reverse=tagsToReverse, revcomp=tagsToRevcomp)
+
+    if (tagInfo.remove.nonEmpty)  logger.info(s"Tags for removal from mapped BAM: ${tagInfo.remove.mkString(", ")}")
+    if (tagInfo.reverse.nonEmpty) logger.info(s"Tags being reversed: ${tagInfo.reverse.mkString(", ")}")
+    if (tagInfo.revcomp.nonEmpty) logger.info(s"Tags being reverse complemented: ${tagInfo.revcomp.mkString(", ")}")
 
     val unmappedIter = templateIterator(unmappedSource, bufferSize=buffer)
     val mappedIter   = templateIterator(mappedSource, bufferSize=buffer)
