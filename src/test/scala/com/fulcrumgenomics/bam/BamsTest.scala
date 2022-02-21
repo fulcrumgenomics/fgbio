@@ -436,6 +436,38 @@ class BamsTest extends UnitSpec {
       r.secondary shouldBe false
       r.supplementary shouldBe false
     }
+  }
 
+  "Template.fixMateInfo" should "copy mate information over" in {
+    val builder = new SamBuilder()
+    builder.addPair(name="q1", contig=1, contig2=Some(2), start1=100, start2=200, cigar1="50M50S", cigar2="50S50M", mapq1=51, mapq2=52)
+    builder.addPair(name="q1", contig=3, contig2=Some(4), start1=300, start2=400, cigar1="50S50M", cigar2="50M50S", mapq1=21, mapq2=22)
+      .foreach(_.supplementary = true)
+
+    val recs = builder.toIndexedSeq.tapEach { r =>
+      r.mateMapped   = false
+      r.mateStart    = SamRecord.UnmappedStart
+      r.mateRefIndex = SamRecord.UnmappedReferenceIndex
+      r.remove("MC")
+      r.remove("MQ")
+    }
+
+    val template = Template(recs.iterator)
+    template.fixMateInfo()
+
+    template.allReads.foreach { r =>
+      r.mateMapped shouldBe true
+
+      if (r.firstOfPair) {
+        r.mateRefIndex shouldBe 2
+        r.mateStart shouldBe 200
+        r.mateCigar.value.toString() shouldBe "50S50M"
+      }
+      else {
+        r.mateRefIndex shouldBe 1
+        r.mateStart shouldBe 100
+        r.mateCigar.value.toString() shouldBe "50M50S"
+      }
+    }
   }
 }
