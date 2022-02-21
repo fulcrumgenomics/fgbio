@@ -33,10 +33,9 @@ import com.fulcrumgenomics.util.{Io, ProgressLogger, Sorter}
 import htsjdk.samtools.SAMFileHeader.{GroupOrder, SortOrder}
 import htsjdk.samtools.SamPairUtil.PairOrientation
 import htsjdk.samtools._
-import htsjdk.samtools.reference.ReferenceSequenceFileWalker
+import htsjdk.samtools.reference.{ReferenceSequence, ReferenceSequenceFileWalker}
 import htsjdk.samtools.util.{CloserUtil, CoordMath, SequenceUtil}
 
-import scala.collection.mutable.{ArrayBuffer, ListBuffer}
 import scala.math.{max, min}
 
 /**
@@ -246,7 +245,7 @@ object Bams extends LazyLogging {
       case (Some(Queryname), _) => new SelfClosingIterator(iterator.bufferBetter, () => CloserUtil.close(iterator))
       case (_, _) =>
         logger.info(parts = "Sorting into queryname order.")
-        val progress = ProgressLogger(this.logger, "Records", "sorted")
+        val progress = ProgressLogger(this.logger, "records", "sorted")
         val sort     = sorter(Queryname, header, maxInMemory, tmpDir)
         iterator.foreach { rec =>
           progress.record(rec)
@@ -412,7 +411,22 @@ object Bams extends LazyLogging {
     * @param rec the SamRecord to update
     * @param ref a reference sequence file walker to pull the reference information from
     */
-  def regenerateNmUqMdTags(rec: SamRecord, ref: ReferenceSequenceFileWalker): Unit = {
+  def regenerateNmUqMdTags(rec: SamRecord, ref: ReferenceSequenceFileWalker): SamRecord = {
+    if (rec.unmapped) regenerateNmUqMdTags(rec, Map.empty[Int, ReferenceSequence]) else {
+      val refSeq = ref.get(rec.refIndex)
+      regenerateNmUqMdTags(rec, Map(refSeq.getContigIndex -> refSeq))
+    }
+    rec
+  }
+
+  /**
+    * Ensures that any NM/UQ/MD tags on the read are accurate.  If the read is unmapped, any existing
+    * values are removed.  If the read is mapped all three tags will have values regenerated.
+    *
+    * @param rec the SamRecord to update
+    * @param ref a reference sequence file walker to pull the reference information from
+    */
+  def regenerateNmUqMdTags(rec: SamRecord, ref: Map[Int, ReferenceSequence]): SamRecord = {
     import SAMTag._
     if (rec.unmapped) {
       rec(NM.name()) =  null
@@ -420,12 +434,15 @@ object Bams extends LazyLogging {
       rec(MD.name()) =  null
     }
     else {
-      val refBases = ref.get(rec.refIndex).getBases
+      val refBases = ref.getOrElse(rec.refIndex, throw new IllegalArgumentException(
+        s"Record '${rec.name}' had contig index '${rec.refIndex}', but not found in the input reference map"
+      )).getBases
       SequenceUtil.calculateMdAndNmTags(rec.asSam, refBases, true, true)
       if (rec.quals != null && rec.quals.length != 0) {
         rec(SAMTag.UQ.name) = SequenceUtil.sumQualitiesOfMismatches(rec.asSam, refBases, 0)
       }
     }
+    rec
   }
 
   /**

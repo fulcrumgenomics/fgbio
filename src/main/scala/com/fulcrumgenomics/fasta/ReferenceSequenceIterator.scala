@@ -25,15 +25,16 @@ package com.fulcrumgenomics.fasta
 
 import htsjdk.samtools.reference.{ReferenceSequence, ReferenceSequenceFile, ReferenceSequenceFileFactory}
 import com.fulcrumgenomics.commons.CommonsDef._
+import com.fulcrumgenomics.commons.collection.SelfClosingIterator
 
 object ReferenceSequenceIterator {
   /** Constructs an iterator over a reference sequence from a Path to the FASTA file. */
-  def apply(path: PathToFasta, stripComments: Boolean = false) = {
+  def apply(path: PathToFasta, stripComments: Boolean = false): ReferenceSequenceIterator = {
     new ReferenceSequenceIterator(ReferenceSequenceFileFactory.getReferenceSequenceFile(path, stripComments, false))
   }
 
   /** Constructs an iterator over a reference sequence from a ReferenceSequenceFile. */
-  def apply(ref: ReferenceSequenceFile) = {
+  def apply(ref: ReferenceSequenceFile): ReferenceSequenceIterator = {
     new ReferenceSequenceIterator(ref)
   }
 }
@@ -45,8 +46,15 @@ object ReferenceSequenceIterator {
 class ReferenceSequenceIterator private(private val ref: ReferenceSequenceFile) extends Iterator[ReferenceSequence] {
   // The next reference sequence; will be null if there is no next :(
   private var nextSequence: ReferenceSequence = ref.nextSequence()
+  private var isOpen: Boolean = true
 
-  override def hasNext: Boolean = this.nextSequence != null
+  override def hasNext: Boolean = if (this.nextSequence != null) true else {
+    if (isOpen) {
+      isOpen = false
+      ref.close()
+    }
+    false
+  }
 
   override def next(): ReferenceSequence = {
     assert(hasNext, "next() called on empty iterator")
