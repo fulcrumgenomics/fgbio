@@ -26,7 +26,7 @@ package com.fulcrumgenomics.bam.api
 
 import com.fulcrumgenomics.FgBioDef._
 import com.fulcrumgenomics.fasta.SequenceDictionary
-import htsjdk.samtools.{SAMFileHeader, SAMProgramRecord, SAMReadGroupRecord}
+import htsjdk.samtools.{SAMFileHeader, SAMProgramRecord, SAMReadGroupRecord, SAMTextHeaderCodec}
 
 /**
   * Trait that can be mixed into any class that provides access to a SAMFileHeader in
@@ -47,4 +47,8 @@ private[api] trait HeaderHelper {
 
   /** The list of program groups from the associated header. */
   def programGroups: Seq[SAMProgramRecord] = header.getProgramRecords.toIndexedSeq
+
+  /** Gets the comments from the header, removing the stupid leading @CO that HTSJDK returns. */
+  def comments: Seq[String] =
+    header.getComments.iterator().map(_.replace(SAMTextHeaderCodec.COMMENT_PREFIX, "")).toIndexedSeq
 }

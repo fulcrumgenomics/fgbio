@@ -137,7 +137,7 @@ private[bam] object ZipperBams extends LazyLogging {
     // Copy tags over from the unmapped record
     for (u <- unmapped.primaryReads) {
       // Get all the mapped records for the unmapped record
-      val ms = if (u.unpaired || u.firstOfPair) mapped.allR1s.toSeq else mapped.allR1s.toSeq
+      val ms = if (u.unpaired || u.firstOfPair) mapped.allR1s.toSeq else mapped.allR2s.toSeq
 
       // Copy over pass/fail qc flag
       ms.foreach(_.pf = u.pf)
