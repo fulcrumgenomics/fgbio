@@ -50,7 +50,9 @@ object ParIterator {
     * of `chunkSize` using the provided `TaskSupport`.
     */
   def apply[A](iter: Iterator[A], chunkSize: Int, support: TaskSupport): ParIterator[A] = {
-    new ParIterator[A](iter.grouped(chunkSize), chunkSize, support)
+    val grouped = iter.grouped(chunkSize)
+    val async = AsyncIterator(grouped, Some(2))
+    new ParIterator[A](async, chunkSize, support)
   }
 }
 
