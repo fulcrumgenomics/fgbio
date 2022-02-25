@@ -26,6 +26,7 @@ package com.fulcrumgenomics.umi
 
 import com.fulcrumgenomics.FgBioDef._
 import com.fulcrumgenomics.alignment.{Cigar, CigarElem}
+import com.fulcrumgenomics.bam.{ClippingMode, SamRecordClipper}
 import com.fulcrumgenomics.bam.api.{SamOrder, SamRecord}
 import com.fulcrumgenomics.commons.util.{Logger, SimpleCounter}
 import com.fulcrumgenomics.umi.UmiConsensusCaller._
@@ -36,7 +37,8 @@ import htsjdk.samtools.util.{Murmur3, SequenceUtil, TrimmingUtil}
 
 import scala.collection.mutable
 import scala.collection.mutable.ArrayBuffer
-import scala.math.{abs, min, max}
+import scala.math.min
+
 /**
   * Contains shared types and functions used when writing UMI-driven consensus
   * callers that take in SamRecords and emit SamRecords.
@@ -168,6 +170,9 @@ trait UmiConsensusCaller[ConsensusRead <: SimpleRead] {
   /** A consensus caller used to generate consensus UMI sequences */
   private val consensusBuilder = new SimpleConsensusCaller()
 
+  /** Clipper utility used to _calculate_ clipping, but not do the actual clipping */
+  private val clipper = new SamRecordClipper(mode=ClippingMode.Soft, autoClipAttributes=true)
+
   /** Returns a clone of this consensus caller in a state where no previous reads were processed.  I.e. all counters
     * are set to zero.*/
   def emptyClone(): UmiConsensusCaller[ConsensusRead]
@@ -241,37 +246,27 @@ trait UmiConsensusCaller[ConsensusRead <: SimpleRead] {
       }
     }
 
-    // Find the last non-N base of sufficient quality in the record, starting from either the
-    // end of the read, or the end of the insert, whichever is shorter!
+    // Get the length of the read based on trimming bases that map beyond the mate's end (FR only) and then any
+    // remaining trailing Ns
     val len = {
       var index = if (!rec.isFrPair) trimToLength - 1 else {
-        // If this read reads through the template (i.e. past the start of the mate), then we need to trim bases on the
-        // 3' end.  If not, then we can use the full read. This *does not* consider any clipping on the 5' end of its mate.
-        val adjustedReadLength = {
-          if (rec.positiveStrand) {
-            val mateEnd = rec.mateEnd.getOrElse(rec.start + abs(rec.insertSize) - 1)
-            if (rec.end >= mateEnd) {
-              // the # of bases to keep is the last read base of where the mate ends
-              rec.readPosAtRefPos(pos=mateEnd, returnLastBaseIfDeleted=false)
-            } else {
-              // the read does not go past the end, so just return the `trimToLength` as we take the minimum relative
-              // to it later
-              trimToLength
-            }
-          } else {
-            // Find where the start of the read that goes before the mate start, if at all
-            if (rec.start <= rec.mateStart) {
-              // the # of bases to keep is the last read base of where the mate ends
-              rec.length - rec.readPosAtRefPos(pos=rec.mateStart, returnLastBaseIfDeleted=false) + 1
-            } else {
-              // the read does not go past the end, so just return the `trimToLength` as we take the minimum relative
-              // to it later
-              trimToLength
-            }
+        // Get the number of mapped bases to clip that maps beyond the mate's end.  Soft-clipped bases are not counted.
+        val numBasesExtendingPasteMateEnd = this.clipper.clipExtendingPastMateEnd(rec=rec, doNotClip=true)
+        if (numBasesExtendingPasteMateEnd == 0) trimToLength - 1
+        else {
+          // There are some bases that map past the mate's end, so we would should also clip any existing soft-clipped
+          // bases on the 3' end of the read.
+          val numBasesAlreadySoftClipped = {
+            if (rec.positiveStrand) rec.cigar.softClippedThreePrimeBases
+            else rec.cigar.softClippedFivePrimeBases
           }
+          // Get the 1-based position in the read to clip
+          val clipPosition = rec.length - numBasesExtendingPasteMateEnd - numBasesAlreadySoftClipped
+          min(clipPosition, trimToLength) - 1
         }
-        min(adjustedReadLength, trimToLength) - 1
       }
+      // Find the last non-N base of sufficient quality in the record, starting from either the
+      // end of the read, or the end of the insert, whichever is shorter!
       while (index >= 0 && (bases(index) == NoCall)) index -= 1
       index + 1
     }

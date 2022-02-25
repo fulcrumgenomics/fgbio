@@ -240,10 +240,10 @@ class ClipBamTest extends UnitSpec with ErrorLogLevel with OptionValues {
   }
 
   "ClippingMetrics.add" should "add two metrics" in {
-    val fragment = ClippingMetrics(ReadType.Fragment, 1, 2,  3,  4,  5,  6, 7,  8,   9, 10, 11, 12, 13)
-    val readOne  = ClippingMetrics(ReadType.ReadTwo,  2, 3,  4,  5,  6,  7, 8,  9,  10, 11, 12, 13, 14)
-    val readTwo  = ClippingMetrics(ReadType.ReadTwo,  3, 4,  5,  6,  7,  8, 9,  10, 11, 12, 13, 14, 15)
-    val all      = ClippingMetrics(ReadType.All,      6, 9, 12, 15, 18, 21, 24, 27, 30, 33, 36, 39, 42)
+    val fragment = ClippingMetrics(ReadType.Fragment, 1, 2,  3,  4,  5,  6, 7,  8,   9, 10, 11, 12, 13, 14, 15)
+    val readOne  = ClippingMetrics(ReadType.ReadTwo,  2, 3,  4,  5,  6,  7, 8,  9,  10, 11, 12, 13, 14, 15, 16)
+    val readTwo  = ClippingMetrics(ReadType.ReadTwo,  3, 4,  5,  6,  7,  8, 9,  10, 11, 12, 13, 14, 15, 16, 17)
+    val all      = ClippingMetrics(ReadType.All,      6, 9, 12, 15, 18, 21, 24, 27, 30, 33, 36, 39, 42, 45, 48)
 
     // Check that adding fragment, readOne, and readTwo is correct
     val added    = ClippingMetrics(ReadType.All)
@@ -523,5 +523,17 @@ class ClipBamTest extends UnitSpec with ErrorLogLevel with OptionValues {
           clipped.last.qualsString shouldBe frag2.qualsString
       }
     }
+  }
+
+  it should "clip FR reads that extend past the mate" in {
+    val builder = new SamBuilder(readLength=50)
+    val clipper = new ClipBam(input=dummyBam, output=dummyBam, ref=ref, clipBasesPastMate=true)
+    val Seq(r1, r2) = builder.addPair(start1=100, start2=90)
+
+    r1.end shouldBe 149
+    r2.end shouldBe 139
+    clipper.clipPair(r1, r2)
+    r1.start shouldBe r2.start
+    r1.end shouldBe r2.end
   }
 }

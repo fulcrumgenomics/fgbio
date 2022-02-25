@@ -513,26 +513,26 @@ class VanillaUmiConsensusCallerTest extends UnitSpec with OptionValues {
     val s1          = cc().toSourceRead(r1, minBaseQuality=2.toByte, trim=false).value
     val s2          = cc().toSourceRead(r2, minBaseQuality=2.toByte, trim=false).value
 
-    s1.baseString shouldBe "A"*2 + "C"*38 // trimmed by ten bases at the 3' end, 5 due to soft-clipping and the other due to past mate start
+    s1.baseString shouldBe "A"*2 + "C"*38 // trimmed by ten bases at the 3' end, five due to existing soft-clipping and the other due to past mate start
     s1.cigar.toString shouldBe "10S30M"
-    s2.baseString shouldBe "C"*2 + "G"*36 // trimmed by twelve bases at the 3' end
-    s2.cigar.toString shouldBe "8S30M" // NB: cigar is reversed in toSourceRead
+    s2.baseString shouldBe "C"*2 + "G"*46 + "T"*2 // leading soft-clipping is not trimmed, since there are no mapped bases prior to it's mate's start
+    s2.cigar.toString shouldBe "8S30M12S" // NB: cigar is reversed in toSourceRead
   }
 
-  it should "not to trim based on insert size in the presence of soft-clipping (-/+)" in {
+  it should "not trim based on insert size in the presence of soft-clipping (-/+)" in {
     val builder     = new SamBuilder(readLength=142)
     val Seq(r1, r2) = builder.addPair(start1=545, start2=493, strand1=Minus, strand2=Plus, cigar1="47S72M23S", cigar2="46S96M")
       .map { r => r.bases = "A"*142; r }
     val s1          = cc().toSourceRead(r1, minBaseQuality=2.toByte, trim=false).value
     val s2          = cc().toSourceRead(r2, minBaseQuality=2.toByte, trim=false).value
 
-    s1.baseString shouldBe "T"*142
+    s1.baseString shouldBe "T"*142 // all the bases remain, no clipping
     s1.cigar.toString shouldBe "23S72M47S"  // NB: cigar is reversed in toSourceRead
-    s2.baseString shouldBe "A"*142
+    s2.baseString shouldBe "A"*142 // all the bases remain, no clipping
     s2.cigar.toString shouldBe "46S96M"
   }
 
-  it should "not to trim based on insert size in the presence of soft-clipping (+/-)" in {
+  it should "not trim based on insert size in the presence of soft-clipping (+/-)" in {
     val builder     = new SamBuilder(readLength=142)
     val Seq(r1, r2) = builder.addPair(start2=545, start1=493, strand2=Minus, strand1=Plus, cigar2="47S72M23S", cigar1="46S96M")
       .map { r => r.bases = "A"*142; r }

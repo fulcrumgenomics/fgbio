@@ -78,13 +78,14 @@ class ClipBam
   @arg(          doc="Require at least this number of bases to be clipped on the 3' end of R1") val readOneThreePrime: Int = 0,
   @arg(          doc="Require at least this number of bases to be clipped on the 5' end of R2") val readTwoFivePrime: Int  = 0,
   @arg(          doc="Require at least this number of bases to be clipped on the 3' end of R2") val readTwoThreePrime: Int = 0,
-  @arg(          doc="Clip overlapping reads.") val clipOverlappingReads: Boolean = false
+  @arg(          doc="Clip overlapping reads.", mutex=Array("clipBasesPastMate")) val clipOverlappingReads: Boolean = false,
+  @arg(          doc="Clip reads who sequence past the start of their mate.", mutex=Array("clipOverlappingReads")) val clipBasesPastMate: Boolean = false
 ) extends FgBioTool with LazyLogging {
   Io.assertReadable(input)
   Io.assertReadable(ref)
   Io.assertCanWriteFile(output)
 
-  validate(upgradeClipping || clipOverlappingReads || Seq(readOneFivePrime, readOneThreePrime, readTwoFivePrime, readTwoThreePrime).exists(_ != 0),
+  validate(upgradeClipping || clipOverlappingReads || clipBasesPastMate || Seq(readOneFivePrime, readOneThreePrime, readTwoFivePrime, readTwoThreePrime).exists(_ != 0),
     "At least one clipping option is required")
 
   private val clipper = new SamRecordClipper(mode=clippingMode, autoClipAttributes=autoClipAttributes)
@@ -164,7 +165,8 @@ class ClipBam
         priorBasesClipped   = priorBasesClipped,
         numFivePrime        = numFivePrime,
         numThreePrime       = numThreePrime,
-        numOverlappingBases = 0
+        numOverlappingBases = 0,
+        numExtendingBases   = 0
       )
     }
   }
@@ -182,9 +184,13 @@ class ClipBam
     val numReadTwoThreePrime = this.clipper.clip3PrimeEndOfRead(r2, readTwoThreePrime)
 
     val (numOverlappingBasesReadOne, numOverlappingBasesReadTwo) = {
-      if (clipOverlappingReads && r1.isFrPair) {
-        if (r1.positiveStrand) clipOverlappingReads(r1, r2) else clipOverlappingReads(r2, r1)
-      } else (0, 0)
+      if (clipOverlappingReads && r1.isFrPair) this.clipper.clipOverlappingReads(r1, r2)
+      else (0, 0)
+    }
+
+    val (numExtendingPastMateStartReadOne, numExtendingPastMateStartReadTwo) = {
+      if (clipBasesPastMate && r1.isFrPair) this.clipper.clipExtendingPastMateEnds(r1, r2)
+      else (0, 0)
     }
 
     r1Metric.foreach { m =>
@@ -193,7 +199,8 @@ class ClipBam
         priorBasesClipped   = priorBasesClippedReadOne,
         numFivePrime        = numReadOneFivePrime,
         numThreePrime       = numReadOneThreePrime,
-        numOverlappingBases = numOverlappingBasesReadOne
+        numOverlappingBases = numOverlappingBasesReadOne,
+        numExtendingBases   = numExtendingPastMateStartReadOne
       )
     }
 
@@ -203,26 +210,10 @@ class ClipBam
         priorBasesClipped   = priorBasesClippedReadTwo,
         numFivePrime        = numReadTwoFivePrime,
         numThreePrime       = numReadTwoThreePrime,
-        numOverlappingBases = numOverlappingBasesReadTwo
+        numOverlappingBases = numOverlappingBasesReadTwo,
+        numExtendingBases   = numExtendingPastMateStartReadTwo
       )
     }
-  }
-
-  /** Clips overlapping reads, where both ends of the read pair are mapped to the same chromosome, and in FR orientation. */
-  protected def clipOverlappingReads(f: SamRecord, r: SamRecord): (Int, Int) = {
-    var numOverlappingBasesReadOne: Int = 0
-    var numOverlappingBasesReadTwo: Int = 0
-    // What we really want is to trim by the number of _reference_ bases not read bases,
-    // in order to eliminate overlap.  We could do something very complicated here, or
-    // we could just trim read bases in a loop until the overlap is eliminated!
-    while (f.end >= r.start && f.mapped && r.mapped) {
-      val lengthToClip = f.end - r.start + 1
-      val firstHalf    = lengthToClip / 2
-      val secondHalf   = lengthToClip - firstHalf // safe guard against rounding on odd lengths
-      numOverlappingBasesReadOne += this.clipper.clip3PrimeEndOfAlignment(f, firstHalf)
-      numOverlappingBasesReadTwo += this.clipper.clip3PrimeEndOfAlignment(r, secondHalf)
-    }
-    (numOverlappingBasesReadOne, numOverlappingBasesReadTwo)
   }
 }
 
@@ -246,6 +237,7 @@ object ReadType extends FgBioEnum[ReadType] {
   * @param reads_clipped_five_prime The number of reads with the 5' end clipped.
   * @param reads_clipped_three_prime The number of reads with the 3' end clipped.
   * @param reads_clipped_overlapping The number of reads clipped due to overlapping reads.
+  * @param reads_clipped_extending The number of reads clipped due to a read extending past its mate.
   * @param reads_unmapped The number of reads that became unmapped due to clipping.
   * @param bases The number of aligned bases after clipping.
   * @param bases_clipped_pre The number of bases clipped prior to clipping with [[ClipBam]].
@@ -253,6 +245,7 @@ object ReadType extends FgBioEnum[ReadType] {
   * @param bases_clipped_five_prime The number of bases clipped on the 5' end of the read.
   * @param bases_clipped_three_prime The number of bases clipped on the 3 end of the read.
   * @param bases_clipped_overlapping The number of bases clipped due to overlapping reads.
+  * @param bases_clipped_extending The number of bases clipped due to a read extending past its mate.
   */
 case class ClippingMetrics
 (read_type: ReadType,
@@ -263,14 +256,16 @@ case class ClippingMetrics
  var reads_clipped_five_prime: Long = 0,
  var reads_clipped_three_prime: Long = 0,
  var reads_clipped_overlapping: Long = 0,
+ var reads_clipped_extending: Long = 0,
  var bases: Long = 0,
  var bases_clipped_pre: Long = 0,
  var bases_clipped_post: Long = 0,
  var bases_clipped_five_prime: Long = 0,
  var bases_clipped_three_prime: Long = 0,
- var bases_clipped_overlapping: Long = 0
+ var bases_clipped_overlapping: Long = 0,
+ var bases_clipped_extending: Long = 0,
 ) extends Metric {
-  def update(rec: SamRecord, priorBasesClipped: Int, numFivePrime: Int, numThreePrime: Int, numOverlappingBases: Int): Unit = {
+  def update(rec: SamRecord, priorBasesClipped: Int, numFivePrime: Int, numThreePrime: Int, numOverlappingBases: Int, numExtendingBases: Int): Unit = {
     this.reads                      += 1
     this.bases                      += rec.cigar.alignedBases
     if (priorBasesClipped > 0) {
@@ -289,11 +284,15 @@ case class ClippingMetrics
       this.reads_clipped_overlapping += 1
       this.bases_clipped_overlapping += numOverlappingBases
     }
-    val additionalClippedBases = numFivePrime + numThreePrime + numOverlappingBases
-    val totalClippedBasees = additionalClippedBases + priorBasesClipped
-    if (totalClippedBasees > 0) {
+    if (numExtendingBases > 0) {
+      this.reads_clipped_extending += 1
+      this.bases_clipped_extending += numExtendingBases
+    }
+    val additionalClippedBases = numFivePrime + numThreePrime + numOverlappingBases + numExtendingBases
+    val totalClippedBases = additionalClippedBases + priorBasesClipped
+    if (totalClippedBases > 0) {
       this.reads_clipped_post        += 1
-      this.bases_clipped_post        += totalClippedBasees
+      this.bases_clipped_post        += totalClippedBases
       if (rec.unmapped && additionalClippedBases > 0) this.reads_unmapped += 1
     }
   }
@@ -306,11 +305,13 @@ case class ClippingMetrics
     this.reads_clipped_five_prime  += metric.sumBy(_.reads_clipped_five_prime)
     this.reads_clipped_three_prime += metric.sumBy(_.reads_clipped_three_prime)
     this.reads_clipped_overlapping += metric.sumBy(_.reads_clipped_overlapping)
+    this.reads_clipped_extending   += metric.sumBy(_.reads_clipped_extending)
     this.bases                     += metric.sumBy(_.bases)
     this.bases_clipped_pre         += metric.sumBy(_.bases_clipped_pre)
     this.bases_clipped_post        += metric.sumBy(_.bases_clipped_post)
     this.bases_clipped_five_prime  += metric.sumBy(_.bases_clipped_five_prime)
     this.bases_clipped_three_prime += metric.sumBy(_.bases_clipped_three_prime)
     this.bases_clipped_overlapping += metric.sumBy(_.bases_clipped_overlapping)
+    this.bases_clipped_extending   += metric.sumBy(_.bases_clipped_extending)
   }
 }

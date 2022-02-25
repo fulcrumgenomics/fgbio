@@ -91,33 +91,71 @@ object Cigar {
 }
 
 /** A data class for holding statistics about a [[Cigar]]. */
-private[alignment] case class CigarStats(lengthOnQuery: Int, lengthOnTarget: Int, alignedBases: Int, clippedBases: Int)
+private[alignment] case class CigarStats(lengthOnQuery: Int,
+                                         lengthOnTarget: Int,
+                                         alignedBases: Int,
+                                         clippedBases: Int,
+                                         softClippedFivePrimeBases: Int,
+                                         softClippedThreePrimeBases: Int)
 
 /** Companion object for [[Cigar]]. */
 private[alignment] object CigarStats {
 
   /** Build a [[CigarStats]] from a [[Cigar]]. */
   private[alignment] def apply(cigar: Cigar): CigarStats = {
-    var lengthOnQuery  = 0
-    var lengthOnTarget = 0
-    var alignedBases   = 0
-    var clippedBases   = 0
+    var lengthOnQuery              = 0
+    var lengthOnTarget             = 0
+    var alignedBases               = 0
+    var clippedBases               = 0
+    var softClippedFivePrimeBases  = 0
+    var softClippedThreePrimeBases = 0
+    var index                      = 0
 
-    forloop(0, cigar.elems.length) { index =>
+    // leading clipping
+    while (index < cigar.elems.length && cigar.elems(index).operator.isClipping) {
       val elem = cigar.elems(index)
       lengthOnQuery  += elem.lengthOnQuery
       lengthOnTarget += elem.lengthOnTarget
-      if (elem.operator.isAlignment)     alignedBases += elem.length
-      else if (elem.operator.isClipping) clippedBases += elem.length
+      clippedBases += elem.length
+      if (elem.operator == CigarOperator.S) softClippedFivePrimeBases += elem.length
+      index += 1
     }
 
+    // aligned bases
+    while (index < cigar.elems.length && !cigar.elems(index).operator.isClipping) {
+      val elem = cigar.elems(index)
+      lengthOnQuery  += elem.lengthOnQuery
+      lengthOnTarget += elem.lengthOnTarget
+      if (elem.operator.isAlignment) alignedBases += elem.length
+      index += 1
+    }
+
+    // trailing clipping
+    while (index < cigar.elems.length && cigar.elems(index).operator.isClipping) {
+      val elem = cigar.elems(index)
+      lengthOnQuery  += elem.lengthOnQuery
+      lengthOnTarget += elem.lengthOnTarget
+      clippedBases += elem.length
+      if (elem.operator == CigarOperator.S) softClippedThreePrimeBases += elem.length
+      index += 1
+    }
+
+    require(index == cigar.elems.length,
+      s"Invalid cigar, did not consume all the elements: ${Cigar(cigar.elems.take(index))}[${Cigar(cigar.elems.drop(index))}]"
+    )
+
     CigarStats(
-      lengthOnQuery  = lengthOnQuery,
-      lengthOnTarget = lengthOnTarget,
-      alignedBases   = alignedBases,
-      clippedBases   = clippedBases
+      lengthOnQuery              = lengthOnQuery,
+      lengthOnTarget             = lengthOnTarget,
+      alignedBases               = alignedBases,
+      clippedBases               = clippedBases,
+      softClippedFivePrimeBases  = softClippedFivePrimeBases,
+      softClippedThreePrimeBases = softClippedThreePrimeBases
     )
   }
+
+  /** Build a [[CigarStats]] from a string representation of the cigar. */
+  private[alignment] def apply(cigar: String): CigarStats = this.apply(Cigar(cigar))
 }
 
 /**
@@ -162,6 +200,12 @@ case class Cigar(elems: IndexedSeq[CigarElem]) extends Iterable[CigarElem] {
 
   /** Returns the number of bases that are clipped between the two sequences. */
   def clippedBases: Int = stats.clippedBases
+
+  /** Returns the number of bases that are soft-clipped on the 5' end of this sequence.  Ignores hard-clips. */
+  def softClippedFivePrimeBases: Int = stats.softClippedFivePrimeBases
+
+  /** Returns the number of bases that are soft-clipped on the 3' end of this sequence.  Ignores hard-clips. */
+  def softClippedThreePrimeBases: Int = stats.softClippedThreePrimeBases
 
   /** Truncates the cigar based on either query or target length cutoff. */
   private def truncate(len: Int, shouldCount: CigarElem => Boolean): Cigar = {
@@ -297,21 +341,21 @@ case class Alignment(query: Array[Byte],
 
       cig.operator match {
         case CigarOperator.INSERTION =>
-          forloop (from=0, until=len) { i =>
+          forloop (from=0, until=len) { _ =>
             queryBuffer.append(this.query(qOffset).toChar)
             alignBuffer.append(gapChar)
             targetBuffer.append(padChar)
             qOffset += 1
           }
         case CigarOperator.DELETION =>
-          forloop (from=0, until=len) { i =>
+          forloop (from=0, until=len) { _ =>
             queryBuffer.append(padChar)
             alignBuffer.append(gapChar)
             targetBuffer.append(this.target(tOffset).toChar)
             tOffset += 1
           }
         case op =>
-          forloop (from=0, until=len) { i =>
+          forloop (from=0, until=len) { _ =>
             val q = this.query(qOffset).toChar
             val t = this.target(tOffset).toChar
             queryBuffer.append(q)
