@@ -515,8 +515,8 @@ class VanillaUmiConsensusCallerTest extends UnitSpec with OptionValues {
 
     s1.baseString shouldBe "A"*2 + "C"*38 // trimmed by ten bases at the 3' end, five due to existing soft-clipping and the other due to past mate start
     s1.cigar.toString shouldBe "10S30M"
-    s2.baseString shouldBe "C"*2 + "G"*46 + "T"*2 // leading soft-clipping is not trimmed, since there are no mapped bases prior to it's mate's start
-    s2.cigar.toString shouldBe "8S30M12S" // NB: cigar is reversed in toSourceRead
+    s2.baseString shouldBe "C"*2 + "G"*36 // trimmed by twelve bases at the 3' end (the "12S" in the cigar)
+    s2.cigar.toString shouldBe "8S30M" // NB: cigar is reversed in toSourceRead
   }
 
   it should "not trim based on insert size in the presence of soft-clipping (-/+)" in {

@@ -246,24 +246,14 @@ trait UmiConsensusCaller[ConsensusRead <: SimpleRead] {
       }
     }
 
-    // Get the length of the read based on trimming bases that map beyond the mate's end (FR only) and then any
-    // remaining trailing Ns
+    // Get the length of the read based on trimming bases that are beyond the mate's end (FR only) and then any
+    // remaining trailing Ns.  This includes both mapped bases and soft-clipped bases past the mate's end.
     val len = {
       var index = if (!rec.isFrPair) trimToLength - 1 else {
-        // Get the number of mapped bases to clip that maps beyond the mate's end.  Soft-clipped bases are not counted.
-        val numBasesExtendingPasteMateEnd = this.clipper.clipExtendingPastMateEnd(rec=rec, doNotClip=true)
-        if (numBasesExtendingPasteMateEnd == 0) trimToLength - 1
-        else {
-          // There are some bases that map past the mate's end, so we would should also clip any existing soft-clipped
-          // bases on the 3' end of the read.
-          val numBasesAlreadySoftClipped = {
-            if (rec.positiveStrand) rec.cigar.softClippedThreePrimeBases
-            else rec.cigar.softClippedFivePrimeBases
-          }
-          // Get the 1-based position in the read to clip
-          val clipPosition = rec.length - numBasesExtendingPasteMateEnd - numBasesAlreadySoftClipped
-          min(clipPosition, trimToLength) - 1
-        }
+        // Get the number of mapped bases to clip that maps beyond the mate's end, including any soft-clipped bases. Use
+        // that to compute where in the read to keep.
+        val clipPosition = rec.length - this.clipper.numBasesExtendingPastMateEnd(rec=rec)
+        min(clipPosition, trimToLength) - 1
       }
       // Find the last non-N base of sufficient quality in the record, starting from either the
       // end of the read, or the end of the insert, whichever is shorter!

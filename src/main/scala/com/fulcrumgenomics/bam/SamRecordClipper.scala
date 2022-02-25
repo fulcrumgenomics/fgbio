@@ -319,16 +319,60 @@ class SamRecordClipper(val mode: ClippingMode, val autoClipAttributes: Boolean) 
     }
   }
 
+  /** Returns the number of bases extending past the mate end for FR pairs including any soft-clipped bases, zero otherwise,
+    * for the record and it's mate respectively.
+    *
+    * @param rec the read
+    * @param mate the mate
+    */
+  def numBasesExtendingPastMateEnd(rec: SamRecord, mate: SamRecord): (Int, Int) = {
+    val basesClipped1 = numBasesExtendingPastMateEnd(rec=rec, mateEnd=mate.end)
+    val basesClipped2 = numBasesExtendingPastMateEnd(rec=mate, mateEnd=rec.end)
+    (basesClipped1, basesClipped2)
+  }
+
+  /** Returns the number of bases extending past the mate end for FR pairs including any soft-clipped bases, zero otherwise.
+    *
+    * The mate end is computed via the mate-cigar (MC) SAM tag if present, otherwise the reported insert size is used.
+    *
+    * @param rec the record to clip
+    */
+  def numBasesExtendingPastMateEnd(rec: SamRecord): Int = {
+    val mateEnd = rec.mateEnd.getOrElse(rec.start + abs(rec.insertSize) - 1)
+    numBasesExtendingPastMateEnd(rec=rec, mateEnd=mateEnd)
+  }
+
+  /** Returns the number of bases extending past the mate end for FR pairs including any soft-clipped bases, zero otherwise.
+    *
+    * @param rec the record to examine
+    * @param mateEnd the end coordinate of the mate
+    */
+  private def numBasesExtendingPastMateEnd(rec: SamRecord, mateEnd: Int): Int = {
+    if (!rec.isFrPair) 0 // not an FR pair
+    else {
+      if (rec.positiveStrand && rec.end >= mateEnd && rec.start <= mateEnd) {
+        // clip from where last read base of where the mate ends
+        Math.max(0, rec.length - rec.readPosAtRefPos(pos=mateEnd, returnLastBaseIfDeleted=false))
+      }
+      else if (rec.negativeStrand && rec.start <= rec.mateStart && rec.end >= rec.mateStart) {
+        // clip up to and including one base before where the mate starts
+        Math.max(0, rec.readPosAtRefPos(pos=rec.mateStart, returnLastBaseIfDeleted=false) - 1)
+      } else {
+        // no bases extend past
+        0
+      }
+    }
+  }
+
   /** Clips a read that sequences past the start (in sequencing order) of the mate, and in FR orientation.
     *
     * @param rec the read
     * @param mate the mate
-    * @param doNotClip do not clip the reads, only return the number of bases that would be clipped
     * @return the additional number of bases clipped (3' end in sequencing order) for the read and mate respectively
     */
-  def clipExtendingPastMateEnds(rec: SamRecord, mate: SamRecord, doNotClip: Boolean = false): (Int, Int) = {
-    val basesClipped1 = clipExtendingPastMateEnd(rec=rec, mateEnd=mate.end, doNotClip=doNotClip)
-    val basesClipped2 = clipExtendingPastMateEnd(rec=mate, mateEnd=rec.end, doNotClip=doNotClip)
+  def clipExtendingPastMateEnds(rec: SamRecord, mate: SamRecord): (Int, Int) = {
+    val basesClipped1 = clipExtendingPastMateEnd(rec=rec, mateEnd=mate.end)
+    val basesClipped2 = clipExtendingPastMateEnd(rec=mate, mateEnd=rec.end)
     (basesClipped1, basesClipped2)
   }
 
@@ -337,46 +381,33 @@ class SamRecordClipper(val mode: ClippingMode, val autoClipAttributes: Boolean) 
     * The mate end is computed via the mate-cigar (MC) SAM tag if present, otherwise the reported insert size is used.
     *
     * @param rec the record to clip
-    * @param doNotClip do not clip the read, only return the number of bases that would be clipped
     * @return the additional number of bases clipped (3' end in sequencing order)
     */
-  def clipExtendingPastMateEnd(rec: SamRecord, doNotClip: Boolean = false): Int = {
+  def clipExtendingPastMateEnd(rec: SamRecord): Int = {
     val mateEnd = rec.mateEnd.getOrElse(rec.start + abs(rec.insertSize) - 1)
-    clipExtendingPastMateEnd(rec=rec, mateEnd=mateEnd, doNotClip=doNotClip)
+    clipExtendingPastMateEnd(rec=rec, mateEnd=mateEnd)
   }
 
   /** Clips a read that sequences past the start (in sequencing order) of the mate, and in FR orientation.
     *
     * @param rec the record to clip
     * @param mateEnd the end coordinate of the mate
-    * @param doNotClip do not clip the read, only return the number of bases that would be clipped
     * @return the additional number of bases clipped (3' end in sequencing order)
     */
-  private def clipExtendingPastMateEnd(rec: SamRecord, mateEnd: Int, doNotClip: Boolean): Int = {
-    if (rec.matesOverlap.contains(false)) 0 // do not overlap, don't clip
+  private def clipExtendingPastMateEnd(rec: SamRecord, mateEnd: Int): Int = {
+    if (!rec.isFrPair) 0 // do not overlap, don't clip
     else {
-      require(rec.isFrPair, s"Only know how to clip FR overlapping read pairs: ${rec.name}")
-      // If this read reads through the template (i.e. past the far end of the mate), then we need to trim bases on the
-      // 3' end.  If not, then we can keep the full read. This *does not* consider any clipping on the 5' end of its mate.
-      // We compute two values: (1) the amount of clipping already on the 3' end of this read, and (2) the additional number
-      // of bases we need to clip.  The latter is used to add additional clipping, while the sum of the two is returned
-      // by this function.
-      val extraBasesToClip = {
-        if (rec.positiveStrand && rec.end >= mateEnd && rec.start <= mateEnd) {
-          val existingClippedBases = rec.cigar.reverseIterator.takeWhile(_.operator.isClipping).filter(_.operator == Op.S).sumBy(_.length)
-          // clip from where last read base of where the mate ends
-          Math.max(0, rec.length - rec.readPosAtRefPos(pos=mateEnd, returnLastBaseIfDeleted=false) - existingClippedBases)
+      // Get the total # of bases that are past the mate end.
+      val totalClippedBases = numBasesExtendingPastMateEnd(rec=rec, mateEnd=mateEnd)
+      val numBasesToClip    = if (totalClippedBases == 0) 0 else {
+        // Bases past the end, so get the additional # of bases to clip
+        val existingClippedBases = {
+          val iter = if (rec.positiveStrand) rec.cigar.reverseIterator else rec.cigar.iterator
+          iter.takeWhile(_.operator.isClipping).filter(_.operator == Op.S).sumBy(_.length)
         }
-        else if (rec.negativeStrand && rec.start <= rec.mateStart && rec.end >= rec.mateStart) {
-          val existingClippedBases = rec.cigar.iterator.takeWhile(_.operator.isClipping).filter(_.operator == Op.S).sumBy(_.length)
-          // clip up to and including one base before where the mate starts
-          Math.max(0, rec.readPosAtRefPos(pos=rec.mateStart, returnLastBaseIfDeleted=false) - 1 - existingClippedBases)
-        } else {
-          // no bases extend past
-          0
-        }
+        Math.max(0, totalClippedBases - existingClippedBases)
       }
-       if (doNotClip) extraBasesToClip else this.clip3PrimeEndOfAlignment(rec, extraBasesToClip)
+      this.clip3PrimeEndOfAlignment(rec, numBasesToClip)
     }
   }
 
