@@ -221,7 +221,7 @@ trait UmiConsensusCaller[ConsensusRead <: SimpleRead] {
   /**
     * Converts from a SamRecord into a SourceRead.  During conversion the record is end-trimmed
     * to remove Ns and bases below the `minBaseQuality`.  Remaining bases that are below
-    * `minBaseQuality` are then masked to Ns.
+    * `minBaseQuality` are then masked to Ns.  Also trims reads so that no mapped bases extend past their mate.
     *
     * @return Some(SourceRead) if there are any called bases with quality > minBaseQuality, else None
     */
