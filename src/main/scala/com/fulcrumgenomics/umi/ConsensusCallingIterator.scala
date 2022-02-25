@@ -25,15 +25,11 @@
 package com.fulcrumgenomics.umi
 
 import com.fulcrumgenomics.FgBioDef._
-import com.fulcrumgenomics.bam.api
 import com.fulcrumgenomics.bam.api.SamRecord
-import com.fulcrumgenomics.commons.async.AsyncIterator
 import com.fulcrumgenomics.commons.util.LazyLogging
 import com.fulcrumgenomics.commons.util.Threads.IterableThreadLocal
 import com.fulcrumgenomics.umi.UmiConsensusCaller.SimpleRead
-import com.fulcrumgenomics.util.ProgressLogger
-
-import java.util.concurrent.ForkJoinPool
+import com.fulcrumgenomics.util.{ParIterator, ProgressLogger}
 
 /**
   * An iterator that consumes from an incoming iterator of [[SamRecord]]s and generates consensus
@@ -43,13 +39,13 @@ import java.util.concurrent.ForkJoinPool
   * @param caller the consensus caller to use to call consensus reads
   * @param progress an optional progress logger to which to log progress in input reads
   * @param threads the number of threads to use.
-  * @param maxRecordsInRam the approximate maximum number of input records to store in RAM across multiple threads.
+  * @param chunkSize parallel process in chunkSize units; will cause 8 * chunkSize records to be held in memory
   */
 class ConsensusCallingIterator[ConsensusRead <: SimpleRead](sourceIterator: Iterator[SamRecord],
                                                             caller: UmiConsensusCaller[ConsensusRead],
                                                             progress: Option[ProgressLogger] = None,
                                                             threads: Int = 1,
-                                                            maxRecordsInRam: Int = 128000)
+                                                            chunkSize: Int = 1024)
   extends Iterator[SamRecord] with LazyLogging {
 
   private val progressIterator = progress match {
@@ -57,53 +53,35 @@ class ConsensusCallingIterator[ConsensusRead <: SimpleRead](sourceIterator: Iter
     case None    => sourceIterator
   }
 
+  private val callers = new IterableThreadLocal[UmiConsensusCaller[ConsensusRead]](() => caller.emptyClone())
+  private var collectedStats: Boolean = false
+
   protected val iter: Iterator[SamRecord] = {
+    val groupingIterator = new SamRecordGroupedIterator(progressIterator, caller.sourceMoleculeId)
+
     if (threads <= 1) {
-      val groupingIterator = new SamRecordGroupedIterator(progressIterator, caller.sourceMoleculeId)
       groupingIterator.flatMap(caller.consensusReadsFromSamRecords)
     }
     else {
-      val halfMaxRecords   = maxRecordsInRam / 2
-      val pool             = new ForkJoinPool(threads - 1, ForkJoinPool.defaultForkJoinWorkerThreadFactory, null, true)
-      val callers          = new IterableThreadLocal[UmiConsensusCaller[ConsensusRead]](() => caller.emptyClone())
-      val groupingIterator = {
-        val async   = AsyncIterator(progressIterator, Some(halfMaxRecords))
-        val grouped = new SamRecordGroupedIterator(async, caller.sourceMoleculeId)
-        grouped.bufferBetter
-      }
-
-      // Create an iterator that will pull in input records (up to the half the maximum number in memory)
-      // to be consensus called.  Each chunk of records will then be called in parallel.
-      new Iterator[Seq[SamRecord]] {
-        private var statisticsCollected = false
-
-        override def hasNext: Boolean = {
-          if (groupingIterator.hasNext) true else {
-            // If we've hit the end then aggregate statistics
-            if (!statisticsCollected) {
-              callers.foreach(caller.addStatistics)
-              statisticsCollected = true
-            }
-            false
-          }
-        }
-
-        override def next(): Seq[SamRecord] = {
-          var total = 0L
-          groupingIterator
-            .takeWhile { chunk => if (halfMaxRecords <= total) false else {total += chunk.length; true } }
-            .toSeq
-            .parWith(pool)
-            .flatMap { records =>
-              val caller = callers.get()
-              caller.synchronized { caller.consensusReadsFromSamRecords(records) }
-            }
-            .seq
-        }
-      }.flatten
+      ParIterator(groupingIterator, threads=threads).flatMap { rs =>
+        val caller = callers.get()
+        caller.synchronized { caller.consensusReadsFromSamRecords(rs) }
+      }.toAsync(chunkSize * 8)
     }
   }
-  override def hasNext: Boolean = this.iter.hasNext
+
+  // Responsible for adding statistics to the main caller once we hit the end of the iterator.
+  override def hasNext: Boolean = {
+    if (this.iter.hasNext) true else {
+      if (!collectedStats) {
+        callers.foreach(c => caller.addStatistics(c))
+        collectedStats = true
+      }
+
+      false
+    }
+  }
+
   override def next(): SamRecord = this.iter.next
 }
 
