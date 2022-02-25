@@ -254,9 +254,9 @@ trait UmiConsensusCaller[ConsensusRead <: SimpleRead] {
               // the # of bases to keep is the last read base of where the mate ends
               rec.readPosAtRefPos(pos=mateEnd, returnLastBaseIfDeleted=false)
             } else {
-              // Find where the end of the read goes past the mate start, if at all
-              val refPosAtReadEnd  = min(mateEnd, rec.end) // last 3' base
-              rec.readPosAtRefPos(pos=refPosAtReadEnd, returnLastBaseIfDeleted=false)
+              // the read does not go past the end, so just return the `trimToLength` as we take the minimum relative
+              // to it later
+              trimToLength
             }
           } else {
             // Find where the start of the read that goes before the mate start, if at all
@@ -264,13 +264,9 @@ trait UmiConsensusCaller[ConsensusRead <: SimpleRead] {
               // the # of bases to keep is the last read base of where the mate ends
               rec.length - rec.readPosAtRefPos(pos=rec.mateStart, returnLastBaseIfDeleted=false) + 1
             } else {
-              // The # of bases soft-clipped on the 3' end of the read (3' end in sequencing order)
-              val threePrimeClipping = cigar.reverseIterator.takeWhile(_.operator.isClipping).filter(_.operator == CigarOperator.S).sumBy(_.length)
-              // get the maximum # of allowable clipped bases on the 3' end
-              val maxThreePrimeClipping = rec.start - rec.mateStart
-              // if we have more than allowed, trim the read
-              if (threePrimeClipping <= maxThreePrimeClipping) bases.length
-              else bases.length - threePrimeClipping + maxThreePrimeClipping
+              // the read does not go past the end, so just return the `trimToLength` as we take the minimum relative
+              // to it later
+              trimToLength
             }
           }
         }
