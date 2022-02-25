@@ -25,6 +25,7 @@
 
 package com.fulcrumgenomics.umi
 
+import com.fulcrumgenomics.FgBioDef.forloop
 import com.fulcrumgenomics.bam.api.{SamRecord, SamWriter}
 import com.fulcrumgenomics.commons.util.LazyLogging
 import com.fulcrumgenomics.umi.ConsensusCaller.Base
@@ -32,6 +33,7 @@ import com.fulcrumgenomics.umi.UmiConsensusCaller.ReadType._
 import com.fulcrumgenomics.umi.UmiConsensusCaller._
 import com.fulcrumgenomics.umi.VanillaUmiConsensusCallerOptions._
 import com.fulcrumgenomics.util.NumericTypes._
+
 import scala.collection.mutable.ListBuffer
 import scala.util.Random
 
@@ -109,6 +111,13 @@ class VanillaUmiConsensusCaller(override val readNamePrefix: String,
 
   private val caller = new ConsensusCaller(errorRatePreLabeling  = options.errorRatePreUmi,
                                            errorRatePostLabeling = options.errorRatePostUmi)
+
+  /** Map from input qual score to output qual score in the case where there is only one read going into the consensus. */
+  private val SingleInputConsensusQuals: Array[Byte] = Range(0, 128).map { q =>
+    val lnProbOne = LogProbability.fromPhredScore(q)
+    val lnProbTwo = LogProbability.fromPhredScore(Math.min(this.options.errorRatePreUmi, this.options.errorRatePostUmi))
+    PhredScore.fromLogProbability(LogProbability.probabilityOfErrorTwoTrials(lnProbOne, lnProbTwo))
+  }.toArray
 
   private val random = new Random(42)
 
@@ -196,39 +205,57 @@ class VanillaUmiConsensusCaller(override val readNamePrefix: String,
       val consensusDepths = new Array[Short](consensusLength)
       val consensusErrors = new Array[Short](consensusLength)
 
-      var positionInRead = 0
-      val builder = this.caller.builder()
-      while (positionInRead < consensusLength) {
-        // Add the evidence from all reads that are long enough to cover this base
-        capped.foreach { read =>
-          if (read.length > positionInRead) {
-            val base = read.bases(positionInRead)
-            val qual = read.quals(positionInRead)
-            if (base != NoCall) builder.add(base=base, qual=qual)
+      if (capped.length == 1) {
+        val inBases = capped.head.bases
+        val inQuals = capped.head.quals
+
+        forloop (from=0, until=consensusLength) { i =>
+          val rawBase     = inBases(i)
+          val rawQual     = SingleInputConsensusQuals(inQuals(i))
+          val (base, qual) = if (rawQual < this.options.minConsensusBaseQuality) (NoCall, TooLowQualityQual) else (rawBase, rawQual)
+          val isNoCall = base == NoCall
+
+          consensusBases(i)  = base
+          consensusQuals(i)  = qual
+          consensusDepths(i) = if (isNoCall) 0 else 1
+          consensusErrors(i) = 0
+        }
+      }
+      else {
+        var positionInRead = 0
+        val builder = this.caller.builder()
+        while (positionInRead < consensusLength) {
+          // Add the evidence from all reads that are long enough to cover this base
+          capped.foreach { read =>
+            if (read.length > positionInRead) {
+              val base = read.bases(positionInRead)
+              val qual = read.quals(positionInRead)
+              if (base != NoCall) builder.add(base=base, qual=qual)
+            }
           }
+
+          val depth = builder.contributions // NB: cache this value, as it is re-computed each time
+
+          // Call the consensus and do any additional filtering
+          val (rawBase, rawQual) = builder.call()
+          val (base, qual) = {
+            if (depth < this.options.minReads)       (NoCall, NotEnoughReadsQual)
+            else if (rawQual < this.options.minConsensusBaseQuality) (NoCall, TooLowQualityQual)
+            else (rawBase, rawQual)
+          }
+
+          consensusBases(positionInRead) = base
+          consensusQuals(positionInRead) = qual
+
+          // Generate the values for depth and count of errors
+          val errors = if (rawBase == NoCall) depth else depth - builder.observations(rawBase)
+          consensusDepths(positionInRead) = if (depth  > Short.MaxValue) Short.MaxValue else depth.toShort
+          consensusErrors(positionInRead) = if (errors > Short.MaxValue) Short.MaxValue else errors.toShort
+
+          // Get ready for the next pass
+          builder.reset()
+          positionInRead += 1
         }
-
-        val depth = builder.contributions // NB: cache this value, as it is re-computed each time
-
-        // Call the consensus and do any additional filtering
-        val (rawBase, rawQual) = builder.call()
-        val (base, qual) = {
-          if (depth < this.options.minReads)       (NoCall, NotEnoughReadsQual)
-          else if (rawQual < this.options.minConsensusBaseQuality) (NoCall, TooLowQualityQual)
-          else (rawBase, rawQual)
-        }
-
-        consensusBases(positionInRead) = base
-        consensusQuals(positionInRead) = qual
-
-        // Generate the values for depth and count of errors
-        val errors = if (rawBase == NoCall) depth else depth - builder.observations(rawBase)
-        consensusDepths(positionInRead) = if (depth  > Short.MaxValue) Short.MaxValue else depth.toShort
-        consensusErrors(positionInRead) = if (errors > Short.MaxValue) Short.MaxValue else errors.toShort
-
-        // Get ready for the next pass
-        builder.reset()
-        positionInRead += 1
       }
 
       Some(VanillaConsensusRead(id=capped.head.id, bases=consensusBases, quals=consensusQuals, depths=consensusDepths, errors=consensusErrors))
