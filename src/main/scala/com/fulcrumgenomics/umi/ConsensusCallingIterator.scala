@@ -33,7 +33,8 @@ import com.fulcrumgenomics.commons.util.Threads.IterableThreadLocal
 import com.fulcrumgenomics.umi.UmiConsensusCaller.SimpleRead
 import com.fulcrumgenomics.util.ProgressLogger
 
-import java.util.concurrent.ForkJoinPool
+import java.util.concurrent.{Executors, ForkJoinPool}
+import scala.concurrent.ExecutionContext
 
 /**
   * An iterator that consumes from an incoming iterator of [[SamRecord]]s and generates consensus
@@ -57,54 +58,32 @@ class ConsensusCallingIterator[ConsensusRead <: SimpleRead](sourceIterator: Iter
     case None    => sourceIterator
   }
 
+  private val callers = new IterableThreadLocal[UmiConsensusCaller[ConsensusRead]](() => caller.emptyClone())
+
   protected val iter: Iterator[SamRecord] = {
+    val groupingIterator = new SamRecordGroupedIterator(progressIterator, caller.sourceMoleculeId)
+
     if (threads <= 1) {
-      val groupingIterator = new SamRecordGroupedIterator(progressIterator, caller.sourceMoleculeId)
       groupingIterator.flatMap(caller.consensusReadsFromSamRecords)
     }
     else {
-      val halfMaxRecords   = maxRecordsInRam / 2
-      val pool             = new ForkJoinPool(threads - 1, ForkJoinPool.defaultForkJoinWorkerThreadFactory, null, true)
-      val callers          = new IterableThreadLocal[UmiConsensusCaller[ConsensusRead]](() => caller.emptyClone())
-      val groupingIterator = {
-        val async   = AsyncIterator(progressIterator, Some(halfMaxRecords))
-        val grouped = new SamRecordGroupedIterator(async, caller.sourceMoleculeId)
-        grouped.bufferBetter
-      }
-
-      // Create an iterator that will pull in input records (up to the half the maximum number in memory)
-      // to be consensus called.  Each chunk of records will then be called in parallel.
-      new Iterator[Seq[SamRecord]] {
-        private var statisticsCollected = false
-
-        override def hasNext: Boolean = {
-          if (groupingIterator.hasNext) true else {
-            // If we've hit the end then aggregate statistics
-            if (!statisticsCollected) {
-              callers.foreach(caller.addStatistics)
-              statisticsCollected = true
-            }
-            false
-          }
-        }
-
-        override def next(): Seq[SamRecord] = {
-          var total = 0L
-          groupingIterator
-            .takeWhile { chunk => if (halfMaxRecords <= total) false else {total += chunk.length; true } }
-            .toSeq
-            .parWith(pool)
-            .flatMap { records =>
-              val caller = callers.get()
-              caller.synchronized { caller.consensusReadsFromSamRecords(records) }
-            }
-            .seq
-        }
-      }.flatten
+      import io.cvbio.collection.ParIterator._
+      val pool    = Executors.newFixedThreadPool(threads)
+      val context = ExecutionContext.fromExecutorService(pool)
+      groupingIterator
+        .parMap(rs => callers.get().consensusReadsFromSamRecords(rs), capacity=Some(maxRecordsInRam))(context)
+        .flatten
     }
   }
-  override def hasNext: Boolean = this.iter.hasNext
+
   override def next(): SamRecord = this.iter.next
+
+  override def hasNext: Boolean = {
+    if (this.iter.hasNext) true else {
+      callers.foreach(caller.addStatistics)
+      false
+    }
+  }
 }
 
 /** Groups consecutive records based on a method to group records. */
