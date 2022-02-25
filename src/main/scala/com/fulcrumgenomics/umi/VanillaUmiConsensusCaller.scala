@@ -34,7 +34,6 @@ import com.fulcrumgenomics.umi.UmiConsensusCaller._
 import com.fulcrumgenomics.umi.VanillaUmiConsensusCallerOptions._
 import com.fulcrumgenomics.util.NumericTypes._
 
-import scala.collection.mutable.ListBuffer
 import scala.util.Random
 
 /**
@@ -113,7 +112,7 @@ class VanillaUmiConsensusCaller(override val readNamePrefix: String,
                                            errorRatePostLabeling = options.errorRatePostUmi)
 
   /** Map from input qual score to output qual score in the case where there is only one read going into the consensus. */
-  private val SingleInputConsensusQuals: Array[Byte] = Range(0, 128).map { q =>
+  private val SingleInputConsensusQuals: Array[Byte] = Range.inclusive(0, PhredScore.MaxValue).map { q =>
     val lnProbOne = LogProbability.fromPhredScore(q)
     val lnProbTwo = LogProbability.fromPhredScore(Math.min(this.options.errorRatePreUmi, this.options.errorRatePostUmi))
     PhredScore.fromLogProbability(LogProbability.probabilityOfErrorTwoTrials(lnProbOne, lnProbTwo))

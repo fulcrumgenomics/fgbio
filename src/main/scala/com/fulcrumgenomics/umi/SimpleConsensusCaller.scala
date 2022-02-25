@@ -58,31 +58,34 @@ private[umi] class SimpleConsensusCaller(val errorRatePreLabeling: Byte = 90.toB
   /** Calls a simple consensus sequences from a set of sequences all the same length. */
   def callConsensus(sequences: Seq[String]): String = {
     require(sequences.nonEmpty, "Can't call consensus on an empty set of sequences!")
-    require(sequences.forall(_.length == sequences.head.length), "Sequences must all have the same length")
-    val buffer = new StringBuilder
-    val firstRead  = sequences.head
-    val readLength = firstRead.length
-    val sequencesLength = sequences.length
 
-    forloop (from=0, until=readLength) { i =>
-      this.consensusBuilder.reset()
-      var nonDna = 0
-      sequences.foreach { sequence =>
-        val char = sequence.charAt(i)
-        if (!this.DnaBasesBitSet.contains(char.toInt)) {
-          nonDna += 1
-          // verify that all non-DNA bases are the same character
-          require(firstRead.charAt(i) == char,
-            s"Sequences must have character '${firstRead.charAt(i)}' at position $i, found '$char'")
+    if (sequences.length == 1) sequences.head else {
+      require(sequences.forall(_.length == sequences.head.length), "Sequences must all have the same length")
+      val buffer = new StringBuilder
+      val firstRead  = sequences.head
+      val readLength = firstRead.length
+      val sequencesLength = sequences.length
+
+      forloop (from=0, until=readLength) { i =>
+        this.consensusBuilder.reset()
+        var nonDna = 0
+        sequences.foreach { sequence =>
+          val char = sequence.charAt(i)
+          if (!this.DnaBasesBitSet.contains(char.toInt)) {
+            nonDna += 1
+            // verify that all non-DNA bases are the same character
+            require(firstRead.charAt(i) == char,
+              s"Sequences must have character '${firstRead.charAt(i)}' at position $i, found '$char'")
+          }
+          else this.consensusBuilder.add(char.toByte, qError)
         }
-        else this.consensusBuilder.add(char.toByte, pError=this.pError, pTruth=this.pTruth)
+
+        if (nonDna == 0) buffer.append(this.consensusBuilder.call()._1.toChar)
+        else if (nonDna == sequencesLength) buffer.append(firstRead.charAt(i)) // NB: we have previously verified they are all the same character
+        else throw new IllegalStateException(s"Sequences contained a mix of DNA and non-DNA characters at offset $i: $sequences")
       }
 
-      if (nonDna == 0) buffer.append(this.consensusBuilder.call()._1.toChar)
-      else if (nonDna == sequencesLength) buffer.append(firstRead.charAt(i)) // NB: we have previously verified they are all the same character
-      else throw new IllegalStateException(s"Sequences contained a mix of DNA and non-DNA characters at offset $i: $sequences")
+      buffer.toString()
     }
-
-    buffer.toString()
   }
 }
