@@ -26,10 +26,11 @@ package com.fulcrumgenomics.umi
 
 import com.fulcrumgenomics.FgBioDef._
 import com.fulcrumgenomics.bam.api.SamRecord
+import com.fulcrumgenomics.commons.collection.ParIterator
 import com.fulcrumgenomics.commons.util.LazyLogging
 import com.fulcrumgenomics.commons.util.Threads.IterableThreadLocal
 import com.fulcrumgenomics.umi.UmiConsensusCaller.SimpleRead
-import com.fulcrumgenomics.util.{ParIterator, ProgressLogger}
+import com.fulcrumgenomics.util.ProgressLogger
 
 /**
   * An iterator that consumes from an incoming iterator of [[SamRecord]]s and generates consensus
