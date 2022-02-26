@@ -364,7 +364,7 @@ class SamRecordClipper(val mode: ClippingMode, val autoClipAttributes: Boolean) 
     }
   }
 
-  /** Clips a read that sequences past the start (in sequencing order) of the mate, and in FR orientation.
+  /** Clips mate pairs in FR read pairs whose alignments extend beyond the far end of their mate's alignment.
     *
     * @param rec the read
     * @param mate the mate
