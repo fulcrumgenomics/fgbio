@@ -79,7 +79,7 @@ class ClipBam
   @arg(          doc="Require at least this number of bases to be clipped on the 5' end of R2") val readTwoFivePrime: Int  = 0,
   @arg(          doc="Require at least this number of bases to be clipped on the 3' end of R2") val readTwoThreePrime: Int = 0,
   @arg(          doc="Clip overlapping reads.", mutex=Array("clipBasesPastMate")) val clipOverlappingReads: Boolean = false,
-  @arg(          doc="Clip reads who sequence past the start of their mate.", mutex=Array("clipOverlappingReads")) val clipBasesPastMate: Boolean = false
+  @arg(          doc="Clip reads in FR pairs that sequence past the far end of their mate.", mutex=Array("clipOverlappingReads")) val clipBasesPastMate: Boolean = false
 ) extends FgBioTool with LazyLogging {
   Io.assertReadable(input)
   Io.assertReadable(ref)
