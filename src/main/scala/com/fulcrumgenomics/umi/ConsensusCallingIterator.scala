@@ -46,20 +46,23 @@ class ConsensusCallingIterator[ConsensusRead <: SimpleRead](sourceIterator: Iter
                                                             caller: UmiConsensusCaller[ConsensusRead],
                                                             progress: Option[ProgressLogger] = None,
                                                             threads: Int = 1,
-                                                            chunkSize: Int = 1024)
+                                                            chunkSize: Int = ParIterator.DefaultChunkSize)
   extends Iterator[SamRecord] with LazyLogging {
-
-  private val progressIterator = progress match {
-    case Some(p) => sourceIterator.tapEach { r => p.record(r) }
-    case None    => sourceIterator
-  }
 
   private val callers = new IterableThreadLocal[UmiConsensusCaller[ConsensusRead]](() => caller.emptyClone())
   private var collectedStats: Boolean = false
 
   protected val iter: Iterator[SamRecord] = {
+    // Wrap our input iterator in a progress logging iterator if we have a progress logger
+    val progressIterator = progress match {
+      case Some(p) => sourceIterator.tapEach { r => p.record(r) }
+      case None    => sourceIterator
+    }
+
+    // Then turn it into a grouping iterator
     val groupingIterator = new SamRecordGroupedIterator(progressIterator, caller.sourceMoleculeId)
 
+    // Then call consensus either single-threaded or multi-threaded
     if (threads <= 1) {
       groupingIterator.flatMap(caller.consensusReadsFromSamRecords)
     }
