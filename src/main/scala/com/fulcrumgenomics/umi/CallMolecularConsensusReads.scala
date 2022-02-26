@@ -135,6 +135,7 @@ class CallMolecularConsensusReads
   if (tag.length != 2)      throw new ValidationException("attribute must be of length 2")
   if (errorRatePreUmi < 0)  throw new ValidationException("Phred-scaled error rate pre UMI must be >= 0")
   if (errorRatePostUmi < 0) throw new ValidationException("Phred-scaled error rate post UMI must be >= 0")
+  validate(this.maxReads.forall(max => max >= this.minReads), "--max-reads must be >= --min-reads.")
 
   /** Main method that does the work of reading input files, creating the consensus reads, and writing the output file. */
   override def execute(): Unit = {
@@ -168,6 +169,7 @@ class CallMolecularConsensusReads
     val iterator = new ConsensusCallingIterator(in.iterator, caller, Some(progress), threads=threads)
     out ++= iterator
 
+    progress.logLast()
     in.safelyClose()
     out.close()
     rej.foreach(_.close())

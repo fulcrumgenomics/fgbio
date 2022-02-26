@@ -209,10 +209,10 @@ class VanillaUmiConsensusCaller(override val readNamePrefix: String,
         val inQuals = capped.head.quals
 
         forloop (from=0, until=consensusLength) { i =>
-          val rawBase     = inBases(i)
-          val rawQual     = SingleInputConsensusQuals(inQuals(i))
+          val rawBase      = inBases(i)
+          val rawQual      = SingleInputConsensusQuals(inQuals(i))
           val (base, qual) = if (rawQual < this.options.minConsensusBaseQuality) (NoCall, TooLowQualityQual) else (rawBase, rawQual)
-          val isNoCall = base == NoCall
+          val isNoCall     = base == NoCall
 
           consensusBases(i)  = base
           consensusQuals(i)  = qual
