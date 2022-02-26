@@ -95,21 +95,21 @@ private[alignment] case class CigarStats(lengthOnQuery: Int,
                                          lengthOnTarget: Int,
                                          alignedBases: Int,
                                          clippedBases: Int,
-                                         softClippedFivePrimeBases: Int,
-                                         softClippedThreePrimeBases: Int)
+                                         leadingSoftClippedBases: Int,
+                                         trailingSoftClippedBases: Int)
 
 /** Companion object for [[Cigar]]. */
 private[alignment] object CigarStats {
 
   /** Build a [[CigarStats]] from a [[Cigar]]. */
   private[alignment] def apply(cigar: Cigar): CigarStats = {
-    var lengthOnQuery              = 0
-    var lengthOnTarget             = 0
-    var alignedBases               = 0
-    var clippedBases               = 0
-    var softClippedFivePrimeBases  = 0
-    var softClippedThreePrimeBases = 0
-    var index                      = 0
+    var lengthOnQuery            = 0
+    var lengthOnTarget           = 0
+    var alignedBases             = 0
+    var clippedBases             = 0
+    var leadingSoftClippedBases  = 0
+    var trailingSoftClippedBases = 0
+    var index                    = 0
 
     // leading clipping
     while (index < cigar.elems.length && cigar.elems(index).operator.isClipping) {
@@ -117,7 +117,7 @@ private[alignment] object CigarStats {
       lengthOnQuery  += elem.lengthOnQuery
       lengthOnTarget += elem.lengthOnTarget
       clippedBases += elem.length
-      if (elem.operator == CigarOperator.S) softClippedFivePrimeBases += elem.length
+      if (elem.operator == CigarOperator.S) leadingSoftClippedBases += elem.length
       index += 1
     }
 
@@ -136,7 +136,7 @@ private[alignment] object CigarStats {
       lengthOnQuery  += elem.lengthOnQuery
       lengthOnTarget += elem.lengthOnTarget
       clippedBases += elem.length
-      if (elem.operator == CigarOperator.S) softClippedThreePrimeBases += elem.length
+      if (elem.operator == CigarOperator.S) trailingSoftClippedBases += elem.length
       index += 1
     }
 
@@ -145,12 +145,12 @@ private[alignment] object CigarStats {
     )
 
     CigarStats(
-      lengthOnQuery              = lengthOnQuery,
-      lengthOnTarget             = lengthOnTarget,
-      alignedBases               = alignedBases,
-      clippedBases               = clippedBases,
-      softClippedFivePrimeBases  = softClippedFivePrimeBases,
-      softClippedThreePrimeBases = softClippedThreePrimeBases
+      lengthOnQuery            = lengthOnQuery,
+      lengthOnTarget           = lengthOnTarget,
+      alignedBases             = alignedBases,
+      clippedBases             = clippedBases,
+      leadingSoftClippedBases  = leadingSoftClippedBases,
+      trailingSoftClippedBases = trailingSoftClippedBases
     )
   }
 
@@ -201,11 +201,27 @@ case class Cigar(elems: IndexedSeq[CigarElem]) extends Iterable[CigarElem] {
   /** Returns the number of bases that are clipped between the two sequences. */
   def clippedBases: Int = stats.clippedBases
 
-  /** Returns the number of bases that are soft-clipped on the 5' end of this sequence.  Ignores hard-clips. */
-  def softClippedFivePrimeBases: Int = stats.softClippedFivePrimeBases
+  /** Returns the number of bases that are soft-clipped at the start of the sequence  Ignores hard-clips. */
+  def leadingSoftClippedBases: Int = stats.leadingSoftClippedBases
 
-  /** Returns the number of bases that are soft-clipped on the 3' end of this sequence.  Ignores hard-clips. */
-  def softClippedThreePrimeBases: Int = stats.softClippedThreePrimeBases
+  /** Returns the number of bases that are soft-clipped at the end of this sequence.  Ignores hard-clips. */
+  def trailingSoftClippedBases: Int = stats.trailingSoftClippedBases
+
+  /** Returns the number of bases that are hard-clipped at the start of the sequence. */
+  def leadingHardClippedBases = this.headOption.map { elem =>
+    if (elem.operator == CigarOperator.H) elem.length else 0
+  }.getOrElse(0)
+
+  /** Returns the number of bases that are clipped at the start of the sequence. */
+  def leadingClippedBases: Int = leadingHardClippedBases + leadingSoftClippedBases
+
+  /** Returns the number of bases that are hard-clipped at the end of the sequence. */
+  def trailingHardClippedBases = this.lastOption.map { elem =>
+    if (elem.operator == CigarOperator.H) elem.length else 0
+  }.getOrElse(0)
+
+  /** Returns the number of bases that are clipped at the end of the sequence. */
+  def trailingClippedBases: Int = trailingHardClippedBases + trailingSoftClippedBases
 
   /** Truncates the cigar based on either query or target length cutoff. */
   private def truncate(len: Int, shouldCount: CigarElem => Boolean): Cigar = {

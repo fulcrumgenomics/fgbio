@@ -220,6 +220,7 @@ class ClipBamTest extends UnitSpec with ErrorLogLevel with OptionValues {
     val prior = StartsAndEnds(r1, r2)
     r1.end shouldBe (r2.start + 3) // four bases overlap!
     clipper.clipPair(r1, r2)
+    r1.end shouldBe (r2.start - 1)
     prior.checkClipping(r1, r2, 0, 2, 0, 2) // clipping due to overlapping reads
   }
 
