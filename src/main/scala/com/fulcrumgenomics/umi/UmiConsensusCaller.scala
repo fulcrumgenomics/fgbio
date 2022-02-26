@@ -252,7 +252,7 @@ trait UmiConsensusCaller[ConsensusRead <: SimpleRead] {
       var index = if (!rec.isFrPair) trimToLength - 1 else {
         // Get the number of mapped bases to clip that maps beyond the mate's end, including any soft-clipped bases. Use
         // that to compute where in the read to keep.
-        val clipPosition = rec.length - this.clipper.numBasesExtendingPastMateEnd(rec=rec)
+        val clipPosition = rec.length - this.clipper.numBasesExtendingPastMate(rec=rec)
         min(clipPosition, trimToLength) - 1
       }
       // Find the last non-N base of sufficient quality in the record, starting from either the

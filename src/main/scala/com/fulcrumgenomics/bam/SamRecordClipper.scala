@@ -322,21 +322,22 @@ class SamRecordClipper(val mode: ClippingMode, val autoClipAttributes: Boolean) 
 
   /** Returns the number of bases extending past the mate end for FR pairs including any soft-clipped bases, zero otherwise.
     *
-    * The mate end is computed via the mate-cigar (MC) SAM tag if present, otherwise the reported insert size is used.
+    * The largest mapped genomic coordinate of the mate is computed via the mate-cigar (MC) SAM tag if present,
+    * otherwise the reported insert size is used.
     *
     * @param rec the record to clip
     */
-  def numBasesExtendingPastMateEnd(rec: SamRecord): Int = {
+  def numBasesExtendingPastMate(rec: SamRecord): Int = {
     val mateEnd = rec.mateEnd.getOrElse(rec.start + abs(rec.insertSize) - 1)
-    numBasesExtendingPastMateEnd(rec=rec, mateEnd=mateEnd)
+    numBasesExtendingPastMate(rec=rec, mateEnd=mateEnd)
   }
 
   /** Returns the number of bases extending past the mate end for FR pairs including any soft-clipped bases, zero otherwise.
     *
     * @param rec the record to examine
-    * @param mateEnd the end coordinate of the mate
+    * @param mateEnd the largest mapped genomic coordinate of the mate
     */
-  def numBasesExtendingPastMateEnd(rec: SamRecord, mateEnd: Int): Int = {
+  def numBasesExtendingPastMate(rec: SamRecord, mateEnd: Int): Int = {
     if (!rec.isFrPair) 0 // not an FR pair
     else {
       if (rec.positiveStrand && rec.end >= mateEnd) {
@@ -386,7 +387,7 @@ class SamRecordClipper(val mode: ClippingMode, val autoClipAttributes: Boolean) 
   def clipExtendingPastMateEnd(rec: SamRecord, mateEnd: Int): Int = {
     if (!rec.isFrPair) 0 // do not overlap, don't clip
     else {
-      val totalClippedBases = numBasesExtendingPastMateEnd(rec=rec, mateEnd=mateEnd)
+      val totalClippedBases = numBasesExtendingPastMate(rec=rec, mateEnd=mateEnd)
       if (totalClippedBases == 0) 0 else {
        if (rec.positiveStrand) this.clipEndOfRead(rec, totalClippedBases)
        else this.clipStartOfRead(rec, totalClippedBases)

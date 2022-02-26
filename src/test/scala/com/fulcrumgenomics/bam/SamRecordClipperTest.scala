@@ -36,22 +36,15 @@ import org.scalatest.OptionValues
 class SamRecordClipperTest extends UnitSpec with OptionValues {
   /** Returns a fragment SAM record with the start / cigar / strand requested. */
   def r(start: Int, cigar: String, strand: Strand = Plus, attrs:Map[String,Any] = Map.empty): SamRecord = {
-    val cig = TextCigarCodec.decode(cigar)
-    val len = cig.getReadLength
-    new SamBuilder(readLength=len).addFrag(start=start, cigar=cigar, strand=strand, attrs=attrs).value
+    new SamBuilder(readLength=Cigar(cigar).lengthOnQuery)
+      .addFrag(start=start, cigar=cigar, strand=strand, attrs=attrs).value
   }
 
   /** Returns a pair of SAM records (read pair) with the respective starts / cigars / strands requested. */
   def pair(start1: Int, cigar1: String, strand1: Strand = Plus, start2: Int, cigar2: String, strand2: Strand = Minus): (SamRecord, SamRecord) = {
-    val cig1 = TextCigarCodec.decode(cigar1)
-    val len1 = cig1.getReadLength
-    val cig2 = TextCigarCodec.decode(cigar2)
-    val len2 = cig2.getReadLength
-    new SamBuilder(readLength=len1)
-      .addPair(start1=start1, cigar1=cigar1, strand1=strand1, start2=start2, cigar2=cigar2, strand2=strand2) match {
-      case Seq(r1, r2) => (r1, r2)
-      case _ => throw new IllegalArgumentException("Bug")
-    }
+    val recs = new SamBuilder(readLength=Cigar(cigar1).lengthOnQuery)
+      .addPair(start1=start1, cigar1=cigar1, strand1=strand1, start2=start2, cigar2=cigar2, strand2=strand2)
+    recs match { case Seq(r1, r2) => (r1, r2) }
   }
 
   def clipper(mode: ClippingMode, autoClip: Boolean=false) = new SamRecordClipper(mode, autoClip)
@@ -670,7 +663,7 @@ class SamRecordClipperTest extends UnitSpec with OptionValues {
     mate.cigar.toString shouldBe "75S15M10D10M"
   }
 
-  it should "clip reads that extend past each other with bpth read having deletions" in {
+  it should "clip reads that extend past each other with both read having deletions" in {
     // R1 is 50-149, while R2 is 1-120, so the reference midpoint is (50 + 120) / 2 = 85
     val (rec, mate) = pair(50, "50M10D50M", Plus, 1, "10M10D80M10D10M", Minus)
     clipper(Soft).clipOverlappingReads(rec=rec, mate=mate) shouldBe (64, 75)
@@ -702,7 +695,7 @@ class SamRecordClipperTest extends UnitSpec with OptionValues {
     }
   }
 
-  it should "not clip reads that extend one base past their mate's start" in {
+  it should "clip reads that extend one base past their mate's start" in {
     val (rec, mate) = pair(2, "100M", Plus, 1, "100M", Minus)
     clipper(Soft).clipExtendingPastMateEnds(rec=rec, mate=mate) shouldBe (1, 1)
     rec.start shouldBe 2
@@ -711,13 +704,13 @@ class SamRecordClipperTest extends UnitSpec with OptionValues {
     mate.cigar.toString shouldBe "1S99M"
   }
 
-  it should "clip reads that extend one base past their mate's start" in {
-    val (rec, mate) = pair(2, "100M", Plus, 1, "100M", Minus)
-    clipper(Soft).clipExtendingPastMateEnds(rec=rec, mate=mate) shouldBe (1, 1)
-    rec.start shouldBe 2
-    rec.cigar.toString shouldBe "99M1S"
-    mate.start shouldBe 2
-    mate.cigar.toString shouldBe "1S99M"
+  it should "clip reads that extend two bases past their mate's start" in {
+    val (rec, mate) = pair(3, "100M", Plus, 1, "100M", Minus)
+    clipper(Soft).clipExtendingPastMateEnds(rec=rec, mate=mate) shouldBe (2, 2)
+    rec.start shouldBe 3
+    rec.cigar.toString shouldBe "98M2S"
+    mate.start shouldBe 3
+    mate.cigar.toString shouldBe "2S98M"
   }
 
   it should "clip reads that where both ends extends their mate's start" in {
@@ -728,11 +721,21 @@ class SamRecordClipperTest extends UnitSpec with OptionValues {
     mate.start shouldBe 51
     mate.cigar.toString shouldBe "50S50M"
   }
+
   it should "clip reads that where only one end extends their mate's start" in {
     val (rec, mate) = pair(1, "100M", Plus, 1, "50S50M", Minus)
     clipper(Soft).clipExtendingPastMateEnds(rec=rec, mate=mate) shouldBe (50, 0)
     rec.start shouldBe 1
     rec.cigar.toString shouldBe "50M50S" // added clipping
+    mate.start shouldBe 1
+    mate.cigar.toString shouldBe "50S50M" // clipping remains
+  }
+
+  it should "clip reads that where only one end extends their mate's start that has insertions" in {
+    val (rec, mate) = pair(1, "40M10I50M", Plus, 1, "50S50M", Minus)
+    clipper(Soft).clipExtendingPastMateEnds(rec=rec, mate=mate) shouldBe (40, 0)
+    rec.start shouldBe 1
+    rec.cigar.toString shouldBe "40M10I10M40S" // added clipping
     mate.start shouldBe 1
     mate.cigar.toString shouldBe "50S50M" // clipping remains
   }
@@ -744,5 +747,15 @@ class SamRecordClipperTest extends UnitSpec with OptionValues {
     rec.cigar.toString shouldBe "100M"
     mate.start shouldBe 1
     mate.cigar.toString shouldBe "100M"
+  }
+
+  it should "not clip when the reads do not extend past each other with insertions" in {
+    val builder = new SamBuilder(readLength=100)
+    val (rec, mate) = pair(start1=1, start2=1, strand1=Plus, strand2=Minus, cigar1="40M20I40M", cigar2="40M20I40M")
+    clipper(Soft).clipExtendingPastMateEnds(rec=rec, mate=mate) shouldBe (0, 0)
+    rec.start shouldBe 1
+    rec.cigar.toString() shouldBe "40M20I40M"
+    mate.start shouldBe 1
+    mate.cigar.toString shouldBe "40M20I40M"
   }
 }
