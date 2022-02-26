@@ -233,10 +233,10 @@ class FilterConsensusReads
   /** Builds the writer to which filtered records should be written.
     *
     *  If the input order is [[SamOrder.Queryname]] or query grouped, then the filtered records will also be in the same
-    *  order.  So if the output order specified AND does not match the the input order, sorting will occur.
+    *  order.  So if the output order is specified AND does not match the the input order, sorting will occur.
     *
     *  If the input order is not [[SamOrder.Queryname]] or query grouped, then the input records will be resorted into
-    *  [[SamOrder.Queryname]].  So if the output order specified AND is not [[SamOrder.Queryname]], sorting will occur.
+    *  [[SamOrder.Queryname]].  So if the output order is specified AND is not [[SamOrder.Queryname]], sorting will occur.
     *
     *  Otherwise, we can skip sorting!
     *
