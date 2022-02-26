@@ -47,8 +47,11 @@ import scala.collection.mutable
 import scala.collection.mutable.ListBuffer
 import com.fulcrumgenomics.commons.util.Threads.IterableThreadLocal
 import com.fulcrumgenomics.FgBioDef._
+import com.fulcrumgenomics.bam.api.SamOrder.TemplateCoordinate
 
 import java.util.concurrent.ForkJoinPool
+import com.fulcrumgenomics.commons.collection.ParIterator
+import htsjdk.samtools.SAMFileHeader.GroupOrder
 
 object GroupReadsByUmi {
   /** A type representing an actual UMI that is a string of DNA sequence. */
@@ -501,15 +504,13 @@ class GroupReadsByUmi
 
     val in = SamSource(input)
     val header = in.header
-    val sorter = Bams.sorter(SamOrder.TemplateCoordinate, header)
-    val sortProgress = ProgressLogger(logger, verb="Sorted")
 
     // A handful of counters for tracking reads
     var (filteredNonPf, filteredPoorAlignment, filteredNsInUmi, filterUmisTooShort, kept) = (0L, 0L, 0L, 0L, 0L)
 
     // Filter and sort the input BAM file
     logger.info("Filtering and sorting input.")
-    in.iterator
+    val filteredIterator = in.iterator
       .filter(r => !r.secondary && !r.supplementary)
       .filter(r => (includeNonPfReads || r.pf)                                      || { filteredNonPf += 1; false })
       .filter(r => (r.mapped && (r.unpaired || r.mateMapped))                       || { filteredPoorAlignment += 1; false })
@@ -523,7 +524,7 @@ class GroupReadsByUmi
           }
         } || { filterUmisTooShort += 1; false}
       }
-      .foreach { r =>
+      .map { r =>
         // If we're able to also group by the UMI because edits aren't allowed, push the trimmed, canonicalized UMI
         // into the assign tag (which must be MI if canTakeNextGroupByUmi is true), since that is used by the
         // SamOrder to sort the reads _and_ we'll overwrite it on the way out!
@@ -539,54 +540,60 @@ class GroupReadsByUmi
           r(this.assignTag) = truncated
         }
 
-        sorter += r
         kept += 1
-        sortProgress.record(r)
+        r
       }
+
+    // Output the reads in the new ordering
+    logger.info("Assigning reads to UMIs and outputting.")
+    val outHeader = header.clone()
+    SamOrder.TemplateCoordinate.applyTo(outHeader)
+    val out                        = SamWriter(output, outHeader)
+    val templateCoordinateIterator = {
+      // Skip sorting if the input is already template coordinate!
+      val iter = if (SamOrder(in.header).contains(TemplateCoordinate)) filteredIterator else {
+        val sorter      = Bams.sorter(SamOrder.TemplateCoordinate, header)
+        val sortProgress = ProgressLogger(logger, verb="Sorted")
+        filteredIterator.foreach { rec =>
+          sortProgress.record(rec)
+          sorter += rec
+        }
+        sortProgress.logLast()
+        sorter.iterator
+      }
+      // Note: this should never have to sort, just groups into templates
+      Bams.templateIterator(iter, out.header, Bams.MaxInMemory, Io.tmpDir)
+    }
+
+    val tagFamilySizeCounters = new IterableThreadLocal(() => new NumericCounter[Int]())
+    val chunkSize             = ParIterator.DefaultChunkSize
+    val groupedIterator       = Iterator
+      .continually(if (templateCoordinateIterator.hasNext) takeNextGroup(templateCoordinateIterator) else Seq.empty)
+      .takeWhile(_.nonEmpty)
+    ParIterator(groupedIterator, threads=threads).flatMap { templates: Seq[Template] =>
+      // Take the next set of templates by position and assign UMIs
+      assignUmiGroups(templates)
+
+      // Then output the records in the right order (assigned tag, read name, r1, r2)
+      val templatesByMi = templates.groupBy { t => t.r1.get[String](this.assignTag) }
+
+      // Count up the family sizes
+      val tagFamilySizeCounter = tagFamilySizeCounters.get()
+      tagFamilySizeCounter.synchronized {
+        templatesByMi.values.foreach(ps => tagFamilySizeCounter.count(ps.size))
+      }
+
+      templatesByMi.keys.toSeq.sortBy(id => (id.length, id)).flatMap { tag =>
+        templatesByMi(tag).sortBy(t => t.name).flatMap(t => t.primaryReads)
+      }
+    }.foreach { rec => out += rec }
+    //}.toAsync(chunkSize * 8 * threads).foreach { rec => out += rec }
 
     logger.info(f"Accepted $kept%,d reads for grouping.")
     if (filteredNonPf > 0) logger.info(f"Filtered out $filteredNonPf%,d non-PF reads.")
     logger.info(f"Filtered out $filteredPoorAlignment%,d reads due to mapping issues.")
     logger.info(f"Filtered out $filteredNsInUmi%,d reads that contained one or more Ns in their UMIs.")
     this.minUmiLength.foreach { _ => logger.info(f"Filtered out $filterUmisTooShort%,d reads that contained UMIs that were too short.") }
-
-    // Output the reads in the new ordering
-    logger.info("Assigning reads to UMIs and outputting.")
-    val outHeader = header.clone()
-    SamOrder.TemplateCoordinate.applyTo(outHeader)
-    val out = SamWriter(output, outHeader)
-
-    val iterator = Bams.templateIterator(sorter.iterator, out.header, Bams.MaxInMemory, Io.tmpDir)
-
-    val tagFamilySizeCounters = new IterableThreadLocal(() => new NumericCounter[Int]())
-    val pool                  = new ForkJoinPool(threads, ForkJoinPool.defaultForkJoinWorkerThreadFactory, null, true)
-
-    Iterator.continually(if (iterator.hasNext) takeNextGroup(iterator) else Seq.empty)
-      .takeWhile(_.nonEmpty)
-      .grouped(25000)
-      .foreach { group =>
-        group
-          .parWith(pool)
-          .map { templates: Seq[Template] =>
-            // Take the next set of templates by position and assign UMIs
-            assignUmiGroups(templates)
-
-            // Then output the records in the right order (assigned tag, read name, r1, r2)
-            val templatesByMi = templates.groupBy { t => t.r1.get[String](this.assignTag) }
-
-            // Count up the family sizes
-            val tagFamilySizeCounter = tagFamilySizeCounters.get()
-            templatesByMi.values.foreach(ps => tagFamilySizeCounter.count(ps.size))
-
-            templatesByMi.keys.toSeq.sortBy(id => (id.length, id)).flatMap { tag =>
-              templatesByMi(tag).sortBy(t => t.name).flatMap(t => t.primaryReads)
-            }
-          }
-          .seq
-          .iterator
-          .flatten
-          .foreach { rec => out += rec }
-      }
 
     // Gather the counters per thread
     val tagFamilySizeCounter = new NumericCounter[Int]()
