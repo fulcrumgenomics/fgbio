@@ -81,6 +81,7 @@ class ExtractUmisFromBam
   @arg(flag='o', doc = "Output BAM file.")                                     val output: PathToBam,
   @arg(flag='r', doc = "The read structure, one per read in a template.")      val readStructure: Seq[ReadStructure],
   @arg(flag='t', doc = "SAM tag(s) in which to store the molecular indices.", minElements=0) val molecularIndexTags: Seq[String] = Seq.empty,
+  @arg(flag='q', doc = "SAM tag(s) in which to store the molecular indices quals.", minElements=0) val molecularIndexTagsQuals: Seq[String] = Seq.empty,
   @arg(flag='s', doc = "Single tag into which to concatenate all molecular indices.") val singleTag: Option[String] = None,
   @arg(flag='a', doc = "Annotate the read names with the molecular indices. See usage for more details.") val annotateReadNames: Boolean = false,
   @arg(flag='c', doc = "The SAM tag with the position in read to clip adapters (e.g. `XT` as produced by Picard's `MarkIlluminaAdapters`).") val clippingAttribute: Option[String] = None
@@ -110,8 +111,18 @@ class ExtractUmisFromBam
     if (molecularIndexTags.size > 1 && rsMolecularBarcodeSegmentCount != molecularIndexTags.size) {
       invalid("Either a single SAM tag, or the same # of SAM tags as molecular indices in the read structure,  must be given.")
     }
-  }
 
+    // Same validation for molecularIndexTagsQuals
+    if (!molecularIndexTagsQuals.isEmpty)
+    {
+      molecularIndexTagsQuals.foreach(tag => if (tag.length != 2) invalid("SAM tags must be of length two: " + tag))
+      // ensure we either have one tag, or we have the same # of tags as molecular indices in the read structure.
+      if (molecularIndexTagsQuals.size > 1 && rsMolecularBarcodeSegmentCount != molecularIndexTagsQuals.size) {
+        invalid("Either a single SAM tag, or the same # of SAM tags as molecular indices in the read structure,  must be given.")
+      }
+    }
+  }
+  
   // Verify that if a single tag was specified that it is valid and not also contained in the per-index tags
   singleTag.foreach { tag =>
     if (tag.length != 2) invalid(s"All tags must be two characters: ${tag}")
@@ -121,14 +132,33 @@ class ExtractUmisFromBam
   // Validate the molecular index tags against the read structures and then split them out
   private val (molecularIndexTags1, molecularIndexTags2) = molecularIndexTags match {
     case Seq(one) =>
-      val t1 = Seq.fill(rs1.molecularBarcodeSegments.length)(one)
-      val t2 = Seq.fill(rs2.map(_.molecularBarcodeSegments.length).getOrElse(0))(one)
+      val t1 = Seq.fill(rs1.molecularBarcodeSegments.length.min(1))(one)
+      val t2 = Seq.fill(rs2.map(_.molecularBarcodeSegments.length).getOrElse(0).min(1))(one)
       (t1, t2)
     case tags =>
       // Validate that the # of molecular barcodes in the read structure matches the tags
       val total = rs1.molecularBarcodeSegments.length + rs2.map(_.molecularBarcodeSegments.length).getOrElse(0)
       validate(tags.length == total, s"Read structures contains $total molecular barcode segments, but ${tags.length} tags provided.")
       (tags.take(rs1.molecularBarcodeSegments.length), tags.drop(rs1.molecularBarcodeSegments.length))
+  }
+  // Same validation for molecularIndexTagsQuals
+  private val (molecularIndexTagsQuals1, molecularIndexTagsQuals2) = molecularIndexTagsQuals match {
+    case Seq(one) =>
+      val t1 = Seq.fill(rs1.molecularBarcodeSegments.length.min(1))(one)
+      val t2 = Seq.fill(rs2.map(_.molecularBarcodeSegments.length).getOrElse(0).min(1))(one)
+      (t1, t2)
+    case tags =>
+      // Validate that the # of molecular barcodes in the read structure matches the tags
+      if(tags.length > 0) 
+      {
+        val total = rs1.molecularBarcodeSegments.length + rs2.map(_.molecularBarcodeSegments.length).getOrElse(0)
+        validate(tags.length == total, s"Read structures contains $total molecular barcode segments, but ${tags.length} tags provided.")
+        (tags.take(rs1.molecularBarcodeSegments.length), tags.drop(rs1.molecularBarcodeSegments.length))
+      }
+      else
+      {
+        (Seq.empty, Seq.empty)
+      }
   }
 
   override def execute(): Unit = {
@@ -155,8 +185,8 @@ class ExtractUmisFromBam
         if (!r1.name.equals(r2.name)) fail(s"Read names did not match: '${r1.name}' and '${r2.name}'")
 
         // now do some work
-        val bases1 = ExtractUmisFromBam.annotateRecord(record=r1, readStructure=rs1, molecularIndexTags=molecularIndexTags1, clippingAttribute=clippingAttribute)
-        val bases2 = ExtractUmisFromBam.annotateRecord(record=r2, readStructure=rs2.get, molecularIndexTags=molecularIndexTags2, clippingAttribute=clippingAttribute)
+        val bases1 = ExtractUmisFromBam.annotateRecord(record=r1, readStructure=rs1, molecularIndexTags=molecularIndexTags1, molecularIndexTagsQuals=molecularIndexTagsQuals1, clippingAttribute=clippingAttribute)
+        val bases2 = ExtractUmisFromBam.annotateRecord(record=r2, readStructure=rs2.get, molecularIndexTags=molecularIndexTags2, molecularIndexTagsQuals=molecularIndexTagsQuals2, clippingAttribute=clippingAttribute)
         if (annotateReadNames) {
           // Developer Note: the delimiter must be an ascii character less than what is usually in the read names.  For
           // example "|" doesn't work.  I am not completely sure why.
@@ -171,6 +201,16 @@ class ExtractUmisFromBam
           val attr = tuples.map(_._2).mkString(ExtractUmisFromBam.UmiDelimiter)
           r1(tag) = attr
           r2(tag) = attr
+        }
+        // Same for molecularIndexTagsQuals.
+        if (!molecularIndexTagsQuals.isEmpty)
+        {
+          val tagAndQuals = (molecularIndexTagsQuals1.map { tag => (tag, r1[String](tag)) } ++ molecularIndexTagsQuals2.map { tag => (tag, r2[String](tag)) }).toList
+          tagAndQuals.groupBy(_._1).foreach { case (tag, tuples) =>
+            val attr = tuples.map(_._2).mkString(ExtractUmisFromBam.UmiDelimiter)
+            r1(tag) = attr
+            r2(tag) = attr
+          }
         }
 
         // If we have a single-tag, then also output values there
@@ -189,7 +229,7 @@ class ExtractUmisFromBam
         if (r1.mapped) fail(s"Read ${r1.name} was not unmapped")
 
         // now do some work
-        val bases1 = ExtractUmisFromBam.annotateRecord(record=r1, readStructure=rs1, molecularIndexTags=molecularIndexTags1, clippingAttribute=clippingAttribute)
+        val bases1 = ExtractUmisFromBam.annotateRecord(record=r1, readStructure=rs1, molecularIndexTags=molecularIndexTags1, molecularIndexTagsQuals=molecularIndexTagsQuals1, clippingAttribute=clippingAttribute)
         if (annotateReadNames) {
           // Developer Note: the delimiter must be an ascii character less than what is usually in the read names.  For
           // example "|" doesn't work.  I am not completely sure why.
@@ -223,6 +263,7 @@ object ExtractUmisFromBam {
   private[umi] def annotateRecord(record: SamRecord,
                                   readStructure: ReadStructure,
                                   molecularIndexTags: Seq[String],
+                                  molecularIndexTagsQuals: Seq[String],
                                   clippingAttribute: Option[String] = None): String = {
     val bases = record.basesString
     val qualities = record.qualsString
@@ -230,6 +271,8 @@ object ExtractUmisFromBam {
     val readStructureBases = readStructure.extract(bases, qualities)
     // get the molecular index segments
     val molecularIndexBases = readStructureBases.filter(_.kind == SegmentType.MolecularBarcode).map(_.bases)
+    // get the molecular index seqgments quals
+    val molecularIndexQualities = readStructureBases.filter(_.kind == SegmentType.MolecularBarcode).map(_.quals)
 
     // set the index tags
     // TODO: when we remove the deprecated molecularBarcodeTags option, consider whether or not we still
@@ -240,6 +283,17 @@ object ExtractUmisFromBam {
         if (molecularIndexTags.length < molecularIndexBases.length) throw new IllegalStateException("Found fewer molecular index SAM tags than molecular indices in the read structure.")
         else if (molecularIndexTags.length > molecularIndexBases.length) throw new IllegalStateException("Found fewer molecular indices in the read structure than molecular index SAM tags.")
         molecularIndexTags.zip(molecularIndexBases).foreach { case (tag, b) => record(tag) =  b }
+    }
+    // Same process for molecularIndexTagsQuals
+    if (!molecularIndexTagsQuals.isEmpty)
+    {
+      molecularIndexTagsQuals match {
+        case Seq(tag) => record(tag) = molecularIndexQualities.mkString(UmiDelimiter)
+        case _ =>
+          if (molecularIndexTagsQuals.length < molecularIndexQualities.length) throw new IllegalStateException("Found fewer molecular index SAM tags than molecular indices in the read structure.")
+          else if (molecularIndexTagsQuals.length > molecularIndexQualities.length) throw new IllegalStateException("Found fewer molecular indices in the read structure than molecular index SAM tags.")
+          molecularIndexTagsQuals.zip(molecularIndexQualities).foreach { case (tag, b) => record(tag) =  b }
+      }
     }
 
     // keep only template bases and qualities in the output read
