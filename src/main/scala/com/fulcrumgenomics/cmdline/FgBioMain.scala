@@ -74,7 +74,7 @@ class FgBioCommonArgs
   @arg(doc="Default GZIP compression level, BAM compression level.")           val compression: Int = 5,
   @arg(doc="Directory to use for temporary files.")                            val tmpDir: DirPath  = Paths.get(System.getProperty("java.io.tmpdir")),
   @arg(doc="Minimum severity log-level to emit.")                              val logLevel: LogLevel = LogLevel.Info,
-  @arg(doc="Validation stringency for SAM/BAM reading.")                       val samValidationStringency: ValidationStringency = ValidationStringency.STRICT
+  @arg(doc="Validation stringency for SAM/BAM reading.")                       val samValidationStringency: ValidationStringency = ValidationStringency.SILENT
 ) {
 
   SamSource.DefaultUseAsyncIo = asyncIo
