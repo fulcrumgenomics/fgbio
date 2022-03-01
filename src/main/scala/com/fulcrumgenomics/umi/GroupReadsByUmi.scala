@@ -77,7 +77,7 @@ object GroupReadsByUmi {
     }
 
     /** Creates/retrieves a ReadEnds object from a SamRecord and stores it in a temporary attribute for later user. */
-    def apply(rec: SamRecord) : ReadInfo = {
+    def apply(rec: SamRecord, ignoreStrand: Boolean = false) : ReadInfo = {
       val tmp = rec.transientAttrs[ReadInfo](GroupReadsByUmi.ReadInfoTempAttributeName)
       if (tmp != null) {
         tmp
@@ -86,7 +86,7 @@ object GroupReadsByUmi {
         val lib       = library(rec)
         val chrom     = rec.refIndex
         val mateChrom = rec.mateRefIndex
-        val recNeg    = rec.negativeStrand
+        val recNeg    = !ignoreStrand && rec.negativeStrand
         val recPos    = if (recNeg) rec.unclippedEnd else rec.unclippedStart
 
         val (mateNeg, matePos) = if (!rec.paired) (false, Int.MaxValue) else {
@@ -433,8 +433,10 @@ object Strategy extends FgBioEnum[Strategy] {
     |                  such that a read with A-B is related to but not identical to a read with B-A.
     |                  Expects the pair of UMIs to be stored in a single tag, separated by a hyphen
     |                  (e.g. `ACGT-CCGG`).  The molecular IDs produced have more structure than for single
-    |                  UMI strategies, and are of the form `{base}/{AB|BA}`. E.g. two UMI pairs would be
-    |                  mapped as follows AAAA-GGGG -> 1/AB, GGGG-AAAA -> 1/BA.
+    |                  UMI strategies, and are of the form `{base}/{A|B}`. E.g. two UMI pairs would be
+    |                  mapped as follows AAAA-GGGG -> 1/A, GGGG-AAAA -> 1/B.  If read pairs are merged
+    |                  into fragment reads prior to grouping, then reads mapping to the top strand of the
+    |                  genome will have 1/A while reads on the bottom strand will have 1/B.
     |
     |`edit`, `adjacency` and `paired` make use of the `--edits` parameter to control the matching of
     |non-identical UMIs.
@@ -591,14 +593,14 @@ class GroupReadsByUmi
   /** Consumes the next group of templates with all matching end positions and returns them. */
   def takeNextGroup(iterator: BufferedIterator[Template]) : Seq[Template] = {
     val first     = iterator.next()
-    val firstEnds = ReadInfo(first.r1.getOrElse(fail(s"R1 missing for template ${first.name}")))
+    val firstEnds = ReadInfo(first.r1.getOrElse(fail(s"R1 missing for template ${first.name}")), ignoreStrand=first.unpaired)
     val firstUmi  = first.r1.get.apply[String](this.assignTag)
     val builder   = IndexedSeq.newBuilder[Template]
     builder    += first
 
     while (
       iterator.hasNext &&
-      firstEnds == ReadInfo(iterator.head.r1.get) &&
+      firstEnds == ReadInfo(iterator.head.r1.get, ignoreStrand=iterator.head.unpaired) &&
       // This last condition only works because we put a canonicalized UMI into rec(assignTag) if canTakeNextGroupByUmi
       (!canTakeNextGroupByUmi || firstUmi == iterator.head.r1.get.apply[String](this.assignTag))
     ) {
@@ -668,7 +670,8 @@ class GroupReadsByUmi
       case (Some(r1), None,     paired: PairedUmiAssigner) =>
         val umis = umi.split('-')
         require(umis.length == 2, s"Paired strategy used but umi did not contain 2 segments: $umi")
-        paired.lowerReadUmiPrefix  + ":" + umis(0) + "-" + paired.higherReadUmiPrefix + ":" + umis(1)
+        if (r1.positiveStrand) paired.lowerReadUmiPrefix  + ":" + umis(0) + "-" + paired.higherReadUmiPrefix + ":" + umis(1)
+        else paired.higherReadUmiPrefix + ":" + umis(0) + "-" + paired.lowerReadUmiPrefix  + ":" + umis(1)
       case (Some(r1), _, _) =>
         r1[String](this.rawTag)
     }

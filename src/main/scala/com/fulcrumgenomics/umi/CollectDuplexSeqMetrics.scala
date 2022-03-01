@@ -569,8 +569,8 @@ class CollectDuplexSeqMetrics
     */
   private def takeNextGroup(iterator: BetterBufferedIterator[SamRecord]): Seq[SamRecord] = {
     val rec = iterator.head
-    val info = GroupReadsByUmi.ReadInfo(rec)
-    iterator.takeWhile(rec => GroupReadsByUmi.ReadInfo(rec) == info).toIndexedSeq
+    val info = GroupReadsByUmi.ReadInfo(rec, ignoreStrand=rec.unpaired)
+    iterator.takeWhile(rec => GroupReadsByUmi.ReadInfo(rec, ignoreStrand=rec.unpaired) == info).toIndexedSeq
   }
 
   /** Writes out all the metrics and plots. */

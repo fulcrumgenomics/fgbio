@@ -98,6 +98,9 @@ case class Template(r1: Option[SamRecord],
     Template(x1, x2)
   }
 
+  /** True if the template has only fragment (R1) reads, false if paired (has both R1 and R2 reads). */
+  def unpaired: Boolean = r2.isEmpty
+
   /** The total count of records for the template. */
   lazy val readCount: Int = r1.size + r2.size + r1Supplementals.size + r2Supplementals.size + r1Secondaries.size + r2Secondaries.size
 }

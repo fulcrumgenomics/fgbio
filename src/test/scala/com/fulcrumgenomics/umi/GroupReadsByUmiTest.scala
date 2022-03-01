@@ -57,7 +57,6 @@ class GroupReadsByUmiTest extends UnitSpec with OptionValues with PrivateMethodT
     groups.values.map(_.toSet).toSet
   }
 
-
   {
     "IdentityUmiAssigner" should "group UMIs together that have the exact same sequence" in {
       val assigner = new GroupReadsByUmi.IdentityUmiAssigner
@@ -276,6 +275,37 @@ class GroupReadsByUmiTest extends UnitSpec with OptionValues with PrivateMethodT
     bIds should have size 1
 
     aIds.head.takeWhile(_ != '/') shouldBe bIds.head.takeWhile(_ != '/')
+    aIds.head should not equal bIds.head
+  }
+
+  it should "correctly group fragment reads with the paired assigner when the two UMIs are the same" in {
+    // NB: the "a*" reads are grouped, and the "b*" reads are a second group
+    val builder = new SamBuilder(readLength=100, sort=Some(SamOrder.Coordinate))
+    builder.addFrag(name="a01", start=100, strand=Plus, attrs=Map("RX" -> "ACT-ACT"))
+    builder.addFrag(name="a02", start=100, strand=Plus, attrs=Map("RX" -> "ACT-ACT"))
+    builder.addFrag(name="a03", start=100, strand=Plus, attrs=Map("RX" -> "ACT-ACT"))
+    builder.addFrag(name="a04", start=100, strand=Plus, attrs=Map("RX" -> "ACT-ACT"))
+    builder.addFrag(name="b01", start=100, strand=Minus, attrs=Map("RX" -> "ACT-ACT"))
+    builder.addFrag(name="b02", start=100, strand=Minus, attrs=Map("RX" -> "ACT-ACT"))
+    builder.addFrag(name="b03", start=100, strand=Minus, attrs=Map("RX" -> "ACT-ACT"))
+    builder.addFrag(name="b04", start=100, strand=Minus, attrs=Map("RX" -> "ACT-ACT"))
+
+    val in  = builder.toTempFile()
+    val out = Files.createTempFile("umi_grouped.", ".sam")
+    val hist = Files.createTempFile("umi_grouped.", ".histogram.txt")
+    new GroupReadsByUmi(input=in, output=out, familySizeHistogram=Some(hist), rawTag="RX", assignTag="MI", strategy=Strategy.Paired, edits=1).execute()
+
+    val recs = readBamRecs(out)
+
+    val aIds = recs.filter(_.name.startsWith("a")).map(r => r[String]("MI")).distinct
+    val bIds = recs.filter(_.name.startsWith("b")).map(r => r[String]("MI")).distinct
+
+    aIds should have size 1
+    bIds should have size 1
+
+    aIds.head.split('/').head shouldBe bIds.head.split('/').head
+    aIds.head should endWith (GroupReadsByUmi.TopStrandDuplex)
+    bIds.head should endWith (GroupReadsByUmi.BottomStrandDuplex)
     aIds.head should not equal bIds.head
   }
 
