@@ -69,10 +69,11 @@ class ZipperBamsTest extends UnitSpec {
   }
 
   /** Generate a builder that will mimic what an aligner might produce. */
-  private def mBuilder(grouped: Boolean = false): SamBuilder = {
+  private def mBuilder(grouped: Boolean = true): SamBuilder = {
     val builder = new SamBuilder(readGroupId=None)
     builder.header.setReadGroups(Iterator().toJavaList)
     builder.header.addProgramRecord(mappedPg)
+    if (grouped) builder.header.setGroupOrder(GroupOrder.query)
     builder
   }
 
