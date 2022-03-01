@@ -1,10 +1,10 @@
 [![Build Status](https://github.com/fulcrumgenomics/fgbio/workflows/unit%20tests/badge.svg)](https://github.com/fulcrumgenomics/fgbio/actions?query=workflow%3A%22unit+tests%22)
-[![codecov](https://codecov.io/gh/fulcrumgenomics/fgbio/branch/master/graph/badge.svg)](https://codecov.io/gh/fulcrumgenomics/fgbio)
+[![codecov](https://codecov.io/gh/fulcrumgenomics/fgbio/branch/main/graph/badge.svg)](https://codecov.io/gh/fulcrumgenomics/fgbio)
 [![Codacy Badge](https://app.codacy.com/project/badge/Grade/daf8b19014a449f3b15ca02eaf9bd976)](https://www.codacy.com/gh/fulcrumgenomics/fgbio/dashboard?utm_source=github.com&amp;utm_medium=referral&amp;utm_content=fulcrumgenomics/fgbio&amp;utm_campaign=Badge_Grade)
 [![Maven Central](https://maven-badges.herokuapp.com/maven-central/com.fulcrumgenomics/fgbio_2.13/badge.svg)](https://maven-badges.herokuapp.com/maven-central/com.fulcrumgenomics/fgbio_2.13)
 [![Bioconda](https://img.shields.io/conda/dn/bioconda/fgbio.svg?label=Bioconda)](http://bioconda.github.io/recipes/fgbio/README.html)
 [![Javadocs](http://javadoc.io/badge/com.fulcrumgenomics/fgbio_2.13.svg)](http://javadoc.io/doc/com.fulcrumgenomics/fgbio_2.13)
-[![License](http://img.shields.io/badge/license-MIT-blue.svg)](https://github.com/fulcrumgenomics/fgbio/blob/master/LICENSE)
+[![License](http://img.shields.io/badge/license-MIT-blue.svg)](https://github.com/fulcrumgenomics/fgbio/blob/main/LICENSE)
 [![Language](http://img.shields.io/badge/language-scala-brightgreen.svg)](http://www.scala-lang.org/)
 
 fgbio
@@ -125,7 +125,7 @@ For urgent matters, please contact us directly.
 
 ## License
 
-`fgbio` is open source software released under the [MIT License](https://github.com/fulcrumgenomics/fgbio/blob/master/LICENSE).
+`fgbio` is open source software released under the [MIT License](https://github.com/fulcrumgenomics/fgbio/blob/main/LICENSE).
 
 ## Sponsorship
 

@@ -38,7 +38,7 @@ jobs:
           path: ~/.sbt
           key: ${{ runner.os }}-sbt-${{ hashFiles('**/build.properties') }}
   release:
-    if: github.repository == 'fulcrumgenomics/fgbio' && github.ref == 'refs/heads/master'
+    if: github.repository == 'fulcrumgenomics/fgbio' && github.ref == 'refs/heads/main'
     
     needs: test
     runs-on: ubuntu-latest
