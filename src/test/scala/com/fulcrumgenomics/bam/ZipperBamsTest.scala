@@ -30,6 +30,8 @@ import com.fulcrumgenomics.util.Io
 import htsjdk.samtools.SAMFileHeader.GroupOrder
 import htsjdk.samtools.{SAMProgramRecord, SAMSequenceDictionary}
 import com.fulcrumgenomics.FgBioDef._
+import com.fulcrumgenomics.testing.SamBuilder.{Minus, Plus}
+import com.fulcrumgenomics.umi.ConsensusTags
 
 class ZipperBamsTest extends UnitSpec {
   private val dict = new SamBuilder().dict
@@ -150,8 +152,156 @@ class ZipperBamsTest extends UnitSpec {
       z.start shouldBe m.start
       z.cigar shouldBe m.cigar
 
-      // And mate cigar should be present
+      // And mate cigar and mapping quality should be present
+      z.get("MC").isDefined shouldBe true
       z.get("MQ").isDefined shouldBe true
+    }
+  }
+
+  it should "work on non-paired data" in {
+    val unmapped = uBuilder()
+    unmapped.addFrag(name="q1", unmapped=true, attrs=Map("RX" -> "ACGT", "xy" -> 1234))
+    unmapped.addFrag(name="q2", unmapped=true, attrs=Map("RX" -> "GGTA", "xy" -> 4567))
+
+    val mapped   = mBuilder()
+    mapped.addFrag(name="q1", start=100, strand=Plus,  attrs=Map("PG" -> mappedPg.getId, "AS" -> 77))
+    mapped.addFrag(name="q2", start=500, strand=Minus, attrs=Map("PG" -> mappedPg.getId, "AS" -> 16))
+
+    val zippered = run(unmapped, mapped)
+
+    zippered.foreach { z =>
+      val u = unmapped.find(u => u.name == z.name).value
+      val m = mapped.find(m => m.name == z.name).value
+
+      // All the attributes from the unmapped BAM should be there
+      u.attributes.foreach { case (tag, value) => z(tag) == value shouldBe true }
+
+      // And all the attributes from the mapped BAM
+      m.attributes.foreach { case (tag, value) => z(tag) == value shouldBe true }
+
+      // And we shouldn't have broken any of the alignment info
+      z.basesString shouldBe m.basesString
+      z.qualsString shouldBe m.qualsString
+      z.refIndex shouldBe m.refIndex
+      z.start shouldBe m.start
+      z.cigar shouldBe m.cigar
+    }
+  }
+
+  it should "remove/reverse/revcomp tags based on parameters" in {
+    val unmapped = uBuilder()
+    val uAttrs = Map(
+      "n1" -> Array[Short](1, 2, 3, 4, 5),
+      "n2" -> Array[Short](2, 3, 4, 5, 6),
+      "s1" -> "abcde",
+      "s2" -> "vwxyz",
+      "s3" -> "AGAGG"
+    )
+    unmapped.addPair(name="q1", unmapped1=true, unmapped2=true, attrs=uAttrs)
+
+    val mapped   = mBuilder()
+    mapped.addPair(name="q1", start1=100, start2=200, strand1=Plus, strand2=Minus, attrs=Map("PG" -> mappedPg.getId, "AS" -> 77))
+
+    val zippered = run(unmapped, mapped, remove=Seq("AS"), reverse=Seq("n1", "n2", "s1"), revcomp=Seq("s3"))
+
+    // Then check the records
+    zippered.foreach { z =>
+      if (z.firstOfPair) {
+        z.positiveStrand shouldBe true
+        z.get("AS").isDefined shouldBe false
+        z[Array[Short]]("n1") shouldBe Array[Short](1, 2, 3, 4, 5)
+        z[Array[Short]]("n2") shouldBe Array[Short](2, 3, 4, 5, 6)
+        z[String]("s1") shouldBe "abcde"
+        z[String]("s2") shouldBe "vwxyz"
+        z[String]("s3") shouldBe "AGAGG"
+
+      }
+      else {
+        z.negativeStrand shouldBe true
+        z.get("AS").isDefined shouldBe false
+        z[Array[Short]]("n1") shouldBe Array[Short](5, 4, 3, 2, 1)
+        z[Array[Short]]("n2") shouldBe Array[Short](6, 5, 4, 3, 2)
+        z[String]("s1") shouldBe "edcba"
+        z[String]("s2") shouldBe "vwxyz"
+        z[String]("s3") shouldBe "CCTCT"
+      }
+    }
+  }
+
+  it should "remove/reverse/revcomp tags on secondary and supplementary records" in {
+    val unmapped = uBuilder()
+    val uAttrs = Map(
+      "n1" -> Array[Short](1, 2, 3, 4, 5),
+      "n2" -> Array[Short](2, 3, 4, 5, 6),
+      "s1" -> "abcde",
+      "s2" -> "vwxyz",
+      "s3" -> "AGAGG"
+    )
+    unmapped.addFrag(name="q1", unmapped=true, attrs=uAttrs)
+
+    val mapped   = mBuilder()
+    mapped.addFrag(name="q1", start=100, strand=Plus,  attrs=Map("PG" -> mappedPg.getId, "AS" -> 77))
+    mapped.addFrag(name="q1", start=200, strand=Minus, attrs=Map("PG" -> mappedPg.getId, "AS" -> 77)).foreach(_.secondary=true)
+    mapped.addFrag(name="q1", start=300, strand=Minus, attrs=Map("PG" -> mappedPg.getId, "AS" -> 77)).foreach(_.supplementary=true)
+
+    val zippered = run(unmapped, mapped, remove=Seq("AS"), reverse=Seq("n1", "n2", "s1"), revcomp=Seq("s3"))
+    val recs = zippered.toIndexedSeq
+    recs should have length 3
+    recs.count(r => r.secondary || r.supplementary) shouldBe 2
+    recs.count(_.negativeStrand) shouldBe 2
+
+    // Then check the records
+    recs.foreach { z =>
+      if (z.positiveStrand) {
+        z.get("AS").isDefined shouldBe false
+        z[Array[Short]]("n1") shouldBe Array[Short](1, 2, 3, 4, 5)
+        z[Array[Short]]("n2") shouldBe Array[Short](2, 3, 4, 5, 6)
+        z[String]("s1") shouldBe "abcde"
+        z[String]("s2") shouldBe "vwxyz"
+        z[String]("s3") shouldBe "AGAGG"
+
+      }
+      else {
+        z.get("AS").isDefined shouldBe false
+        z[Array[Short]]("n1") shouldBe Array[Short](5, 4, 3, 2, 1)
+        z[Array[Short]]("n2") shouldBe Array[Short](6, 5, 4, 3, 2)
+        z[String]("s1") shouldBe "edcba"
+        z[String]("s2") shouldBe "vwxyz"
+        z[String]("s3") shouldBe "CCTCT"
+      }
+    }
+  }
+
+  it should "reverse/revcomp tags when using a named tag set" in {
+    val unmapped = uBuilder()
+    val uAttrs = Map(
+      ConsensusTags.PerBase.AbConsensusBases -> "AAAGG",
+      ConsensusTags.PerBase.BaConsensusBases -> "AAAGC",
+      ConsensusTags.PerBase.RawReadCount -> Array[Short](3, 3, 4, 4, 2)
+    )
+    unmapped.addFrag(name="q1", unmapped=true, attrs=uAttrs)
+
+    val mapped   = mBuilder()
+    mapped.addFrag(name="q1", start=100, strand=Plus,  attrs=Map("PG" -> mappedPg.getId, "AS" -> 77))
+    mapped.addFrag(name="q1", start=200, strand=Minus, attrs=Map("PG" -> mappedPg.getId, "AS" -> 77)).foreach(_.supplementary=true)
+
+    val zippered = run(unmapped, mapped, reverse=Seq("Consensus"), revcomp=Seq("Consensus"))
+    val recs = zippered.toIndexedSeq
+    recs should have length 2
+    recs.count(r => r.secondary || r.supplementary) shouldBe 1
+    recs.count(_.negativeStrand) shouldBe 1
+
+    recs.foreach { z =>
+      if (z.positiveStrand) {
+        z[String](ConsensusTags.PerBase.AbConsensusBases) shouldBe "AAAGG"
+        z[String](ConsensusTags.PerBase.BaConsensusBases) shouldBe "AAAGC"
+        z[Array[Short]](ConsensusTags.PerBase.RawReadCount) shouldBe Array[Short](3, 3, 4, 4, 2)
+      }
+      else {
+        z[String](ConsensusTags.PerBase.AbConsensusBases) shouldBe "CCTTT"
+        z[String](ConsensusTags.PerBase.BaConsensusBases) shouldBe "GCTTT"
+        z[Array[Short]](ConsensusTags.PerBase.RawReadCount) shouldBe Array[Short](2, 4, 4, 3, 3)
+      }
     }
   }
 }

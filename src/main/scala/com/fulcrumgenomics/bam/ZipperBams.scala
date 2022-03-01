@@ -52,14 +52,14 @@ private[bam] object ZipperBams extends LazyLogging {
   object TagInfo {
     def apply(remove: IndexedSeq[String], reverse: IndexedSeq[String], revcomp: IndexedSeq[String]): TagInfo = {
       val r  = reverse.flatMap(t => TagSetsForReversing.getOrElse(t, Some(t)))
-      val rc = revcomp.flatMap(t => TagSetsForReversing.getOrElse(t, Some(t)))
+      val rc = revcomp.flatMap(t => TagSetsForRevcomping.getOrElse(t, Some(t)))
       new TagInfo(remove=remove, reverse=r, revcomp=rc)
     }
   }
 
   /** Class to hold info about all the extended tags/attrs we want to manipulate. */
   case class TagInfo private (remove: IndexedSeq[String], reverse: IndexedSeq[String], revcomp: IndexedSeq[String]) {
-    val setToReverse: java.util.Set[String] = remove.iterator.toJavaSet
+    val setToReverse: java.util.Set[String] = reverse.iterator.toJavaSet
     val setToRevcomp: java.util.Set[String] = revcomp.iterator.toJavaSet
     val hasRevsOrRevcomps: Boolean = reverse.nonEmpty || revcomp.nonEmpty
   }
@@ -138,16 +138,18 @@ private[bam] object ZipperBams extends LazyLogging {
     for (u <- unmapped.primaryReads) {
       // Get all the mapped records for the unmapped record
       val ms = if (u.unpaired || u.firstOfPair) mapped.allR1s.toSeq else mapped.allR2s.toSeq
+      val hasPosReads = ms.exists(_.positiveStrand)
+      val hasNegReads = ms.exists(_.negativeStrand)
 
       // Copy over pass/fail qc flag
       ms.foreach(_.pf = u.pf)
 
       // Copy over tags on any positive strand reads first
-      ms.iterator.filter(_.positiveStrand).foreach(m => copyTags(u, m))
+      if (hasPosReads) ms.iterator.filter(_.positiveStrand).foreach(m => copyTags(u, m))
 
       // Then reverse complement the unmapped read if we need to and do the negative strand reads
-      if (ms.exists(_.negativeStrand)) {
-        if (tagInfo.hasRevsOrRevcomps) u.asSam.reverseComplement(tagInfo.setToRevcomp, tagInfo.setToReverse, true)
+      if (hasNegReads) {
+        if (tagInfo.hasRevsOrRevcomps) u.asSam.reverseComplement(tagInfo.setToRevcomp, tagInfo.setToReverse, !hasPosReads)
         ms.iterator.filter(_.negativeStrand).foreach(m => copyTags(u, m))
       }
     }
@@ -228,7 +230,7 @@ class ZipperBams
         out ++= merge(unmapped=template, mapped=mappedIter.next(), tagInfo=tagInfo).allReads
       }
       else {
-        logger.debug("Found an unmapped read with no corresponding mapped read: ${template.name}")
+        logger.debug(s"Found an unmapped read with no corresponding mapped read: ${template.name}")
         out ++= template.allReads
       }
     }
