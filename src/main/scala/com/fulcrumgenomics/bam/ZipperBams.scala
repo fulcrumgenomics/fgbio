@@ -194,7 +194,7 @@ private[bam] object ZipperBams extends LazyLogging {
 class ZipperBams
 ( @arg(flag='i', doc="Mapped SAM or BAM.") val input: PathToBam = Io.StdIn,
   @arg(flag='u', doc="Unmapped SAM or BAM.") val unmapped: PathToBam,
-  @arg(flag='r', doc="Path to the reference used in alignment.") val ref: PathToFasta,
+  @arg(flag='r', doc="Path to the reference used in alignment. Must have accompanying .dict file.") val ref: PathToFasta,
   @arg(flag='o', doc="Output SAM or BAM file.") val output: PathToBam = Io.StdOut,
   @arg(doc="Tags to remove from the mapped BAM records.", minElements=0)
   val tagsToRemove: IndexedSeq[String] = IndexedSeq.empty,
@@ -206,6 +206,11 @@ class ZipperBams
   @arg(flag='b', doc="Buffer this many read-pairs while reading the input BAMs.") val buffer: Int = 5000
 ) extends FgBioTool {
   import ZipperBams._
+
+  Io.assertReadable(ref)
+  Io.assertReadable(input)
+  Io.assertReadable(unmapped)
+  Io.assertCanWriteFile(output)
 
   override def execute(): Unit = {
     val unmappedSource = SamSource(unmapped)
