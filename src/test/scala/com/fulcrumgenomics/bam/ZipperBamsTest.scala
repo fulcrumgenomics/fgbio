@@ -305,4 +305,20 @@ class ZipperBamsTest extends UnitSpec {
       }
     }
   }
+
+  it should "push unmapped reads into the output BAM if there are no mapped reads for a template" in {
+    val unmapped = uBuilder()
+    unmapped.addFrag(name="q1", unmapped=true, attrs=Map("RX" -> "ACGT", "xy" -> 1234))
+    unmapped.addFrag(name="q2", unmapped=true, attrs=Map("RX" -> "GATA", "xy" -> 3456))
+    unmapped.addFrag(name="q3", unmapped=true, attrs=Map("RX" -> "GGCG", "xy" -> 5678))
+
+    val mapped   = mBuilder()
+    mapped.addFrag(name="q1", start=100, strand=Plus,  attrs=Map("PG" -> mappedPg.getId, "AS" -> 77))
+    mapped.addFrag(name="q3", start=200, strand=Minus, attrs=Map("PG" -> mappedPg.getId, "AS" -> 77))
+
+    val zippered = run(unmapped, mapped, reverse=Seq("Consensus"), revcomp=Seq("Consensus"))
+    val recs = zippered.toIndexedSeq
+    recs should have length 3
+    recs.map(_.name) should contain theSameElementsInOrderAs Seq("q1", "q2", "q3")
+  }
 }
