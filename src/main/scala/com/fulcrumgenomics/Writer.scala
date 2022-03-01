@@ -25,5 +25,5 @@
 package com.fulcrumgenomics
 
 /** Writer trait to standardize how to interact with classes that write out objects. */
-@deprecated("Use com.fulcrumgenomics.commons.io.Writer instead.", since="0.8.1")
+@deprecated(message="Use com.fulcrumgenomics.commons.io.Writer instead.", since="0.8.1")
 trait Writer[A] extends com.fulcrumgenomics.commons.io.Writer[A]
