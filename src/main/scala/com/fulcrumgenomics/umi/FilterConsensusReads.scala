@@ -91,8 +91,10 @@ private[umi] case class ConsensusReadFilter(minReads: Int, maxReadErrorRate: Dou
       |values two and three differ, the _more stringent value comes earlier_.
       |
       |In order to correctly filter reads in or out by template, if the input BAM is not `queryname` sorted or
-      |grouped it will be sorted into queryname order.  The resulting records are `coordinate` sorted to efficiently
-      |correct the `NM`, `UQ` and `MD` tags, and the output BAM is always written in coordinate order.
+      |query grouped it will be sorted into queryname order prior to filtering.
+      |
+      |The output sort order may be specified with `--sort-order`.  If not given, then the output will be in the same
+      |order as input if the input is queryname sorted or query grouped, otherwise queryname order.
       |
       |The `--reverse-tags-per-base` option controls whether per-base tags should be reversed before being used on reads
       |marked as being mapped to the negative strand.  This is necessary if the reads have been mapped and the
@@ -119,7 +121,7 @@ class FilterConsensusReads
   val minMeanBaseQuality: Option[PhredScore] = None,
   @arg(flag='s', doc="Mask (make `N`) consensus bases where the AB and BA consensus reads disagree (for duplex-sequencing only).")
   val requireSingleStrandAgreement: Boolean = false,
-  @arg(flag='S', doc="The sort order of the output. If not given, output will be in the same order as input if the input is query grouped, otherwise queryname order.")
+  @arg(flag='S', doc="The sort order of the output. If not given, output will be in the same order as input if the input is query name sorted or query grouped, otherwise queryname order.")
   val sortOrder: Option[SamOrder] = None
 ) extends FgBioTool with LazyLogging {
   // Baseline input validation
