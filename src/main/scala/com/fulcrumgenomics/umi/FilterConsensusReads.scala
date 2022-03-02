@@ -244,41 +244,36 @@ class FilterConsensusReads
     val inGroupOrder = inHeader.getGroupOrder
     val inSubSort    = Option(inHeader.getAttribute("SS"))
 
-    // Get the order after filtering
-    val (afterFilteringSortOrder, afterFilteringGroupOrder, afterFilteringSubSort) = {
-      if (inSortOrder == SortOrder.queryname || inGroupOrder == GroupOrder.query) { // no sorting occurred, so same as input
-        (inSortOrder, inGroupOrder, inSubSort)
-      }
-      else { // sorting occurred, so it's queryname
-        val order = SamOrder.Queryname
-        (order.sortOrder, order.groupOrder, order.subSort)
+    // Get the sort order, if any, to force the writer to resort.
+    val writerSortOrder = {
+      val canSkipSortingInput = inSortOrder == SortOrder.queryname || inGroupOrder == GroupOrder.query
+      (this.sortOrder, canSkipSortingInput) match {
+        case (None,        false) =>
+          // already sorted to Queryname after filtering, so the output will be Queryname, and so no need to re-sort the output
+          SamOrder.Queryname.applyTo(outHeader)
+          None
+        case (Some(order), false) =>
+          // already sorted to Queryname after filtering, so don't sort the output if the given output sort order matches Queryname
+          order.applyTo(outHeader)
+          if (order != SamOrder.Queryname) Some(order) else None
+        case (None,         true) =>
+          // input did not need to be re-sorted, so do not re-sort the output
+          None
+        case (Some(order), true)  =>
+          // If sorting prior to filtering was not required, then the input was queryname or query grouped.  So sort the
+          // output only if the specified output `sortOrder` does not match the input sort order.
+          if (order.sortOrder == inSortOrder && order.groupOrder == inGroupOrder && order.subSort == inSubSort) {
+            None // input matches the output order, no need to force sorting, keep the header
+          }
+          else { // mismatch in the input order and output order, force sorting the output
+            order.applyTo(outHeader)
+            Some(order)
+          }
       }
     }
 
-    // Get the desired output order
-    val (outputSortOrder, outputGroupOrder, outputSubSort) = this.sortOrder match {
-      case None        => (inSortOrder, inGroupOrder, inSubSort) // same as input
-      case Some(order) => (order.sortOrder, order.groupOrder, order.subSort) // specific output
-    }
-
-    val sort: Option[SamOrder] = {
-      // if the order after filtering and the output order match, no need to re-sort the output
-      if (afterFilteringSortOrder == outputSortOrder && afterFilteringGroupOrder == outputGroupOrder && afterFilteringSubSort == outputSubSort) {
-        None
-      } else { // output order and order after filtering do not match, we need to re-sort the output
-        SamOrder.values.find { order =>
-          order.sortOrder == outputSortOrder && order.groupOrder == outputGroupOrder && order.subSort == outputSubSort
-        }.orElse {
-          // this can only happen if the input order is unrecognized
-          throw new IllegalArgumentException(
-            s"The input BAM had an unrecognized sort order (SO:$inSortOrder GO:$inGroupOrder SS: $inSubSort)" +
-            s"\nTry re-running with --sort-order for a supported output order." in $input
-          )
-        }
-      }
-    }
-    val writer = SamWriter(output, outHeader, sort=sort, maxRecordsInRam=MaxRecordsInMemoryWhenSorting)
-    sort.foreach(o => logger.info(f"Output will be sorted into $o order"))
+    val writer = SamWriter(output, outHeader, sort=writerSortOrder, maxRecordsInRam=MaxRecordsInMemoryWhenSorting)
+    writerSortOrder.foreach(o => logger.info(f"Output will be sorted into $o order"))
 
     // Create the final writer based on if the full reference has been loaded, or not
     new Writer[SamRecord] with Closeable {
