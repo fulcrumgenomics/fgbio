@@ -35,37 +35,62 @@ object Umis {
     * The read name is split by the given name delimiter, and the last field is assumed to be the UMI sequence.  The UMI
     * will be copied to the `RX` tag as per the SAM specification.
     *
+    * An exception will be thrown if the read name does not contain a valid UMI in the last delimited segment.
+    *
     * @param rec the record to modify
     * @param removeUmi true to remove the UMI from the read name, otherwise only copy the UMI to the tag
-    * @param umiDelimiter if not None, replaces any occurrences of this delimiter found in the UMI with a dash ('-')
-    *                     as per the SAM specification
+    * @param delimiter the delimiter of fields within the readname
     * @return the modified record
     */
-  def copyUmiFromReadName(rec: SamRecord,
-                          removeUmi: Boolean = false,
-                          nameDelimiter: Char = ':',
-                          umiDelimiter: Option[Char] = Some('+')): SamRecord = {
-    // extract the UMI
-    val idx = rec.name.lastIndexOf(nameDelimiter)
-    require(idx != -1, s"Read did not have multiple '$nameDelimiter'-separated fields: ${rec.name}")
-    val rawUmi = rec.name.substring(idx + 1, rec.name.length)
+  def copyUmiFromReadName(rec: SamRecord, removeUmi: Boolean = false, delimiter: Char = ':'): SamRecord = {
+    // Extract and set the UMI
+    val umi = extractUmisFromReadName(rec.name, delimiter, strict=false)
+    require(umi.nonEmpty, f"No valid UMI found in: ${rec.name}")
+    umi.foreach(u => rec(ConsensusTags.UmiBases) = u)
 
-    // re-delimit the UMI if desired, validating as necessary
-    val umi = umiDelimiter match {
-      case Some(delim) => rawUmi.replace(delim, '-')
-      case None        => rawUmi
-    }
+    // Remove the UMI from the read name if requested
+    if (removeUmi) rec.name = rec.name.substring(0, rec.name.lastIndexOf(delimiter))
 
-    // validate the UMI
-    require(umi.nonEmpty && umi.forall { char => SequenceUtil.isValidBase(char.toByte) || SequenceUtil.isNoCall(char.toByte) || char == '-' },
-      f"UMI '$umi' is not valid (not `[ACGTNacgtn-]+`) for read: ${rec.name}"
-    )
-
-    // update the record
-    rec(ConsensusTags.UmiBases) = umi
-    if (removeUmi) {
-      rec.name = rec.name.substring(0, idx)
-    }
     rec
+  }
+
+  /**
+    * Extracts the UMI from an Illumina fastq style read name.  Illumina documents their FASTQ read names as:
+    *   @<instrument>:<run number>:<flowcell ID>:<lane>:<tile>:<x-pos>:<y-pos>:<UMI> <read>:<is filtered>:<control number>:<index>
+    *
+    *  See https://support.illumina.com/help/BaseSpace_OLH_009008/Content/Source/Informatics/BS/FileFormat_FASTQ-files_swBS.htm
+    *
+    *  If `strict` is true the name _must_ contain 8 colon-separated segments, with the UMI being the last.  If
+    *  `strict` is false the last segment is returned so long as it appears to be a valid UMI.
+    */
+  def extractUmisFromReadName(header: String, delimiter: Char = ':', strict: Boolean): Option[String] = {
+    // Support full FASTQ headers by first removing any spaces and trailing text
+    val name = {
+      val idx = header.indexOf(' ')
+      if (idx >= 0) header.substring(0, idx) else header
+    }
+
+    // If strict, check that the read name actually has eight parts, which is expected
+    val rawUmi = if (strict) {
+      val colons = name.count(_ == delimiter)
+      if (colons == 6) None
+      else if (colons == 7) Some(name.substring(name.lastIndexOf(delimiter) + 1, name.length))
+      else throw new IllegalArgumentException(s"Trying to extract UMI from read with ${colons + 1} parts (7-8 expected): ${name}")
+    } else {
+      val idx = name.lastIndexOf(delimiter)
+      require(idx != -1, s"Read did not have multiple '${delimiter}'-separated fields: ${name}")
+      Some(name.substring(idx + 1, name.length))
+    }
+
+    val umi   = rawUmi.map(raw => (if (raw.indexOf('+') > 0) raw.replace('+', '-') else raw).toUpperCase)
+    val valid = umi.forall(u => u.forall(isValidUmiCharacter))
+
+    if (strict && !valid) throw new IllegalArgumentException(s"Invalid UMI '${umi.get}' extracted from name '${name}")
+    else if (!valid) None
+    else umi
+  }
+
+  @inline private def isValidUmiCharacter(ch: Char): Boolean = {
+    ch == 'A' || ch == 'C' || ch == 'G' || ch == 'T' || ch == 'N' || ch == '-'
   }
 }

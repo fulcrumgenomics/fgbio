@@ -39,7 +39,47 @@ class UmisTest extends UnitSpec with OptionValues {
     def nameAndUmi: (String, String) = (rec.name, rec[String](ConsensusTags.UmiBases))
   }
 
-  "copyUmiFromReadName" should "copy the UMI from the read name" in {
+  "Umis.extractUmisFromReadName" should "extract a UMI from a well-formed read name" in {
+    Umis.extractUmisFromReadName("1:2:3:4:5:6:7:ACGTACGT", strict=true).value shouldBe "ACGTACGT"
+  }
+
+  it should "return None if the read name has only 7 parts in strict mode" in {
+    Umis.extractUmisFromReadName("1:2:3:4:5:6:7", strict=true) shouldBe None
+  }
+
+  it should "throw an exception in strict mode if the read has too many or too few segments" in {
+    an[Exception] shouldBe thrownBy { Umis.extractUmisFromReadName("1:2:3:4:5:6", strict=true) }
+    an[Exception] shouldBe thrownBy { Umis.extractUmisFromReadName("1:2:3:4:5:6:7:8:ACGT", strict=true) }
+  }
+
+  it should "translate pluses to hyphens when multiple UMIs are present" in {
+    Umis.extractUmisFromReadName("1:2:3:4:5:6:7:ACGTACGT+TTGCGGCT", strict=true).value shouldBe "ACGTACGT-TTGCGGCT"
+  }
+
+  it should "extract a UMI from the last segment in non-strict mode, if it looks like a UMI" in {
+    Umis.extractUmisFromReadName("1:ACGT", strict=false).value shouldBe "ACGT"
+    Umis.extractUmisFromReadName("1:2:ACGT", strict=false).value shouldBe "ACGT"
+    Umis.extractUmisFromReadName("1:2:3:ACGT", strict=false).value shouldBe "ACGT"
+    Umis.extractUmisFromReadName("1:2:3:4:ACGT", strict=false).value shouldBe "ACGT"
+    Umis.extractUmisFromReadName("1:2:3:4:5:ACGT", strict=false).value shouldBe "ACGT"
+    Umis.extractUmisFromReadName("1:2:3:4:5:6:ACGT", strict=false).value shouldBe "ACGT"
+    Umis.extractUmisFromReadName("1:2:3:4:5:6:7:ACGT", strict=false).value shouldBe "ACGT"
+    Umis.extractUmisFromReadName("1:2:3:4:5:6:7:8:ACGT", strict=false).value shouldBe "ACGT"
+    Umis.extractUmisFromReadName("1:2:3:4:5:6:7:8:9:ACGT", strict=false).value shouldBe "ACGT"
+  }
+
+  it should "return None in non-strict mode if the last segment doesn't look like a UMI" in {
+    Umis.extractUmisFromReadName("1:2", strict=false) shouldBe None
+    Umis.extractUmisFromReadName("1:2:3", strict=false) shouldBe None
+    Umis.extractUmisFromReadName("1:2:3:4", strict=false) shouldBe None
+    Umis.extractUmisFromReadName("1:2:3:4:5", strict=false) shouldBe None
+    Umis.extractUmisFromReadName("1:2:3:4:5:6", strict=false) shouldBe None
+    Umis.extractUmisFromReadName("1:2:3:4:5:6:7", strict=false) shouldBe None
+    Umis.extractUmisFromReadName("1:2:3:4:5:6:7:8", strict=false) shouldBe None
+  }
+
+
+  "Umis.copyUmiFromReadName" should "copy the UMI from the read name" in {
     copyUmiFromReadName(rec=rec("UMI:A")).nameAndUmi shouldBe ("UMI:A", "A")
     copyUmiFromReadName(rec=rec("UMI:C:A")).nameAndUmi shouldBe ("UMI:C:A", "A")
     copyUmiFromReadName(rec=rec("UMI:C:ACC-GGT")).nameAndUmi shouldBe ("UMI:C:ACC-GGT", "ACC-GGT")
@@ -52,14 +92,13 @@ class UmisTest extends UnitSpec with OptionValues {
   }
   
   it should "split on a different name delimiter if specified" in {
-    copyUmiFromReadName(rec=rec("UMI-A"), nameDelimiter='-').nameAndUmi shouldBe ("UMI-A", "A")
-    copyUmiFromReadName(rec=rec("UMI-C-A"), nameDelimiter='-').nameAndUmi shouldBe ("UMI-C-A", "A")
-    copyUmiFromReadName(rec=rec("UMI-C-ACC+GGT"), nameDelimiter='-').nameAndUmi shouldBe ("UMI-C-ACC+GGT", "ACC-GGT")
+    copyUmiFromReadName(rec=rec("UMI-A"), delimiter='-').nameAndUmi shouldBe ("UMI-A", "A")
+    copyUmiFromReadName(rec=rec("UMI-C-A"), delimiter='-').nameAndUmi shouldBe ("UMI-C-A", "A")
+    copyUmiFromReadName(rec=rec("UMI-C-ACC+GGT"), delimiter='-').nameAndUmi shouldBe ("UMI-C-ACC+GGT", "ACC-GGT")
   }
 
-  it should "change the UMI delimiter if specified" in {
+  it should "change the UMI delimiter from + to -" in {
     copyUmiFromReadName(rec=rec("UMI:C:ACC+GGT")).nameAndUmi shouldBe ("UMI:C:ACC+GGT", "ACC-GGT")
-    copyUmiFromReadName(rec=rec("UMI:C:ACCXGGT"), umiDelimiter=Some('X')).nameAndUmi shouldBe ("UMI:C:ACCXGGT", "ACC-GGT")
   }
 
   it should "fail if the read name has only one field" in {

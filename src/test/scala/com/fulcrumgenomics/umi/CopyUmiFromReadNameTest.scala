@@ -33,14 +33,14 @@ class CopyUmiFromReadNameTest extends UnitSpec with OptionValues {
   private case class Result(name: String, umi: String)
 
   /** Runs CopyUmiFromReadName using the given read names returning the output read names and UMIs. */
-  private def run(names: Iterable[String], removeUmi: Boolean, umiDelimiter: Option[Char]): IndexedSeq[Result] = {
+  private def run(names: Iterable[String], removeUmi: Boolean): IndexedSeq[Result] = {
     // build the reads
     val builder = new SamBuilder()
     names.foreach { name => builder.addFrag(name=name, unmapped=true) }
 
     // run the tool
     val out  = makeTempFile("test.", ".bam")
-    val tool = new CopyUmiFromReadName(input=builder.toTempFile(), output=out, removeUmi=removeUmi, umiDelimiter=umiDelimiter)
+    val tool = new CopyUmiFromReadName(input=builder.toTempFile(), output=out, removeUmi=removeUmi)
     executeFgbioTool(tool)
 
     // slurp the results
@@ -51,21 +51,21 @@ class CopyUmiFromReadNameTest extends UnitSpec with OptionValues {
 
   "CopyUmiFromReadName" should "copy the UMI from a read name" in {
     val names   = Seq("1:AAAA", "1:2:CCCC", "1:2:3:GGGG", "blah:AAAA-CCCC")
-    val results = run(names=names, removeUmi=false, umiDelimiter=None)
+    val results = run(names=names, removeUmi=false)
     results.map(_.name) should contain theSameElementsInOrderAs names
     results.map(_.umi) should contain theSameElementsInOrderAs Seq("AAAA", "CCCC", "GGGG", "AAAA-CCCC")
   }
 
   it should "remove the UMI from the read name when --remove-umi=true" in {
     val names   = Seq("1:AAAA", "1:2:CCCC", "1:2:3:GGGG", "blah:AAAA-CCCC")
-    val results = run(names=names, removeUmi=true, umiDelimiter=None)
+    val results = run(names=names, removeUmi=true)
     results.map(_.name) should contain theSameElementsInOrderAs Seq("1", "1:2", "1:2:3", "blah")
     results.map(_.umi) should contain theSameElementsInOrderAs Seq("AAAA", "CCCC", "GGGG", "AAAA-CCCC")
   }
 
   it should "update the UMI delimiter in the read name when --umi-delimiter=+" in {
     val names   = Seq("1:AAAA", "1:2:CCCC", "1:2:3:GGGG", "blah:AAAA+CCCC")
-    val results = run(names=names, removeUmi=true, umiDelimiter=Some('+'))
+    val results = run(names=names, removeUmi=true)
     results.map(_.name) should contain theSameElementsInOrderAs Seq("1", "1:2", "1:2:3", "blah")
     results.map(_.umi) should contain theSameElementsInOrderAs Seq("AAAA", "CCCC", "GGGG", "AAAA-CCCC")
   }

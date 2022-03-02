@@ -42,9 +42,7 @@ import com.fulcrumgenomics.util.{Io, ProgressLogger}
 class CopyUmiFromReadName
 ( @arg(flag='i', doc="The input BAM file") input: PathToBam,
   @arg(flag='o', doc="The output BAM file") output: PathToBam,
-  @arg(doc="Remove the UMI from the read name") removeUmi: Boolean = false,
-  @arg(doc="Replaces any occurrences of this delimiter found in the UMI with a dash ('-') as per the SAM specification")
-  umiDelimiter: Option[Char] = None
+  @arg(doc="Remove the UMI from the read name") removeUmi: Boolean = false
 ) extends FgBioTool with LazyLogging {
 
   Io.assertReadable(input)
@@ -56,7 +54,7 @@ class CopyUmiFromReadName
     val progress = new ProgressLogger(logger)
     source.foreach { rec =>
       progress.record(rec)
-      writer += Umis.copyUmiFromReadName(rec=rec, removeUmi=removeUmi, umiDelimiter=umiDelimiter)
+      writer += Umis.copyUmiFromReadName(rec=rec, removeUmi=removeUmi)
     }
     progress.logLast()
     source.safelyClose()
