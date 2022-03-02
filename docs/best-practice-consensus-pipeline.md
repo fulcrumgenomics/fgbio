@@ -1,4 +1,4 @@
-<a href float="left"="https://github.com/fulcrumgenomics/fgbio"><img src="https://github.com/fulcrumgenomics/fgbio/blob/main/.github/logos/fulcrumgenomics.svg" alt="Fulcrum Genomics" height="35"/></a>
+<img src="https://github.com/fulcrumgenomics/fgbio/blob/main/.github/logos/fulcrumgenomics.svg" alt="Fulcrum Genomics" height="35"/>
 
 # fgbio Best Practise FASTQ->Consensus Pipeline
 
