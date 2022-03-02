@@ -271,7 +271,8 @@ class FilterConsensusReads
         }.orElse {
           // this can only happen if the input order is unrecognized
           throw new IllegalArgumentException(
-            s"The input BAM had an unrecognized sort order (SO:$inSortOrder GO:$inGroupOrder SS: $inSubSort) in $input"
+            s"The input BAM had an unrecognized sort order (SO:$inSortOrder GO:$inGroupOrder SS: $inSubSort)" +
+            s"\nTry re-running with --sort-order for a supported output order." in $input
           )
         }
       }
