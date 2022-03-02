@@ -75,7 +75,7 @@ import htsjdk.samtools.{ReservedTagConstants, SAMFileHeader, SAMReadGroupRecord}
     |specified, any UMIs present in the read names are extracted; read names are expected to be `:`-separated with
     |any UMIs present in the 8th field.  If this option is specified, the `--umi-qual-tag` option may not be used as
     |qualities are not available for UMIs in the read name. If UMI segments are present in the read structures those
-    |will also be extracted.  If UMIs are present in both, the final UMIs be constructed by first taking the UMIs
+    |will also be extracted.  If UMIs are present in both, the final UMIs are constructed by first taking the UMIs
     |from the read names, then adding a hyphen, then the UMIs extracted from the reads.
     |
     |The same number of input files and read structures must be provided, with one exception: if supplying exactly
