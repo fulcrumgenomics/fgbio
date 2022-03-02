@@ -15,8 +15,8 @@ We provide two alternatives for the second phase.  One intended for R&D environm
 
 The steps described below use a mixture of:
 
-- `fgbio` version 2.0 or higher
-- `samtools`
+- `fgbio` (version 2.0 or higher)
+- `samtools` (version 
 - `bwa mem`
 
 
