@@ -128,7 +128,7 @@ class ClipBam
     val out    = SamWriter(output, header, ref=Some(ref))
 
     sorter.foreach { rec =>
-      Bams.regenerateNmUqMdTags(rec, walker)
+      Bams.regenerateNmUqMdTags(rec, walker.get(rec.refIndex))
       out += rec
     }
 

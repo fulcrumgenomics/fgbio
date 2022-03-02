@@ -225,7 +225,7 @@ class BamsTest extends UnitSpec {
     rec("NM") = 7
     rec("MD") = "6A7C8T9G"
     rec("UQ") = 237
-    Bams.regenerateNmUqMdTags(rec, DummyRefWalker)
+    Bams.regenerateNmUqMdTags(rec, DummyRefWalker.get(rec.refIndex))
     rec.get[Int]("NM")    shouldBe None
     rec.get[String]("MD") shouldBe None
     rec.get[Int]("UQ")    shouldBe None
@@ -238,7 +238,7 @@ class BamsTest extends UnitSpec {
     rec("MD") = "6A7C8T9G"
     rec("UQ") = 237
     rec.bases = "AAACAAAATA"
-    Bams.regenerateNmUqMdTags(rec, DummyRefWalker)
+    Bams.regenerateNmUqMdTags(rec, DummyRefWalker.get(rec.refIndex))
     rec[Int]("NM")    shouldBe 2
     rec[String]("MD") shouldBe "3A4A1"
     rec[Int]("UQ")    shouldBe 40

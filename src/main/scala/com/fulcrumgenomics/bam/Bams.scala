@@ -409,24 +409,9 @@ object Bams extends LazyLogging {
     * values are removed.  If the read is mapped all three tags will have values regenerated.
     *
     * @param rec the SamRecord to update
-    * @param ref a reference sequence file walker to pull the reference information from
+    * @param ref a reference sequence if the record is mapped
     */
-  def regenerateNmUqMdTags(rec: SamRecord, ref: ReferenceSequenceFileWalker): SamRecord = {
-    if (rec.unmapped) regenerateNmUqMdTags(rec, Map.empty[Int, ReferenceSequence]) else {
-      val refSeq = ref.get(rec.refIndex)
-      regenerateNmUqMdTags(rec, Map(refSeq.getContigIndex -> refSeq))
-    }
-    rec
-  }
-
-  /**
-    * Ensures that any NM/UQ/MD tags on the read are accurate.  If the read is unmapped, any existing
-    * values are removed.  If the read is mapped all three tags will have values regenerated.
-    *
-    * @param rec the SamRecord to update
-    * @param ref a reference sequence file walker to pull the reference information from
-    */
-  def regenerateNmUqMdTags(rec: SamRecord, ref: Map[Int, ReferenceSequence]): SamRecord = {
+  def regenerateNmUqMdTags(rec: SamRecord, ref: => ReferenceSequence): Unit = {
     import SAMTag._
     if (rec.unmapped) {
       rec(NM.name()) =  null
@@ -434,9 +419,7 @@ object Bams extends LazyLogging {
       rec(MD.name()) =  null
     }
     else {
-      val refBases = ref.getOrElse(rec.refIndex, throw new IllegalArgumentException(
-        s"Record '${rec.name}' had contig index '${rec.refIndex}', but not found in the input reference map"
-      )).getBases
+      val refBases = ref.getBases
       SequenceUtil.calculateMdAndNmTags(rec.asSam, refBases, true, true)
       if (rec.quals != null && rec.quals.length != 0) {
         rec(SAMTag.UQ.name) = SequenceUtil.sumQualitiesOfMismatches(rec.asSam, refBases, 0)
