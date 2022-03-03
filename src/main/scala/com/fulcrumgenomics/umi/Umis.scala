@@ -60,8 +60,10 @@ object Umis {
     *
     *  See https://support.illumina.com/help/BaseSpace_OLH_009008/Content/Source/Informatics/BS/FileFormat_FASTQ-files_swBS.htm
     *
-    *  If `strict` is true the name _must_ contain 8 colon-separated segments, with the UMI being the last.  If
-    *  `strict` is false the last segment is returned so long as it appears to be a valid UMI.
+    *  If `strict` is true the name _must_ contain either 7 or 8 colon-separated segments, 
+    with the UMI being the last in the case of 8 and `None` in the case of 7.
+    * 
+    * If `strict` is false the last segment is returned so long as it appears to be a valid UMI.
     */
   def extractUmisFromReadName(header: String, delimiter: Char = ':', strict: Boolean): Option[String] = {
     // Support full FASTQ headers by first removing any spaces and trailing text
