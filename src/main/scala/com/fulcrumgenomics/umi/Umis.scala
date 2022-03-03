@@ -39,7 +39,7 @@ object Umis {
     *
     * @param rec the record to modify
     * @param removeUmi true to remove the UMI from the read name, otherwise only copy the UMI to the tag
-    * @param delimiter the delimiter of fields within the readname
+    * @param delimiter the delimiter of fields within the read name
     * @return the modified record
     */
   def copyUmiFromReadName(rec: SamRecord, removeUmi: Boolean = false, delimiter: Char = ':'): SamRecord = {
