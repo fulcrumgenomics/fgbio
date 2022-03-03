@@ -78,8 +78,8 @@ class ClipBam
   @arg(          doc="Require at least this number of bases to be clipped on the 3' end of R1") val readOneThreePrime: Int = 0,
   @arg(          doc="Require at least this number of bases to be clipped on the 5' end of R2") val readTwoFivePrime: Int  = 0,
   @arg(          doc="Require at least this number of bases to be clipped on the 3' end of R2") val readTwoThreePrime: Int = 0,
-  @arg(          doc="Clip overlapping reads.", mutex=Array("clipBasesPastMate")) val clipOverlappingReads: Boolean = false,
-  @arg(          doc="Clip reads in FR pairs that sequence past the far end of their mate.", mutex=Array("clipOverlappingReads")) val clipBasesPastMate: Boolean = false
+  @arg(          doc="Clip overlapping reads.") val clipOverlappingReads: Boolean = false,
+  @arg(          doc="Clip reads in FR pairs that sequence past the far end of their mate.") val clipBasesPastMate: Boolean = false
 ) extends FgBioTool with LazyLogging {
   Io.assertReadable(input)
   Io.assertReadable(ref)
@@ -87,6 +87,10 @@ class ClipBam
 
   validate(upgradeClipping || clipOverlappingReads || clipBasesPastMate || Seq(readOneFivePrime, readOneThreePrime, readTwoFivePrime, readTwoThreePrime).exists(_ != 0),
     "At least one clipping option is required")
+
+  if (clipBasesPastMate && clipOverlappingReads) {
+    logger.info("Clipping overlapping reads supersedes clipping past the far end of their mate.")
+  }
 
   private val clipper = new SamRecordClipper(mode=clippingMode, autoClipAttributes=autoClipAttributes)
 
