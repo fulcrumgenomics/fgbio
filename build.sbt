@@ -42,7 +42,7 @@ releaseProcess := Seq[ReleaseStep](
 // For the aggregate (root) jar, override the name.  For the sub-projects,
 // see the build.sbt in each project folder.
 ////////////////////////////////////////////////////////////////////////////////////////////////
-assemblyJarName in assembly := "fgbio-" + version.value + ".jar"
+assembly / assemblyJarName := "fgbio-" + version.value + ".jar"
 
 ////////////////////////////////////////////////////////////////////////////////////////////////
 // Sonatype settings
@@ -55,7 +55,7 @@ publishTo := {
   else
     Some("releases"  at nexus + "service/local/staging/deploy/maven2")
 }
-publishArtifact in Test := false
+Test / publishArtifact := false
 pomIncludeRepository := { _ => false }
 // For Travis CI - see http://www.cakesolutions.net/teamblogs/publishing-artefacts-to-oss-sonatype-nexus-using-sbt-and-travis-ci
 credentials ++= (for {
@@ -78,7 +78,7 @@ val docScalacOptions = Seq("-groups", "-implicits")
 // Common settings 
 ////////////////////////////////////////////////////////////////////////////////////////////////
 
-val primaryScalaVersion = "2.13.3"
+val primaryScalaVersion = "2.13.8"
 
 lazy val commonSettings = Seq(
   organization         := "com.fulcrumgenomics",
@@ -88,14 +88,13 @@ lazy val commonSettings = Seq(
   scalaVersion         := primaryScalaVersion,
   crossScalaVersions   :=  Seq(primaryScalaVersion),
   scalacOptions        ++= Seq("-target:jvm-1.8", "-deprecation", "-unchecked"),
-  scalacOptions in (Compile, doc) ++= docScalacOptions,
-  scalacOptions in (Test, doc) ++= docScalacOptions,
-  useCoursier :=  false,
-  autoAPIMappings := true,
-  testOptions in Test  += Tests.Argument(TestFrameworks.ScalaTest, "-h", Option(System.getenv("TEST_HTML_REPORTS")).getOrElse(htmlReportsDirectory)),
+  Compile / doc / scalacOptions ++= docScalacOptions,
+  Test / doc / scalacOptions    ++= docScalacOptions,
+  useCoursier          :=  false,
+  Test / testOptions   += Tests.Argument(TestFrameworks.ScalaTest, "-h", Option(System.getenv("TEST_HTML_REPORTS")).getOrElse(htmlReportsDirectory)),
   // uncomment for full stack traces
-  //testOptions in Test  += Tests.Argument("-oDF"),
-  fork in Test         := true,
+  // Test / testOptions   += Tests.Argument("-oDF"),
+  Test / fork          := true,
   resolvers            += Resolver.sonatypeRepo("public"),
   resolvers            += Resolver.mavenLocal,
   resolvers            += "broad-snapshots" at "https://artifactory.broadinstitute.org/artifactory/libs-snapshot/",
@@ -114,8 +113,8 @@ lazy val htsjdkExcludes = Seq(
 )
 
 lazy val assemblySettings = Seq(
-  test in assembly     := {},
-  logLevel in assembly := Level.Info
+  assembly / test     := {},
+  assembly / logLevel := Level.Info
 )
 lazy val root = Project(id="fgbio", base=file("."))
   .settings(commonSettings: _*)
@@ -179,4 +178,4 @@ val customMergeStrategy: String => MergeStrategy = {
     MergeStrategy.first
   case _ => MergeStrategy.deduplicate
 }
-assemblyMergeStrategy in assembly := customMergeStrategy
+assembly / assemblyMergeStrategy := customMergeStrategy
