@@ -207,7 +207,7 @@ object DemuxFastqs {
       |will be placed in the 'unmatched' file.
       |
       |The type of output is specified with the `--output-type` option, and can be BAM (`--output-type Bam`),
-      |gzipped FASTQ (`--output-type Fastq`), or both (`--output-type Both`).
+      |gzipped FASTQ (`--output-type Fastq`), or both (`--output-type BamAndFastq`).
       |
       |For BAM output, the output directory will contain one BAM file per sample in the sample sheet or metadata CSV file,
       |plus a BAM for reads that could not be assigned to a sample given the criteria.  The output file names will be the
