@@ -26,7 +26,6 @@
 package com.fulcrumgenomics.umi
 
 import com.fulcrumgenomics.bam.api.SamRecord
-import htsjdk.samtools.util.SequenceUtil
 
 object Umis {
 
@@ -61,7 +60,7 @@ object Umis {
     *  See https://support.illumina.com/help/BaseSpace_OLH_009008/Content/Source/Informatics/BS/FileFormat_FASTQ-files_swBS.htm
     *  The UMI field is optional, so read names may or may not contain it.  Illumina also specifies that the UMI
     *  field may contain multiple UMIs, in which case they will delimit them with `+` characters.  Pluses will be
-    *  translated to hyphens before returning.  
+    *  translated to hyphens before returning.
     *
     *  If `strict` is true the name _must_ contain either 7 or 8 colon-separated segments, 
     with the UMI being the last in the case of 8 and `None` in the case of 7.
