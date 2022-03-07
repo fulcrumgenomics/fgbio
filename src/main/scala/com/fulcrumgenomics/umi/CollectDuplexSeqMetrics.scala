@@ -392,7 +392,7 @@ class CollectDuplexSeqMetrics
     ab.iterator.map(r => r[String](this.umiTag).split('-')).foreach { case Array(u1, u2) => umi1s += u1; umi2s += u2 }
     ba.iterator.map(r => r[String](this.umiTag).split('-')).foreach { case Array(u1, u2) => umi1s += u2; umi2s += u1 }
 
-    val Seq(abConsensusUmi, baConsensusUmi) = Seq(umi1s, umi2s).map(_.result).map{ umis =>
+    val Seq(abConsensusUmi, baConsensusUmi) = Seq(umi1s, umi2s).map(_.result()).map{ umis =>
       val consensus = this.consensusBuilder.callConsensus(umis)
       val metric    = this.umiMetricsMap.getOrElseUpdate(consensus, UmiMetric(umi=consensus))
       metric.raw_observations    += umis.size

@@ -453,7 +453,7 @@ class Aligner(val scorer: AlignmentScorer,
       if (nextD == Done) elems += CigarElem(currOperator, currLength)
     }
 
-    Alignment(query=query, target=target, queryStart=curI+1, targetStart=curJ+1, cigar=Cigar(elems.result.reverse), score=score)
+    Alignment(query=query, target=target, queryStart=curI+1, targetStart=curJ+1, cigar=Cigar(elems.result().reverse), score=score)
   }
 
   /**
@@ -532,7 +532,7 @@ class Aligner(val scorer: AlignmentScorer,
         }
     }
 
-    hits.result
+    hits.result()
   }
 
   /** Returns true if the two bases should be considered a match when generating the alignment from the matrix

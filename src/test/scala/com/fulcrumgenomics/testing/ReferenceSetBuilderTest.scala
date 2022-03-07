@@ -69,7 +69,7 @@ class ReferenceSetBuilderTest extends UnitSpec with OptionValues {
     }
 
     plus("chr1").assembly.value shouldBe "hg19"
-    minus("chr1").assembly shouldBe 'empty
+    minus("chr1").assembly shouldBe empty
   }
 
   it should "write species name into the dictionary if given one" in {
@@ -83,14 +83,14 @@ class ReferenceSetBuilderTest extends UnitSpec with OptionValues {
     }
 
     plus("chr1").species.value shouldBe "human"
-    minus("chr1").species shouldBe 'empty
+    minus("chr1").species shouldBe empty
   }
 
   it should "calculate MD5s for sequences only if asked" in {
     val builder = new ReferenceSetBuilder()
     builder.add("chr1").add("A", 100)
     val Seq(plus, minus) = Seq(true, false).map(md5 => builder.toTempFile(calculateMds5=md5)).map(SequenceDictionary.extract)
-    plus("chr1").md5 shouldBe 'nonEmpty
-    minus("chr1").md5 shouldBe 'empty
+    plus("chr1").md5 shouldBe defined
+    minus("chr1").md5 shouldBe empty
   }
 }

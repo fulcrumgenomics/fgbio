@@ -25,7 +25,6 @@
 package com.fulcrumgenomics.bam
 
 import java.lang.Math.{max, min}
-
 import com.fulcrumgenomics.FgBioDef._
 import com.fulcrumgenomics.bam.api.SamSource
 import com.fulcrumgenomics.cmdline.{ClpGroups, FgBioTool}
@@ -37,6 +36,8 @@ import com.fulcrumgenomics.vcf.api.{Variant, VcfSource}
 import htsjdk.samtools.util.SamLocusIterator.LocusInfo
 import htsjdk.samtools.util._
 import org.apache.commons.math3.stat.regression.OLSMultipleLinearRegression
+
+import scala.collection.immutable.ArraySeq
 
 @clp(group=ClpGroups.SamOrBam, description=
   """
@@ -84,7 +85,7 @@ class EstimatePoolingFractions
     val intervals   = loadIntervals
 
     // Get the expected fractions from the VCF
-    val vcfIterator = constructVcfIterator(vcfReader, intervals, sampleNames)
+    val vcfIterator = constructVcfIterator(vcfReader, intervals, ArraySeq.unsafeWrapArray(sampleNames))
     val loci = vcfIterator.filterNot(v => this.nonAutosomes.contains(v.chrom)).map { v => Locus(
       chrom = v.chrom,
       pos   = v.pos,

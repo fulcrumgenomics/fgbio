@@ -86,7 +86,7 @@ class ConsensusCallingIterator[ConsensusRead <: SimpleRead](sourceIterator: Iter
     }
   }
 
-  override def next(): SamRecord = this.iter.next
+  override def next(): SamRecord = this.iter.next()
 }
 
 /** Groups consecutive records based on a method to group records. */
@@ -96,11 +96,11 @@ private class SamRecordGroupedIterator[Key](sourceIterator: Iterator[SamRecord],
   private var nextChunk = IndexedSeq.empty[SamRecord]
 
   /** True if there are more consensus reads, false otherwise. */
-  def hasNext(): Boolean = this.nextChunk.nonEmpty || (this.input.nonEmpty && advance())
+  def hasNext: Boolean = this.nextChunk.nonEmpty || (this.input.nonEmpty && advance())
 
   /** Returns the next consensus read. */
   def next(): Seq[SamRecord] = {
-    if (!this.hasNext()) throw new NoSuchElementException("Calling next() when hasNext() is false.")
+    if (!this.hasNext) throw new NoSuchElementException("Calling next() when hasNext() is false.")
     yieldAndThen { nextChunk } { nextChunk = IndexedSeq.empty }
   }
 

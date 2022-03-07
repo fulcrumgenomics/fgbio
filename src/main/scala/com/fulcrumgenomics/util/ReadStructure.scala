@@ -104,7 +104,7 @@ object ReadStructure {
       }
     }
 
-    segs.result
+    segs.result()
   }
 
   /**

@@ -240,7 +240,7 @@ case class Cigar(elems: IndexedSeq[CigarElem]) extends Iterable[CigarElem] {
       }
     }
 
-    Cigar(builder.result)
+    Cigar(builder.result())
   }
 
   /**
@@ -288,7 +288,7 @@ case class Cigar(elems: IndexedSeq[CigarElem]) extends Iterable[CigarElem] {
         builder += same
       }
 
-      Cigar(builder.result)
+      Cigar(builder.result())
     }
   }
 
@@ -482,6 +482,6 @@ case class Alignment(query: Array[Byte],
       }
     }
 
-    copy(queryStart=qStart, targetStart=tStart, cigar=Cigar(elems.result), score=0)
+    copy(queryStart=qStart, targetStart=tStart, cigar=Cigar(elems.result()), score=0)
   }
 }

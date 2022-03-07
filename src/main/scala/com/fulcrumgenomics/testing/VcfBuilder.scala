@@ -155,7 +155,7 @@ class VcfBuilder private (initialHeader: VcfHeader) extends Iterable[Variant] {
           alleles: Seq[String],
           qual: Int = -1,
           info: Map[String, Any] = Map.empty,
-          filters: IterableOnce[String] = Set.empty,
+          filters: Iterable[String] = Set.empty,
           gts: Seq[Gt] = Seq.empty
          ): this.type = {
 

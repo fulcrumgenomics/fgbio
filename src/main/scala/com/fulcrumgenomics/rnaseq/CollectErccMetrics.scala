@@ -113,7 +113,7 @@ class CollectErccMetrics
       case Some(path) => DelimitedDataParser(path, '\t').map { row => row[String](0) -> row[Double](1) }.toMap
       case None       =>
         val stream    = getClass.getResourceAsStream(CollectErccMetrics.StandardMixtureMetadataPath)
-        val lines     = Source.fromInputStream(stream).withClose(() => stream.close()).getLines.filterNot(_.startsWith("#"))
+        val lines     = Source.fromInputStream(stream).withClose(() => stream.close()).getLines().filterNot(_.startsWith("#"))
         val mixColumn = if (mixtureName.get == ErccMixture.Mix1) 3 else 4
         new DelimitedDataParser(lines, '\t').map { row => row[String](1) -> row[Double](mixColumn) }.toMap
     }
@@ -162,7 +162,7 @@ class CollectErccMetrics
       val count = erccTemplatesCounter.countOf(name)
       if (minTranscriptCount <= count) {
         val erccLength = in.header.getSequence(name).getSequenceLength
-        counts += log2(count)
+        counts += log2(count.toDouble)
         normalizedCounts += log2(count * maximumErccLength / erccLength.toDouble) // normalize by the ERCC transcript length
         concentrations += log2(concentration)
       }

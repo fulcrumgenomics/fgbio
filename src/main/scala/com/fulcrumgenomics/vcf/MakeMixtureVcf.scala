@@ -40,7 +40,7 @@ import htsjdk.variant.variantcontext.writer.{Options, VariantContextWriter, Vari
 import htsjdk.variant.vcf._
 
 import scala.collection.mutable
-import scala.collection.JavaConverters._
+import scala.jdk.CollectionConverters._
 
 
 object MakeMixtureVcf {

@@ -50,7 +50,7 @@ class JointVariantContextIteratorTest extends UnitSpec {
     val builder = new VariantContextSetBuilder()
     val iterator = JointVariantContextIterator(iters=Seq(builder.iterator, builder.iterator), dict=dict)
     iterator.hasNext shouldBe false
-    an[NoSuchElementException] should be thrownBy iterator.next
+    an[NoSuchElementException] should be thrownBy iterator.next()
   }
 
   it should "return a pair of variant contexts at the same position" in {

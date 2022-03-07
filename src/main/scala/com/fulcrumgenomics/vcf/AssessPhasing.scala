@@ -42,7 +42,7 @@ import htsjdk.variant.variantcontext.{Genotype, GenotypeBuilder, VariantContext,
 import htsjdk.variant.vcf._
 
 import scala.annotation.tailrec
-import scala.collection.JavaConverters._
+import scala.jdk.CollectionConverters._
 import scala.collection.mutable.ListBuffer
 
 @clp(
@@ -164,15 +164,15 @@ class AssessPhasing
     metric.mean_called_block_length   = calledBlockLengthCounter.mean()
     metric.median_called_block_length = calledBlockLengthCounter.median()
     metric.stddev_called_block_length = calledBlockLengthCounter.stddev(m=metric.mean_called_block_length)
-    metric.n50_called_block_length    = calledAssemblyStats.n50
-    metric.n90_called_block_length    = calledAssemblyStats.n90
-    metric.l50_called                 = calledAssemblyStats.l50
+    metric.n50_called_block_length    = calledAssemblyStats.n50.toDouble
+    metric.n90_called_block_length    = calledAssemblyStats.n90.toDouble
+    metric.l50_called                 = calledAssemblyStats.l50.toDouble
     metric.mean_truth_block_length    = truthBlockLengthCounter.mean()
     metric.median_truth_block_length  = truthBlockLengthCounter.median()
     metric.stddev_truth_block_length  = truthBlockLengthCounter.stddev(m=metric.mean_truth_block_length)
-    metric.n50_truth_block_length     = truthAssemblyStats.n50
-    metric.n90_truth_block_length     = truthAssemblyStats.n90
-    metric.l50_truth                  = truthAssemblyStats.l50
+    metric.n50_truth_block_length     = truthAssemblyStats.n50.toDouble
+    metric.n90_truth_block_length     = truthAssemblyStats.n90.toDouble
+    metric.l50_truth                  = truthAssemblyStats.l50.toDouble
 
     metric.finalizeMetric()
 
@@ -578,10 +578,10 @@ case class  AssessPhasingMetric
   var n90_truth_block_length: Double = 0,
   var l50_truth: Double = 0
 ) extends Metric {
-  private def divide(a: Double, b: Double): Double = {
-    if (b == 0) 0
-    else a / b
-  }
+
+  private def divide(a: Double, b: Double): Double = if (b == 0) 0 else a / b
+  private def divide(a: Long, b: Long): Double = divide(a.toDouble, b.toDouble)
+
   def finalizeMetric(): this.type = {
     this.frac_phased                                   = divide(this.num_phased, this.num_called)
     this.frac_phased_with_truth_phased                 = divide(this.num_phased_with_truth_phased, this.num_called_with_truth_phased)

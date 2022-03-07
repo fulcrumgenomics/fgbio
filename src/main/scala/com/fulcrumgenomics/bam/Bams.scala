@@ -354,7 +354,7 @@ object Bams extends LazyLogging {
 
     val _iterator = new Iterator[Template] {
       override def hasNext: Boolean = queryIterator.hasNext
-      override def next: Template   = {
+      override def next(): Template   = {
         require(hasNext, "next() called on empty iterator")
         Template(queryIterator)
       }
@@ -443,7 +443,6 @@ object Bams extends LazyLogging {
         rec(SAMTag.UQ.name) = SequenceUtil.sumQualitiesOfMismatches(rec.asSam, refBases, 0)
       }
     }
-    rec
   }
 
   /**

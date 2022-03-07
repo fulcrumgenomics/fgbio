@@ -256,7 +256,7 @@ object GroupReadsByUmi {
         root.descendants.foreach(child => mappings += ((child.umi, id)))
       })
 
-      mappings.result
+      mappings.result()
     }
 
     override def assign(rawUmis: Seq[Umi]): Map[Umi, MoleculeId] = {
@@ -281,7 +281,7 @@ object GroupReadsByUmi {
         }
       }
 
-      assignIdsToNodes(roots.result)
+      assignIdsToNodes(roots.result())
     }
   }
 

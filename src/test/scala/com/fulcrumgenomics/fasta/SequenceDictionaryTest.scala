@@ -74,7 +74,7 @@ class SequenceDictionaryTest extends UnitSpec with OptionValues {
 
     // get
     validSequence.get("key1").value shouldBe "value1"
-    validSequence.get("key3") shouldBe 'empty
+    validSequence.get("key3") shouldBe empty
 
     // contains
     validSequence.contains("key1") shouldBe true
@@ -96,10 +96,10 @@ class SequenceDictionaryTest extends UnitSpec with OptionValues {
     val locusFull   = new SequenceMetadata(name="chr1", length=123, index=0, attributes=Map("AH" -> "chr4:2-3"))
 
     noAltLocus.isAlternate shouldBe false
-    noAltLocus.alternate shouldBe 'empty
+    noAltLocus.alternate shouldBe empty
 
     altStar.isAlternate shouldBe false
-    altStar.alternate shouldBe 'empty
+    altStar.alternate shouldBe empty
 
     locusEquals.isAlternate shouldBe true
     locusEquals.alternate.value shouldBe AlternateLocus(refName="chr1", start=1, end=2)
@@ -111,23 +111,23 @@ class SequenceDictionaryTest extends UnitSpec with OptionValues {
   "SequenceMetadata.md5" should "return the md5 checksum if present" in {
     validSequence.md5.value shouldBe "123"
     validSequence.md5Int.value shouldBe BigInt("123", 16)
-    emptySequence.md5 shouldBe 'empty
-    emptySequence.md5Int shouldBe 'empty
+    emptySequence.md5 shouldBe empty
+    emptySequence.md5Int shouldBe empty
   }
 
   "SequenceMetadata.assembly" should "return the assembly if present" in {
     validSequence.assembly.value shouldBe "assembly"
-    emptySequence.assembly shouldBe 'empty
+    emptySequence.assembly shouldBe empty
   }
 
   "SequenceMetadata.species" should "return the species if present" in {
     validSequence.species.value shouldBe "species"
-    emptySequence.species shouldBe 'empty
+    emptySequence.species shouldBe empty
   }
 
   "SequenceMetadata.description" should "return the description if present" in {
     validSequence.description.value shouldBe "description"
-    emptySequence.description shouldBe 'empty
+    emptySequence.description shouldBe empty
   }
 
   "SequenceMetadata.topology" should "return the topology if present" in {
@@ -136,7 +136,7 @@ class SequenceDictionaryTest extends UnitSpec with OptionValues {
 
     linear.topology.value shouldBe Linear
     circular.topology.value shouldBe Circular
-    emptySequence.topology shouldBe 'empty
+    emptySequence.topology shouldBe empty
   }
 
   "SequenceMetadata.sameAs" should "return false if not reference names are shared" in {
@@ -206,7 +206,7 @@ class SequenceDictionaryTest extends UnitSpec with OptionValues {
 
     an[IndexOutOfBoundsException] should be thrownBy dict.apply(3)
     an[Exception] should be thrownBy dict("4")
-    dict.get("4") shouldBe 'empty
+    dict.get("4") shouldBe empty
     dict.contains("4") shouldBe false
   }
 

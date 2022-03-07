@@ -39,7 +39,7 @@ import htsjdk.variant.variantcontext._
 import htsjdk.variant.variantcontext.writer.{Options, VariantContextWriter, VariantContextWriterBuilder}
 import htsjdk.variant.vcf._
 
-import scala.collection.JavaConverters._
+import scala.jdk.CollectionConverters._
 import scala.io.Source
 
 @clp(
@@ -306,16 +306,16 @@ private class HapCutAndVcfMergingIterator(hapCutPath: FilePath,
   private val hapCutReader   = HapCutReader(path=hapCutPath)
   private val sampleName     = vcfReader.getFileHeader.getSampleNamesInOrder.iterator().next()
 
-  def hasNext(): Boolean = {
-    if (sourceIterator.isEmpty && hapCutReader.hasNext()) throw new IllegalStateException("HapCut has more phased variants but no more variants in the input")
+  def hasNext: Boolean = {
+    if (sourceIterator.isEmpty && hapCutReader.hasNext) throw new IllegalStateException("HapCut has more phased variants but no more variants in the input")
     sourceIterator.hasNext
   }
 
   /** Returns either the phased variant with added HapCut-specific genotype information (Left), or the original variant (Right). */
   def next(): VariantContext = {
-    if (!hasNext()) throw new NoSuchElementException("Calling next() when hasNext() is false")
+    if (!hasNext) throw new NoSuchElementException("Calling next() when hasNext() is false")
     val (sourceContext, sourceOffset) = sourceIterator.next()
-    if (!hapCutReader.hasNext()) formatSourceContext(sourceContext)
+    if (!hapCutReader.hasNext) formatSourceContext(sourceContext)
     else {
       val HapCutOffsetAndCall(offset, callOption) = hapCutReader.next()
       if (offset != sourceOffset+1) throw new IllegalStateException("BUG: calls are out of order")
@@ -720,13 +720,13 @@ private[vcf] class HapCutReader(iterator: Iterator[String],
     def nonEmpty: Boolean = this.callBuffer.nonEmpty
   }
 
-  def hasNext(): Boolean = {
+  def hasNext: Boolean = {
     if (calls.nonEmpty) true
     else this.advance()
   }
 
   def next(): HapCutOffsetAndCall = {
-    if (!hasNext()) throw new NoSuchElementException("Calling next() when hasNext() is false")
+    if (!hasNext) throw new NoSuchElementException("Calling next() when hasNext() is false")
     calls.removeFirst()
   }
 

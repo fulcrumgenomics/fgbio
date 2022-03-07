@@ -24,9 +24,6 @@
 
 package com.fulcrumgenomics.umi
 
-import java.nio.file.Path
-import java.util.Collections
-
 import com.fulcrumgenomics.FgBioDef._
 import com.fulcrumgenomics.bam.BaseCounts
 import com.fulcrumgenomics.bam.api.{SamRecord, SamSource, SamWriter}
@@ -37,16 +34,19 @@ import com.fulcrumgenomics.umi.ReviewConsensusVariants._
 import com.fulcrumgenomics.util.{Io, Metric}
 import htsjdk.samtools.SamPairUtil.PairOrientation
 import htsjdk.samtools.reference.{ReferenceSequenceFile, ReferenceSequenceFileFactory}
-import htsjdk.samtools.util.IOUtil.{VCF_EXTENSIONS => VcfExtensions}
-import htsjdk.samtools.util._
+import htsjdk.samtools.util.{FileExtensions, Interval, IntervalList, Locatable, SamLocusIterator, SequenceUtil}
 import htsjdk.variant.variantcontext.VariantContext
 import htsjdk.variant.vcf.VCFFileReader
 
-import scala.collection.JavaConverters._
+import java.nio.file.Path
+import java.util.Collections
 import scala.collection.mutable
 import scala.collection.mutable.ListBuffer
+import scala.jdk.CollectionConverters._
 
 object ReviewConsensusVariants {
+  /** The set of file extensions for VCF-like files. */
+  val VcfExtensions: IndexedSeq[String] = FileExtensions.VCF_LIST.iterator().toIndexedSeq
 
   /**
     * Detailed information produced by `ReviewConsensusVariants` on variants called in consensus reads. Each

@@ -209,7 +209,7 @@ class VanillaUmiConsensusCallerTest extends UnitSpec with OptionValues {
     )
 
     cc(opts).consensusCall(Seq(source)) match {
-      case None => fail
+      case None => fail()
       case Some(consensus) =>
         consensus.baseString shouldBe "GATTACA"
         consensus.quals shouldBe inputQuals.map(_.toByte)
@@ -229,7 +229,7 @@ class VanillaUmiConsensusCallerTest extends UnitSpec with OptionValues {
     val outputQual  = PhredScore.fromLogProbability(LogProbability.probabilityOfErrorTwoTrials(lnProbError, lnProbError))
     val outputQuals = inputQuals.map(q => outputQual)
     caller.consensusCall(Seq(src("GATTACA", inputQuals))) match {
-      case None => fail
+      case None => fail()
       case Some(consensus) =>
         consensus.baseString shouldBe "GATTACA"
         consensus.quals      shouldBe outputQuals
@@ -250,7 +250,7 @@ class VanillaUmiConsensusCallerTest extends UnitSpec with OptionValues {
     val outputQuals = inputQuals.map(q => outputQual)
 
     caller.consensusCall(Seq(src("GATTACA", inputQuals))) match {
-      case None => fail
+      case None => fail()
       case Some(consensus) =>
         consensus.baseString shouldBe "GATTACA"
         consensus.quals      shouldBe outputQuals
@@ -270,7 +270,7 @@ class VanillaUmiConsensusCallerTest extends UnitSpec with OptionValues {
     )
 
     cc(opts).consensusFromSamRecords(builder.toSeq) match {
-      case None => fail
+      case None => fail()
       case Some(consensus) =>
         consensus.baseString shouldBe "GATTACA"
         consensus.quals.foreach(q => q shouldBe 30.toByte)
@@ -420,7 +420,7 @@ class VanillaUmiConsensusCallerTest extends UnitSpec with OptionValues {
     (1 to 10).foreach { i => buffer += src(cigar="50M") }
     (1 to  3).foreach { i => buffer += src(cigar="25M2I23M") }
 
-    val recs = cc().filterToMostCommonAlignment(buffer.result)
+    val recs = cc().filterToMostCommonAlignment(buffer.result())
     recs should have size 10
     recs.map(_.cigar.toString()).distinct shouldBe Seq("50M")
   }
@@ -438,9 +438,9 @@ class VanillaUmiConsensusCallerTest extends UnitSpec with OptionValues {
     (1 to  2).foreach { i => buffer += src(cigar="25M1I24M") }
     (1 to  2).foreach { i => buffer += src(cigar="20M1D5M1D25M") }
 
-    val recs = cc().filterToMostCommonAlignment(buffer.result)
+    val recs = cc().filterToMostCommonAlignment(buffer.result())
     recs should have size 11
-    recs.map(_.cigar.toString).distinct.sorted shouldBe Seq("25M1D25M", "5S20M1D25M", "5S20M1D20M5H", "25M1D20M5S").sorted
+    recs.map(_.cigar.toString()).distinct.sorted shouldBe Seq("25M1D25M", "5S20M1D25M", "5S20M1D20M5H", "25M1D20M5S").sorted
   }
 
   it should "return all the reads that are compatible with a 2 base deletion at base 25" in {

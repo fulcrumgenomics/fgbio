@@ -155,7 +155,7 @@ class VanillaUmiConsensusCaller(override val readNamePrefix: String,
         builder += createSamRecord(r2, SecondOfPair, secondOfPair.flatMap(_.get[String](ConsensusTags.UmiBases)))
     }
 
-    builder.result
+    builder.result()
   }
 
   /** Creates a consensus read from the given records.  If no consensus read was created, None is returned. */

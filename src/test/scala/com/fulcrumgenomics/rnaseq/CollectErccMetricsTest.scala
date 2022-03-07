@@ -256,7 +256,7 @@ class CollectErccMetricsTest extends UnitSpec with OptionValues {
     val dict = {
       // Read in the standard file
       val stream = getClass.getResourceAsStream(s"${CollectErccMetrics.StandardMixtureMetadataPath}")
-      val lines  = Source.fromInputStream(stream).withClose(() => stream.close()).getLines.filterNot(_.startsWith("#")).toSeq
+      val lines  = Source.fromInputStream(stream).withClose(() => stream.close()).getLines().filterNot(_.startsWith("#")).toSeq
       val names  = new DelimitedDataParser(lines, '\t').map { row => row[String](1)  }.toSeq
 
       // Create a dummy dictionary

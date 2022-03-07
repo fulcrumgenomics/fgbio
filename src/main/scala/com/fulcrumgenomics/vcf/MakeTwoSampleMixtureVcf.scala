@@ -35,7 +35,7 @@ import htsjdk.samtools.util.IntervalList
 import htsjdk.variant.variantcontext._
 import htsjdk.variant.vcf.{VCFFilterHeaderLine, _}
 
-import scala.collection.JavaConverters._
+import scala.jdk.CollectionConverters._
 import scala.collection.mutable.ListBuffer
 
 object MakeTwoSampleMixtureVcf {

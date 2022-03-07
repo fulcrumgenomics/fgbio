@@ -32,7 +32,7 @@ import scala.reflect.ClassTag
 object ArrayAttr {
   /** Constructs an instance with the values supplied. */
   def apply[A : ClassTag](values: IterableOnce[A]): ArrayAttr[A] = {
-    new ArrayAttr[A](values.toArray)
+    new ArrayAttr[A](values.iterator.toArray)
   }
 
   /** Apply method that re-uses the supplied array.  Should only be used from within the `api` package
