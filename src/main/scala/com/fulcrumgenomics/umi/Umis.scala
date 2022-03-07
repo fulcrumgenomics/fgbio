@@ -59,19 +59,16 @@ object Umis {
     *   @<instrument>:<run number>:<flowcell ID>:<lane>:<tile>:<x-pos>:<y-pos>:<UMI> <read>:<is filtered>:<control number>:<index>
     *
     *  See https://support.illumina.com/help/BaseSpace_OLH_009008/Content/Source/Informatics/BS/FileFormat_FASTQ-files_swBS.htm
+    *  The UMI field is optional, so read names may or may not contain it.  Illumina also specifies that the UMI
+    *  field may contain multiple UMIs, in which case they will delimit them with `+` characters.  Pluses will be
+    *  translated to hyphens before returning.  
     *
     *  If `strict` is true the name _must_ contain either 7 or 8 colon-separated segments, 
     with the UMI being the last in the case of 8 and `None` in the case of 7.
     * 
     * If `strict` is false the last segment is returned so long as it appears to be a valid UMI.
     */
-  def extractUmisFromReadName(header: String, delimiter: Char = ':', strict: Boolean): Option[String] = {
-    // Support full FASTQ headers by first removing any spaces and trailing text
-    val name = {
-      val idx = header.indexOf(' ')
-      if (idx >= 0) header.substring(0, idx) else header
-    }
-
+  def extractUmisFromReadName(name: String, delimiter: Char = ':', strict: Boolean): Option[String] = {
     // If strict, check that the read name actually has eight parts, which is expected
     val rawUmi = if (strict) {
       val colons = name.count(_ == delimiter)
