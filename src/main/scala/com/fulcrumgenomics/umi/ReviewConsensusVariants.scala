@@ -338,9 +338,7 @@ class ReviewConsensusVariants
   private def nonReferenceAtAnyVariant(rec: SamRecord, variantsByChromAndPos: Map[String, Seq[Variant]]): Boolean = {
     rec.mapped && variantsByChromAndPos(rec.refName).exists { v =>
       if (v.start >= rec.start && v.start <= rec.end) {
-        val readPos = rec.readPosAtRefPos(v.start, false)
-        if (readPos == 0) true
-        else {
+        rec.readPosAtRefPos(v.start, false).forall { readPos =>
           val base = rec.bases(readPos - 1)
           !SequenceUtil.basesEqual(base, v.refBase.toByte) && (!this.ignoreNsInConsensusReads || !SequenceUtil.isNoCall(base))
         }

@@ -236,9 +236,83 @@ trait SamRecord {
   // transient attributes
   @inline final val transientAttrs: TransientAttrs = new TransientAttrs(this)
 
-  // TODO long-term: replace these two methods with methods on [[Cigar]] to save creating alignment blocks in memory
-  @inline final def refPosAtReadPos(pos: Int) = getReferencePositionAtReadPosition(pos)
-  @inline final def readPosAtRefPos(pos: Int, returnLastBaseIfDeleted: Boolean) = getReadPositionAtReferencePosition(pos, returnLastBaseIfDeleted)
+  /** Returns the 1-based reference position for the 1-based position in the read, or [[None]] if the reference does
+    * not map at the read position (e.g. insertion).
+    *
+    * @param pos the 1-based read position to query
+    * @param returnLastBaseIfInserted if the reference is an insertion, true to returned the previous reference base,
+    *                                 false to return None
+    * */
+  @inline final def refPosAtReadPos(pos: Int, returnLastBaseIfInserted: Boolean = false): Option[Int] = if (pos <= 0) None else {
+    var readPos      = 1
+    var refPos       = this.start
+    var elementIndex = 0
+    val elems        = this.cigar.elems
+
+    def continue(): Boolean = if (elementIndex >= elems.length) false else {
+      val elem = elems(elementIndex)
+      if (pos > CoordMath.getEnd(readPos, elem.lengthOnQuery)) true // current cigar element is before the desired position
+      else {
+        if (pos < readPos) readPos = 0 // past the point in the read
+        else if (elem.operator == CigarOperator.INSERTION) {
+          if (!returnLastBaseIfInserted) refPos = 0
+          else refPos -= 1
+        } // in an insertion, no reference position
+        else refPos += pos - readPos  // get the offset
+        false
+      }
+    }
+
+    while (continue()) {
+      val elem      = elems(elementIndex)
+      refPos       += elem.lengthOnTarget
+      readPos      += elem.lengthOnQuery
+      elementIndex += 1
+    }
+
+    if (this.start <= refPos && readPos <= this.end) Some(refPos) else None
+  }
+
+
+  /** Returns the 1-based position into the read's bases where the position is mapped either as a match or mismatch,
+    * [[None]] if the read does not map the position.
+    *
+    * @param pos the 1-based reference position to query
+    * @param returnLastBaseIfDeleted if the reference is a deletion, true to returned the previous read base, false to
+    *                                return None
+    * */
+  @inline final def readPosAtRefPos(pos: Int, returnLastBaseIfDeleted: Boolean = false): Option[Int] = {
+    if (this.unmapped || pos < this.start || this.end < pos) None
+    else { // overlaps
+      var readPos      = 0
+      var refPos       = this.start
+      var elementIndex = 0
+      val elems        = this.cigar.elems
+
+      def continue(): Boolean = if (elementIndex >= elems.length) false else {
+        val elem = elems(elementIndex)
+        if (pos > CoordMath.getEnd(refPos, elem.lengthOnTarget)) true // current cigar element is before the desired position
+        else { // overlaps!
+          if (elem.operator == CigarOperator.DELETION) { // deletion
+            if (!returnLastBaseIfDeleted) readPos = 0 // don't return a read position, so zero out the current read position
+          } else {
+            readPos += pos - refPos + 1 // get the offset
+          }
+          false
+        }
+      }
+
+      while (continue()) {
+        val elem      = elems(elementIndex)
+        refPos       += elem.lengthOnTarget
+        readPos      += elem.lengthOnQuery
+        elementIndex += 1
+      }
+
+      if (0 < readPos && readPos <= this.length) Some(readPos) else None
+    }
+  }
+
 
   ////////////////////////////////////////////////////////////////////////////
   // Non-wrapper methods.

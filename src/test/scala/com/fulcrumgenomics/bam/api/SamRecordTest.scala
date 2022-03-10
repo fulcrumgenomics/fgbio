@@ -289,4 +289,48 @@ class SamRecordTest extends UnitSpec with OptionValues {
     rec1.matesOverlap shouldBe None // Mate's start is not enclosed by rec, and mate's end cannot be determined
     rec2.matesOverlap.value shouldBe true // Mate's start is enclosed by rec, regardless of where mate end is
   }
+
+  "SamRecord.readPosAtRefPos" should "return the correct value" in {
+    case class ReadPosAtRefPos(cigar: String, refPos: Int, readPos: Option[Int], returnLastBaseIfDeleted: Boolean)
+    val testCases = Seq(
+      ReadPosAtRefPos("3S9M",    7,  Some(10), false),
+      ReadPosAtRefPos("3S9M",    0,  None,     false),
+      ReadPosAtRefPos("3S9M",   -1,  None,     false),
+      ReadPosAtRefPos("3S9M",   13,  None,     false),
+      ReadPosAtRefPos("4M1D6M",  4,  Some(4),  false),
+      ReadPosAtRefPos("4M1D6M",  4,  Some(4),  true),
+      ReadPosAtRefPos("4M1D6M",  5,  None,     false),
+      ReadPosAtRefPos("4M1D6M",  5,  Some(4),  true),
+      ReadPosAtRefPos("4M1I6M",  5,  Some(6),  false),
+      ReadPosAtRefPos("4M1I6M", 11,  None,     false)
+    )
+    testCases.foreach { testCase =>
+      val frag = new SamBuilder(readLength=Cigar(testCase.cigar).lengthOnQuery).addFrag(start=1, cigar=testCase.cigar).value
+      val readPos = frag.readPosAtRefPos(pos=testCase.refPos, returnLastBaseIfDeleted=testCase.returnLastBaseIfDeleted)
+      readPos shouldBe testCase.readPos
+      readPos.getOrElse(0) shouldBe frag.asSam.getReadPositionAtReferencePosition(testCase.refPos, testCase.returnLastBaseIfDeleted)
+    }
+  }
+
+  "SamRecord.refPosAtReadPos" should "return the correct value" in {
+    case class RefPosAtReadPos(cigar: String, refPos: Option[Int], readPos: Int, returnLastBaseIfInserted: Boolean)
+    val testCases = Seq(
+      RefPosAtReadPos("3S9M",   Some(7),  10, false),
+      RefPosAtReadPos("3S9M",      None,   0, false),
+      RefPosAtReadPos("3S9M",      None,  13, false),
+      RefPosAtReadPos("4M1D6M", Some(4),   4, false),
+      RefPosAtReadPos("4M1D6M", Some(6),   5, false),
+      RefPosAtReadPos("4M1I6M",    None,   5, false),
+      RefPosAtReadPos("4M1I6M", Some(4),   5, true),
+      RefPosAtReadPos("4M1I6M", Some(5),   6, false),
+    )
+    testCases.foreach { testCase =>
+      val frag = new SamBuilder(readLength=Cigar(testCase.cigar).lengthOnQuery).addFrag(start=1, cigar=testCase.cigar).value
+      val readPos = frag.refPosAtReadPos(pos=testCase.readPos, returnLastBaseIfInserted=testCase.returnLastBaseIfInserted)
+      readPos shouldBe testCase.refPos
+      if (!testCase.returnLastBaseIfInserted) {
+        readPos.getOrElse(0) shouldBe frag.asSam.getReferencePositionAtReadPosition(testCase.readPos)
+      }
+    }
+  }
 }
