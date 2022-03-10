@@ -125,10 +125,14 @@ class OverlappingBasesConsensusCaller {
 
     // add any remaining read and reference bases
     r1BasesBuilder.addAll(r1Bases.drop(r1LastReadPos))
+    r1QualsBuilder.addAll(r1Quals.drop(r1LastReadPos))
     r2BasesBuilder.addAll(r2Bases.drop(r2LastReadPos))
+    r2QualsBuilder.addAll(r2Quals.drop(r2LastReadPos))
 
     require(r1BasesBuilder.length == r1Bases.length)
     require(r2BasesBuilder.length == r2Bases.length)
+    require(r1QualsBuilder.length == r1Quals.length)
+    require(r2QualsBuilder.length == r2Quals.length)
 
     r1.bases = r1BasesBuilder.result()
     r1.quals = r1QualsBuilder.result()

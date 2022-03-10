@@ -27,8 +27,9 @@ package com.fulcrumgenomics.personal.nhomer
 
 import com.fulcrumgenomics.FgBioDef.{FgBioEnum, FilePath, PathToBam, SafelyClosable}
 import com.fulcrumgenomics.bam.Bams
-import com.fulcrumgenomics.bam.api.{SamSource, SamWriter}
+import com.fulcrumgenomics.bam.api.{SamOrder, SamSource, SamWriter}
 import com.fulcrumgenomics.cmdline.{ClpGroups, FgBioTool}
+import com.fulcrumgenomics.commons.async.AsyncWriter
 import com.fulcrumgenomics.commons.collection.ParIterator
 import com.fulcrumgenomics.commons.util.LazyLogging
 import com.fulcrumgenomics.commons.util.Threads.IterableThreadLocal
@@ -43,13 +44,40 @@ import scala.collection.immutable
   """
     |Corrects overlapping bases in FR read pairs.
     |
-    |To examine reads from the same template, the input is resorted if neither queryname sorted nor query grouped.
+    |## Inputs and Outputs
+    |
+    |In order to correctly correct reads by template, the input BAM must be either `queryname`  or `query` grouped.  The
+    |sort can be done in streaming fashion with:
+    |
+    |```
+    |samtools sort -n -u in.bam | fgbio ClipBam -i /dev/stdin ...
+    |```
+    |
+    |The output sort order may be specified with `--sort-order`.  If not given, then the output will be in the same
+    |order as input.
+    |
+    |## Correction
+    |
+    |Only mapped FR read pairs will be eligible for correction.
+    |
+    |Next, each read base from the read and its mate that map to same position in the reference will be used to create
+    |a consensus base as follows:
+    |
+    |1. if the read and mate bases are the same, the consensus base is that base with the base quality equal to the sum
+    |   of the two base qualities.
+    |2. if the read and mate bases differ, then the base with the highest associated base quality will be the consensus
+    |   call.  If the read and mate have the same base quality, then the output base quality will be 2.  Otherwise,
+    |   the base quality will be the difference between the larger and smaller base quality.
+    |
+    |The read and its mate will have their bases corrected and base qualities updated based on the procedure above.
   """)
 class CorrectOverlappingBases
 ( @arg(flag='i', doc="Input SAM or BAM file of aligned reads.") val input: PathToBam,
   @arg(flag='o', doc="Output SAM or BAM file.") val output: PathToBam,
   @arg(flag='m', doc="Output metrics file.") val metrics: FilePath,
-  @arg(doc="The number of threads to use while consensus calling.") val threads: Int = 1
+  @arg(doc="The number of threads to use while consensus calling.") val threads: Int = 1,
+  @arg(flag='S', doc="The sort order of the output. If not given, output will be in the same order as input if the input.")
+  val sortOrder: Option[SamOrder] = None
 ) extends FgBioTool with LazyLogging {
   Io.assertReadable(input)
   Io.assertCanWriteFile(output)
