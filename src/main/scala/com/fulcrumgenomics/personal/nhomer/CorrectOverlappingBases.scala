@@ -63,10 +63,13 @@ import scala.collection.immutable
     |a consensus base as follows:
     |
     |1. if the read and mate bases are the same, the consensus base is that base with the base quality equal to the sum
-    |   of the two base qualities.
+    |   of the two base qualities.  The base quality can be the maximum base quality off the two base qualities if
+    |   `--max-qual-on-agreement` is used.
     |2. if the read and mate bases differ, then the base with the highest associated base quality will be the consensus
     |   call.  If the read and mate have the same base quality, then the output base quality will be 2.  Otherwise,
-    |   the base quality will be the difference between the larger and smaller base quality.
+    |   the base quality will be the difference between the larger and smaller base quality.  The
+    |   `--only-mask-disagreements` option overrides behavior and sets all differing bases to `N` with a base quality of
+    |   2.
     |
     |The read and its mate will have their bases corrected and base qualities updated based on the procedure above.
   """)
