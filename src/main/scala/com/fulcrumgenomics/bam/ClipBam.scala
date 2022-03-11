@@ -103,13 +103,12 @@ class ClipBam
   private val clipper = new SamRecordClipper(mode=clippingMode, autoClipAttributes=autoClipAttributes)
 
   override def execute(): Unit = {
-    val in         = SamSource(input)
-    val header     = in.header
-    val progress   = ProgressLogger(logger)
-    val out        = Bams.regenerateNmUqMdTagsWriter(writer=SamWriter(output, header.clone(), sort=sortOrder), ref=ref)
+    val in     = SamSource(input)
+    val header = in.header
+    val out    = Bams.nmUqMdTagRegeneratingWriter(writer=SamWriter(output, header.clone(), sort=sortOrder), ref=ref)
 
     // Require queryname sorted or query grouped
-    Bams.requireTemplateGrouped(header=in.header, toolName="ClipBam")
+    Bams.requireQueryGrouped(header=in.header, toolName="ClipBam")
 
     val metricsMap: Map[ReadType, ClippingMetrics] = this.metrics.map { _ =>
       ReadType.values.map { readType => readType -> ClippingMetrics(read_type=readType) }.toMap
@@ -130,12 +129,8 @@ class ClipBam
         case _ => ()
       }
 
-      template.allReads.foreach { r =>
-        out += r
-        progress.record(r)
-      }
+      out ++= template.allReads
     }
-    progress.logLast()
     out.close()
 
     this.metrics.foreach { path =>

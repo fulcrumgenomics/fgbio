@@ -493,13 +493,19 @@ object Bams extends LazyLogging {
     }
   }
 
+  /** Returns true if the header is queryname sorted or query grouped */
+  def isQueryGrouped(header: SAMFileHeader): Boolean = {
+    header.getSortOrder == SortOrder.queryname || header.getGroupOrder == GroupOrder.query
+  }
+
   /** Requires that the header is queryname sorted or query grouped. */
-  def requireTemplateGrouped(header: SAMFileHeader, toolName: String): Unit = {
-    require(header.getSortOrder == SortOrder.queryname || header.getGroupOrder == GroupOrder.query,
+  def requireQueryGrouped(header: SAMFileHeader, toolName: String = "<tool>", path: Option[PathToBam] = None): Unit = {
+    require(isQueryGrouped(header),
       "Input was not queryname sorted or query grouped, found: " +
         s"SO:${header.getSortOrder} GO:${header.getGroupOrder}" +
         Option(header.getAttribute("SS")).map(ss => f" SS:$ss").getOrElse("") +
-        f". Use `samtools sort -n -u in.bam | fgbio $toolName -i /dev/stdin`"
+        f". Use `samtools sort -n -u in.bam | fgbio $toolName -i /dev/stdin`" +
+        path.map(p => f"\nPath: $p").getOrElse("")
     )
   }
 
@@ -509,10 +515,10 @@ object Bams extends LazyLogging {
     * @param writer the writer to write to
     * @param ref the path to the reference FASTA
     */
-  def regenerateNmUqMdTagsWriter(writer: SamWriter, ref: PathToFasta): Writer[SamRecord] with Closeable = {
-    logger.info("Reading the reference fasta into memory")
+  def nmUqMdTagRegeneratingWriter(writer: SamWriter, ref: PathToFasta): Writer[SamRecord] with Closeable = {
+    logger.debug("Reading the reference fasta into memory")
     val refMap = ReferenceSequenceIterator(ref, stripComments=true).map { ref => ref.getContigIndex -> ref}.toMap
-    logger.info(f"Read ${refMap.size}%,d contigs.")
+    logger.debug(f"Read ${refMap.size}%,d contigs.")
 
     // Create the final writer based on if the full reference has been loaded, or not
     new Writer[SamRecord] with Closeable {

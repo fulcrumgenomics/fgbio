@@ -336,9 +336,9 @@ class BamsTest extends UnitSpec {
       order.applyTo(h)
       h
     }
-    Bams.requireTemplateGrouped(header=header(SamOrder.Queryname), "test")
-    Bams.requireTemplateGrouped(header=header(SamOrder.RandomQuery), "test") // this is group ordered
-    an[Exception] should be thrownBy Bams.requireTemplateGrouped(header=header(SamOrder.Coordinate), "test")
+    Bams.requireQueryGrouped(header=header(SamOrder.Queryname), "test")
+    Bams.requireQueryGrouped(header=header(SamOrder.RandomQuery), "test") // this is group ordered
+    an[Exception] should be thrownBy Bams.requireQueryGrouped(header=header(SamOrder.Coordinate), "test")
   }
 
   "Template.primaryReads" should "return an iterator over just the primary reads" in {

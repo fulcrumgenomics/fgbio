@@ -180,10 +180,10 @@ class FilterConsensusReads
 
   override def execute(): Unit = {
     val in  = SamSource(input)
-    val out = Bams.regenerateNmUqMdTagsWriter(writer=SamWriter(output, in.header.clone(), sort=sortOrder), ref=ref)
+    val out = Bams.nmUqMdTagRegeneratingWriter(writer=SamWriter(output, in.header.clone(), sort=sortOrder), ref=ref)
 
     // Require queryname sorted or query grouped
-    Bams.requireTemplateGrouped(header=in.header, toolName="FilterConsensusReads")
+    Bams.requireQueryGrouped(header=in.header, toolName="FilterConsensusReads")
 
     // Go through the reads by template and do the filtering
     val templateIterator = Bams.templateIterator(in, maxInMemory=MaxRecordsInMemoryWhenSorting)
