@@ -29,7 +29,6 @@ import com.fulcrumgenomics.FgBioDef.{FgBioEnum, FilePath, PathToBam, SafelyClosa
 import com.fulcrumgenomics.bam.Bams
 import com.fulcrumgenomics.bam.api.{SamOrder, SamSource, SamWriter}
 import com.fulcrumgenomics.cmdline.{ClpGroups, FgBioTool}
-import com.fulcrumgenomics.commons.async.AsyncWriter
 import com.fulcrumgenomics.commons.collection.ParIterator
 import com.fulcrumgenomics.commons.util.LazyLogging
 import com.fulcrumgenomics.commons.util.Threads.IterableThreadLocal
@@ -77,7 +76,14 @@ class CorrectOverlappingBases
   @arg(flag='m', doc="Output metrics file.") val metrics: FilePath,
   @arg(doc="The number of threads to use while consensus calling.") val threads: Int = 1,
   @arg(flag='S', doc="The sort order of the output. If not given, output will be in the same order as input if the input.")
-  val sortOrder: Option[SamOrder] = None
+  val sortOrder: Option[SamOrder] = None,
+  @arg(doc="""If the read and mate bases disagree at a given reference position, true to mask (make 'N') the read and mate
+             |bases, otherwise pick the base with the highest base quality and return a base quality that's the difference
+             |between the higher and lower base qualities.""")
+  val onlyMaskDisagreements: Boolean = false,
+  @arg(doc= """If the read and mate bases agree at a given reference position, true to for the resulting base quality
+              |to be the maximum base quality, otherwise the sum of the base qualities.""")
+  val maxQualOnAgreement: Boolean = false
 ) extends FgBioTool with LazyLogging {
   Io.assertReadable(input)
   Io.assertCanWriteFile(output)
@@ -85,7 +91,7 @@ class CorrectOverlappingBases
   private case class ThreadData(caller: OverlappingBasesConsensusCaller, templateMetric: CorrectOverlappingBasesMetric, basesMetric: CorrectOverlappingBasesMetric)
   private object ThreadData {
     def apply(): ThreadData = ThreadData(
-      caller         = new OverlappingBasesConsensusCaller(),
+      caller         = new OverlappingBasesConsensusCaller(onlyMaskDisagreements=onlyMaskDisagreements, maxQualOnAgreement=maxQualOnAgreement),
       templateMetric = CorrectOverlappingBasesMetric(tpe=CountType.Templates),
       basesMetric    = CorrectOverlappingBasesMetric(tpe=CountType.Bases)
     )

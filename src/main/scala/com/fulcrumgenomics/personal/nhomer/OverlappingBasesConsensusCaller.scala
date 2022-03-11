@@ -30,8 +30,22 @@ import com.fulcrumgenomics.bam.api.SamRecord
 import com.fulcrumgenomics.util.NumericTypes.PhredScore
 
 
-/** Consensus calls the overlapping mapped bases in read pairs. */
-class OverlappingBasesConsensusCaller {
+/** Consensus calls the overlapping mapped bases in read pairs.
+  *
+  * This will iterate through the mapped bases that overlap between the read and mate in a read pair.  If the read and
+  * mate agree at a given reference position, then read and mate base will not change and the base quality returned
+  * is controlled by `maxQualOnAgreement`. If they disagree at a given reference position, then the base and quality
+  * returned is controlled by `onlyMaskDisagreements`.
+  *
+  * @param onlyMaskDisagreements if the read and mate bases disagree at a given reference position, true to mask (make
+  *                              'N') the read and mate bases, otherwise pick the base with the highest base quality and
+  *                              return a base quality that's the difference between the higher and lower base quality.
+  * @param maxQualOnAgreement    if the read and mate bases agree at a given reference position, true to for the
+  *                              resulting base quality to be the maximum base quality, otherwise the sum of the base
+  *                              qualities.
+  */
+class OverlappingBasesConsensusCaller(onlyMaskDisagreements: Boolean = false,
+                                      maxQualOnAgreement: Boolean = false) {
   private val NoCall: Byte = 'N'.toByte
   private val NoCallQual: PhredScore = PhredScore.MinValue
 
@@ -95,10 +109,10 @@ class OverlappingBasesConsensusCaller {
       }
       else { // matched reference bases, so consensus call
         // add read bases from insertions
-        r1BasesBuilder.addAll(r1Bases.slice(from=r1LastReadPos + 1, until=r1Head.read))
-        r1QualsBuilder.addAll(r1Quals.slice(from=r1LastReadPos + 1, until=r1Head.read))
-        r2BasesBuilder.addAll(r2Bases.slice(from=r2LastReadPos + 1, until=r2Head.read))
-        r2QualsBuilder.addAll(r2Quals.slice(from=r2LastReadPos + 1, until=r2Head.read))
+        r1BasesBuilder.addAll(r1Bases.slice(from = r1LastReadPos + 1, until = r1Head.read))
+        r1QualsBuilder.addAll(r1Quals.slice(from = r1LastReadPos + 1, until = r1Head.read))
+        r2BasesBuilder.addAll(r2Bases.slice(from = r2LastReadPos + 1, until = r2Head.read))
+        r2QualsBuilder.addAll(r2Quals.slice(from = r2LastReadPos + 1, until = r2Head.read))
 
         r1OverlappingBases += 1
         r2OverlappingBases += 1
@@ -110,10 +124,19 @@ class OverlappingBasesConsensusCaller {
           base2 = r2Bases(r2Head.read - 1),
           qual2 = r2Quals(r2Head.read - 1)
         )
-        r1BasesBuilder.addOne(base)
-        r1QualsBuilder.addOne(qual)
-        r2BasesBuilder.addOne(base)
-        r2QualsBuilder.addOne(qual)
+
+        // Only add the consensus call if we aren't masking disagreements or its a no-call
+        if (onlyMaskDisagreements && base != NoCall) {
+          r1BasesBuilder.addOne(r1Bases(r1LastReadPos))
+          r1QualsBuilder.addOne(r1Quals(r1LastReadPos))
+          r2BasesBuilder.addOne(r2Bases(r2LastReadPos))
+          r2QualsBuilder.addOne(r2Quals(r2LastReadPos))
+        } else {
+          r1BasesBuilder.addOne(base)
+          r1QualsBuilder.addOne(qual)
+          r2BasesBuilder.addOne(base)
+          r2QualsBuilder.addOne(qual)
+        }
 
         // consume the current
         r1LastReadPos = r1Head.read
@@ -148,11 +171,13 @@ class OverlappingBasesConsensusCaller {
   private def consensusCall(base1: Byte, qual1: PhredScore, base2: Byte, qual2: PhredScore): (Byte, PhredScore) = {
     // Capture the raw consensus base prior to masking it to N, so that we can compute
     // errors vs. the actually called base.
-    val (rawBase, rawQual) = {
-      if      (base1 == base2) (base1, PhredScore.cap(qual1 + qual2))
-      else if (qual1 > qual2)  (base1, PhredScore.cap(qual1 - qual2))
-      else if (qual2 > qual1)  (base2, PhredScore.cap(qual2 - qual1))
-      else                     (base1, PhredScore.MinValue)
+    val (rawBase: Byte, rawQual: PhredScore) = {
+      if      (base1 == base2 && maxQualOnAgreement)   (base1,  Math.max(qual1, qual2))        // use the maximum base quality
+      else if (base1 == base2 && !maxQualOnAgreement)  (base1,  PhredScore.cap(qual1 + qual2)) // use the sum of base qualities
+      else if (onlyMaskDisagreements)                  (NoCall, NoCallQual)                    // disagreements are no-calls
+      else if (qual1 > qual2)                          (base1,  PhredScore.cap(qual1 - qual2))
+      else if (qual2 > qual1)                          (base2,  PhredScore.cap(qual2 - qual1))
+      else                                             (base1,  PhredScore.MinValue)
     }
 
     // Then mask it if appropriate
