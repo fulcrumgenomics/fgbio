@@ -172,7 +172,7 @@ class OverlappingBasesConsensusCaller(onlyMaskDisagreements: Boolean = false,
     // Capture the raw consensus base prior to masking it to N, so that we can compute
     // errors vs. the actually called base.
     val (rawBase: Byte, rawQual: PhredScore) = {
-      if      (base1 == base2 && maxQualOnAgreement)   (base1,  Math.max(qual1, qual2))        // use the maximum base quality
+      if      (base1 == base2 && maxQualOnAgreement)   (base1,  Math.max(qual1, qual2).toByte)        // use the maximum base quality
       else if (base1 == base2 && !maxQualOnAgreement)  (base1,  PhredScore.cap(qual1 + qual2)) // use the sum of base qualities
       else if (onlyMaskDisagreements)                  (NoCall, NoCallQual)                    // disagreements are no-calls
       else if (qual1 > qual2)                          (base1,  PhredScore.cap(qual1 - qual2))
