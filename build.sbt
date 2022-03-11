@@ -127,11 +127,11 @@ lazy val root = Project(id="fgbio", base=file("."))
       "org.scala-lang"            %  "scala-compiler" % scalaVersion.value,
       "org.scala-lang.modules"    %% "scala-xml"      % "1.2.0",
       "org.scala-lang.modules"    %% "scala-collection-compat" % "2.1.1",
-      "com.fulcrumgenomics"       %% "commons"        % "1.4.0-ffd57b8-SNAPSHOT",
+      "com.fulcrumgenomics"       %% "commons"        % "1.4.0",
       "com.fulcrumgenomics"       %% "sopt"           % "1.1.0",
-      "com.github.samtools"       %  "htsjdk"         % "2.23.0" excludeAll(htsjdkExcludes: _*),
+      "com.github.samtools"       %  "htsjdk"         % "2.24.1" excludeAll(htsjdkExcludes: _*),
       "org.apache.commons"        %  "commons-math3"  % "3.6.1",
-      "com.beachape"              %% "enumeratum"     % "1.6.1",
+      "com.beachape"              %% "enumeratum"     % "1.7.0",
       "com.intel.gkl"             %  "gkl"            % "0.8.8",
 
       //---------- Test libraries -------------------//
