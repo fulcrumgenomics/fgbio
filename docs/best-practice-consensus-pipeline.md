@@ -1,13 +1,13 @@
 <img src="https://github.com/fulcrumgenomics/fgbio/blob/main/.github/logos/fulcrumgenomics.svg" alt="Fulcrum Genomics" height="35"/>
 
-# fgbio Best Practise FASTQ->Consensus Pipeline
+# fgbio Best Practise FASTQ -> Consensus Pipeline
 
 This document describes the best practise(s) for building pipelines to go from FASTQ files that contain a mixture of template (genomic) bases and UMI bases, through to aligned and filtered consensus reads.  
 
 The pipeline is broken into two phases:
 
-1. Getting to aligned and grouped raw reads
-2. Going from raw reads to aligned and filtered consensus reads
+1. Getting to aligned and grouped raw reads (identifying which reads are from the same source molecules)
+2. Going from grouped raw reads to aligned and filtered consensus reads
 
 We provide two alternatives for the second phase.  One intended for R&D environment where it is desirable to be able to branch off from the pipeline and test e.g. multiple consensus calling or filtering parameters.  The other is intended for high throughput production environments where performance and throughput take precedence over flexibility.
 
@@ -16,9 +16,35 @@ We provide two alternatives for the second phase.  One intended for R&D environm
 The steps described below use a mixture of:
 
 - `fgbio` (version 2.0 or higher)
-- `samtools` (version 
+- `samtools` (version 1.14 or higher)
 - `bwa mem`
 
+## Notes on some common options
+
+The `fgbio` toolkit exposes some common options in addition to those supported by each tool.  The general form of running fgbio is:
+
+```shell
+fgbio <common options> Tool <tool options>
+```
+
+The following options are frequently used to optimize performance:
+
+### Compression
+
+`--compression` can be used to control the GZIP compression level used when writing BAM files and other gzip compressed files.  The default value is `5`.  Lower values yield less compression (and larger file sizes) but less CPU usage and shorter runtimes.  The recommendation is to set compresion level as follows:
+
+* When outputting file(s) that will be retained as outputs of the pipeline, use the default `--compression 5`
+* When outputting file(s) that are inputs to subsequence tools but are discarded at or before the end of the pipeline use `--compression 1`.  Compression level 1 uses a _lot_ less CPU than level 5, but still generates substantially smaller files than turning compression off with level 0.  We have found this to be a good tradeoff for intermediate files that must be written to disk where both compression time and disk IO can be limiting.
+* When outputting to `stdout` and piping into another tool use `--compression 0` to avoid compression
+
+### Async IO
+
+`--async-io` causes additional threads to be used to i) read ahead and decompress/decode reads when reading SAM, BAM and VCF files, and ii) for encoding and compression when writing SAM, BAM and VCF files.
+Each file being read or written is allocated one additional thread.
+So for example, a tool that reads one BAM file and writes one BAM file will end up using three threads (one reader, one worker, one writer).
+While the additional threads offer some increase in performance by off-loading work from the main/worker thread, depending on the tool in use, they may offer anything from a very minor performance boost to a significant one.
+
+We recommend using `--async-io` in places where compressed outputs are being written _and_ the tool in use needs more than a nominal amount of CPU for non-IO activities.
 
 ## Phase 1: FASTQ -> Grouped BAM
 
@@ -33,6 +59,8 @@ B-->C["fgbio GroupReadsByUmi"];
 In this example we'll use a single sample with paired-end fastq files and an inline 8bp UMI at the beginning of read one (see the fgbio [Read Structure](https://github.com/fulcrumgenomics/fgbio/wiki/Read-Structures) page for how to specify other UMI setups).
 
 ### Step 1.1: FASTQ -> uBam
+
+This step extracts the UMI bases and stores them in standard SAM tags.  It can extract any number of inline UMIs within the sequencing reads, and optionally by providing the `--extract-umis-from-read-names` flag, UMIs from the read names.  Downstream `fgbio` tools expect the UMIs to be stored in tags in the BAM file (e.g. `RX:Z:ACTGCTAG`); converting to a uBam as the first step is the easiest way to do this correctly.
 
 When working with fully degenerate UMIs that cannot be error-corrected, the uBam should be generated as follows:
 
@@ -49,14 +77,14 @@ fgbio -Xmx1g --compression 1 --async-io FastqToBam \
 If, however, the UMIs are a limited and non-fully degenerate set then they can be error-corrected after extraction from the reads as follows:
   
 ```bash
-fgbio -Xmx1g --compression 0 --async-io FastqToBam \
+fgbio -Xmx1g --compression 0 FastqToBam \
   --input r1.fq.gz r2.fq.gz \
   --read-structures 8M+T +T \
   --sample s1 \
   --library library1 \
   --platform-unit ABCDEAAXX.1 \
   --output /dev/stdout \
-  | fgbio -Xmx2g --compression 1 CorrectUmis \
+  | fgbio -Xmx2g --compression 1 --async-io CorrectUmis \
       --input /dev/stdin \
       --output s1.unmapped.bam \
       --max-mismatches 1 \
@@ -69,7 +97,7 @@ Neither option above requires or performs any sorting.
 
 ### Step 1.2: uBam -> Mapped BAM
 
-This step uses a combination of `samtools` (to convert the uBam back to FASTQ), `bwa mem` to do the actual alignment and `fgbio ZipperBams` to carry metaadata and UMIs forward from the unmapped BAM.  No sorting is performed in this step.
+This step uses a combination of `samtools` (to convert the uBam back to FASTQ), `bwa mem` to do the actual alignment and `fgbio ZipperBams` to carry metadata and UMIs forward from the unmapped BAM.  No sorting is performed in this step.
 
 ```  
 # Align the data with bwa and recover headers and tags from the unmapped BAM
@@ -85,7 +113,7 @@ Some important `bwa mem` options used here are:
 
 - `-t 16` to set the number of threads to use to 16; this can be set to any number between 1 and the number of CPU cores available
 - `-K 150000000` to tell `bwa` to process reads/bases in fixed size chunks regardless of the number of threads; this makes `bwa` deterministic and reproducible with different thread counts
-- `-Y` to use soft-clipping (instead of hard clipping) in supplemntal alignments
+- `-Y` to use soft-clipping (instead of hard clipping) in supplemental alignments
 
 Under no circumstances should `-M` be used to `mark shorter split hits as secondary` as this will cause problems with downstream tools.
 
@@ -96,7 +124,7 @@ This step identifies reads or read pairs that originate from the same source mol
 
 ```  
 # Group the reads by position and UMI
-fgbio -Xmx8g --compression 1 GroupReadsByUmi \
+fgbio -Xmx8g --compression 1 --async-io GroupReadsByUmi \
   --input s1.mapped.bam \
   --strategy Adjacency \
   --edits 1 \
@@ -121,10 +149,10 @@ B-->C["fgbio FilterConsensusReads | samtools sort"];
 
 ### Step 2(a).1: GroupedBam -> Consensus uBam
 
-This step generates unmapped consensus reads from the grouped reads.  Depending on your data you may choose to raise or lower the `--min-input-base-quality` to accept or reject more bases from the grouped raw reads.  In an R&D setting it is frequently useful to see _all_ consensus reads, but there is a performance trade-off.  Frequently a very large fraction of molecules will have only a single read[-pair]; if consensus reads with depth 1 will be discarded later setting `--min-reads 2` can cause this step to run significantly faster.
+This step generates unmapped consensus reads from the grouped reads.  Depending on your data you may choose to raise or lower the `--min-input-base-quality` to accept or reject more bases from the grouped raw reads.  In an R&D setting it is frequently useful to see _all_ consensus reads, but there is a performance trade-off.  Frequently a very large fraction of molecules will have only a single read[-pair]; if consensus reads with depth 1 will be discarded later, setting `--min-reads 2` (or higher) can cause this step to run significantly faster.
 
 ```bash
-fgbio -Xmx4g --compression 0 CallMolecularConsensusReads \
+fgbio -Xmx4g --compression 1 CallMolecularConsensusReads \
   --input s1.grouped.bam \
   --output s1.cons.unmapped.bam \
   --min-reads 1 \
