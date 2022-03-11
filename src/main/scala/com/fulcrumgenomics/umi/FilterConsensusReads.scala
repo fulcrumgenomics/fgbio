@@ -89,7 +89,7 @@ private[umi] case class ConsensusReadFilter(minReads: Int, maxReadErrorRate: Dou
       |values two and three differ, the _more stringent value comes earlier_.
       |
       |In order to correctly filter reads in or out by template, the input BAM must be either `queryname` sorted or
-      |`query` grouped.  The sort can be done in streaming fashion with:
+      |`query` grouped.  If your BAM is not already in an appropriate order, this can be done in streaming fashion with:
       |
       |```
       |samtools sort -n -u in.bam | fgbio FilterConsensusReads -i /dev/stdin ...
