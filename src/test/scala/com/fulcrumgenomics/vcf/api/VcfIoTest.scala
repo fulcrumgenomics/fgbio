@@ -24,10 +24,11 @@
 
 package com.fulcrumgenomics.vcf.api
 
-import com.fulcrumgenomics.commons.io.Io
-import com.fulcrumgenomics.testing.{UnitSpec, VcfBuilder}
+import com.fulcrumgenomics.commons.io.{Io, PathUtil}
 import com.fulcrumgenomics.testing.VcfBuilder.Gt
+import com.fulcrumgenomics.testing.{UnitSpec, VcfBuilder}
 import com.fulcrumgenomics.vcf.api.Allele.NoCallAllele
+import htsjdk.samtools.util.FileExtensions.{BCF => BcfExtension, COMPRESSED_VCF => VcfGzExtension, TABIX_INDEX => TbiExtension, TRIBBLE_INDEX => IdxExtension, VCF => VcfExtension}
 import org.scalatest.OptionValues
 
 import scala.collection.compat._
@@ -67,7 +68,7 @@ class VcfIoTest extends UnitSpec with OptionValues {
 
   /** Writes out the variants to a file and reads them back, returning the header and the variants. */
   @inline private def roundtrip(variants: IterableOnce[Variant], header: VcfHeader = VcfIoTest.Header): Result = {
-    val vcf = makeTempFile("test.", ".vcf")
+    val vcf = makeTempFile(getClass.getSimpleName, VcfExtension)
     val out = VcfWriter(vcf, header)
     out ++= variants
     out.close()
@@ -167,7 +168,7 @@ class VcfIoTest extends UnitSpec with OptionValues {
     val variants = Range.inclusive(1000, 2000, step=10).map { s =>
       Variant(chrom="chr1", pos=s, alleles=alleles, genotypes=Map("s1" -> Genotype(alleles, "s1", alleles.alts)))
     }
-    val vcf = makeTempFile("queryable.", ".vcf.gz")
+    val vcf = makeTempFile("queryable.", VcfGzExtension)
     val out = VcfWriter(vcf, VcfIoTest.Header)
     out ++= variants
     out.close()
@@ -227,12 +228,51 @@ class VcfIoTest extends UnitSpec with OptionValues {
     v.gt("0").callIndices.mkString("/") shouldBe "2/3"
   }
 
-  it should "not attempt to index a VCF when streaming to a file handle or other kind of non-regular file" in {
+  it should "not allow a VCF writer to write to a directory path" in {
     val samples = Seq("sample")
-    val builder = VcfBuilder(samples=samples)
-    val writer  = VcfWriter(Io.DevNull, header = builder.header)
-    builder.add(chrom = "chr1", pos = 100, alleles = Seq("A", "C"), gts = Seq(Gt(sample="sample", gt="0/1")))
-    noException shouldBe thrownBy { writer.write(builder.toSeq) }
+    val builder = VcfBuilder(samples = samples)
+    val output  = Io.makeTempDir(getClass.getSimpleName)
+    output.toFile.deleteOnExit()
+    an[IllegalArgumentException] shouldBe thrownBy { VcfWriter(output, header = builder.header) }
+  }
+
+  it should "write a sibling index when writing to a plaintext VCF file" in {
+    val samples = Seq("sample")
+    val builder = VcfBuilder(samples = samples)
+    val output  = makeTempFile(getClass.getSimpleName, VcfExtension)
+    val writer  = VcfWriter(output, header = builder.header)
+    builder.add(chrom = "chr1", pos = 100, alleles = Seq("A", "C"), gts = Seq(Gt(sample = "sample", gt = "0/1")))
     writer.close()
+    PathUtil.replaceExtension(output, VcfExtension + IdxExtension).toFile shouldBe readable
+  }
+
+  it should "write a sibling index when writing to a compressed VCF file" in {
+    val samples = Seq("sample")
+    val builder = VcfBuilder(samples = samples)
+    val output  = makeTempFile(getClass.getSimpleName, VcfGzExtension)
+    val writer  = VcfWriter(output, header = builder.header)
+    builder.add(chrom = "chr1", pos = 100, alleles = Seq("A", "C"), gts = Seq(Gt(sample = "sample", gt = "0/1")))
+    writer.close()
+    PathUtil.replaceExtension(PathUtil.removeExtension(output), VcfGzExtension + TbiExtension).toFile shouldBe readable
+  }
+
+  it should "write a sibling index when writing to a BCF file" in {
+    val samples = Seq("sample")
+    val builder = VcfBuilder(samples = samples)
+    val output  = makeTempFile(getClass.getSimpleName, BcfExtension)
+    val writer  = VcfWriter(output, header = builder.header)
+    builder.add(chrom = "chr1", pos = 100, alleles = Seq("A", "C"), gts = Seq(Gt(sample = "sample", gt = "0/1")))
+    writer.close()
+    PathUtil.replaceExtension(output, BcfExtension + IdxExtension).toFile shouldBe readable
+  }
+
+  it should "not attempt to write a sibling index when streaming to a named pipe like '/dev/null'" in {
+    val samples = Seq("sample")
+    val builder = VcfBuilder(samples = samples)
+    val writer  = VcfWriter(Io.DevNull, header = builder.header)
+    builder.add(chrom = "chr1", pos = 100, alleles = Seq("A", "C"), gts = Seq(Gt(sample = "sample", gt = "0/1")))
+    noException shouldBe thrownBy { writer.write(builder.toSeq); writer.close() }
+    PathUtil.pathTo(Io.DevNull.getFileName.toString + IdxExtension).toFile should not be readable
+    PathUtil.pathTo(Io.DevNull.getFileName.toString + TbiExtension).toFile should not be readable
   }
 }
