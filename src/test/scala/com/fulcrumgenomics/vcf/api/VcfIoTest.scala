@@ -31,6 +31,7 @@ import com.fulcrumgenomics.vcf.api.Allele.NoCallAllele
 import htsjdk.samtools.util.FileExtensions.{BCF => BcfExtension, COMPRESSED_VCF => VcfGzExtension, TABIX_INDEX => TbiExtension, TRIBBLE_INDEX => IdxExtension, VCF => VcfExtension}
 import org.scalatest.OptionValues
 
+import java.nio.file.Files
 import scala.collection.compat._
 import scala.collection.immutable.ListMap
 
@@ -243,7 +244,7 @@ class VcfIoTest extends UnitSpec with OptionValues {
     val writer  = VcfWriter(output, header = builder.header)
     builder.add(chrom = "chr1", pos = 100, alleles = Seq("A", "C"), gts = Seq(Gt(sample = "sample", gt = "0/1")))
     writer.close()
-    PathUtil.replaceExtension(output, VcfExtension + IdxExtension).toFile shouldBe readable
+    Files.exists(PathUtil.replaceExtension(output, VcfExtension + IdxExtension)) shouldBe true
   }
 
   it should "write a sibling index when writing to a compressed VCF file" in {
@@ -253,7 +254,7 @@ class VcfIoTest extends UnitSpec with OptionValues {
     val writer  = VcfWriter(output, header = builder.header)
     builder.add(chrom = "chr1", pos = 100, alleles = Seq("A", "C"), gts = Seq(Gt(sample = "sample", gt = "0/1")))
     writer.close()
-    PathUtil.replaceExtension(PathUtil.removeExtension(output), VcfGzExtension + TbiExtension).toFile shouldBe readable
+    Files.exists(PathUtil.replaceExtension(PathUtil.removeExtension(output), VcfGzExtension + TbiExtension)) shouldBe true
   }
 
   it should "write a sibling index when writing to a BCF file" in {
@@ -263,7 +264,7 @@ class VcfIoTest extends UnitSpec with OptionValues {
     val writer  = VcfWriter(output, header = builder.header)
     builder.add(chrom = "chr1", pos = 100, alleles = Seq("A", "C"), gts = Seq(Gt(sample = "sample", gt = "0/1")))
     writer.close()
-    PathUtil.replaceExtension(output, BcfExtension + IdxExtension).toFile shouldBe readable
+    Files.exists(PathUtil.replaceExtension(output, BcfExtension + IdxExtension)) shouldBe true
   }
 
   it should "not attempt to write a sibling index when streaming to a named pipe like '/dev/null'" in {
@@ -272,7 +273,7 @@ class VcfIoTest extends UnitSpec with OptionValues {
     val writer  = VcfWriter(Io.DevNull, header = builder.header)
     builder.add(chrom = "chr1", pos = 100, alleles = Seq("A", "C"), gts = Seq(Gt(sample = "sample", gt = "0/1")))
     noException shouldBe thrownBy { writer.write(builder.toSeq); writer.close() }
-    PathUtil.pathTo(Io.DevNull.getFileName.toString + IdxExtension).toFile should not be readable
-    PathUtil.pathTo(Io.DevNull.getFileName.toString + TbiExtension).toFile should not be readable
+    Files.exists(PathUtil.pathTo(Io.DevNull.getFileName.toString + IdxExtension)) shouldBe false
+    Files.exists(PathUtil.pathTo(Io.DevNull.getFileName.toString + TbiExtension)) shouldBe false
   }
 }
