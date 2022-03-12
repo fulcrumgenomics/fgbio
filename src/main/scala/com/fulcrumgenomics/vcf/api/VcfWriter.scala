@@ -58,7 +58,7 @@ object VcfWriter {
     *
     * If the path is meant to point to a regular file, then indexing will occur automatically. However, if the path
     * already exists and the path is not a file or symbolic link, then this function will assume the path is a named
-    * pipe (such as `/dev/null`) and indexing will not occur.
+    * pipe or device (such as `/dev/null`) and indexing will not occur.
     *
     * @param path the path to write to
     * @param header the header of the VCF
@@ -67,7 +67,7 @@ object VcfWriter {
   def apply(path: PathToVcf, header: VcfHeader, async: Boolean = DefaultUseAsyncIo): VcfWriter = {
     import com.fulcrumgenomics.fasta.Converters.ToSAMSequenceDictionary
     val javaHeader = VcfConversions.toJavaHeader(header)
-    require(!Files.isDirectory(path), "Input path cannot be a directory!")
+    require(!Files.isDirectory(path), s"Path cannot be a directory! Found $path")
 
     val builder = new VariantContextWriterBuilder()
       .setOutputPath(path)
