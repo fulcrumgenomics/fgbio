@@ -11,6 +11,10 @@ The pipeline is broken into two phases:
 
 We provide two alternatives for the second phase.  One intended for R&D environment where it is desirable to be able to branch off from the pipeline and test e.g. multiple consensus calling or filtering parameters.  The other is intended for high throughput production environments where performance and throughput take precedence over flexibility.
 
+## Example Pipeline Implementations
+
+A simple [snakemake](https://snakemake.readthedocs.io/en/stable/) pipeline that implements the R&D version of the best practice pipeline is available in [FastqToConsensus-RnD.smk](FastqToConsensus-RnD.smk).  The snakemake pipeline is intended for demo purposes.
+
 ## Tools used
 
 The steps described below use a mixture of:
@@ -102,9 +106,9 @@ This step uses a combination of `samtools` (to convert the uBam back to FASTQ), 
 ```  
 # Align the data with bwa and recover headers and tags from the unmapped BAM
 samtools fastq s1.unmapped.bam \
-  | bwa mem -t 16 -p -K 150000000 -Y ref.fa \
+  | bwa mem -t 16 -p -K 150000000 -Y ref.fa - \
   | fgbio -Xmx4g --compression 1 --async-io ZipperBams \
-      --unmapped-bam s1.unmapped.bam \
+      --unmapped s1.unmapped.bam \
       --ref ref.fa \
       --output s1.mapped.bam 
 ```
@@ -169,9 +173,9 @@ The `-Y` flag to `bwa` (causing it to soft-clip instead of hard-clip supplementa
 ```
 # Re-align the consensus reads
 samtools fastq s1.cons.unmapped.bam \
-  | bwa mem -t 16 -p -K 150000000 -Y ref.fa \
+  | bwa mem -t 16 -p -K 150000000 -Y ref.fa - \
   | fgbio -Xmx4g --compression 1 --async-io ZipperBams \
-      --unmapped-bam s1.cons.unmapped.bam \
+      --unmapped s1.cons.unmapped.bam \
       --ref ref.fa \
       --tags-to-reverse Consensus \
       --tags-to-revcomp Consensus \
@@ -235,9 +239,9 @@ The `-Y` flag to `bwa` (causing it to soft-clip instead of hard-clip supplementa
 ```
 # Re-align the consensus reads
 samtools fastq s1.cons.unmapped.bam \
-  | bwa mem -t 16 -p -K 150000000 -Y ref.fa \
+  | bwa mem -t 16 -p -K 150000000 -Y ref.fa - \
   | fgbio -Xmx4g --compression 0 --async-io ZipperBams \
-      --unmapped-bam s1.cons.unmapped.bam \
+      --unmapped s1.cons.unmapped.bam \
       --ref ref.fa \
       --tags-to-reverse Consensus \
       --tags-to-revcomp Consensus \
