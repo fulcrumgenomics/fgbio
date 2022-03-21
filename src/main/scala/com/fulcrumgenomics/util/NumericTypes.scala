@@ -163,7 +163,7 @@ object NumericTypes {
       else a + log1pexp(b - a) // for precision we use log1pexp, which is equivalent to log(1+exp(x))
     }
 
-    /** Computes the probability of any of the given mutually exclusive events occurring: Pr(AB..N) = Pr(A)+Pr(B)+...+Pr(N). */
+    /** Computes the probability of any of the given mutually exclusive events occurring: Pr(A,B,..N) = Pr(A)+Pr(B)+...+Pr(N). */
     def or(values: Array[LogProbability]): LogProbability = {
       if (values.forall(_.isNegInfinity)) Double.NegativeInfinity
       else {
@@ -178,10 +178,10 @@ object NumericTypes {
       }
     }
 
-    /** Computes the probability of a and b, where a and b are independent events: Pr(AB) = Pr(A)*Pr(B). */
+    /** Computes the probability of a and b, where a and b are independent events: Pr(A,B) = Pr(A)*Pr(B). */
     def and(a: LogProbability, b: LogProbability): LogProbability = a + b
 
-    /** Computes the probability of the given independent events co-occurring: Pr(AB..N) = Pr(A)*Pr(B)*...*Pr(N). */
+    /** Computes the probability of the given independent events co-occurring: Pr(A,B,..N) = Pr(A)*Pr(B)*...*Pr(N). */
     def and(values: Array[Double]): LogProbability = values.sum
 
     /** Computes the probability Pr(A AND not B) = Pr(A) - Pr(B), where B is a subset of A. */
