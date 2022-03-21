@@ -23,12 +23,12 @@
  *
  */
 
-package com.fulcrumgenomics.personal.nhomer
+package com.fulcrumgenomics.bam
 
 import com.fulcrumgenomics.FgBioDef.yieldAndThen
 import com.fulcrumgenomics.alignment.CigarElem
+import com.fulcrumgenomics.bam.ReadAndRefPosIterator.ReadAndRefPos
 import com.fulcrumgenomics.bam.api.SamRecord
-import com.fulcrumgenomics.personal.nhomer.ReadAndRefPosIterator.ReadAndRefPos
 import htsjdk.samtools.util.CoordMath
 
 

@@ -23,9 +23,9 @@
  *
  */
 
-package com.fulcrumgenomics.personal.nhomer
+package com.fulcrumgenomics.bam
 
-import com.fulcrumgenomics.personal.nhomer.ReadAndRefPosIterator.ReadAndRefPos
+import com.fulcrumgenomics.bam.ReadAndRefPosIterator.ReadAndRefPos
 import com.fulcrumgenomics.testing.{SamBuilder, UnitSpec}
 
 class ReadAndRefPosIteratorTest extends UnitSpec {

@@ -23,9 +23,8 @@
  *
  */
 
-package com.fulcrumgenomics.personal.nhomer
+package com.fulcrumgenomics.bam
 
-import com.fulcrumgenomics.bam.Template
 import com.fulcrumgenomics.bam.api.SamRecord
 import com.fulcrumgenomics.util.NumericTypes.PhredScore
 

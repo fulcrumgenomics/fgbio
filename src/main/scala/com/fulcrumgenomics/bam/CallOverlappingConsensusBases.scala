@@ -23,10 +23,9 @@
  *
  */
 
-package com.fulcrumgenomics.personal.nhomer
+package com.fulcrumgenomics.bam
 
 import com.fulcrumgenomics.FgBioDef.{FgBioEnum, FilePath, PathToBam, SafelyClosable}
-import com.fulcrumgenomics.bam.Bams
 import com.fulcrumgenomics.bam.api.{SamOrder, SamSource, SamWriter}
 import com.fulcrumgenomics.cmdline.{ClpGroups, FgBioTool}
 import com.fulcrumgenomics.commons.collection.ParIterator
@@ -41,7 +40,7 @@ import scala.collection.immutable
 
 @clp(group = ClpGroups.SamOrBam, description=
   """
-    |Corrects overlapping bases in FR read pairs.
+    |Consensus calls overlapping bases in read pairs.
     |
     |## Inputs and Outputs
     |
@@ -57,7 +56,7 @@ import scala.collection.immutable
     |
     |## Correction
     |
-    |Only mapped FR read pairs will be eligible for correction.
+    |Only mapped read pairs with overlapping bases will be eligible for correction.
     |
     |Next, each read base from the read and its mate that map to same position in the reference will be used to create
     |a consensus base as follows:
@@ -73,7 +72,7 @@ import scala.collection.immutable
     |
     |The read and its mate will have their bases corrected and base qualities updated based on the procedure above.
   """)
-class CorrectOverlappingBases
+class CallOverlappingConsensusBases
 ( @arg(flag='i', doc="Input SAM or BAM file of aligned reads.") val input: PathToBam,
   @arg(flag='o', doc="Output SAM or BAM file.") val output: PathToBam,
   @arg(flag='m', doc="Output metrics file.") val metrics: FilePath,
@@ -149,7 +148,7 @@ class CorrectOverlappingBases
 }
 
 /** Collects the the number of reads or bases that were examined, had overlap, and were corrected as part of
-  * the [[CorrectOverlappingBases]] tool.
+  * the [[CallOverlappingConsensusBases]] tool.
   *
   * @param tpe template if the counts are per template, bases if counts are in units of bases.
   * @param total the total number of templates (bases) examined
