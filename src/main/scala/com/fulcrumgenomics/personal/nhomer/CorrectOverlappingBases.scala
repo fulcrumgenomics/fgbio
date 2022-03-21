@@ -115,7 +115,7 @@ class CorrectOverlappingBases
           threadDatum.templateMetric.total += 1
           threadDatum.basesMetric.total += template.primaryReads.map(_.length).sum
           // corrects
-          val stats = threadDatum.caller.correct(template)
+          val stats = threadDatum.caller.call(template)
           val overlappingBases = stats.r1OverlappingBases + stats.r2OverlappingBases
           val correctedBases   = stats.r1CorrectedBases + stats.r2CorrectedBases
           if (overlappingBases > 0) {
@@ -148,6 +148,14 @@ class CorrectOverlappingBases
 
 }
 
+/** Collects the the number of reads or bases that were examined, had overlap, and were corrected as part of
+  * the [[CorrectOverlappingBases]] tool.
+  *
+  * @param tpe template if the counts are per template, bases if counts are in units of bases.
+  * @param total the total number of templates (bases) examined
+  * @param overlapping the total number of templates (bases) that were overlapping
+  * @param corrected the total number of templates (bases) that were corrected.
+  */
 case class CorrectOverlappingBasesMetric
 (
   tpe: CountType,
@@ -166,6 +174,7 @@ case class CorrectOverlappingBasesMetric
 
 sealed trait CountType extends EnumEntry
 
+/** Enumeration for the type of counts in [[CorrectOverlappingBasesMetric]]. */
 object CountType extends FgBioEnum[CountType] {
   case object Templates extends CountType
   case object Bases extends CountType
