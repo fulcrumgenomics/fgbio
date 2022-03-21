@@ -25,6 +25,7 @@
 package com.fulcrumgenomics.umi
 
 import com.fulcrumgenomics.FgBioDef._
+import com.fulcrumgenomics.bam.OverlappingBasesConsensusCaller
 import com.fulcrumgenomics.bam.api.{SamOrder, SamSource, SamWriter}
 import com.fulcrumgenomics.cmdline.{ClpGroups, FgBioTool}
 import com.fulcrumgenomics.sopt.clp
@@ -105,7 +106,23 @@ class CallDuplexConsensusReads
             |present in a tag family, the family is randomly downsampled to exactly max-reads reads.
           """)
  val maxReadsPerStrand: Option[Int] = None,
- @arg(doc="The number of threads to use while consensus calling.") val threads: Int = 1
+ @arg(doc="The number of threads to use while consensus calling.") val threads: Int = 1,
+ @arg(doc="Consensus call overlapping bases in mapped paired end reads") val consensusCallOverlappingBases: Boolean = true,
+ @arg(doc=
+   """
+     |When `--consensus-call-overlapping-bases` is being used, if the read and mate bases disagree at a given
+     |reference position, true to mask (make 'N') the read and mate bases, otherwise pick the base with the
+     |highest base quality and call a base quality that's the difference between the higher and lower base
+     |quality.
+  """)
+ val onlyMaskDisagreements: Boolean = false,
+ @arg(doc=
+  """
+    |When `--consensus-call-overlapping-bases` is being used, if the read and mate bases agree at a given reference
+    |position, true to for the resulting base quality to be the maximum base quality, otherwise the sum of the base
+    |qualities.
+    |""")
+ val maxQualOnAgreement: Boolean = false
 ) extends FgBioTool with LazyLogging {
 
   Io.assertReadable(input)
@@ -114,8 +131,18 @@ class CallDuplexConsensusReads
   validate(errorRatePostUmi > 0, "Phred-scaled error rate post UMI must be > 0")
 
   override def execute(): Unit = {
-    val in  = SamSource(input)
+    val in = SamSource(input)
     UmiConsensusCaller.checkSortOrder(in.header, input, logger.warning, fail)
+
+    // Build an iterator for the input reads, which only really matters if calling consensus in overlapping read pairs.
+    val inIter = if (!consensusCallOverlappingBases) in.iterator else {
+      OverlappingBasesConsensusCaller.iterator(
+        in                    = in,
+        logger                = logger,
+        onlyMaskDisagreements = onlyMaskDisagreements,
+        maxQualOnAgreement    = maxQualOnAgreement
+      )
+    }
 
     // The output file is unmapped, so for now let's clear out the sequence dictionary & PGs
     val outHeader = UmiConsensusCaller.outputHeader(in.header, readGroupId, sortOrder)
@@ -132,7 +159,7 @@ class CallDuplexConsensusReads
       maxReadsPerStrand   = maxReadsPerStrand.getOrElse(VanillaUmiConsensusCallerOptions.DefaultMaxReads)
     )
     val progress = ProgressLogger(logger, unit=1000000)
-    val iterator = new ConsensusCallingIterator(in.iterator, caller, Some(progress), threads)
+    val iterator = new ConsensusCallingIterator(inIter, caller, Some(progress), threads)
     out ++= iterator
     progress.logLast()
 

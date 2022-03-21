@@ -25,7 +25,9 @@
 
 package com.fulcrumgenomics.bam
 
-import com.fulcrumgenomics.bam.api.SamRecord
+import com.fulcrumgenomics.bam.api.{SamRecord, SamSource}
+import com.fulcrumgenomics.commons.collection.SelfClosingIterator
+import com.fulcrumgenomics.commons.util.Logger
 import com.fulcrumgenomics.util.NumericTypes.PhredScore
 
 
@@ -195,6 +197,45 @@ class OverlappingBasesConsensusCaller(onlyMaskDisagreements: Boolean = false,
 
     // Then mask it if appropriate
     if (base1 == NoCall || base2 == NoCall || rawQual == PhredScore.MinValue) (NoCall, NoCallQual) else (rawBase, rawQual)
+  }
+}
+
+object OverlappingBasesConsensusCaller {
+  /** Returns an iterator over records in the SAM source that are in query group order, where overlapping read pairs
+    * are consensus called.  The input will be re-sorted if not already query sorted or grouped.  Statistics for how
+    * may bases and templates had overlaps and were modified are logged to the given logger.
+    *
+    * @param in the input [[SamSource]] from which to read
+    * @param logger the logger, to which output statistics are written
+    * @param onlyMaskDisagreements see [[OverlappingBasesConsensusCaller]]
+    * @param maxQualOnAgreement see [[OverlappingBasesConsensusCaller]]
+    */
+  def iterator(in: SamSource,
+               logger: Logger,
+               onlyMaskDisagreements: Boolean = false,
+               maxQualOnAgreement: Boolean = false): Iterator[SamRecord] = {
+    val templateMetric = CallOverlappingConsensusBasesMetric(tpe=CountType.Templates)
+    val basesMetric    = CallOverlappingConsensusBasesMetric(tpe=CountType.Bases)
+    val caller         = new OverlappingBasesConsensusCaller(
+      onlyMaskDisagreements = onlyMaskDisagreements,
+      maxQualOnAgreement    = maxQualOnAgreement
+    )
+    val templateIterator = Bams.templateIterator(in=in).flatMap { template =>
+      caller.call(template);
+      // update metrics
+      templateMetric.total += 1
+      basesMetric.total += template.primaryReads.map(_.length).sum
+      template.allReads
+    }
+    new SelfClosingIterator(templateIterator, closer = () => {
+      val pctTemplates = if (templateMetric.overlapping == 0) 0 else 100 * templateMetric.corrected / templateMetric.overlapping.toDouble
+      val pctBases     = if (basesMetric.overlapping == 0) 0 else 100 * basesMetric.corrected / basesMetric.overlapping.toDouble
+      logger.info("Consensus calling overlapping read pairs statistics:")
+      logger.info(f"    ${templateMetric.overlapping}%,d overlapping templates")
+      logger.info(f"    ${templateMetric.corrected}%,d corrected templates (${pctTemplates}%.2f%%)")
+      logger.info(f"    ${basesMetric.overlapping}%,d overlapping bases")
+      logger.info(f"    ${basesMetric.corrected}%,d corrected bases (${pctBases}%.2f%%)")
+    })
   }
 }
 

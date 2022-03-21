@@ -90,12 +90,12 @@ class CallOverlappingConsensusBases
   Io.assertReadable(input)
   Io.assertCanWriteFile(output)
 
-  private case class ThreadData(caller: OverlappingBasesConsensusCaller, templateMetric: CorrectOverlappingBasesMetric, basesMetric: CorrectOverlappingBasesMetric)
+  private case class ThreadData(caller: OverlappingBasesConsensusCaller, templateMetric: CallOverlappingConsensusBasesMetric, basesMetric: CallOverlappingConsensusBasesMetric)
   private object ThreadData {
     def apply(): ThreadData = ThreadData(
       caller         = new OverlappingBasesConsensusCaller(onlyMaskDisagreements=onlyMaskDisagreements, maxQualOnAgreement=maxQualOnAgreement),
-      templateMetric = CorrectOverlappingBasesMetric(tpe=CountType.Templates),
-      basesMetric    = CorrectOverlappingBasesMetric(tpe=CountType.Bases)
+      templateMetric = CallOverlappingConsensusBasesMetric(tpe=CountType.Templates),
+      basesMetric    = CallOverlappingConsensusBasesMetric(tpe=CountType.Bases)
     )
   }
 
@@ -135,8 +135,8 @@ class CallOverlappingConsensusBases
     source.safelyClose()
     writer.close()
 
-    val templatesMetric = CorrectOverlappingBasesMetric(tpe=CountType.Templates)
-    val basesMetric     = CorrectOverlappingBasesMetric(tpe=CountType.Bases)
+    val templatesMetric = CallOverlappingConsensusBasesMetric(tpe=CountType.Templates)
+    val basesMetric     = CallOverlappingConsensusBasesMetric(tpe=CountType.Bases)
     threadData.foreach { datum =>
       templatesMetric += datum.templateMetric
       basesMetric     += datum.basesMetric
@@ -155,14 +155,14 @@ class CallOverlappingConsensusBases
   * @param overlapping the total number of templates (bases) that were overlapping
   * @param corrected the total number of templates (bases) that were corrected.
   */
-case class CorrectOverlappingBasesMetric
+case class CallOverlappingConsensusBasesMetric
 (
   tpe: CountType,
   var total: Long = 0,
   var overlapping: Long = 0,
   var corrected: Long = 0,
 ) extends Metric {
-  def +=(other: CorrectOverlappingBasesMetric): CorrectOverlappingBasesMetric = {
+  def +=(other: CallOverlappingConsensusBasesMetric): CallOverlappingConsensusBasesMetric = {
     require(this.tpe == other.tpe)
     this.total += other.total
     this.overlapping += other.overlapping
@@ -173,7 +173,7 @@ case class CorrectOverlappingBasesMetric
 
 sealed trait CountType extends EnumEntry
 
-/** Enumeration for the type of counts in [[CorrectOverlappingBasesMetric]]. */
+/** Enumeration for the type of counts in [[CallOverlappingConsensusBasesMetric]]. */
 object CountType extends FgBioEnum[CountType] {
   case object Templates extends CountType
   case object Bases extends CountType

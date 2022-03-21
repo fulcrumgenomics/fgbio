@@ -26,8 +26,10 @@
 package com.fulcrumgenomics.umi
 
 import com.fulcrumgenomics.FgBioDef._
+import com.fulcrumgenomics.bam.{Bams, CallOverlappingConsensusBasesMetric, CountType, OverlappingBasesConsensusCaller}
 import com.fulcrumgenomics.bam.api.{SamOrder, SamSource, SamWriter}
 import com.fulcrumgenomics.cmdline.{ClpGroups, FgBioMain, FgBioTool}
+import com.fulcrumgenomics.commons.collection.SelfClosingIterator
 import com.fulcrumgenomics.commons.io.Io
 import com.fulcrumgenomics.commons.util.{LazyLogging, LogLevel, Logger}
 import com.fulcrumgenomics.sopt._
@@ -123,7 +125,23 @@ class CallMolecularConsensusReads
  @arg(flag='B', doc="If true produce tags on consensus reads that contain per-base information.") val outputPerBaseTags: Boolean = DefaultProducePerBaseTags,
  @arg(flag='S', doc="The sort order of the output, the same as the input if not given.") val sortOrder: Option[SamOrder] = None,
  @arg(flag='D', doc="Turn on debug logging.") val debug: Boolean = false,
- @arg(doc="The number of threads to use while consensus calling.") val threads: Int = 1
+ @arg(doc="The number of threads to use while consensus calling.") val threads: Int = 1,
+ @arg(doc="Consensus call overlapping bases in mapped paired end reads") val consensusCallOverlappingBases: Boolean = true,
+ @arg(doc=
+    """
+    |When `--consensus-call-overlapping-bases` is being used, if the read and mate bases disagree at a given
+    |reference position, true to mask (make 'N') the read and mate bases, otherwise pick the base with the
+    |highest base quality and call a base quality that's the difference between the higher and lower base
+    |quality.
+  """)
+ val onlyMaskDisagreements: Boolean = false,
+ @arg(doc=
+   """
+     |When `--consensus-call-overlapping-bases` is being used, if the read and mate bases agree at a given reference
+     |position, true to for the resulting base quality to be the maximum base quality, otherwise the sum of the base
+     |qualities.
+     |""")
+ val maxQualOnAgreement: Boolean = false
 ) extends FgBioTool with LazyLogging {
 
   if (debug) Logger.level = LogLevel.Debug
@@ -142,6 +160,16 @@ class CallMolecularConsensusReads
     val in  = SamSource(input)
     UmiConsensusCaller.checkSortOrder(in.header, input, logger.warning, fail)
     val rej = rejects.map(r => SamWriter(r, in.header))
+
+    // Build an iterator for the input reads, which only really matters if calling consensus in overlapping read pairs.
+    val inIter = if (!consensusCallOverlappingBases) in.iterator else {
+      OverlappingBasesConsensusCaller.iterator(
+        in                    = in,
+        logger                = logger,
+        onlyMaskDisagreements = onlyMaskDisagreements,
+        maxQualOnAgreement    = maxQualOnAgreement
+      )
+    }
 
     // The output file is unmapped, so for now let's clear out the sequence dictionary & PGs
     val outHeader = UmiConsensusCaller.outputHeader(in.header, readGroupId, sortOrder)
@@ -166,7 +194,7 @@ class CallMolecularConsensusReads
     )
 
     val progress = ProgressLogger(logger, unit=1e6.toInt)
-    val iterator = new ConsensusCallingIterator(in.iterator, caller, Some(progress), threads=threads)
+    val iterator = new ConsensusCallingIterator(inIter, caller, Some(progress), threads=threads)
     out ++= iterator
 
     progress.logLast()
