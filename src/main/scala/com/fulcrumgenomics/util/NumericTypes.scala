@@ -150,7 +150,7 @@ object NumericTypes {
       * See Equation (7) in https://cran.r-project.org/web/packages/Rmpfr/vignettes/log1mexp-note.pdf
       */
     private def log1mexp(value: Double): Double = {
-      if (value < 0) throw new IllegalArgumentException("value was less than zero: " + value)
+      if (value <= 0) throw new IllegalArgumentException("value was less than or equal to zero: " + value)
       else if (value <= LnTwo) log(-expm1(-value))
       else log1p(-exp(-value)) // value > LnTwo
     }
