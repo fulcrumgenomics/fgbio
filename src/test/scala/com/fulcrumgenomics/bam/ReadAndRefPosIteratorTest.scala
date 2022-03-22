@@ -25,13 +25,14 @@
 
 package com.fulcrumgenomics.bam
 
+import com.fulcrumgenomics.alignment.Cigar
 import com.fulcrumgenomics.bam.ReadAndRefPosIterator.ReadAndRefPos
 import com.fulcrumgenomics.testing.{SamBuilder, UnitSpec}
 
 class ReadAndRefPosIteratorTest extends UnitSpec {
 
   private def test(start: Int, cigar: String, readPositions: Seq[Int], refPositions: Seq[Int]): Unit = {
-    val builder   = new SamBuilder(10)
+    val builder   = new SamBuilder(Cigar(cigar).lengthOnQuery)
     val frag      = builder.addFrag(start=start, cigar=cigar).value
     val positions = ReadAndRefPosIterator(rec=frag).toIndexedSeq
     positions.map(_.read) should contain theSameElementsInOrderAs readPositions
@@ -41,11 +42,12 @@ class ReadAndRefPosIteratorTest extends UnitSpec {
   private def ri(start: Int, end: Int): Range = Range.inclusive(start=start, end=end)
 
   "ReadAndRefPosIterator" should "return the read and reference positions" in {
-    test(start=10, cigar="10M",    ri(1, 10), ri(10, 19))
-    test(start=10, cigar="1S9M",   ri(2, 10), ri(10, 18))
-    test(start=10, cigar="9M1S",   ri(1, 9),  ri(10, 18))
-    test(start=10, cigar="5M2D5M", ri(1, 10), ri(10, 14) ++ ri(17, 21))
-    test(start=1, cigar="4M2I4M",  ri(1, 4) ++ ri(7, 10), ri(1, 8))
+    test(start=10, cigar="10M",    readPositions=ri(1, 10),             refPositions=ri(10, 19))
+    test(start=10, cigar="1S9M",   readPositions=ri(2, 10),             refPositions=ri(10, 18))
+    test(start=10, cigar="9M1S",   readPositions=ri(1, 9),              refPositions=ri(10, 18))
+    test(start=10, cigar="5M2D5M", readPositions=ri(1, 10),             refPositions=ri(10, 14) ++ ri(17, 21))
+    test(start=1, cigar="4M2I4M",  readPositions=ri(1, 4) ++ ri(7, 10), refPositions=ri(1, 8))
+    test(start=6, cigar="10S15M5D5M5I65M5H", readPositions=ri(11, 30) ++ ri(36, 100), refPositions=ri(6, 20) ++ ri(26, 95))
   }
 
   it should "return the read and reference positions for read windows that overlap the alignment" in {

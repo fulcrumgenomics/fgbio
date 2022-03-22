@@ -31,33 +31,6 @@ import com.fulcrumgenomics.bam.ReadAndRefPosIterator.ReadAndRefPos
 import com.fulcrumgenomics.bam.api.SamRecord
 import htsjdk.samtools.util.CoordMath
 
-
-object ReadAndRefPosIterator {
-  /** Stores a 1-based position in the read and reference
-    *
-    * @param read 1-based position in the read
-    * @param ref 1-based position in the reference
-    */
-  case class ReadAndRefPos(read: Int, ref: Int)
-
-  /** Builds a [[ReadAndRefPosIterator]] over a [[SamRecord]].
-    *
-    * The start/end read/rec positions default to the full alignment unless given.
-    * */
-  def apply(rec: SamRecord,
-            startReadPos: Option[Int] = None,
-            endReadPos: Option[Int] = None,
-            startRefPos: Option[Int] = None,
-            endRefPos: Option[Int] = None,
-           ): ReadAndRefPosIterator = new ReadAndRefPosIterator(
-    rec          = rec,
-    startReadPos = startReadPos.getOrElse(1),
-    endReadPos   = endReadPos.getOrElse(rec.length),
-    startRefPos  = startRefPos.getOrElse(rec.start),
-    endRefPos    = endRefPos.getOrElse(rec.end),
-  )
-}
-
 /** An iterator for each _mapped_ read base (i.e. has a corresponding reference base), with each value being the
   * 1-based position in the read and reference respectively.
   *
@@ -158,6 +131,32 @@ class ReadAndRefPosIterator (rec: SamRecord,
       curReadPos += inElemOffset
     }
   }
+}
+
+object ReadAndRefPosIterator {
+  /** Stores a 1-based position in the read and reference
+    *
+    * @param read 1-based position in the read
+    * @param ref 1-based position in the reference
+    */
+  case class ReadAndRefPos(read: Int, ref: Int)
+
+  /** Builds a [[ReadAndRefPosIterator]] over a [[SamRecord]].
+    *
+    * The start/end read/rec positions default to the full alignment unless given.
+    * */
+  def apply(rec: SamRecord,
+            startReadPos: Option[Int] = None,
+            endReadPos: Option[Int] = None,
+            startRefPos: Option[Int] = None,
+            endRefPos: Option[Int] = None,
+           ): ReadAndRefPosIterator = new ReadAndRefPosIterator(
+    rec          = rec,
+    startReadPos = startReadPos.getOrElse(1),
+    endReadPos   = endReadPos.getOrElse(rec.length),
+    startRefPos  = startRefPos.getOrElse(rec.start),
+    endRefPos    = endRefPos.getOrElse(rec.end),
+  )
 }
 
 object MateOverlappingReadAndRefPosIterator {
