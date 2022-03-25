@@ -69,8 +69,6 @@ import scala.collection.immutable
     |   the base quality will be the difference between the larger and smaller base quality.  The
     |   `--only-mask-disagreements` option overrides behavior and sets all differing bases to `N` with a base quality of
     |   2.
-    |
-    |The read and its mate will have their bases corrected and base qualities updated based on the procedure above.
   """)
 class CallOverlappingConsensusBases
 ( @arg(flag='i', doc="Input SAM or BAM file of aligned reads.") val input: PathToBam,
@@ -84,20 +82,15 @@ class CallOverlappingConsensusBases
              |between the higher and lower base qualities.""")
   val onlyMaskDisagreements: Boolean = false,
   @arg(doc= """If the read and mate bases agree at a given reference position, true to for the resulting base quality
-              |to be the maximum base quality, otherwise the sum of the base qualities.""")
+              |to be the maximum of the two base qualities, otherwise the sum of the base qualities.""")
   val maxQualOnAgreement: Boolean = false
 ) extends FgBioTool with LazyLogging {
   Io.assertReadable(input)
   Io.assertCanWriteFile(output)
 
-  private case class ThreadData(caller: OverlappingBasesConsensusCaller, templateMetric: CallOverlappingConsensusBasesMetric, basesMetric: CallOverlappingConsensusBasesMetric)
-  private object ThreadData {
-    def apply(): ThreadData = ThreadData(
-      caller         = new OverlappingBasesConsensusCaller(onlyMaskDisagreements=onlyMaskDisagreements, maxQualOnAgreement=maxQualOnAgreement),
-      templateMetric = CallOverlappingConsensusBasesMetric(tpe=CountType.Templates),
-      basesMetric    = CallOverlappingConsensusBasesMetric(tpe=CountType.Bases)
-    )
-  }
+  private case class ThreadData(caller: OverlappingBasesConsensusCaller = new OverlappingBasesConsensusCaller(onlyMaskDisagreements=onlyMaskDisagreements, maxQualOnAgreement=maxQualOnAgreement),
+                                templateMetric: CallOverlappingConsensusBasesMetric = CallOverlappingConsensusBasesMetric(tpe=CountType.Templates),
+                                basesMetric: CallOverlappingConsensusBasesMetric = CallOverlappingConsensusBasesMetric(tpe=CountType.Bases))
 
   override def execute(): Unit = {
     val source           = SamSource(input)
