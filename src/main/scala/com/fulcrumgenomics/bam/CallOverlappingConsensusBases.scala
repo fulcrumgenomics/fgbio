@@ -44,11 +44,11 @@ import scala.collection.immutable
     |
     |## Inputs and Outputs
     |
-    |In order to correctly correct reads by template, the input BAM must be either `queryname`  or `query` grouped.  The
+    |In order to correctly correct reads by template, the input BAM must be either `queryname` sorted or `query` grouped.  The
     |sort can be done in streaming fashion with:
     |
     |```
-    |samtools sort -n -u in.bam | fgbio ClipBam -i /dev/stdin ...
+    |samtools sort -n -u in.bam | fgbio CallOverlappingConsensusBases -i /dev/stdin ...
     |```
     |
     |The output sort order may be specified with `--sort-order`.  If not given, then the output will be in the same
