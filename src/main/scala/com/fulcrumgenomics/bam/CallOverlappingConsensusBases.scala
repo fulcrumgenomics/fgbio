@@ -48,7 +48,7 @@ import scala.collection.immutable
     |sort can be done in streaming fashion with:
     |
     |```
-    |samtools sort -n -u in.bam | fgbio CallOverlappingConsensusBases -i /dev/stdin ...
+    |fgbio --compression 0 SortBam -i in.bam -o out.bam -s queryname | fgbio CallOverlappingConsensusBases -i /dev/stdin ...
     |```
     |
     |The output sort order may be specified with `--sort-order`.  If not given, then the output will be in the same
