@@ -58,11 +58,11 @@ import scala.collection.immutable
     |
     |Only mapped read pairs with overlapping bases will be eligible for correction.
     |
-    |Next, each read base from the read and its mate that map to same position in the reference will be used to create
+    |Each read base from the read and its mate that map to same position in the reference will be used to create
     |a consensus base as follows:
     |
     |1. if the read and mate bases are the same, the consensus base is that base with the base quality equal to the sum
-    |   of the two base qualities.  The base quality can be the maximum base quality off the two base qualities if
+    |   of the two base qualities.  The base quality can be the maximum base quality of the two base qualities if
     |   `--max-qual-on-agreement` is used.
     |2. if the read and mate bases differ, then the base with the highest associated base quality will be the consensus
     |   call.  If the read and mate have the same base quality, then the output base quality will be 2.  Otherwise,
