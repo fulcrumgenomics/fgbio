@@ -30,13 +30,13 @@ import com.fulcrumgenomics.util.NumericTypes.PhredScore
 
 class OverlappingBasesConsensusCallerTest extends UnitSpec {
 
-  private def caller(onlyMaskDisagreements: Boolean = false,
-             maxQualOnAgreement: Boolean = false): OverlappingBasesConsensusCaller = {
-    new OverlappingBasesConsensusCaller(onlyMaskDisagreements=onlyMaskDisagreements, maxQualOnAgreement=maxQualOnAgreement)
+  private def caller(maskDisagreements: Boolean = false,
+                     maxQualOnAgreement: Boolean = false): OverlappingBasesConsensusCaller = {
+    new OverlappingBasesConsensusCaller(maskDisagreements=maskDisagreements, maxQualOnAgreement=maxQualOnAgreement)
   }
 
   private def quals(q: Int, rl: Int): String = (33 + q).toChar.toString * rl
-  
+
   private val minQual: String = quals(q=PhredScore.MinValue, rl=1)
   private val q10: String = quals(q=10, rl=1)
   private val q20: String = quals(q=20, rl=1)
@@ -143,7 +143,7 @@ class OverlappingBasesConsensusCallerTest extends UnitSpec {
     r1.matesOverlap.contains(true) shouldBe true
     r2.matesOverlap.contains(true) shouldBe true
 
-    caller(onlyMaskDisagreements=true).call(r1, r2) shouldBe CorrectionStats(1, 1, 1, 1)
+    caller(maskDisagreements=true).call(r1, r2) shouldBe CorrectionStats(1, 1, 1, 1)
     r1.basesString shouldBe "A"*9  + "N"
     r1.qualsString shouldBe q10*9 + minQual
     r2.basesString shouldBe "N" + "C"*9

@@ -36,16 +36,16 @@ import com.fulcrumgenomics.util.NumericTypes.PhredScore
   * This will iterate through the mapped bases that overlap between the read and mate in a read pair.  If the read and
   * mate agree at a given reference position, then read and mate base will not change and the base quality returned
   * is controlled by `maxQualOnAgreement`. If they disagree at a given reference position, then the base and quality
-  * returned is controlled by `onlyMaskDisagreements`.
+  * returned is controlled by `maskDisagreements`.
   *
-  * @param onlyMaskDisagreements if the read and mate bases disagree at a given reference position, true to mask (make
-  *                              'N') the read and mate bases, otherwise pick the base with the highest base quality and
-  *                              return a base quality that's the difference between the higher and lower base quality.
+  * @param maskDisagreements if the read and mate bases disagree at a given reference position, true to mask (make
+  *                          'N') the read and mate bases, otherwise pick the base with the highest base quality and
+  *                          return a base quality that's the difference between the higher and lower base quality.
   * @param maxQualOnAgreement    if the read and mate bases agree at a given reference position, true to for the
   *                              resulting base quality to be the maximum base quality, otherwise the sum of the base
   *                              qualities.
   */
-class OverlappingBasesConsensusCaller(onlyMaskDisagreements: Boolean = false,
+class OverlappingBasesConsensusCaller(maskDisagreements: Boolean = false,
                                       maxQualOnAgreement: Boolean = false) {
   private val NoCall: Byte = 'N'.toByte
   private val NoCallQual: PhredScore = PhredScore.MinValue
@@ -141,7 +141,7 @@ class OverlappingBasesConsensusCaller(onlyMaskDisagreements: Boolean = false,
         )
 
         // Only add the consensus call if we aren't masking disagreements or its a no-call
-        if (onlyMaskDisagreements && base != NoCall) {
+        if (maskDisagreements && base != NoCall) {
           r1BasesBuilder.addOne(r1Bases(r1LastReadPos))
           r1QualsBuilder.addOne(r1Quals(r1LastReadPos))
           r2BasesBuilder.addOne(r2Bases(r2LastReadPos))
@@ -189,7 +189,7 @@ class OverlappingBasesConsensusCaller(onlyMaskDisagreements: Boolean = false,
     val (rawBase: Byte, rawQual: PhredScore) = {
       if      (base1 == base2 && maxQualOnAgreement)   (base1,  Math.max(qual1, qual2).toByte) // use the maximum base quality
       else if (base1 == base2 && !maxQualOnAgreement)  (base1,  PhredScore.cap(qual1 + qual2)) // use the sum of base qualities
-      else if (onlyMaskDisagreements)                  (NoCall, NoCallQual)                    // disagreements are no-calls
+      else if (maskDisagreements)                  (NoCall, NoCallQual)                    // disagreements are no-calls
       else if (qual1 > qual2)                          (base1,  PhredScore.cap(qual1 - qual2))
       else if (qual2 > qual1)                          (base2,  PhredScore.cap(qual2 - qual1))
       else                                             (base1,  PhredScore.MinValue)
@@ -207,18 +207,18 @@ object OverlappingBasesConsensusCaller {
     *
     * @param in the input [[SamSource]] from which to read
     * @param logger the logger, to which output statistics are written
-    * @param onlyMaskDisagreements see [[OverlappingBasesConsensusCaller]]
+    * @param maskDisagreements see [[OverlappingBasesConsensusCaller]]
     * @param maxQualOnAgreement see [[OverlappingBasesConsensusCaller]]
     */
   def iterator(in: SamSource,
                logger: Logger,
-               onlyMaskDisagreements: Boolean = false,
+               maskDisagreements: Boolean = false,
                maxQualOnAgreement: Boolean = false): Iterator[SamRecord] = {
     val templateMetric = CallOverlappingConsensusBasesMetric(tpe=CountType.Templates)
     val basesMetric    = CallOverlappingConsensusBasesMetric(tpe=CountType.Bases)
     val caller         = new OverlappingBasesConsensusCaller(
-      onlyMaskDisagreements = onlyMaskDisagreements,
-      maxQualOnAgreement    = maxQualOnAgreement
+      maskDisagreements  = maskDisagreements,
+      maxQualOnAgreement = maxQualOnAgreement
     )
     val templateIterator = Bams.templateIterator(in=in).flatMap { template =>
       caller.call(template);

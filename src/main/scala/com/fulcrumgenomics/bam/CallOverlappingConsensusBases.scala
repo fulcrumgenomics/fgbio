@@ -71,26 +71,29 @@ import scala.collection.immutable
     |   2.
   """)
 class CallOverlappingConsensusBases
-( @arg(flag='i', doc="Input SAM or BAM file of aligned reads.") val input: PathToBam,
-  @arg(flag='o', doc="Output SAM or BAM file.") val output: PathToBam,
-  @arg(flag='m', doc="Output metrics file.") val metrics: FilePath,
-  @arg(doc="The number of threads to use while consensus calling.") val threads: Int = 1,
-  @arg(flag='S', doc="The sort order of the output. If not given, output will be in the same order as input if the input.")
+(@arg(flag='i', doc="Input SAM or BAM file of aligned reads.") val input: PathToBam,
+ @arg(flag='o', doc="Output SAM or BAM file.") val output: PathToBam,
+ @arg(flag='m', doc="Output metrics file.") val metrics: FilePath,
+ @arg(doc="The number of threads to use while consensus calling.") val threads: Int = 1,
+ @arg(flag='S', doc="The sort order of the output. If not given, output will be in the same order as input if the input.")
   val sortOrder: Option[SamOrder] = None,
-  @arg(doc="""If the read and mate bases disagree at a given reference position, true to mask (make 'N') the read and mate
+ @arg(doc="""If the read and mate bases disagree at a given reference position, true to mask (make 'N') the read and mate
              |bases, otherwise pick the base with the highest base quality and return a base quality that's the difference
              |between the higher and lower base qualities.""")
-  val onlyMaskDisagreements: Boolean = false,
-  @arg(doc= """If the read and mate bases agree at a given reference position, true to for the resulting base quality
-              |to be the maximum of the two base qualities, otherwise the sum of the base qualities.""")
+
+  val maskDisagreements: Boolean = false,
+ @arg(doc= """If the read and mate bases agree at a given reference position, true to for the resulting base quality
+              |to be the maximum base quality, otherwise the sum of the base qualities.""")
   val maxQualOnAgreement: Boolean = false
 ) extends FgBioTool with LazyLogging {
   Io.assertReadable(input)
   Io.assertCanWriteFile(output)
 
-  private case class ThreadData(caller: OverlappingBasesConsensusCaller = new OverlappingBasesConsensusCaller(onlyMaskDisagreements=onlyMaskDisagreements, maxQualOnAgreement=maxQualOnAgreement),
-                                templateMetric: CallOverlappingConsensusBasesMetric = CallOverlappingConsensusBasesMetric(tpe=CountType.Templates),
-                                basesMetric: CallOverlappingConsensusBasesMetric = CallOverlappingConsensusBasesMetric(tpe=CountType.Bases))
+  private case class ThreadData
+  (caller: OverlappingBasesConsensusCaller             = new OverlappingBasesConsensusCaller(maskDisagreements=maskDisagreements, maxQualOnAgreement=maxQualOnAgreement),
+   templateMetric: CallOverlappingConsensusBasesMetric = CallOverlappingConsensusBasesMetric(tpe=CountType.Templates),
+   basesMetric: CallOverlappingConsensusBasesMetric    = CallOverlappingConsensusBasesMetric(tpe=CountType.Bases)
+  )
 
   override def execute(): Unit = {
     val source           = SamSource(input)

@@ -115,7 +115,7 @@ class CallDuplexConsensusReads
      |highest base quality and call a base quality that's the difference between the higher and lower base
      |quality.
   """)
- val onlyMaskDisagreements: Boolean = false,
+ val maskDisagreements: Boolean = false,
  @arg(doc=
   """
     |When `--consensus-call-overlapping-bases` is being used, if the read and mate bases agree at a given reference
@@ -139,7 +139,7 @@ class CallDuplexConsensusReads
       OverlappingBasesConsensusCaller.iterator(
         in                    = in,
         logger                = logger,
-        onlyMaskDisagreements = onlyMaskDisagreements,
+        maskDisagreements = maskDisagreements,
         maxQualOnAgreement    = maxQualOnAgreement
       )
     }
