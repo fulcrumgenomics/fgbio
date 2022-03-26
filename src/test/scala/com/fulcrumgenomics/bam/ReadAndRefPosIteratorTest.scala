@@ -147,15 +147,12 @@ class ReadAndRefPosIteratorTest extends UnitSpec {
     ).toIndexedSeq should contain theSameElementsInOrderAs Seq(ReadAndRefPos(100, 209))
 
   }
-}
 
-class MateOverlappingReadAndRefPosIteratorTest extends UnitSpec {
-
-  "MateOverlappingReadAndRefPosIterator" should "return read and reference positions for a perfectly overlapping read pair" in {
+  "ReadAndRefPosIterator.apply" should "return read and reference positions for a perfectly overlapping read pair" in {
     val builder     = new SamBuilder()
     val Seq(r1, r2) = builder.addPair(start1=1, cigar1="100M", start2=1, cigar2="100M")
-    val positions1   = new MateOverlappingReadAndRefPosIterator(r1, r2).toIndexedSeq
-    val positions2   = new MateOverlappingReadAndRefPosIterator(r2, r1).toIndexedSeq
+    val positions1   = ReadAndRefPosIterator(r1, r2).toIndexedSeq
+    val positions2   = ReadAndRefPosIterator(r2, r1).toIndexedSeq
 
     positions1.map(_.readPos) should contain theSameElementsInOrderAs Range.inclusive(start=1, end=100)
     positions1.map(_.refPos) should contain theSameElementsInOrderAs Range.inclusive(start=1, end=100)
@@ -167,8 +164,8 @@ class MateOverlappingReadAndRefPosIteratorTest extends UnitSpec {
   it should "return an empty iterator for non-overlapping mates" in {
     val builder     = new SamBuilder()
     val Seq(r1, r2) = builder.addPair(start1=1, cigar1="100M", start2=101, cigar2="100M")
-    val positions1  = new MateOverlappingReadAndRefPosIterator(r1, r2).toIndexedSeq
-    val positions2  = new MateOverlappingReadAndRefPosIterator(r2, r1).toIndexedSeq
+    val positions1  = ReadAndRefPosIterator(r1, r2).toIndexedSeq
+    val positions2  = ReadAndRefPosIterator(r2, r1).toIndexedSeq
 
     positions1.map(_.readPos) should contain theSameElementsInOrderAs Seq()
     positions1.map(_.refPos) should contain theSameElementsInOrderAs Seq()
@@ -179,8 +176,8 @@ class MateOverlappingReadAndRefPosIteratorTest extends UnitSpec {
   it should "return read and reference positions for a partially overlapping read pair" in {
     val builder     = new SamBuilder()
     val Seq(r1, r2) = builder.addPair(start1=1, cigar1="100M", start2=50, cigar2="100M")
-    val positions1  = new MateOverlappingReadAndRefPosIterator(r1, r2).toIndexedSeq
-    val positions2  = new MateOverlappingReadAndRefPosIterator(r2, r1).toIndexedSeq
+    val positions1  = ReadAndRefPosIterator(r1, r2).toIndexedSeq
+    val positions2  = ReadAndRefPosIterator(r2, r1).toIndexedSeq
 
     positions1.map(_.readPos) should contain theSameElementsInOrderAs Range.inclusive(start=50, end=100)
     positions1.map(_.refPos) should contain theSameElementsInOrderAs Range.inclusive(start=50, end=100)
@@ -191,8 +188,8 @@ class MateOverlappingReadAndRefPosIteratorTest extends UnitSpec {
   it should "return read and reference positions for a read pair overlapping 1bp" in {
     val builder     = new SamBuilder()
     val Seq(r1, r2) = builder.addPair(start1=1, cigar1="100M", start2=100, cigar2="100M")
-    val positions1  = new MateOverlappingReadAndRefPosIterator(r1, r2).toIndexedSeq
-    val positions2  = new MateOverlappingReadAndRefPosIterator(r2, r1).toIndexedSeq
+    val positions1  = ReadAndRefPosIterator(r1, r2).toIndexedSeq
+    val positions2  = ReadAndRefPosIterator(r2, r1).toIndexedSeq
 
     positions1.map(_.readPos) should contain theSameElementsInOrderAs Seq(100)
     positions1.map(_.refPos) should contain theSameElementsInOrderAs Seq(100)
@@ -203,8 +200,8 @@ class MateOverlappingReadAndRefPosIteratorTest extends UnitSpec {
   it should "return read and reference positions for a read pair with soft-clipping in the overlap" in {
     val builder     = new SamBuilder()
     val Seq(r1, r2) = builder.addPair(start1=100, cigar1="20S80M", start2=150, cigar2="20S80M")
-    val positions1  = new MateOverlappingReadAndRefPosIterator(r1, r2).toIndexedSeq
-    val positions2  = new MateOverlappingReadAndRefPosIterator(r2, r1).toIndexedSeq
+    val positions1  = ReadAndRefPosIterator(r1, r2).toIndexedSeq
+    val positions2  = ReadAndRefPosIterator(r2, r1).toIndexedSeq
 
     positions1.map(_.readPos) should contain theSameElementsInOrderAs Range.inclusive(start=71, end=100)
     positions1.map(_.refPos) should contain theSameElementsInOrderAs Range.inclusive(start=150, end=179)
@@ -215,8 +212,8 @@ class MateOverlappingReadAndRefPosIteratorTest extends UnitSpec {
   it should "return read and reference positions for a read pair where each read extends past the other's end" in {
     val builder     = new SamBuilder()
     val Seq(r1, r2) = builder.addPair(start1=100, cigar1="10S90M", start2=90, cigar2="90M10S")
-    val positions1  = new MateOverlappingReadAndRefPosIterator(r1, r2).toIndexedSeq
-    val positions2  = new MateOverlappingReadAndRefPosIterator(r2, r1).toIndexedSeq
+    val positions1  = ReadAndRefPosIterator(r1, r2).toIndexedSeq
+    val positions2  = ReadAndRefPosIterator(r2, r1).toIndexedSeq
 
     // R1 read: first 10bp of read is soft-clipped, and last 10bp extend past mate's end
     positions1.map(_.readPos) should contain theSameElementsInOrderAs Range.inclusive(start=11, end=90)
@@ -229,8 +226,8 @@ class MateOverlappingReadAndRefPosIteratorTest extends UnitSpec {
   it should "not return a value for an insertion" in {
     val builder     = new SamBuilder(10)
     val Seq(r1, r2) = builder.addPair(start1=10, cigar1="4M2I4M", start2=10, cigar2="10M")
-    val positions1  = new MateOverlappingReadAndRefPosIterator(r1, r2).toIndexedSeq
-    val positions2  = new MateOverlappingReadAndRefPosIterator(r2, r1).toIndexedSeq
+    val positions1  = ReadAndRefPosIterator(r1, r2).toIndexedSeq
+    val positions2  = ReadAndRefPosIterator(r2, r1).toIndexedSeq
 
     positions1.map(_.readPos) should contain theSameElementsInOrderAs Seq(1, 2, 3, 4, 7, 8, 9, 10)
     positions1.map(_.refPos) should contain theSameElementsInOrderAs Seq(10, 11, 12, 13, 14, 15, 16, 17)
@@ -241,8 +238,8 @@ class MateOverlappingReadAndRefPosIteratorTest extends UnitSpec {
   it should "not return a value for a deletion" in {
     val builder     = new SamBuilder(10)
     val Seq(r1, r2) = builder.addPair(start1=10, cigar1="5M2D5M", start2=11, cigar2="10M")
-    val positions1  = new MateOverlappingReadAndRefPosIterator(r1, r2).toIndexedSeq
-    val positions2  = new MateOverlappingReadAndRefPosIterator(r2, r1).toIndexedSeq
+    val positions1  = ReadAndRefPosIterator(r1, r2).toIndexedSeq
+    val positions2  = ReadAndRefPosIterator(r2, r1).toIndexedSeq
 
     // R1 read: last 2bp are past the end of it's mate
     positions1.map(_.readPos) should contain theSameElementsInOrderAs Range.inclusive(start=2, end=9)
@@ -255,8 +252,8 @@ class MateOverlappingReadAndRefPosIteratorTest extends UnitSpec {
   it should "return values for a complicated cigar in an overlapping read pair" in {
     val builder     = new SamBuilder(100)
     val Seq(r1, r2) = builder.addPair(start1=1, cigar1="10S45M10I15M5D10M3I2M5S", start2=50, cigar2="100M")
-    val positions1  = new MateOverlappingReadAndRefPosIterator(r1, r2).toIndexedSeq
-    val positions2  = new MateOverlappingReadAndRefPosIterator(r2, r1).toIndexedSeq
+    val positions1  = ReadAndRefPosIterator(r1, r2).toIndexedSeq
+    val positions2  = ReadAndRefPosIterator(r2, r1).toIndexedSeq
 
     // R1 read: first 10b soft-clip (skip), next 45bp before mate start (skip), 10bp insertion (skip), 5M (out of 15M)
     //          before mate start (skip).  Next 10M (out of 15M) aligned (output), 5D skipped (advance ref), 10M used

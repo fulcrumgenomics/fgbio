@@ -149,33 +149,33 @@ object ReadAndRefPosIterator {
     * @param refPos 1-based position in the reference
     */
   case class ReadAndRefPos(readPos: Int, refPos: Int)
-}
 
-/** An iterator for each _mapped_ read base (i.e. has a corresponding reference base) that overlaps the alignment of
-  * its mate, with each value being the 1-based position in the read and reference respectively.
-  *
-  * Insertions and deletions will not be returned.  For example, an insertion consumes a read base, but has no
-  * corresponding reference base.  A deletion consumes a reference base, but has no corresponding read base.
-  *
-  * The _mapped_ read bases returned can be limited using the arguments for the minimum and maximum position in the read
-  * and reference respectively.
-  *
-  * @param rec the record over which read and reference positions should be returned
-  * @param mate the mate of the record
-  * @param minReadPos the minimum 1-based position in the read to return
-  * @param maxReadPos the maximum 1-based inclusive end position in the read to return
-  */
-class MateOverlappingReadAndRefPosIterator(rec: SamRecord,
-                                           mate: SamRecord,
-                                           minReadPos: Int = 1,
-                                           maxReadPos: Int = Int.MaxValue)
-  extends ReadAndRefPosIterator(
-    rec        = rec,
-    minReadPos = minReadPos,
-    maxReadPos = maxReadPos,
-    minRefPos  = Math.max(rec.start, mate.start),
-    maxRefPos  = Math.min(rec.end, mate.end)
-  ) {
-  require(rec.paired && rec.mapped && mate.paired && mate.mapped && rec.name == mate.name)
-  require(rec.refIndex == mate.refIndex)
+  /** An iterator for each _mapped_ read base (i.e. has a corresponding reference base) that overlaps the alignment of
+    * its mate, with each value being the 1-based position in the read and reference respectively.
+    *
+    * Insertions and deletions will not be returned.  For example, an insertion consumes a read base, but has no
+    * corresponding reference base.  A deletion consumes a reference base, but has no corresponding read base.
+    *
+    * The _mapped_ read bases returned can be limited using the arguments for the minimum and maximum position in the read
+    * and reference respectively.
+    *
+    * @param rec the record over which read and reference positions should be returned
+    * @param mate the mate of the record
+    * @param minReadPos the minimum 1-based position in the read to return
+    * @param maxReadPos the maximum 1-based inclusive end position in the read to return
+    */
+  def apply(rec: SamRecord,
+            mate: SamRecord,
+            minReadPos: Int = 1,
+            maxReadPos: Int = Int.MaxValue): ReadAndRefPosIterator = {
+    require(rec.paired && rec.mapped && mate.paired && mate.mapped && rec.name == mate.name)
+    require(rec.refIndex == mate.refIndex)
+    new ReadAndRefPosIterator(
+      rec        = rec,
+      minReadPos = minReadPos,
+      maxReadPos = maxReadPos,
+      minRefPos  = Math.max(rec.start, mate.start),
+      maxRefPos  = Math.min(rec.end, mate.end)
+    )
+  }
 }

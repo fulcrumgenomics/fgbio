@@ -75,8 +75,10 @@ class OverlappingBasesConsensusCaller(maskDisagreements: Boolean = false,
     require(r1.firstOfPair && r2.secondOfPair)
 
     // Initialize the iters
-    val r1Iter           = new MateOverlappingReadAndRefPosIterator(r1, r2).buffered
-    val r2Iter           = new MateOverlappingReadAndRefPosIterator(r2, r1).buffered
+    val maxStartRefPos   = Math.max(r1.start, r2.start)
+    val minEndRefPos     = Math.min(r1.end, r2.end)
+    val r1Iter           = new ReadAndRefPosIterator(r1, minRefPos=maxStartRefPos, maxRefPos=minEndRefPos).buffered
+    val r2Iter           = new ReadAndRefPosIterator(r2, minRefPos=maxStartRefPos, maxRefPos=minEndRefPos).buffered
     var r1LastReadPos    = r1Iter.head.readPos - 1
     var r2LastReadPos    = r2Iter.head.readPos - 1
     var overlappingBases = 0
@@ -96,7 +98,7 @@ class OverlappingBasesConsensusCaller(maskDisagreements: Boolean = false,
         r2Iter.next()
       }
       else { // both reads are mapped to the same reference bases, so consensus call
-        overlappingBases += 2 // one for each read
+        overlappingBases += 1 // only one for the template
 
         val base1 = r1.bases(r1Head.readPos - 1)
         val base2 = r2.bases(r2Head.readPos - 1)
