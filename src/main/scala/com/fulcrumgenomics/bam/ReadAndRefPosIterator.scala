@@ -37,17 +37,20 @@ import htsjdk.samtools.util.CoordMath
   * Insertions and deletions will not be returned.  For example, an insertion consumes a read base, but has no
   * corresponding reference base.  A deletion consumes a reference base, but has no corresponding read base.
   *
+  * The _mapped_ read bases returned can be limited using the arguments for the minimum and maximum position in the read
+  * and reference respectively.
+  *
   * @param rec the record over which read and reference positions should be returned
-  * @param startReadPos the 1-based start position in the read
-  * @param endReadPos the 1-based inclusive end position in the read
-  * @param startRefPos the 1-based start position in the reference
-  * @param endRefPos the 1-based inclusive end position in the reference
+  * @param minReadPos the minimum 1-based position in the read to return
+  * @param maxReadPos the maximum 1-based inclusive end position in the read to return
+  * @param minRefPos the minimum 1-based start position in the reference to return
+  * @param maxRefPos the maximum 1-based inclusive end position in the reference to return
   * */
 class ReadAndRefPosIterator (rec: SamRecord,
-                             startReadPos: Int,
-                             endReadPos: Int,
-                             startRefPos: Int,
-                             endRefPos: Int,
+                             minReadPos: Int = 1,
+                             maxReadPos: Int = Int.MaxValue,
+                             minRefPos: Int = 1,
+                             maxRefPos: Int = Int.MaxValue,
                             ) extends Iterator[ReadAndRefPos] {
   private val elems        = rec.cigar.elems // the cigar elements
   private var curRefPos    = rec.start // the current 1-based position in the reference
@@ -57,6 +60,12 @@ class ReadAndRefPosIterator (rec: SamRecord,
 
   // the next read and reference position
   private var nextValue: Option[ReadAndRefPos] = None
+
+  // the final bounds in the read and reference to return
+  private val startReadPos = math.max(1, minReadPos)
+  private val endReadPos   = math.min(rec.length, maxReadPos)
+  private val startRefPos  = math.max(rec.start, minRefPos)
+  private val endRefPos    = math.min(rec.end, maxRefPos)
 
   // Initialize: iterate through the cigar elements to find the first aligned (M/X/EQ) element that
   // that has bases that map at or past both the start of the ref and read window respectively
@@ -104,7 +113,7 @@ class ReadAndRefPosIterator (rec: SamRecord,
     if (this.elementIndex == this.elems.length || endReadPos < curReadPos || endRefPos < curRefPos) None
     else {
       // return the current value and increment the element offset
-      yieldAndThen(Some(ReadAndRefPos(read=curReadPos, ref=curRefPos))) {
+      yieldAndThen(Some(ReadAndRefPos(readPos=curReadPos, refPos=curRefPos))) {
         curReadPos += 1
         curRefPos += 1
         inElemOffset += 1
@@ -136,46 +145,11 @@ class ReadAndRefPosIterator (rec: SamRecord,
 object ReadAndRefPosIterator {
   /** Stores a 1-based position in the read and reference
     *
-    * @param read 1-based position in the read
-    * @param ref 1-based position in the reference
+    * @param readPos 1-based position in the read
+    * @param refPos 1-based position in the reference
     */
-  case class ReadAndRefPos(read: Int, ref: Int)
-
-  /** Builds a [[ReadAndRefPosIterator]] over a [[SamRecord]].
-    *
-    * The start/end read/rec positions default to the full alignment unless given.
-    * */
-  def apply(rec: SamRecord,
-            startReadPos: Option[Int] = None,
-            endReadPos: Option[Int] = None,
-            startRefPos: Option[Int] = None,
-            endRefPos: Option[Int] = None,
-           ): ReadAndRefPosIterator = new ReadAndRefPosIterator(
-    rec          = rec,
-    startReadPos = startReadPos.getOrElse(1),
-    endReadPos   = endReadPos.getOrElse(rec.length),
-    startRefPos  = startRefPos.getOrElse(rec.start),
-    endRefPos    = endRefPos.getOrElse(rec.end),
-  )
+  case class ReadAndRefPos(readPos: Int, refPos: Int)
 }
-
-object MateOverlappingReadAndRefPosIterator {
-  /** Builds a [[MateOverlappingReadAndRefPosIterator]] over a [[SamRecord]] and its mate.
-    *
-    * The start/end read positions default to the full overlap unless given.
-    * */
-  def apply(rec: SamRecord,
-            mate: SamRecord,
-            startReadPos: Option[Int] = None,
-            endReadPos: Option[Int] = None
-           ): MateOverlappingReadAndRefPosIterator = new MateOverlappingReadAndRefPosIterator(
-    rec          = rec,
-    mate         = mate,
-    startReadPos = startReadPos.getOrElse(1),
-    endReadPos   = endReadPos.getOrElse(rec.length),
-  )
-}
-
 
 /** An iterator for each _mapped_ read base (i.e. has a corresponding reference base) that overlaps the alignment of
   * its mate, with each value being the 1-based position in the read and reference respectively.
@@ -183,19 +157,22 @@ object MateOverlappingReadAndRefPosIterator {
   * Insertions and deletions will not be returned.  For example, an insertion consumes a read base, but has no
   * corresponding reference base.  A deletion consumes a reference base, but has no corresponding read base.
   *
-  * @param rec the record to iterate
+  * The _mapped_ read bases returned can be limited using the arguments for the minimum and maximum position in the read
+  * and reference respectively.
+  *
+  * @param rec the record over which read and reference positions should be returned
   * @param mate the mate of the record
+  * @param minReadPos the minimum 1-based position in the read to return
+  * @param maxReadPos the maximum 1-based inclusive end position in the read to return
   */
 class MateOverlappingReadAndRefPosIterator(rec: SamRecord,
                                            mate: SamRecord,
-                                           startReadPos: Int,
-                                           endReadPos: Int)
+                                           minReadPos: Int = 1,
+                                           maxReadPos: Int = Int.MaxValue)
   extends ReadAndRefPosIterator(
-    rec          = rec,
-    startReadPos = startReadPos,
-    endReadPos   = endReadPos,
-    startRefPos  = Math.max(rec.start, mate.start),
-    endRefPos    = Math.min(rec.end, mate.end)
+    rec        = rec,
+    minReadPos = minReadPos,
+    maxReadPos = maxReadPos,
   ) {
   require(rec.paired && rec.mapped && mate.paired && mate.mapped && rec.name == mate.name)
   require(rec.refIndex == mate.refIndex)

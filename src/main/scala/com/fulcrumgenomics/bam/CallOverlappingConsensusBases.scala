@@ -91,13 +91,14 @@ class CallOverlappingConsensusBases
 
   private case class ThreadData
   (caller: OverlappingBasesConsensusCaller             = new OverlappingBasesConsensusCaller(maskDisagreements=maskDisagreements, maxQualOnAgreement=maxQualOnAgreement),
-   templateMetric: CallOverlappingConsensusBasesMetric = CallOverlappingConsensusBasesMetric(tpe=CountType.Templates),
-   basesMetric: CallOverlappingConsensusBasesMetric    = CallOverlappingConsensusBasesMetric(tpe=CountType.Bases)
+   templateMetric: CallOverlappingConsensusBasesMetric = CallOverlappingConsensusBasesMetric(kind=CountKind.Templates),
+   basesMetric: CallOverlappingConsensusBasesMetric    = CallOverlappingConsensusBasesMetric(kind=CountKind.Bases)
   )
 
   override def execute(): Unit = {
     val source           = SamSource(input)
-    val writer           = SamWriter(output, source.header)
+    val outSort          = sortOrder.flatMap { order => if (SamOrder(source.header).contains(order)) None else Some(order) }
+    val writer           = SamWriter(output, source.header, sort=outSort)
     val progress         = new ProgressLogger(logger)
     val templateIterator = Bams.templateIterator(source)
     val threadData       = new IterableThreadLocal(() => ThreadData())
@@ -110,12 +111,11 @@ class CallOverlappingConsensusBases
           threadDatum.templateMetric.total += 1
           threadDatum.basesMetric.total += template.primaryReads.map(_.length).sum
           // corrects
-          val stats = threadDatum.caller.call(template)
-          val overlappingBases = stats.r1OverlappingBases + stats.r2OverlappingBases
-          val correctedBases   = stats.r1CorrectedBases + stats.r2CorrectedBases
-          if (overlappingBases > 0) {
+          val stats          = threadDatum.caller.call(template)
+          val correctedBases = stats.r1CorrectedBases + stats.r2CorrectedBases
+          if (stats.overlappingBases > 0) {
             threadDatum.templateMetric.overlapping += 1
-            threadDatum.basesMetric.overlapping += overlappingBases
+            threadDatum.basesMetric.overlapping += stats.overlappingBases
             if (correctedBases > 0) {
               threadDatum.templateMetric.corrected += 1
               threadDatum.basesMetric.corrected += correctedBases
@@ -131,8 +131,8 @@ class CallOverlappingConsensusBases
     source.safelyClose()
     writer.close()
 
-    val templatesMetric = CallOverlappingConsensusBasesMetric(tpe=CountType.Templates)
-    val basesMetric     = CallOverlappingConsensusBasesMetric(tpe=CountType.Bases)
+    val templatesMetric = CallOverlappingConsensusBasesMetric(kind=CountKind.Templates)
+    val basesMetric     = CallOverlappingConsensusBasesMetric(kind=CountKind.Bases)
     threadData.foreach { datum =>
       templatesMetric += datum.templateMetric
       basesMetric     += datum.basesMetric
@@ -146,20 +146,20 @@ class CallOverlappingConsensusBases
 /** Collects the the number of reads or bases that were examined, had overlap, and were corrected as part of
   * the [[CallOverlappingConsensusBases]] tool.
   *
-  * @param tpe template if the counts are per template, bases if counts are in units of bases.
+  * @param kind template if the counts are per template, bases if counts are in units of bases.
   * @param total the total number of templates (bases) examined
   * @param overlapping the total number of templates (bases) that were overlapping
   * @param corrected the total number of templates (bases) that were corrected.
   */
 case class CallOverlappingConsensusBasesMetric
 (
-  tpe: CountType,
+  kind: CountKind,
   var total: Long = 0,
   var overlapping: Long = 0,
   var corrected: Long = 0,
 ) extends Metric {
   def +=(other: CallOverlappingConsensusBasesMetric): CallOverlappingConsensusBasesMetric = {
-    require(this.tpe == other.tpe)
+    require(this.kind == other.kind)
     this.total += other.total
     this.overlapping += other.overlapping
     this.corrected += other.corrected
@@ -167,12 +167,12 @@ case class CallOverlappingConsensusBasesMetric
   }
 }
 
-sealed trait CountType extends EnumEntry
+sealed trait CountKind extends EnumEntry
 
 /** Enumeration for the type of counts in [[CallOverlappingConsensusBasesMetric]]. */
-object CountType extends FgBioEnum[CountType] {
-  case object Templates extends CountType
-  case object Bases extends CountType
+object CountKind extends FgBioEnum[CountKind] {
+  case object Templates extends CountKind
+  case object Bases extends CountKind
 
-  override def values: immutable.IndexedSeq[CountType] = findValues
+  override def values: immutable.IndexedSeq[CountKind] = findValues
 }

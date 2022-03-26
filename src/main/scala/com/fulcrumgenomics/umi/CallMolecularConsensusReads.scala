@@ -26,7 +26,7 @@
 package com.fulcrumgenomics.umi
 
 import com.fulcrumgenomics.FgBioDef._
-import com.fulcrumgenomics.bam.{Bams, CallOverlappingConsensusBasesMetric, CountType, OverlappingBasesConsensusCaller}
+import com.fulcrumgenomics.bam.{Bams, CallOverlappingConsensusBasesMetric, CountKind, OverlappingBasesConsensusCaller}
 import com.fulcrumgenomics.bam.api.{SamOrder, SamSource, SamWriter}
 import com.fulcrumgenomics.cmdline.{ClpGroups, FgBioMain, FgBioTool}
 import com.fulcrumgenomics.commons.collection.SelfClosingIterator

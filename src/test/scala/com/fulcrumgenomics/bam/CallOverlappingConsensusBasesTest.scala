@@ -57,13 +57,13 @@ class CallOverlappingConsensusBasesTest extends UnitSpec {
     // metrics
     val Seq(templateStats, basesStats) = Metric.read[CallOverlappingConsensusBasesMetric](metrics).toIndexedSeq
     templateStats shouldBe CallOverlappingConsensusBasesMetric(
-      tpe         = CountType.Templates,
+      kind         = CountKind.Templates,
       total       = 7,
       overlapping = 3,
       corrected   = 2
     )
     basesStats shouldBe CallOverlappingConsensusBasesMetric(
-      tpe         = CountType.Bases,
+      kind         = CountKind.Bases,
       total       = 1*10 + 6*10*2, // 1 fragment, 6 paired end, so 13 reads of 10bp each
       overlapping = 26, // 1 PE with 10bp overlap, 1 PE with 1bp overlap, 1PE with 2bp overlap; 2*13bp
       corrected   = 6   // 1 PE with 1bp corrected, 1PE with 2bp corrected; 2*3

@@ -65,7 +65,7 @@ class OverlappingBasesConsensusCaller(maskDisagreements: Boolean = false,
     */
   def call(template: Template): CorrectionStats = (template.r1, template.r2) match {
     case (Some(r1), Some(r2)) if r1.mapped && r2.mapped && r1.matesOverlap.contains(true) => call(r1, r2)
-    case _ => CorrectionStats(0, 0, 0, 0)
+    case _ => CorrectionStats()
   }
 
   /** Consensus calls the overlapping bases if and only if both ends map with at least one base overlapping.
@@ -76,6 +76,7 @@ class OverlappingBasesConsensusCaller(maskDisagreements: Boolean = false,
     */
   def call(r1: SamRecord, r2: SamRecord): CorrectionStats = {
     require(r1.mapped && r2.mapped && r1.paired && r2.paired && r1.name == r2.name && r1.matesOverlap.contains(true))
+    require(r1.firstOfPair && r2.secondOfPair)
 
     // Clear and resize the builders
     r1Builders.foreach { builder =>
@@ -93,12 +94,11 @@ class OverlappingBasesConsensusCaller(maskDisagreements: Boolean = false,
     val r2Quals = r2.quals
 
     // Initialize the iters
-    val r1Iter        = MateOverlappingReadAndRefPosIterator(r1, r2).buffered
-    val r2Iter        = MateOverlappingReadAndRefPosIterator(r2, r1).buffered
-    var r1LastReadPos = r1Iter.head.read - 1
-    var r2LastReadPos = r2Iter.head.read - 1
-    var r1OverlappingBases = 0
-    var r2OverlappingBases = 0
+    val r1Iter        = new MateOverlappingReadAndRefPosIterator(r1, r2).buffered
+    val r2Iter        = new MateOverlappingReadAndRefPosIterator(r2, r1).buffered
+    var r1LastReadPos = r1Iter.head.readPos - 1
+    var r2LastReadPos = r2Iter.head.readPos - 1
+    var overlappingBases = 0
 
     // add all the bases prior to the overlapping bases
     r1BasesBuilder.addAll(r1Bases.take(r1LastReadPos))
@@ -110,34 +110,34 @@ class OverlappingBasesConsensusCaller(maskDisagreements: Boolean = false,
     while (r1Iter.hasNext && r2Iter.hasNext) {
       val r1Head = r1Iter.head
       val r2Head = r2Iter.head
-      if (r1Head.ref < r2Head.ref) {
-        r1BasesBuilder.addAll(r1Bases.slice(from=r1LastReadPos + 1, until=r1Head.read + 1))
-        r1QualsBuilder.addAll(r1Quals.slice(from=r1LastReadPos + 1, until=r1Head.read + 1))
-        r1LastReadPos = r1Head.read
+      if (r1Head.refPos < r2Head.refPos) {
+        r1BasesBuilder.addAll(r1Bases.slice(from=r1LastReadPos + 1, until=r1Head.readPos + 1))
+        r1QualsBuilder.addAll(r1Quals.slice(from=r1LastReadPos + 1, until=r1Head.readPos + 1))
+        r1LastReadPos = r1Head.readPos
         r1Iter.next()
       }
-      else if (r2Head.ref < r1Head.ref) {
-        r2BasesBuilder.addAll(r2Bases.slice(from=r2LastReadPos + 1, until=r2Head.read + 1))
-        r2QualsBuilder.addAll(r2Quals.slice(from=r2LastReadPos + 1, until=r2Head.read + 1))
-        r2LastReadPos = r2Head.read
+      else if (r2Head.refPos < r1Head.refPos) {
+        r2BasesBuilder.addAll(r2Bases.slice(from=r2LastReadPos + 1, until=r2Head.readPos + 1))
+        r2QualsBuilder.addAll(r2Quals.slice(from=r2LastReadPos + 1, until=r2Head.readPos + 1))
+        r2LastReadPos = r2Head.readPos
         r2Iter.next()
       }
-      else { // matched reference bases, so consensus call
+      else { // both reads are mapped to the same reference bases, so consensus call
         // add read bases from insertions
-        r1BasesBuilder.addAll(r1Bases.slice(from = r1LastReadPos + 1, until = r1Head.read))
-        r1QualsBuilder.addAll(r1Quals.slice(from = r1LastReadPos + 1, until = r1Head.read))
-        r2BasesBuilder.addAll(r2Bases.slice(from = r2LastReadPos + 1, until = r2Head.read))
-        r2QualsBuilder.addAll(r2Quals.slice(from = r2LastReadPos + 1, until = r2Head.read))
+        r1BasesBuilder.addAll(r1Bases.slice(from = r1LastReadPos + 1, until = r1Head.readPos))
+        r1QualsBuilder.addAll(r1Quals.slice(from = r1LastReadPos + 1, until = r1Head.readPos))
+        r2BasesBuilder.addAll(r2Bases.slice(from = r2LastReadPos + 1, until = r2Head.readPos))
+        r2QualsBuilder.addAll(r2Quals.slice(from = r2LastReadPos + 1, until = r2Head.readPos))
 
-        r1OverlappingBases += 1
-        r2OverlappingBases += 1
+        overlappingBases += 1
 
         // consensus call current
+        // TODO: skip consensus calling if either of the bases is an Nocall
         val (base, qual) = consensusCall(
-          base1 = r1Bases(r1Head.read - 1),
-          qual1 = r1Quals(r1Head.read - 1),
-          base2 = r2Bases(r2Head.read - 1),
-          qual2 = r2Quals(r2Head.read - 1)
+          base1 = r1Bases(r1Head.readPos - 1),
+          qual1 = r1Quals(r1Head.readPos - 1),
+          base2 = r2Bases(r2Head.readPos - 1),
+          qual2 = r2Quals(r2Head.readPos - 1)
         )
 
         // Only add the consensus call if we aren't masking disagreements or its a no-call
@@ -154,8 +154,8 @@ class OverlappingBasesConsensusCaller(maskDisagreements: Boolean = false,
         }
 
         // consume the current
-        r1LastReadPos = r1Head.read
-        r2LastReadPos = r2Head.read
+        r1LastReadPos = r1Head.readPos
+        r2LastReadPos = r2Head.readPos
         r1Iter.next()
         r2Iter.next()
       }
@@ -180,7 +180,7 @@ class OverlappingBasesConsensusCaller(maskDisagreements: Boolean = false,
     val r1Corrected = r1Bases.zip(r1.bases).count { case (left, right) => left != right }
     val r2Corrected = r2Bases.zip(r2.bases).count { case (left, right) => left != right }
 
-    CorrectionStats(r1OverlappingBases, r2OverlappingBases, r1Corrected, r2Corrected)
+    CorrectionStats(overlappingBases, r1Corrected, r2Corrected)
   }
 
   private def consensusCall(base1: Byte, qual1: PhredScore, base2: Byte, qual2: PhredScore): (Byte, PhredScore) = {
@@ -189,7 +189,7 @@ class OverlappingBasesConsensusCaller(maskDisagreements: Boolean = false,
     val (rawBase: Byte, rawQual: PhredScore) = {
       if      (base1 == base2 && maxQualOnAgreement)   (base1,  Math.max(qual1, qual2).toByte) // use the maximum base quality
       else if (base1 == base2 && !maxQualOnAgreement)  (base1,  PhredScore.cap(qual1 + qual2)) // use the sum of base qualities
-      else if (maskDisagreements)                  (NoCall, NoCallQual)                    // disagreements are no-calls
+      else if (maskDisagreements)                      (NoCall, NoCallQual)                    // disagreements are no-calls
       else if (qual1 > qual2)                          (base1,  PhredScore.cap(qual1 - qual2))
       else if (qual2 > qual1)                          (base2,  PhredScore.cap(qual2 - qual1))
       else                                             (base1,  PhredScore.MinValue)
@@ -214,8 +214,8 @@ object OverlappingBasesConsensusCaller {
                logger: Logger,
                maskDisagreements: Boolean = false,
                maxQualOnAgreement: Boolean = false): Iterator[SamRecord] = {
-    val templateMetric = CallOverlappingConsensusBasesMetric(tpe=CountType.Templates)
-    val basesMetric    = CallOverlappingConsensusBasesMetric(tpe=CountType.Bases)
+    val templateMetric = CallOverlappingConsensusBasesMetric(kind=CountKind.Templates)
+    val basesMetric    = CallOverlappingConsensusBasesMetric(kind=CountKind.Bases)
     val caller         = new OverlappingBasesConsensusCaller(
       maskDisagreements  = maskDisagreements,
       maxQualOnAgreement = maxQualOnAgreement
@@ -241,10 +241,9 @@ object OverlappingBasesConsensusCaller {
 
 /** Statistics for consensus calling overlapping bases in a read pair
   *
-  * @param r1OverlappingBases the number of bases in R1 that overlap R2
-  * @param r2OverlappingBases the number of bases in R2 that overlap R1
+  * @param overlappingBases the number of bases that overlap between R1 and R2
   * @param r1CorrectedBases the number of bases modified in R1
   * @param r2CorrectedBases the number of bases modified in R2
   */
-case class CorrectionStats(r1OverlappingBases: Int, r2OverlappingBases: Int, r1CorrectedBases: Int, r2CorrectedBases: Int)
+case class CorrectionStats(overlappingBases: Int = 0, r1CorrectedBases: Int = 0, r2CorrectedBases: Int = 0)
 
