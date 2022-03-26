@@ -108,21 +108,6 @@ class CallDuplexConsensusReads
  val maxReadsPerStrand: Option[Int] = None,
  @arg(doc="The number of threads to use while consensus calling.") val threads: Int = 1,
  @arg(doc="Consensus call overlapping bases in mapped paired end reads") val consensusCallOverlappingBases: Boolean = true,
- @arg(doc=
-   """
-     |When `--consensus-call-overlapping-bases` is being used, if the read and mate bases disagree at a given
-     |reference position, true to mask (make 'N') the read and mate bases, otherwise pick the base with the
-     |highest base quality and call a base quality that's the difference between the higher and lower base
-     |quality.
-  """)
- val maskDisagreements: Boolean = false,
- @arg(doc=
-  """
-    |When `--consensus-call-overlapping-bases` is being used, if the read and mate bases agree at a given reference
-    |position, true to for the resulting base quality to be the maximum base quality, otherwise the sum of the base
-    |qualities.
-    |""")
- val maxQualOnAgreement: Boolean = false
 ) extends FgBioTool with LazyLogging {
 
   Io.assertReadable(input)
@@ -138,9 +123,7 @@ class CallDuplexConsensusReads
     val inIter = if (!consensusCallOverlappingBases) in.iterator else {
       OverlappingBasesConsensusCaller.iterator(
         in                    = in,
-        logger                = logger,
-        maskDisagreements = maskDisagreements,
-        maxQualOnAgreement    = maxQualOnAgreement
+        logger                = logger
       )
     }
 
