@@ -49,7 +49,7 @@ class OverlappingBasesConsensusCallerTest extends UnitSpec {
     r1.matesOverlap.contains(true) shouldBe true
     r2.matesOverlap.contains(true) shouldBe true
 
-    caller().call(r1, r2) shouldBe CorrectionStats(1, 0, 0)
+    caller().call(r1, r2) shouldBe CorrectionStats(2, 0, 0)
     r1.basesString shouldBe "A"*10
     r1.qualsString shouldBe q10*9  + q30
     r2.basesString shouldBe "A"*10
@@ -63,7 +63,7 @@ class OverlappingBasesConsensusCallerTest extends UnitSpec {
     r1.matesOverlap.contains(true) shouldBe true
     r2.matesOverlap.contains(true) shouldBe true
 
-    caller().call(r1, r2) shouldBe CorrectionStats(1, 1, 0)
+    caller().call(r1, r2) shouldBe CorrectionStats(2, 1, 0)
     r1.basesString shouldBe "A"*9  + "C"
     r1.qualsString shouldBe q10*10
     r2.basesString shouldBe "C"*10
@@ -77,7 +77,7 @@ class OverlappingBasesConsensusCallerTest extends UnitSpec {
     r1.matesOverlap.contains(true) shouldBe true
     r2.matesOverlap.contains(true) shouldBe true
 
-    caller().call(r1, r2) shouldBe CorrectionStats(1, 0, 1)
+    caller().call(r1, r2) shouldBe CorrectionStats(2, 0, 1)
     r1.basesString shouldBe "A"*10
     r1.qualsString shouldBe q20*9 + q10
     r2.basesString shouldBe "A" + "C"*9
@@ -91,7 +91,7 @@ class OverlappingBasesConsensusCallerTest extends UnitSpec {
     r1.matesOverlap.contains(true) shouldBe true
     r2.matesOverlap.contains(true) shouldBe true
 
-    caller().call(r1, r2) shouldBe CorrectionStats(10, 10, 0)
+    caller().call(r1, r2) shouldBe CorrectionStats(20, 10, 0)
     r1.basesString shouldBe "C"*10
     r1.qualsString shouldBe q10*10
     r2.basesString shouldBe "C"*10
@@ -105,7 +105,7 @@ class OverlappingBasesConsensusCallerTest extends UnitSpec {
     r1.matesOverlap.contains(true) shouldBe true
     r2.matesOverlap.contains(true) shouldBe true
 
-    caller().call(r1, r2) shouldBe CorrectionStats(6, 6, 0)
+    caller().call(r1, r2) shouldBe CorrectionStats(12, 6, 0)
     r1.basesString shouldBe "C"*6 + "A"*4
     r1.qualsString shouldBe q10*10
     r2.basesString shouldBe "C"*10
@@ -129,7 +129,7 @@ class OverlappingBasesConsensusCallerTest extends UnitSpec {
     r1.matesOverlap.contains(true) shouldBe true
     r2.matesOverlap.contains(true) shouldBe true
 
-    caller().call(r1, r2) shouldBe CorrectionStats(8, 8, 0)
+    caller().call(r1, r2) shouldBe CorrectionStats(16, 8, 0)
     r1.basesString shouldBe "CCCACACCCC"
     r1.qualsString shouldBe quals(q=10, rl=10)
     r2.basesString shouldBe "CCCCCCCCCC"
@@ -143,7 +143,7 @@ class OverlappingBasesConsensusCallerTest extends UnitSpec {
     r1.matesOverlap.contains(true) shouldBe true
     r2.matesOverlap.contains(true) shouldBe true
 
-    caller(maskDisagreements=true).call(r1, r2) shouldBe CorrectionStats(1, 1, 1)
+    caller(maskDisagreements=true).call(r1, r2) shouldBe CorrectionStats(2, 0, 0)
     r1.basesString shouldBe "A"*9  + "N"
     r1.qualsString shouldBe q10*9 + minQual
     r2.basesString shouldBe "N" + "C"*9
@@ -157,7 +157,7 @@ class OverlappingBasesConsensusCallerTest extends UnitSpec {
     r1.matesOverlap.contains(true) shouldBe true
     r2.matesOverlap.contains(true) shouldBe true
 
-    caller(maxQualOnAgreement=true).call(r1, r2) shouldBe CorrectionStats(1, 0, 0)
+    caller(maxQualOnAgreement=true).call(r1, r2) shouldBe CorrectionStats(2, 0, 0)
     r1.basesString shouldBe "A"*10
     r1.qualsString shouldBe q10*9 + q20
     r2.basesString shouldBe "A"* 10

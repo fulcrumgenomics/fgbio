@@ -504,7 +504,7 @@ object Bams extends LazyLogging {
       "Input was not queryname sorted or query grouped, found: " +
         s"SO:${header.getSortOrder} GO:${header.getGroupOrder}" +
         Option(header.getAttribute("SS")).map(ss => f" SS:$ss").getOrElse("") +
-        f". Use `samtools sort -n -u in.bam | fgbio $toolName -i /dev/stdin`" +
+        f". Use `fgbio --compression 0 SortBam -i in.bam -o out.bam -s queryname | fgbio $toolName -i /dev/stdin`" +
         path.map(p => f"\nPath: $p").getOrElse("")
     )
   }

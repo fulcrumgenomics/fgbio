@@ -25,7 +25,7 @@
 
 package com.fulcrumgenomics.bam
 
-import com.fulcrumgenomics.FgBioDef.{FgBioEnum, FilePath, PathToBam, SafelyClosable}
+import com.fulcrumgenomics.FgBioDef.{FgBioEnum, FilePath, PathToBam, PathToFasta, SafelyClosable}
 import com.fulcrumgenomics.bam.api.{SamOrder, SamSource, SamWriter}
 import com.fulcrumgenomics.cmdline.{ClpGroups, FgBioTool}
 import com.fulcrumgenomics.commons.collection.ParIterator
@@ -44,8 +44,8 @@ import scala.collection.immutable
     |
     |## Inputs and Outputs
     |
-    |In order to correctly correct reads by template, the input BAM must be either `queryname` sorted or `query` grouped.  The
-    |sort can be done in streaming fashion with:
+    |In order to correctly correct reads by template, the input BAM must be either `queryname` sorted or `query` grouped.
+    |The sort can be done in streaming fashion with:
     |
     |```
     |fgbio --compression 0 SortBam -i in.bam -o out.bam -s queryname | fgbio CallOverlappingConsensusBases -i /dev/stdin ...
@@ -53,6 +53,8 @@ import scala.collection.immutable
     |
     |The output sort order may be specified with `--sort-order`.  If not given, then the output will be in the same
     |order as input.
+    |
+    |The reference FASTA must be given so that any existing `NM`, `UQ` and `MD` tags can be repaired.
     |
     |## Correction
     |
@@ -74,19 +76,20 @@ class CallOverlappingConsensusBases
 (@arg(flag='i', doc="Input SAM or BAM file of aligned reads.") val input: PathToBam,
  @arg(flag='o', doc="Output SAM or BAM file.") val output: PathToBam,
  @arg(flag='m', doc="Output metrics file.") val metrics: FilePath,
+ @arg(flag='r', doc="Reference sequence fasta file.") val ref: PathToFasta,
  @arg(doc="The number of threads to use while consensus calling.") val threads: Int = 1,
  @arg(flag='S', doc="The sort order of the output. If not given, output will be in the same order as input if the input.")
   val sortOrder: Option[SamOrder] = None,
  @arg(doc="""If the read and mate bases disagree at a given reference position, true to mask (make 'N') the read and mate
              |bases, otherwise pick the base with the highest base quality and return a base quality that's the difference
              |between the higher and lower base qualities.""")
-
   val maskDisagreements: Boolean = false,
  @arg(doc= """If the read and mate bases agree at a given reference position, true to for the resulting base quality
               |to be the maximum base quality, otherwise the sum of the base qualities.""")
   val maxQualOnAgreement: Boolean = false
 ) extends FgBioTool with LazyLogging {
   Io.assertReadable(input)
+  Io.assertReadable(ref)
   Io.assertCanWriteFile(output)
 
   private case class ThreadData
@@ -98,10 +101,13 @@ class CallOverlappingConsensusBases
   override def execute(): Unit = {
     val source           = SamSource(input)
     val outSort          = sortOrder.flatMap { order => if (SamOrder(source.header).contains(order)) None else Some(order) }
-    val writer           = SamWriter(output, source.header, sort=outSort)
+    val writer           = Bams.nmUqMdTagRegeneratingWriter(writer=SamWriter(output, source.header.clone(), sort=outSort), ref=ref)
     val progress         = new ProgressLogger(logger)
     val templateIterator = Bams.templateIterator(source)
     val threadData       = new IterableThreadLocal(() => ThreadData())
+
+    // Require queryname sorted or query grouped
+    Bams.requireQueryGrouped(header=source.header, toolName="CallOverlappingConsensusBases")
 
     ParIterator(templateIterator, threads=threads)
       .map { template =>

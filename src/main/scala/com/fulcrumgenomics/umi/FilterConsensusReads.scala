@@ -92,7 +92,7 @@ private[umi] case class ConsensusReadFilter(minReads: Int, maxReadErrorRate: Dou
       |`query` grouped.  If your BAM is not already in an appropriate order, this can be done in streaming fashion with:
       |
       |```
-      |samtools sort -n -u in.bam | fgbio FilterConsensusReads -i /dev/stdin ...
+      |fgbio --compression 0 SortBam -i in.bam -o out.bam -s queryname | fgbio FilterConsensusReads -i /dev/stdin ...
       |```
       |
       |The output sort order may be specified with `--sort-order`.  If not given, then the output will be in the same

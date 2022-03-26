@@ -25,10 +25,16 @@
 
 package com.fulcrumgenomics.bam
 
-import com.fulcrumgenomics.testing.{SamBuilder, UnitSpec}
+import com.fulcrumgenomics.testing.{ReferenceSetBuilder, SamBuilder, UnitSpec}
 import com.fulcrumgenomics.util.Metric
 
 class CallOverlappingConsensusBasesTest extends UnitSpec {
+  private val ref = {
+    val builder = new ReferenceSetBuilder
+    builder.add("chr1").add("AAAAAAAAAA", 500) // 5000 bases
+    builder.add("chr2").add("CCCCCCCCCC", 500) // 5000 bases
+    builder.toTempFile()
+  }
 
   "CallOverlappingConsensusBases" should "run end to end" in {
     val builder = new SamBuilder(readLength=10)
@@ -50,7 +56,8 @@ class CallOverlappingConsensusBasesTest extends UnitSpec {
     val tool    = new CallOverlappingConsensusBases(
       input   = builder.toTempFile(),
       output  = output,
-      metrics = metrics
+      metrics = metrics,
+      ref     = ref
     )
     tool.execute()
 
