@@ -109,7 +109,7 @@ class CallOverlappingConsensusBases
         threadDatum.synchronized {
           // update metrics
           threadDatum.templateMetric.total += 1
-          threadDatum.basesMetric.total += template.primaryReads.sumBy(_.length)
+          threadDatum.basesMetric.total += template.primaryReads.map(_.length).sum
           // corrects
           val stats          = threadDatum.caller.call(template)
           val correctedBases = stats.r1CorrectedBases + stats.r2CorrectedBases
