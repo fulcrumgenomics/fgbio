@@ -173,6 +173,8 @@ class MateOverlappingReadAndRefPosIterator(rec: SamRecord,
     rec        = rec,
     minReadPos = minReadPos,
     maxReadPos = maxReadPos,
+    minRefPos  = Math.max(rec.start, mate.start),
+    maxRefPos  = Math.min(rec.end, mate.end)
   ) {
   require(rec.paired && rec.mapped && mate.paired && mate.mapped && rec.name == mate.name)
   require(rec.refIndex == mate.refIndex)

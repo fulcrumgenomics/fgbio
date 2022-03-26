@@ -129,7 +129,7 @@ class OverlappingBasesConsensusCaller(maskDisagreements: Boolean = false,
         r2BasesBuilder.addAll(r2Bases.slice(from = r2LastReadPos + 1, until = r2Head.readPos))
         r2QualsBuilder.addAll(r2Quals.slice(from = r2LastReadPos + 1, until = r2Head.readPos))
 
-        overlappingBases += 1
+        overlappingBases += 2
 
         // consensus call current
         // TODO: skip consensus calling if either of the bases is an Nocall
