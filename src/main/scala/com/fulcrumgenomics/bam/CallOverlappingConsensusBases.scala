@@ -63,15 +63,25 @@ import scala.collection.immutable
     |Each read base from the read and its mate that map to same position in the reference will be used to create
     |a consensus base as follows:
     |
-    |1. if the read and mate bases are the same, the consensus base is that base with the base quality equal to the sum
-    |   of the two base qualities.  The base quality can be the maximum base quality of the two base qualities if
-    |   `--max-qual-on-agreement` is used.
-    |2. if the read and mate bases differ, then the base with the highest associated base quality will be the consensus
-    |   call.  If the read and mate have the same base quality, then the output base quality will be 2.  Otherwise,
-    |   the base quality will be the difference between the larger and smaller base quality.  The
-    |   `--only-mask-disagreements` option overrides behavior and sets all differing bases to `N` with a base quality of
-    |   2.
-  """)
+    |1. If the base agree, then the chosen agreement strategy (`--agreement-strategy`) will be used.
+    |2. If the base disagree, then the chosen disagreement strategy (`--disagreement-strategy`) will be used.
+    |
+    |The agreement strategies are as follows:
+    |
+    |* Consensus:   Call the consensus base and return a new base quality that is the sum of the two base qualities.
+    |* MaxQual:     Call the consensus base and return a new base quality that is the maximum of the two base qualities.
+    |* PassThrough: Leave the bases and base qualities unchanged.
+    |
+    |In the context of disagreement strategies, masking a base will make the base an "N" with base quality phred-value "2".
+    |The disagreement strategies are as follows:
+    |
+    |* MaskBoth:      Mask both bases.
+    |* MaskLowerQual: Mask the base with the lowest base quality, with the other base unchanged.  If the base qualities
+    |                 are the same, mask both bases.
+    |* Consensus:     Consensus call the base.  If the base qualities are the same, mask both bases.  Otherwise, call the
+    |                 base with the highest base quality and return a new base quality that is the difference between the
+    |                 highest and lowest base quality.
+ |  """)
 class CallOverlappingConsensusBases
 (@arg(flag='i', doc="Input SAM or BAM file of aligned reads.") val input: PathToBam,
  @arg(flag='o', doc="Output SAM or BAM file.") val output: PathToBam,
@@ -79,21 +89,18 @@ class CallOverlappingConsensusBases
  @arg(flag='r', doc="Reference sequence fasta file.") val ref: PathToFasta,
  @arg(doc="The number of threads to use while consensus calling.") val threads: Int = 1,
  @arg(flag='S', doc="The sort order of the output. If not given, output will be in the same order as input if the input.")
-  val sortOrder: Option[SamOrder] = None,
- @arg(doc="""If the read and mate bases disagree at a given reference position, true to mask (make 'N') the read and mate
-             |bases, otherwise pick the base with the highest base quality and return a base quality that's the difference
-             |between the higher and lower base qualities.""")
-  val maskDisagreements: Boolean = false,
- @arg(doc= """If the read and mate bases agree at a given reference position, true to for the resulting base quality
-              |to be the maximum base quality, otherwise the sum of the base qualities.""")
-  val maxQualOnAgreement: Boolean = false
+ val sortOrder: Option[SamOrder] = None,
+ @arg(doc="The strategy to consensus call when both bases agree.  See the usage for more details")
+ val agreementStrategy: AgreementStrategy = AgreementStrategy.Consensus,
+ @arg(doc="The strategy to consensus call when both bases disagree.  See the usage for more details")
+ val disagreementStrategy: DisagreementStrategy = DisagreementStrategy.Consensus
 ) extends FgBioTool with LazyLogging {
   Io.assertReadable(input)
   Io.assertReadable(ref)
   Io.assertCanWriteFile(output)
 
   private case class ThreadData
-  (caller: OverlappingBasesConsensusCaller             = new OverlappingBasesConsensusCaller(maskDisagreements=maskDisagreements, maxQualOnAgreement=maxQualOnAgreement),
+  (caller: OverlappingBasesConsensusCaller             = new OverlappingBasesConsensusCaller(agreementStrategy=agreementStrategy, disagreementStrategy=disagreementStrategy),
    templateMetric: CallOverlappingConsensusBasesMetric = CallOverlappingConsensusBasesMetric(kind=CountKind.Templates),
    basesMetric: CallOverlappingConsensusBasesMetric    = CallOverlappingConsensusBasesMetric(kind=CountKind.Bases)
   )

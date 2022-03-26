@@ -25,10 +25,12 @@
 
 package com.fulcrumgenomics.bam
 
+import com.fulcrumgenomics.FgBioDef.FgBioEnum
 import com.fulcrumgenomics.bam.api.{SamRecord, SamSource}
 import com.fulcrumgenomics.commons.collection.SelfClosingIterator
 import com.fulcrumgenomics.commons.util.Logger
 import com.fulcrumgenomics.util.NumericTypes.PhredScore
+import enumeratum.EnumEntry
 import htsjdk.samtools.util.SequenceUtil
 
 
@@ -36,22 +38,18 @@ import htsjdk.samtools.util.SequenceUtil
   *
   * This will iterate through the mapped bases that overlap between the read and mate in a read pair.  If the read and
   * mate agree at a given reference position, then read and mate base will not change and the base quality returned
-  * is controlled by `maxQualOnAgreement`. If they disagree at a given reference position, then the base and quality
-  * returned is controlled by `maskDisagreements`.
+  * is controlled by `agreementStrategy` (see [[AgreementStrategy]]). If they disagree at a given reference position,
+  * then the base and quality returned is controlled by `disagreementStrategy` (see [[DisagreementStrategy]]).
   *
   * If either read base is a no-call (e.g. N), then the read bases for each read respectively will not be changed.
   *
-  * @param maskDisagreements if the read and mate bases disagree at a given reference position, true to mask (make
-  *                          'N') the read and mate bases, otherwise pick the base with the highest base quality and
-  *                          return a base quality that's the difference between the higher and lower base quality.
-  * @param maxQualOnAgreement    if the read and mate bases agree at a given reference position, true to for the
-  *                              resulting base quality to be the maximum base quality, otherwise the sum of the base
-  *                              qualities.
+  * @param agreementStrategy the strategy to use when the two bases agree.  This only affects the base qualities.
+  * @param disagreementStrategy the disagreement strategy to use when the two bases disagree.  This will affect both the
+  *                             bases and the qualities.
   */
-class OverlappingBasesConsensusCaller(maskDisagreements: Boolean = false,
-                                      maxQualOnAgreement: Boolean = false) {
-  private val NoCall: Byte = 'N'.toByte
-  private val NoCallQual: PhredScore = PhredScore.MinValue
+class OverlappingBasesConsensusCaller(agreementStrategy: AgreementStrategy = AgreementStrategy.Consensus,
+                                      disagreementStrategy: DisagreementStrategy = DisagreementStrategy.Consensus) {
+  import OverlappingBasesConsensusCaller.NoCall
 
   /** Consensus calls the overlapping bases if and only if the template is a paired end where both ends map with at
     * least one base overlapping.
@@ -104,21 +102,21 @@ class OverlappingBasesConsensusCaller(maskDisagreements: Boolean = false,
         val base2 = r2.bases(r2Head.readPos - 1)
         if (!SequenceUtil.isNoCall(base1) && !SequenceUtil.isNoCall(base2)) {
           // consensus call
-          val (base, qual) = consensusCall(
+          val (newBase1, newQual1, newBase2, newQual2) = consensusCall(
             base1 = base1,
             qual1 = r1.quals(r1Head.readPos - 1),
             base2 = base2,
             qual2 = r2.quals(r2Head.readPos - 1)
           )
 
-          if (base != NoCall && base != base1) r1Corrected += 1
-          if (base != NoCall && base != base2) r2Corrected += 1
+          if (newBase1 != NoCall && newBase1 != base1) r1Corrected += 1
+          if (newBase2 != NoCall && newBase2 != base2) r2Corrected += 1
 
           // Only add the consensus call if we aren't masking disagreements or its a no-call
-          r1.bases(r1Head.readPos - 1) = base
-          r1.quals(r1Head.readPos - 1) = qual
-          r2.bases(r2Head.readPos - 1) = base
-          r2.quals(r2Head.readPos - 1) = qual
+          r1.bases(r1Head.readPos - 1) = newBase1
+          r1.quals(r1Head.readPos - 1) = newQual1
+          r2.bases(r2Head.readPos - 1) = newBase2
+          r2.quals(r2Head.readPos - 1) = newQual2
         }
 
         // consume the current
@@ -132,45 +130,44 @@ class OverlappingBasesConsensusCaller(maskDisagreements: Boolean = false,
     CorrectionStats(overlappingBases, r1Corrected, r2Corrected)
   }
 
-  private def consensusCall(base1: Byte, qual1: PhredScore, base2: Byte, qual2: PhredScore): (Byte, PhredScore) = {
-    // Capture the raw consensus base prior to masking it to N, so that we can compute
-    // errors vs. the actually called base.
-    val (rawBase: Byte, rawQual: PhredScore) = {
-      if      (base1 == base2 && maxQualOnAgreement)   (base1,  Math.max(qual1, qual2).toByte) // use the maximum base quality
-      else if (base1 == base2 && !maxQualOnAgreement)  (base1,  PhredScore.cap(qual1 + qual2)) // use the sum of base qualities
-      else if (maskDisagreements)                      (NoCall, NoCallQual)                    // disagreements are no-calls
-      else if (qual1 > qual2)                          (base1,  PhredScore.cap(qual1 - qual2))
-      else if (qual2 > qual1)                          (base2,  PhredScore.cap(qual2 - qual1))
-      else                                             (base1,  PhredScore.MinValue)
+  private def consensusCall(base1: Byte, qual1: PhredScore,
+                            base2: Byte, qual2: PhredScore): (Byte, PhredScore, Byte, PhredScore) = {
+    if (base1 == base2) {
+      val (q1, q2) = agreementStrategy.qual(qual1, qual2)
+      (base1, q1, base2, q2)
     }
-
-    // Then mask it if appropriate
-    if (base1 == NoCall || base2 == NoCall || rawQual == PhredScore.MinValue) (NoCall, NoCallQual) else (rawBase, rawQual)
+    else {
+      disagreementStrategy.baseAndQual(base1, qual1, base2, qual2)
+    }
   }
 }
 
 object OverlappingBasesConsensusCaller {
+  val NoCall: Byte = 'N'.toByte
+  val NoCallQual: PhredScore = PhredScore.MinValue
+
   /** Returns an iterator over records in the SAM source that are in query group order, where overlapping read pairs
     * are consensus called.  The input will be re-sorted if not already query sorted or grouped.  Statistics for how
     * may bases and templates had overlaps and were modified are logged to the given logger.
     *
     * @param in the input [[SamSource]] from which to read
     * @param logger the logger, to which output statistics are written
-    * @param maskDisagreements see [[OverlappingBasesConsensusCaller]]
-    * @param maxQualOnAgreement see [[OverlappingBasesConsensusCaller]]
+    * @param agreementStrategy the strategy to use when the two bases agree.  This only affects the base qualities.
+    * @param disagreementStrategy the disagreement strategy to use when the two bases disagree.  This will affect both the
+    *                             bases and the qualities.
     */
   def iterator(in: SamSource,
                logger: Logger,
-               maskDisagreements: Boolean = false,
-               maxQualOnAgreement: Boolean = false): Iterator[SamRecord] = {
+               agreementStrategy: AgreementStrategy = AgreementStrategy.Consensus,
+               disagreementStrategy: DisagreementStrategy = DisagreementStrategy.Consensus): Iterator[SamRecord] = {
     val templateMetric = CallOverlappingConsensusBasesMetric(kind=CountKind.Templates)
     val basesMetric    = CallOverlappingConsensusBasesMetric(kind=CountKind.Bases)
     val caller         = new OverlappingBasesConsensusCaller(
-      maskDisagreements  = maskDisagreements,
-      maxQualOnAgreement = maxQualOnAgreement
+      agreementStrategy    = agreementStrategy,
+      disagreementStrategy = disagreementStrategy
     )
     val templateIterator = Bams.templateIterator(in=in).flatMap { template =>
-      caller.call(template);
+      caller.call(template)
       // update metrics
       templateMetric.total += 1
       basesMetric.total += template.primaryReads.map(_.length).sum
@@ -196,3 +193,80 @@ object OverlappingBasesConsensusCaller {
   */
 case class CorrectionStats(overlappingBases: Int = 0, r1CorrectedBases: Int = 0, r2CorrectedBases: Int = 0)
 
+
+/** Trait that entries in [[AgreementStrategy]] will extend. */
+sealed trait AgreementStrategy extends EnumEntry {
+  def qual(qual1: PhredScore, qual2: PhredScore): (PhredScore, PhredScore)
+}
+
+
+/** Enum to represent the strategy to consensus call when both bases agree. */
+object AgreementStrategy extends FgBioEnum[AgreementStrategy] {
+  /** Call the consensus base and return a new base quality that is the sum of the two base qualities. */
+  case object Consensus extends AgreementStrategy {
+    def qual(qual1: PhredScore, qual2: PhredScore): (PhredScore, PhredScore) = {
+      val qual = PhredScore.cap(qual1 + qual2)
+      (qual, qual)
+    }
+  }
+
+  /** Call the consensus base and return a new base quality that is the maximum of the two base qualities. */
+  case object MaxQual extends AgreementStrategy {
+    def qual(qual1: PhredScore, qual2: PhredScore): (PhredScore, PhredScore) = {
+      val qual = PhredScore.cap(Math.max(qual1, qual2))
+      (qual, qual)
+    }
+  }
+
+  /** Leave the bases and base qualities unchanged. */
+  case object PassThrough extends AgreementStrategy {
+    def qual(qual1: PhredScore, qual2: PhredScore): (PhredScore, PhredScore) = (qual1, qual2)
+  }
+
+  override def values: IndexedSeq[AgreementStrategy] = super.findValues
+}
+
+/** Trait that entries in [[DisagreementStrategy]] will extend. */
+sealed trait DisagreementStrategy extends EnumEntry {
+  def baseAndQual(base1: Byte, qual1: PhredScore, base2: Byte, qual2: PhredScore): (Byte, PhredScore, Byte, PhredScore)
+}
+
+/** Enum to represent the strategy to consensus call when both bases disagree.  Masking a base will make the base
+  * an "N" with base quality "2". */
+object DisagreementStrategy extends FgBioEnum[DisagreementStrategy] {
+  import OverlappingBasesConsensusCaller.{NoCall, NoCallQual}
+
+  /** Mask both bases. */
+  case object MaskBoth extends DisagreementStrategy {
+    def baseAndQual(base1: Byte, qual1: PhredScore, base2: Byte, qual2: PhredScore): (Byte, PhredScore, Byte, PhredScore) = {
+      (NoCall, NoCallQual, NoCall, NoCallQual)
+    }
+  }
+
+  /** Mask the base with the lowest base quality, with the other base unchanged.  If the base qualities are the same,
+    * mask both bases. */
+  case object MaskLowerQual extends DisagreementStrategy {
+    def baseAndQual(base1: Byte, qual1: PhredScore, base2: Byte, qual2: PhredScore): (Byte, PhredScore, Byte, PhredScore) = {
+      //                       r1-base  r1-qual                        r2-base  r2-qual
+      if (qual1 > qual2)      (base1,   PhredScore.cap(qual1 - qual2), NoCall,  NoCallQual)
+      else if (qual2 > qual1) (NoCall,  NoCallQual,                    base2,   PhredScore.cap(qual2 - qual1))
+      else                    (NoCall,  NoCallQual,                    NoCall,  NoCallQual)
+    }
+  }
+
+  /** Consensus call the base.  If the base qualities are the same, mask both bases.  Otherwise, call the base
+    * with the highest base quality and return a new base quality that is the difference between the highest and lowest
+    * base quality. */
+  case object Consensus extends DisagreementStrategy {
+    def baseAndQual(base1: Byte, qual1: PhredScore, base2: Byte, qual2: PhredScore): (Byte, PhredScore, Byte, PhredScore) = {
+      val (base, qual) = {
+        if (qual1 > qual2)      (base1, PhredScore.cap(qual1 - qual2))
+        else if (qual2 > qual1) (base2, PhredScore.cap(qual2 - qual1))
+        else                    (NoCall, NoCallQual)
+      }
+      (base, qual, base, qual)
+    }
+  }
+
+  override def values: IndexedSeq[DisagreementStrategy] = super.findValues
+}
