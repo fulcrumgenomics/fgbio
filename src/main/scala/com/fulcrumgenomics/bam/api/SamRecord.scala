@@ -237,66 +237,46 @@ trait SamRecord {
   @inline final val transientAttrs: TransientAttrs = new TransientAttrs(this)
 
   /** Returns the 1-based reference position for the 1-based position in the read, or [[None]] if the reference does
-    * not map at the read position (e.g. insertion).
+    * not map at the read position (i.e. insertion or soft-clipping).
+    *
+    * If the requested read position is less than or equal to zero, or greater than the read length [[length()]], then
+    * an exception will be thrown.
+    *
+    * Hard-clipping (`H`) is ignored and not counted as part of the read.
     *
     * @param pos the 1-based read position to query
     * @param returnLastBaseIfInserted if the reference is an insertion, true to returned the previous reference base,
     *                                 false to return None
     * */
-  @inline final def refPosAtReadPos(pos: Int, returnLastBaseIfInserted: Boolean = false): Option[Int] = if (pos <= 0) None else {
+  @inline final def refPosAtReadPos(pos: Int, returnLastBaseIfInserted: Boolean = false): Option[Int] = {
+    require(this.mapped, s"read was not mapped: ${this}")
+    require(1 <= pos, s"position given '$pos' was less than one: ${this}")
+    require(pos <= cigar.lengthOnQuery , s"position given '$pos' was longer than the # of read bases '${cigar.lengthOnQuery}': ${this}")
+
     var readPos      = 1
     var refPos       = this.start
     var elementIndex = 0
     val elems        = this.cigar.elems
 
-    def continue(): Boolean = if (elementIndex >= elems.length) false else {
+    // skip leading clipping, ignoring hard-clipping
+    while (elems(elementIndex).operator.isClipping && readPos <= pos) {
       val elem = elems(elementIndex)
-      if (pos > CoordMath.getEnd(readPos, elem.lengthOnQuery)) true // current cigar element is before the desired position
-      else {
-        if (pos < readPos) readPos = 0 // past the point in the read
-        else if (elem.operator == CigarOperator.INSERTION) {
-          if (!returnLastBaseIfInserted) refPos = 0
-          else refPos -= 1
-        } // in an insertion, no reference position
-        else refPos += pos - readPos  // get the offset
-        false
-      }
-    }
-
-    while (continue()) {
-      val elem      = elems(elementIndex)
-      refPos       += elem.lengthOnTarget
-      readPos      += elem.lengthOnQuery
+      if (elem.operator == CigarOperator.SOFT_CLIP) readPos += elem.lengthOnQuery
       elementIndex += 1
     }
 
-    if (this.start <= refPos && readPos <= this.end) Some(refPos) else None
-  }
-
-
-  /** Returns the 1-based position into the read's bases where the position is mapped either as a match or mismatch,
-    * [[None]] if the read does not map the position.
-    *
-    * @param pos the 1-based reference position to query
-    * @param returnLastBaseIfDeleted if the reference is a deletion, true to returned the previous read base, false to
-    *                                return None
-    * */
-  @inline final def readPosAtRefPos(pos: Int, returnLastBaseIfDeleted: Boolean = false): Option[Int] = {
-    if (this.unmapped || pos < this.start || this.end < pos) None
-    else { // overlaps
-      var readPos      = 0
-      var refPos       = this.start
-      var elementIndex = 0
-      val elems        = this.cigar.elems
-
+    // return None if the read was in a leading soft-clip
+    if (pos < readPos) None else {
       def continue(): Boolean = if (elementIndex >= elems.length) false else {
         val elem = elems(elementIndex)
-        if (pos > CoordMath.getEnd(refPos, elem.lengthOnTarget)) true // current cigar element is before the desired position
-        else { // overlaps!
-          if (elem.operator == CigarOperator.DELETION) { // deletion
-            if (!returnLastBaseIfDeleted) readPos = 0 // don't return a read position, so zero out the current read position
-          } else {
-            readPos += pos - refPos + 1 // get the offset
+        if (pos > CoordMath.getEnd(readPos, elem.lengthOnQuery)) true // current cigar element is before the desired position
+        else {
+          if (elem.operator == CigarOperator.INSERTION) {
+            if (!returnLastBaseIfInserted) refPos = 0 // this cause us to return None later for the position
+            else refPos -= 1  // in an insertion, no reference position, so use the previous reference position
+          }
+          else {
+            refPos += pos - readPos // get the offset, for soft-clipping this will move refPos past this.end, and so return None
           }
           false
         }
@@ -309,8 +289,54 @@ trait SamRecord {
         elementIndex += 1
       }
 
-      if (0 < readPos && readPos <= this.length) Some(readPos) else None
+      if (this.start <= refPos && refPos <= this.end) Some(refPos) else None
     }
+  }
+
+  /** Returns the 1-based position into the read's bases where the position is mapped either as a match or mismatch,
+    * [[None]] if the read does not map the position.
+    *
+    * @param pos the 1-based reference position to query
+    * @param returnLastBaseIfDeleted if the reference is a deletion, true to returned the previous read base, false to
+    *                                return None
+    * @param returnLastBaseIfSkipped if the reference is a skip, true to returned the previous read base, false to
+    *                                return None
+    * */
+  @inline final def readPosAtRefPos(pos: Int,
+                                    returnLastBaseIfDeleted: Boolean = false,
+                                    returnLastBaseIfSkipped: Boolean = false): Option[Int] = {
+    require(this.mapped, s"read was not mapped: ${this}")
+    require(this.start <= pos, s"position given '$pos' was before the start of the alignment '${this.start}': ${this}")
+    require(pos <= this.end , s"position given '$pos' was past the end of the alignment '${this.end}': ${this}")
+
+    var readPos      = 0
+    var refPos       = this.start
+    var elementIndex = 0
+    val elems        = this.cigar.elems
+
+    def continue(): Boolean = if (elementIndex >= elems.length) false else {
+      val elem = elems(elementIndex)
+      if (pos > CoordMath.getEnd(refPos, elem.lengthOnTarget)) true // current cigar element is before the desired position
+      else { // overlaps!
+        if (elem.operator == CigarOperator.DELETION) { // deletion
+          if (!returnLastBaseIfDeleted) readPos = 0 // don't return a read position, so zero out the current read position
+        } else if (elem.operator == CigarOperator.SKIPPED_REGION) { // skip region
+          if (!returnLastBaseIfSkipped) readPos = 0 // don't return a read position, so zero out the current read position
+        } else {
+          readPos += pos - refPos + 1 // get the offset
+        }
+        false
+      }
+    }
+
+    while (continue()) {
+      val elem      = elems(elementIndex)
+      refPos       += elem.lengthOnTarget
+      readPos      += elem.lengthOnQuery
+      elementIndex += 1
+    }
+
+    if (0 < readPos && readPos <= this.length) Some(readPos) else None
   }
 
 
