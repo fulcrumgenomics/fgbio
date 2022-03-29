@@ -75,10 +75,10 @@ class ErrorRateByReadPositionTest extends UnitSpec with OptionValues {
 
   private val vcf = {
     val builder = VcfBuilder(samples=List("sample1"))
-    builder.add("1", 500, alleles=List("A", "C"), gts=Seq(Gt(sample="sample1", gt="0/1")))
-    builder.add("2", 500, alleles=List("C", "T"), gts=Seq(Gt(sample="sample1", gt="0/1")))
-    builder.add("3", 500, alleles=List("G", "A"), gts=Seq(Gt(sample="sample1", gt="0/1")))
-    builder.add("4", 500, alleles=List("T", "C"), gts=Seq(Gt(sample="sample1", gt="0/1")))
+    builder.add("chr1", 500, alleles=List("A", "C"), gts=Seq(Gt(sample="sample1", gt="0/1")))
+    builder.add("chr2", 500, alleles=List("C", "T"), gts=Seq(Gt(sample="sample1", gt="0/1")))
+    builder.add("chr3", 500, alleles=List("G", "A"), gts=Seq(Gt(sample="sample1", gt="0/1")))
+    builder.add("chr4", 500, alleles=List("T", "C"), gts=Seq(Gt(sample="sample1", gt="0/1")))
     builder.toTempFile()
   }
 
