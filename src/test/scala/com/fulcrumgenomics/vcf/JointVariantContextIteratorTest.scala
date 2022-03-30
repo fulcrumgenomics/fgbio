@@ -24,15 +24,17 @@
 
 package com.fulcrumgenomics.vcf
 
-import com.fulcrumgenomics.testing.{UnitSpec, VariantContextSetBuilder}
+import com.fulcrumgenomics.testing.{UnitSpec, VariantContextSetBuilder, VcfBuilder}
 import htsjdk.variant.variantcontext.VariantContext
+import htsjdk.variant.vcf.VCFFileReader
+
+import scala.jdk.CollectionConverters.IteratorHasAsScala
 
 /**
   * Tests for JointVariantContextIterator.
   */
 class JointVariantContextIteratorTest extends UnitSpec {
-  import com.fulcrumgenomics.fasta.Converters.FromSAMSequenceDictionary
-  private val dict = new VariantContextSetBuilder().header.getSequenceDictionary.fromSam
+  private val dict = VcfBuilder(samples=Seq("s1")).header.dict
 
   private def compareVariantContexts(actual: VariantContext, expected: VariantContext): Unit = {
     actual.getContig shouldBe expected.getContig
@@ -41,34 +43,44 @@ class JointVariantContextIteratorTest extends UnitSpec {
   }
 
   "JointVariantContextIterator" should "iterate variant contexts given a single iterator" in {
-    val builder = new VariantContextSetBuilder().addVariant(refIdx=0, start=1, variantAlleles=List("A"))
-    val iterator = JointVariantContextIterator(iters=Seq(builder.iterator), dict=dict)
-    compareVariantContexts(actual=iterator.next().head.get, expected=builder.head)
+    val vcfBuilder = VcfBuilder(samples=Seq("s1")).add(chrom="chr1", pos=1, alleles=Seq("A"))
+    val builder    = new VCFFileReader(vcfBuilder.toTempFile())
+
+    val iterator = JointVariantContextIterator(iters=Seq(builder.iterator().asScala), dict=dict)
+    compareVariantContexts(actual=iterator.next().head.get, expected=builder.iterator().next())
   }
 
   it should "not return a variant context if all the iterators are empty" in {
-    val builder = new VariantContextSetBuilder()
-    val iterator = JointVariantContextIterator(iters=Seq(builder.iterator, builder.iterator), dict=dict)
+    val vcfBuilder = VcfBuilder(samples=Seq("s1"))
+    val builder    = new VCFFileReader(vcfBuilder.toTempFile())
+
+    val iterator = JointVariantContextIterator(iters=Seq(builder.iterator().asScala, builder.iterator().asScala), dict=dict)
     iterator.hasNext shouldBe false
     an[NoSuchElementException] should be thrownBy iterator.next()
   }
 
   it should "return a pair of variant contexts at the same position" in {
-    val builder = new VariantContextSetBuilder().addVariant(refIdx=0, start=1, variantAlleles=List("A"))
-    val iterator = JointVariantContextIterator(iters=Seq(builder.iterator, builder.iterator), dict=dict)
+    val vcfBuilder = VcfBuilder(samples=Seq("s1")).add(chrom="chr1", pos=1, alleles=Seq("A"))
+    val builder    = new VCFFileReader(vcfBuilder.toTempFile())
+
+    val iterator = JointVariantContextIterator(iters=Seq(builder.iterator().asScala, builder.iterator().asScala), dict=dict)
     iterator.hasNext shouldBe true
     val Seq(left, right) = iterator.next().flatten
     compareVariantContexts(left, right)
   }
 
   it should "return a None for an iterator that doesn't have a variant context for a given covered site" in {
-    val builderLeft = new VariantContextSetBuilder()
-      .addVariant(refIdx=0, start=10, variantAlleles=List("A"))
-      .addVariant(refIdx=0, start=30, variantAlleles=List("A"))
-    val builderRight = new VariantContextSetBuilder()
-      .addVariant(refIdx=0, start=10, variantAlleles=List("A"))
-      .addVariant(refIdx=0, start=20, variantAlleles=List("A"))
-    val iterator = JointVariantContextIterator(iters=Seq(builderLeft.iterator, builderRight.iterator), dict=dict)
+    val vcfBuilderLeft = VcfBuilder(samples=Seq("s1"))
+        .add(chrom="chr1", pos=10, alleles=Seq("A"))
+        .add(chrom="chr1", pos=30, alleles=Seq("A"))
+    val builderLeft    = new VCFFileReader(vcfBuilderLeft.toTempFile())
+
+    val vcfBuilderRight = VcfBuilder(samples=Seq("s1"))
+      .add(chrom="chr1", pos=10, alleles=Seq("A"))
+      .add(chrom="chr1", pos=20, alleles=Seq("A"))
+    val builderRight    = new VCFFileReader(vcfBuilderRight.toTempFile())
+
+    val iterator = JointVariantContextIterator(iters=Seq(builderLeft.iterator().asScala, builderRight.iterator().asScala), dict=dict)
     // pos: 10 status: both
     iterator.hasNext shouldBe true
     iterator.next().flatten match {
@@ -77,12 +89,12 @@ class JointVariantContextIteratorTest extends UnitSpec {
     // pos: 20 status: right
     iterator.hasNext shouldBe true
     iterator.next() match {
-      case Seq(None, Some(right)) => compareVariantContexts(right, builderRight.last)
+      case Seq(None, Some(right)) => compareVariantContexts(right, builderRight.iterator().asScala.toSeq.last)
     }
     // pos: 30 status: left
     iterator.hasNext shouldBe true
     iterator.next() match {
-      case Seq(Some(left), None) => compareVariantContexts(left, builderLeft.last)
+      case Seq(Some(left), None) => compareVariantContexts(left, builderLeft.iterator().asScala.toSeq.last)
     }
   }
 }
