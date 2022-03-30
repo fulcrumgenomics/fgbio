@@ -33,7 +33,7 @@ import com.fulcrumgenomics.testing.VcfBuilder.Gt
 import com.fulcrumgenomics.testing.{ErrorLogLevel, UnitSpec, VariantContextSetBuilder, VcfBuilder}
 import com.fulcrumgenomics.util.Metric
 import com.fulcrumgenomics.vcf.PhaseCigar.IlluminaSwitchErrors
-import com.fulcrumgenomics.vcf.api.Genotype
+import com.fulcrumgenomics.vcf.api.{Genotype, Variant}
 import htsjdk.samtools.SAMFileHeader
 import htsjdk.samtools.util.{Interval, IntervalList}
 import htsjdk.variant.variantcontext.writer.{Options, VariantContextWriterBuilder}
@@ -41,7 +41,7 @@ import htsjdk.variant.variantcontext.{GenotypeBuilder, VariantContext, VariantCo
 import htsjdk.variant.vcf.{VCFFileReader, VCFHeader}
 
 object AssessPhasingTest {
-  def withPhasingSetId(ctx: VariantContext, id: Int): VariantContext = {
+  def withPhasingSetId(ctx: Variant, id: Int): Variant = {
     val gBuilder = new GenotypeBuilder(ctx.getGenotype(0))
     gBuilder.attribute("PS", id)
     val ctxBuilder = new VariantContextBuilder(ctx)
@@ -49,49 +49,84 @@ object AssessPhasingTest {
     ctxBuilder.make()
   }
 
-  private val builderTruth = new VariantContextSetBuilder()
-  private val builderCall  = new VariantContextSetBuilder()
+  private val builderTruth = VcfBuilder(samples=Seq("S1"))
+  private val builderCall  = VcfBuilder(samples=Seq("S1"))
+  //  private val builderTruth = new VariantContextSetBuilder()
+  //  private val builderCall  = new VariantContextSetBuilder()
 
   // init builderTruth and builderCall
   {
     // BLOCK #1: positions 1 - 4 (call 1-4, truth 1-4)
-    builderTruth.addVariant(start=1, variantAlleles=List("A", "C"), genotypeAlleles=List("A", "C"), phased=true) // Match
-    builderCall.addVariant( start=1, variantAlleles=List("A", "C"), genotypeAlleles=List("A", "C"), phased=true) //   - with previous
-    builderTruth.addVariant(start=2, variantAlleles=List("A", "C"), genotypeAlleles=List("A", "C"), phased=true) // TruthOnly
-    builderCall.addVariant( start=3, variantAlleles=List("A", "C"), genotypeAlleles=List("A", "C"), phased=true) // CallOnly
-    builderTruth.addVariant(start=4, variantAlleles=List("A", "C"), genotypeAlleles=List("A", "C"), phased=true) // Match
-    builderCall.addVariant( start=4, variantAlleles=List("A", "C"), genotypeAlleles=List("A", "C"), phased=true) //   - with previous
+    builderTruth.add(pos=1, alleles=Seq("A", "C"), gts=Seq(Gt(sample="S1", gt="0|1"))) // Match
+    builderCall.add( pos=1, alleles=Seq("A", "C"), gts=Seq(Gt(sample="S1", gt="0|1"))) //   - with previous
+    builderTruth.add(pos=2, alleles=Seq("A", "C"), gts=Seq(Gt(sample="S1", gt="0|1"))) // TruthOnly
+    builderCall.add( pos=3, alleles=Seq("A", "C"), gts=Seq(Gt(sample="S1", gt="0|1"))) // CallOnly
+    builderTruth.add(pos=4, alleles=Seq("A", "C"), gts=Seq(Gt(sample="S1", gt="0|1"))) // Match
+    builderCall.add( pos=4, alleles=Seq("A", "C"), gts=Seq(Gt(sample="S1", gt="0|1"))) //   - with previous
+
+
+    //    builderTruth.addVariant(start=1, variantAlleles=List("A", "C"), genotypeAlleles=List("A", "C"), phased=true) // Match
+    //    builderCall.addVariant( start=1, variantAlleles=List("A", "C"), genotypeAlleles=List("A", "C"), phased=true) //   - with previous
+    //    builderTruth.addVariant(start=2, variantAlleles=List("A", "C"), genotypeAlleles=List("A", "C"), phased=true) // TruthOnly
+    //    builderCall.addVariant( start=3, variantAlleles=List("A", "C"), genotypeAlleles=List("A", "C"), phased=true) // CallOnly
+    //    builderTruth.addVariant(start=4, variantAlleles=List("A", "C"), genotypeAlleles=List("A", "C"), phased=true) // Match
+    //    builderCall.addVariant( start=4, variantAlleles=List("A", "C"), genotypeAlleles=List("A", "C"), phased=true) //   - with previous
 
     // BLOCK #2: positions 11-16 (call 11-15, truth 11-16)
-    builderTruth.addVariant(start=11, variantAlleles=List("A", "C"), genotypeAlleles=List("A", "C"), phased=true) // Match
-    builderCall.addVariant( start=11, variantAlleles=List("A", "C"), genotypeAlleles=List("A", "C"), phased=true) //   - with previous
-    builderTruth.addVariant(start=12, variantAlleles=List("A", "C"), genotypeAlleles=List("A", "C"), phased=true) // Mismatch **** POINT ERROR ****
-    builderCall.addVariant( start=12, variantAlleles=List("A", "C"), genotypeAlleles=List("C", "A"), phased=true) //   - with previous
-    builderTruth.addVariant(start=13, variantAlleles=List("A", "C"), genotypeAlleles=List("A", "C"), phased=true) // NA
-    builderCall.addVariant( start=13, variantAlleles=List("A", "C"), genotypeAlleles=List("A", "C"), phased=true) // CallOnly
-    builderTruth.addVariant(start=14, variantAlleles=List("A", "C"), genotypeAlleles=List("A", "C"), phased=true) // TruthOnly
-    builderCall.addVariant( start=14, variantAlleles=List("A", "C"), genotypeAlleles=List("A", "C"), phased=true) // NA
-    builderTruth.addVariant(start=15, variantAlleles=List("A", "C"), genotypeAlleles=List("A", "C"), phased=true) // Match
-    builderCall.addVariant( start=15, variantAlleles=List("A", "C"), genotypeAlleles=List("A", "C"), phased=true) //   - with Previous
-    builderTruth.addVariant(start=16, variantAlleles=List("A", "C"), genotypeAlleles=List("A", "C"), phased=true) // TruthOnly
+    builderTruth.add(pos=11, alleles=Seq("A", "C"), gts=Seq(Gt(sample="S1", gt="0|1"))) // Match
+    builderCall.add( pos=11, alleles=Seq("A", "C"), gts=Seq(Gt(sample="S1", gt="0|1"))) //   - with previous
+    builderTruth.add(pos=12, alleles=Seq("A", "C"), gts=Seq(Gt(sample="S1", gt="0|1"))) // Mismatch **** POINT ERROR ****
+    builderCall.add( pos=12, alleles=Seq("A", "C"), gts=Seq(Gt(sample="S1", gt="1|0"))) //   - with previous
+    builderTruth.add(pos=13, alleles=Seq("A", "C"), gts=Seq(Gt(sample="S1", gt="0|1"))) // NA
+    builderCall.add( pos=13, alleles=Seq("A", "C"), gts=Seq(Gt(sample="S1", gt="0|1"))) // CallOnly
+    builderCall.add( pos=14, alleles=Seq("A", "C"), gts=Seq(Gt(sample="S1", gt="0|1"))) // TruthOnly
+    builderCall.add( pos=14, alleles=Seq("A", "C"), gts=Seq(Gt(sample="S1", gt="0|1"))) // NA
+    builderCall.add( pos=15, alleles=Seq("A", "C"), gts=Seq(Gt(sample="S1", gt="0|1"))) // Match
+    builderCall.add( pos=15, alleles=Seq("A", "C"), gts=Seq(Gt(sample="S1", gt="0|1"))) //   - with previous
+    builderCall.add( pos=16, alleles=Seq("A", "C"), gts=Seq(Gt(sample="S1", gt="0|1"))) // TruthOnly
+
+
+    //    builderTruth.addVariant(start=11, variantAlleles=List("A", "C"), genotypeAlleles=List("A", "C"), phased=true) // Match
+    //    builderCall.addVariant( start=11, variantAlleles=List("A", "C"), genotypeAlleles=List("A", "C"), phased=true) //   - with previous
+    //    builderTruth.addVariant(start=12, variantAlleles=List("A", "C"), genotypeAlleles=List("A", "C"), phased=true) // Mismatch **** POINT ERROR ****
+    //    builderCall.addVariant( start=12, variantAlleles=List("A", "C"), genotypeAlleles=List("C", "A"), phased=true) //   - with previous
+    //    builderTruth.addVariant(start=13, variantAlleles=List("A", "C"), genotypeAlleles=List("A", "C"), phased=true) // NA
+    //    builderCall.addVariant( start=13, variantAlleles=List("A", "C"), genotypeAlleles=List("A", "C"), phased=true) // CallOnly
+    //    builderTruth.addVariant(start=14, variantAlleles=List("A", "C"), genotypeAlleles=List("A", "C"), phased=true) // TruthOnly
+    //    builderCall.addVariant( start=14, variantAlleles=List("A", "C"), genotypeAlleles=List("A", "C"), phased=true) // NA
+    //    builderTruth.addVariant(start=15, variantAlleles=List("A", "C"), genotypeAlleles=List("A", "C"), phased=true) // Match
+    //    builderCall.addVariant( start=15, variantAlleles=List("A", "C"), genotypeAlleles=List("A", "C"), phased=true) //   - with Previous
+    //    builderTruth.addVariant(start=16, variantAlleles=List("A", "C"), genotypeAlleles=List("A", "C"), phased=true) // TruthOnly
 
     // BLOCK #3: position 21 (call 21-21)
-    builderCall.addVariant( start=21, variantAlleles=List("A", "C"), genotypeAlleles=List("A", "C"), phased=true) // CallOnly
+    builderCall.add( pos=21, alleles=Seq("A", "C"), gts=Seq(Gt(sample="S1", gt="0|1"))) // CallOnly
+
+    //    builderCall.addVariant( start=21, variantAlleles=List("A", "C"), genotypeAlleles=List("A", "C"), phased=true) // CallOnly
 
     // BLOCK #4: position 30-42
     Range(30, 37).foreach { start =>
-      builderTruth.addVariant(start=start, variantAlleles=List("A", "C"), genotypeAlleles=List("A", "C"), phased=true) // Match
-      builderCall.addVariant( start=start, variantAlleles=List("A", "C"), genotypeAlleles=List("A", "C"), phased=true) //   - with previous
-    }
-    Range(37, 43).foreach { start =>
-      builderTruth.addVariant(start=start, variantAlleles=List("A", "C"), genotypeAlleles=List("A", "C"), phased=true) // Mismatch
-      builderCall.addVariant( start=start, variantAlleles=List("A", "C"), genotypeAlleles=List("C", "A"), phased=true) //   - with previous
+      builderTruth.add( pos=start, alleles=Seq("A", "C"), gts=Seq(Gt(sample="S1", gt="0|1"))) // Match
+      builderCall.add( pos=start, alleles=Seq("A", "C"), gts=Seq(Gt(sample="S1", gt="0|1"))) //   - with previous
     }
 
+    //    Range(30, 37).foreach { start =>
+    //      builderTruth.addVariant(start=start, variantAlleles=List("A", "C"), genotypeAlleles=List("A", "C"), phased=true) // Match
+    //      builderCall.addVariant( start=start, variantAlleles=List("A", "C"), genotypeAlleles=List("A", "C"), phased=true) //   - with previous
+    //    }
+
+    Range(37, 43).foreach { start =>
+      builderTruth.add( pos=start, alleles=Seq("A", "C"), gts=Seq(Gt(sample="S1", gt="0|1"))) // Match
+      builderCall.add( pos=start, alleles=Seq("A", "C"), gts=Seq(Gt(sample="S1", gt="1|0"))) //   - with previous
+    }
+
+    //    Range(37, 43).foreach { start =>
+    //      builderTruth.addVariant(start=start, variantAlleles=List("A", "C"), genotypeAlleles=List("A", "C"), phased=true) // Mismatch
+    //      builderCall.addVariant( start=start, variantAlleles=List("A", "C"), genotypeAlleles=List("C", "A"), phased=true) //   - with previous
+    //    }
     // NB: call has blocks lengths 4, 5, 1, and 13; truth has block lengths 4, 6, and 13.
   }
 
-  private def addPhaseSetId(ctx: VariantContext): VariantContext = {
+  private def addPhaseSetId(ctx: Variant): Variant = {
     if (ctx.getStart <= 10) withPhasingSetId(ctx, 1)
     else if (ctx.getStart <= 20) withPhasingSetId(ctx, 11)
     else if (ctx.getStart <= 29) withPhasingSetId(ctx, 21)
@@ -99,7 +134,7 @@ object AssessPhasingTest {
     else unreachable("Not defined")
   }
 
-  lazy val TruthVariants: Seq[VariantContext] = {
+  lazy val TruthVariants: Seq[Variant] = {
     // Keep the truth variant position 13 without a phase set
     builderTruth.map { ctx =>
       if (ctx.getStart == 13) ctx
@@ -107,7 +142,7 @@ object AssessPhasingTest {
     }.toSeq
   }
 
-  lazy val CallVariants: Seq[VariantContext] = {
+  lazy val CallVariants: Seq[Variant] = {
     // Keep the call variant position 14 without a phase set
     builderCall.map { ctx =>
       if (ctx.getStart == 14) ctx
