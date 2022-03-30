@@ -26,7 +26,7 @@ package com.fulcrumgenomics.vcf
 
 import com.fulcrumgenomics.FgBioDef._
 import com.fulcrumgenomics.testing.VcfBuilder.Gt
-import com.fulcrumgenomics.testing.{SamBuilder, UnitSpec, VariantContextSetBuilder, VcfBuilder}
+import com.fulcrumgenomics.testing.{SamBuilder, UnitSpec, VcfBuilder}
 import com.fulcrumgenomics.vcf.MakeMixtureVcf.Sample
 import htsjdk.variant.variantcontext.Allele
 import htsjdk.variant.vcf.{VCFFileReader, VCFHeader, VCFHeaderLine}
@@ -167,11 +167,6 @@ class MakeMixtureVcfTest extends UnitSpec {
 
   it should "fail if a sample with non-hom-ref genotypes is missing it's AF attribute" in {
     val samples = Seq("s1", "s2")
-//    val builder = new VariantContextSetBuilder(samples)
-//    MakeMixtureVcf.HeaderLines.foreach(builder.addMetaDataLine)
-//    builder.addVariant(start=10, sampleName=Some("s1"), variantAlleles=List("A","C","T"), genotypeAlleles=List("A"))
-//    builder.addVariant(start=10, sampleName=Some("s2"), variantAlleles=List("A","C","T"), genotypeAlleles=List("A", "C"))
-
     val vcfBuilder = VcfBuilder(samples=samples)
     vcfBuilder.add(pos=10, alleles=Seq("A", "C"), gts=Seq(Gt(sample="s1", gt="0"), Gt(sample="s2", gt="0/1")))
     val builder = new VCFFileReader(vcfBuilder.toTempFile())

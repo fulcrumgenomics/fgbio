@@ -107,18 +107,18 @@ class VariantMaskTest extends UnitSpec {
     val mask = VariantMask(builder.toTempFile())
     mask.isVariant(1, 100) shouldBe true
   }
+
+//  it should "throw an exception if a VCF doesn't have a sequence dictionary in it" in {
+//    // TODO figure out how to test a vcf that doesn't have a header with VcfBuilder
+////    val builder = new VariantContextSetBuilder().setSequenceDictionary(dict)
+////    builder.addVariant(refIdx=1, start=100, variantAlleles=List("A","C"), genotypeAlleles=List("A", "C"))
+////    builder.setSequenceDictionary(SequenceDictionary())
+//    val builder = VcfBuilder(VcfHeader(contigs=IndexedSeq(), infos=Seq(), formats=Seq(), filters=Seq(), others=Seq(), samples=IndexedSeq("S1")))
+//    builder.add(chrom="chr1", pos=100, alleles=Seq("A", "C"))
 //
-////  it should "throw an exception if a VCF doesn't have a sequence dictionary in it" in {
-////    // TODO figure out how to test a vcf that doesn't have a header with VcfBuilder
-//////    val builder = new VariantContextSetBuilder().setSequenceDictionary(dict)
-//////    builder.addVariant(refIdx=1, start=100, variantAlleles=List("A","C"), genotypeAlleles=List("A", "C"))
-//////    builder.setSequenceDictionary(SequenceDictionary())
-////    val builder = VcfBuilder(VcfHeader(contigs=IndexedSeq(), infos=Seq(), formats=Seq(), filters=Seq(), others=Seq(), samples=IndexedSeq("S1")))
-////    builder.add(chrom="chr1", pos=100, alleles=Seq("A", "C"))
-////
-////    val vcf = builder.toTempFile()
-////    an[Exception] shouldBe thrownBy { VariantMask(vcf) }
-////  }
+//    val vcf = builder.toTempFile()
+//    an[Exception] shouldBe thrownBy { VariantMask(vcf) }
+//  }
 
   it should "throw an exception if requested to traverse backwards to an earlier reference" in {
     val builder = VcfBuilder(samples = Seq("S1"))
