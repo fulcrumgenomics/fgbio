@@ -24,7 +24,7 @@
 
 package com.fulcrumgenomics.vcf
 
-import com.fulcrumgenomics.testing.{UnitSpec, VariantContextSetBuilder, VcfBuilder}
+import com.fulcrumgenomics.testing.{UnitSpec, VcfBuilder}
 import htsjdk.variant.variantcontext.VariantContext
 import htsjdk.variant.vcf.VCFFileReader
 
