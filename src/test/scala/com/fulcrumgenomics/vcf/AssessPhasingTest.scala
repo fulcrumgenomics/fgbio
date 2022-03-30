@@ -589,7 +589,6 @@ class PhaseCigarTest extends ErrorLogLevel {
   }
 
   "Cigar.toCigar" should "create an empty cigar if no variants have a phasing set" in {
-//    val builder = new VariantContextSetBuilder().addVariant(start=1, variantAlleles=List("A", "C"), genotypeAlleles=List("A", "C"), phased=true)
     val vcfBuilder = VcfBuilder(samples=Seq("s1")).add(pos=1, alleles=Seq("A", "C"), gts=Seq(Gt(sample="s1", gt="0|1")))
     val builder = new VCFFileReader(vcfBuilder.toTempFile())
     val ctx     = builder.iterator().next()
@@ -614,7 +613,6 @@ class PhaseCigarTest extends ErrorLogLevel {
   }
 
   it should "create a cigar from either a single truth or call variant" in {
-//    val builder = new VariantContextSetBuilder().addVariant(start=1, variantAlleles=List("A", "C"), genotypeAlleles=List("A", "C"), phased=true)
     val vcfBuilder = VcfBuilder(samples=Seq("s1")).add(pos=1, alleles=Seq("A", "C"), gts=Seq(Gt(sample="s1", gt="0|1")))
     val builder = new VCFFileReader(vcfBuilder.toTempFile())
     val ctx     = withPhasingSetId(builder.iterator().next(), 1)
@@ -666,7 +664,6 @@ class PhaseCigarTest extends ErrorLogLevel {
   }
 
   it should "create a cigar when both truth and call variants are present and both are phased" in {
-//    val builder  = new VariantContextSetBuilder().addVariant(start=1, variantAlleles=List("A", "C"), genotypeAlleles=List("A", "C"), phased=true)
     val vcfBuilder = VcfBuilder(samples=Seq("s1")).add(pos=1, alleles=Seq("A", "C"), gts=Seq(Gt(sample="s1", gt="0|1")))
     val builder = new VCFFileReader(vcfBuilder.toTempFile())
     val ctx      = withPhasingSetId(builder.iterator().next(), 1)
@@ -683,6 +680,7 @@ class PhaseCigarTest extends ErrorLogLevel {
   }
 
   it should "create a cigar when both truth and call variants are present and both are phased but mismatch alleles" in {
+    // TODO fix this test
     val builderTruth = new VariantContextSetBuilder().addVariant(start=1, variantAlleles=List("A", "C"), genotypeAlleles=List("A", "C"), phased=true)
 //    val vcfBuilderTruth = VcfBuilder(samples=Seq("s1")).add(pos=1, alleles=Seq("A", "C"), gts=Seq(Gt(sample="s1", gt="0|1")))
 //    val builderTruth = new VCFFileReader(vcfBuilderTruth.toTempFile())
