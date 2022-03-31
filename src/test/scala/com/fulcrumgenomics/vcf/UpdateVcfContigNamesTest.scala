@@ -28,7 +28,8 @@ import com.fulcrumgenomics.FgBioDef.javaIterableToIterator
 import com.fulcrumgenomics.commons.io.PathUtil
 import com.fulcrumgenomics.fasta.Converters.FromSAMSequenceDictionary
 import com.fulcrumgenomics.fasta.SequenceDictionary
-import com.fulcrumgenomics.testing.{UnitSpec, VariantContextSetBuilder}
+import com.fulcrumgenomics.testing.{UnitSpec, VcfBuilder}
+import com.fulcrumgenomics.vcf.api.{VcfContigHeader, VcfHeader}
 import htsjdk.variant.vcf.VCFFileReader
 
 class UpdateVcfContigNamesTest extends UnitSpec {
@@ -40,13 +41,16 @@ class UpdateVcfContigNamesTest extends UnitSpec {
   private val targetDict     = SequenceDictionary.extract(this.targetDictPath)
 
   "UpdateVcfContigNames" should "update the contig names" in {
-
-
-    val builder = new VariantContextSetBuilder()
-    builder.setSequenceDictionary(sourceDict)
-    builder.addVariant(refIdx = 0, start = 1, variantAlleles = List("A", "C")) // chr1
-    builder.addVariant(refIdx = 10, start = 10, variantAlleles = List("A", "C")) // chr2
-
+    val builder = VcfBuilder(header=VcfHeader(
+      contigs=IndexedSeq(VcfContigHeader(0, "chr1"), VcfContigHeader(1, "chr2"), VcfContigHeader(3, "NC_000002.12")),
+      infos=Seq(),
+      formats=Seq(),
+      filters=Seq(),
+      samples=IndexedSeq("S1"),
+      others=Seq())
+    )
+    builder.add(chrom="chr1", pos=1, alleles=Seq("A", "C")) // chr1
+    builder.add(chrom="NC_000002.12", pos=10, alleles=Seq("A", "C")) // chr2
     val output = makeTempFile("output", ".vcf.gz")
     val tool   = new UpdateVcfContigNames(input = builder.toTempFile(), output = output, dict = this.targetDictPath, skipMissing = false)
     executeFgbioTool(tool)
@@ -71,10 +75,15 @@ class UpdateVcfContigNamesTest extends UnitSpec {
   }
 
   it should "fail when a contig cannot be updated" in {
-    val builder = new VariantContextSetBuilder()
-    builder.setSequenceDictionary(sourceDict)
-    builder.addVariant(refIdx = 594, start = 1, variantAlleles = List("A", "C")) // dummy
-
+    val builder = VcfBuilder(header=VcfHeader(
+      contigs=sourceDict.map(s => VcfContigHeader(s.index, s.name)).toIndexedSeq,
+      infos=Seq(),
+      formats=Seq(),
+      filters=Seq(),
+      samples=IndexedSeq("S1"),
+      others=Seq())
+    )
+    builder.add(chrom="dummy", pos=1, alleles=Seq("A", "C"))
     val output = makeTempFile("output", ".vcf.gz")
     val tool   = new UpdateVcfContigNames(input = builder.toTempFile(), output = output, dict = this.targetDictPath, skipMissing = false)
 
@@ -83,9 +92,15 @@ class UpdateVcfContigNamesTest extends UnitSpec {
   }
 
   it should "skip contigs that cannot be updated when --skip-missing is used" in {
-    val builder = new VariantContextSetBuilder()
-    builder.setSequenceDictionary(sourceDict)
-    builder.addVariant(refIdx = 594, start = 1, variantAlleles = List("A", "C")) // dummy
+    val builder = VcfBuilder(header=VcfHeader(
+      contigs=sourceDict.map(s => VcfContigHeader(s.index, s.name)).toIndexedSeq,
+      infos=Seq(),
+      formats=Seq(),
+      filters=Seq(),
+      samples=IndexedSeq("S1"),
+      others=Seq())
+    )
+    builder.add(chrom="dummy", pos=1, alleles=Seq("A", "C"))
 
     val output = makeTempFile("output", ".vcf.gz")
     val tool   = new UpdateVcfContigNames(input = builder.toTempFile(), output = output, dict = this.targetDictPath, skipMissing = true)
