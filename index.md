@@ -1,6 +1,5 @@
 [![Build Status](https://travis-ci.org/fulcrumgenomics/fgbio.svg?branch=master)](https://travis-ci.org/fulcrumgenomics/fgbio)
 [![codecov](https://codecov.io/gh/fulcrumgenomics/fgbio/branch/master/graph/badge.svg)](https://codecov.io/gh/fulcrumgenomics/fgbio)
-[![Codacy Badge](https://app.codacy.com/project/badge/Grade/daf8b19014a449f3b15ca02eaf9bd976)](https://www.codacy.com/gh/fulcrumgenomics/fgbio/dashboard?utm_source=github.com&amp;utm_medium=referral&amp;utm_content=fulcrumgenomics/fgbio&amp;utm_campaign=Badge_Grade)
 [![Maven Central](https://maven-badges.herokuapp.com/maven-central/com.fulcrumgenomics/fgbio_2.13/badge.svg)](https://maven-badges.herokuapp.com/maven-central/com.fulcrumgenomics/fgbio_2.13)
 [![Bioconda](https://img.shields.io/conda/dn/bioconda/fgbio.svg?label=Bioconda)](http://bioconda.github.io/recipes/fgbio/README.html)
 [![Javadocs](http://javadoc.io/badge/com.fulcrumgenomics/fgbio_2.13.svg)](http://javadoc.io/doc/com.fulcrumgenomics/fgbio_2.13)
@@ -26,8 +25,8 @@ If the reported version on the first line starts with `1.8` or higher, you are a
 
 Once you have Java installed and a release downloaded you can run:
 
-* Run `java -jar fgbio-1.5.1.jar` to get a list of available tools
-* Run `java -jar fgbio-1.5.1.jar <Tool Name>` to see detailed usage instructions on any tool
+* Run `java -jar fgbio-2.0.0.jar` to get a list of available tools
+* Run `java -jar fgbio-2.0.0.jar <Tool Name>` to see detailed usage instructions on any tool
 
 When running tools we recommend the following set of Java options as a starting point though individual tools may need more or less memory depending on the input data:
 
