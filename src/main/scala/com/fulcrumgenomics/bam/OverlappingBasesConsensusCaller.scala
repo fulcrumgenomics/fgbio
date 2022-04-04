@@ -112,7 +112,6 @@ class OverlappingBasesConsensusCaller(agreementStrategy: AgreementStrategy = Agr
           if (newBase1 != NoCall && newBase1 != base1) r1Corrected += 1
           if (newBase2 != NoCall && newBase2 != base2) r2Corrected += 1
 
-          // Only add the consensus call if we aren't masking disagreements or its a no-call
           r1.bases(r1Head.readPos - 1) = newBase1
           r1.quals(r1Head.readPos - 1) = newQual1
           r2.bases(r2Head.readPos - 1) = newBase2
@@ -247,10 +246,10 @@ object DisagreementStrategy extends FgBioEnum[DisagreementStrategy] {
     * mask both bases. */
   case object MaskLowerQual extends DisagreementStrategy {
     def baseAndQual(base1: Byte, qual1: PhredScore, base2: Byte, qual2: PhredScore): (Byte, PhredScore, Byte, PhredScore) = {
-      //                       r1-base  r1-qual                        r2-base  r2-qual
-      if (qual1 > qual2)      (base1,   PhredScore.cap(qual1 - qual2), NoCall,  NoCallQual)
-      else if (qual2 > qual1) (NoCall,  NoCallQual,                    base2,   PhredScore.cap(qual2 - qual1))
-      else                    (NoCall,  NoCallQual,                    NoCall,  NoCallQual)
+      //                       r1-base  r1-qual     2-base  r2-qual
+      if (qual1 > qual2)      (base1,   qual1,      NoCall, NoCallQual)
+      else if (qual2 > qual1) (NoCall,  NoCallQual, base2,  qual2)
+      else                    (NoCall,  NoCallQual, NoCall, NoCallQual)
     }
   }
 

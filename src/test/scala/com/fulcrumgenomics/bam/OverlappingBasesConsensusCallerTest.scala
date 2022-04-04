@@ -205,7 +205,7 @@ class OverlappingBasesConsensusCallerTest extends UnitSpec {
       r1.basesString shouldBe "A"*9 + "N"     // mask the last base (lower base quality)
       r1.qualsString shouldBe q10*9 + minQual // mask the last qual (lower base quality)
       r2.basesString shouldBe "C"*10          // higher base quality, do nothing
-      r2.qualsString shouldBe q10 + q20*9          // higher base quality, difference between high and low is q10
+      r2.qualsString shouldBe q20*10          // higher base quality, do nothing
     }
 
     // Consensus
