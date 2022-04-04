@@ -55,7 +55,7 @@ import scala.collection.immutable.IndexedSeq
     |done in streaming fashion with, for example:
     |
     |```
-    |fgbio --compression 0 SortBam -i in.bam -o out.bam -s queryname | fgbio ClipBam -i /dev/stdin ...
+    |samtools sort -n -u in.bam | fgbio ClipBam -i /dev/stdin ...
     |```
     |
     |The output sort order may be specified with `--sort-order`.  If not given, then the output will be in the same
