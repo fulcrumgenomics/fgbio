@@ -678,23 +678,20 @@ class PhaseCigarTest extends ErrorLogLevel {
       metric.num_truth_phased shouldBe 1
     }
   }
-
+  // split into three different unit tests can put 683-693 into different function, and put three subtests in separate tests
   it should "create a cigar when both truth and call variants are present and both are phased but mismatch alleles" in {
-    // TODO fix this test
-    val builderTruth = new VariantContextSetBuilder().addVariant(start=1, variantAlleles=List("A", "C"), genotypeAlleles=List("A", "C"), phased=true)
-//    val vcfBuilderTruth = VcfBuilder(samples=Seq("s1")).add(pos=1, alleles=Seq("A", "C"), gts=Seq(Gt(sample="s1", gt="0|1")))
-//    val builderTruth = new VCFFileReader(vcfBuilderTruth.toTempFile())
+    val vcfBuilderTruth = VcfBuilder(samples=Seq("s1")).add(pos=1, alleles=Seq("A", "C"), gts=Seq(Gt(sample="s1", gt="0|1")))
+    val builderTruth = new VCFFileReader(vcfBuilderTruth.toTempFile())
 
-    val builderCall  = new VariantContextSetBuilder().addVariant(start=1, variantAlleles=List("A", "C"), genotypeAlleles=List("C", "A"), phased=true)
-//    val vcfBuilderCall = VcfBuilder(samples=Seq("s1")).add(pos=1, alleles=Seq("A", "C"), gts=Seq(Gt(sample="s1", gt="0|1")))
-//    val builderCall = new VCFFileReader(vcfBuilderCall.toTempFile())
+    val vcfBuilderCall = VcfBuilder(samples=Seq("s1")).add(pos=1, alleles=Seq("A", "C"), gts=Seq(Gt(sample="s1", gt="1|0")))
+    val builderCall = new VCFFileReader(vcfBuilderCall.toTempFile())
 
-    val truth = withPhasingSetId(builderTruth.head, 1)
-    val call  = withPhasingSetId(builderCall.head, 1)
+    val truth = withPhasingSetId(builderTruth.iterator().next(), 1)
+    val call  = withPhasingSetId(builderCall.iterator().next(), 1)
 
     // both variants are phased, phase is inverted, and we assume a fixed order, so a mismatch
     {
-      val (cigar, metric) = toCigar(truth = Seq(truth), call = Seq(call), header = builderTruth.header, skipMismatchingAlleles = true, assumeFixedAlleleOrder = true)
+      val (cigar, metric) = toCigar(truth = Seq(truth), call = Seq(call), header = builderTruth.getFileHeader, skipMismatchingAlleles = true, assumeFixedAlleleOrder = true)
       cigar should contain theSameElementsInOrderAs Seq(BothEnd, Mismatch, BothEnd)
       metric.num_called shouldBe 1
       metric.num_phased shouldBe 1
@@ -703,7 +700,7 @@ class PhaseCigarTest extends ErrorLogLevel {
     }
     // both variants are phased, phase is inverted, and we don't assume a fixed order, so a match
     {
-      val (cigar, metric) = toCigar(truth = Seq(truth), call = Seq(call), header = builderTruth.header, skipMismatchingAlleles = true, assumeFixedAlleleOrder = false)
+      val (cigar, metric) = toCigar(truth = Seq(truth), call = Seq(call), header = builderTruth.getFileHeader, skipMismatchingAlleles = true, assumeFixedAlleleOrder = false)
       cigar should contain theSameElementsInOrderAs Seq(BothEnd, Match, BothEnd)
       metric.num_called shouldBe 1
       metric.num_phased shouldBe 1
@@ -712,16 +709,14 @@ class PhaseCigarTest extends ErrorLogLevel {
     }
     // first site is a match, second is a mismatch since we inverted after the first
     {
-      builderTruth.addVariant(start=2, variantAlleles=List("A", "C"), genotypeAlleles=List("A", "C"), phased=true)
-      builderCall.addVariant(start=2, variantAlleles=List("A", "C"), genotypeAlleles=List("A", "C"), phased=true)
-//      vcfBuilderTruth.add(pos=2, alleles=Seq("A", "C"), gts=Seq(Gt(sample="s1", gt="0|1")))
-//      vcfBuilderCall.add(pos=2, alleles=Seq("A", "C"), gts=Seq(Gt(sample="s1", gt="0|1")))
-//      val builderTruth = new VCFFileReader(vcfBuilderTruth.toTempFile())
-//      val builderCall = new VCFFileReader(vcfBuilderCall.toTempFile())
-      val truthTwo = withPhasingSetId(builderTruth.last, 1)
-      val callTwo  = withPhasingSetId(builderCall.last, 1)
+      vcfBuilderTruth.add(pos=2, alleles=Seq("A", "C"), gts=Seq(Gt(sample="s1", gt="0|1")))
+      vcfBuilderCall.add(pos=2, alleles=Seq("A", "C"), gts=Seq(Gt(sample="s1", gt="0|1")))
+      val builderTruth = new VCFFileReader(vcfBuilderTruth.toTempFile())
+      val builderCall = new VCFFileReader(vcfBuilderCall.toTempFile())
+      val truthTwo = withPhasingSetId(builderTruth.iterator().toSeq.last, 1)
+      val callTwo  = withPhasingSetId(builderCall.iterator().toSeq.last, 1)
 
-      val (cigar, metric) = toCigar(truth = Seq(truth, truthTwo), call = Seq(call, callTwo), header = builderTruth.header, skipMismatchingAlleles = true, assumeFixedAlleleOrder = false)
+      val (cigar, metric) = toCigar(truth = Seq(truth, truthTwo), call = Seq(call, callTwo), header = builderTruth.getFileHeader, skipMismatchingAlleles = true, assumeFixedAlleleOrder = false)
       cigar should contain theSameElementsInOrderAs Seq(BothEnd, Match, Mismatch, BothEnd)
       metric.num_called shouldBe 2
       metric.num_phased shouldBe 2
