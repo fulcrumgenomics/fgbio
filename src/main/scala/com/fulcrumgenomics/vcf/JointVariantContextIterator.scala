@@ -24,11 +24,13 @@
 
 package com.fulcrumgenomics.vcf
 
+import com.fulcrumgenomics.FgBioDef._
 import com.fulcrumgenomics.fasta.SequenceDictionary
+import com.fulcrumgenomics.vcf.api.Variant
 import htsjdk.variant.variantcontext.{VariantContext, VariantContextComparator}
 
 object JointVariantContextIterator {
-  def apply(iters: Seq[Iterator[VariantContext]],
+  def apply(iters: Seq[Iterator[Variant]],
             dict: SequenceDictionary
            ): JointVariantContextIterator = {
     new JointVariantContextIterator(
@@ -37,7 +39,7 @@ object JointVariantContextIterator {
     )
   }
 
-  def apply(iters: Seq[Iterator[VariantContext]],
+  def apply(iters: Seq[Iterator[Variant]],
             comp: VariantContextComparator
            ): JointVariantContextIterator = {
     new JointVariantContextIterator(
@@ -51,7 +53,7 @@ object JointVariantContextIterator {
   * Iterates over multiple variant context iterators such that we return a list of contexts for the union of sites
   * across the iterators.  If samples is given, we subset each variant context to just that sample.
   */
-class JointVariantContextIterator private(iters: Seq[Iterator[VariantContext]],
+class JointVariantContextIterator private(iters: Seq[Iterator[Variant]],
                                           dictOrComp: Either[SequenceDictionary, VariantContextComparator]
                                          )
 extends Iterator[Seq[Option[VariantContext]]] {
@@ -67,9 +69,10 @@ extends Iterator[Seq[Option[VariantContext]]] {
 
   def hasNext: Boolean = iterators.exists(_.nonEmpty)
 
-  def next(): Seq[Option[VariantContext]] = {
+  def next(): Seq[Option[Variant]] = {
     val minCtx = iterators.filter(_.nonEmpty).map(_.head).sortWith {
-      case (left: VariantContext, right: VariantContext) => comparator.compare(left, right) < 0
+      // this just checks that the variants are the the same position? Shouldn't be difficult to replace.
+      case (left: Variant, right: Variant) => comparator.compare(VcfConversions.toJavaVariant(left), right) < 0
     }.head
     // TODO: could use a TreeSet to store the iterators, examine the head of each iterator, then pop the iterator with the min,
     // and add that iterator back in.
