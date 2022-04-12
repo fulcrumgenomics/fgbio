@@ -30,6 +30,7 @@ import com.fulcrumgenomics.commons.util.LazyLogging
 import com.fulcrumgenomics.fasta.SequenceDictionary
 import com.fulcrumgenomics.sopt.{arg, clp}
 import com.fulcrumgenomics.util.{Io, ProgressLogger}
+import com.fulcrumgenomics.vcf.api.{VcfContigHeader, VcfHeader, VcfSource, VcfWriter}
 import htsjdk.variant.variantcontext.VariantContextBuilder
 import htsjdk.variant.variantcontext.writer.{Options, VariantContextWriterBuilder}
 import htsjdk.variant.vcf.{VCFFileReader, VCFHeader}
@@ -55,20 +56,19 @@ class UpdateVcfContigNames
 
   override def execute(): Unit = {
     val dict   = SequenceDictionary(this.dict)
-    val reader = new VCFFileReader(this.input)
+    val reader = VcfSource(this.input)
     val header = {
-      import com.fulcrumgenomics.fasta.Converters.ToSAMSequenceDictionary
-      val h: VCFHeader = new VCFHeader(reader.getFileHeader)
-      h.setSequenceDictionary(dict.asSam)
-      h
+      VcfHeader(
+        contigs=dict.map{l => VcfContigHeader(index=l.index, name=l.name, length=Some(l.length))}.toIndexedSeq,
+        infos=reader.header.infos,
+        formats=reader.header.formats,
+        filters=reader.header.filters,
+        others=reader.header.others,
+        samples=reader.header.samples
+      )
     }
-    val writer = {
-      new VariantContextWriterBuilder()
-        .setOutputPath(this.output)
-        .setOption(Options.INDEX_ON_THE_FLY)
-        .build()
-    }
-    writer.writeHeader(header)
+
+    val writer = VcfWriter(this.output, header)
 
     // go through all the records
     val progress = ProgressLogger(logger, noun = "variants", verb = "written")
@@ -78,9 +78,9 @@ class UpdateVcfContigNames
           if (skipMissing) logger.warning(s"Did not find contig ${v.getContig} in the sequence dictionary.")
           else throw new IllegalStateException(s"Did not find contig ${v.getContig} in the sequence dictionary.")
         case Some(info) =>
-          val newV = new VariantContextBuilder(v).chr(info.name).make()
+          val newV = v.copy(chrom=info.name)
           progress.record(newV.getContig, newV.getStart)
-          writer.add(newV)
+          writer.write(newV)
        }
     }
     progress.logLast()
