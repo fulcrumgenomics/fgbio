@@ -77,6 +77,8 @@ class OverlappingBasesConsensusCaller(agreementStrategy: AgreementStrategy = Agr
     val minEndRefPos     = Math.min(r1.end, r2.end)
     val r1Iter           = new ReadAndRefPosIterator(r1, minRefPos=maxStartRefPos, maxRefPos=minEndRefPos).buffered
     val r2Iter           = new ReadAndRefPosIterator(r2, minRefPos=maxStartRefPos, maxRefPos=minEndRefPos).buffered
+    require(r1Iter.hasNext, s"R1 does not have overlapping bases: ${r1.name}")
+    require(r2Iter.hasNext, s"R2 does not have overlapping bases: ${r2.name}")
     var r1LastReadPos    = r1Iter.head.readPos - 1
     var r2LastReadPos    = r2Iter.head.readPos - 1
     var overlappingBases = 0
