@@ -238,6 +238,3 @@ object ReadMateAndRefPosIterator {
     */
   case class ReadMateAndRefPos(readPos: Int, matePos: Int, refPos: Int)
 }
-
-
-
