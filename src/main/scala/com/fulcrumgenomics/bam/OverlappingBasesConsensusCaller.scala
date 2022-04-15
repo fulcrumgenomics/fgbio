@@ -142,10 +142,16 @@ object OverlappingBasesConsensusCaller {
       disagreementStrategy = disagreementStrategy
     )
     val templateIterator = Bams.templateIterator(in=in).flatMap { template =>
-      caller.call(template)
+      val stats: CorrectionStats = caller.call(template)
+
       // update metrics
+      val basesCorrected = stats.r1CorrectedBases + stats.r2CorrectedBases
+      if (basesMetric.overlapping > 0) templateMetric.overlapping += 1
+      if (basesCorrected > 0) templateMetric.corrected += 1
       templateMetric.total += 1
       basesMetric.total += template.primaryReads.map(_.length).sum
+      basesMetric.overlapping = stats.overlappingBases
+      basesMetric.corrected = basesCorrected
       template.allReads
     }
     new SelfClosingIterator(templateIterator, closer = () => {
