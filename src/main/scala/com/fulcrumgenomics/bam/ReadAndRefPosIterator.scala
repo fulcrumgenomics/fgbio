@@ -157,8 +157,7 @@ object ReadAndRefPosIterator {
     * Insertions and deletions will not be returned.  For example, an insertion consumes a read base, but has no
     * corresponding reference base.  A deletion consumes a reference base, but has no corresponding read base.
     *
-    * The _mapped_ read bases returned can be limited using the arguments for the minimum and maximum position in the read
-    * and reference respectively.
+    * The _mapped_ read bases returned can be limited using the arguments for the minimum and maximum position in the read.
     *
     * @param rec the record over which read and reference positions should be returned
     * @param mate the mate of the record
@@ -173,16 +172,14 @@ object ReadAndRefPosIterator {
     require(rec.refIndex == mate.refIndex)
 
     new ReadAndRefPosIterator(
-          rec        = rec,
-          minReadPos = minReadPos,
-          maxReadPos = maxReadPos,
-          minRefPos  = Math.max(rec.start, mate.start),
-          maxRefPos  = Math.min(rec.end, mate.end)
+      rec        = rec,
+      minReadPos = minReadPos,
+      maxReadPos = maxReadPos,
+      minRefPos  = Math.max(rec.start, mate.start),
+      maxRefPos  = Math.min(rec.end, mate.end)
     )
   }
-
 }
-
 
 
 /** An iterator for each _mapped_ read base (i.e. has a corresponding reference base) that also has a _mapped_ base in
@@ -191,8 +188,7 @@ object ReadAndRefPosIterator {
   * Insertions and deletions will not be returned.  For example, an insertion consumes a read base, but has no
   * corresponding reference base.  A deletion consumes a reference base, but has no corresponding read base.
   *
-  * The _mapped_ read bases returned can be limited using the arguments for the minimum and maximum position in the read
-  * and reference respectively.
+  * The _mapped_ read bases returned can be limited using the arguments for the minimum and maximum position in the read.
   *
   * @param rec the record over which read and reference positions should be returned
   * @param mate the mate of the record
@@ -203,6 +199,8 @@ class ReadMateAndRefPosIterator(rec: SamRecord,
                                 mate: SamRecord,
                                 minReadPos: Int = 1,
                                 maxReadPos: Int = Int.MaxValue) extends Iterator[ReadMateAndRefPos] {
+  // Use an iterators that returns the position for the read and mate respectively, then just find the reference positions
+  // where both have a read position defined.
   private val recIter  = ReadAndRefPosIterator(rec=rec, mate=mate, minReadPos=minReadPos, maxReadPos=maxReadPos).buffered
   private val mateIter = ReadAndRefPosIterator(rec=mate, mate=rec).buffered
 
@@ -232,7 +230,7 @@ class ReadMateAndRefPosIterator(rec: SamRecord,
 }
 
 object ReadMateAndRefPosIterator {
-  /** Stores a 1-based position in the read and reference
+  /** Stores a 1-based position in the read, mate and reference
     *
     * @param readPos 1-based position in the read
     * @param matePos 1-based position in the mate

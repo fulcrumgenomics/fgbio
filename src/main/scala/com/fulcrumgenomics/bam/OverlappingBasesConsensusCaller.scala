@@ -79,7 +79,6 @@ class OverlappingBasesConsensusCaller(agreementStrategy: AgreementStrategy = Agr
 
     // Walk through the iterators by reference position
     iter.foreach { item =>
-
       val base1 = r1.bases(item.readPos - 1)
       val base2 = r2.bases(item.matePos - 1)
       if (!SequenceUtil.isNoCall(base1) && !SequenceUtil.isNoCall(base2)) {
