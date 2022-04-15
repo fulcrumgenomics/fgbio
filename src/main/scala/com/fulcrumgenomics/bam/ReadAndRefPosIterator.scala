@@ -28,6 +28,7 @@ package com.fulcrumgenomics.bam
 import com.fulcrumgenomics.FgBioDef.yieldAndThen
 import com.fulcrumgenomics.alignment.CigarElem
 import com.fulcrumgenomics.bam.ReadAndRefPosIterator.ReadAndRefPos
+import com.fulcrumgenomics.bam.ReadMateAndRefPosIterator.ReadMateAndRefPos
 import com.fulcrumgenomics.bam.api.SamRecord
 import htsjdk.samtools.util.CoordMath
 
@@ -170,12 +171,75 @@ object ReadAndRefPosIterator {
             maxReadPos: Int = Int.MaxValue): ReadAndRefPosIterator = {
     require(rec.paired && rec.mapped && mate.paired && mate.mapped && rec.name == mate.name)
     require(rec.refIndex == mate.refIndex)
+
     new ReadAndRefPosIterator(
-      rec        = rec,
-      minReadPos = minReadPos,
-      maxReadPos = maxReadPos,
-      minRefPos  = Math.max(rec.start, mate.start),
-      maxRefPos  = Math.min(rec.end, mate.end)
+          rec        = rec,
+          minReadPos = minReadPos,
+          maxReadPos = maxReadPos,
+          minRefPos  = Math.max(rec.start, mate.start),
+          maxRefPos  = Math.min(rec.end, mate.end)
     )
   }
+
 }
+
+
+
+/** An iterator for each _mapped_ read base (i.e. has a corresponding reference base) that also has a _mapped_ base in
+  * its mate, with each value being the 1-based position in the read and reference respectively.
+  *
+  * Insertions and deletions will not be returned.  For example, an insertion consumes a read base, but has no
+  * corresponding reference base.  A deletion consumes a reference base, but has no corresponding read base.
+  *
+  * The _mapped_ read bases returned can be limited using the arguments for the minimum and maximum position in the read
+  * and reference respectively.
+  *
+  * @param rec the record over which read and reference positions should be returned
+  * @param mate the mate of the record
+  * @param minReadPos the minimum 1-based position in the read to return
+  * @param maxReadPos the maximum 1-based inclusive end position in the read to return
+  */
+class ReadMateAndRefPosIterator(rec: SamRecord,
+                                mate: SamRecord,
+                                minReadPos: Int = 1,
+                                maxReadPos: Int = Int.MaxValue) extends Iterator[ReadMateAndRefPos] {
+  private val recIter  = ReadAndRefPosIterator(rec=rec, mate=mate, minReadPos=minReadPos, maxReadPos=maxReadPos).buffered
+  private val mateIter = ReadAndRefPosIterator(rec=mate, mate=rec).buffered
+
+  private var nextItem: Option[ReadMateAndRefPos] = None
+
+  override def hasNext(): Boolean = {
+    while (nextItem.isEmpty && recIter.hasNext && mateIter.hasNext) {
+      val nextRec  = recIter.head
+      val nextMate = mateIter.head
+      if (nextRec.refPos < nextMate.refPos) recIter.next()
+      else if (nextMate.refPos < nextRec.refPos) mateIter.next()
+      else {
+        nextItem = Some(ReadMateAndRefPos(readPos=nextRec.readPos, matePos=nextMate.readPos, refPos=nextRec.refPos))
+        recIter.next()
+        mateIter.next()
+      }
+    }
+    nextItem.isDefined
+  }
+
+  def next(): ReadMateAndRefPos = this.nextItem match {
+    case None        => throw new NoSuchElementException()
+    case Some(value) =>
+      this.nextItem = None
+      value
+  }
+}
+
+object ReadMateAndRefPosIterator {
+  /** Stores a 1-based position in the read and reference
+    *
+    * @param readPos 1-based position in the read
+    * @param matePos 1-based position in the mate
+    * @param refPos 1-based position in the reference
+    */
+  case class ReadMateAndRefPos(readPos: Int, matePos: Int, refPos: Int)
+}
+
+
+

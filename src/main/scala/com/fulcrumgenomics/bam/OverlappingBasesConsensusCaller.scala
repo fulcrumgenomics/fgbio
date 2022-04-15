@@ -72,57 +72,34 @@ class OverlappingBasesConsensusCaller(agreementStrategy: AgreementStrategy = Agr
     require(r1.mapped && r2.mapped && r1.paired && r2.paired && r1.name == r2.name && r1.matesOverlap.contains(true))
     require(r1.firstOfPair && r2.secondOfPair)
 
-    // Initialize the iters
-    val maxStartRefPos   = Math.max(r1.start, r2.start)
-    val minEndRefPos     = Math.min(r1.end, r2.end)
-    val r1Iter           = new ReadAndRefPosIterator(r1, minRefPos=maxStartRefPos, maxRefPos=minEndRefPos).buffered
-    val r2Iter           = new ReadAndRefPosIterator(r2, minRefPos=maxStartRefPos, maxRefPos=minEndRefPos).buffered
-    var r1LastReadPos    = r1Iter.head.readPos - 1
-    var r2LastReadPos    = r2Iter.head.readPos - 1
+    val iter             = new ReadMateAndRefPosIterator(rec=r1, mate=r2).buffered
     var overlappingBases = 0
     var r1Corrected      = 0
     var r2Corrected      = 0
 
     // Walk through the iterators by reference position
-    while (r1Iter.hasNext && r2Iter.hasNext) {
-      val r1Head = r1Iter.head
-      val r2Head = r2Iter.head
-      if (r1Head.refPos < r2Head.refPos) {
-        r1LastReadPos = r1Head.readPos
-        r1Iter.next()
-      }
-      else if (r2Head.refPos < r1Head.refPos) {
-        r2LastReadPos = r2Head.readPos
-        r2Iter.next()
-      }
-      else { // both reads are mapped to the same reference bases, so consensus call
+    iter.foreach { item =>
+
+      val base1 = r1.bases(item.readPos - 1)
+      val base2 = r2.bases(item.matePos - 1)
+      if (!SequenceUtil.isNoCall(base1) && !SequenceUtil.isNoCall(base2)) {
+        // consensus call
+        val (newBase1, newQual1, newBase2, newQual2) = consensusCall(
+          base1 = base1,
+          qual1 = r1.quals(item.readPos - 1),
+          base2 = base2,
+          qual2 = r2.quals(item.matePos - 1)
+        )
+
+        if (newBase1 != NoCall && newBase1 != base1) r1Corrected += 1
+        if (newBase2 != NoCall && newBase2 != base2) r2Corrected += 1
+
+        r1.bases(item.readPos - 1) = newBase1
+        r1.quals(item.readPos - 1) = newQual1
+        r2.bases(item.matePos - 1) = newBase2
+        r2.quals(item.matePos - 1) = newQual2
+
         overlappingBases += 1 // only one for the template
-
-        val base1 = r1.bases(r1Head.readPos - 1)
-        val base2 = r2.bases(r2Head.readPos - 1)
-        if (!SequenceUtil.isNoCall(base1) && !SequenceUtil.isNoCall(base2)) {
-          // consensus call
-          val (newBase1, newQual1, newBase2, newQual2) = consensusCall(
-            base1 = base1,
-            qual1 = r1.quals(r1Head.readPos - 1),
-            base2 = base2,
-            qual2 = r2.quals(r2Head.readPos - 1)
-          )
-
-          if (newBase1 != NoCall && newBase1 != base1) r1Corrected += 1
-          if (newBase2 != NoCall && newBase2 != base2) r2Corrected += 1
-
-          r1.bases(r1Head.readPos - 1) = newBase1
-          r1.quals(r1Head.readPos - 1) = newQual1
-          r2.bases(r2Head.readPos - 1) = newBase2
-          r2.quals(r2Head.readPos - 1) = newQual2
-        }
-
-        // consume the current
-        r1LastReadPos = r1Head.readPos
-        r2LastReadPos = r2Head.readPos
-        r1Iter.next()
-        r2Iter.next()
       }
     }
 

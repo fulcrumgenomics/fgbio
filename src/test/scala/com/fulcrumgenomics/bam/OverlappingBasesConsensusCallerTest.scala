@@ -137,6 +137,21 @@ class OverlappingBasesConsensusCallerTest extends UnitSpec {
     r2.qualsString shouldBe q10 + q20 + q10*4 + q20 + q10*3
   }
 
+  it should "not consensus call any bases when the read and mate overlap but have no mapped bases in common" in {
+    val builder     = new SamBuilder(10)
+    val Seq(r1, r2) = builder.addPair(bases1="A"*10, bases2="C"*10, start1=1, cigar1="2M6D8M", start2=3, cigar2="2S6M2S",
+      quals1=quals(q=10, rl=10), quals2=quals(q=20, rl=10)
+    )
+    r1.matesOverlap.contains(true) shouldBe true
+    r2.matesOverlap.contains(true) shouldBe true
+
+    caller().call(r1, r2) shouldBe CorrectionStats(0, 0, 0)
+    r1.basesString shouldBe "A"*10
+    r1.qualsString shouldBe q10*10
+    r2.basesString shouldBe "C"*10
+    r2.qualsString shouldBe q20*10
+  }
+
   it should "apply the given agreement strategy with a single base overlap and agreement" in {
     def build(): (SamRecord, SamRecord) = {
       val builder = new SamBuilder(readLength=10)

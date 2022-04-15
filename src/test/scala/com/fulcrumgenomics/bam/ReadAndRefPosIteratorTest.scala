@@ -263,4 +263,36 @@ class ReadAndRefPosIteratorTest extends UnitSpec {
     positions2.map(_.readPos) should contain theSameElementsInOrderAs Range.inclusive(start=1, end=28)
     positions2.map(_.refPos) should contain theSameElementsInOrderAs Range.inclusive(start=50, end=77)
   }
+
+  "ReadMateAndRefPosIterator" should "should not return a value when there are no mapped bases in common (1/3)" in {
+    val builder     = new SamBuilder(100)
+    val Seq(r1, r2) = builder.addPair(start1=1, cigar1="100M", start2=101, cigar2="100M")
+    val positions1  = new ReadMateAndRefPosIterator(r1, r2).toIndexedSeq
+    val positions2  = new ReadMateAndRefPosIterator(r2, r1).toIndexedSeq
+
+    positions1 should contain theSameElementsInOrderAs Seq.empty
+    positions2 should contain theSameElementsInOrderAs Seq.empty
+  }
+
+  // See: https://github.com/fulcrumgenomics/fgbio/issues/821
+  it should "should not return a value when there are no mapped bases in common (2/3)" in {
+    val builder     = new SamBuilder(144)
+    val Seq(r1, r2) = builder.addPair(start1=1, cigar1="46M24D98M", start2=47, cigar2="52S21M71S")
+    val positions1  = new ReadMateAndRefPosIterator(r1, r2).toIndexedSeq
+    val positions2  = new ReadMateAndRefPosIterator(r2, r1).toIndexedSeq
+
+    positions1 should contain theSameElementsInOrderAs Seq.empty
+    positions2 should contain theSameElementsInOrderAs Seq.empty
+  }
+
+  // See: https://github.com/fulcrumgenomics/fgbio/issues/821
+  it should "should not return a value when there are no mapped bases in common (3/3)" in {
+    val builder     = new SamBuilder(144)
+    val Seq(r1, r2) = builder.addPair(start1=1, cigar1="90M30D54M", start2=91, cigar2="82S24M38S")
+    val positions1  = new ReadMateAndRefPosIterator(r1, r2).toIndexedSeq
+    val positions2  = new ReadMateAndRefPosIterator(r2, r1).toIndexedSeq
+
+    positions1 should contain theSameElementsInOrderAs Seq.empty
+    positions2 should contain theSameElementsInOrderAs Seq.empty
+  }
 }
