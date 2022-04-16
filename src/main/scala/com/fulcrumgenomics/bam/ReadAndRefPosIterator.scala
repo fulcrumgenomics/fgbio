@@ -221,11 +221,11 @@ class ReadMateAndRefPosIterator(rec: SamRecord,
     nextItem.isDefined
   }
 
-  def next(): ReadMateAndRefPos = this.nextItem match {
-    case None        => throw new NoSuchElementException()
-    case Some(value) =>
-      this.nextItem = None
-      value
+  def next(): ReadMateAndRefPos = {
+   if (!hasNext()) throw new NoSuchElementException()
+   val retval = this.nextItem.get
+   this.nextItem = None
+   retval
   }
 }
 
