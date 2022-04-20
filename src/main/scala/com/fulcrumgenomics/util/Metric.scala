@@ -25,24 +25,21 @@
 
 package com.fulcrumgenomics.util
 
-import com.fulcrumgenomics.cmdline.FgBioMain.FailureException
-import com.fulcrumgenomics.commons.CommonsDef._
 import com.fulcrumgenomics.commons.io.{Writer => CommonsWriter}
 import com.fulcrumgenomics.commons.reflect.{ReflectionUtil, ReflectiveBuilder}
-import com.fulcrumgenomics.commons.util.{DelimitedDataParser, LazyLogging}
+import com.fulcrumgenomics.commons.util.DelimitedDataParser
 import enumeratum.EnumEntry
 import htsjdk.samtools.util.Iso8601Date
 
-import java.io.{PrintWriter, StringWriter, Writer}
+import java.io.Writer
 import java.nio.file.Path
 import java.text.{DecimalFormat, NumberFormat, SimpleDateFormat}
 import java.util.Date
 import scala.collection.compat._
 import scala.collection.concurrent.TrieMap
 import scala.reflect.runtime.{universe => ru}
-import scala.util.{Failure, Success}
 
-object Metric extends LazyLogging {
+object Metric {
   val Delimiter: Char = '\t'
   val DelimiterAsString: String = s"$Delimiter"
 
@@ -102,53 +99,14 @@ object Metric extends LazyLogging {
   /** Reads metrics from a set of lines.  The first line should be the header with the field names.  Each subsequent
     * line should be a single metric. */
   def iterator[T <: Metric](lines: Iterator[String], source: Option[String] = None)(implicit tt: ru.TypeTag[T]): Iterator[T] = {
-    val clazz: Class[T]   = ReflectionUtil.typeTagToClass[T]
-
-    def fail(lineNumber: Int,
-             message: String,
-             throwable: Option[Throwable] = None): Unit = {
-      val sourceMessage = source.map("\nIn source: " + _).getOrElse("")
-      val fullMessage   = s"On line #$lineNumber for metric '${clazz.getSimpleName}'$sourceMessage\n$message"
-      throwable.foreach { thr =>
-        val stringWriter = new StringWriter
-        thr.printStackTrace(new PrintWriter(stringWriter))
-        val banner = "#" * 80
-        logger.debug(banner)
-        logger.debug(stringWriter.toString)
-        logger.debug(banner)
-      }
-      throw FailureException(message=Some(fullMessage))
-    }
-
-    if (lines.isEmpty) fail(lineNumber=1, message="No header found")
-    val parser = new DelimitedDataParser(lines=lines, delimiter=Delimiter, ignoreBlankLines=false, trimFields=true)
-    val names  = parser.headers.toIndexedSeq
-    val reflectiveBuilder = new ReflectiveBuilder(clazz)
+    val builder = new MetricBuilder[T](source=source)(tt)
+    if (lines.isEmpty) builder.fail(message="No header found", lineNumber=Some(1))
+    val parser  = new DelimitedDataParser(lines=lines, delimiter=Delimiter, ignoreBlankLines=false, trimFields=true)
+    val names   = parser.headers.toIndexedSeq
 
     parser.zipWithIndex.map { case (row, rowIndex) =>
-      forloop(from = 0, until = names.length) { i =>
-        reflectiveBuilder.argumentLookup.forField(names(i)) match {
-          case Some(arg) =>
-            val value = {
-              val tmp = row[String](i)
-              if (tmp.isEmpty && arg.argumentType == classOf[Option[_]]) ReflectionUtil.SpecialEmptyOrNoneToken else tmp
-            }
-
-            val argumentValue = ReflectionUtil.constructFromString(arg.argumentType, arg.unitType, value) match {
-              case Success(v) => v
-              case Failure(thr) =>
-                fail(lineNumber=rowIndex+2, message=s"Could not construct value for column '${arg.name}' of type '${arg.typeDescription}' from '$value'", Some(thr))
-            }
-            arg.value = argumentValue
-          case None =>
-            fail(lineNumber=rowIndex+2, message=s"Did not have a field with name '${names(i)}'.")
-        }
-      }
-
-      // build it.  NB: if arguments are missing values, then an exception will be thrown here
-      // Also, we don't use the default "build()" method since if a collection or option is empty, it will be treated as
-      // missing.
-      reflectiveBuilder.build(reflectiveBuilder.argumentLookup.ordered.map(arg => arg.value getOrElse unreachable(s"Arguments not set: ${arg.name}")))
+      val argMap = names.zipWithIndex.map { case (name, i) => name -> row[String](i) }.toMap
+      builder.fromArgMap(argMap=argMap, lineNumber=Some(rowIndex+2))
     }
   }
 
