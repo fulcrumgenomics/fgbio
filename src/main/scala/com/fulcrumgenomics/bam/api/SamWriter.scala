@@ -131,10 +131,10 @@ final class SamWriter private (private val writer: SAMFileWriter,
         this.writer.addAlignment(rec.asSam)
         writeProgress.foreach(_.record(rec))
       }
-      writeProgress.foreach(_.logLast)
 
       s.close()
     }
+    writeProgress.foreach(_.logLast)
 
     this.writer.close()
   }
