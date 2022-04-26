@@ -26,6 +26,7 @@ package com.fulcrumgenomics.umi
 
 import com.fulcrumgenomics.FgBioDef._
 import com.fulcrumgenomics.alignment.{Cigar, CigarElem}
+import com.fulcrumgenomics.bam.{ClippingMode, SamRecordClipper}
 import com.fulcrumgenomics.bam.api.{SamOrder, SamRecord}
 import com.fulcrumgenomics.commons.util.{Logger, SimpleCounter}
 import com.fulcrumgenomics.umi.UmiConsensusCaller._
@@ -36,7 +37,8 @@ import htsjdk.samtools.util.{Murmur3, SequenceUtil, TrimmingUtil}
 
 import scala.collection.mutable
 import scala.collection.mutable.ArrayBuffer
-import scala.math.{abs, min}
+import scala.math.min
+
 /**
   * Contains shared types and functions used when writing UMI-driven consensus
   * callers that take in SamRecords and emit SamRecords.
@@ -168,6 +170,9 @@ trait UmiConsensusCaller[ConsensusRead <: SimpleRead] {
   /** A consensus caller used to generate consensus UMI sequences */
   private val consensusBuilder = new SimpleConsensusCaller()
 
+  /** Clipper utility used to _calculate_ clipping, but not do the actual clipping */
+  private val clipper = new SamRecordClipper(mode=ClippingMode.Soft, autoClipAttributes=true)
+
   /** Returns a clone of this consensus caller in a state where no previous reads were processed.  I.e. all counters
     * are set to zero.*/
   def emptyClone(): UmiConsensusCaller[ConsensusRead]
@@ -216,7 +221,7 @@ trait UmiConsensusCaller[ConsensusRead <: SimpleRead] {
   /**
     * Converts from a SamRecord into a SourceRead.  During conversion the record is end-trimmed
     * to remove Ns and bases below the `minBaseQuality`.  Remaining bases that are below
-    * `minBaseQuality` are then masked to Ns.
+    * `minBaseQuality` are then masked to Ns.  Also trims reads so that no mapped bases extend past their mate.
     *
     * @return Some(SourceRead) if there are any called bases with quality > minBaseQuality, else None
     */
@@ -241,16 +246,17 @@ trait UmiConsensusCaller[ConsensusRead <: SimpleRead] {
       }
     }
 
-    // Find the last non-N base of sufficient quality in the record, starting from either the
-    // end of the read, or the end of the insert, whichever is shorter!
+    // Get the length of the read based on trimming bases that are beyond the mate's end (FR only) and then any
+    // remaining trailing Ns.  This includes both mapped bases and soft-clipped bases past the mate's end.
     val len = {
       var index = if (!rec.isFrPair) trimToLength - 1 else {
-        // Adjust the insert size based on clipping on the 5' end of the given read.
-        // This *does not* consider any clipping on the 5' end of its mate.
-        val fivePrimeClipping  = cigar.takeWhile(_.operator.isClipping).filter(_.operator == CigarOperator.S).sumBy(_.length)
-        val adjustedInsertSize = abs(rec.insertSize) + fivePrimeClipping
-        min(adjustedInsertSize, trimToLength) - 1
+        // Get the number of mapped bases to clip that maps beyond the mate's end, including any soft-clipped bases. Use
+        // that to compute where in the read to keep.
+        val clipPosition = rec.length - this.clipper.numBasesExtendingPastMate(rec=rec)
+        min(clipPosition, trimToLength) - 1
       }
+      // Find the last non-N base of sufficient quality in the record, starting from either the
+      // end of the read, or the end of the insert, whichever is shorter!
       while (index >= 0 && (bases(index) == NoCall)) index -= 1
       index + 1
     }
@@ -328,7 +334,7 @@ trait UmiConsensusCaller[ConsensusRead <: SimpleRead] {
     *
     * NOTE: filtered out reads are sent to the [[rejectRecords]] method and do not need further handling
     */
-  protected[umi] def filterToMostCommonAlignment(recs: Seq[SourceRead]): Seq[SourceRead] = {
+  protected[umi] def filterToMostCommonAlignment(recs: Seq[SourceRead]): Seq[SourceRead] = if (recs.size < 2) recs else {
     val groups = new ArrayBuffer[AlignmentGroup]
     val sorted = recs.sortBy(r => -r.length).toIndexedSeq
 

@@ -73,7 +73,7 @@ private class OverlapDetectionVariantContextIterator(val iter: Iterator[VariantC
 
   this.advance()
 
-  def hasNext(): Boolean = this.nextVariantContext.isDefined
+  def hasNext: Boolean = this.nextVariantContext.isDefined
 
   def next(): VariantContext = {
     this.nextVariantContext match {
@@ -123,7 +123,7 @@ private class IndexQueryVariantContextIterator(private val reader: VCFFileReader
 
   this.advance()
 
-  def hasNext(): Boolean = {
+  def hasNext: Boolean = {
     this.iter.exists(_.hasNext)
   }
 

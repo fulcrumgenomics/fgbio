@@ -31,13 +31,20 @@ import com.fulcrumgenomics.testing.SamBuilder.{Minus, Plus, Strand}
 import com.fulcrumgenomics.testing.{SamBuilder, UnitSpec}
 import com.fulcrumgenomics.util.NumericTypes.PhredScore
 import htsjdk.samtools.TextCigarCodec
+import org.scalatest.OptionValues
 
-class SamRecordClipperTest extends UnitSpec {
+class SamRecordClipperTest extends UnitSpec with OptionValues {
   /** Returns a fragment SAM record with the start / cigar / strand requested. */
   def r(start: Int, cigar: String, strand: Strand = Plus, attrs:Map[String,Any] = Map.empty): SamRecord = {
-    val cig = TextCigarCodec.decode(cigar)
-    val len = cig.getReadLength
-    new SamBuilder(readLength=len).addFrag(start=start, cigar = cigar, strand=strand, attrs=attrs).get
+    new SamBuilder(readLength=Cigar(cigar).lengthOnQuery)
+      .addFrag(start=start, cigar=cigar, strand=strand, attrs=attrs).value
+  }
+
+  /** Returns a pair of SAM records (read pair) with the respective starts / cigars / strands requested. */
+  def pair(start1: Int, cigar1: String, strand1: Strand = Plus, start2: Int, cigar2: String, strand2: Strand = Minus): (SamRecord, SamRecord) = {
+    val recs = new SamBuilder(readLength=Cigar(cigar1).lengthOnQuery)
+      .addPair(start1=start1, cigar1=cigar1, strand1=strand1, start2=start2, cigar2=cigar2, strand2=strand2)
+    recs match { case Seq(r1, r2) => (r1, r2) }
   }
 
   def clipper(mode: ClippingMode, autoClip: Boolean=false) = new SamRecordClipper(mode, autoClip)
@@ -550,5 +557,205 @@ class SamRecordClipperTest extends UnitSpec {
     clipper(Soft).upgradeAllClipping(mapped) shouldBe (0, 0)
     clipper(SoftWithMask).upgradeAllClipping(mapped) shouldBe (0, 0)
     clipper(Hard).upgradeAllClipping(unmapped) shouldBe (0, 0)
+  }
+
+  "SamRecordClipper.clipOverlappingReads" should "not clip if the reads are not overlapping" in {
+    val (rec, mate) = pair(1, "100M", Plus, 101, "100M", Minus)
+    clipper(Soft).clipOverlappingReads(rec=rec, mate=mate) shouldBe (0, 0)
+    rec.start shouldBe 1
+    rec.cigar.toString shouldBe "100M"
+    mate.start shouldBe 101
+    mate.cigar.toString shouldBe "100M"
+  }
+
+  it should "clip reads that overlap by one base" in {
+    val (rec, mate) = pair(1, "100M", Plus, 100, "100M", Minus)
+    clipper(Soft).clipOverlappingReads(rec=rec, mate=mate) shouldBe (0, 1)
+    rec.start shouldBe 1
+    rec.cigar.toString shouldBe "100M"
+    mate.start shouldBe 101
+    mate.cigar.toString shouldBe "1S99M"
+  }
+
+  it should "clip reads that overlap by two bases" in {
+    val (rec, mate) = pair(2, "100M", Plus, 100, "100M", Minus)
+    clipper(Soft).clipOverlappingReads(rec=rec, mate=mate) shouldBe (1, 1)
+    rec.start shouldBe 2
+    rec.end   shouldBe 100
+    rec.cigar.toString shouldBe "99M1S"
+    mate.start shouldBe 101
+    mate.end shouldBe 199
+    mate.cigar.toString shouldBe "1S99M"
+  }
+
+  it should "clip reads that overlap with one end having a deletion" in {
+    val (rec, mate) = pair(1, "60M10D40M", Plus, 50, "10M10D80M10D10M", Minus)
+    clipper(Soft).clipOverlappingReads(rec=rec, mate=mate) shouldBe (25, 26)
+    rec.start shouldBe 1
+    rec.end shouldBe 85
+    rec.cigar.toString shouldBe "60M10D15M25S"
+    mate.start shouldBe 86
+    mate.cigar.toString shouldBe "26S64M10D10M"
+  }
+
+  it should "clip reads that overlap with one end having a deletion with mismatching cigars" in {
+    val (rec, mate) = pair(1, "100M", Plus, 50, "10M10D80M10D10M", Minus)
+    clipper(Soft).clipOverlappingReads(rec=rec, mate=mate) shouldBe (15, 26)
+    rec.start shouldBe 1
+    rec.end shouldBe 85
+    rec.cigar.toString shouldBe "85M15S"
+    mate.start shouldBe 86
+    mate.cigar.toString shouldBe "26S64M10D10M"
+  }
+
+  it should "clip reads that fully overlap with both ends having deletions" in {
+    // NB: mid point occurs right in the middle of the deletion
+    val (rec, mate) = pair(1, "50M10D50M", Plus, 1, "50M10D50M", Minus)
+    clipper(Soft).clipOverlappingReads(rec=rec, mate=mate) shouldBe (50, 50)
+    rec.start shouldBe 1
+    rec.end shouldBe 50
+    rec.cigar.toString shouldBe "50M50S"
+    mate.start shouldBe 61
+    mate.cigar.toString shouldBe "50S50M"
+  }
+
+  it should "clip reads that overlap with both ends having deletions" in {
+    // NB: mid point occurs right in the middle of the deletion.  Clipping loses the deletion!
+    val (rec, mate) = pair(1, "50M10D50M", Plus, 3, "47M10D53M", Minus)
+    clipper(Soft).clipOverlappingReads(rec=rec, mate=mate) shouldBe (50, 47)
+    rec.start shouldBe 1
+    rec.end shouldBe 50
+    rec.cigar.toString shouldBe "50M50S"
+    mate.start shouldBe 60
+    mate.cigar.toString shouldBe "47S53M"
+  }
+
+  it should "clip reads that fully overlap" in {
+    val (rec, mate) = pair(1, "100M", Plus, 1, "100M", Minus)
+    clipper(Soft).clipOverlappingReads(rec=rec, mate=mate) shouldBe (50, 50)
+    rec.start shouldBe 1
+    rec.cigar.toString shouldBe "50M50S"
+    mate.start shouldBe 51
+    mate.cigar.toString shouldBe "50S50M"
+  }
+
+  it should "clip reads that extend past each other" in {
+    // R1 is 50-149, while R2 is 1-100, so the reference midpoint is (50 + 100) / 2 = 75
+    val (rec, mate) = pair(50, "100M", Plus, 1, "100M", Minus)
+    clipper(Soft).clipOverlappingReads(rec=rec, mate=mate) shouldBe (74, 75)
+    rec.start shouldBe 50
+    rec.end shouldBe 75
+    rec.cigar.toString shouldBe "26M74S"
+    mate.start shouldBe 76
+    mate.end shouldBe 100
+    mate.cigar.toString shouldBe "75S25M"
+  }
+
+  it should "clip reads that extend past each other with one read having deletions" in {
+    // R1 is 50-149, while R2 is 1-120, so the reference midpoint is (50 + 120) / 2 = 85
+    val (rec, mate) = pair(50, "100M", Plus, 1, "10M10D80M10D10M", Minus)
+    clipper(Soft).clipOverlappingReads(rec=rec, mate=mate) shouldBe (64, 75)
+    rec.start shouldBe 50
+    rec.end shouldBe 85
+    rec.cigar.toString shouldBe "36M64S"
+    mate.start shouldBe 86
+    mate.end shouldBe 120
+    mate.cigar.toString shouldBe "75S15M10D10M"
+  }
+
+  it should "clip reads that extend past each other with both read having deletions" in {
+    // R1 is 50-149, while R2 is 1-120, so the reference midpoint is (50 + 120) / 2 = 85
+    val (rec, mate) = pair(50, "50M10D50M", Plus, 1, "10M10D80M10D10M", Minus)
+    clipper(Soft).clipOverlappingReads(rec=rec, mate=mate) shouldBe (64, 75)
+    rec.start shouldBe 50
+    rec.end shouldBe 85
+    rec.cigar.toString shouldBe "36M64S"
+    mate.start shouldBe 86
+    mate.end shouldBe 120
+    mate.cigar.toString shouldBe "75S15M10D10M"
+  }
+
+  it should "not clip when the read pairs are mapped +/- with start(R1) > end(R2) but do not overlap" in {
+    val (rec, mate) = pair(1000, "100M", Plus, 1, "100M", Minus)
+    clipper(Soft).clipOverlappingReads(rec=rec, mate=mate) shouldBe (0, 0)
+    rec.start shouldBe 1000
+    rec.cigar.toString shouldBe "100M"
+    mate.start shouldBe 1
+    mate.cigar.toString shouldBe "100M"
+  }
+
+  "SamRecordClipper.clipExtendingPastMateEnds" should "not clip reads that do not extend past each other" in {
+    Seq((Plus, Minus), (Minus, Plus)).foreach { case (strand1, strand2) =>
+      val (rec, mate) = pair(1, "100M", strand1, 1, "100M", strand2)
+      clipper(Soft).clipExtendingPastMateEnds(rec=rec, mate=mate) shouldBe (0, 0)
+      rec.start shouldBe 1
+      rec.cigar.toString shouldBe "100M"
+      mate.start shouldBe 1
+      mate.cigar.toString shouldBe "100M"
+    }
+  }
+
+  it should "clip reads that extend one base past their mate's start" in {
+    val (rec, mate) = pair(2, "100M", Plus, 1, "100M", Minus)
+    clipper(Soft).clipExtendingPastMateEnds(rec=rec, mate=mate) shouldBe (1, 1)
+    rec.start shouldBe 2
+    rec.cigar.toString shouldBe "99M1S"
+    mate.start shouldBe 2
+    mate.cigar.toString shouldBe "1S99M"
+  }
+
+  it should "clip reads that extend two bases past their mate's start" in {
+    val (rec, mate) = pair(3, "100M", Plus, 1, "100M", Minus)
+    clipper(Soft).clipExtendingPastMateEnds(rec=rec, mate=mate) shouldBe (2, 2)
+    rec.start shouldBe 3
+    rec.cigar.toString shouldBe "98M2S"
+    mate.start shouldBe 3
+    mate.cigar.toString shouldBe "2S98M"
+  }
+
+  it should "clip reads that where both ends extends their mate's start" in {
+    val (rec, mate) = pair(51, "100M", Plus, 1, "100M", Minus)
+    clipper(Soft).clipExtendingPastMateEnds(rec=rec, mate=mate) shouldBe (50, 50)
+    rec.start shouldBe 51
+    rec.cigar.toString shouldBe "50M50S"
+    mate.start shouldBe 51
+    mate.cigar.toString shouldBe "50S50M"
+  }
+
+  it should "clip reads that where only one end extends their mate's start" in {
+    val (rec, mate) = pair(1, "100M", Plus, 1, "50S50M", Minus)
+    clipper(Soft).clipExtendingPastMateEnds(rec=rec, mate=mate) shouldBe (50, 0)
+    rec.start shouldBe 1
+    rec.cigar.toString shouldBe "50M50S" // added clipping
+    mate.start shouldBe 1
+    mate.cigar.toString shouldBe "50S50M" // clipping remains
+  }
+
+  it should "clip reads that where only one end extends their mate's start that has insertions" in {
+    val (rec, mate) = pair(1, "40M10I50M", Plus, 1, "50S50M", Minus)
+    clipper(Soft).clipExtendingPastMateEnds(rec=rec, mate=mate) shouldBe (40, 0)
+    rec.start shouldBe 1
+    rec.cigar.toString shouldBe "40M10I10M40S" // added clipping
+    mate.start shouldBe 1
+    mate.cigar.toString shouldBe "50S50M" // clipping remains
+  }
+
+  it should "not clip when the read pairs are mapped +/- with start(R1) > end(R2) but do not overlap" in {
+    val (rec, mate) = pair(1000, "100M", Plus, 1, "100M", Minus)
+    clipper(Soft).clipExtendingPastMateEnds(rec=rec, mate=mate) shouldBe (0, 0)
+    rec.start shouldBe 1000
+    rec.cigar.toString shouldBe "100M"
+    mate.start shouldBe 1
+    mate.cigar.toString shouldBe "100M"
+  }
+
+  it should "not clip when the reads do not extend past each other with insertions" in {
+    val builder = new SamBuilder(readLength=100)
+    val (rec, mate) = pair(start1=1, start2=1, strand1=Plus, strand2=Minus, cigar1="40M20I40M", cigar2="40M20I40M")
+    clipper(Soft).clipExtendingPastMateEnds(rec=rec, mate=mate) shouldBe (0, 0)
+    rec.start shouldBe 1
+    rec.cigar.toString() shouldBe "40M20I40M"
+    mate.start shouldBe 1
+    mate.cigar.toString shouldBe "40M20I40M"
   }
 }

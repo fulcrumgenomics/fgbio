@@ -25,8 +25,8 @@
 package com.fulcrumgenomics.umi
 
 import java.nio.file.Files
-
 import com.fulcrumgenomics.FgBioDef._
+import com.fulcrumgenomics.bam.api.SamOrder.Queryname
 import com.fulcrumgenomics.bam.api.{SamOrder, SamRecord, SamSource, SamWriter}
 import com.fulcrumgenomics.testing.{ReferenceSetBuilder, SamBuilder, UnitSpec}
 import com.fulcrumgenomics.util.NumericTypes.PhredScore
@@ -290,6 +290,57 @@ class FilterConsensusReadsTest extends UnitSpec {
     }
   }
 
+  private case class ReadNames(in: Seq[String], out: Seq[String])
+
+  private def sortOrderTest(name1: String, start1R1: Int, start1R2: Int, name2: String, start2R1: Int, start2R2: Int,
+                            inOrder: SamOrder, outOrder: Option[SamOrder] = None): ReadNames = {
+    val builder = new SamBuilder(readLength=10, baseQuality=45, sort=Some(inOrder))
+    builder.addPair(name=name1, start1=start1R1, start2=start1R2).foreach(r => tag(r, minDepth=4, depth=4, readErr=0f, depths=arr(4, 10), errors=arr(0,10)))
+    builder.addPair(name=name2, start1=start2R1, start2=start2R2).foreach(r => tag(r, minDepth=5, depth=5, readErr=0f, depths=arr(5, 10), errors=arr(0,10)))
+    val in  = builder.toTempFile()
+    val out = makeTempFile("filtered.", ".bam")
+    new FilterConsensusReads(input=in, output=out, ref=ref, reversePerBaseTags=false,
+      minBaseQuality=45.toByte, minReads=Seq(3), maxReadErrorRate=Seq(0.025), maxBaseErrorRate=Seq(0.1), maxNoCallFraction=0.1,
+      sortOrder=outOrder
+    ).execute()
+
+    val recs = SamSource(out).toSeq
+    recs.size shouldBe 4
+    recs.exists(_.basesString.contains("N")) shouldBe false
+    ReadNames(in=readBamRecs(in).map(_.name), out=recs.map(_.name))
+  }
+
+  it should "should output queryname sorted if the input is queryname sorted" in {
+    val result = sortOrderTest(
+      name1="q1", start1R1=101, start1R2=201,
+      name2="q2", start2R1=100, start2R2=200,
+      inOrder=SamOrder.Queryname
+    )
+    result.in should contain theSameElementsInOrderAs Seq("q1", "q1", "q2", "q2") // query name!
+    result.out should contain theSameElementsInOrderAs Seq("q1", "q1", "q2", "q2") // query name!
+  }
+
+  it should "should output query grouped sorted if the input is query grouped sorted" in {
+    val result = sortOrderTest(
+      name1="q2", start1R1=100, start1R2=200,
+      name2="q1", start2R1=101, start2R2=201,
+      inOrder=SamOrder.TemplateCoordinate
+    )
+    result.in should contain theSameElementsInOrderAs Seq("q2", "q2", "q1", "q1") // query grouped, but not query name
+    result.out should contain theSameElementsInOrderAs Seq("q2", "q2", "q1", "q1") // query grouped, but not query name
+  }
+
+  it should "should output coordinate sorted if the output order is coordinate" in {
+    val result = sortOrderTest(
+      name1="q1", start1R1=100, start1R2=200,
+      name2="q2", start2R1=101, start2R2=201,
+      inOrder=SamOrder.Queryname,
+      outOrder=Some(SamOrder.Coordinate)
+    )
+    result.in should contain theSameElementsInOrderAs Seq("q1", "q1", "q2", "q2") // query name
+    result.out should contain theSameElementsInOrderAs Seq("q1", "q2", "q1", "q2") // coordinate
+  }
+
   //////////////////////////////////////////////////////////////////////////////
   // Below this line are tests for filtering of duplex consensus reads.
   //////////////////////////////////////////////////////////////////////////////
@@ -305,7 +356,7 @@ class FilterConsensusReadsTest extends UnitSpec {
   }
 
   /** An extension to SamBuilder to make building duplex pairs marginally less painful. */
-  object DuplexBuilder extends SamBuilder(readLength=10, baseQuality=90) {
+  object DuplexBuilder extends SamBuilder(readLength=10, baseQuality=90, sort=Some(Queryname)) {
     /** Method to create/add a single read with all the duplex tags on it. */
     def add(name:String=nextName,
             dp: Int=10, minDp:Int=10, abDp:Int=5, baDp:Int=5, abMinDp:Int=5, baMinDp:Int=5,

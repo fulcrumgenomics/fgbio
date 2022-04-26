@@ -25,14 +25,13 @@
 package com.fulcrumgenomics.fastq
 
 import java.util
-
 import com.fulcrumgenomics.FgBioDef._
 import com.fulcrumgenomics.bam.api.{SamOrder, SamRecord, SamWriter}
 import com.fulcrumgenomics.cmdline.{ClpGroups, FgBioTool}
 import com.fulcrumgenomics.commons.CommonsDef.PathToFastq
 import com.fulcrumgenomics.commons.util.LazyLogging
 import com.fulcrumgenomics.sopt.{arg, clp}
-import com.fulcrumgenomics.umi.ConsensusTags
+import com.fulcrumgenomics.umi.{ConsensusTags, Umis}
 import com.fulcrumgenomics.util.SegmentType._
 import com.fulcrumgenomics.util.{Io, ProgressLogger, ReadStructure}
 import htsjdk.samtools.SAMFileHeader.{GroupOrder, SortOrder}
@@ -72,6 +71,13 @@ import htsjdk.samtools.{ReservedTagConstants, SAMFileHeader, SAMReadGroupRecord}
     |For more information on read structures see the
     |[Read Structure Wiki Page](https://github.com/fulcrumgenomics/fgbio/wiki/Read-Structures)
     |
+    |UMIs may be extracted from the read sequences, the read names, or both.  If `--extract-umis-from-read-names` is
+    |specified, any UMIs present in the read names are extracted; read names are expected to be `:`-separated with
+    |any UMIs present in the 8th field.  If this option is specified, the `--umi-qual-tag` option may not be used as
+    |qualities are not available for UMIs in the read name. If UMI segments are present in the read structures those
+    |will also be extracted.  If UMIs are present in both, the final UMIs are constructed by first taking the UMIs
+    |from the read names, then adding a hyphen, then the UMIs extracted from the reads.
+    |
     |The same number of input files and read structures must be provided, with one exception: if supplying exactly
     |1 or 2 fastq files, both of which are solely template reads, no read structures need be provided.
     |
@@ -86,6 +92,7 @@ class FastqToBam
   @arg(flag='s', doc="If true, queryname sort the BAM file, otherwise preserve input order.")  val sort: Boolean = false,
   @arg(flag='u', doc="Tag in which to store molecular barcodes/UMIs.")                         val umiTag: String = ConsensusTags.UmiBases,
   @arg(flag='q', doc="Tag in which to store molecular barcode/UMI qualities.")                 val umiQualTag: Option[String] = None,
+  @arg(flag='n', doc="Extract UMI(s) from read names and prepend to UMIs from reads.")         val extractUmisFromReadNames: Boolean = false,
   @arg(          doc="Read group ID to use in the file header.")                               val readGroupId: String = "A",
   @arg(          doc="The name of the sequenced sample.")                                      val sample: String,
   @arg(          doc="The name/ID of the sequenced library.")                                  val library: String,
@@ -107,6 +114,7 @@ class FastqToBam
   Io.assertCanWriteFile(output)
   validate(input.length == actualReadStructures.length, "input and read-structure must be supplied the same number of times.")
   validate(1 to 2 contains actualReadStructures.flatMap(_.templateSegments).size, "read structures must contain 1-2 template reads total.")
+  validate(!extractUmisFromReadNames || umiQualTag.isEmpty, "Cannot extract UMI qualities when also extracting UMI from read names.")
 
   override def execute(): Unit = {
     val encoding = qualityEncoding
@@ -153,6 +161,9 @@ class FastqToBam
       val umiQual       = subs.iterator.filter(_.kind == MolecularBarcode).map(_.quals).mkString(" ")
       val templates     = subs.iterator.filter(_.kind == Template).toList
 
+      // If requested, pull out the UMI(s) from the read name
+      val umiFromReadName = if (extractUmisFromReadNames) Umis.extractUmisFromReadName(fqs.head.name, strict=true) else None
+
       templates.zipWithIndex.map { case (read, index) =>
         // If the template read had no bases, we'll substitute in a single N @ Q2 below to keep htsjdk happy
         val empty = read.bases.length == 0
@@ -170,9 +181,15 @@ class FastqToBam
         }
 
         if (sampleBarcode.nonEmpty) rec("BC") = sampleBarcode
-        if (umi.nonEmpty) {
-          rec(this.umiTag) = umi
-          this.umiQualTag.foreach(rec(_) = umiQual)
+
+        // Set the UMI on the read depending on whether we got UMIs from the read names, reads or both
+        (umi, umiFromReadName) match {
+          case ("",       Some(fromName)) => rec(this.umiTag) = fromName
+          case ("",       None          ) => ()
+          case (fromRead, Some(fromName)) => rec(this.umiTag) = s"${fromName}-${fromRead}"
+          case (fromRead, None          ) =>
+            rec(this.umiTag) = fromRead
+            this.umiQualTag.foreach(rec(_) = umiQual)
         }
 
         rec

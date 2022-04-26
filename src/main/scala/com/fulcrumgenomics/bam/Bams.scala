@@ -26,17 +26,19 @@ package com.fulcrumgenomics.bam
 
 import com.fulcrumgenomics.FgBioDef._
 import com.fulcrumgenomics.bam.api.SamOrder.Queryname
-import com.fulcrumgenomics.bam.api.{SamOrder, SamRecord, SamRecordCodec, SamSource}
+import com.fulcrumgenomics.bam.api._
 import com.fulcrumgenomics.commons.collection.{BetterBufferedIterator, SelfClosingIterator}
+import com.fulcrumgenomics.commons.io.Writer
 import com.fulcrumgenomics.commons.util.LazyLogging
+import com.fulcrumgenomics.fasta.ReferenceSequenceIterator
 import com.fulcrumgenomics.util.{Io, ProgressLogger, Sorter}
 import htsjdk.samtools.SAMFileHeader.{GroupOrder, SortOrder}
 import htsjdk.samtools.SamPairUtil.PairOrientation
 import htsjdk.samtools._
-import htsjdk.samtools.reference.ReferenceSequenceFileWalker
+import htsjdk.samtools.reference.ReferenceSequence
 import htsjdk.samtools.util.{CloserUtil, CoordMath, SequenceUtil}
 
-import scala.collection.mutable.{ArrayBuffer, ListBuffer}
+import java.io.Closeable
 import scala.math.{max, min}
 
 /**
@@ -73,6 +75,11 @@ case class Template(r1: Option[SamRecord],
   /** Returns an iterator of all reads for the template. */
   def allReads: Iterator[SamRecord] = r1.iterator ++ r2.iterator ++ allSupplementaryAndSecondary
 
+  /** Returns an iterator of all read 1s for the template. */
+  def allR1s: Iterator[SamRecord] = r1.iterator ++ r1Secondaries.iterator ++ r1Supplementals.iterator
+
+  /** Returns an iterator of all read 2s for the template. */
+  def allR2s: Iterator[SamRecord] = r2.iterator ++ r2Secondaries.iterator ++ r2Supplementals.iterator
   /**
     * Produces a copy of the template that has had mapping information removed.  Discards secondary and supplementary
     * records, and retains the primary records after un-mapping them.  Auxillary tags listed in [[Bams.AlignmentTags]]
@@ -96,6 +103,19 @@ case class Template(r1: Option[SamRecord],
     }
 
     Template(x1, x2)
+  }
+
+  /** Fixes mate information and sets mate cigar on all primary and supplementary (but not secondary) records. */
+  def fixMateInfo(): Unit = {
+    for (primary <- r1; supp <- r2Supplementals) {
+      SamPairUtil.setMateInformationOnSupplementalAlignment(supp.asSam, primary.asSam, true)
+    }
+    for (primary <- r2; supp <- r1Supplementals) {
+      SamPairUtil.setMateInformationOnSupplementalAlignment(supp.asSam, primary.asSam, true)
+    }
+    for (first <- r1; second <- r2) {
+      SamPairUtil.setMateInfo(first.asSam, second.asSam, true)
+    }
   }
 
   /** The total count of records for the template. */
@@ -246,7 +266,7 @@ object Bams extends LazyLogging {
       case (Some(Queryname), _) => new SelfClosingIterator(iterator.bufferBetter, () => CloserUtil.close(iterator))
       case (_, _) =>
         logger.info(parts = "Sorting into queryname order.")
-        val progress = ProgressLogger(this.logger, "Records", "sorted")
+        val progress = ProgressLogger(this.logger, "records", "sorted")
         val sort     = sorter(Queryname, header, maxInMemory, tmpDir)
         iterator.foreach { rec =>
           progress.record(rec)
@@ -337,7 +357,7 @@ object Bams extends LazyLogging {
 
     val _iterator = new Iterator[Template] {
       override def hasNext: Boolean = queryIterator.hasNext
-      override def next: Template   = {
+      override def next(): Template   = {
         require(hasNext, "next() called on empty iterator")
         Template(queryIterator)
       }
@@ -410,9 +430,9 @@ object Bams extends LazyLogging {
     * values are removed.  If the read is mapped all three tags will have values regenerated.
     *
     * @param rec the SamRecord to update
-    * @param ref a reference sequence file walker to pull the reference information from
+    * @param ref a reference sequence if the record is mapped
     */
-  def regenerateNmUqMdTags(rec: SamRecord, ref: ReferenceSequenceFileWalker): Unit = {
+  def regenerateNmUqMdTags(rec: SamRecord, ref: => ReferenceSequence): Unit = {
     import SAMTag._
     if (rec.unmapped) {
       rec(NM.name()) =  null
@@ -420,7 +440,7 @@ object Bams extends LazyLogging {
       rec(MD.name()) =  null
     }
     else {
-      val refBases = ref.get(rec.refIndex).getBases
+      val refBases = ref.getBases
       SequenceUtil.calculateMdAndNmTags(rec.asSam, refBases, true, true)
       if (rec.quals != null && rec.quals.length != 0) {
         rec(SAMTag.UQ.name) = SequenceUtil.sumQualitiesOfMismatches(rec.asSam, refBases, 0)
@@ -450,7 +470,6 @@ object Bams extends LazyLogging {
     (min(firstEnd,secondEnd), max(firstEnd,secondEnd))
   }
 
-
   /** If the read is mapped in an FR pair, returns the distance of the position from the other end
     * of the template, other wise returns None.
     *
@@ -471,6 +490,43 @@ object Bams extends LazyLogging {
     }
     else {
       None
+    }
+  }
+
+  /** Returns true if the header is queryname sorted or query grouped */
+  def isQueryGrouped(header: SAMFileHeader): Boolean = {
+    header.getSortOrder == SortOrder.queryname || header.getGroupOrder == GroupOrder.query
+  }
+
+  /** Requires that the header is queryname sorted or query grouped. */
+  def requireQueryGrouped(header: SAMFileHeader, toolName: String = "<tool>", path: Option[PathToBam] = None): Unit = {
+    require(isQueryGrouped(header),
+      "Input was not queryname sorted or query grouped, found: " +
+        s"SO:${header.getSortOrder} GO:${header.getGroupOrder}" +
+        Option(header.getAttribute("SS")).map(ss => f" SS:$ss").getOrElse("") +
+        f". Use `samtools sort -n -u in.bam | fgbio $toolName -i /dev/stdin`" +
+        path.map(p => f"\nPath: $p").getOrElse("")
+    )
+  }
+
+  /** Builds a [[Writer]] of [[SamRecord]]s that regenerates the NM, UQ, and MD tags using the given map of reference
+    * sequences.
+    *
+    * @param writer the writer to write to
+    * @param ref the path to the reference FASTA
+    */
+  def nmUqMdTagRegeneratingWriter(writer: SamWriter, ref: PathToFasta): Writer[SamRecord] with Closeable = {
+    logger.debug("Reading the reference fasta into memory")
+    val refMap = ReferenceSequenceIterator(ref, stripComments=true).map { ref => ref.getContigIndex -> ref}.toMap
+    logger.debug(f"Read ${refMap.size}%,d contigs.")
+
+    // Create the final writer based on if the full reference has been loaded, or not
+    new Writer[SamRecord] with Closeable {
+      override def write(rec: SamRecord): Unit = {
+        Bams.regenerateNmUqMdTags(rec, refMap(rec.refIndex))
+        writer += rec
+      }
+      def close(): Unit = writer.close()
     }
   }
 }

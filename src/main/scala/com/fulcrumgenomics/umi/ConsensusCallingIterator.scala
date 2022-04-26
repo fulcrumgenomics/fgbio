@@ -26,13 +26,11 @@ package com.fulcrumgenomics.umi
 
 import com.fulcrumgenomics.FgBioDef._
 import com.fulcrumgenomics.bam.api.SamRecord
-import com.fulcrumgenomics.commons.async.AsyncIterator
+import com.fulcrumgenomics.commons.collection.ParIterator
 import com.fulcrumgenomics.commons.util.LazyLogging
 import com.fulcrumgenomics.commons.util.Threads.IterableThreadLocal
 import com.fulcrumgenomics.umi.UmiConsensusCaller.SimpleRead
 import com.fulcrumgenomics.util.ProgressLogger
-
-import java.util.concurrent.ForkJoinPool
 
 /**
   * An iterator that consumes from an incoming iterator of [[SamRecord]]s and generates consensus
@@ -42,66 +40,53 @@ import java.util.concurrent.ForkJoinPool
   * @param caller the consensus caller to use to call consensus reads
   * @param progress an optional progress logger to which to log progress in input reads
   * @param threads the number of threads to use.
-  * @param maxRecordsInRam the approximate maximum number of input records to store in RAM across multiple threads.
+  * @param chunkSize parallel process in chunkSize units; will cause 8 * chunkSize records to be held in memory
   */
 class ConsensusCallingIterator[ConsensusRead <: SimpleRead](sourceIterator: Iterator[SamRecord],
                                                             caller: UmiConsensusCaller[ConsensusRead],
                                                             progress: Option[ProgressLogger] = None,
                                                             threads: Int = 1,
-                                                            maxRecordsInRam: Int = 128000)
+                                                            chunkSize: Int = ParIterator.DefaultChunkSize)
   extends Iterator[SamRecord] with LazyLogging {
 
-  private val progressIterator = progress match {
-    case Some(p) => sourceIterator.map { r => p.record(r); r }
-    case None    => sourceIterator
-  }
+  private val callers = new IterableThreadLocal[UmiConsensusCaller[ConsensusRead]](() => caller.emptyClone())
+  private var collectedStats: Boolean = false
 
   protected val iter: Iterator[SamRecord] = {
+    // Wrap our input iterator in a progress logging iterator if we have a progress logger
+    val progressIterator = progress match {
+      case Some(p) => sourceIterator.tapEach { r => p.record(r) }
+      case None    => sourceIterator
+    }
+
+    // Then turn it into a grouping iterator
+    val groupingIterator = new SamRecordGroupedIterator(progressIterator, caller.sourceMoleculeId)
+
+    // Then call consensus either single-threaded or multi-threaded
     if (threads <= 1) {
-      val groupingIterator = new SamRecordGroupedIterator(progressIterator, caller.sourceMoleculeId)
       groupingIterator.flatMap(caller.consensusReadsFromSamRecords)
     }
     else {
-      val halfMaxRecords   = maxRecordsInRam / 2
-      val groupingIterator = new SamRecordGroupedIterator(new AsyncIterator(progressIterator, Some(halfMaxRecords)).start(), caller.sourceMoleculeId)
-      val pool             = new ForkJoinPool(threads - 1, ForkJoinPool.defaultForkJoinWorkerThreadFactory, null, true)
-      val bufferedIter     = groupingIterator.bufferBetter
-      val callers          = new IterableThreadLocal[UmiConsensusCaller[ConsensusRead]](() => caller.emptyClone())
-
-      // Create an infinite length iterator that will pull input records (up to the half the maximum number in memory)
-      // to be consensus called.  Each chunk of records will then be called in parallel.  If no more input records are
-      // available, an empty sequence will be returned by the iterator.
-      val iterator = Iterator.continually {
-        // Pull input reads to be consensus called.  We have to be careful to pull all the raw reads for each source
-        // molecule, so we pull from a [[SamRecordGroupedIterator]] above.
-        var total = 0L
-        bufferedIter
-          .takeWhile { chunk => if (halfMaxRecords <= total) false else {total += chunk.length; true } }
-          .toSeq
-          .parWith(pool)
-          .flatMap { records =>
-            val caller = callers.get()
-            caller.synchronized { caller.consensusReadsFromSamRecords(records) }
-          }
-          .seq
-      }
-
-      // Take from the iterator until an empty sequence of records is returned, which indicates that there were no more
-      // input records on which to call consensus reads.  When this happens, update the consensus calling statistics
-      // and stop iteration.
-      iterator.takeWhile { records =>
-        if (records.nonEmpty) true else {
-          // add the statistics to the original caller since there are no more reads
-          require(bufferedIter.isEmpty, "Bug: input is not empty")
-          callers.foreach(caller.addStatistics)
-          false
-        }
-      }.flatten
-
+      ParIterator(groupingIterator, threads=threads).flatMap { rs =>
+        val caller = callers.get()
+        caller.synchronized { caller.consensusReadsFromSamRecords(rs) }
+      }.toAsync(chunkSize * 8)
     }
   }
-  override def hasNext: Boolean = this.iter.hasNext
-  override def next(): SamRecord = this.iter.next
+
+  // Responsible for adding statistics to the main caller once we hit the end of the iterator.
+  override def hasNext: Boolean = {
+    if (this.iter.hasNext) true else {
+      if (!collectedStats) {
+        callers.foreach(c => caller.addStatistics(c))
+        collectedStats = true
+      }
+
+      false
+    }
+  }
+
+  override def next(): SamRecord = this.iter.next()
 }
 
 /** Groups consecutive records based on a method to group records. */
@@ -111,11 +96,11 @@ private class SamRecordGroupedIterator[Key](sourceIterator: Iterator[SamRecord],
   private var nextChunk = IndexedSeq.empty[SamRecord]
 
   /** True if there are more consensus reads, false otherwise. */
-  def hasNext(): Boolean = this.nextChunk.nonEmpty || (this.input.nonEmpty && advance())
+  def hasNext: Boolean = this.nextChunk.nonEmpty || (this.input.nonEmpty && advance())
 
   /** Returns the next consensus read. */
   def next(): Seq[SamRecord] = {
-    if (!this.hasNext()) throw new NoSuchElementException("Calling next() when hasNext() is false.")
+    if (!this.hasNext) throw new NoSuchElementException("Calling next() when hasNext() is false.")
     yieldAndThen { nextChunk } { nextChunk = IndexedSeq.empty }
   }
 

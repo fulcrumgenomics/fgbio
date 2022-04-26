@@ -60,11 +60,11 @@ class FastqIoTest extends UnitSpec {
 
     Seq(FastqSource(fq), FastqSource(fq.toFile), FastqSource(Io.toInputStream(fq)), FastqSource(FastqIoTest.someFastq)).foreach(source => {
       source.hasNext shouldBe true
-      source.next shouldBe FastqIoTest.someFastqRecords(0)
+      source.next() shouldBe FastqIoTest.someFastqRecords(0)
       source.hasNext shouldBe true
-      source.next shouldBe FastqIoTest.someFastqRecords(1)
+      source.next() shouldBe FastqIoTest.someFastqRecords(1)
       source.hasNext shouldBe true
-      source.next shouldBe FastqIoTest.someFastqRecords(2)
+      source.next() shouldBe FastqIoTest.someFastqRecords(2)
       source.hasNext shouldBe false
       an[NoSuchElementException] shouldBe thrownBy { source.next() }
     })

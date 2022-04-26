@@ -453,7 +453,7 @@ class Aligner(val scorer: AlignmentScorer,
       if (nextD == Done) elems += CigarElem(currOperator, currLength)
     }
 
-    Alignment(query=query, target=target, queryStart=curI+1, targetStart=curJ+1, cigar=Cigar(elems.result.reverse), score=score)
+    Alignment(query=query, target=target, queryStart=curI+1, targetStart=curJ+1, cigar=Cigar(elems.result().reverse), score=score)
   }
 
   /**
@@ -491,7 +491,7 @@ class Aligner(val scorer: AlignmentScorer,
           forloop(from = 1, until = tLen + 1) { j =>
             val direction = AllDirections.maxBy(d => matrices(d).scoring(i, j))
             val score = matrices(direction).scoring(i, j)
-            if (score > maxScore) {
+            if (score > maxScore || maxD == Done) {
               maxScore = score
               maxI = i
               maxJ = j
@@ -527,12 +527,12 @@ class Aligner(val scorer: AlignmentScorer,
         forloop(from = 1, until = qLen + 1) { i =>
           forloop(from = 1, until = tLen + 1) { j =>
             val direction = AllDirections.maxBy(d => matrices(d).scoring(i, j))
-            if (matrices(direction).scoring(i, j) >= minScore) hits += MatrixLocation(i, j, direction)
+            if (matrices(direction).scoring(i, j) >= minScore && matrices(direction).trace(i, j) != Done) hits += MatrixLocation(i, j, direction)
           }
         }
     }
 
-    hits.result
+    hits.result()
   }
 
   /** Returns true if the two bases should be considered a match when generating the alignment from the matrix

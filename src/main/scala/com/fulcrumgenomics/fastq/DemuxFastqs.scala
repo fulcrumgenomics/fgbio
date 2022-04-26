@@ -165,7 +165,7 @@ object DemuxFastqs {
         .flatMap { batch =>
           batch
             .parWith(pool=pool)
-            .map { readRecords => 
+            .map { readRecords =>
                 demultiplexer.demultiplex(readRecords: _*)
                     .maskLowQualityBases(minBaseQualityForMasking=maskingThresholdToByte, qualityEncoding=qualityEncoding, omitFailingReads=omitFailingReads)
             }
@@ -206,8 +206,8 @@ object DemuxFastqs {
       |the FASTQs, to assign each read to a sample.  Reads that do not match any sample within the given error tolerance
       |will be placed in the 'unmatched' file.
       |
-      |The type of output is specified with the `--output-type` option, and can be BAM (`--output-type BamOnly`),
-      |gzipped FASTQ (`--output-type FastqOnly`), or both (`--output-type Both`).
+      |The type of output is specified with the `--output-type` option, and can be BAM (`--output-type Bam`),
+      |gzipped FASTQ (`--output-type Fastq`), or both (`--output-type BamAndFastq`).
       |
       |For BAM output, the output directory will contain one BAM file per sample in the sample sheet or metadata CSV file,
       |plus a BAM for reads that could not be assigned to a sample given the criteria.  The output file names will be the

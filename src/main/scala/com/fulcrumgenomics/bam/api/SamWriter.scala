@@ -98,8 +98,10 @@ object SamWriter extends LazyLogging {
     factory.setCreateMd5File(md5)
     tmp.foreach(dir => factory.setTempDirectory(dir.toFile))
 
-    new SamWriter(writer=factory.makeWriter(header, true, path.toFile, ref.map(_.toFile).orNull),
-      sorter=sorter, sortProgress=sortProgress, writeProgress=writeProgress)
+    val htsJdkWriter = factory.makeWriter(header, true, path.toFile, ref.map(_.toFile).orNull)
+    htsJdkWriter.setSortOrderChecking(false)
+
+    new SamWriter(writer=htsJdkWriter, sorter=sorter, sortProgress=sortProgress, writeProgress=writeProgress)
   }
 }
 
@@ -131,7 +133,6 @@ final class SamWriter private (private val writer: SAMFileWriter,
         this.writer.addAlignment(rec.asSam)
         writeProgress.foreach(_.record(rec))
       }
-
       s.close()
     }
     writeProgress.foreach(_.logLast)

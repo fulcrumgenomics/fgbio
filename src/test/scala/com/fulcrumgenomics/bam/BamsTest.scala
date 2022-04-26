@@ -25,7 +25,6 @@
 package com.fulcrumgenomics.bam
 
 import java.util
-
 import com.fulcrumgenomics.FgBioDef._
 import com.fulcrumgenomics.alignment.Cigar
 import com.fulcrumgenomics.bam.api.{SamOrder, SamRecord}
@@ -33,7 +32,7 @@ import com.fulcrumgenomics.testing.SamBuilder.{Minus, Plus}
 import com.fulcrumgenomics.testing.{SamBuilder, UnitSpec}
 import com.fulcrumgenomics.util.{Io, Sequences}
 import htsjdk.samtools.SAMFileHeader.GroupOrder
-import htsjdk.samtools.SamPairUtil
+import htsjdk.samtools.{SAMFileHeader, SamPairUtil}
 import htsjdk.samtools.SamPairUtil.PairOrientation
 import htsjdk.samtools.reference.{ReferenceSequence, ReferenceSequenceFile, ReferenceSequenceFileWalker}
 
@@ -225,7 +224,7 @@ class BamsTest extends UnitSpec {
     rec("NM") = 7
     rec("MD") = "6A7C8T9G"
     rec("UQ") = 237
-    Bams.regenerateNmUqMdTags(rec, DummyRefWalker)
+    Bams.regenerateNmUqMdTags(rec, DummyRefWalker.get(rec.refIndex))
     rec.get[Int]("NM")    shouldBe None
     rec.get[String]("MD") shouldBe None
     rec.get[Int]("UQ")    shouldBe None
@@ -238,7 +237,7 @@ class BamsTest extends UnitSpec {
     rec("MD") = "6A7C8T9G"
     rec("UQ") = 237
     rec.bases = "AAACAAAATA"
-    Bams.regenerateNmUqMdTags(rec, DummyRefWalker)
+    Bams.regenerateNmUqMdTags(rec, DummyRefWalker.get(rec.refIndex))
     rec[Int]("NM")    shouldBe 2
     rec[String]("MD") shouldBe "3A4A1"
     rec[Int]("UQ")    shouldBe 40
@@ -329,6 +328,17 @@ class BamsTest extends UnitSpec {
 
     Bams.sortByTransformedTag[Int,Float](iterator=builder.iterator, header=builder.header, tag="ZZ", transform=f)
       .map(r => r[Int]("ZZ")).toSeq should contain theSameElementsInOrderAs Seq(4, 3, 2, 2, 1)
+  }
+
+  "Bams.requireTemplateGrouped" should "require the header to be queryname sorted or query grouped" in {
+    def header(order: SamOrder): SAMFileHeader = {
+      val h = new SAMFileHeader()
+      order.applyTo(h)
+      h
+    }
+    Bams.requireQueryGrouped(header=header(SamOrder.Queryname), "test")
+    Bams.requireQueryGrouped(header=header(SamOrder.RandomQuery), "test") // this is group ordered
+    an[Exception] should be thrownBy Bams.requireQueryGrouped(header=header(SamOrder.Coordinate), "test")
   }
 
   "Template.primaryReads" should "return an iterator over just the primary reads" in {
@@ -436,6 +446,38 @@ class BamsTest extends UnitSpec {
       r.secondary shouldBe false
       r.supplementary shouldBe false
     }
+  }
 
+  "Template.fixMateInfo" should "copy mate information over" in {
+    val builder = new SamBuilder()
+    builder.addPair(name="q1", contig=1, contig2=Some(2), start1=100, start2=200, cigar1="50M50S", cigar2="50S50M", mapq1=51, mapq2=52)
+    builder.addPair(name="q1", contig=3, contig2=Some(4), start1=300, start2=400, cigar1="50S50M", cigar2="50M50S", mapq1=21, mapq2=22)
+      .foreach(_.supplementary = true)
+
+    val recs = builder.toIndexedSeq.tapEach { r =>
+      r.mateMapped   = false
+      r.mateStart    = SamRecord.UnmappedStart
+      r.mateRefIndex = SamRecord.UnmappedReferenceIndex
+      r.remove("MC")
+      r.remove("MQ")
+    }
+
+    val template = Template(recs.iterator)
+    template.fixMateInfo()
+
+    template.allReads.foreach { r =>
+      r.mateMapped shouldBe true
+
+      if (r.firstOfPair) {
+        r.mateRefIndex shouldBe 2
+        r.mateStart shouldBe 200
+        r.mateCigar.value.toString() shouldBe "50S50M"
+      }
+      else {
+        r.mateRefIndex shouldBe 1
+        r.mateStart shouldBe 100
+        r.mateCigar.value.toString() shouldBe "50M50S"
+      }
+    }
   }
 }

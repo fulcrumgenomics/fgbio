@@ -235,7 +235,7 @@ trait Metric extends Product with Iterable[(String,String)] {
   override def iterator: Iterator[(String,String)] = this.names.zip(this.values).iterator
 
   /** @deprecated use [[formatValue]] instead. */
-  @deprecated("Use formatValue instead.", since="0.5.0")
+  @deprecated(message="Use formatValue instead.", since="0.5.0")
   protected def formatValues(value: Any): String = formatValue(value)
 
   /** Override this method to customize how values are formatted. */

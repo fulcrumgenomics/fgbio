@@ -27,8 +27,8 @@
 package com.fulcrumgenomics.umi
 
 import java.util.concurrent.atomic.AtomicLong
-
 import com.fulcrumgenomics.FgBioDef._
+import com.fulcrumgenomics.bam.api.SamOrder.TemplateCoordinate
 import com.fulcrumgenomics.bam.{Bams, Template}
 import com.fulcrumgenomics.bam.api.{SamOrder, SamRecord, SamSource, SamWriter}
 import com.fulcrumgenomics.cmdline.{ClpGroups, FgBioTool}
@@ -65,9 +65,22 @@ object GroupReadsByUmi {
   private val ReadInfoTempAttributeName = "__GRBU_ReadInfo"
 
   /** A case class to represent all the information we need to order reads for duplicate marking / grouping. */
-  case class ReadInfo(refIndex: Int, start1: Int, start2: Int, strand1: Boolean, strand2: Boolean, library: String)
+  case class ReadInfo(refIndex1: Int,
+                      start1: Int,
+                      strand1: Byte,
+                      refIndex2: Int,
+                      start2: Int,
+                      strand2: Byte,
+                      library: String)
 
   object ReadInfo {
+    // Use the Max possible value for ref/pos/strand when we have unmapped reads to mirror what's done
+    // in the TemplateCoordinate sort order where we sort by the _lower_ of the two mates' positions
+    // and want to use the mapped position when one mate is unmapped
+    private val UnknownRef    = Int.MaxValue
+    private val UnknownPos    = Int.MaxValue
+    private val UnknownStrand = Byte.MaxValue
+
     /** Looks in all the places the library name can be hiding. Returns the library name
       * if one is found, otherwise returns "unknown".
       */
@@ -76,36 +89,57 @@ object GroupReadsByUmi {
       if (rg != null && rg.getLibrary != null) rg.getLibrary else "unknown"
     }
 
-    /** Creates/retrieves a ReadEnds object from a SamRecord and stores it in a temporary attribute for later user. */
-    def apply(rec: SamRecord) : ReadInfo = {
-      val tmp = rec.transientAttrs[ReadInfo](GroupReadsByUmi.ReadInfoTempAttributeName)
-      if (tmp != null) {
-        tmp
-      }
-      else {
-        val lib       = library(rec)
-        val chrom     = rec.refIndex
-        val mateChrom = rec.mateRefIndex
-        val recNeg    = rec.negativeStrand
-        val recPos    = if (recNeg) rec.unclippedEnd else rec.unclippedStart
-
-        val (mateNeg, matePos) = if (!rec.paired) (false, Int.MaxValue) else {
-          val neg = rec.mateNegativeStrand
-          val pos = if (neg) SAMUtils.getMateUnclippedEnd(rec.asSam) else SAMUtils.getMateUnclippedStart(rec.asSam)
-          (neg, pos)
+    /** Extract a ReadInfo from a SamRecord; mate cigar must be present if a mate exists and is mapped. */
+    def apply(rec: SamRecord) : ReadInfo =
+      rec.transientAttrs.getOrElseUpdate[ReadInfo](GroupReadsByUmi.ReadInfoTempAttributeName, {
+        val lib = library(rec)
+        val (ref1, start1, strand1) = positionOf(rec)
+        val (ref2, start2, strand2) = if (rec.unpaired || rec.mateUnmapped) (UnknownRef, UnknownPos, UnknownStrand) else {
+          val start = (if (rec.matePositiveStrand) rec.mateUnclippedStart else rec.mateUnclippedEnd)
+            .getOrElse(throw new IllegalStateException(s"Missing mate cigar tag (MC) for read $rec."))
+          (rec.mateRefIndex, start, strandToByte(rec.matePositiveStrand))
         }
 
-        val result = if (chrom < mateChrom || (chrom == mateChrom && (recPos < matePos || (recPos == matePos && !recNeg)))) {
-          new ReadInfo(chrom, recPos, matePos, recNeg, mateNeg, lib)
-        }
-        else {
-          new ReadInfo(mateChrom, matePos, recPos, mateNeg, recNeg, lib)
-        }
+        val r1Earlier =
+          (ref1 < ref2) ||
+            (ref1 == ref2 && start1 < start2) ||
+            (ref1 == ref2 && start1 == start2 && strand1 < strand2)
 
-        rec.transientAttrs(GroupReadsByUmi.ReadInfoTempAttributeName, result)
-        result
+        if (r1Earlier) new ReadInfo(ref1, start1, strand1, ref2, start2, strand2, lib)
+        else           new ReadInfo(ref2, start2, strand2, ref1, start1, strand1, lib)
+      })
+
+
+    /** Extract a ReadInfo from a Template object.  R1 primary must be present. */
+    def apply(t: Template): ReadInfo = {
+      val r1 = t.r1.getOrElse(throw new IllegalStateException(s"${t.name} did not have a primary R1 record."))
+      val r2 = t.r2
+
+      r1.transientAttrs.getOrElseUpdate[ReadInfo](GroupReadsByUmi.ReadInfoTempAttributeName, {
+        val lib                     = library(r1)
+        val (ref1, start1, strand1) = positionOf(r1)
+        val (ref2, start2, strand2) = r2.map(positionOf).getOrElse((UnknownRef, UnknownPos, UnknownStrand))
+
+        val r1Earlier =
+          (ref1 < ref2) ||
+          (ref1 == ref2 && start1 < start2) ||
+          (ref1 == ref2 && start1 == start2 && strand1 < strand2)
+
+        if (r1Earlier) new ReadInfo(ref1, start1, strand1, ref2, start2, strand2, lib)
+        else           new ReadInfo(ref2, start2, strand2, ref1, start1, strand1, lib)
+      })
+    }
+
+    /** Extracts the refIndex, unclipped 5' end and strand of the read, or Unknown values for unmapped reads. */
+    private def positionOf(r: SamRecord): (Int, Int, Byte) = {
+      if (r.unmapped) (UnknownRef, UnknownPos, UnknownStrand) else {
+        val start = if (r.positiveStrand) r.unclippedStart else r.unclippedEnd
+        (r.refIndex, start, strandToByte(r.positiveStrand))
       }
     }
+
+    // Encodes a known strand into a byte value
+    @inline private def strandToByte(positive: Boolean): Byte = if (positive) 0 else 1
   }
 
   /** Trait that can be implemented to provide a UMI assignment strategy. */
@@ -114,6 +148,12 @@ object GroupReadsByUmi {
 
     /** Take in a sequence of UMIs and assign each UMI to a unique UMI group ID. */
     def assign(rawUmis: Seq[Umi]) : Map[Umi, MoleculeId]
+
+    /** Returns true if the two UMIs are the same. */
+    def isSameUmi(a: Umi, b: Umi): Boolean = a == b
+
+    /** Returns a canonical form of the UMI that is the same for all reads with the same UMI. */
+    def canonicalize(u: Umi): Umi = u
 
     /** Default implementation of a method to retrieve the next ID based on a counter. */
     protected def nextId: MoleculeId = this.counter.getAndIncrement().toString
@@ -216,7 +256,7 @@ object GroupReadsByUmi {
         root.descendants.foreach(child => mappings += ((child.umi, id)))
       })
 
-      mappings.result
+      mappings.result()
     }
 
     override def assign(rawUmis: Seq[Umi]): Map[Umi, MoleculeId] = {
@@ -241,7 +281,7 @@ object GroupReadsByUmi {
         }
       }
 
-      assignIdsToNodes(roots.result)
+      assignIdsToNodes(roots.result())
     }
   }
 
@@ -259,13 +299,36 @@ object GroupReadsByUmi {
     /** String that is prefixed onto the UMI from the read with that maps to a higher coordinate in the genome.. */
     private[umi] val higherReadUmiPrefix: String = ("b" * (maxMismatches+1)) + ":"
 
+
+    /** Returns true if the two UMIs are the same. */
+    final override def isSameUmi(a: Umi, b: Umi): Boolean = {
+      if (a == b) true else {
+        // same as `a == reverse(b)` but more efficient than creating new strings
+        val (a1, a2) = split(a)
+        val (b1, b2) = split(b)
+        a1 == b2 && a2 == b1
+      }
+    }
+
+    /** Returns the UMI with the lexically lower half first. */
+    override def canonicalize(u: Umi): Umi = {
+      val (a, b) = split(u)
+      if (a < b) u else s"${b}-${a}"
+    }
+
+    /** Splits the paired UMI into its two parts. */
+    @inline private def split(umi: Umi): (Umi, Umi) = {
+      val index = umi.indexOf('-')
+      if (index == -1) throw new IllegalStateException(s"UMI $umi is not a paired UMI.")
+      val first  = umi.substring(0, index)
+      val second = umi.substring(index+1, umi.length)
+      (first, second)
+    }
+
     /** Takes a UMI of the form "A-B" and returns "B-A". */
-    def reverse(umi: Umi): Umi = umi.indexOf('-') match {
-      case -1 => throw new IllegalStateException(s"UMI $umi is not a paired UMI.")
-      case i  =>
-        val first  = umi.substring(0, i)
-        val second = umi.substring(i+1, umi.length)
-        second + '-' + first
+    def reverse(umi: Umi): Umi = {
+      val (first, second) = split(umi)
+      s"${second}-${first}"
     }
 
     /** Turns each UMI into the lexically earlier of A-B or B-A and then counts them. */
@@ -318,7 +381,7 @@ object GroupReadsByUmi {
       * the main assignment method to filter out the ones that shouldn't be in the Map.
       */
     override def assign(rawUmis: Seq[Umi]): Map[Umi, MoleculeId] = {
-      super.assign(rawUmis).filter { case (umi, id) => rawUmis.contains(umi) }
+      super.assign(rawUmis).filter { case (umi, _) => rawUmis.contains(umi) }
     }
   }
 }
@@ -376,20 +439,11 @@ object Strategy extends FgBioEnum[Strategy] {
     |   3. The assigned UMI tag
     |   4. Read Name
     |
-    |Reads are aggressively filtered out so that only high quality reads/mappings are taken forward. Single-end
-    |reads must have mapping quality >= `min-map-q`.  Paired-end reads must both have mapping quality >= `min-mapq`
-    |(Note: the `MQ` tag is required on reads with mapped mates). By default, paired-end reads must have both reads
-    |mapped to the same chromosome (to turn off this filter, use `--allow-inter-contig`).
+    |During grouping, reads are filtered out if a) all reads with the same queryname are unmapped, b) any primary
+    |read has mapping quality < `min-map-q` (default=1), or c) the primary mappings for R1 and R2 are on different
+    |chromosomes and `--allow-inter-contig` has been set to false.
     |
-    |This is done with the expectation that the next step is building consensus reads, where
-    |it is undesirable to either:
-    |
-    |   1. Assign reads together that are really from different source molecules
-    |   2. Build two groups from reads that are really from the same molecule
-    |
-    |Errors in mapping reads could lead to both and therefore are minimized.
-    |
-    |Grouping of UMIs is performed by one of three strategies:
+    |Grouping of UMIs is performed by one of four strategies:
     |
     |1. **identity**:  only reads with identical UMI sequences are grouped together. This strategy
     |                  may be useful for evaluating data, but should generally be avoided as it will
@@ -415,6 +469,9 @@ object Strategy extends FgBioEnum[Strategy] {
     |compared, where `len` is the length of the shortest UMI. The UMI length is the number of [ACGT] bases in the UMI
     |(i.e. does not count dashes and other non-ACGT characters). This option is not implemented for reads with UMI pairs
     |(i.e. using the paired assigner).
+    |
+    |If the input is not template-coordinate sorted (i.e. `SO:unsorted GO:query SS:unsorted:template-coordinate`), then
+    |this tool will re-sort the input. The ouitput will be written in template-coordinate order.
   """
 )
 class GroupReadsByUmi
@@ -423,17 +480,18 @@ class GroupReadsByUmi
   @arg(flag='f', doc="Optional output of tag family size counts.") val familySizeHistogram: Option[FilePath] = None,
   @arg(flag='t', doc="The tag containing the raw UMI.")  val rawTag: String    = "RX",
   @arg(flag='T', doc="The output tag for UMI grouping.") val assignTag: String = "MI",
-  @arg(flag='m', doc="Minimum mapping quality.")         val minMapQ: Int      = 30,
+  @arg(flag='m', doc="Minimum mapping quality for mapped reads.")         val minMapQ: Int      = 1,
   @arg(flag='n', doc="Include non-PF reads.")            val includeNonPfReads: Boolean = false,
-  @arg(flag='s', doc="The UMI assignment strategy.") val strategy: Strategy,
+  @arg(flag='s', doc="The UMI assignment strategy.")     val strategy: Strategy,
   @arg(flag='e', doc="The allowable number of edits between UMIs.") val edits: Int = 1,
   @arg(flag='l', doc= """The minimum UMI length. If not specified then all UMIs must have the same length,
                        |otherwise discard reads with UMIs shorter than this length and allow for differing UMI lengths.
                        |""")
   val minUmiLength: Option[Int] = None,
-  @arg(flag='x', doc= """Allow read pairs with primary alignments on different contigs to be grouped when using the
-                       |paired assigner (otherwise filtered out).""")
-  val allowInterContig: Boolean = false
+  @arg(flag='x', doc= """
+                       |DEPRECATED: this option will be removed in future versions and inter-contig reads will be
+                       |automatically processed.""")
+  @deprecated val allowInterContig: Boolean = true
 )extends FgBioTool with LazyLogging {
   import GroupReadsByUmi._
 
@@ -441,35 +499,56 @@ class GroupReadsByUmi
 
   private val assigner = strategy.newStrategy(this.edits)
 
+
   /** Checks that the read's mapq is over a minimum, and if the read is paired, that the mate mapq is also over the min. */
   private def mapqOk(rec: SamRecord, minMapQ: Int): Boolean = {
-    val mateMqOk = if (rec.unpaired) true else rec.get[Int](SAMTag.MQ.name()) match {
-      case None     => fail(s"Mate mapping quality (MQ) tag not present on read ${rec.name}.")
-      case Some(mq) => mq >= minMapQ
+    if (rec.mapped && rec.mapq < minMapQ) {
+      false
     }
-
-    rec.mapq >= minMapQ && mateMqOk
+    else if (rec.unpaired || rec.mateUnmapped) {
+      true
+    }
+    else {
+      rec.get[Int](SAMTag.MQ.name()) match {
+        case None     => fail(s"Mate mapping quality (MQ) tag not present on read ${rec.name}.")
+        case Some(mq) => mq >= minMapQ
+      }
+    }
   }
+
+  // A handful of counters for tracking reads
+  private var (filteredNonPf, filteredPoorAlignment, filteredNsInUmi, filterUmisTooShort, kept) = (0L, 0L, 0L, 0L, 0L)
 
   override def execute(): Unit = {
     Io.assertReadable(input)
     Io.assertCanWriteFile(output)
     this.familySizeHistogram.foreach(f => Io.assertCanWriteFile(f))
 
-    val in = SamSource(input)
-    val header = in.header
-    val sorter = Bams.sorter(SamOrder.TemplateCoordinate, header)
-    val sortProgress = ProgressLogger(logger, verb="Sorted")
+    val in          = SamSource(input)
+    val header      = in.header
+    val skipSorting = SamOrder(header).contains(TemplateCoordinate)
 
-    // A handful of counters for tracking reads
-    var (filteredNonPf, filteredPoorAlignment, filteredNsInUmi, filterUmisTooShort, kept) = (0L, 0L, 0L, 0L, 0L)
+    // True if the input will be sorted and no differences in UMIs are tolerated and the Molecular ID tag is MI,
+    // false otherwise.  Pre-sorted (TemplateCoordinate sorted) input does not enable this optimization as we rely on
+    // copying the `RX` tag into the `MI` tag so that same raw UMIs are grouped together in the sorted stream of records.
+    //
+    // True here enables an optimization where, when bringing groups of reads into memory, we can _also_ group by UMI
+    // thus reducing the number of reads in memory.  This is helpful since edits=0 is often used for data that has
+    // high numbers of reads with the same start/stop coordinates.
+    // We do this by setting the MI tag to the canonicalized (optionally truncated) UMI prior to sorting, so that
+    // reads with the same UMI are grouped together in the sorted stream of records.
+    val canTakeNextGroupByUmi = {
+      !skipSorting &&
+      (this.assignTag == ConsensusTags.MolecularId) &&
+        (this.edits == 0 || this.strategy == Strategy.Identity)
+    }
 
     // Filter and sort the input BAM file
-    logger.info("Filtering and sorting input.")
-    in.iterator
+    logger.info("Filtering the input.")
+    val filteredIterator = in.iterator
       .filter(r => !r.secondary && !r.supplementary)
       .filter(r => (includeNonPfReads || r.pf)                                      || { filteredNonPf += 1; false })
-      .filter(r => (r.mapped && (r.unpaired || r.mateMapped))                       || { filteredPoorAlignment += 1; false })
+      .filter(r => (r.mapped || (r.paired && r.mateMapped))                         || { filteredPoorAlignment += 1; false })
       .filter(r => (allowInterContig || r.unpaired || r.refIndex == r.mateRefIndex) || { filteredPoorAlignment += 1; false })
       .filter(r => mapqOk(r, this.minMapQ)                                          || { filteredPoorAlignment += 1; false })
       .filter(r => !r.get[String](rawTag).exists(_.contains('N'))                   || { filteredNsInUmi += 1; false })
@@ -480,30 +559,60 @@ class GroupReadsByUmi
           }
         } || { filterUmisTooShort += 1; false}
       }
-      .foreach(r => { sorter += r; kept += 1; sortProgress.record(r) })
+      .tapEach { r =>
+        // If we're able to also group by the UMI because edits aren't allowed, push the trimmed, canonicalized UMI
+        // into the assign tag (which must be MI if canTakeNextGroupByUmi is true), since that is used by the
+        // SamOrder to sort the reads _and_ we'll overwrite it on the way out!
+        // Note that here we trim UMIs (if enabled) to the minimum UMI length for sorting, but that when doing the
+        // actual grouping later we go back to the raw tag (RX) and use as much of the UMI as possible.
+        if (canTakeNextGroupByUmi) {
+          val umi = this.assigner.canonicalize(r[String](rawTag).toUpperCase)
+          val truncated = this.minUmiLength match {
+            case None    => umi
+            case Some(n) => umi.substring(0, n)
+          }
 
-    logger.info(f"Accepted $kept%,d reads for grouping.")
-    if (filteredNonPf > 0) logger.info(f"Filtered out $filteredNonPf%,d non-PF reads.")
-    logger.info(f"Filtered out $filteredPoorAlignment%,d reads due to mapping issues.")
-    logger.info(f"Filtered out $filteredNsInUmi%,d reads that contained one or more Ns in their UMIs.")
-    this.minUmiLength.foreach { _ => logger.info(f"Filtered out $filterUmisTooShort%,d reads that contained UMIs that were too short.") }
+          r(this.assignTag) = truncated
+        }
+
+        kept += 1
+        r
+      }
+
+    val tagFamilySizeCounter       = new NumericCounter[Int]()
+    val outHeader                  = header.clone()
+    SamOrder.TemplateCoordinate.applyTo(outHeader)
+    val out                        = SamWriter(output, outHeader)
+    val templateCoordinateIterator = {
+      // Skip sorting if the input is already template coordinate!
+      val iter = if (skipSorting) filteredIterator else {
+        logger.info("Sorting the input to TemplateCoordinate order.")
+        val sorter       = Bams.sorter(SamOrder.TemplateCoordinate, header)
+        val sortProgress = ProgressLogger(logger, verb="Sorted")
+        filteredIterator.foreach { rec =>
+          sortProgress.record(rec)
+          sorter += rec
+        }
+        sortProgress.logLast()
+        sorter.iterator
+      }
+      // Note: this should never have to sort, just groups into templates
+      Bams.templateIterator(iter, out.header, Bams.MaxInMemory, Io.tmpDir)
+    }
+
+    // If we sorted then log stats now, since the `sorter.iterator` above has consumed all the records fed to it,
+    // and so the stats should be ready
+    if (!skipSorting) logStats()
 
     // Output the reads in the new ordering
     logger.info("Assigning reads to UMIs and outputting.")
-    val outHeader = header.clone()
-    SamOrder.TemplateCoordinate.applyTo(outHeader)
-    val out = SamWriter(output, outHeader)
-
-    val iterator = Bams.templateIterator(sorter.iterator, out.header, Bams.MaxInMemory, Io.tmpDir)
-    val tagFamilySizeCounter = new NumericCounter[Int]()
-
-    while (iterator.hasNext) {
+    while (templateCoordinateIterator.hasNext) {
       // Take the next set of templates by position and assign UMIs
-      val templates = takeNextGroup(iterator)
+      val templates = takeNextGroup(templateCoordinateIterator, canTakeNextGroupByUmi=canTakeNextGroupByUmi)
       assignUmiGroups(templates)
 
       // Then output the records in the right order (assigned tag, read name, r1, r2)
-      val templatesByMi = templates.groupBy { t => t.r1.get[String](this.assignTag) }
+      val templatesByMi = templates.groupBy { t => t.r1.get.apply[String](this.assignTag) }
 
       templatesByMi.keys.toSeq.sortBy(id => (id.length, id)).foreach(tag => {
         templatesByMi(tag).sortBy(t => t.name).flatMap(t => t.primaryReads).foreach(rec => {
@@ -514,8 +623,10 @@ class GroupReadsByUmi
       // Count up the family sizes
       templatesByMi.values.foreach(ps => tagFamilySizeCounter.count(ps.size))
     }
-
     out.close()
+
+    // If we skipped sorting, log stats after we have consumed all the records
+    if (skipSorting) logStats()
 
     // Write out the family size histogram
     this.familySizeHistogram match {
@@ -529,13 +640,32 @@ class GroupReadsByUmi
     }
   }
 
+  private def logStats(): Unit = {
+    logger.info(f"Accepted $kept%,d reads for grouping.")
+    if (filteredNonPf > 0) logger.info(f"Filtered out $filteredNonPf%,d non-PF reads.")
+    logger.info(f"Filtered out $filteredPoorAlignment%,d reads due to mapping issues.")
+    logger.info(f"Filtered out $filteredNsInUmi%,d reads that contained one or more Ns in their UMIs.")
+    this.minUmiLength.foreach { _ => logger.info(f"Filtered out $filterUmisTooShort%,d reads that contained UMIs that were too short.") }
+  }
+
   /** Consumes the next group of templates with all matching end positions and returns them. */
-  def takeNextGroup(iterator: BufferedIterator[Template]) : Seq[Template] = {
-    val first = iterator.next()
-    val firstEnds = ReadInfo(first.r1.getOrElse(fail(s"R1 missing for template ${first.name}")))
-    val buffer = ListBuffer[Template]()
-    while (iterator.hasNext && firstEnds == ReadInfo(iterator.head.r1.get)) buffer += iterator.next()
-    first :: buffer.toList
+  def takeNextGroup(iterator: BufferedIterator[Template], canTakeNextGroupByUmi: Boolean) : Seq[Template] = {
+    val first     = iterator.next()
+    val firstEnds = ReadInfo(first)
+    val firstUmi  = first.r1.get.apply[String](this.assignTag)
+    val builder   = IndexedSeq.newBuilder[Template]
+    builder    += first
+
+    while (
+      iterator.hasNext &&
+      firstEnds == ReadInfo(iterator.head) &&
+      // This last condition only works because we put a canonicalized UMI into rec(assignTag) if canTakeNextGroupByUmi
+      (!canTakeNextGroupByUmi || firstUmi == iterator.head.r1.get.apply[String](this.assignTag))
+    ) {
+      builder += iterator.next()
+    }
+
+    builder.result()
   }
 
   /**
@@ -595,7 +725,7 @@ class GroupReadsByUmi
 
         if (r1Lower) paired.lowerReadUmiPrefix  + ":" + umis(0) + "-" + paired.higherReadUmiPrefix + ":" + umis(1)
         else         paired.higherReadUmiPrefix + ":" + umis(0) + "-" + paired.lowerReadUmiPrefix  + ":" + umis(1)
-      case (_,        _,        paired: PairedUmiAssigner) =>
+      case (_, _,  _: PairedUmiAssigner) =>
         fail(s"Template ${t.name} has only one read, paired-reads required for paired strategy.")
       case (Some(r1), _, _) =>
         r1[String](this.rawTag)

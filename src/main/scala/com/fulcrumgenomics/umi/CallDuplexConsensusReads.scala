@@ -25,6 +25,7 @@
 package com.fulcrumgenomics.umi
 
 import com.fulcrumgenomics.FgBioDef._
+import com.fulcrumgenomics.bam.OverlappingBasesConsensusCaller
 import com.fulcrumgenomics.bam.api.{SamOrder, SamSource, SamWriter}
 import com.fulcrumgenomics.cmdline.{ClpGroups, FgBioTool}
 import com.fulcrumgenomics.sopt.clp
@@ -98,14 +99,15 @@ class CallDuplexConsensusReads
  @arg(flag='2', doc="The Phred-scaled error rate for an error post the UMIs have been integrated.") val errorRatePostUmi: PhredScore = DefaultErrorRatePostUmi,
  @arg(flag='m', doc="Ignore bases in raw reads that have Q below this value.") val minInputBaseQuality: PhredScore = DefaultMinInputBaseQuality,
  @arg(flag='t', doc="If true, quality trim input reads in addition to masking low Q bases.") val trim: Boolean = false,
- @arg(flag='S', doc="The sort order of the output, if `:none:` then the same as the input.") val sortOrder: Option[SamOrder] = Some(SamOrder.Queryname),
+ @arg(flag='S', doc="The sort order of the output, the same as the input if not given.") val sortOrder: Option[SamOrder] = None,
  @arg(flag='M', minElements=1, maxElements=3, doc="The minimum number of input reads to a consensus read.") val minReads: Seq[Int] = Seq(1),
  @arg(doc="""
             |The maximum number of reads to use when building a single-strand consensus. If more than this many reads are
             |present in a tag family, the family is randomly downsampled to exactly max-reads reads.
           """)
  val maxReadsPerStrand: Option[Int] = None,
- @arg(doc="The number of threads to use while consensus calling.") val threads: Int = 1
+ @arg(doc="The number of threads to use while consensus calling.") val threads: Int = 1,
+ @arg(doc="Consensus call overlapping bases in mapped paired end reads") val consensusCallOverlappingBases: Boolean = true,
 ) extends FgBioTool with LazyLogging {
 
   Io.assertReadable(input)
@@ -114,8 +116,16 @@ class CallDuplexConsensusReads
   validate(errorRatePostUmi > 0, "Phred-scaled error rate post UMI must be > 0")
 
   override def execute(): Unit = {
-    val in  = SamSource(input)
+    val in = SamSource(input)
     UmiConsensusCaller.checkSortOrder(in.header, input, logger.warning, fail)
+
+    // Build an iterator for the input reads, which only really matters if calling consensus in overlapping read pairs.
+    val inIter = if (!consensusCallOverlappingBases) in.iterator else {
+      OverlappingBasesConsensusCaller.iterator(
+        in                    = in,
+        logger                = logger
+      )
+    }
 
     // The output file is unmapped, so for now let's clear out the sequence dictionary & PGs
     val outHeader = UmiConsensusCaller.outputHeader(in.header, readGroupId, sortOrder)
@@ -132,7 +142,7 @@ class CallDuplexConsensusReads
       maxReadsPerStrand   = maxReadsPerStrand.getOrElse(VanillaUmiConsensusCallerOptions.DefaultMaxReads)
     )
     val progress = ProgressLogger(logger, unit=1000000)
-    val iterator = new ConsensusCallingIterator(in.iterator, caller, Some(progress), threads)
+    val iterator = new ConsensusCallingIterator(inIter, caller, Some(progress), threads)
     out ++= iterator
     progress.logLast()
 

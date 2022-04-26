@@ -211,7 +211,6 @@ class AnnotateBamWithUmisTest extends UnitSpec {
     Io.writeLines(reverseFq, Io.readLines(fq).grouped(4).toSeq.reverse.flatten)
     val annotator = new AnnotateBamWithUmis(input=sam, fastq=Seq(fq, reverseFq), readStructure=Seq(ReadStructure("2M4B+M"), ReadStructure("1B+M")), output=out, attribute=umiTag, sorted=true)
     val result = intercept[Exception] { annotator.execute() }
-    println(result)
     result.getMessage should include ("out of sync")
   }
 }

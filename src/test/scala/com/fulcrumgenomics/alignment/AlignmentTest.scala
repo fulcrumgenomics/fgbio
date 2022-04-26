@@ -281,3 +281,23 @@ class AlignmentTest extends UnitSpec {
     alignment.subByTarget(6, 11).cigar.toString() shouldBe "5D1="
   }
 }
+
+class CigarStatsTest extends UnitSpec {
+
+  "CigarStats" should "compute various stats about a cigar" in {
+    CigarStats("100M")             shouldBe CigarStats(100, 100, 100,  0,  0,  0)
+    CigarStats("50M10I50M")        shouldBe CigarStats(110, 100, 100,  0,  0,  0)
+    CigarStats("50M10D50M")        shouldBe CigarStats(100, 110, 100,  0,  0,  0)
+    CigarStats("10H100M")          shouldBe CigarStats(100, 100, 100, 10,  0,  0)
+    CigarStats("100M10H")          shouldBe CigarStats(100, 100, 100, 10,  0,  0)
+    CigarStats("10S100M")          shouldBe CigarStats(110, 100, 100, 10, 10,  0)
+    CigarStats("100M10S")          shouldBe CigarStats(110, 100, 100, 10,  0, 10)
+    CigarStats("10H10S100M")       shouldBe CigarStats(110, 100, 100, 20, 10,  0)
+    CigarStats("100M10S10H")       shouldBe CigarStats(110, 100, 100, 20,  0, 10)
+    CigarStats("1H2S3M4D5I6M7S8H") shouldBe CigarStats(23,   13,   9, 18,  2,  7)
+  }
+
+  it should "fail on an invalid cigar" in {
+    an[Exception] should be thrownBy CigarStats("100M10S100M")
+  }
+}

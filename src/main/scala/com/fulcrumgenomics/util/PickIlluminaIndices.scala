@@ -2,7 +2,7 @@ package com.fulcrumgenomics.util
 
 import com.fulcrumgenomics.cmdline.{ClpGroups, FgBioTool}
 import com.fulcrumgenomics.FgBioDef._
-import scala.collection.JavaConverters._
+import scala.jdk.CollectionConverters._
 import com.fulcrumgenomics.sopt.{arg, clp}
 
 /**

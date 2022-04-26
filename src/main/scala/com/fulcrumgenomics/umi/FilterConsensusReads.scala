@@ -24,19 +24,21 @@
 
 package com.fulcrumgenomics.umi
 
-import java.lang.Math.{max, min}
-
 import com.fulcrumgenomics.FgBioDef._
 import com.fulcrumgenomics.bam.Bams
 import com.fulcrumgenomics.bam.api.{SamOrder, SamRecord, SamSource, SamWriter}
 import com.fulcrumgenomics.cmdline.{ClpGroups, FgBioTool}
+import com.fulcrumgenomics.commons.io.Writer
 import com.fulcrumgenomics.commons.util.LazyLogging
 import com.fulcrumgenomics.sopt.{arg, clp}
+import com.fulcrumgenomics.util.Io
 import com.fulcrumgenomics.util.NumericTypes.PhredScore
-import com.fulcrumgenomics.util.{Io, ProgressLogger}
-import htsjdk.samtools.SAMFileHeader.SortOrder
-import htsjdk.samtools.reference.ReferenceSequenceFileWalker
+import htsjdk.samtools.SAMFileHeader
+import htsjdk.samtools.SAMFileHeader.{GroupOrder, SortOrder}
 import htsjdk.samtools.util.SequenceUtil
+
+import java.io.Closeable
+import java.lang.Math.{max, min}
 
 /** Filter values for filtering consensus reads */
 private[umi] case class ConsensusReadFilter(minReads: Int, maxReadErrorRate: Double, maxBaseErrorRate: Double)
@@ -86,9 +88,15 @@ private[umi] case class ConsensusReadFilter(minReads: Int, maxReadErrorRate: Dou
       |single-strand consensus, and the last value to the other single-strand consensus. It is required that if
       |values two and three differ, the _more stringent value comes earlier_.
       |
-      |In order to correctly filter reads in or out by template, if the input BAM is not `queryname` sorted or
-      |grouped it will be sorted into queryname order.  The resulting records are `coordinate` sorted to efficiently
-      |correct the `NM`, `UQ` and `MD` tags, and the output BAM is always written in coordinate order.
+      |In order to correctly filter reads in or out by template, the input BAM must be either `queryname` sorted or
+      |`query` grouped.  If your BAM is not already in an appropriate order, this can be done in streaming fashion with:
+      |
+      |```
+      |samtools sort -n -u in.bam | fgbio FilterConsensusReads -i /dev/stdin ...
+      |```
+      |
+      |The output sort order may be specified with `--sort-order`.  If not given, then the output will be in the same
+      |order as input.
       |
       |The `--reverse-tags-per-base` option controls whether per-base tags should be reversed before being used on reads
       |marked as being mapped to the negative strand.  This is necessary if the reads have been mapped and the
@@ -114,7 +122,9 @@ class FilterConsensusReads
   @arg(flag='q', doc="The minimum mean base quality across the consensus read.")
   val minMeanBaseQuality: Option[PhredScore] = None,
   @arg(flag='s', doc="Mask (make `N`) consensus bases where the AB and BA consensus reads disagree (for duplex-sequencing only).")
-  val requireSingleStrandAgreement: Boolean = false
+  val requireSingleStrandAgreement: Boolean = false,
+  @arg(flag='S', doc="The sort order of the output. If not given, output will be in the same order as input if the input is query name sorted or query grouped, otherwise queryname order.")
+  val sortOrder: Option[SamOrder] = None
 ) extends FgBioTool with LazyLogging {
   // Baseline input validation
   Io.assertReadable(input)
@@ -169,12 +179,11 @@ class FilterConsensusReads
   private val EmptyFilterResult = FilterResult(keepRead=true, maskedBases=0)
 
   override def execute(): Unit = {
-    val in        = SamSource(input)
-    val header    = in.header.clone()
-    header.setSortOrder(SortOrder.coordinate)
-    val sorter    = Bams.sorter(SamOrder.Coordinate, header, maxRecordsInRam=MaxRecordsInMemoryWhenSorting)
-    val out       = SamWriter(output, header)
-    val progress1 = ProgressLogger(logger, verb="Filtered and masked")
+    val in  = SamSource(input)
+    val out = Bams.nmUqMdTagRegeneratingWriter(writer=SamWriter(output, in.header.clone(), sort=sortOrder), ref=ref)
+
+    // Require queryname sorted or query grouped
+    Bams.requireQueryGrouped(header=in.header, toolName="FilterConsensusReads")
 
     // Go through the reads by template and do the filtering
     val templateIterator = Bams.templateIterator(in, maxInMemory=MaxRecordsInMemoryWhenSorting)
@@ -201,34 +210,23 @@ class FilterConsensusReads
         keptReads   += primaryReadCount
         totalBases  += r1.length + template.r2.map(_.length).getOrElse(0)
         maskedBases += r1Result.maskedBases + r2Result.maskedBases
-        sorter += r1
-        progress1.record(r1)
-        template.r2.foreach { r => sorter += r; progress1.record(r) }
+        out += r1
+        template.r2.foreach { r => out += r }
 
         template.allSupplementaryAndSecondary.foreach { r =>
           val result = filterRecord(r)
           if (result.keepRead) {
-            sorter += r
-            progress1.record(r)
+            out += r
           }
         }
       }
     }
 
-    // Then iterate the reads in coordinate order and re-calculate key tags
-    logger.info("Filtering complete; fixing tags and writing coordinate sorted reads.")
-    val progress2 = new ProgressLogger(logger, verb="Wrote")
-    val walker = new ReferenceSequenceFileWalker(ref.toFile)
-    sorter.foreach { rec =>
-      Bams.regenerateNmUqMdTags(rec, walker)
-      out += rec
-      progress2.record(rec)
-    }
-
+    logger.info("Finalizing the output")
     in.safelyClose()
     out.close()
-    logger.info(f"Output ${keptReads}%,d of ${totalReads}%,d primary consensus reads.")
-    logger.info(f"Masked ${maskedBases}%,d of ${totalBases}%,d bases in retained primary consensus reads.")
+    logger.info(f"Output $keptReads%,d of $totalReads%,d primary consensus reads.")
+    logger.info(f"Masked $maskedBases%,d of $totalBases%,d bases in retained primary consensus reads.")
   }
 
   /**

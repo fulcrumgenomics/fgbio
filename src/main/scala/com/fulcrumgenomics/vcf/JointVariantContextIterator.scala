@@ -65,7 +65,7 @@ extends Iterator[Seq[Option[VariantContext]]] {
     case Right(comp) => comp
   }
 
-  def hasNext(): Boolean = iterators.exists(_.nonEmpty)
+  def hasNext: Boolean = iterators.exists(_.nonEmpty)
 
   def next(): Seq[Option[VariantContext]] = {
     val minCtx = iterators.filter(_.nonEmpty).map(_.head).sortWith {

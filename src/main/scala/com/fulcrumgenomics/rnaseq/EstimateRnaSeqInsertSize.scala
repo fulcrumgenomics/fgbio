@@ -40,7 +40,7 @@ import htsjdk.samtools._
 import htsjdk.samtools.filter._
 import htsjdk.samtools.util.{CoordMath, Interval, OverlapDetector}
 
-import scala.collection.JavaConverters._
+import scala.jdk.CollectionConverters._
 
 @clp(description =
   """Computes the insert size for RNA-Seq experiments.

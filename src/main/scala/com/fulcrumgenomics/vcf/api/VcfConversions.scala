@@ -33,7 +33,7 @@ import htsjdk.variant.vcf._
 
 import java.util
 import java.util.{List => JavaList}
-import scala.collection.JavaConverters.mapAsJavaMapConverter
+import scala.jdk.CollectionConverters.MapHasAsJava
 import scala.collection.immutable.ListMap
 
 /**
@@ -46,7 +46,7 @@ private[api] object VcfConversions {
   private class ArrayIndexedSeq[T](private val array: Array[T]) extends scala.collection.immutable.IndexedSeq[T] {
     override final def apply(i: Int): T = this.array(i)
     override final def length: Int = this.array.length
-    override final def nonEmpty: Boolean = this.array.length > 0
+    override final def isEmpty: Boolean = this.array.length == 0
   }
 
   /** Converts a String into Option[String]. Returns `None` if the input string is either

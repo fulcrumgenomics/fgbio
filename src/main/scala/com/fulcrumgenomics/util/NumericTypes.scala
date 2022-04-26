@@ -146,16 +146,16 @@ object NumericTypes {
     }
 
     /**
-      * Precise computation of log(1-exp(x)) for use in the `aOrNotB` method.
+      * Precise computation of log(1-exp(-x)) for use in the `aOrNotB` method.
       * See Equation (7) in https://cran.r-project.org/web/packages/Rmpfr/vignettes/log1mexp-note.pdf
       */
     private def log1mexp(value: Double): Double = {
-      if (value < 0) throw new IllegalArgumentException("value was less than zero: " + value)
+      if (value <= 0) throw new IllegalArgumentException("value was less than or equal to zero: " + value)
       else if (value <= LnTwo) log(-expm1(-value))
       else log1p(-exp(-value)) // value > LnTwo
     }
 
-    /** Computes the probability of a or b, where a and b are independent events: Pr(A or B) = Pr(A) + Pr(B). */
+    /** Computes the probability of a or b, where a and b are mutually exclusive events: Pr(A or B) = Pr(A) + Pr(B). */
     def or(a: LogProbability, b: LogProbability): LogProbability = {
       if (a.isNegInfinity) b
       else if (b.isNegInfinity) a
@@ -163,7 +163,7 @@ object NumericTypes {
       else a + log1pexp(b - a) // for precision we use log1pexp, which is equivalent to log(1+exp(x))
     }
 
-    /** Computes the probability of any of the given independent events occurring: Pr(AB..N) = Pr(A)+Pr(B)+...+Pr(N). */
+    /** Computes the probability of any of the given mutually exclusive events occurring: Pr(A,B,..N) = Pr(A)+Pr(B)+...+Pr(N). */
     def or(values: Array[LogProbability]): LogProbability = {
       if (values.forall(_.isNegInfinity)) Double.NegativeInfinity
       else {
@@ -178,16 +178,13 @@ object NumericTypes {
       }
     }
 
-    /** Computes the probability of a and b, where a and b are independent events: Pr(AB) = Pr(A)*Pr(B). */
+    /** Computes the probability of a and b, where a and b are independent events: Pr(A,B) = Pr(A)*Pr(B). */
     def and(a: LogProbability, b: LogProbability): LogProbability = a + b
 
-    /** Computes the probability of the given independent events co-occurring: Pr(AB..N) = Pr(A)*Pr(B)*...*Pr(N). */
+    /** Computes the probability of the given independent events co-occurring: Pr(A,B,..N) = Pr(A)*Pr(B)*...*Pr(N). */
     def and(values: Array[Double]): LogProbability = values.sum
 
-    /**
-      * Computes the probability Pr(A OR not B) = Pr(A) - Pr(B). While this could be computed using
-      * or(a, not(b)), this form is more efficient and more precise.
-      */
+    /** Computes the probability Pr(A AND not B) = Pr(A) - Pr(B), where B is a subset of A. */
     def aOrNotB(a: LogProbability, b: LogProbability): LogProbability = {
       if (b.isNegInfinity) a
       else if (a == b) Double.NegativeInfinity

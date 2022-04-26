@@ -57,15 +57,9 @@ class FgMetricsDoclet extends Doclet(reporter = new ConsoleReporter(new Settings
     val md  = Paths.get(this.universe.settings.outdir.value).resolve("metrics.md")
     val out = new PrintStream(md.toFile)
 
+    out.println(this.preamble)
     out.println(
       s"""
-         |# fgbio Metrics Descriptions
-         |
-         |This page contains descriptions of all metrics produced by all fgbio tools.  Within the descriptions
-         |the type of each field/column is given, including two commonly used types:
-         |
-         |* `Count` is an integer representing the count of some item
-         |* `Proportion` is a real number with a value between 0 and 1 representing a proportion or fraction
          |
          |## Table of Contents
          |
@@ -92,8 +86,21 @@ class FgMetricsDoclet extends Doclet(reporter = new ConsoleReporter(new Settings
     }
   }
 
+  protected def toolkitName: String = "fgbio"
+
+  protected def preamble: String = {
+    s"""
+       |# $toolkitName Metrics Descriptions
+       |
+       |This page contains descriptions of all metrics produced by all $toolkitName tools.  Within the descriptions
+       |the type of each field/column is given, including two commonly used types:
+       |
+       |* `Count` is an integer representing the count of some item
+       |* `Proportion` is a real number with a value between 0 and 1 representing a proportion or fraction""".stripMargin
+  }
+
   /** Locates the metrics documentation templates and turns them into simple case classes with comments as markdown. */
-  private lazy val metrics: Seq[MetricDescription] = {
+  protected lazy val metrics: Seq[MetricDescription] = {
     def simplify(name: String) = if (name.indexOf('.') > 0) name.substring(name.lastIndexOf('.') + 1) else name
 
     findMetricsClasses.map{ template =>
@@ -126,7 +133,7 @@ class FgMetricsDoclet extends Doclet(reporter = new ConsoleReporter(new Settings
   }
 
   /** Take the body of a scaladoc comment and renders it into MarkDown. */
-  private def renderBody(body: Body): String = {
+  protected def renderBody(body: Body): String = {
     val buffer = new StringBuilder
 
     // Takes a block element and renders it into MarkDown and writes it into the buffer
@@ -162,5 +169,5 @@ class FgMetricsDoclet extends Doclet(reporter = new ConsoleReporter(new Settings
   }
 
   /** Turns the text from a heading into the text to use as a link target. */
-  private def toLinkTarget(heading: String): String = heading.toLowerCase.replace(' ', '-')
+  protected def toLinkTarget(heading: String): String = heading.toLowerCase.replace(' ', '-')
 }

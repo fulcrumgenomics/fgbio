@@ -95,12 +95,12 @@ class ConsensusCallerTest extends UnitSpec {
     val caller = new ConsensusCaller(errorRatePreLabeling=50.toByte, errorRatePostLabeling=50.toByte)
     val builder = caller.builder()
     builder.add('A'.toByte, 20.toByte)
-    builder.call shouldBe ('A'.toByte, 20.toByte)
+    builder.call() shouldBe ('A'.toByte, 20.toByte)
     builder.contributions shouldBe 1
 
     builder.reset()
     builder.add('C'.toByte, 20.toByte)
-    builder.call shouldBe ('C'.toByte, 20.toByte)
+    builder.call() shouldBe ('C'.toByte, 20.toByte)
     builder.contributions shouldBe 1
   }
 }

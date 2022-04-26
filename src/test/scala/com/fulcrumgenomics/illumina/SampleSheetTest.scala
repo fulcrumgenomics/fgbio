@@ -27,12 +27,12 @@
 
 package com.fulcrumgenomics.illumina
 
+import com.fulcrumgenomics.testing.UnitSpec
 import com.fulcrumgenomics.util.Io
-import org.scalatest.{FlatSpec, Matchers, OptionValues}
 
 import java.nio.file.Paths
 
-class SampleSheetTest extends FlatSpec with Matchers with OptionValues {
+class SampleSheetTest extends UnitSpec {
   private val testDir = Paths.get("src/test/resources/com/fulcrumgenomics/util/miseq/")
 
   "SampleSheet" should "load a simple sample sheet" in {

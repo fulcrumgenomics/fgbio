@@ -506,6 +506,31 @@ class AlignerTest extends UnitSpec {
     }
   }
 
+  it should "ignore zero-length alignments" in {
+    val query  = "TTTTT"
+    val target = "AAAAA"
+
+    // all by score
+    {
+      val results = Aligner(5, -4, -10, -5, mode = Local).align(query, target, 0).sortBy(-_.score)
+      results.foreach { r =>
+        r.queryStart should be <= r.queryEnd
+        r.targetStart should be <= r.targetEnd
+        r.score should be >= 0
+      }
+    }
+
+    // only the best, which is actually an empty alignment
+    {
+      val result = Aligner(5, -4, -10, -5, mode = Local).align(query, target)
+      result.queryStart shouldBe 2
+      result.queryEnd shouldBe 1
+      result.targetStart shouldBe 2
+      result.targetEnd shouldBe 1
+      result.score shouldBe 0
+    }
+  }
+
   /** Timing test - change "ignore" to "it" to enable. */
   ignore should "perform lots of glocal alignments" in {
     val count = 25000

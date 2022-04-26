@@ -108,6 +108,18 @@ object SequenceMetadata {
     )
   }
 
+  /** Generates a new SequenceMetadata from a SAMSequenceRecord. */
+  def apply(rec: SAMSequenceRecord): SequenceMetadata = {
+    val attributes: Map[String, String] = rec.getAttributes.map { entry => entry.getKey -> entry.getValue }.toMap
+
+    SequenceMetadata(
+      name       = rec.getSequenceName,
+      length     = rec.getSequenceLength,
+      index      = rec.getSequenceIndex,
+      attributes = attributes
+    )
+  }
+
   /** The value for sequences of unknown length */
   val UnknownSequenceLength: Int = SAMSequenceRecord.UNKNOWN_SEQUENCE_LENGTH
 
@@ -186,6 +198,14 @@ case class SequenceMetadata private[fasta]
     }
   }
 
+  /** Generates a copy of this record as a SAMSequenceRecord. */
+  def toSam: SAMSequenceRecord = {
+    val rec = new SAMSequenceRecord(name, length)
+    rec.setSequenceIndex(index)
+    attributes.foreach { case (key, value) => rec.setAttribute(key, value) }
+    rec
+  }
+
   override def toString: FilenameSuffix = {
     import com.fulcrumgenomics.fasta.Converters.ToSAMSequenceRecord
     this.asSam.getSAMString
@@ -209,6 +229,11 @@ object SequenceDictionary {
     val dict   = codec.decode(reader, path.toString).getSequenceDictionary
     reader.close()
     dict.fromSam
+  }
+
+  /** Generates a new SequenceDictionary from a SAMSequenceDictionary */
+  def apply(dict: SAMSequenceDictionary): SequenceDictionary = {
+    apply(dict.getSequences.toSeq.map(SequenceMetadata.apply):_*)
   }
 
   /** Extracts a [[SequenceDictionary]] from SAM/BAM/CRAM/FASTA/DICT files. */
@@ -238,6 +263,7 @@ case class SequenceDictionary(infos: IndexedSeq[SequenceMetadata]) extends Itera
   def get(name: String): Option[SequenceMetadata] = this.mapping.get(name)
   def contains(name: String): Boolean = this.mapping.contains(name)
   def apply(index: Int): SequenceMetadata = this.infos(index)
+  def get(index: Int): Option[SequenceMetadata] = this.infos.lift(index)
   override def iterator: Iterator[SequenceMetadata] = this.infos.iterator
   def length: Int = this.infos.length
 
@@ -245,6 +271,12 @@ case class SequenceDictionary(infos: IndexedSeq[SequenceMetadata]) extends Itera
     * the same MD5 if both have MD5s. */
   def sameAs(that: SequenceDictionary): Boolean = {
     this.length == that.length && this.zip(that).forall { case (thisInfo, thatInfo) => thisInfo.sameAs(thatInfo) }
+  }
+
+  /** Returns a copy of this sequence dictionary as a SAMSequenceDictionary */
+  def toSam: SAMSequenceDictionary = {
+    val recs = infos.iterator.map(_.toSam).toJavaList
+    new SAMSequenceDictionary(recs)
   }
 
   /** Writes the sequence dictionary to the given path */
@@ -275,45 +307,34 @@ case class SequenceDictionary(infos: IndexedSeq[SequenceMetadata]) extends Itera
 /** Contains useful converters to and from HTSJDK objects. */
 object Converters {
 
-  /** Converter from a [[SequenceMetadata]] to a [[SAMSequenceRecord]] */
+  /**
+    * Converter from a [[SequenceMetadata]] to a [[SAMSequenceRecord]]
+    * @deprecated use [[SequenceMetadata.toSam]] instead.
+    */
+  @Deprecated
   implicit class ToSAMSequenceRecord(info: SequenceMetadata) {
-    def asSam: SAMSequenceRecord = {
-      val rec = new SAMSequenceRecord(info.name, info.length)
-      rec.setSequenceIndex(info.index)
-      info.attributes.foreach { case (key, value) => rec.setAttribute(key, value.toString) }
-      rec
-    }
+    def asSam: SAMSequenceRecord = info.toSam
   }
 
   /** Converter from a [[SAMSequenceRecord]] to a [[SequenceMetadata]] */
   implicit class FromSAMSequenceRecord(rec: SAMSequenceRecord) {
-    def fromSam: SequenceMetadata = {
-      val attributes: Map[String, String] = rec.getAttributes.map { entry =>
-        entry.getKey -> entry.getValue
-      }.toMap
-      SequenceMetadata(
-        name       = rec.getSequenceName,
-        length     = rec.getSequenceLength,
-        index      = rec.getSequenceIndex,
-        attributes = attributes
-      )
-    }
+    def fromSam: SequenceMetadata = SequenceMetadata(rec)
+    def toScala: SequenceMetadata = SequenceMetadata(rec)
   }
 
-  /** Converter from a [[SequenceDictionary]] to a [[SAMSequenceDictionary]] */
-  implicit class ToSAMSequenceDictionary(infos: SequenceDictionary) {
-    def asSam: SAMSequenceDictionary = {
-      val recs = infos.iterator.zipWithIndex.map { case (info, index) =>
-        info.copy(index=index).asSam
-      }.toJavaList
-      new SAMSequenceDictionary(recs)
-    }
+  /** Converter from a [[SequenceDictionary]] to a [[SAMSequenceDictionary]]
+    * @deprecated use [[SequenceDictionary.toSam]] instead.
+    */
+  @Deprecated
+  implicit class ToSAMSequenceDictionary(dict: SequenceDictionary) {
+    def asSam: SAMSequenceDictionary = dict.toSam
   }
 
   /** Converter from a [[SAMSequenceDictionary]] to a [[SequenceDictionary]] */
   implicit class FromSAMSequenceDictionary(dict: SAMSequenceDictionary) {
     require(dict != null, "The reference provided does not have a sequence dictionary (.dict)")
-    def fromSam: SequenceDictionary = SequenceDictionary(dict.getSequences.map(_.fromSam).toIndexedSeq)
+    def fromSam: SequenceDictionary = SequenceDictionary(dict)
+    def toScala: SequenceDictionary = SequenceDictionary(dict)
   }
 }
 

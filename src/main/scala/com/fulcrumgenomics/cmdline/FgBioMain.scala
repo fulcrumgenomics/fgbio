@@ -56,12 +56,25 @@ object FgBioMain {
   case class FailureException private[cmdline] (exit: Int = 1, message: Option[String] = None) extends RuntimeException
 }
 
+/** Public object that holds a singleton instance of the common args so that it can be accessed elsewhere. */
+object FgBioCommonArgs {
+  private var _args: FgBioCommonArgs = new FgBioCommonArgs()
+
+  /** Setter that is private to the cmdline package. */
+  private[cmdline] def args_=(args: FgBioCommonArgs): Unit = {
+    this._args = args
+  }
+
+  /** Access the common args for a command line program. */
+  def args: FgBioCommonArgs = this._args
+}
+
 class FgBioCommonArgs
 ( @arg(doc="Use asynchronous I/O where possible, e.g. for SAM and BAM files.") val asyncIo: Boolean = false,
   @arg(doc="Default GZIP compression level, BAM compression level.")           val compression: Int = 5,
   @arg(doc="Directory to use for temporary files.")                            val tmpDir: DirPath  = Paths.get(System.getProperty("java.io.tmpdir")),
   @arg(doc="Minimum severity log-level to emit.")                              val logLevel: LogLevel = LogLevel.Info,
-  @arg(doc="Validation stringency for SAM/BAM reading.")                       val samValidationStringency: Option[ValidationStringency] = None
+  @arg(doc="Validation stringency for SAM/BAM reading.")                       val samValidationStringency: ValidationStringency = ValidationStringency.SILENT
 ) {
 
   SamSource.DefaultUseAsyncIo = asyncIo
@@ -78,7 +91,7 @@ class FgBioCommonArgs
 
   Logger.level = this.logLevel
 
-  samValidationStringency.foreach { stringency => SamSource.DefaultValidationStringency = stringency }
+  SamSource.DefaultValidationStringency = samValidationStringency
 }
 
 class FgBioMain extends LazyLogging {
@@ -104,6 +117,7 @@ class FgBioMain extends LazyLogging {
       case Sopt.CommandSuccess(cmd) =>
         unreachable("CommandSuccess should never be returned by parseCommandAndSubCommand.")
       case Sopt.SubcommandSuccess(commonArgs, subcommand) =>
+        FgBioCommonArgs.args = commonArgs
         val name = subcommand.getClass.getSimpleName
         try {
           printStartupLines(name, args, commonArgs)

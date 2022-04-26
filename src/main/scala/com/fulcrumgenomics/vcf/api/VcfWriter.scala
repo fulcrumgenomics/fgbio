@@ -31,7 +31,7 @@ import htsjdk.samtools.Defaults
 import htsjdk.variant.variantcontext.writer.{Options, VariantContextWriter, VariantContextWriterBuilder}
 
 import java.nio.file.Files
-import java.nio.file.LinkOption.NOFOLLOW_LINKS
+import java.nio.file.attribute.BasicFileAttributes
 
 /**
   * Writes [[Variant]]s to a file or other storage mechanism.
@@ -49,18 +49,25 @@ object VcfWriter {
   var DefaultUseAsyncIo: Boolean = Defaults.USE_ASYNC_IO_WRITE_FOR_TRIBBLE
 
   /**
-    * Creates a [[VcfWriter]] that will write to the give path.  The path must end in either
-    *   - `.vcf` to create an uncompressed VCF file
-    *   - `.vcf.gz` to create a block-gzipped VCF file
-    *   - `.bcf` to create a binary BCF file
+    * Creates a [[VcfWriter]] that will write to the given path. If the path is meant to point to a regular file, then
+    * the path must end in either:
+    *
+    *   - `.vcf`: to create an uncompressed VCF file
+    *   - `.vcf.gz`: to create a block-gzipped VCF file
+    *   - `.bcf`: to create a binary BCF file
+    *
+    * If the path is meant to point to a regular file, then indexing will occur automatically. However, if the path
+    * already exists and the path is not a file or symbolic link, then this function will assume the path is a named
+    * pipe or device (such as `/dev/null`) and indexing will not occur.
     *
     * @param path the path to write to
     * @param header the header of the VCF
-    * @return a VariantWriter to write to the given path
+    * @return a VCF writer to write to the given path
     */
   def apply(path: PathToVcf, header: VcfHeader, async: Boolean = DefaultUseAsyncIo): VcfWriter = {
     import com.fulcrumgenomics.fasta.Converters.ToSAMSequenceDictionary
     val javaHeader = VcfConversions.toJavaHeader(header)
+    require(!Files.isDirectory(path), s"Path cannot be a directory! Found $path")
 
     val builder = new VariantContextWriterBuilder()
       .setOutputPath(path)
@@ -68,14 +75,16 @@ object VcfWriter {
       .setOption(Options.ALLOW_MISSING_FIELDS_IN_HEADER)
       .setBuffer(Io.bufferSize)
 
-    if (Files.isRegularFile(path, NOFOLLOW_LINKS)) {
-      builder.setOption(Options.INDEX_ON_THE_FLY)
-    } else {
+    if (async) builder.setOption(Options.USE_ASYNC_IO) else builder.unsetOption(Options.USE_ASYNC_IO)
+
+    // If the path exists and is not a file or symbolic link, then assume it is a named pipe and do not index.
+    if (Files.exists(path) && Files.readAttributes(path, classOf[BasicFileAttributes]).isOther) {
       builder.unsetOption(Options.INDEX_ON_THE_FLY)
       builder.setIndexCreator(null)
+    } else {
+      builder.setOption(Options.INDEX_ON_THE_FLY)
     }
 
-    if (async) builder.setOption(Options.USE_ASYNC_IO) else builder.unsetOption(Options.USE_ASYNC_IO)
     val writer = builder.build()
     writer.writeHeader(javaHeader)
     new VcfWriter(writer, header)

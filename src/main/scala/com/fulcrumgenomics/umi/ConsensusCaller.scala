@@ -90,13 +90,16 @@ class ConsensusCaller(errorRatePreLabeling:  PhredScore,
     }
 
     /** Adds a base and un-adjusted base quality to the consensus likelihoods. */
-    def add(base: Base, qual: PhredScore): Unit = add(base, pError=phredToAdjustedLogProbError(qual), pTruth=phredToAdjustedLogProbCorrect(qual))
+    def add(base: Base, qual: PhredScore): Unit =
+      add(base, pErrorPerBase=phredToOneThirdAdjustedLogProbError(qual), pTruth=phredToAdjustedLogProbCorrect(qual))
 
-    /** Adds a base with adjusted error and truth probabilities to the consensus likelihoods. */
-    def add(base: Base, pError: LogProbability, pTruth: LogProbability) = {
+    /**
+      * Adds a base with adjusted error and truth probabilities to the consensus likelihoods.
+      *
+      */
+    private def add(base: Base, pErrorPerBase: LogProbability, pTruth: LogProbability) = {
       val b = SequenceUtil.upperCase(base)
       if (b != 'N') {
-        val pErrorNormalized = LogProbability.normalizeByScalar(pError, 3)
         var i = 0
         while (i < DnaBaseCount) {
           val candidateBase = DnaBasesUpperCase(i)
@@ -105,7 +108,7 @@ class ConsensusCaller(errorRatePreLabeling:  PhredScore,
             observations(i) += 1
           }
           else {
-            likelihoods(i) += pErrorNormalized
+            likelihoods(i) += pErrorPerBase
           }
 
           i += 1
@@ -178,6 +181,10 @@ class ConsensusCaller(errorRatePreLabeling:  PhredScore,
     val e2 = LogProbability.fromPhredScore(q.toByte)
     LogProbability.probabilityOfErrorTwoTrials(e1, e2)
   })
+
+  /** One third of the adjusted error as a log probability - i.e. what is the probability of being exactly one other base.*/
+  private val phredToOneThirdAdjustedLogProbError: Array[LogProbability] =
+    phredToAdjustedLogProbError.map(e => LogProbability.normalizeByScalar(e, 3))
 
   /** Pre-computes the the log-scale probabilities of an not an error for each a phred-scaled base quality from 0-127. */
   private val phredToAdjustedLogProbCorrect: Array[Double] = phredToAdjustedLogProbError.map(LogProbability.not)
