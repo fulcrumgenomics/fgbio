@@ -128,14 +128,14 @@ final class SamWriter private (private val writer: SAMFileWriter,
   /** Closes the writer. */
   override def close(): Unit = {
     this.sorter.foreach { s =>
-      sortProgress.foreach(_.logLast)
+      sortProgress.foreach(_.logLast())
       s.iterator.foreach { rec =>
         this.writer.addAlignment(rec.asSam)
         writeProgress.foreach(_.record(rec))
       }
       s.close()
     }
-    writeProgress.foreach(_.logLast)
+    writeProgress.foreach(_.logLast())
 
     this.writer.close()
   }
