@@ -25,12 +25,12 @@
 package com.fulcrumgenomics.vcf
 
 import java.util
-
 import com.fulcrumgenomics.FgBioDef._
 import com.fulcrumgenomics.cmdline.{ClpGroups, FgBioTool}
 import com.fulcrumgenomics.util.Io
 import com.fulcrumgenomics.vcf.MakeTwoSampleMixtureVcf._
 import com.fulcrumgenomics.sopt._
+import com.fulcrumgenomics.vcf.api.VcfSource
 import htsjdk.samtools.util.IntervalList
 import htsjdk.variant.variantcontext._
 import htsjdk.variant.vcf.{VCFFilterHeaderLine, _}
@@ -165,9 +165,13 @@ class MakeTwoSampleMixtureVcf
 
   /** Generates an iterator over the whole file, or over the intervals if provided. */
   def iterator(in: VCFFileReader, intervals: Option[PathToIntervals]): Iterator[VariantContext] = {
+//    val tmpFile = Io.makeTempFile("temp patch", ".vcf")
+//    MakeMixtureVcf.makeWriter(tmpFile, in.getFileHeader, lines=Seq.empty, samples=in.getFileHeader.getSampleNamesInOrder.toSeq:_*)
+//    val tmpIn = VcfSource(tmpFile)
     intervals match {
       case None       => in.iterator()
-      case Some(path) => ByIntervalListVariantContextIterator(in, IntervalList.fromFile(path.toFile).uniqued(false))
+      case Some(path) => in.iterator()
+//      case Some(path) => ByIntervalListVariantContextIterator(in, IntervalList.fromFile(path.toFile).uniqued(false))
     }
   }
 }
