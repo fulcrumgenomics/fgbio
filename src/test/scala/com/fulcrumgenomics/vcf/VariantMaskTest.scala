@@ -65,7 +65,7 @@ class VariantMaskTest extends UnitSpec {
 
   it should "mask all deleted bases for deletions, plus the upstream base" in {
     val builder = VcfBuilder(samples = Seq("S1"))
-    builder.add(chrom="chr1.", pos=100, alleles=Seq("AA", "A"))
+    builder.add(chrom="chr1", pos=100, alleles=Seq("AA", "A"))
     val mask = VariantMask(builder.iterator, dict=dict)
 
     mask.isVariant(1,  99) shouldBe false

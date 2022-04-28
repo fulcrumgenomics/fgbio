@@ -31,7 +31,7 @@ import com.fulcrumgenomics.testing.VcfBuilder.Gt
 import com.fulcrumgenomics.testing.{ErrorLogLevel, UnitSpec, VcfBuilder}
 import com.fulcrumgenomics.util.Metric
 import com.fulcrumgenomics.vcf.PhaseCigar.IlluminaSwitchErrors
-import com.fulcrumgenomics.vcf.api.{Variant, VcfHeader, VcfSource, VcfWriter}
+import com.fulcrumgenomics.vcf.api.{Variant, VcfCount, VcfFieldType, VcfFormatHeader, VcfHeader, VcfSource, VcfWriter}
 import htsjdk.samtools.SAMFileHeader
 import htsjdk.samtools.util.{Interval, IntervalList}
 import htsjdk.variant.vcf.VCFFileReader
@@ -86,8 +86,8 @@ object AssessPhasingTest {
     // NB: call has blocks lengths 4, 5, 1, and 13; truth has block lengths 4, 6, and 13.
   }
 
-  val readBuilderCall: VcfSource = VcfSource(builderCall.toTempFile())
-  val readBuilderTruth: VcfSource = VcfSource(builderTruth.toTempFile())
+  val readBuilderCall: VcfSource = builderCall.toSource
+  val readBuilderTruth: VcfSource = builderTruth.toSource
 
   private def addPhaseSetId(ctx: Variant): Variant = {
     if (ctx.getStart <= 10) withPhasingSetId(ctx, 1)
@@ -113,7 +113,8 @@ object AssessPhasingTest {
     }.toSeq
   }
 
-  val Header = readBuilderCall.header
+  val Header = readBuilderCall.header.copy(
+    formats = readBuilderCall.header.formats :+ VcfFormatHeader("PS", VcfCount.Fixed(1), VcfFieldType.Integer, "Phase set"))
 }
 
 /**
@@ -124,11 +125,9 @@ class AssessPhasingTest extends ErrorLogLevel {
 
   private def writeVariants(variants: Seq[Variant]): PathToVcf = {
     val path = Files.createTempFile("AssessPhasingTest.", ".vcf.gz")
-    path.toFile.deleteOnExit()
-
     val writer = VcfWriter(path, Header)
-
-    variants.foreach(writer.write)
+    writer.write(variants)
+    writer.close()
     path
   }
 
@@ -152,9 +151,11 @@ class AssessPhasingTest extends ErrorLogLevel {
                           callVariants: Seq[Variant] = CallVariants,
                           debugVcf: Boolean = false
                          ): Unit = {
-    // input files
+    // input files )
     val truthVcf = writeVariants(truthVariants)
     val callVcf  = writeVariants(callVariants)
+    println(truthVcf)
+    println(callVcf)
 
     // output files
     val output                 = makeTempFile("AssessPhasingTest.", "prefix")
@@ -164,7 +165,6 @@ class AssessPhasingTest extends ErrorLogLevel {
 
     // run it
     new AssessPhasing(truthVcf=truthVcf, calledVcf=callVcf, knownIntervals=intervals, output=output, debugVcf=debugVcf).execute()
-
     // read the metrics
     val phasingMetrics     = Metric.read[AssessPhasingMetric](path=phasingMetricsPath)
     val blockLengthMetrics = Metric.read[PhaseBlockLengthMetric](path=blockLengthMetricsPath)
@@ -178,6 +178,8 @@ class AssessPhasingTest extends ErrorLogLevel {
     val expectedBlockLengthMetrics = Metric.read[PhaseBlockLengthMetric](path=expectedBlockLengthMetricsPath)
 
     // compare the metrics
+    println(phasingMetrics)
+    println(expectedPhasingMetrics)
     phasingMetrics should contain theSameElementsInOrderAs expectedPhasingMetrics
     blockLengthMetrics should contain theSameElementsInOrderAs expectedBlockLengthMetrics
 

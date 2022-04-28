@@ -24,9 +24,6 @@
 
 package com.fulcrumgenomics.vcf
 
-import java.nio.file.Paths
-import java.util
-import java.util.Comparator
 import com.fulcrumgenomics.FgBioDef._
 import com.fulcrumgenomics.cmdline.{ClpGroups, FgBioTool}
 import com.fulcrumgenomics.commons.io.{Io, PathUtil}
@@ -35,15 +32,15 @@ import com.fulcrumgenomics.fasta.SequenceDictionary
 import com.fulcrumgenomics.sopt._
 import com.fulcrumgenomics.util.{GenomicSpan, Metric, ProgressLogger}
 import com.fulcrumgenomics.vcf.PhaseCigarOp.PhaseCigarOp
-import com.fulcrumgenomics.vcf.api.{Variant, VcfCount, VcfFieldType, VcfFormatHeader, VcfHeader, VcfSource, VcfWriter}
+import com.fulcrumgenomics.vcf.api._
 import htsjdk.samtools.util.{IntervalList, OverlapDetector}
-import htsjdk.variant.variantcontext.writer.{Options, VariantContextWriter, VariantContextWriterBuilder}
-import htsjdk.variant.variantcontext.{Genotype, GenotypeBuilder, VariantContextBuilder}
-import htsjdk.variant.vcf._
 
+import java.nio.file.Paths
+import java.util
+import java.util.Comparator
 import scala.annotation.tailrec
-import scala.jdk.CollectionConverters._
 import scala.collection.mutable.ListBuffer
+import scala.jdk.CollectionConverters._
 
 @clp(
   description =
@@ -91,7 +88,6 @@ class AssessPhasing
 
     // check the sequence dictionaries.
     val dict = {
-      import com.fulcrumgenomics.fasta.Converters.FromSAMSequenceDictionary
       val calledReader = VcfSource(calledVcf)
       val truthReader = VcfSource(truthVcf)
       calledReader.header.dict.sameAs(truthReader.header.dict)
@@ -99,7 +95,6 @@ class AssessPhasing
       truthReader.close()
       calledReader.header.dict
     }
-
     val knownIntervalList        = knownIntervals.map { intv => IntervalList.fromFile(intv.toFile).uniqued() }
     val calledBlockLengthCounter = new NumericCounter[Long]()
     val truthBlockLengthCounter  = new NumericCounter[Long]()
@@ -125,7 +120,6 @@ class AssessPhasing
 
       intervalList.getIntervals.map { i => i.getContig }.toSet
     }
-
     // NB: could parallelize!
     dict
       .iterator
@@ -279,7 +273,6 @@ class AssessPhasing
                                        contig: String,
                                        contigLength: Int,
                                        intervalList: Option[IntervalList] = None): Iterator[Variant] = {
-    import com.fulcrumgenomics.fasta.Converters.FromSAMSequenceDictionary
     val sampleName = reader.header.samples.head
     val baseIter: Iterator[Variant] = intervalList match {
       case Some(intv) => ByIntervalListVariantContextIterator(reader.iterator, intv, dict=reader.header.dict)
@@ -438,7 +431,6 @@ object PhaseBlock extends LazyLogging {
       }
       progress.record(ctx.getContig, ctx.getStart)
     }
-
     val blocksIn = new util.TreeSet[PhaseBlock](new Comparator[PhaseBlock] {
       /** Compares the two blocks based on start position, then returns the shorter block. */
       def compare(a: PhaseBlock, b: PhaseBlock): Int = {

@@ -24,10 +24,8 @@
 
 package com.fulcrumgenomics.vcf
 
-import com.fulcrumgenomics.FgBioDef._
 import com.fulcrumgenomics.fasta.SequenceDictionary
 import com.fulcrumgenomics.vcf.api.Variant
-import htsjdk.variant.variantcontext.{VariantContext, VariantContextComparator}
 
 object JointVariantContextIterator {
   def apply(iters: Seq[Iterator[Variant]],
@@ -40,7 +38,7 @@ object JointVariantContextIterator {
   }
 
   def apply(iters: Seq[Iterator[Variant]],
-            comp: VariantContextComparator
+            comp: VariantComparator
            ): JointVariantContextIterator = {
     new JointVariantContextIterator(
       iters=iters,
@@ -54,16 +52,15 @@ object JointVariantContextIterator {
   * across the iterators.  If samples is given, we subset each variant context to just that sample.
   */
 class JointVariantContextIterator private(iters: Seq[Iterator[Variant]],
-                                          dictOrComp: Either[SequenceDictionary, VariantContextComparator]
+                                          dictOrComp: Either[SequenceDictionary, VariantComparator]
                                          )
-extends Iterator[Seq[Option[VariantContext]]] {
-  import com.fulcrumgenomics.fasta.Converters.ToSAMSequenceDictionary
+extends Iterator[Seq[Option[Variant]]] {
 
   if (iters.isEmpty) throw new IllegalArgumentException("No iterators given")
 
   private val iterators = iters.map(_.buffered)
   private val comparator = dictOrComp match {
-    case Left(dict)  => new VariantContextComparator(dict.asSam)
+    case Left(dict)  => VariantComparator(dict)
     case Right(comp) => comp
   }
 
@@ -72,7 +69,7 @@ extends Iterator[Seq[Option[VariantContext]]] {
   def next(): Seq[Option[Variant]] = {
     val minCtx = iterators.filter(_.nonEmpty).map(_.head).sortWith {
       // this just checks that the variants are the the same position? Shouldn't be difficult to replace.
-      case (left: Variant, right: Variant) => comparator.compare(VcfConversions.toJavaVariant(left), right) < 0
+      case (left: Variant, right: Variant) => comparator.compare(left, right) < 0
     }.head
     // TODO: could use a TreeSet to store the iterators, examine the head of each iterator, then pop the iterator with the min,
     // and add that iterator back in.
@@ -80,5 +77,23 @@ extends Iterator[Seq[Option[VariantContext]]] {
       if (iter.isEmpty || this.comparator.compare(minCtx, iter.head) != 0) None
       else Some(iter.next())
     }
+  }
+}
+
+private object VariantComparator {
+  def apply(dict: SequenceDictionary): VariantComparator = {
+    new VariantComparator(dict)
+  }
+}
+
+/** A class for comparing Variants using a sequence dictionary */
+private class VariantComparator(dict: SequenceDictionary) {
+  /** Function for comparing two variants. Returns negative if left < right, and positive if right > left
+    * To mimic the VariantContextComparator, throws an exception if the contig isn't found. */
+  def compare(left: Variant, right: Variant): Int = {
+    val idx1 = this.dict(name=left.chrom).index
+    val idx2 = this.dict(name=right.chrom).index
+    if (idx1 - idx2 == 0) left.pos - right.pos
+    else idx1 - idx2
   }
 }
