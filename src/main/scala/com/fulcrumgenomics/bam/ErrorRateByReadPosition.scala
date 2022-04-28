@@ -26,7 +26,6 @@
 package com.fulcrumgenomics.bam
 
 import java.util
-
 import com.fulcrumgenomics.FgBioDef._
 import com.fulcrumgenomics.bam.api.SamSource
 import com.fulcrumgenomics.cmdline.{ClpGroups, FgBioTool}
@@ -36,6 +35,7 @@ import com.fulcrumgenomics.fasta.SequenceDictionary
 import com.fulcrumgenomics.sopt._
 import com.fulcrumgenomics.util.Metric.Count
 import com.fulcrumgenomics.util.{Metric, ProgressLogger, Rscript, Sequences}
+import com.fulcrumgenomics.vcf.api.VcfSource
 import com.fulcrumgenomics.vcf.{ByIntervalListVariantContextIterator, VariantMask}
 import htsjdk.samtools.SAMRecord
 import htsjdk.samtools.filter.{DuplicateReadFilter, FailsVendorReadQualityFilter, SamRecordFilter, SecondaryOrSupplementaryFilter}
@@ -197,9 +197,9 @@ class ErrorRateByReadPosition
       case None =>
         new VariantMask(Iterator.empty, dict)
       case Some(path) =>
-        val reader = new VCFFileReader(path.toFile, this.intervals.isDefined)
+        val reader = VcfSource(path)
         intervals match {
-          case None => new VariantMask(reader.iterator(), dict)
+          case None => new VariantMask(reader.iterator, dict)
           case Some(i) => new VariantMask(ByIntervalListVariantContextIterator(reader, i), dict)
         }
     }
