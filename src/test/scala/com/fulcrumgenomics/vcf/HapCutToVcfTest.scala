@@ -123,18 +123,18 @@ class HapCutToVcfTest extends UnitSpec with ParallelTestExecution {
       call.phaseSet shouldBe 41106449
       call.hap1Allele shouldBe 1
       call.hap2Allele shouldBe 0
-      val ctx = call.toVariantContext("Sample")
-      ctx.getGenotype(0).isPhased shouldBe true
-      ctx.getGenotype(0).getAlleles.map(_.getBaseString).toList should contain theSameElementsInOrderAs Seq("CT", "C")
+      val ctx = call.toVariant("Sample")
+      ctx.genotypes.valuesIterator.next().phased shouldBe true
+      ctx.genotypes.valuesIterator.next().calls.map(_.value).toList should contain theSameElementsInOrderAs Seq("CT", "C")
     }
     {
       val call = calls(4)
       call.phaseSet shouldBe 41106449
       call.hap1Allele shouldBe 0
       call.hap2Allele shouldBe 1
-      val ctx = call.toVariantContext("Sample")
-      ctx.getGenotype(0).isPhased shouldBe true
-      ctx.getGenotype(0).getAlleles.map(_.getBaseString).toList should contain theSameElementsInOrderAs Seq("T", "G")
+      val ctx = call.toVariant("Sample")
+      ctx.genotypes.valuesIterator.next().phased shouldBe true
+      ctx.genotypes.valuesIterator.next().calls.map(_.value).toList should contain theSameElementsInOrderAs Seq("T", "G")
     }
   }
 
