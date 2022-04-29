@@ -26,25 +26,24 @@ package com.fulcrumgenomics.vcf
 
 import com.fulcrumgenomics.FgBioDef._
 import com.fulcrumgenomics.fasta.SequenceDictionary
-import htsjdk.variant.variantcontext.VariantContext
-import htsjdk.variant.vcf.VCFFileReader
+import com.fulcrumgenomics.vcf.api.{Variant, VcfSource}
 
 import scala.collection.mutable
 
 object VariantMask {
   /** Generate a variant mask from the provided VCF. */
-  def apply(path: PathToVcf): VariantMask = apply(new VCFFileReader(path.toFile))
+  def apply(path: PathToVcf): VariantMask = apply(VcfSource(path))
 
   /** Generate a variant mask from the provided VCF reader. */
-  def apply(reader: VCFFileReader): VariantMask = {
-    import com.fulcrumgenomics.fasta.Converters.FromSAMSequenceDictionary
-    val dict = reader.getFileHeader.getSequenceDictionary.fromSam
+  def apply(reader: VcfSource): VariantMask = {
+    val dict = reader.header.dict
+//    val dict = reader.getFileHeader.getSequenceDictionary.fromSam
     require(dict != null && dict.length > 0, "Generating a VariantMask requires VCFs contain contig lines.")
-    apply(reader.iterator(), dict)
+    apply(reader.iterator, dict)
   }
 
   /** Generates a VariantMask from the variants in the provided iterator. */
-  def apply(variants: Iterator[VariantContext], dict: SequenceDictionary) = new VariantMask(variants, dict)
+  def apply(variants: Iterator[Variant], dict: SequenceDictionary) = new VariantMask(variants, dict)
 }
 
 /**
@@ -55,7 +54,7 @@ object VariantMask {
   * @param variants a coordinate sorted iterator of variants
   * @param dict the sequence dictionary for the reference
   */
-class VariantMask(variants: Iterator[VariantContext], val dict: SequenceDictionary) {
+class VariantMask(variants: Iterator[Variant], val dict: SequenceDictionary) {
   private val iterator                    = variants.bufferBetter
   private var currentMask: mutable.BitSet = new mutable.BitSet(0)
   private var currentIndex: Int           = -1
@@ -74,7 +73,7 @@ class VariantMask(variants: Iterator[VariantContext], val dict: SequenceDictiona
     val bits = new mutable.BitSet(ref.length)
     iterator.dropWhile(v => dict(v.getContig).index < refIndex)
       .takeWhile(v => dict(v.getContig).index == refIndex)
-      .filterNot(v => v.isFiltered)
+//      .filterNot(v => v.isFiltered) TODO fix this
       .foreach { v =>
         forloop (from=v.getStart, until=v.getEnd+1) { i => bits(i-1) = true }
       }

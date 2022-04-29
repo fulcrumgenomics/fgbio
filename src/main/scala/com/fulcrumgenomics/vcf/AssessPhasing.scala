@@ -24,10 +24,6 @@
 
 package com.fulcrumgenomics.vcf
 
-import java.nio.file.Paths
-import java.util
-import java.util.Comparator
-
 import com.fulcrumgenomics.FgBioDef._
 import com.fulcrumgenomics.cmdline.{ClpGroups, FgBioTool}
 import com.fulcrumgenomics.commons.io.{Io, PathUtil}
@@ -36,14 +32,15 @@ import com.fulcrumgenomics.fasta.SequenceDictionary
 import com.fulcrumgenomics.sopt._
 import com.fulcrumgenomics.util.{GenomicSpan, Metric, ProgressLogger}
 import com.fulcrumgenomics.vcf.PhaseCigarOp.PhaseCigarOp
+import com.fulcrumgenomics.vcf.api._
 import htsjdk.samtools.util.{IntervalList, OverlapDetector}
-import htsjdk.variant.variantcontext.writer.{Options, VariantContextWriter, VariantContextWriterBuilder}
-import htsjdk.variant.variantcontext.{Genotype, GenotypeBuilder, VariantContext, VariantContextBuilder}
-import htsjdk.variant.vcf._
 
+import java.nio.file.Paths
+import java.util
+import java.util.Comparator
 import scala.annotation.tailrec
-import scala.jdk.CollectionConverters._
 import scala.collection.mutable.ListBuffer
+import scala.jdk.CollectionConverters._
 
 @clp(
   description =
@@ -91,34 +88,25 @@ class AssessPhasing
 
     // check the sequence dictionaries.
     val dict = {
-      import com.fulcrumgenomics.fasta.Converters.FromSAMSequenceDictionary
-      val calledReader = new VCFFileReader(calledVcf.toFile, true)
-      val truthReader = new VCFFileReader(truthVcf.toFile, true)
-      calledReader.getFileHeader.getSequenceDictionary.assertSameDictionary(truthReader.getFileHeader.getSequenceDictionary)
+      val calledReader = VcfSource(calledVcf)
+      val truthReader = VcfSource(truthVcf)
+      calledReader.header.dict.sameAs(truthReader.header.dict)
       calledReader.close()
       truthReader.close()
-      calledReader.getFileHeader.getSequenceDictionary.fromSam
+      calledReader.header.dict
     }
-
     val knownIntervalList        = knownIntervals.map { intv => IntervalList.fromFile(intv.toFile).uniqued() }
     val calledBlockLengthCounter = new NumericCounter[Long]()
     val truthBlockLengthCounter  = new NumericCounter[Long]()
     val metric                   = new AssessPhasingMetric
     val writer = if (!debugVcf) None else {
       val path    = Paths.get(output.toString + AssessPhasing.AnnotatedVcfExtension)
-      val reader  = new VCFFileReader(calledVcf.toFile, true)
-      val header  = reader.getFileHeader
-      val builder = new VariantContextWriterBuilder()
-        .setOutputFile(path.toFile)
-        .setReferenceDictionary(header.getSequenceDictionary)
-        .setOption(Options.INDEX_ON_THE_FLY)
-        .modifyOption(Options.ALLOW_MISSING_FIELDS_IN_HEADER, true)
-      val writer: VariantContextWriter = builder.build
-      val headerLines: util.Set[VCFHeaderLine] = new util.HashSet[VCFHeaderLine](header.getMetaDataInSortedOrder)
-      headerLines.add(AssessPhasing.PhaseConcordanceFormatHeaderLine) // add the new format header lines
-      VCFStandardHeaderLines.addStandardFormatLines(headerLines, false, Genotype.PRIMARY_KEYS) // add standard header lines
-      writer.writeHeader(new VCFHeader(headerLines, List("call", "truth").asJava))
-      reader.safelyClose()
+      val reader  = VcfSource(calledVcf)
+      val header  = reader.header
+
+      val newFormatLines = header.formats ++ AssessPhasing.formatHeaderLines :+ AssessPhasing.PhaseConcordanceFormatHeaderLine
+      val writer = VcfWriter(path, header.copy(formats=newFormatLines, samples=IndexedSeq("call", "truth")))
+
       Some(writer)
     }
     val chromosomes = intervals.map { intv =>
@@ -132,7 +120,6 @@ class AssessPhasing
 
       intervalList.getIntervals.map { i => i.getContig }.toSet
     }
-
     // NB: could parallelize!
     dict
       .iterator
@@ -194,7 +181,7 @@ class AssessPhasing
                             metric: AssessPhasingMetric,
                             calledBlockLengthCounter: NumericCounter[Long],
                             truthBlockLengthCounter: NumericCounter[Long],
-                            writer: Option[VariantContextWriter] = None
+                            writer: Option[VcfWriter] = None
                            ): Unit = {
     logger.info(s"Assessing $contig")
 
@@ -207,7 +194,7 @@ class AssessPhasing
     // get the phased blocks
     logger.info("Getting the called phase blocks")
     val calledPhaseBlockDetector = {
-      val calledReader = new VCFFileReader(calledVcf.toFile, true)
+      val calledReader = VcfSource(calledVcf)
       val detector = PhaseBlock.buildOverlapDetector(
         iterator     = toVariantContextIterator(calledReader, contig, contigLength),
         dict         = dict,
@@ -218,7 +205,7 @@ class AssessPhasing
     }
     logger.info("Getting the known phase blocks")
     val truthPhaseBlockDetector = {
-      val truthReader = new VCFFileReader(truthVcf.toFile, true)
+      val truthReader = VcfSource(truthVcf)
       val detector = PhaseBlock.buildOverlapDetector(
         iterator     = toVariantContextIterator(truthReader, contig, contigLength, intervalList=intervalListForContig),
         dict         = dict,
@@ -229,8 +216,8 @@ class AssessPhasing
     }
 
     // get an iterator of the pairs
-    val calledReader   = new VCFFileReader(calledVcf.toFile, true)
-    val truthReader    = new VCFFileReader(truthVcf.toFile, true)
+    val calledReader   = VcfSource(calledVcf)
+    val truthReader    = VcfSource(truthVcf)
     val pairedIterator = JointVariantContextIterator(
       iters = Seq(toVariantContextIterator(truthReader, contig, contigLength, intervalList=intervalListForContig), toVariantContextIterator(calledReader, contig, contigLength)),
       dict = dict
@@ -282,20 +269,30 @@ class AssessPhasing
     logger.info(s"Completed $contig")
   }
 
-  private def toVariantContextIterator(reader: VCFFileReader,
+  private def toVariantContextIterator(reader: VcfSource,
                                        contig: String,
                                        contigLength: Int,
-                                       intervalList: Option[IntervalList] = None): Iterator[VariantContext] = {
-    import com.fulcrumgenomics.fasta.Converters.FromSAMSequenceDictionary
-    val sampleName = reader.getFileHeader.getSampleNamesInOrder.iterator().next()
-    val baseIter: Iterator[VariantContext] = intervalList match {
-      case Some(intv) => ByIntervalListVariantContextIterator(reader.iterator(), intv, dict=reader.getFileHeader.getSequenceDictionary.fromSam)
+                                       intervalList: Option[IntervalList] = None): Iterator[Variant] = {
+    val sampleName = reader.header.samples.head
+    val baseIter: Iterator[Variant] = intervalList match {
+      case Some(intv) => ByIntervalListVariantContextIterator(reader.iterator, intv, dict=reader.header.dict)
       case None       => reader.query(contig, 1, contigLength)
     }
 
     baseIter
-      .map(_.subContextFromSample(sampleName))
-      .filter(v => v.isSNP && v.isBiallelic && v.getGenotype(sampleName).isHet)
+      .map(subsetVariantToSample(_, sampleName))
+      .filter(v => isBiallelicSnp(v, sampleName))
+  }
+
+  private def subsetVariantToSample(variant: Variant, sample: String): Variant = {
+    variant
+  }
+
+  private def isBiallelicSnp(v: Variant, sample: String): Boolean = {
+    val isSnp = v.alleles.toSeq.forall(_.value.length == 1)
+    val isBiallelic = v.alleles.alts.length == 1
+    val isHet = v.gt(sample).isHet
+    isSnp && isBiallelic && isHet
   }
 }
 
@@ -309,10 +306,26 @@ object AssessPhasing {
 
   val PhaseConcordanceFormatTag = "PHASE_CONC"
   val PhaseConcordanceFormatDescription = "The phase concordance (Match or Mismatch) determined by fgbio's AssessPhasing"
-  val PhaseConcordanceFormatHeaderLine = new VCFFormatHeaderLine(PhaseConcordanceFormatTag, 1, VCFHeaderLineType.Integer, PhaseConcordanceFormatDescription)
+  val PhaseConcordanceFormatHeaderLine: VcfFormatHeader = VcfFormatHeader(
+    PhaseConcordanceFormatTag,
+    VcfCount.Fixed(1),
+    VcfFieldType.Integer,
+    PhaseConcordanceFormatDescription)
 
-  def getPhasingSetId(ctx: VariantContext): Int = {
-    Integer.valueOf(ctx.getGenotype(0).getExtendedAttribute("PS", "-1").toString)
+  val GenotypeFilterHeaderLine: VcfFormatHeader     = VcfFormatHeader("FT", VcfCount.Unknown, VcfFieldType.String, "Genotype-level filter")
+  val GenotypeKeyHeaderLine: VcfFormatHeader        = VcfFormatHeader("GT", VcfCount.Fixed(1), VcfFieldType.String, "Genotype")
+  val GenotypeQualityKeyHeaderLine: VcfFormatHeader = VcfFormatHeader("GQ", VcfCount.Fixed(1), VcfFieldType.Integer, "Genotype Quality")
+  val DepthKeyHeaderLine: VcfFormatHeader           = VcfFormatHeader("DP", VcfCount.Fixed(1), VcfFieldType.Integer, "Approximate read depth (reads with MQ=255 or with bad mates are filtered")
+  val AlleleDepthHeaderLine: VcfFormatHeader        = VcfFormatHeader("AD", VcfCount.OnePerAllele, VcfFieldType.Integer, "Allelic depths for the ref and alt alleles in the order listed")
+  val GenotypePLKeyHeaderLine: VcfFormatHeader      = VcfFormatHeader("PL", VcfCount.OnePerGenotype, VcfFieldType.Integer, "Normalized, Phred-scaled likelihoods for genotypes as defined in the VCF specification")
+
+  /** The VCF header FORMAT lines that will be added for HapCut1 specific-genotype information. */
+  val formatHeaderLines: Seq[VcfFormatHeader] = {
+    Seq(GenotypeFilterHeaderLine, GenotypeKeyHeaderLine, GenotypeQualityKeyHeaderLine, DepthKeyHeaderLine, AlleleDepthHeaderLine, GenotypePLKeyHeaderLine)
+  }
+
+  def getPhasingSetId(ctx: Variant): Int = {
+    Integer.valueOf(ctx.gts.next().attrs.getOrElse("PS", "-1").toString)
   }
 }
 
@@ -396,7 +409,7 @@ object PhaseBlock extends LazyLogging {
   /** Creates an overlap detector for blocks of phased variants.  Variants from the same block are found using the
     * "PS" tag.  The modify blocks option resolves overlapping blocks
     */
-  private[vcf] def buildOverlapDetector(iterator: Iterator[VariantContext], dict: SequenceDictionary, modifyBlocks: Boolean = true): OverlapDetector[PhaseBlock] = {
+  private[vcf] def buildOverlapDetector(iterator: Iterator[Variant], dict: SequenceDictionary, modifyBlocks: Boolean = true): OverlapDetector[PhaseBlock] = {
     val detector = new OverlapDetector[PhaseBlock](0, 0)
     val progress = new ProgressLogger(logger)
 
@@ -418,7 +431,6 @@ object PhaseBlock extends LazyLogging {
       }
       progress.record(ctx.getContig, ctx.getStart)
     }
-
     val blocksIn = new util.TreeSet[PhaseBlock](new Comparator[PhaseBlock] {
       /** Compares the two blocks based on start position, then returns the shorter block. */
       def compare(a: PhaseBlock, b: PhaseBlock): Int = {
@@ -611,7 +623,7 @@ private[vcf] object PhaseCigar {
   import AssessPhasing.{CalledSampleName, TruthSampleName}
   import PhaseCigarOp._
 
-  private type VCtx = VariantContext
+  private type VCtx = Variant
 
   def apply(cigar: Seq[PhaseCigarOp]): PhaseCigar = new PhaseCigar(cigar)
 
@@ -628,22 +640,22 @@ private[vcf] object PhaseCigar {
     *   CIGAR:  00003330002220000511111116000001000060600111000
     * shows one known block split
     */
-  def apply(pairedIterator: Iterator[(Option[VariantContext], Option[VariantContext])],
+  def apply(pairedIterator: Iterator[(Option[Variant], Option[Variant])],
             truthPhaseBlockDetector: OverlapDetector[PhaseBlock],
             calledPhaseBlockDetector: OverlapDetector[PhaseBlock],
             metric: AssessPhasingMetric,
             skipMismatchingAlleles: Boolean,
-            writer: Option[VariantContextWriter] = None,
+            writer: Option[VcfWriter] = None,
             assumeFixedAlleleOrder: Boolean = false): PhaseCigar = {
     val iter = pairedIterator.filter {
       // ensure the alleles are the same when both truth and call are called
-      case ((Some(t: VCtx), Some(c: VCtx))) =>
-        !skipMismatchingAlleles || t.getAlleles.toSet == c.getAlleles.toSet
+      case (Some(t: VCtx), Some(c: VCtx)) =>
+        !skipMismatchingAlleles || t.alleles.toSet == c.alleles.toSet
       case _ => true
-    }.flatMap { case (t, c) => // collect metrics but only keep sites where either variant context (i.e. truth or call) is phased.
-      val ctxs                  = Seq(t, c).flatten // NB: can be 1 or 2 contexts here
-      val inTruthPhaseBlock     = ctxs.headOption.exists(truthPhaseBlockDetector.overlapsAny)
-      val inCalledPhaseBlock    = ctxs.headOption.exists(calledPhaseBlockDetector.overlapsAny)
+    }.flatMap { case (t, c) => // collect metrics but only keep sites where either variant (i.e. truth or call) is phased.
+      val ctxs                  = Seq(t, c).flatten // NB: can be 1 or 2 variants here
+      val inTruthPhaseBlock     = ctxs.headOption.exists(v => truthPhaseBlockDetector.overlapsAny(v))
+      val inCalledPhaseBlock    = ctxs.headOption.exists(v => calledPhaseBlockDetector.overlapsAny(v))
       val isTruthVariant        = t.isDefined
       val isCalledVariant       = c.isDefined
       val isTruthVariantPhased  = t.exists { ctx => AssessPhasing.getPhasingSetId(ctx) > 0 }
@@ -659,7 +671,7 @@ private[vcf] object PhaseCigar {
         metric.num_truth += 1
         if (isTruthVariantPhased) metric.num_truth_phased += 1
       }
-      // Less fun  compute metrics
+      // Less fun compute metrics
       if (isCalledVariant && isTruthVariantPhased) {
         metric.num_called_with_truth_phased += 1
         if (isCalledVariantPhased) metric.num_phased_with_truth_phased += 1
@@ -733,19 +745,14 @@ private[vcf] object PhaseCigar {
       (matchingOp, t, c, writer) match {
         case (Some(op), Some(truthCtx), Some(calledCtx), Some(w)) =>
           val calledGenotype = {
-            val builder = new GenotypeBuilder(calledCtx.getGenotype(0))
-            builder.name(CalledSampleName)
-            builder.attribute(AssessPhasing.PhaseConcordanceFormatTag, op.toString)
-            builder.make()
+            val gt = calledCtx.gts.next()
+            gt.copy(sample=CalledSampleName, attrs = gt.attrs ++ Map(AssessPhasing.PhaseConcordanceFormatTag -> op.toString))
           }
-          val truthGenotype = {
-            val builder = new GenotypeBuilder(truthCtx.getGenotype(0))
-            builder.name(TruthSampleName)
-            builder.make()
-          }
-          val ctxBuilder = new VariantContextBuilder(calledCtx)
-          ctxBuilder.genotypes(calledGenotype, truthGenotype)
-          w.add(ctxBuilder.make())
+          val truthGenotype = truthCtx.gts.next().copy(sample=TruthSampleName)
+
+          val ctxBuilder = calledCtx.copy(genotypes = Map(CalledSampleName -> calledGenotype, TruthSampleName -> truthGenotype))
+
+          w.write(ctxBuilder)
         case _ => ()
       }
     }
@@ -759,7 +766,7 @@ private[vcf] object PhaseCigar {
   }
 
   /** Returns an end operator if we have reached a new block. */
-  private[vcf] def contextsToBlockEndOperator(truth: Option[VariantContext], call: Option[VariantContext]): Option[PhaseCigarOp] = (truth, call) match {
+  private[vcf] def contextsToBlockEndOperator(truth: Option[Variant], call: Option[Variant]): Option[PhaseCigarOp] = (truth, call) match {
     case (None, Some(c: VCtx))          => if (isStartOfPhaseBlock(c)) Some(CallEnd) else None
     case (Some(t: VCtx), None)          => if (isStartOfPhaseBlock(t)) Some(TruthEnd) else None
     case (Some(t: VCtx), Some(c: VCtx)) => (isStartOfPhaseBlock(t), isStartOfPhaseBlock(c)) match {
@@ -772,7 +779,7 @@ private[vcf] object PhaseCigar {
   }
 
   /** Returns the cigar for the two variant contexts. */
-  private[vcf] def contextsToMatchingOperator(truth: Option[VariantContext], call: Option[VariantContext]): Option[PhaseCigarOp] = (truth, call) match {
+  private[vcf] def contextsToMatchingOperator(truth: Option[Variant], call: Option[Variant]): Option[PhaseCigarOp] = (truth, call) match {
     case (None, Some(c: VCtx))          => Some(CallOnly)
     case (Some(t: VCtx), None)          => Some(TruthOnly)
     case (Some(t: VCtx), Some(c: VCtx)) => Some(cigarTypeForVariantContexts(t, c))
@@ -780,14 +787,14 @@ private[vcf] object PhaseCigar {
   }
 
   /** True if the phasing set id is the same as the start position of the given variant, false otherwise. */
-  def isStartOfPhaseBlock(ctx: VariantContext): Boolean = ctx.getStart == AssessPhasing.getPhasingSetId(ctx)
+  def isStartOfPhaseBlock(ctx: Variant): Boolean = ctx.getStart == AssessPhasing.getPhasingSetId(ctx)
 
   /** Computes the cigar for two variant contexts.  Returns [[Match]] if they share the same alleles in the same order,
     * [[Mismatch]] otherwise.
     */
-  private[vcf] def cigarTypeForVariantContexts(truth: VariantContext, call: VariantContext): PhaseCigarOp = {
-    val truthAlleles  = truth.getGenotype(0).getAlleles.toSeq
-    val calledAlleles = call.getGenotype(0).getAlleles.toSeq
+  private[vcf] def cigarTypeForVariantContexts(truth: Variant, call: Variant): PhaseCigarOp = {
+    val truthAlleles  = truth.gts.next().calls.toSeq
+    val calledAlleles = call.gts.next().calls.toSeq
     require(truthAlleles.length == calledAlleles.length)
     require(truthAlleles.length == 2)
     if (truthAlleles.head != calledAlleles.head || truthAlleles.last != calledAlleles.last) PhaseCigarOp.Mismatch

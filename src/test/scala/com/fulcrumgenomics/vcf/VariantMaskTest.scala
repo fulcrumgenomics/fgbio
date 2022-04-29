@@ -55,8 +55,7 @@ class VariantMaskTest extends UnitSpec {
     val builder = VcfBuilder(samples=Seq("S1"))
     builder.add(chrom="chr1", pos=100, alleles=Seq("A", "T"))
     builder.add(chrom="chr1", pos=102, alleles=Seq("A", "T"))
-    val iterator = new VCFFileReader(builder.toTempFile())
-    val mask = VariantMask(iterator.iterator().asScala, dict=dict)
+    val mask = VariantMask(builder.iterator, dict=dict)
     mask.isVariant(1, 99)  shouldBe false
     mask.isVariant(1, 100) shouldBe true
     mask.isVariant(1, 101) shouldBe false
@@ -67,8 +66,7 @@ class VariantMaskTest extends UnitSpec {
   it should "mask all deleted bases for deletions, plus the upstream base" in {
     val builder = VcfBuilder(samples = Seq("S1"))
     builder.add(chrom="chr1", pos=100, alleles=Seq("AA", "A"))
-    val iterator = new VCFFileReader(builder.toTempFile())
-    val mask = VariantMask(iterator.iterator().asScala, dict=dict)
+    val mask = VariantMask(builder.iterator, dict=dict)
 
     mask.isVariant(1,  99) shouldBe false
     mask.isVariant(1, 100) shouldBe true
@@ -79,8 +77,7 @@ class VariantMaskTest extends UnitSpec {
   it should "mask just the upstream base for insertions" in {
     val builder = VcfBuilder(samples = Seq("S1"))
     builder.add(chrom="chr1", pos=100, alleles=Seq("A", "AA"))
-    val iterator = new VCFFileReader(builder.toTempFile())
-    val mask = VariantMask(iterator.iterator().asScala, dict=dict)
+    val mask = VariantMask(builder.iterator, dict=dict)
 
     mask.isVariant(1,  99) shouldBe false
     mask.isVariant(1, 100) shouldBe true
@@ -91,8 +88,7 @@ class VariantMaskTest extends UnitSpec {
   it should "allow querying be sequence name as well as ref index" in {
     val builder = VcfBuilder(samples = Seq("S1"))
     builder.add(chrom="chr1", pos=100, alleles=Seq("A", "T"))
-    val iterator = new VCFFileReader(builder.toTempFile())
-    val mask = VariantMask(iterator.iterator().asScala, dict=dict)
+    val mask = VariantMask(builder.iterator, dict=dict)
 
     mask.isVariant("chr0", 100) shouldBe false
     mask.isVariant("chr1", 100) shouldBe true
@@ -112,8 +108,7 @@ class VariantMaskTest extends UnitSpec {
     val builder = VcfBuilder(samples = Seq("S1"))
     builder.add(chrom="chr1", pos=100, alleles=Seq("A", "T"))
     builder.add(chrom="chr2", pos=200, alleles=Seq("A", "T"))
-    val iterator = new VCFFileReader(builder.toTempFile())
-    val mask = VariantMask(iterator.iterator().asScala, dict=dict)
+    val mask = VariantMask(builder.iterator, dict=dict)
 
     mask.isVariant(1, 100) shouldBe true
     mask.isVariant(2, 200) shouldBe true
@@ -123,8 +118,7 @@ class VariantMaskTest extends UnitSpec {
   it should "throw an exception if invalid reference sequences or positions are requested" in {
     val builder = VcfBuilder(header=vcfDefaultHeader)
     builder.add(chrom="chr1", pos=100, alleles=Seq("A", "T"))
-    val iterator = new VCFFileReader(builder.toTempFile())
-    val mask = VariantMask(iterator.iterator().asScala, dict=dict)
+    val mask = VariantMask(builder.iterator, dict=dict)
 
     an[Exception] shouldBe thrownBy { mask.isVariant(-1, 100) }        // invalid index (low)
     an[Exception] shouldBe thrownBy { mask.isVariant("chrNope", 100) } // invalid ref name

@@ -26,12 +26,10 @@
 package com.fulcrumgenomics.vcf
 
 import java.util.NoSuchElementException
-
 import com.fulcrumgenomics.FgBioDef._
 import com.fulcrumgenomics.fasta.SequenceDictionary
+import com.fulcrumgenomics.vcf.api.{Variant, VcfSource}
 import htsjdk.samtools.util._
-import htsjdk.variant.variantcontext.VariantContext
-import htsjdk.variant.vcf.VCFFileReader
 
 import scala.annotation.tailrec
 
@@ -42,9 +40,9 @@ object ByIntervalListVariantContextIterator {
     *
     * All variants will be read in and compared to the intervals.
     */
-  def apply(iterator: Iterator[VariantContext],
+  def apply(iterator: Iterator[Variant],
             intervalList: IntervalList,
-            dict: SequenceDictionary): Iterator[VariantContext] = {
+            dict: SequenceDictionary): Iterator[Variant] = {
     new OverlapDetectionVariantContextIterator(iterator, intervalList, dict)
   }
 
@@ -56,29 +54,29 @@ object ByIntervalListVariantContextIterator {
     * The VCF will be queried when moving to the next variant context, and so may be quite slow
     * if we jump around the VCF a lot.
     */
-  def apply(reader: VCFFileReader,
-            intervalList: IntervalList): Iterator[VariantContext] = {
+  def apply(reader: VcfSource,
+            intervalList: IntervalList): Iterator[Variant] = {
     new IndexQueryVariantContextIterator(reader, intervalList)
   }
 }
 
-private class OverlapDetectionVariantContextIterator(val iter: Iterator[VariantContext],
+private class OverlapDetectionVariantContextIterator(val iter: Iterator[Variant],
                                                      val intervalList: IntervalList,
                                                      val dict: SequenceDictionary)
-  extends Iterator[VariantContext] {
+  extends Iterator[Variant] {
 
   require(dict != null)
   private val intervals = intervalList.uniqued(false).iterator().buffered
-  private var nextVariantContext: Option[VariantContext] = None
+  private var nextVariant: Option[Variant] = None
 
   this.advance()
 
-  def hasNext: Boolean = this.nextVariantContext.isDefined
+  def hasNext: Boolean = this.nextVariant.isDefined
 
-  def next(): VariantContext = {
-    this.nextVariantContext match {
+  def next(): Variant = {
+    this.nextVariant match {
       case None      => throw new NoSuchElementException("Called next when hasNext is false")
-      case Some(ctx) => yieldAndThen(ctx) { this.nextVariantContext = None; this.advance() }
+      case Some(ctx) => yieldAndThen(ctx) { this.nextVariant = None; this.advance() }
     }
   }
 
@@ -108,16 +106,16 @@ private class OverlapDetectionVariantContextIterator(val iter: Iterator[VariantC
     }
 
     if (intervals.isEmpty) { } // no more intervals
-    else if (overlaps(ctx, intervals.head)) { nextVariantContext = Some(ctx) } // overlaps!!!
+    else if (overlaps(ctx, intervals.head)) { nextVariant = Some(ctx) } // overlaps!!!
     else if (iter.isEmpty) { } // no more variants
     else { this.advance() } // move to the next context
   }
 }
 
 /** NB: if a variant overlaps multiple intervals, only returns it once. */
-private class IndexQueryVariantContextIterator(private val reader: VCFFileReader, intervalList: IntervalList)
-  extends Iterator[VariantContext] {
-  private var iter: Option[Iterator[VariantContext]] = None
+private class IndexQueryVariantContextIterator(private val reader: VcfSource, intervalList: IntervalList)
+  extends Iterator[Variant] {
+  private var iter: Option[Iterator[Variant]] = None
   private val intervals = intervalList.iterator()
   private var previousInterval: Option[Interval] = None
 
@@ -127,7 +125,7 @@ private class IndexQueryVariantContextIterator(private val reader: VCFFileReader
     this.iter.exists(_.hasNext)
   }
 
-  def next(): VariantContext = {
+  def next(): Variant = {
     this.iter match {
       case None => throw new NoSuchElementException("Called next when hasNext is false")
       case Some(i) => yieldAndThen(i.next()) { advance() }
@@ -136,10 +134,10 @@ private class IndexQueryVariantContextIterator(private val reader: VCFFileReader
 
   def remove(): Unit = throw new UnsupportedOperationException
 
-  private def overlapsInterval(ctx: VariantContext, interval: Interval): Boolean = {
-    if (!ctx.getContig.equals(interval.getContig)) false // different contig
-    else if (interval.getStart <= ctx.getStart && ctx.getStart <= interval.getEnd) true // start falls within this interval, count it
-    else if (ctx.getStart < interval.getStart && interval.getEnd <= ctx.getEnd) true // the variant encloses the interval
+  private def overlapsInterval(variant: Variant, interval: Interval): Boolean = {
+    if (!variant.getContig.equals(interval.getContig)) false // different contig
+    else if (interval.getStart <= variant.getStart && variant.getStart <= interval.getEnd) true // start falls within this interval, count it
+    else if (variant.getStart < interval.getStart && interval.getEnd <= variant.getEnd) true // the variant encloses the interval
     else false
   }
 
