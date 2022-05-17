@@ -731,13 +731,49 @@ class SamRecordClipperTest extends UnitSpec with OptionValues {
     mate.cigar.toString shouldBe "50S50M" // clipping remains
   }
 
-  it should "clip reads that where only one end extends their mate's start that has insertions" in {
+  it should "clip reads where only one end extends their mate's start that has insertions" in {
     val (rec, mate) = pair(1, "40M10I50M", Plus, 1, "50S50M", Minus)
     clipper(Soft).clipExtendingPastMateEnds(rec=rec, mate=mate) shouldBe (40, 0)
     rec.start shouldBe 1
     rec.cigar.toString shouldBe "40M10I10M40S" // added clipping
     mate.start shouldBe 1
     mate.cigar.toString shouldBe "50S50M" // clipping remains
+  }
+
+  it should "clip the forward read when it ends before the mate's start but soft-clipped bases extend past" in {
+    val (rec, mate) = pair(20, "30M20S", Plus, 20, "10S40M", Minus)
+    clipper(Hard).clipExtendingPastMateEnds(rec=rec, mate=mate) shouldBe (0, 0) // No aligned bases clipped
+    rec.start shouldBe 20
+    rec.cigar.toString shouldBe "30M10S10H" // 10 of 20 bases extending past are hard-clipped, 10 remain soft-clipped
+    mate.start shouldBe 20
+    mate.cigar.toString shouldBe "10H40M" // hard-clip the 10S that extend past
+  }
+
+  it should "clip the forward read when it ends before the mate's start but soft-clipped bases extend past while there is a deletion" in {
+    val (rec, mate) = pair(20, "15M1D15M20S", Plus, 20, "10S15M1D25M", Minus)
+    clipper(Hard).clipExtendingPastMateEnds(rec=rec, mate=mate) shouldBe (0, 0) // No aligned bases clipped
+    rec.start shouldBe 20
+    rec.cigar.toString shouldBe "15M1D15M10S10H" // 10 of 20 bases extending past are hard-clipped, 10 remain soft-clipped
+    mate.start shouldBe 20
+    mate.cigar.toString shouldBe "10H15M1D25M" // hard-clip the 10S that extend past
+  }
+
+  it should "clip the forward read when it ends before the mate's start but soft-clipped bases extend past while there is an insertion" in {
+    val (rec, mate) = pair(20, "15M1I15M20S", Plus, 20, "10S15M1I25M", Minus)
+    clipper(Hard).clipExtendingPastMateEnds(rec=rec, mate=mate) shouldBe (0, 0) // No aligned bases clipped
+    rec.start shouldBe 20
+    rec.cigar.toString shouldBe "15M1I15M10S10H" // 10 of 20 bases extending past are hard-clipped, 10 remain soft-clipped
+    mate.start shouldBe 20
+    mate.cigar.toString shouldBe "10H15M1I25M" // hard-clip the 10S that extend past
+  }
+
+  it should "clip the reverse read when it ends before the mate's start but soft-clipped bases extend past" in {
+    val (rec, mate) = pair(20, "40M10S", Plus, 30, "20S30M", Minus)
+    clipper(Hard).clipExtendingPastMateEnds(rec=rec, mate=mate) shouldBe (0, 0) // No aligned bases clipped
+    rec.start shouldBe 20
+    rec.cigar.toString shouldBe "40M10H" // hard-clip the 10S that extend past
+    mate.start shouldBe 30
+    mate.cigar.toString shouldBe "10H10S30M" // hard-clip the 10S that extend past
   }
 
   it should "not clip when the read pairs are mapped +/- with start(R1) > end(R2) but do not overlap" in {
