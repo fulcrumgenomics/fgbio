@@ -67,6 +67,7 @@ object StreamingPileupBuilder {
       includeSecondaryAlignments         = includeSecondaryAlignments,
       includeSupplementalAlignments      = includeSupplementalAlignments,
       includeMapPositionsOutsideFrInsert = includeMapPositionsOutsideFrInsert,
+      initialCacheSize                   = initialCacheSize,
       source                             = Some(iterator)
     )
   }
@@ -98,6 +99,7 @@ object StreamingPileupBuilder {
   * @param includeSupplementalAlignments if true, allow records flagged as supplementary alignments to contribute to a pileup.
   * @param includeMapPositionsOutsideFrInsert if true, include any record of an FR pair where the site requested is outside the insert.
   * @param initialCacheSize the initial size for the internal SAM record cache, set this to your expected pileup depth.
+  * @param source an optional source to additionally close upon closing this pileup builder.
   */
 class StreamingPileupBuilder private(
   records: => Iterator[SamRecord],
