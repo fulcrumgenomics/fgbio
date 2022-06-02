@@ -305,17 +305,22 @@ class SamRecordClipper(val mode: ClippingMode, val autoClipAttributes: Boolean) 
     else if (!rec.isFrPair) (0, 0)
     else if (rec.negativeStrand) clipOverlappingReads(rec=mate, mate=rec).swap // don't for get to swap the results since we swapped inputs
     else {
-      // Pick the mid point in the reference window over which the record and its mate overlap.  The read ends at the
+      // Pick the mid point in the reference window between the 5' ends of the record and its mate.  The read ends at the
       // mid point, or if the mid point is in a deletion, the base prior to the deletion.  The mate ends at the mid
       // point, or if the mid point is in a deletion, the base after the deletion.
-      val midPoint  = (rec.start + mate.end) / 2
+      val midPoint  = { // Need to ensure the midpoint between 5' ends actually occurs in the overlapped region
+        val retval = (rec.start + mate.end) / 2
+        if (retval > rec.end) rec.end // trim only the minus strand read
+        else if (retval < mate.start) mate.start - 1 // trim only positive-strand read
+        else retval
+      }
       val readEnd   = rec.readPosAtRefPos(pos=midPoint, returnLastBaseIfDeleted=true)
       val mateStart = { // NB: need to be careful if the midpoint falls in a deletion
         val retval = mate.readPosAtRefPos(pos=midPoint + 1, returnLastBaseIfDeleted=false)
         if (retval != 0) retval else mate.readPosAtRefPos(pos=midPoint + 1, returnLastBaseIfDeleted=true) + 1
       }
-      val numOverlappingBasesRead = this.clip3PrimeEndOfRead(rec, rec.cigar.trailingClippedBases + rec.length - readEnd)
-      val numOverlappingBasesMate = this.clip3PrimeEndOfRead(mate, mate.cigar.leadingClippedBases + mateStart - 1)
+      val numOverlappingBasesRead = this.clip3PrimeEndOfRead(rec, rec.cigar.trailingHardClippedBases + rec.length - readEnd)
+      val numOverlappingBasesMate = this.clip3PrimeEndOfRead(mate, mate.cigar.leadingHardClippedBases + mateStart - 1)
       (numOverlappingBasesRead, numOverlappingBasesMate)
     }
   }

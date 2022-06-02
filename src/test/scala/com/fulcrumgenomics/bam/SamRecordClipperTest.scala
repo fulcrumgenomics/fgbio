@@ -588,6 +588,91 @@ class SamRecordClipperTest extends UnitSpec with OptionValues {
     mate.cigar.toString shouldBe "1S99M"
   }
 
+  it should "clip reads that overlap with a deletion" in {
+    val (rec, mate) = pair(2, "80M10D10M", Plus, 70, "10M10D80M", Minus)
+    clipper(Soft).clipOverlappingReads(rec=rec, mate=mate) shouldBe (10, 10)
+    rec.start shouldBe 2
+    rec.end shouldBe 81
+    rec.cigar.toString shouldBe "80M10S"
+    mate.start shouldBe 90
+    mate.end shouldBe 169
+    mate.cigar.toString shouldBe "10S80M"
+  }
+
+  it should "clip reads that overlap with soft-clipping on the forward read after the midpoint" in {
+    val (rec, mate) = pair(1, "95M5S", Plus, 50, "100M", Minus)
+    clipper(Hard).clipOverlappingReads(rec=rec, mate=mate) shouldBe (20, 26)
+    rec.start shouldBe 1
+    rec.end shouldBe 75
+    rec.cigar.toString shouldBe "75M25H"
+    mate.start shouldBe 76
+    mate.cigar.toString shouldBe "26H74M"
+  }
+
+  it should "clip reads that overlap with soft-clipping on the reverse read before the midpoint" in {
+    val (rec, mate) = pair(1, "100M", Plus, 55, "5S95M", Minus)
+    clipper(Hard).clipOverlappingReads(rec=rec, mate=mate) shouldBe (25, 21)
+    rec.start shouldBe 1
+    rec.end shouldBe 75
+    rec.cigar.toString shouldBe "75M25H"
+    mate.start shouldBe 76
+    mate.cigar.toString shouldBe "26H74M"
+  }
+
+  it should "clip reads that overlap 1 bp directly in the middle of the pair" in {
+    val (rec, mate) = pair(1, "99M1S", Plus, 99, "1S99M", Minus)
+    clipper(Hard).clipOverlappingReads(rec=rec, mate=mate) shouldBe (0, 1)
+    rec.start shouldBe 1
+    rec.end shouldBe 99
+    rec.cigar.toString shouldBe "99M1H"
+    mate.start shouldBe 100
+    mate.cigar.toString shouldBe "2H98M"
+  }
+
+  // Template spans chr1:1-169, with mid-point=85
+  // Second read doesn't overlap the mid-point so all clipping should be done to the first read
+  it should "clip reads that overlap in the first half of the pair, not over the middle" in {
+    val (rec, mate) = pair(1, "95M5S", Plus, 90, "20S80M", Minus)
+    clipper(Hard).clipOverlappingReads(rec=rec, mate=mate) shouldBe (6, 0)
+    rec.start shouldBe 1
+    rec.end shouldBe 89
+    rec.cigar.toString shouldBe "89M11H"
+    mate.start shouldBe 90
+    mate.cigar.toString shouldBe "20H80M"
+  }
+
+  // Template spans chr1:1-164, with mid-point=82
+  // First read doesn't overlap the mid-point so all clipping should be done to the first read
+  it should "clip reads that overlap in the second half of the pair, not over the middle" in {
+    val (rec, mate) = pair(1, "80M20S", Plus, 70, "5S95M", Minus)
+    clipper(Hard).clipOverlappingReads(rec=rec, mate=mate) shouldBe (0, 11)
+    rec.start shouldBe 1
+    rec.end shouldBe 80
+    rec.cigar.toString shouldBe "80M20H"
+    mate.start shouldBe 81
+    mate.cigar.toString shouldBe "16H84M"
+  }
+
+  it should "clip reads when the forward read is much longer" in {
+    val (rec, mate) = pair(1, "100M", Plus, 30, "80S20M", Minus)
+    clipper(Hard).clipOverlappingReads(rec=rec, mate=mate) shouldBe (71, 0)
+    rec.start shouldBe 1
+    rec.end shouldBe 29
+    rec.cigar.toString shouldBe "29M71H"
+    mate.start shouldBe 30
+    mate.cigar.toString shouldBe "80H20M"
+  }
+
+  it should "clip reads when the reverse read is much longer" in {
+    val (rec, mate) = pair(50, "20M80S", Plus, 1, "100M", Minus)
+    clipper(Hard).clipOverlappingReads(rec=rec, mate=mate) shouldBe (0, 69)
+    rec.start shouldBe 50
+    rec.end shouldBe 69
+    rec.cigar.toString shouldBe "20M80H"
+    mate.start shouldBe 70
+    mate.cigar.toString shouldBe "69H31M"
+  }
+
   it should "clip reads that overlap with one end having a deletion" in {
     val (rec, mate) = pair(1, "60M10D40M", Plus, 50, "10M10D80M10D10M", Minus)
     clipper(Soft).clipOverlappingReads(rec=rec, mate=mate) shouldBe (25, 26)
