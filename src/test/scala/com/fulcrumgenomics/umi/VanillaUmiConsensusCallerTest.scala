@@ -281,7 +281,7 @@ class VanillaUmiConsensusCallerTest extends UnitSpec with OptionValues {
     // The base qualities for the first three read (Q20) are less than `minInputBaseQuality`, so the bases gets masked
     // (all Ns). Thus, only one read is used for consensus calling.  The resulting consensus base qualities are Q30
     // which is less than the minimum consensus base quality (Q40), so a consensus of all Ns is produced and consensus
-    // depth is set to zero for all bases, which is wrong, as it should be set to 1.
+    // depth is set to one for all bases.
     val builder = new SamBuilder(readLength=7)
     builder.addFrag(start=100, bases="GATTACA", quals="5555555", attrs=Map("MI" -> "1")) // Q20
     builder.addFrag(start=100, bases="GATTACA", quals="5555555", attrs=Map("MI" -> "1")) // Q20

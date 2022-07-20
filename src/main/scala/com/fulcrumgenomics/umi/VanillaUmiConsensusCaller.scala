@@ -211,7 +211,7 @@ class VanillaUmiConsensusCaller(override val readNamePrefix: String,
           val rawBase      = inBases(i)
           val rawQual      = SingleInputConsensusQuals(inQuals(i))
           val (base, qual) = if (rawQual < this.options.minConsensusBaseQuality) (NoCall, TooLowQualityQual) else (rawBase, rawQual)
-          val isNoCall     = base == NoCall
+          val isNoCall     = rawBase == NoCall
 
           consensusBases(i)  = base
           consensusQuals(i)  = qual
