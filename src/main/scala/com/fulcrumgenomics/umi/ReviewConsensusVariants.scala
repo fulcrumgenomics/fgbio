@@ -252,7 +252,7 @@ class ReviewConsensusVariants
           val rec = c.getRecord.asInstanceOf[SamRecord]
           val mi = toMi(rec)
           val consensusReadName = c.getRecord.getReadName + readNumberSuffix(rec)
-          val rawCounts = BaseCounts(rawByMiAndReadNum(mi + readNumberSuffix(rec)))
+          val rawCounts = BaseCounts(rawByMiAndReadNum.getOrElse(mi + readNumberSuffix(rec), Seq.empty))
 
           val m = ConsensusVariantReviewInfo(
             chrom = variant.chrom,
