@@ -196,7 +196,6 @@ class VanillaUmiConsensusCaller(override val readNamePrefix: String,
     else {
       // First limit to max reads if necessary
       val capped  = if (reads.size <= this.options.maxReads) reads else this.random.shuffle(reads).take(this.options.maxReads)
-
       // get the most likely consensus bases and qualities
       val consensusLength = consensusReadLength(capped, this.options.minReads)
       val consensusBases  = new Array[Base](consensusLength)
@@ -212,11 +211,10 @@ class VanillaUmiConsensusCaller(override val readNamePrefix: String,
           val rawBase      = inBases(i)
           val rawQual      = SingleInputConsensusQuals(inQuals(i))
           val (base, qual) = if (rawQual < this.options.minConsensusBaseQuality) (NoCall, TooLowQualityQual) else (rawBase, rawQual)
-          val isNoCall     = base == NoCall
 
           consensusBases(i)  = base
           consensusQuals(i)  = qual
-          consensusDepths(i) = if (isNoCall) 0 else 1
+          consensusDepths(i) = if (rawBase == NoCall) 0 else 1
           consensusErrors(i) = 0
         }
       }

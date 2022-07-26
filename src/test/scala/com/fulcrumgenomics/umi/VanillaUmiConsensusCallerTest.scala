@@ -277,6 +277,34 @@ class VanillaUmiConsensusCallerTest extends UnitSpec with OptionValues {
     }
   }
 
+  it should "produce a consensus with Ns with per-base zero depths when consensus base quality is too low due to masking input bases" in {
+    // The base qualities for the first three read (Q20) are less than `minInputBaseQuality`, so the bases gets masked
+    // (all Ns). Thus, only one read is used for consensus calling.  The resulting consensus base qualities are Q30
+    // which is less than the minimum consensus base quality (Q40), so a consensus of all Ns is produced and consensus
+    // depth is set to one for all bases.
+    val builder = new SamBuilder(readLength=7)
+    builder.addFrag(start=100, bases="GATTACA", quals="5555555", attrs=Map("MI" -> "1")) // Q20
+    builder.addFrag(start=100, bases="GATTACA", quals="5555555", attrs=Map("MI" -> "1")) // Q20
+    builder.addFrag(start=100, bases="GATTACA", quals="5555555", attrs=Map("MI" -> "1")) // Q20
+    builder.addFrag(start=100, bases="CTAATGT", quals="???????", attrs=Map("MI" -> "1")) // Q30
+    val opts = cco(
+      errorRatePreUmi             = PhredScore.MaxValue,
+      errorRatePostUmi            = PhredScore.MaxValue,
+      minInputBaseQuality         = 30.toByte,
+      minConsensusBaseQuality     = 40.toByte,
+      minReads                    = 1
+    )
+
+    cc(opts).consensusFromSamRecords(builder.toSeq) match {
+      case None => fail()
+      case Some(consensus) =>
+        consensus.baseString shouldBe "NNNNNNN"
+        consensus.quals.foreach(q => q shouldBe 2.toByte)
+        consensus.errors.foreach(d => d shouldBe 0)
+        consensus.depths.foreach(d => d shouldBe 1)
+    }
+  }
+
   it should "should create two consensus for two UMI groups" in {
     val builder = new SamBuilder()
     builder.addFrag(name="READ1", start=1, attrs=Map(DefaultTag -> "GATTACA"), bases="A"*builder.readLength, quals="|"*builder.readLength)
