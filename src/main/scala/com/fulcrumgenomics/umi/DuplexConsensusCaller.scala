@@ -345,6 +345,10 @@ class DuplexConsensusCaller(override val readNamePrefix: String,
       case (None, Some(b))    => Some(DuplexConsensusRead(id=b.id, b.bases, b.quals, b.errors, b, None))
       case (Some(a), Some(b)) =>
         val len = min(a.length, b.length)
+        if (a.depths.take(len).forall(_ == 0)) {
+          require(b.depths.take(len).exists(_ > 0), "Bug: both consensus reads had zero depths across all bases")
+          return duplexConsensus(ba, ab, sourceReads)
+        }
         val id  = a.id
         val bases  = new Array[Byte](len)
         val quals  = new Array[Byte](len)
