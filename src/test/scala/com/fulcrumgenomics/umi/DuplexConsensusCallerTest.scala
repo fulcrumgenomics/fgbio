@@ -28,8 +28,9 @@ import com.fulcrumgenomics.testing.SamBuilder.{Minus, Plus}
 import com.fulcrumgenomics.testing.{SamBuilder, UnitSpec}
 import com.fulcrumgenomics.umi.ConsensusTags.PerRead.{AbRawReadErrorRate, BaRawReadErrorRate, RawReadErrorRate}
 import com.fulcrumgenomics.util.NumericTypes.PhredScore
+import org.scalatest.OptionValues
 
-class DuplexConsensusCallerTest extends UnitSpec {
+class DuplexConsensusCallerTest extends UnitSpec with OptionValues {
   // Function to create a caller without so much writing
   def caller(q: Int = 10, pre: Int = DuplexConsensusCaller.ErrorRatePreUmi, post: Int = DuplexConsensusCaller.ErrorRatePostUmi, minReads: Seq[Int] = Seq(1)) =
     new DuplexConsensusCaller(readNamePrefix="test", minInputBaseQuality=q.toByte, errorRatePreUmi=pre.toByte, errorRatePostUmi=post.toByte,
@@ -466,6 +467,31 @@ class DuplexConsensusCallerTest extends UnitSpec {
         r2.get[String](BaConsensusBases).isEmpty shouldBe true
         r2.get[String](BaConsensusQuals).isEmpty shouldBe true
       }
+    }
+  }
+  "DuplexConsensusCaller.duplexConsensus" should "swap AB and BA reads when AB reads have zero depth across the minimum length" in {
+    val cc = caller(minReads=Seq(1, 1, 0))
+    val ab = VanillaConsensusRead(
+      id     = "ab",
+      bases  = "NNN".getBytes,
+      quals  = "III".getBytes,
+      depths = Array(0, 0, 0),
+      errors = Array(0, 0, 0)
+    )
+    val ba   = ab.copy(depths=Array(1, 1, 1))
+
+    // ab has zero depth, so it should be swapped with BA
+    {
+      val read = cc.duplexConsensus(ab=Some(ab), ba=Some(ba), sourceReads=Seq.empty).value
+      read.abConsensus shouldBe ba
+      read.baConsensus.isEmpty shouldBe true
+    }
+
+    // ba has zero depth, so it should be undefined.
+    {
+      val read = cc.duplexConsensus(ab=Some(ba), ba=Some(ab), sourceReads=Seq.empty).value
+      read.abConsensus shouldBe ba
+      read.baConsensus.isEmpty shouldBe true
     }
   }
 }
