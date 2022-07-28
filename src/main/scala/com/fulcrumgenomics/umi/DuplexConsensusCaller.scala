@@ -340,15 +340,16 @@ class DuplexConsensusCaller(override val readNamePrefix: String,
   private[umi] def duplexConsensus(ab: Option[VanillaConsensusRead],
                                    ba: Option[VanillaConsensusRead],
                                    sourceReads: Seq[SourceRead]): Option[DuplexConsensusRead] = {
-    (ab, ba) match {
+    // Calculate the length that we'll create a duplex read as "the shorter of the available reads",
+    // and then filter each read to make sure it has some coverage in that section of the read
+    val len = min(ab.map(_.length).getOrElse(Int.MaxValue), ba.map(_.length).getOrElse(Int.MaxValue))
+    val abX = ab.filter(_.depths.iterator.take(len).exists(_ > 0))
+    val baX = ba.filter(_.depths.iterator.take(len).exists(_ > 0))
+
+    (abX, baX) match {
       case (Some(a), None)    => Some(DuplexConsensusRead(id=a.id, a.bases, a.quals, a.errors, a, None))
       case (None, Some(b))    => Some(DuplexConsensusRead(id=b.id, b.bases, b.quals, b.errors, b, None))
       case (Some(a), Some(b)) =>
-        val len = min(a.length, b.length)
-        if (a.depths.take(len).forall(_ == 0)) {
-          require(b.depths.take(len).exists(_ > 0), "Bug: both consensus reads had zero depths across all bases")
-          return duplexConsensus(ba, ab, sourceReads)
-        }
         val id  = a.id
         val bases  = new Array[Byte](len)
         val quals  = new Array[Byte](len)
