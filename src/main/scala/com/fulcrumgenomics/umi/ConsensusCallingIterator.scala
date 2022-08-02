@@ -40,7 +40,7 @@ import com.fulcrumgenomics.util.ProgressLogger
   * @param caller the consensus caller to use to call consensus reads
   * @param progress an optional progress logger to which to log progress in input reads
   * @param threads the number of threads to use.
-  * @param chunkSize parallel process in chunkSize units; will cause chunkSize consensus groups to be held in memory
+  * @param chunkSize across the input [[SamRecord]]s from this many source molecules at a time
   */
 class ConsensusCallingIterator[ConsensusRead <: SimpleRead](sourceIterator: Iterator[SamRecord],
                                                             caller: UmiConsensusCaller[ConsensusRead],
@@ -71,6 +71,7 @@ class ConsensusCallingIterator[ConsensusRead <: SimpleRead](sourceIterator: Iter
         val caller = callers.get()
         caller.synchronized { caller.consensusReadsFromSamRecords(rs) }
       }.toAsync(chunkSize).flatten
+      // Flatten AFTER pulling through ParIterator to keep input chunks in phase with output
     }
   }
 
