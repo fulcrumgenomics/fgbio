@@ -28,6 +28,7 @@ import com.fulcrumgenomics.FgBioDef._
 import com.fulcrumgenomics.bam.OverlappingBasesConsensusCaller
 import com.fulcrumgenomics.bam.api.{SamOrder, SamSource, SamWriter}
 import com.fulcrumgenomics.cmdline.{ClpGroups, FgBioTool}
+import com.fulcrumgenomics.commons.collection.ParIterator.DefaultChunkSize
 import com.fulcrumgenomics.sopt.clp
 import com.fulcrumgenomics.commons.io.Io
 import com.fulcrumgenomics.commons.util.LazyLogging
@@ -108,6 +109,12 @@ class CallDuplexConsensusReads
  val maxReadsPerStrand: Option[Int] = None,
  @arg(doc="The number of threads to use while consensus calling.") val threads: Int = 1,
  @arg(doc="Consensus call overlapping bases in mapped paired end reads") val consensusCallOverlappingBases: Boolean = true,
+ @arg(doc="""
+            |Pull reads from this many source molecules into memory for multi-threaded processing.
+            |Using a smaller value will require less memory but will negatively impact processing speed.
+            |For very large family sizes, a smaller value may be necessary to reduce memory usage.
+            |This value is only used when `--threads > 1`.
+          """) val maxSourceMoleculesInMemory: Int = DefaultChunkSize
 ) extends FgBioTool with LazyLogging {
 
   Io.assertReadable(input)
@@ -142,7 +149,7 @@ class CallDuplexConsensusReads
       maxReadsPerStrand   = maxReadsPerStrand.getOrElse(VanillaUmiConsensusCallerOptions.DefaultMaxReads)
     )
     val progress = ProgressLogger(logger, unit=1000000)
-    val iterator = new ConsensusCallingIterator(inIter, caller, Some(progress), threads)
+    val iterator = new ConsensusCallingIterator(inIter, caller, Some(progress), threads, maxSourceMoleculesInMemory)
     out ++= iterator
     progress.logLast()
 
