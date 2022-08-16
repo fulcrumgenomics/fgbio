@@ -37,10 +37,7 @@ import com.fulcrumgenomics.util.GeneAnnotations._
 import com.fulcrumgenomics.util._
 import htsjdk.samtools.SamPairUtil.PairOrientation
 import htsjdk.samtools._
-import htsjdk.samtools.filter._
 import htsjdk.samtools.util.{CoordMath, Interval, OverlapDetector}
-
-import scala.jdk.CollectionConverters._
 
 @clp(description =
   """Computes the insert size for RNA-Seq experiments.
@@ -54,6 +51,7 @@ import scala.jdk.CollectionConverters._
     |chromosomes. Finally, skips transcripts where too few mapped read bases overlap exonic sequence.
     |
     |This tool requires each mapped pair to have the mate cigar (`MC`) tag.  Use `SetMateInformation` to add the mate cigar.
+    |Use the `--skip-missing-mate-cigar` to skip these.
     |
     |The output metric file will have the extension `.rna_seq_insert_size.txt` and the output histogram file will have
     |the extension `.rna_seq_insert_size_histogram.txt`.  The histogram file gives for each orientation (`FR`, `RF`, `tandem`),
@@ -74,7 +72,8 @@ class EstimateRnaSeqInsertSize
   """"
  ) val deviations: Double = 10.0,
  @arg(flag='q', doc="Ignore reads with mapping quality less than this value.") val minimumMappingQuality: Int = 30,
- @arg(flag='m', doc="The minimum fraction of read bases that must overlap exonic sequence in a transcript") val minimumOverlap: Double = 0.95
+ @arg(flag='m', doc="The minimum fraction of read bases that must overlap exonic sequence in a transcript") val minimumOverlap: Double = 0.95,
+ @arg(doc="Skip reads who are missing their mate cigar") val skipMissingMateCigar: Boolean = false
 ) extends FgBioTool with LazyLogging {
   import EstimateRnaSeqInsertSize._
 
@@ -90,12 +89,20 @@ class EstimateRnaSeqInsertSize
     val in                  = SamSource(input)
     val refFlatSource       = RefFlatSource(refFlat, Some(in.dict))
     val counters            = pairOrientations.map { pairOrientation => (pairOrientation, new NumericCounter[Long]()) }.toMap
-    val filter              = new AggregateFilter(EstimateRnaSeqInsertSize.filters(minimumMappingQuality=minimumMappingQuality, includeDuplicates=includeDuplicates).asJava)
     var numReadPairs        = 0L
     val recordIterator      = in.iterator.filter { rec =>
       progress.record(rec)
       if (rec.paired && rec.firstOfPair) numReadPairs += 1
-      !filter.filterOut(rec.asSam)
+
+      rec.firstOfPair && // so templates are considered only once
+        rec.pf && // don't want low quality reads
+        rec.paired && // only want paired reads
+        !rec.secondary && !rec.supplementary && // no secondary or supplementary
+        rec.mapq >= minimumMappingQuality && // decent mapping quality
+        (includeDuplicates || !rec.duplicate) && // no duplicates, unless specified
+        rec.mapped && rec.mateMapped && // both ends of a pair are mapped
+        rec.refIndex == rec.mateRefIndex && // both ends of a pair map to the same contig
+        (!skipMissingMateCigar || rec.mateCigar.isDefined) // skip records with missing mate cigars if specified
     }
 
     for (gene <- refFlatSource; locus <- gene.loci) {
@@ -180,30 +187,6 @@ class EstimateRnaSeqInsertSize
 object EstimateRnaSeqInsertSize {
   val RnaSeqInsertSizeMetricExtension: String = ".rnaseq_insert_size.txt"
   val RnaSeqInsertSizeMetricHistogramExtension: String = ".rnaseq_insert_size_histogram.txt"
-
-  private trait SingleEndSamRecordFilter extends SamRecordFilter {
-    override def filterOut(r1: SAMRecord, r2: SAMRecord): Boolean = filterOut(r1) || filterOut(r2)
-  }
-
-  def filter(f: SamRecord => Boolean): SamRecordFilter = new SingleEndSamRecordFilter {
-    override def filterOut(r: SAMRecord): Boolean = f(r.asInstanceOf[SamRecord])
-  }
-
-  private def filters(minimumMappingQuality: Int, includeDuplicates: Boolean) = List(
-    MateMappedFilter, // also filters out unpaired reads
-    new FailsVendorReadQualityFilter,
-    new AlignedFilter(true),
-    new SecondaryOrSupplementaryFilter,
-    new MappingQualityFilter(minimumMappingQuality),
-    DuplicatesFilter(includeDuplicates=includeDuplicates),
-    FirstOfPairOnlyFilter,
-    DifferentReferenceIndexFilter
-  )
-
-  private def MateMappedFilter                             = filter(r => !r.paired || r.mateUnmapped)
-  private def DuplicatesFilter(includeDuplicates: Boolean) = filter(r => !includeDuplicates && r.duplicate)
-  private def FirstOfPairOnlyFilter                        = filter(_.firstOfPair)
-  private def DifferentReferenceIndexFilter                = filter(r => r.refIndex != r.mateRefIndex)
 
   private[rnaseq] def getAndRequireMateCigar(rec: SamRecord): Cigar = {
     rec.mateCigar.getOrElse {
