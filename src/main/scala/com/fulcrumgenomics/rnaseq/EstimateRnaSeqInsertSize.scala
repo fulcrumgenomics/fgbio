@@ -51,7 +51,7 @@ import htsjdk.samtools.util.{CoordMath, Interval, OverlapDetector}
     |chromosomes. Finally, skips transcripts where too few mapped read bases overlap exonic sequence.
     |
     |This tool requires each mapped pair to have the mate cigar (`MC`) tag.  Use `SetMateInformation` to add the mate cigar.
-    |Use the `--skip-missing-mate-cigar` to skip these.
+    |Use the `--skip-missing-mate-cigar` to skip reads missing the mate cigar tag.
     |
     |The output metric file will have the extension `.rna_seq_insert_size.txt` and the output histogram file will have
     |the extension `.rna_seq_insert_size_histogram.txt`.  The histogram file gives for each orientation (`FR`, `RF`, `tandem`),
