@@ -67,7 +67,7 @@ class ConsensusCallingIterator[ConsensusRead <: SimpleRead](sourceIterator: Iter
       groupingIterator.flatMap(caller.consensusReadsFromSamRecords)
     }
     else {
-      ParIterator(groupingIterator, threads=threads).flatMap { rs =>
+      ParIterator(groupingIterator, threads=threads, chunkSize=threads * 16, chunkBuffer=1).flatMap { rs =>
         val caller = callers.get()
         caller.synchronized { caller.consensusReadsFromSamRecords(rs) }
       }.toAsync(chunkSize * 8)
