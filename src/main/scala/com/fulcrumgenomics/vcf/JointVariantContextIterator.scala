@@ -32,19 +32,14 @@ object JointVariantContextIterator {
   def apply(iters: Seq[Iterator[VariantContext]],
             dict: SequenceDictionary
            ): JointVariantContextIterator = {
-    new JointVariantContextIterator(
-      iters=iters,
-      dictOrComp = Left(dict)
-    )
+    new JointVariantContextIterator(iters = iters, dict = dict)
   }
 
+  @deprecated("VariantContextComparator will no longer compare variant contexts on location alone.")
   def apply(iters: Seq[Iterator[VariantContext]],
             comp: VariantContextComparator
            ): JointVariantContextIterator = {
-    new JointVariantContextIterator(
-      iters=iters,
-      dictOrComp = Right(comp)
-    )
+    throw new NotImplementedError("VariantContextComparator class can no longer order variant contexts on location alone.")
   }
 }
 
@@ -52,18 +47,13 @@ object JointVariantContextIterator {
   * Iterates over multiple variant context iterators such that we return a list of contexts for the union of sites
   * across the iterators.  If samples is given, we subset each variant context to just that sample.
   */
-class JointVariantContextIterator private(iters: Seq[Iterator[VariantContext]],
-                                          dictOrComp: Either[SequenceDictionary, VariantContextComparator]
-                                         )
+class JointVariantContextIterator private(iters: Seq[Iterator[VariantContext]], dict: SequenceDictionary)
 extends Iterator[Seq[Option[VariantContext]]] {
 
   if (iters.isEmpty) throw new IllegalArgumentException("No iterators given")
 
   private val iterators = iters.map(_.buffered)
-  private val ordering = dictOrComp match {
-    case Left(dict)  => LocatableOrdering(dict)
-    case Right(comp) => comp
-  }
+  private val ordering = LocatableOrdering(dict)
 
   def hasNext: Boolean = iterators.exists(_.nonEmpty)
 
