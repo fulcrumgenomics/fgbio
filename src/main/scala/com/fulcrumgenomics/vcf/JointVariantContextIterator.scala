@@ -24,6 +24,7 @@
 
 package com.fulcrumgenomics.vcf
 
+import com.fulcrumgenomics.coord.LocatableOrdering
 import com.fulcrumgenomics.fasta.SequenceDictionary
 import htsjdk.variant.variantcontext.{VariantContext, VariantContextComparator}
 
@@ -55,13 +56,12 @@ class JointVariantContextIterator private(iters: Seq[Iterator[VariantContext]],
                                           dictOrComp: Either[SequenceDictionary, VariantContextComparator]
                                          )
 extends Iterator[Seq[Option[VariantContext]]] {
-  import com.fulcrumgenomics.fasta.Converters.ToSAMSequenceDictionary
 
   if (iters.isEmpty) throw new IllegalArgumentException("No iterators given")
 
   private val iterators = iters.map(_.buffered)
-  private val comparator = dictOrComp match {
-    case Left(dict)  => new VariantContextComparator(dict.asSam)
+  private val ordering = dictOrComp match {
+    case Left(dict)  => LocatableOrdering(dict)
     case Right(comp) => comp
   }
 
@@ -69,12 +69,12 @@ extends Iterator[Seq[Option[VariantContext]]] {
 
   def next(): Seq[Option[VariantContext]] = {
     val minCtx = iterators.filter(_.nonEmpty).map(_.head).sortWith {
-      case (left: VariantContext, right: VariantContext) => comparator.compare(left, right) < 0
+      case (left: VariantContext, right: VariantContext) => ordering.compare(left, right) < 0
     }.head
     // TODO: could use a TreeSet to store the iterators, examine the head of each iterator, then pop the iterator with the min,
     // and add that iterator back in.
-    iterators.zipWithIndex.map { case(iter, idx) =>
-      if (iter.isEmpty || this.comparator.compare(minCtx, iter.head) != 0) None
+    iterators.map { iter =>
+      if (iter.isEmpty || ordering.compare(minCtx, iter.head) != 0) None
       else Some(iter.next())
     }
   }
