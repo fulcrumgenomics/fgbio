@@ -88,9 +88,8 @@ class NormalizeCoverage(
   def minCoverage(template: Template, cov: Map[String, mutable.IndexedSeq[Short]]): Short = {
     val coverage: IndexedSeq[Short] = cov.getOrElse(template.r1.get.refName, Nil).toIndexedSeq
     templateToCoverageTuple(template) match {
-      case (start: Int, end: Int) => {
+      case (start: Int, end: Int) =>
         coverage.slice(start - 1, end).minOption.getOrElse(0)
-      }
     }
   }
 
