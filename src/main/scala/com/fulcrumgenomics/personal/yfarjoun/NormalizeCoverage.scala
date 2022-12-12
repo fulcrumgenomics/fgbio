@@ -30,11 +30,12 @@ import com.fulcrumgenomics.bam.{Bams, Template}
 import com.fulcrumgenomics.cmdline.{ClpGroups, FgBioTool}
 import com.fulcrumgenomics.commons.util.LazyLogging
 import com.fulcrumgenomics.fasta.SequenceDictionary
-import com.fulcrumgenomics.personal.yfarjoun.NormalizeCoverageOptions._
+import com.fulcrumgenomics.personal.yfarjoun.NormalizeCoverageOptions.DefaultMinMapQ
 import com.fulcrumgenomics.sopt._
 import com.fulcrumgenomics.util.NumericTypes.PhredScore
 import com.fulcrumgenomics.util.{IntervalListSource, Io}
 import htsjdk.samtools.util.{Interval, Locatable, OverlapDetector}
+import scala.util.Using
 
 import scala.jdk.CollectionConverters._
 import scala.collection.mutable
@@ -43,6 +44,7 @@ object NormalizeCoverageOptions {
   /** Various default values for the Coverage Normalizer. */
   val DefaultMinMapQ: PhredScore = 30.toByte
 }
+
 
 @clp(description =
   """
@@ -54,8 +56,8 @@ class NormalizeCoverage(
                          @arg(flag = 'o', doc = "Output BAM file to write.") val output: PathToBam,
                          @arg(flag = 'l', doc = "The interval list over which to normalize coverage. " +
                            "If provided, templates whose primary reads do not overlap with this region will be dropped entirely.") val targetIntervals: Option[PathToIntervals] = None,
-                         @arg(name = "mq"  , doc = "MAPQ lower bound for considering read-template.") val minMQ: PhredScore = DefaultMinMapQ,
-                         @arg(flag = 'c', doc = "Target coverage.") val coverageTarget: Int,
+                         @arg(name = "mq", doc = "MAPQ lower bound for considering read-template.") val minMQ: PhredScore = DefaultMinMapQ,
+                         @arg(flag = 'c', doc = "Target coverage.") val coverageTarget: Short,
                          @arg(flag = 's', doc = "Order in which to emit the records.") val sortOrder: SamOrder = SamOrder.Coordinate,
                          @arg(flag = 'm', doc = "Max records in RAM.") val maxRecordsInRam: Int = SamWriter.DefaultMaxRecordsInRam
 
@@ -65,14 +67,20 @@ class NormalizeCoverage(
   val coverage: mutable.Map[String, mutable.IndexedSeq[Short]] = mutable.Map()
 
   def initialize(bam: PathToBam, intervalsMaybe: Option[PathToIntervals]): Unit = {
-    val in = SamSource(bam)
+    Using(SamSource(bam)) { in => {
 
-    //QUESTIOM: do I need to close and 'f'?
-    overlapDetector = intervalsMaybe.map(f => IntervalListSource(f))
-      .map(i => OverlapDetector.create[Interval](i.toIntervalList.getIntervals))
-      .getOrElse(makeOverlapDetectorFromDictionary(in.dict))
-    in.dict.foreach(seq => coverage.update(seq.name, mutable.IndexedSeq[Short](seq.length.toShort)))
-    in.close()
+      Using.Manager { ils => {
+        overlapDetector = intervalsMaybe.map(f => ils(IntervalListSource(f)))
+          .map(i => OverlapDetector.create[Interval](i.toIntervalList.getIntervals))
+          .getOrElse(makeOverlapDetectorFromDictionary(in.dict))
+        in.dict.foreach(seq => {
+          coverage(seq.name) = mutable.IndexedSeq.fill(seq.length)(0.toShort);
+        }
+        )
+      }
+      }
+    }
+    }
   }
 
   def union(i1: Locatable, i2: Locatable): Locatable = {
@@ -114,18 +122,19 @@ class NormalizeCoverage(
     val cov: IndexedSeq[Short] = coverage(template.r1.get.refName).toIndexedSeq
     val covLocusMaybe: Option[Locatable] = templateToCoverageTuple(template)
 
-    val retVal:Short=covLocusMaybe.map[Short](covLocus => cov.slice(covLocus.getStart - 1, covLocus.getEnd).minOption[Short].getOrElse(0)).getOrElse(Short.MaxValue)
-    retVal
+    val ret = covLocusMaybe.map(covLocus => cov.slice(covLocus.getStart - 1, covLocus.getEnd).minOption.getOrElse(0.toShort)).getOrElse(Short.MaxValue)
+    ret
   }
 
+  // increments the coverage over the range of the template.
+  // will not increment beyond Short.MaxValue
   def incrementCoverage(template: Template): Unit = {
     val cov: mutable.IndexedSeq[Short] = coverage(template.r1.get.refName)
     val covLocusMaybe: Option[Locatable] = templateToCoverageTuple(template)
 
     covLocusMaybe.foreach(covLocus =>
       Range(covLocus.getStart - 1, covLocus.getEnd)
-        .map(i => i.toShort)
-        .foreach(j => cov.update(j, (cov(j) + 1).toShort)))
+        .foreach(j => cov.update(j, Math.min(Short.MaxValue, cov(j) + 1).toShort)))
   }
 
   def readFilterForCoverage(record: SamRecord): Boolean = {
@@ -155,27 +164,29 @@ class NormalizeCoverage(
 
     initialize(input, targetIntervals)
 
-    val in = SamSource(input)
-    val out = SamWriter(output, in.header.clone(), sort = Some(sortOrder), maxRecordsInRam = maxRecordsInRam)
+    Using.Manager { use =>
+      val in = use(SamSource(input))
+      val out = use(SamWriter(output, in.header.clone(), sort = Some(sortOrder), maxRecordsInRam = maxRecordsInRam))
 
-    val templateIterator = Bams.templateSortedIterator(in, maxRecordsInRam)
+      val templateIterator = Bams.templateSortedIterator(in, maxRecordsInRam)
 
-    templateIterator
-      //see if primary reads overlap region of interest
-      .filter(t => primariesOverlapTargets(t))
-      //check that all the reads in the template pass minMQ
-      .filter(t => minMapQ(t) >= minMQ)
-      // only include template whose primary reads are all on the same reference
-      .filter(t => t.primaryReads.map(r => r.refName).distinct.length == 1)
-      //only consider reads that cover regions that need coverage, i.e. that
-      //at least one base that they cover is less than the target
-      .filter(t => minCoverage(t) < coverageTarget)
-      //
-      .foreach(t => {
-        //increment coverages and emit template
-        incrementCoverage(t)
-        //write
-        t.allReads.foreach(out.write)
-      })
+      templateIterator
+        //see if primary reads overlap region of interest
+        .filter(t => primariesOverlapTargets(t))
+        //check that all the reads in the template pass minMQ
+        .filter(t => minMapQ(t) >= minMQ)
+        // only include template whose primary reads are all on the same reference
+        .filter(t => t.primaryReads.map(r => r.refName).distinct.length == 1)
+        //only consider reads that cover regions that need coverage, i.e. that
+        //at least one base that they cover is less than the target
+        .filter(t => minCoverage(t) < coverageTarget)
+        //
+        .foreach(t => {
+          //increment coverages and emit template
+          incrementCoverage(t)
+          //write
+          t.allReads.foreach(out.write)
+        })
+    }
   }
 }
