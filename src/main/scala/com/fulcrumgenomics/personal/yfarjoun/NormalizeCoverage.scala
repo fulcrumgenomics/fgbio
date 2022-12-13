@@ -30,7 +30,7 @@ import com.fulcrumgenomics.bam.{Bams, Template}
 import com.fulcrumgenomics.cmdline.{ClpGroups, FgBioTool}
 import com.fulcrumgenomics.commons.util.LazyLogging
 import com.fulcrumgenomics.fasta.SequenceDictionary
-import com.fulcrumgenomics.personal.yfarjoun.NormalizeCoverageOptions._
+import com.fulcrumgenomics.personal.yfarjoun.NormalizeCoverage._
 import com.fulcrumgenomics.sopt._
 import com.fulcrumgenomics.util.NumericTypes.PhredScore
 import com.fulcrumgenomics.util.{IntervalListSource, Io}
@@ -42,7 +42,7 @@ import scala.util.Using
 import scala.jdk.CollectionConverters._
 import scala.collection.mutable
 
-object NormalizeCoverageOptions {
+object NormalizeCoverage {
 
   def getIntervalsFromDictionary(dict: SequenceDictionary): util.List[Interval] = {
     dict.iterator.map(seq => new Interval(seq.name, 1, seq.length)).toList.asJava
@@ -63,7 +63,7 @@ object NormalizeCoverageOptions {
       record.pf
   }
 
-   def subsetReadToLocus(r:Locatable,overlappingIntervals: Set[Interval]): Option[Interval] = {
+   def subsetReadToLocus(r:Locatable, overlappingIntervals: Set[Interval]): Option[Interval] = {
     val unionOverlapMaybe = overlappingIntervals.reduceOption(union)
     unionOverlapMaybe.map(unionOverlap => new Interval(
       r.getContig,
