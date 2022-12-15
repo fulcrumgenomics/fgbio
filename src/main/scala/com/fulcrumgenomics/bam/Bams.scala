@@ -301,21 +301,32 @@ object Bams extends LazyLogging {
     * @param tmpDir an optional temp directory to use for temporary sorting files if needed
     * @return an Iterator of Template objects
     */
+
   def templateIterator(iterator: Iterator[SamRecord],
                        header: SAMFileHeader,
                        maxInMemory: Int,
                        tmpDir: DirPath): SelfClosingIterator[Template] = {
     val queryIterator = queryGroupedIterator(iterator, header, maxInMemory, tmpDir)
+    templateIteratorPresorted(queryIterator)
+  }
 
-    val iter = new Iterator[Template] {
-      override def hasNext: Boolean = queryIterator.hasNext
+  /**
+    * Converts a Iterator of SamRecoreds to an iterator of Template without sorting.
+    *
+    * @param iterator
+    */
+  def templateIteratorPresorted(readsIterator: SelfClosingIterator[SamRecord]): SelfClosingIterator[Template] = {
+
+    val templatesIterator = new Iterator[Template] {
+      override def hasNext: Boolean = readsIterator.hasNext
+
       override def next(): Template = {
         require(hasNext, "next() called on empty iterator")
-        Template(queryIterator)
+        Template(readsIterator)
       }
     }
 
-    new SelfClosingIterator(iter, () => queryIterator.close())
+    new SelfClosingIterator(templatesIterator, () => readsIterator.close())
   }
 
   /** Return an iterator over records sorted and grouped into [[Template]] objects. Although a queryname sort is
