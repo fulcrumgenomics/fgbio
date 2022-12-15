@@ -27,9 +27,10 @@ object RandomTemplate {
     */
   def templateSortedIterator(iterator: Iterator[SamRecord],
                              header: SAMFileHeader,
-                             maxInMemory: Int): SelfClosingIterator[Template] = {
+                             maxInMemory: Int,
+                             logger: Logger): SelfClosingIterator[Template] = {
 
-    val sorter = RandomizeBam.Randomize(iterator, header, 42, true, new Logger)
+    val sorter = RandomizeBam.Randomize(iterator, header, 42, true,logger)
     val sortedIterator = sorter.iterator
 
     val iter = new Iterator[Template] {

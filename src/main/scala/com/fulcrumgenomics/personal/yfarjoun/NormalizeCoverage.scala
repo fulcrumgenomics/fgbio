@@ -226,7 +226,10 @@ class NormalizeCoverage(
       val in = use(SamSource(input))
       val out = use(SamWriter(output, in.header.clone(), sort = Some(sortOrder), maxRecordsInRam = maxRecordsInRam))
 
-      val templateIterator: Iterator[Template] = RandomTemplate.templateSortedIterator(in.iterator, in.header, maxRecordsInRam)
+      val templateIterator: Iterator[Template] = RandomTemplate.templateSortedIterator(in.iterator,
+        in.header,
+        maxRecordsInRam,
+        logger)
 
       templatesToReads(templateIterator).foreach(out.write)
     }
