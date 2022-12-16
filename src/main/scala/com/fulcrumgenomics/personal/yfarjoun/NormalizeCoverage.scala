@@ -93,11 +93,18 @@ object NormalizeCoverage {
         Math.min(i1.getEnd, i2.getEnd)))
   }
 
-  //result will not have overlapping locatables, but will cover the same original territory
+  /**
+    * Takes an iterator of Locatables and reduces it to a non-overlapping Seq of the same.
+    *
+    * Result will not have overlapping locatables, but will cover the same original territory
+    */
   def squish(ls: IterableOnce[Locatable]): Seq[Locatable] = {
     ls.iterator.foldLeft(Seq.empty[Locatable])(union)
   }
 
+  /**
+    * Gets the minimum value of two input Shorts. Used for left-folding
+    */
   def min(s1: Short, s2: Short): Short = {
     s1 min s2
   }
@@ -146,12 +153,26 @@ class NormalizeCoverage(
     }
   }
 
+  /**
+    * Take a Seq of Locatables and converts them to a set of non-overlapping Locatables that overlap
+    * the region of interset.
+    *
+    * @param rs
+    * @return
+    */
   def readToSubsettedLocus(rs: Seq[Locatable]): Seq[Locatable] = {
     val squished = squish(rs)
     val overlapping: Seq[Locatable] = rs.flatMap(r => overlapDetector.getOverlaps(r).asScala)
     subsetReadToLocus(squished, overlapping)
   }
 
+  /**
+    * reduces an input Template to a Seq of locatables that are non-overlapping and cover the ovelap between
+    * the region of interest and the the template's coverage-worthy reads.
+    *
+    * @param template
+    * @return a Seq[Template]
+    */
   def templateToCoverageLocatable(template: Template): Seq[Locatable] = {
     val locus: Seq[Locatable] = template
 
@@ -168,25 +189,35 @@ class NormalizeCoverage(
     readToSubsettedLocus(locus)
   }
 
-
+  /**
+    * For an input template, returns True if one of its coverage-worthy reads overlap the region of interest
+    *
+    * @param template input Template
+    * @return True only if one of the template's coverage-worthy reads coincide with the region of interest
+    */
   def primariesOverlapTargets(template: Template): Boolean = {
     template.allReads.filter(readFilterForCoverage).exists(r => overlapDetector.overlapsAny(r.asSam))
   }
 
-  //returns Short.MaxValue if template doesn't overlap with requested intervals
+  /**
+    * provides the minimum value in the coverage map in the region that is both
+    * a region of interest, and covered by one of coverage-worthy reads in the template.
+    *
+    * returns Short.MaxValue if template doesn't overlap with requested intervals
+    */
   def minCoverage(template: Template): Short = {
-    //FIX
     template.allReads.filter(readFilterForCoverage).map(read => {
       val cov: IndexedSeq[Short] = coverage(read.refName).toIndexedSeq
       val covLocusSet: Seq[Locatable] = templateToCoverageLocatable(template)
       val covPerTemplate = covLocusSet.flatMap(covLocus => cov.slice(covLocus.getStart - 1, covLocus.getEnd).minOption)
       covPerTemplate.reduce(min)
-    }).reduceOption(min)
-      .getOrElse(Short.MaxValue)
+    }).reduceOption(min) getOrElse Short.MaxValue
   }
 
-  // increments the coverage over the range of the template.
-  // will not increment beyond Short.MaxValue
+  /**
+    * Increments the coverage map over the range of the relevant reads of the template.
+    * Will not increment beyond Short.MaxValue to avoid overflow
+    */
   def incrementCoverage(template: Template): Unit = {
     squish(template.allReads.filter(readFilterForCoverage).map(x => x.asSam)).foreach(read => {
       val cov: mutable.IndexedSeq[Short] = coverage(read.getContig)
@@ -206,11 +237,10 @@ class NormalizeCoverage(
       //check that all the reads in the template pass minMQ
       .filter(t => minMapQ(t) >= minMQ)
       //only consider reads that cover regions that need coverage, i.e. that
-      //at least one base that they cover is less than the target
+      //at least one base that they cover is less than the target coverage
       .filter(t => minCoverage(t) < coverageTarget)
-      //
+      //increment coverages and emit reads from template
       .flatMap(t => {
-        //increment coverages and emit template
         incrementCoverage(t)
         //output
         t.allReads.iterator
@@ -239,7 +269,6 @@ class NormalizeCoverage(
     Io.assertReadable(input)
     Io.assertCanWriteFile(output)
     targetIntervals.foreach(Io.assertReadable)
-    assert(coverageTarget > 0, s"Target must be >0 found $coverageTarget.")
+    assert(coverageTarget > 0, s"Target must be >0. Found $coverageTarget.")
   }
-
 }
