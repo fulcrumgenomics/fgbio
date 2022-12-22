@@ -301,32 +301,21 @@ object Bams extends LazyLogging {
     * @param tmpDir an optional temp directory to use for temporary sorting files if needed
     * @return an Iterator of Template objects
     */
-
   def templateIterator(iterator: Iterator[SamRecord],
                        header: SAMFileHeader,
                        maxInMemory: Int,
                        tmpDir: DirPath): SelfClosingIterator[Template] = {
     val queryIterator = queryGroupedIterator(iterator, header, maxInMemory, tmpDir)
-    templateIteratorPresorted(queryIterator)
-  }
 
-  /**
-    * Converts a Iterator of SamRecoreds to an iterator of Template without sorting.
-    *
-    * @param iterator
-    */
-  def templateIteratorPresorted(readsIterator: SelfClosingIterator[SamRecord]): SelfClosingIterator[Template] = {
-
-    val templatesIterator = new Iterator[Template] {
-      override def hasNext: Boolean = readsIterator.hasNext
-
+    val iter = new Iterator[Template] {
+      override def hasNext: Boolean = queryIterator.hasNext
       override def next(): Template = {
         require(hasNext, "next() called on empty iterator")
-        Template(readsIterator)
+        Template(queryIterator)
       }
     }
 
-    new SelfClosingIterator(templatesIterator, () => readsIterator.close())
+    new SelfClosingIterator(iter, () => queryIterator.close())
   }
 
   /** Return an iterator over records sorted and grouped into [[Template]] objects. Although a queryname sort is
@@ -375,6 +364,34 @@ object Bams extends LazyLogging {
     }
 
     new SelfClosingIterator(_iterator, () => queryIterator.close())
+  }
+
+  /** Return an iterator over records sorted and grouped into [[Template]] objects. Sort order is deterministic, but
+    * random (based on queryname). See [[templateIterator]] for a [[Template]] iterator which emits templates in a
+    * non-guaranteed sort order.
+    *
+    * @see [[templateIterator]]
+    * @param iterator    an iterator from which to consume records
+    * @param header      the header associated with the records
+    * @param maxInMemory the maximum number of records to keep and sort in memory, if sorting is needed
+    * @param tmpDir      a temp directory to use for temporary sorting files if sorting is needed
+    * @return an Iterator of queryname sorted Template objects
+    */
+  def queryGroupedRandomIterator(iterator: Iterator[SamRecord],
+                                 header: SAMFileHeader,
+                                 maxInMemory: Int,
+                                 tmpDir:DirPath=Io.tmpDir): SelfClosingIterator[Template] = {
+
+    val randomSeed=42
+    val sorter = RandomizeBam.Randomize(iterator, header, randomSeed, maxInMemory, queryGroup = true, tmpDir)
+    val sortedIterator = sorter.iterator
+
+    val sortedHead = header.clone()
+    sortedHead.setGroupOrder(GroupOrder.query)
+    sortedHead.setSortOrder(SortOrder.unsorted)
+
+    Bams.templateIterator(sortedIterator, sortedHead, maxInMemory, tmpDir)
+
   }
 
   /** Returns an iterator over the records in the given iterator such that the order of the records returned is

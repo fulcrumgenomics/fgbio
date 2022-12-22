@@ -37,26 +37,25 @@ import com.fulcrumgenomics.sopt.{arg, clp}
 import com.fulcrumgenomics.util.{Io, ProgressLogger, Sorter}
 import htsjdk.samtools.SAMFileHeader
 import htsjdk.samtools.SAMFileHeader.{GroupOrder, SortOrder}
-import htsjdk.samtools.SBIIndex.Header
 import htsjdk.samtools.util.Murmur3
 
 object RandomizeBam {
 
 
-  def Randomize(in: Iterator[SamRecord], header: SAMFileHeader, seed: Int, queryGroup: Boolean, logger: Logger):Sorter[SamRecord, _] = {
+  def Randomize(in: Iterator[SamRecord], header: SAMFileHeader, seed: Int, maxNumInRam:Int, queryGroup: Boolean, tmpDir:DirPath= Io.tmpDir): Sorter[SamRecord, _] = {
     val hasher = new Murmur3(seed)
-
+    val logger: Logger = new Logger(this.getClass)
     val sorter = {
       if (queryGroup) {
         val f = (r: SamRecord) => SamOrder.RandomQueryKey(hasher.hashUnencodedChars(r.name), r.name, r.asSam.getFlags)
-        new Sorter(2e6.toInt, new SamRecordCodec(header), f)
+        new Sorter(maxNumInRam, new SamRecordCodec(header), f, tmpDir)
       }
       else {
         val f = (r: SamRecord) => {
           val key = s"${r.name}:${r.basesString}:${r.qualsString}"
           SamOrder.RandomKey(hasher.hashUnencodedChars(key), r.asSam.getFlags)
         }
-        new Sorter(2e6.toInt, new SamRecordCodec(header), f)
+        new Sorter(maxNumInRam, new SamRecordCodec(header), f, tmpDir)
       }
     }
 
@@ -85,13 +84,13 @@ class RandomizeBam(
                     @arg(flag = 'q', doc = "Group together reads by queryname.") val queryGroup: Boolean = true
                   ) extends FgBioTool with LazyLogging {
 
-  Io.assertCanWriteFile(input)
+  Io.assertReadable(input)
   Io.assertCanWriteFile(output)
 
   override def execute(): Unit = {
     val in = SamSource(input)
 
-    val sorter = Randomize(in.iterator, in.header, seed, queryGroup, this.logger)
+    val sorter = Randomize(in.iterator, in.header, seed, 2e6.toInt, queryGroup)
 
     logger.info("Writing reads out to output.")
     val outHeader = in.header.clone()

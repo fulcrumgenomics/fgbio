@@ -25,94 +25,30 @@
 package com.fulcrumgenomics.personal.yfarjoun
 
 import com.fulcrumgenomics.FgBioDef._
-import com.fulcrumgenomics.bam.Template
 import com.fulcrumgenomics.bam.api.{SamOrder, SamRecord, SamSource, SamWriter}
+import com.fulcrumgenomics.bam.{Bams, Template}
 import com.fulcrumgenomics.cmdline.{ClpGroups, FgBioTool}
 import com.fulcrumgenomics.commons.util.LazyLogging
 import com.fulcrumgenomics.fasta.SequenceDictionary
 import com.fulcrumgenomics.personal.yfarjoun.NormalizeCoverage._
 import com.fulcrumgenomics.sopt._
+import com.fulcrumgenomics.util.Io
 import com.fulcrumgenomics.util.NumericTypes.PhredScore
-import com.fulcrumgenomics.util.{IntervalListSource, Io}
-import htsjdk.samtools.util.{Interval, Locatable, OverlapDetector}
-import htsjdk.tribble.SimpleFeature
+import htsjdk.samtools.SAMFileHeader
+import htsjdk.samtools.SAMFileHeader.{GroupOrder, SortOrder}
+import htsjdk.samtools.util.{Interval, IntervalList}
 
-import java.util
-import scala.collection.mutable
 import scala.jdk.CollectionConverters._
-import scala.util.Using
 
 object NormalizeCoverage {
-
-
-  def getIntervalsFromDictionary(dict: SequenceDictionary): util.List[Interval] = {
-    dict.iterator.map(seq => new Interval(seq.name, 1, seq.length)).toList.asJava
-  }
-
-  def minMapQ(template: Template): PhredScore = {
-    template.allReads.filter(readFilterForCoverage)
-      .map(_.mapq)
-      .minOption
-      .getOrElse(0)
-      .toByte
-  }
-
-  def readFilterForCoverage(record: SamRecord): Boolean = {
-    !record.secondary && // I'm assuming here that secondary reads to not count towards coverage, but supplementary do
-      record.mapped &&
-      !record.duplicate &&
-      record.pf
-  }
-
-  def subsetReadToLocus(rs: Seq[Locatable], overlappingIntervals: Seq[Locatable]): Seq[Locatable] = {
-    val unionOverlap: Seq[Locatable] = squish(overlappingIntervals)
-    rs.flatMap(r => {
-      unionOverlap.filter(l => l.overlaps(r)).flatMap(l => intersect(l, r))
-    })
-  }
-
-  def union(i1: Locatable, i2: Locatable): Seq[Locatable] = {
-    if (i1.withinDistanceOf(i2, 1))
-      Seq(new SimpleFeature(i1.getContig, Math.min(i1.getStart, i2.getStart), Math.max(i1.getEnd, i2.getEnd)))
-    else
-      Seq(i1, i2)
-  }
-
-  // calculates the locus covered by two loci (assuming they are on the same reference)
-  def union(i1: Seq[Locatable], i2: Locatable): Seq[Locatable] = {
-    i1.flatMap(i => union(i, i2))
-  }
-
-  def intersect(i1: Locatable, i2: Locatable): Option[Locatable] = {
-    if (!i1.contigsMatch(i2))
-      None
-    else
-      Some(new SimpleFeature(
-        i1.getContig,
-        Math.max(i1.getStart, i2.getStart),
-        Math.min(i1.getEnd, i2.getEnd)))
-  }
-
-  /**
-    * Takes an iterator of Locatables and reduces it to a non-overlapping Seq of the same.
-    *
-    * Result will not have overlapping locatables, but will cover the same original territory
-    */
-  def squish(ls: IterableOnce[Locatable]): Seq[Locatable] = {
-    ls.iterator.foldLeft(Seq.empty[Locatable])(union)
-  }
-
-  /**
-    * Gets the minimum value of two input Shorts. Used for left-folding
-    */
-  def min(s1: Short, s2: Short): Short = {
-    s1 min s2
-  }
-
   /** Various default values for the Coverage Normalizer. */
   val DefaultMinMapQ: PhredScore = 30.toByte
-}
 
+
+  def getIntervalsFromDictionary(dict: SequenceDictionary): List[Interval] = {
+    dict.iterator.map(seq => new Interval(seq.name, 1, seq.length)).toList
+  }
+}
 
 @clp(description =
   """
@@ -132,116 +68,36 @@ class NormalizeCoverage(
                        ) extends FgBioTool with LazyLogging {
 
 
-  val overlapDetector: OverlapDetector[Interval] = new OverlapDetector[Interval](0, 0)
-
-  //keeps track of the coverage already added to output
-  val coverage: mutable.Map[String, mutable.IndexedSeq[Short]] = mutable.Map()
-
   //sets up the overlap detector and the coverage tracker
-  def initialize(bam: PathToBam, intervalsMaybe: Option[PathToIntervals]): Unit = {
-    Using.Manager { use =>
-      val in = use(SamSource(bam))
-      val intervals: util.List[Interval] = intervalsMaybe.map(f => use(IntervalListSource(f)))
-        .map(i => i.toIntervalList.getIntervals)
-        .getOrElse(getIntervalsFromDictionary(in.dict))
-      overlapDetector.addAll(intervals, intervals)
-
-      in.dict.foreach(seq => {
-        coverage(seq.name) = mutable.IndexedSeq.fill(seq.length)(0.toShort)
-      }
-      )
+  def createCoverageManager(bam: PathToBam, intervalsMaybe: Option[PathToIntervals]): CoverageManager = {
+    val intervals: IntervalList = intervalsMaybe match {
+      case None =>
+        val dict = SequenceDictionary.extract(bam)
+        val il: IntervalList = new IntervalList(dict.toSam)
+        il.addall(getIntervalsFromDictionary(dict).asJava)
+        il
+      case Some(intervals) => IntervalList.fromPath(intervals)
     }
-  }
-
-  /**
-    * Take a Seq of Locatables and converts them to a set of non-overlapping Locatables that overlap
-    * the region of interset.
-    *
-    * @param rs
-    * @return
-    */
-  def readToSubsettedLocus(rs: Seq[Locatable]): Seq[Locatable] = {
-    val squished = squish(rs)
-    val overlapping: Seq[Locatable] = rs.flatMap(r => overlapDetector.getOverlaps(r).asScala)
-    subsetReadToLocus(squished, overlapping)
-  }
-
-  /**
-    * reduces an input Template to a Seq of locatables that are non-overlapping and cover the ovelap between
-    * the region of interest and the the template's coverage-worthy reads.
-    *
-    * @param template
-    * @return a Seq[Template]
-    */
-  def templateToCoverageLocatable(template: Template): Seq[Locatable] = {
-    val locus: Seq[Locatable] = template
-
-      //take all reads
-      .allReads
-
-      //make sure they are good
-      .filter(readFilterForCoverage)
-
-      //replace each read with its start/end tuple
-      .map[Locatable](r => r.asSam).toSeq
-
-    //Subset the read to the overlapping intervals
-    readToSubsettedLocus(locus)
-  }
-
-  /**
-    * For an input template, returns True if one of its coverage-worthy reads overlap the region of interest
-    *
-    * @param template input Template
-    * @return True only if one of the template's coverage-worthy reads coincide with the region of interest
-    */
-  def primariesOverlapTargets(template: Template): Boolean = {
-    template.allReads.filter(readFilterForCoverage).exists(r => overlapDetector.overlapsAny(r.asSam))
-  }
-
-  /**
-    * provides the minimum value in the coverage map in the region that is both
-    * a region of interest, and covered by one of coverage-worthy reads in the template.
-    *
-    * returns Short.MaxValue if template doesn't overlap with requested intervals
-    */
-  def minCoverage(template: Template): Short = {
-    template.allReads.filter(readFilterForCoverage).map(read => {
-      val cov: IndexedSeq[Short] = coverage(read.refName).toIndexedSeq
-      val covLocusSet: Seq[Locatable] = templateToCoverageLocatable(template)
-      val covPerTemplate = covLocusSet.flatMap(covLocus => cov.slice(covLocus.getStart - 1, covLocus.getEnd).minOption)
-      covPerTemplate.reduce(min)
-    }).reduceOption(min) getOrElse Short.MaxValue
-  }
-
-  /**
-    * Increments the coverage map over the range of the relevant reads of the template.
-    * Will not increment beyond Short.MaxValue to avoid overflow
-    */
-  def incrementCoverage(template: Template): Unit = {
-    squish(template.allReads.filter(readFilterForCoverage).map(x => x.asSam)).foreach(read => {
-      val cov: mutable.IndexedSeq[Short] = coverage(read.getContig)
-      val covLocusSet: Seq[Locatable] = templateToCoverageLocatable(template)
-
-      covLocusSet.foreach(covLocus =>
-        Range(covLocus.getStart - 1, covLocus.getEnd)
-          .foreach(j => cov.update(j, Math.min(Short.MaxValue, cov(j) + 1).toShort)))
-    })
+    new CoverageManager(intervals)
   }
 
 
-  def templatesToReads(templateIterator: Iterator[Template]): Iterator[SamRecord] = {
+  def templateMinMapQ(t: Template): PhredScore = {
+    CoverageManager.coverageReadsFromTemplate(t).map(r=>r.mapq).min.toByte
+  }
+
+  def filterTemplatesToCoverage(templateIterator: Iterator[Template], coverageManager: CoverageManager, minMapQ: PhredScore): Iterator[SamRecord] = {
     templateIterator
       //see if primary reads overlap region of interest
-      .filter(t => primariesOverlapTargets(t))
+      .filter(t => coverageManager.primariesOverlapTargets(t))
       //check that all the reads in the template pass minMQ
-      .filter(t => minMapQ(t) >= minMQ)
+      .filter(t => templateMinMapQ(t) >= minMapQ)
       //only consider reads that cover regions that need coverage, i.e. that
       //at least one base that they cover is less than the target coverage
-      .filter(t => minCoverage(t) < coverageTarget)
+      .filter(t => coverageManager.getMinCoverage(t) < coverageTarget)
       //increment coverages and emit reads from template
       .flatMap(t => {
-        incrementCoverage(t)
+        coverageManager.incrementCoverage(t)
         //output
         t.allReads.iterator
       })
@@ -250,20 +106,26 @@ class NormalizeCoverage(
   override def execute(): Unit = {
     checkArguments()
 
-    initialize(input, targetIntervals)
+    val coverageManager = createCoverageManager(input, targetIntervals)
 
-    Using.Manager { use =>
-      val in = use(SamSource(input))
-      val out = use(SamWriter(output, in.header.clone(), sort = Some(sortOrder), maxRecordsInRam = maxRecordsInRam))
 
-      val templateIterator: Iterator[Template] = RandomTemplate.templateSortedIterator(in.iterator,
-        in.header,
-        maxRecordsInRam,
-        logger)
+    val in = SamSource(input)
+    val header:SAMFileHeader=in.header.clone()
+    header.setGroupOrder(GroupOrder.query)
+    header.setSortOrder(SortOrder.unsorted)
 
-      templatesToReads(templateIterator).foreach(out.write)
-    }
+    val out = SamWriter(output, header, sort = Some(sortOrder), maxRecordsInRam = maxRecordsInRam)
+
+    val templateIterator: Iterator[Template] = Bams.queryGroupedRandomIterator(in.iterator,
+      in.header,
+      maxRecordsInRam)
+
+    filterTemplatesToCoverage(templateIterator,coverageManager,minMQ).foreach(out.write)
+
+    out.close()
+    in.close()
   }
+
 
   private def checkArguments(): Unit = {
     Io.assertReadable(input)
