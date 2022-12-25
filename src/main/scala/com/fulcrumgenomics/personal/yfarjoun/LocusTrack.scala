@@ -39,8 +39,10 @@ class LocusTrack(val locus: Option[Interval], val track: mutable.Seq[Short]) {
   // given locus
   def sliceToLocus(l: Locatable): LocusTrack = {
     locus match {
-      case None => LocusTrack.Empty
-      case Some(loc) if !loc.contigsMatch(l) => LocusTrack.Empty
+      case None =>
+        LocusTrack.Empty
+      case Some(loc) if !loc.contigsMatch(l) =>
+        LocusTrack.Empty
       case Some(loc) =>
         val start: Int = Math.max(loc.getStart, l.getStart)
         val end: Int = Math.min(loc.getEnd, l.getEnd)

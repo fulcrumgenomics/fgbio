@@ -22,6 +22,7 @@
  * THE SOFTWARE.
  *
  */
+
 package com.fulcrumgenomics.personal.yfarjoun
 
 import com.fulcrumgenomics.FgBioDef._
@@ -82,35 +83,13 @@ class NormalizeCoverage(
   }
 
 
-  def templateMinMapQ(t: Template): PhredScore = {
-    CoverageManager.coverageReadsFromTemplate(t).map(r=>r.mapq).min.toByte
-  }
-
-  def filterTemplatesToCoverage(templateIterator: Iterator[Template], coverageManager: CoverageManager, minMapQ: PhredScore): Iterator[SamRecord] = {
-    templateIterator
-      //see if primary reads overlap region of interest
-      .filter(t => coverageManager.primariesOverlapTargets(t))
-      //check that all the reads in the template pass minMQ
-      .filter(t => templateMinMapQ(t) >= minMapQ)
-      //only consider reads that cover regions that need coverage, i.e. that
-      //at least one base that they cover is less than the target coverage
-      .filter(t => coverageManager.getMinCoverage(t) < coverageTarget)
-      //increment coverages and emit reads from template
-      .flatMap(t => {
-        coverageManager.incrementCoverage(t)
-        //output
-        t.allReads.iterator
-      })
-  }
-
   override def execute(): Unit = {
     checkArguments()
 
     val coverageManager = createCoverageManager(input, targetIntervals)
 
-
     val in = SamSource(input)
-    val header:SAMFileHeader=in.header.clone()
+    val header: SAMFileHeader = in.header.clone()
     header.setGroupOrder(GroupOrder.query)
     header.setSortOrder(SortOrder.unsorted)
 
@@ -120,7 +99,9 @@ class NormalizeCoverage(
       in.header,
       maxRecordsInRam)
 
-    filterTemplatesToCoverage(templateIterator,coverageManager,minMQ).foreach(out.write)
+    coverageManager
+      .processTemplates(templateIterator, minMQ, coverageTarget)
+      .foreach(out.write)
 
     out.close()
     in.close()

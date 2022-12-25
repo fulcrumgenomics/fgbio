@@ -3,7 +3,7 @@ package com.fulcrumgenomics.personal.yfarjoun
 import com.fulcrumgenomics.FgBioDef.javaIterableToIterator
 import com.fulcrumgenomics.bam.Template
 import com.fulcrumgenomics.bam.api.SamRecord
-import com.fulcrumgenomics.personal.yfarjoun.CoverageManager.{coverageReadsFromTemplate, readFilterForCoverage}
+import com.fulcrumgenomics.personal.yfarjoun.CoverageManager.{convertSamToInterval, readFilterForCoverage}
 import com.fulcrumgenomics.util.NumericTypes.PhredScore
 import htsjdk.samtools.util.{Interval, IntervalList, OverlapDetector}
 
@@ -11,19 +11,17 @@ import scala.jdk.CollectionConverters.{IteratorHasAsJava, IteratorHasAsScala}
 
 object CoverageManager {
 
-  def minMapQ(template: Template): PhredScore = {
-    template.allReads.filter(readFilterForCoverage)
-      .map(_.mapq)
-      .minOption
-      .getOrElse(0)
-      .toByte
-  }
 
-  def readFilterForCoverage(record: SamRecord): Boolean = {
+  def readFilterForCoverage(record: SamRecord, minMapQ: PhredScore): Boolean = {
     !record.secondary && // I'm assuming here that secondary reads to not count towards coverage, but supplementary do
       record.mapped &&
       !record.duplicate &&
-      record.pf
+      record.pf &&
+      record.mapq >= minMapQ
+  }
+
+  def convertSamToInterval(samRecord: SamRecord): Interval = {
+    new Interval(samRecord.refName, samRecord.start, samRecord.end)
   }
 
   /**
@@ -32,19 +30,9 @@ object CoverageManager {
     * Result will not have overlapping Intervals, but will cover the same original territory
     */
   def squish(ls: IterableOnce[Interval]): IterableOnce[Interval] = {
-    new IntervalList.IntervalMergerIterator(ls.iterator.asJava,true,false,false)
+    new IntervalList.IntervalMergerIterator(ls.iterator.asJava, true, false, false)
   }.asScala
 
-  /**
-    * Gets the minimum value of two input Shorts. Used for left-folding
-    */
-  def min(s1: Short, s2: Short): Short = {
-    s1 min s2
-  }
-
-  def coverageReadsFromTemplate(t: Template): Iterator[SamRecord] = {
-    t.allReads.filter(readFilterForCoverage)
-  }
 }
 
 /**
@@ -57,24 +45,6 @@ class CoverageManager(val intervals: IntervalList) {
   IntervalList.getUniqueIntervals(intervals, false)
     .foreach(i => coverage.addLhs(new LocusTrack(i), i))
 
-  /**
-    * For an input template, returns True if one of its coverage-worthy reads overlap the region of interest
-    *
-    * @param template input Template
-    * @return True only if one of the template's coverage-worthy reads coincide with the region of interest
-    */
-  def primariesOverlapTargets(template: Template): Boolean = {
-    coverageReadsFromTemplate(template).exists(r => overlapsAny(r))
-  }
-
-  def overlapsAny(read: SamRecord): Boolean = {
-    coverage.overlapsAny(convertSamToInterval(read))
-  }
-
-  def overlapsAny(Interval: Interval): Boolean = {
-    coverage.overlapsAny(Interval)
-  }
-
   def getCoverageTracks(locus: Interval): Iterator[LocusTrack] = {
     coverage.getOverlaps(locus).map(lt => lt.sliceToLocus(locus))
   }
@@ -85,8 +55,8 @@ class CoverageManager(val intervals: IntervalList) {
     *
     * returns Short.MaxValue if template doesn't overlap with requested intervals
     */
-  def getMinCoverage(template: Template): Short = {
-    template.allReads.filter(readFilterForCoverage).map(read => {
+  def getMinCoverage(template: Template, minMapQ: PhredScore): Short = {
+    template.allReads.filter(readFilterForCoverage(_, minMapQ)).map(read => {
       getMinCoverage(convertSamToInterval(read))
     }).minOption.getOrElse(Short.MaxValue)
   }
@@ -103,10 +73,6 @@ class CoverageManager(val intervals: IntervalList) {
       getOrElse(Short.MaxValue)
   }
 
-  def convertSamToInterval(samRecord: SamRecord): Interval = {
-    new Interval(samRecord.refName, samRecord.start, samRecord.end)
-  }
-
   def incrementCoverage(interval: Interval): Unit = {
     getCoverageTracks(interval).foreach(locusTrack =>
       locusTrack.track.indices
@@ -117,9 +83,9 @@ class CoverageManager(val intervals: IntervalList) {
     * Increments the coverage map over the range of the relevant reads of the template.
     * Will not increment beyond Short.MaxValue to avoid overflow
     */
-  def incrementCoverage(template: Template): Unit = {
+  def incrementCoverage(template: Template, minMapQ: PhredScore): Unit = {
     CoverageManager
-      .squish(template.allReads.filter(readFilterForCoverage).map(convertSamToInterval))
+      .squish(template.allReads.filter(readFilterForCoverage(_, minMapQ)).map(convertSamToInterval))
       .iterator.foreach(read => incrementCoverage(read))
   }
 
@@ -129,5 +95,20 @@ class CoverageManager(val intervals: IntervalList) {
       locusTrack.track.indices
         .foreach(j => locusTrack.track.update(j, 0.toShort)))
   }
+
+  def processTemplates(templateIterator: Iterator[Template], minMapQ: PhredScore, coverageTarget: Short): Iterator[SamRecord] = {
+    templateIterator
+      // only consider templates that contain reads which cover regions
+      // that need coverage, i.e. that at least one base that they cover is less
+      // than the target coverage
+      .filter(t => getMinCoverage(t, minMapQ) < coverageTarget)
+      //increment coverages and emit reads from template
+      .flatMap(t => {
+        incrementCoverage(t, minMapQ)
+        //output
+        t.allReads.iterator
+      })
+  }
+
 }
 
