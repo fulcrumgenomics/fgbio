@@ -1,3 +1,28 @@
+/*
+ * The MIT License
+ *
+ * Copyright (c) 2022 Fulcrum Genomics
+ *
+ * Permission is hereby granted, free of charge, to any person obtaining a copy
+ * of this software and associated documentation files (the "Software"), to deal
+ * in the Software without restriction, including without limitation the rights
+ * to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+ * copies of the Software, and to permit persons to whom the Software is
+ * furnished to do so, subject to the following conditions:
+ *
+ * The above copyright notice and this permission notice shall be included in
+ * all copies or substantial portions of the Software.
+ *
+ * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+ * IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+ * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+ * AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+ * LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+ * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
+ * THE SOFTWARE.
+ *
+ */
+
 package com.fulcrumgenomics.personal.yfarjoun
 
 import com.fulcrumgenomics.FgBioDef.javaIterableToIterator
@@ -5,12 +30,11 @@ import com.fulcrumgenomics.bam.Template
 import com.fulcrumgenomics.bam.api.SamRecord
 import com.fulcrumgenomics.personal.yfarjoun.CoverageManager.{convertSamToInterval, readFilterForCoverage}
 import com.fulcrumgenomics.util.NumericTypes.PhredScore
-import htsjdk.samtools.util.{Interval, IntervalList, OverlapDetector}
+import htsjdk.samtools.util.{Interval, IntervalList, Locatable, OverlapDetector}
 
 import scala.jdk.CollectionConverters.{IteratorHasAsJava, IteratorHasAsScala}
 
 object CoverageManager {
-
 
   /**
     * a Filter for reads determining if they count towards coverage.
@@ -33,23 +57,20 @@ object CoverageManager {
 
   /**
     * Method that takes in a SamRecord and returns an Interval with the same position.
-    * will return an empty Interval on contig "" if read is unmapped
+    * requires that the read is mapped
     *
     * @param samRecord SamRecord to convert to an Interval
     * @return Interval covering the same position as the alignment of the read
     */
   def convertSamToInterval(samRecord: SamRecord): Interval = {
-    if (samRecord.mapped) {
-      new Interval(samRecord.refName, samRecord.start, samRecord.end)
-    } else {
-      new Interval("", 1, 0)
-    }
+    assert(samRecord.mapped)
+    new Interval(samRecord.refName, samRecord.start, samRecord.end)
   }
 
   /**
     * Takes an iterator of Intervals and reduces it to a *non-overlapping* Seq of the same.
     *
-    * Result will cover the same original territory, and are guarranteed to not have overlapping Intervals.
+    * Result will cover the same original territory, and are guaranteed to not have overlapping Intervals.
     */
   def squish(ls: IterableOnce[Interval]): IterableOnce[Interval] = {
     new IntervalList.IntervalMergerIterator(ls.iterator.asJava, true, false, false)
@@ -63,45 +84,35 @@ object CoverageManager {
   * as providing coverage.
   *
   */
-class CoverageManager(val intervals: IntervalList, val minMapQ:PhredScore, val coverageTarget:Int) {
+class CoverageManager(val intervals: IndexedSeq[Interval], val minMapQ: PhredScore, val coverageTarget: Int) {
 
   private val coverage: OverlapDetector[LocusTrack] = new OverlapDetector[LocusTrack](0, 0)
 
-  IntervalList.getUniqueIntervals(intervals, false)
-    .foreach(i => coverage.addLhs(new LocusTrack(i), i))
+  intervals.foreach(i => coverage.addLhs(new LocusTrack(i), i))
 
-
-
-  private def getCoverageTracks(locus: Interval): Iterator[LocusTrack] = {
+  private def getCoverageTracks(locus: Locatable): Iterator[LocusTrack] = {
     coverage.getOverlaps(locus).map(lt => lt.sliceToLocus(locus))
   }
 
   /**
-    * provides the minimum value in the coverage map in the region that is both
-    * a region of interest, and covered by one of coverage-worthy reads in the template.
-    *
-    * returns Short.MaxValue if template doesn't overlap with requested intervals
+    * Determines if a Template contains a read that provides coverage over a region that needs it.
     */
-  private[yfarjoun] def getMinTemplateCoverage(template: Template): Short = {
-    template.allReads.filter(readFilterForCoverage(_, minMapQ)).map(read => {
-      getMinCoverage(convertSamToInterval(read))
-    }).minOption.getOrElse(Short.MaxValue)
+  private[yfarjoun] def needsCoverage(template: Template): Boolean = {
+    template.allReads.filter(readFilterForCoverage(_, minMapQ))
+      .exists(r => needsCoverage(r.asSam))
   }
 
   /**
-    * returns the minimum value in the region of interest and in the locus provided
-    *
-    * returns Short.MaxValue if template doesn't overlap with requested intervals (so that it will
-    * register as "not needed" to hit coverage no matter what the target is.
+    * Determines if a locus contains overlaps a region that needs coverage.
     */
-  def getMinCoverage(locus: Interval): Short = {
-    getCoverageTracks(locus)
-      .map(lt => lt.track.min)
-      .minOption.
-      getOrElse(Short.MaxValue)
+  def needsCoverage(locus: Locatable): Boolean = {
+    getCoverageTracks(locus).exists(lt => lt.track.exists(_ < coverageTarget))
   }
 
-
+  /**
+    * Increments the coverage map over an interval.
+    * Will not increment beyond Short.MaxValue to avoid overflow
+    */
   private[yfarjoun] def incrementCoverage(interval: Interval): Unit = {
     getCoverageTracks(interval).foreach(locusTrack =>
       locusTrack.track.indices
@@ -118,7 +129,7 @@ class CoverageManager(val intervals: IntervalList, val minMapQ:PhredScore, val c
       .iterator.foreach(read => incrementCoverage(read))
   }
 
-  /** Mostly for testing */
+  /** for testing */
   private[yfarjoun] def resetCoverage(): Unit = {
     coverage.getAll.foreach(locusTrack =>
       locusTrack.track.indices
@@ -144,7 +155,7 @@ class CoverageManager(val intervals: IntervalList, val minMapQ:PhredScore, val c
       // Only consider templates that contain reads which cover regions
       // that need coverage, i.e. that at least one base that they cover is less
       // than the target coverage
-      .filter(t => getMinTemplateCoverage(t) < coverageTarget)
+      .filter(t => needsCoverage(t))
       //increment coverages and emit reads from template
       .map(t => {
         incrementCoverage(t)
