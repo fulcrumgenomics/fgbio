@@ -377,21 +377,17 @@ object Bams extends LazyLogging {
     * @param tmpDir      a temp directory to use for temporary sorting files if sorting is needed
     * @return an Iterator of queryname sorted Template objects
     */
-  def queryGroupedRandomIterator(iterator: Iterator[SamRecord],
-                                 header: SAMFileHeader,
-                                 maxInMemory: Int,
-                                 tmpDir:DirPath=Io.tmpDir): SelfClosingIterator[Template] = {
+  def templateRandomIterator(iterator: Iterator[SamRecord],
+                             header: SAMFileHeader,
+                             maxInMemory: Int,
+                             tmpDir:DirPath=Io.tmpDir): SelfClosingIterator[Template] = {
 
-    val randomSeed=42
-    val sorter = RandomizeBam.Randomize(iterator, header, randomSeed, maxInMemory, queryGroup = true, tmpDir)
-    val sortedIterator = sorter.iterator
+    val randomSeed = 42
+    val sortedIterator = RandomizeBam.Randomize(iterator, header, randomSeed, maxInMemory, queryGroup = true, tmpDir).iterator
 
-    val sortedHead = header.clone()
-    sortedHead.setGroupOrder(GroupOrder.query)
-    sortedHead.setSortOrder(SortOrder.unsorted)
+    val sortedHead = SamOrder.RandomQuery.applyTo(header.clone())
 
     Bams.templateIterator(sortedIterator, sortedHead, maxInMemory, tmpDir)
-
   }
 
   /** Returns an iterator over the records in the given iterator such that the order of the records returned is

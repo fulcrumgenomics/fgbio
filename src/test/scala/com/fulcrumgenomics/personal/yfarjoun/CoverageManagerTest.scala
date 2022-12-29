@@ -27,7 +27,8 @@ class CoverageManagerTest extends UnitSpec {
 
   val il: IntervalList = new IntervalList(dict)
   il.addall(List(i1, i2, i3).asJava)
-  val covMan: CoverageManager = new CoverageManager(il)
+  val covMan: CoverageManager = new CoverageManager(il, minMapQ = 30.toByte, 10)
+  val covManZero: CoverageManager = new CoverageManager(il, minMapQ = 10.toByte, 0)
 
   "CoverageManager.getMinCoverage" should "start its life with coverage = zero" in {
     covMan.getMinCoverage(i1) shouldEqual 0
@@ -64,56 +65,62 @@ class CoverageManagerTest extends UnitSpec {
     val builder = new SamBuilder(sort = Some(SamOrder.Queryname))
     builder.header.setSequenceDictionary(dict)
     builder.addPair(name = "p1", contig = chr1Index, start1 = 100, start2 = 150)
-    val minMapQ: PhredScore = 30.toByte
     val templates: Seq[Template] = Bams.templateIterator(builder.toSource).toSeq
 
     covMan.resetCoverage()
-    templates.foreach(t => covMan.incrementCoverage(t, minMapQ))
+    templates.foreach(t => covMan.incrementCoverage(t))
 
     covMan.getMinCoverage(new Interval("chr1", 150, 200)) shouldEqual 1
-    covMan.getMinCoverage(template = templates.head, minMapQ) shouldEqual 1
+    covMan.getMinTemplateCoverage(template = templates.head) shouldEqual 1
   }
 
   it should "Correctly add reads from an easy template" in {
     val builder = new SamBuilder(sort = Some(SamOrder.Queryname))
     builder.header.setSequenceDictionary(dict)
     builder.addPair(name = "p1", contig = chr1Index, start1 = 100, start2 = 150)
-    val minMapQ: PhredScore = 30.toByte
     val templates: Seq[Template] = Bams.templateIterator(builder.toSource).toSeq
 
+    // here we should *not* add anything to the coverage, since the coverage target is zero
+    covManZero.resetCoverage()
+
+    covManZero.processTemplates(templates.iterator).isEmpty shouldBe true
+    covManZero.getMinTemplateCoverage(template = templates.head) shouldEqual 0
+    covManZero.getMinCoverage(new Interval("chr1", 150, 200)) shouldEqual 0
+
+    // here we *should* add to the coverage, since the coverage target is 10
     covMan.resetCoverage()
 
-    // here we should *not* add anything to the coverage, since the coverage target is zero
-    covMan.processTemplates(templates.iterator, minMapQ, 0).isEmpty shouldBe true
-    covMan.getMinCoverage(new Interval("chr1", 150, 200)) shouldEqual 0
-    covMan.getMinCoverage(template = templates.head, minMapQ) shouldEqual 0
-
-    // here we *should* add to the coverage, since the coverage target is one
-    covMan.processTemplates(templates.iterator, minMapQ, 1).isEmpty shouldBe false
+    covMan.processTemplates(templates.iterator).isEmpty shouldBe false
     covMan.getMinCoverage(new Interval("chr1", 150, 200)) shouldEqual 1
-    covMan.getMinCoverage(template = templates.head, minMapQ) shouldEqual 1
+    covMan.getMinTemplateCoverage(template = templates.head) shouldEqual 1
   }
 
-  it should "Correctly only consider coverage from the reads of high mapq" in {
+  it should "Correctly only consider coverage from the reads of high mapq (target zero)" in {
     val builder = new SamBuilder(sort = Some(SamOrder.Queryname))
     builder.header.setSequenceDictionary(dict)
-    builder.addPair(name = "p1", contig = chr1Index, start1 = 100, start2 = 150, mapq1 = PhredScore.MinValue,mapq2 = PhredScore.MaxValue)
-    val minMapQ: PhredScore = 30.toByte
+    builder.addPair(name = "p1", contig = chr1Index, start1 = 100, start2 = 150, mapq1 = PhredScore.MinValue, mapq2 = PhredScore.MaxValue)
+
+    // Here we should *not* add anything to the coverage, since the coverage target is zero.
+    covManZero.resetCoverage()
     val templates: Seq[Template] = Bams.templateIterator(builder.toSource).toSeq
+    covManZero.processTemplates(templates.iterator).isEmpty shouldBe true
+    covManZero.getMinCoverage(new Interval("chr1", 150, 200)) shouldEqual 0
+    covManZero.getMinTemplateCoverage(template = templates.head) shouldEqual 0
+  }
 
+  it should "Correctly only consider coverage from the reads of high mapq (target 10)" in {
+    val builder = new SamBuilder(sort = Some(SamOrder.Queryname))
+    builder.header.setSequenceDictionary(dict)
+    builder.addPair(name = "p1", contig = chr1Index, start1 = 100, start2 = 150, mapq1 = PhredScore.MinValue, mapq2 = PhredScore.MaxValue)
+
+    // Here we *should* add to the coverage, since the coverage target is 10.
     covMan.resetCoverage()
-
-    // here we should *not* add anything to the coverage, since the coverage target is zero
-    covMan.processTemplates(templates.iterator, minMapQ, 0).isEmpty shouldBe true
-    covMan.getMinCoverage(new Interval("chr1", 150, 200)) shouldEqual 0
-    covMan.getMinCoverage(template = templates.head, minMapQ) shouldEqual 0
-
-    // here we *should* add to the coverage, since the coverage target is one
-    covMan.processTemplates(templates.iterator, minMapQ, 1).isEmpty shouldBe false
+    val templates: Seq[Template] = Bams.templateIterator(builder.toSource).toSeq
+    covMan.processTemplates(templates.iterator).isEmpty shouldBe false
     covMan.getMinCoverage(new Interval("chr1", 100, 149)) shouldEqual 0
-    covMan.getMinCoverage(new Interval("chr1", 150, 249)) shouldEqual 1
+    covMan.getMinCoverage(new Interval("chr1", 150, 150)) shouldEqual 1
+    covMan.getMinTemplateCoverage(template = templates.head) shouldEqual 1
     covMan.getMinCoverage(new Interval("chr1", 0, 250)) shouldEqual 0
-    covMan.getMinCoverage(template = templates.head, minMapQ) shouldEqual 1
 
   }
 
@@ -138,16 +145,15 @@ class CoverageManagerTest extends UnitSpec {
     builder.addPair(name = "non-overlapping2", contig = chr2Index, start1 = 100, start2 = 150)
       .iterator.foreach(r => r.pf = false)
 
-    val minMapQ: PhredScore = 30.toByte
     val templates: Seq[Template] = Bams.templateIterator(builder.toSource).toSeq
 
     covMan.resetCoverage()
 
     // here we *should not* add to the coverage, since non of the reads pass filteres
-    covMan.processTemplates(templates.iterator, minMapQ, 1).isEmpty shouldBe true
+    covMan.processTemplates(templates.iterator).isEmpty shouldBe true
     covMan.getMinCoverage(new Interval("chr1", 150, 200)) shouldEqual 0.toShort
     // since there's no region of interest as all the reads get filtered out...
-    covMan.getMinCoverage(template = templates.head, minMapQ) shouldEqual Short.MaxValue
+    covMan.getMinTemplateCoverage(template = templates.head) shouldEqual Short.MaxValue
   }
 
 
@@ -155,22 +161,22 @@ class CoverageManagerTest extends UnitSpec {
     val builder = new SamBuilder(sort = Some(SamOrder.Queryname))
     builder.header.setSequenceDictionary(dict)
 
-    builder.addPair(name = "secondary", contig = chr1Index, start1 = 100, start2 = 150, mapq1 = 40, mapq2 = 40)
+    builder.addPair(name = "secondary", contig = chr1Index, start1 = 300, start2 = 400)
 
     builder.addPair(name = "secondary", contig = chr2Index, start1 = 100, start2 = 150)
       .iterator.foreach(r => r.secondary = true)
 
-    val minMapQ: PhredScore = 30.toByte
     val templates: Seq[Template] = Bams.templateIterator(builder.toSource).toSeq
 
     covMan.resetCoverage()
 
-    // here we *should not* add to the coverage, since non of the reads pass filters
-    val reads = covMan.processTemplates(templates.iterator, minMapQ, 1)
+    // here we *should not* add to the coverage, since none of the reads pass filters
+    val filteredTemplates = covMan.processTemplates(templates.iterator)
 
-    reads.isEmpty shouldBe false
-    reads.size shouldBe 4
-    covMan.getMinCoverage(new Interval("chr1", 150, 200)) shouldEqual 1.toShort
-    covMan.getMinCoverage(template = templates.head, minMapQ) shouldEqual 1
+    filteredTemplates.isEmpty shouldBe false
+    filteredTemplates.size shouldBe 1
+    covMan.getMinCoverage(new Interval("chr1", 100, 200)) shouldEqual 0
+    covMan.getMinCoverage(new Interval("chr1", 300, 400)) shouldEqual 1
+    covMan.getMinTemplateCoverage(template = templates.head) shouldEqual 1
   }
 }

@@ -1,24 +1,52 @@
 package com.fulcrumgenomics.personal.yfarjoun
 
 import htsjdk.samtools.util.{Interval, Locatable}
-
 import scala.collection.mutable
 
 object LocusTrack {
   val Empty = new LocusTrack(None)
 
+
+  /**
+    * A small class which implements a "connected slice", i.e. a slice of a mutable.Seq which, when modified
+    * simply modifies its "parent" Seq. Unlike Seq.slice and Array.slice, copies of data are not made.
+    * @param mySeq original Seq[A] of which this is a slice
+    * @param from index from which slice starts (0-based, inclusive.) Must be >=0
+    * @param to index to which slice continues (0-based, exclusive). Must be >= from
+    * @tparam A Type of Seq
+    */
   class ConnectedSlice[A](val mySeq: mutable.Seq[A], val from: Int, val to: Int) extends mutable.Seq[A] {
 
     assert(from >= 0)
     assert(to >= from)
     assert(to <= mySeq.size)
 
-    override def update(idx: Int, elem: A): Unit = mySeq.update(idx + from, elem)
+    /**
+      * Updates element idx in slice to value elem. Will (only) update appropriate value in origSeq
+      * @param idx index of element in the slice to update
+      * @param elem new value of element
+      */
+    @throws[IndexOutOfBoundsException]
+    override def update(idx: Int, elem: A): Unit = {
+      if (idx < 0 || idx >= length) {
+        throw new IndexOutOfBoundsException(idx)
+      }
+      mySeq.update(idx + from, elem)
+    }
 
-    override def apply(i: Int): A = mySeq.apply(i + from)
+    /** Get the element at the specified index. */
+    @throws[IndexOutOfBoundsException]
+    override def apply(i: Int): A = {
+      if (i < 0 || i >= length) {
+        throw new IndexOutOfBoundsException(i)
+      }
+      mySeq.apply(i + from)
+    }
 
-    override def length: Int = to - from
+    override val length: Int = to - from
 
+    /** Provides an iterator over the elements between from and to in mySeq.
+      * */
     override def iterator: Iterator[A] = mySeq.slice(from, to).iterator
   }
 }

@@ -218,6 +218,67 @@ class BamsTest extends UnitSpec {
     }
   }
 
+  "Bams.templateRandomIterator" should "return template objects in a random order (by queryname)" in {
+    val builder = new SamBuilder(sort=Some(SamOrder.Coordinate))
+    builder.addPair(name="p1", start1=100, start2=300)
+    builder.addFrag(name="f1", start=100)
+    builder.addPair(name="p2", start1=500, start2=200)
+    builder.addPair(name="p0", start1=700, start2=999)
+
+    val templates = Bams.templateRandomIterator(builder.iterator, builder.header,10).toSeq
+    templates should have size 4
+    templates.map(_.name) shouldBe Seq("f1", "p0", "p1", "p2")
+
+    templates.foreach {t =>
+      (t.r1Supplementals ++ t.r1Secondaries ++ t.r2Supplementals ++ t.r2Secondaries).isEmpty shouldBe true
+      if (t.name startsWith "f") {
+        t.r1.exists(r => !r.paired) shouldBe true
+        t.r2.isEmpty shouldBe true
+      }
+      else {
+        t.r1.exists(r => r.firstOfPair) shouldBe true
+        t.r2.exists(r => r.secondOfPair) shouldBe true
+      }
+    }
+  }
+
+  it should "only return templates in a random sorted order" in {
+    val builder1 = new SamBuilder(sort = Some(SamOrder.Unknown))
+    builder1.addPair(name = "A9")
+    builder1.addPair(name = "A88")
+    val iterator1 = Bams.templateRandomIterator(builder1.iterator, builder1.header, maxInMemory = 10, Io.tmpDir)
+    iterator1.toList.map(_.name) should contain theSameElementsInOrderAs Seq("A88", "A9")
+
+    val builder2 = new SamBuilder(sort = Some(SamOrder.Unknown))
+    builder2.addPair(name = "A88")
+    builder2.addPair(name = "A9")
+    val iterator2 = Bams.templateRandomIterator(builder2.iterator, builder2.header, maxInMemory = 10, Io.tmpDir)
+    iterator2.toList.map(_.name) should contain theSameElementsInOrderAs Seq("A88", "A9")
+  }
+
+  it should "handle reads with secondary and supplementary records" in {
+    val builder = new SamBuilder(sort=Some(SamOrder.Coordinate))
+    Range.inclusive(1, 5).foreach { i=>
+      builder.addPair(s"p$i", start1=i*100,  start2=i*100  + 500)
+      builder.addPair(s"p$i", start1=i*1000, start2=i*1000 + 500).foreach(_.secondary = true)
+      builder.addPair(s"p$i", start1=i*10,   start2=i*10   + 500).foreach(_.supplementary = true)
+    }
+
+    val templates = Bams.templateRandomIterator(builder.iterator,builder.header,10).toSeq
+    templates.map(_.name) shouldBe Seq("p1", "p2", "p3", "p4", "p5")
+    templates.foreach { t =>
+      t.r1.exists(r => r.firstOfPair  && !r.secondary & !r.supplementary) shouldBe true
+      t.r2.exists(r => r.secondOfPair && !r.secondary & !r.supplementary) shouldBe true
+      Seq(t.r1Secondaries, t.r2Secondaries, t.r1Supplementals, t.r2Supplementals).foreach(rs => rs.size shouldBe 1)
+
+      t.r1Secondaries.foreach  (r => (r.firstOfPair  && r.secondary) shouldBe true)
+      t.r2Secondaries.foreach  (r => (r.secondOfPair && r.secondary) shouldBe true)
+      t.r1Supplementals.foreach(r => (r.firstOfPair  && r.supplementary) shouldBe true)
+      t.r2Supplementals.foreach(r => (r.secondOfPair && r.supplementary) shouldBe true)
+    }
+  }
+
+
   "Bams.regenerateNmUqMdTags" should "null out fields on unmapped reads" in {
     val builder = new SamBuilder(sort=Some(SamOrder.Coordinate))
     val rec = builder.addFrag(unmapped=true).get
