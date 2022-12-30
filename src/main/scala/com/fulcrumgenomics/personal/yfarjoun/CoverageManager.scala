@@ -28,8 +28,9 @@ package com.fulcrumgenomics.personal.yfarjoun
 import com.fulcrumgenomics.FgBioDef.javaIterableToIterator
 import com.fulcrumgenomics.bam.Template
 import com.fulcrumgenomics.bam.api.SamRecord
-import com.fulcrumgenomics.personal.yfarjoun.CoverageManager.{convertSamToInterval, readFilterForCoverage}
+import com.fulcrumgenomics.personal.yfarjoun.CoverageManager.readFilterForCoverage
 import com.fulcrumgenomics.util.NumericTypes.PhredScore
+import htsjdk.samtools.SAMRecord
 import htsjdk.samtools.util.{Interval, IntervalList, Locatable, OverlapDetector}
 
 import scala.jdk.CollectionConverters.{IteratorHasAsJava, IteratorHasAsScala}
@@ -56,18 +57,6 @@ object CoverageManager {
   }
 
   /**
-    * Method that takes in a SamRecord and returns an Interval with the same position.
-    * requires that the read is mapped
-    *
-    * @param samRecord SamRecord to convert to an Interval
-    * @return Interval covering the same position as the alignment of the read
-    */
-  def convertSamToInterval(samRecord: SamRecord): Interval = {
-    assert(samRecord.mapped)
-    new Interval(samRecord.refName, samRecord.start, samRecord.end)
-  }
-
-  /**
     * Takes an iterator of Intervals and reduces it to a *non-overlapping* Seq of the same.
     *
     * Result will cover the same original territory, and are guaranteed to not have overlapping Intervals.
@@ -84,22 +73,14 @@ object CoverageManager {
   * as providing coverage.
   *
   */
-class CoverageManager(val intervals: IndexedSeq[Interval], val minMapQ: PhredScore, val coverageTarget: Int) {
+class CoverageManager(val intervals: IntervalList, val minMapQ: PhredScore, val coverageTarget: Int) {
 
   private val coverage: OverlapDetector[LocusTrack] = new OverlapDetector[LocusTrack](0, 0)
 
-  intervals.foreach(i => coverage.addLhs(new LocusTrack(i), i))
+  intervals.uniqued().foreach(i => coverage.addLhs(new LocusTrack(i), i))
 
   private def getCoverageTracks(locus: Locatable): Iterator[LocusTrack] = {
     coverage.getOverlaps(locus).map(lt => lt.sliceToLocus(locus))
-  }
-
-  /**
-    * Determines if a Template contains a read that provides coverage over a region that needs it.
-    */
-  private[yfarjoun] def needsCoverage(template: Template): Boolean = {
-    template.allReads.filter(readFilterForCoverage(_, minMapQ))
-      .exists(r => needsCoverage(r.asSam))
   }
 
   /**
@@ -113,20 +94,10 @@ class CoverageManager(val intervals: IndexedSeq[Interval], val minMapQ: PhredSco
     * Increments the coverage map over an interval.
     * Will not increment beyond Short.MaxValue to avoid overflow
     */
-  private[yfarjoun] def incrementCoverage(interval: Interval): Unit = {
-    getCoverageTracks(interval).foreach(locusTrack =>
+  private[yfarjoun] def incrementCoverage(locatable: Locatable): Unit = {
+    getCoverageTracks(locatable).foreach(locusTrack =>
       locusTrack.track.indices
         .foreach(j => locusTrack.track(j) = Math.min(Short.MaxValue, locusTrack.track(j) + 1).toShort))
-  }
-
-  /**
-    * Increments the coverage map over the range of the relevant reads of the template.
-    * Will not increment beyond Short.MaxValue to avoid overflow
-    */
-  private[yfarjoun] def incrementCoverage(template: Template): Unit = {
-    CoverageManager
-      .squish(template.allReads.filter(readFilterForCoverage(_, minMapQ)).map(convertSamToInterval))
-      .iterator.foreach(read => incrementCoverage(read))
   }
 
   /** for testing */
@@ -155,11 +126,11 @@ class CoverageManager(val intervals: IndexedSeq[Interval], val minMapQ: PhredSco
       // Only consider templates that contain reads which cover regions
       // that need coverage, i.e. that at least one base that they cover is less
       // than the target coverage
-      .filter(t => needsCoverage(t))
-      //increment coverages and emit reads from template
-      .map(t => {
-        incrementCoverage(t)
-        t
+      .filter(t => {
+        val coverageReads: Seq[SAMRecord] = t.allReads.filter(readFilterForCoverage(_, minMapQ)).map(_.asSam).toSeq
+        val templateNeeded = coverageReads.exists(needsCoverage(_))
+        if (templateNeeded) coverageReads.foreach(incrementCoverage(_))
+        templateNeeded
       }).toSeq
   }
 }

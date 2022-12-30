@@ -1,5 +1,6 @@
 package com.fulcrumgenomics.personal.yfarjoun
 
+import com.fulcrumgenomics.FgBioDef._
 import com.fulcrumgenomics.bam.api.SamOrder
 import com.fulcrumgenomics.bam.{Bams, Template}
 import com.fulcrumgenomics.fasta.Converters.ToSAMSequenceDictionary
@@ -27,38 +28,41 @@ class CoverageManagerTest extends UnitSpec {
 
   val il: IntervalList = new IntervalList(dict)
   il.addall(List(i1, i2, i3).asJava)
-  val covMan: CoverageManager = new CoverageManager(il, minMapQ = 30.toByte, 10)
+  val covManTwo: CoverageManager = new CoverageManager(il, minMapQ = 30.toByte, 2)
+  val covManOne: CoverageManager = new CoverageManager(il, minMapQ = 30.toByte, 1)
   val covManZero: CoverageManager = new CoverageManager(il, minMapQ = 10.toByte, 0)
 
-  "CoverageManager.getMinCoverage" should "start its life with coverage = zero" in {
-    covMan.getMinCoverage(i1) shouldEqual 0
-    covMan.getMinCoverage(i2) shouldEqual 0
-    covMan.getMinCoverage(i3) shouldEqual 0
+  "CoverageManager.needsCoverage" should "start being true" in {
+    covManOne.needsCoverage(i1) shouldBe true
+    covManOne.needsCoverage(i2) shouldBe true
+    covManOne.needsCoverage(i3) shouldBe true
   }
 
-  it should "return Short.MaxValue when out of range" in {
-    covMan.getMinCoverage(i4) shouldEqual Short.MaxValue
+  it should "return false when out of range" in {
+    covManOne.needsCoverage(i4) shouldBe false
   }
 
-  it should "remain coverage zero when only partially covered" in {
-    covMan.resetCoverage()
-    covMan.incrementCoverage(i1)
-    covMan.getMinCoverage(i2) shouldEqual 0
-    covMan.getMinCoverage(i3) shouldEqual 0
-    covMan.getMinCoverage(i1) shouldEqual 1
+  it should "remain true when partially covered" in {
+    covManOne.resetCoverage()
+    covManOne.incrementCoverage(i1)
+    covManOne.needsCoverage(i2) shouldBe true
+    covManOne.needsCoverage(i3) shouldBe true
+    covManOne.needsCoverage(i1) shouldBe false
   }
 
-  it should "remain Short.MaxValue when out of range" in {
-    covMan.getMinCoverage(i4) shouldEqual Short.MaxValue
+  it should "remain false when out of range" in {
+    covManOne.resetCoverage()
+    covManOne.incrementCoverage(i1)
+    covManOne.needsCoverage(i4) shouldBe false
   }
 
   it should "get to 2 when adding coverage twice" in {
-    covMan.resetCoverage()
-    covMan.incrementCoverage(i1)
-    covMan.incrementCoverage(i1)
-    covMan.getMinCoverage(i2) shouldEqual 0
-    covMan.getMinCoverage(i3) shouldEqual 0
-    covMan.getMinCoverage(i1) shouldEqual 2
+    covManTwo.resetCoverage()
+    covManOne.incrementCoverage(i1)
+    covManOne.incrementCoverage(i1)
+    covManOne.needsCoverage(i2) shouldBe true
+    covManOne.needsCoverage(i3) shouldBe true
+    covManOne.needsCoverage(i1) shouldBe false
   }
 
   it should "increment its coverage by 1 correctly from a template with overlapping reads" in {
@@ -67,11 +71,10 @@ class CoverageManagerTest extends UnitSpec {
     builder.addPair(name = "p1", contig = chr1Index, start1 = 100, start2 = 150)
     val templates: Seq[Template] = Bams.templateIterator(builder.toSource).toSeq
 
-    covMan.resetCoverage()
-    templates.foreach(t => covMan.incrementCoverage(t))
+    covManTwo.resetCoverage()
+    covManTwo.processTemplates(templates.iterator).isEmpty shouldBe false
 
-    covMan.getMinCoverage(new Interval("chr1", 150, 200)) shouldEqual 1
-    covMan.getMinTemplateCoverage(template = templates.head) shouldEqual 1
+    covManTwo.needsCoverage(new Interval("chr1", 150, 200)) shouldBe true
   }
 
   it should "Correctly add reads from an easy template" in {
@@ -84,15 +87,13 @@ class CoverageManagerTest extends UnitSpec {
     covManZero.resetCoverage()
 
     covManZero.processTemplates(templates.iterator).isEmpty shouldBe true
-    covManZero.getMinTemplateCoverage(template = templates.head) shouldEqual 0
-    covManZero.getMinCoverage(new Interval("chr1", 150, 200)) shouldEqual 0
+    covManZero.needsCoverage(new Interval("chr1", 150, 200)) shouldBe false
 
     // here we *should* add to the coverage, since the coverage target is 10
-    covMan.resetCoverage()
+    covManOne.resetCoverage()
 
-    covMan.processTemplates(templates.iterator).isEmpty shouldBe false
-    covMan.getMinCoverage(new Interval("chr1", 150, 200)) shouldEqual 1
-    covMan.getMinTemplateCoverage(template = templates.head) shouldEqual 1
+    covManOne.processTemplates(templates.iterator).isEmpty shouldBe false
+    covManOne.needsCoverage(new Interval("chr1", 150, 200)) shouldEqual false
   }
 
   it should "Correctly only consider coverage from the reads of high mapq (target zero)" in {
@@ -104,8 +105,7 @@ class CoverageManagerTest extends UnitSpec {
     covManZero.resetCoverage()
     val templates: Seq[Template] = Bams.templateIterator(builder.toSource).toSeq
     covManZero.processTemplates(templates.iterator).isEmpty shouldBe true
-    covManZero.getMinCoverage(new Interval("chr1", 150, 200)) shouldEqual 0
-    covManZero.getMinTemplateCoverage(template = templates.head) shouldEqual 0
+    covManZero.needsCoverage(new Interval("chr1", 150, 200)) shouldBe false
   }
 
   it should "Correctly only consider coverage from the reads of high mapq (target 10)" in {
@@ -114,14 +114,12 @@ class CoverageManagerTest extends UnitSpec {
     builder.addPair(name = "p1", contig = chr1Index, start1 = 100, start2 = 150, mapq1 = PhredScore.MinValue, mapq2 = PhredScore.MaxValue)
 
     // Here we *should* add to the coverage, since the coverage target is 10.
-    covMan.resetCoverage()
+    covManOne.resetCoverage()
     val templates: Seq[Template] = Bams.templateIterator(builder.toSource).toSeq
-    covMan.processTemplates(templates.iterator).isEmpty shouldBe false
-    covMan.getMinCoverage(new Interval("chr1", 100, 149)) shouldEqual 0
-    covMan.getMinCoverage(new Interval("chr1", 150, 150)) shouldEqual 1
-    covMan.getMinTemplateCoverage(template = templates.head) shouldEqual 1
-    covMan.getMinCoverage(new Interval("chr1", 0, 250)) shouldEqual 0
-
+    covManOne.processTemplates(templates.iterator).isEmpty shouldBe false
+    covManOne.needsCoverage(new Interval("chr1", 100, 149)) shouldBe true
+    covManOne.needsCoverage(new Interval("chr1", 150, 150))  shouldBe false
+    covManOne.needsCoverage(new Interval("chr1", 0, 250)) shouldBe true
   }
 
   it should "Correctly not add reads that should be filtered " in {
@@ -147,36 +145,31 @@ class CoverageManagerTest extends UnitSpec {
 
     val templates: Seq[Template] = Bams.templateIterator(builder.toSource).toSeq
 
-    covMan.resetCoverage()
+    covManOne.resetCoverage()
 
-    // here we *should not* add to the coverage, since non of the reads pass filteres
-    covMan.processTemplates(templates.iterator).isEmpty shouldBe true
-    covMan.getMinCoverage(new Interval("chr1", 150, 200)) shouldEqual 0.toShort
-    // since there's no region of interest as all the reads get filtered out...
-    covMan.getMinTemplateCoverage(template = templates.head) shouldEqual Short.MaxValue
+    // here we *should not* add to the coverage, since non of the reads pass filters
+    covManOne.processTemplates(templates.iterator).isEmpty shouldBe true
+    covManOne.needsCoverage(new Interval("chr1", 150, 200)) shouldBe true
   }
-
 
   it should "Correctly not add reads that should be filtered but include good read from same template" in {
     val builder = new SamBuilder(sort = Some(SamOrder.Queryname))
     builder.header.setSequenceDictionary(dict)
 
     builder.addPair(name = "secondary", contig = chr1Index, start1 = 300, start2 = 400)
-
     builder.addPair(name = "secondary", contig = chr2Index, start1 = 100, start2 = 150)
       .iterator.foreach(r => r.secondary = true)
 
     val templates: Seq[Template] = Bams.templateIterator(builder.toSource).toSeq
 
-    covMan.resetCoverage()
+    covManOne.resetCoverage()
 
     // here we *should not* add to the coverage, since none of the reads pass filters
-    val filteredTemplates = covMan.processTemplates(templates.iterator)
+    val filteredTemplates = covManOne.processTemplates(templates.iterator)
 
     filteredTemplates.isEmpty shouldBe false
     filteredTemplates.size shouldBe 1
-    covMan.getMinCoverage(new Interval("chr1", 100, 200)) shouldEqual 0
-    covMan.getMinCoverage(new Interval("chr1", 300, 400)) shouldEqual 1
-    covMan.getMinTemplateCoverage(template = templates.head) shouldEqual 1
+    covManOne.needsCoverage(new Interval("chr1", 100, 200)) shouldBe true
+    covManOne.needsCoverage(new Interval("chr1", 300, 400)) shouldBe false
   }
 }

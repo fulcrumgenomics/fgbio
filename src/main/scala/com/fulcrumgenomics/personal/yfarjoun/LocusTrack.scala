@@ -1,3 +1,27 @@
+/*
+ * The MIT License
+ *
+ * Copyright (c) 2022 Fulcrum Genomics
+ *
+ * Permission is hereby granted, free of charge, to any person obtaining a copy
+ * of this software and associated documentation files (the "Software"), to deal
+ * in the Software without restriction, including without limitation the rights
+ * to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+ * copies of the Software, and to permit persons to whom the Software is
+ * furnished to do so, subject to the following conditions:
+ *
+ * The above copyright notice and this permission notice shall be included in
+ * all copies or substantial portions of the Software.
+ *
+ * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+ * IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+ * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+ * AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+ * LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+ * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
+ * THE SOFTWARE.
+ *
+ */
 package com.fulcrumgenomics.personal.yfarjoun
 
 import htsjdk.samtools.util.{Interval, Locatable}
@@ -5,7 +29,6 @@ import scala.collection.mutable
 
 object LocusTrack {
   val Empty = new LocusTrack(None)
-
 
   /**
     * A small class which implements a "connected slice", i.e. a slice of a mutable.Seq which, when modified
@@ -16,7 +39,6 @@ object LocusTrack {
     * @tparam A Type of Seq
     */
   class ConnectedSlice[A](val mySeq: mutable.Seq[A], val from: Int, val to: Int) extends mutable.Seq[A] {
-
     assert(from >= 0)
     assert(to >= from)
     assert(to <= mySeq.size)
@@ -63,14 +85,13 @@ class LocusTrack(val locus: Option[Interval], val track: mutable.Seq[Short]) {
     this(Some(l))
   }
 
-  // return a slice of the track which matches a region overlapping a
-  // given locus
+  /**
+    * return a slice of the track which matches a region overlapping a given locus
+    */
   def sliceToLocus(l: Locatable): LocusTrack = {
     locus match {
-      case None =>
-        LocusTrack.Empty
-      case Some(loc) if !loc.contigsMatch(l) =>
-        LocusTrack.Empty
+      case None => LocusTrack.Empty
+      case Some(loc) if !loc.contigsMatch(l) => LocusTrack.Empty
       case Some(loc) =>
         val start: Int = Math.max(loc.getStart, l.getStart)
         val end: Int = Math.min(loc.getEnd, l.getEnd)

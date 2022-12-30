@@ -44,7 +44,6 @@ object NormalizeCoverage {
   /** Various default values for the Coverage Normalizer. */
   val DefaultMinMapQ: PhredScore = 30.toByte
 
-
   def getIntervalsFromDictionary(dict: SequenceDictionary): List[Interval] = {
     dict.iterator.map(seq => new Interval(seq.name, 1, seq.length)).toList
   }
@@ -83,10 +82,12 @@ class NormalizeCoverage(
   //sets up the overlap detector and the coverage tracker
   private def createCoverageManager(bam: PathToBam, intervalsMaybe: Option[PathToIntervals]): CoverageManager = {
     val dict = SequenceDictionary.extract(bam)
-    val intervals:IndexedSeq[Interval] = intervalsMaybe match {
+    val intervals:IntervalList = intervalsMaybe match {
       // if no intervals are provided, make one from the embedded dictionary
-      case None =>getIntervalsFromDictionary(dict).toIndexedSeq
-      case Some(intervals) => IntervalList.fromPath(intervals).uniqued().getIntervals.toIndexedSeq
+      case None => val il=new IntervalList(dict.toSam)
+        il.addall(getIntervalsFromDictionary(dict).asJava)
+        il
+      case Some(intervalsListFile) => IntervalList.fromPath(intervalsListFile)
     }
     new CoverageManager(intervals, minMapQ = minMQ, coverageTarget = coverageTarget)
   }
@@ -117,7 +118,6 @@ class NormalizeCoverage(
     out.safelyClose()
     in.safelyClose()
   }
-
 
   private def checkArguments(): Unit = {
     Io.assertReadable(input)
