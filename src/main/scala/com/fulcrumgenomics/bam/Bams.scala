@@ -366,6 +366,30 @@ object Bams extends LazyLogging {
     new SelfClosingIterator(_iterator, () => queryIterator.close())
   }
 
+  /** Return an iterator over records sorted and grouped into [[Template]] objects. Sort order is deterministic, but
+    * random (based on queryname). See [[templateIterator]] for a [[Template]] iterator which emits templates in a
+    * non-guaranteed sort order.
+    *
+    * @see [[templateIterator]]
+    * @param iterator    an iterator from which to consume records
+    * @param header      the header associated with the records
+    * @param maxInMemory the maximum number of records to keep and sort in memory, if sorting is needed
+    * @param tmpDir      a temp directory to use for temporary sorting files if sorting is needed
+    * @return an Iterator of queryname sorted Template objects
+    */
+  def templateRandomIterator(iterator: Iterator[SamRecord],
+                             header: SAMFileHeader,
+                             maxInMemory: Int,
+                             tmpDir:DirPath=Io.tmpDir): SelfClosingIterator[Template] = {
+
+    val randomSeed = 42
+    val sortedIterator = RandomizeBam.Randomize(iterator, header, randomSeed, maxInMemory, queryGroup = true, tmpDir).iterator
+
+    val sortedHead = SamOrder.RandomQuery.applyTo(header.clone())
+
+    Bams.templateIterator(sortedIterator, sortedHead, maxInMemory, tmpDir)
+  }
+
   /** Returns an iterator over the records in the given iterator such that the order of the records returned is
     * determined by the value of the given SAM tag, which can optionally be transformed.
     *
