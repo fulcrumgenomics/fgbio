@@ -1,6 +1,5 @@
 package com.fulcrumgenomics.personal.yfarjoun
 
-import com.fulcrumgenomics.FgBioDef._
 import com.fulcrumgenomics.bam.api.SamOrder
 import com.fulcrumgenomics.bam.{Bams, Template}
 import com.fulcrumgenomics.fasta.Converters.ToSAMSequenceDictionary

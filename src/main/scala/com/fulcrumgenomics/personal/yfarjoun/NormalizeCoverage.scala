@@ -33,11 +33,10 @@ import com.fulcrumgenomics.commons.util.LazyLogging
 import com.fulcrumgenomics.fasta.SequenceDictionary
 import com.fulcrumgenomics.personal.yfarjoun.NormalizeCoverage._
 import com.fulcrumgenomics.sopt._
-import com.fulcrumgenomics.util.Io
+import com.fulcrumgenomics.util.{Io, ProgressLogger}
 import com.fulcrumgenomics.util.NumericTypes.PhredScore
 import htsjdk.samtools.util.{Interval, IntervalList, SequenceUtil}
 
-import java.util
 import scala.jdk.CollectionConverters._
 
 object NormalizeCoverage {
@@ -50,7 +49,7 @@ object NormalizeCoverage {
 }
 
 @clp(description =
-"""
+  """
     |Normalizes coverage of an input bam to be at a given coverage for every base in the reference/input interval list.
     |
     |Only non-secondary, non-duplicate, mapped (with mapping quality >= mq argument), pf reads are considered. A set of reads
@@ -78,21 +77,23 @@ class NormalizeCoverage(
 
                        ) extends FgBioTool with LazyLogging {
 
-
   //sets up the overlap detector and the coverage tracker
   private def createCoverageManager(bam: PathToBam, intervalsMaybe: Option[PathToIntervals]): CoverageManager = {
     val dict = SequenceDictionary.extract(bam)
-    val intervals:IntervalList = intervalsMaybe match {
+    val intervals: IntervalList = intervalsMaybe match {
       // if no intervals are provided, make one from the embedded dictionary
-      case None => val il=new IntervalList(dict.toSam)
+      case None => val il = new IntervalList(dict.toSam)
         il.addall(getIntervalsFromDictionary(dict).asJava)
         il
       case Some(intervalsListFile) => IntervalList.fromPath(intervalsListFile)
     }
+    SequenceUtil.assertSequenceDictionariesEqual(dict.toSam, intervals.getHeader.getSequenceDictionary,true)
     new CoverageManager(intervals, minMapQ = minMQ, coverageTarget = coverageTarget)
   }
 
   override def execute(): Unit = {
+    val readTemplates = new ProgressLogger(logger, "templates", "read")
+    val writtenTemplates = new ProgressLogger(logger, "templates", "written")
     checkArguments()
 
     val coverageManager = createCoverageManager(input, targetIntervals)
@@ -110,13 +111,21 @@ class NormalizeCoverage(
       maxRecordsInRam)
 
     // find the templates required for coverage and add them to the output writer
-    coverageManager
-      .processTemplates(templateIterator)
-      .foreach(t => out++=t.allReads)
+    val reportedTemplates = ProgressLogger
+      .ProgressLoggingIterator(templateIterator)
+      .progress(progressLogger = readTemplates)
+
+    val processedTemplates = coverageManager.processTemplates(reportedTemplates)
+
+    ProgressLogger.ProgressLoggingIterator(processedTemplates.iterator)
+      .progress(progressLogger = writtenTemplates)
+      .foreach(t => out ++= t.allReads)
 
     // close streams
     out.safelyClose()
     in.safelyClose()
+
+    logger.info(f"Read ${readTemplates.getCount}%,d templates and wrote out ${writtenTemplates.getCount}%,d")
   }
 
   private def checkArguments(): Unit = {
