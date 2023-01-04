@@ -114,29 +114,6 @@ private object DownsampleAndNormalizeBam extends LazyLogging {
       }
     }
   }
-
-  /** Generates an iterator over the templates in the SamSource that is in a random order. */
-  // TODO: move into Bams?
-  def templateRandomIterator(in: SamSource,
-                             randomSeed: Int = 42,
-                             maxInMemory: Int = Bams.MaxInMemory,
-                             tmpDir: DirPath = Io.tmpDir): Iterator[Template] = {
-    val hasher = new Murmur3(randomSeed)
-    val sorter = {
-      val f = (r: SamRecord) => SamOrder.RandomQueryKey(hasher.hashUnencodedChars(r.name), r.name, r.asSam.getFlags)
-      new Sorter(maxInMemory, new SamRecordCodec(in.header), f)
-    }
-
-    val sortProgress = ProgressLogger(logger, verb = "sorted", unit = 5e6.toInt)
-    in.foreach { rec =>
-      sorter += rec
-      sortProgress.record()
-    }
-
-    val header = in.header.clone()
-    SamOrder.RandomQuery.applyTo(header)
-    Bams.templateIterator(sorter.iterator, header, maxInMemory, tmpDir)
-  }
 }
 
 @clp(
@@ -186,7 +163,7 @@ class DownsampleAndNormalizeBam
     val tracker = new CoverageTracker(targets, this.coverage, this.minMapQ)
     var (read, written) = (0L, 0L)
 
-    DownsampleAndNormalizeBam.templateRandomIterator(in, this.seed, maxInMemory).foreach { template =>
+    Bams.templateRandomIterator(in, this.seed, maxInMemory).foreach { template =>
       read += 1
 
       if (tracker.add(template)) {

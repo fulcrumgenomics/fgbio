@@ -218,6 +218,26 @@ class BamsTest extends UnitSpec {
     }
   }
 
+  "Bams.templateRandomIterator" should "return template objects in a random order" in {
+    val builder = new SamBuilder(sort = Some(SamOrder.Coordinate))
+    builder.addPair(name = "p1", contig=0, start1 = 100, start2 = 500)
+    builder.addPair(name = "p2", contig=0, start1 = 200, start2 = 600)
+    builder.addPair(name = "p3", contig=0, start1 = 300, start2 = 700)
+    builder.addPair(name = "p4", contig=0, start1 = 400, start2 = 800)
+    builder.addPair(name = "p5", contig=0, start1 = 400, start2 = 800)
+    builder.addPair(name = "p6", contig=0, start1 = 400, start2 = 800)
+    builder.addPair(name = "p7", contig=0, start1 = 400, start2 = 800)
+    builder.addPair(name = "p8", contig=0, start1 = 400, start2 = 800)
+
+    val ts1 = Bams.templateRandomIterator(builder.toSource, randomSeed=1).toIndexedSeq
+    val ts2 = Bams.templateRandomIterator(builder.toSource, randomSeed=12345).toIndexedSeq
+
+    ts1 should have size 8
+    ts2 should have size 8
+    ts1.map(_.name).sorted shouldBe ts2.map(_.name).sorted
+    ts1.map(_.name) should not be ts2.map(_.name)
+  }
+
   "Bams.regenerateNmUqMdTags" should "null out fields on unmapped reads" in {
     val builder = new SamBuilder(sort=Some(SamOrder.Coordinate))
     val rec = builder.addFrag(unmapped=true).get
