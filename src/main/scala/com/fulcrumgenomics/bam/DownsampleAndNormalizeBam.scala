@@ -1,7 +1,7 @@
 /*
  * The MIT License
  *
- * Copyright (c) 2022 Fulcrum Genomics LLC
+ * Copyright (c) 2023 Fulcrum Genomics LLC
  *
  * Permission is hereby granted, free of charge, to any person obtaining a copy
  * of this software and associated documentation files (the "Software"), to deal
@@ -71,7 +71,7 @@ private object DownsampleAndNormalizeBam extends LazyLogging {
       val addsCoverage = recs.exists { rec =>
         detector.getOverlaps(rec.asSam).iterator().exists { cov =>
           Range.inclusive(math.max(rec.start, cov.start), math.min(rec.end, cov.end)).exists { pos =>
-            cov(pos) <= targetCoverage
+            cov(pos) < targetCoverage
           }
         }
       }
@@ -103,8 +103,11 @@ private object DownsampleAndNormalizeBam extends LazyLogging {
 
     /** Returns the coverage at the given genomic position, or -1 if the position is not between start:end. */
     def apply(i: Int): Int = {
-      if (i < start || i > end) -1
-      else this.counts(i - offset)
+      if (i < start || i > end) {
+        throw new IndexOutOfBoundsException(s"Position $i is outside of range for region $chrom:$start-$end.")
+      }
+
+      this.counts(i - offset)
     }
 
     /** Adds 1 to the coverage counts for all bases between from:to inclusive. */
