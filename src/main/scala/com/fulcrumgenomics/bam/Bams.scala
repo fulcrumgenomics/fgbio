@@ -36,7 +36,7 @@ import htsjdk.samtools.SAMFileHeader.{GroupOrder, SortOrder}
 import htsjdk.samtools.SamPairUtil.PairOrientation
 import htsjdk.samtools._
 import htsjdk.samtools.reference.ReferenceSequence
-import htsjdk.samtools.util.{CloserUtil, CoordMath, SequenceUtil}
+import htsjdk.samtools.util.{CloserUtil, CoordMath, Murmur3, SequenceUtil}
 
 import java.io.Closeable
 import scala.math.{max, min}
@@ -365,6 +365,39 @@ object Bams extends LazyLogging {
 
     new SelfClosingIterator(_iterator, () => queryIterator.close())
   }
+
+  /** Returns an iterator over records, grouped into [[Template]] objects, in a random order. Reads are first
+    * sorted based on a hash of their read name in order to randomize the order while collating by read name.
+    * The randomized reads are then iterated and grouped into [[Template]] objects.
+    *
+    * @param in the [[SamSource]] from which to pull reads and the SAM header
+    * @param randomSeed a seed used to generate the hashes that drive the random sorting.  Different seeds will produce
+    *                   different randomizations of the reads.  Using the same seed will result in the same ordering
+    *                   of the data across invocations.
+    * @param maxInMemory the maximum number of records to keep and sort in memory, if sorting is needed
+    * @param tmpDir a temp directory to use for temporary sorting files if sorting is needed
+    */
+  def templateRandomIterator(in: SamSource,
+                             randomSeed: Int = 42,
+                             maxInMemory: Int = Bams.MaxInMemory,
+                             tmpDir: DirPath = Io.tmpDir): Iterator[Template] = {
+    val hasher = new Murmur3(randomSeed)
+    val sorter = {
+      val f = (r: SamRecord) => SamOrder.RandomQueryKey(hasher.hashUnencodedChars(r.name), r.name, r.asSam.getFlags)
+      new Sorter(maxInMemory, new SamRecordCodec(in.header), f)
+    }
+
+    val sortProgress = ProgressLogger(logger, verb = "sorted", unit = 5e6.toInt)
+    in.foreach { rec =>
+      sorter += rec
+      sortProgress.record()
+    }
+
+    val header = in.header.clone()
+    SamOrder.RandomQuery.applyTo(header)
+    Bams.templateIterator(sorter.iterator, header, maxInMemory, tmpDir)
+  }
+
 
   /** Returns an iterator over the records in the given iterator such that the order of the records returned is
     * determined by the value of the given SAM tag, which can optionally be transformed.
