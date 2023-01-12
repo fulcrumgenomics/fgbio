@@ -67,7 +67,7 @@ private[bam] object ZipperBams extends LazyLogging {
   /** Checks the source's header declares it is queryname sorted or grouped and logs a warning if not. */
   def checkSort(source: SamSource, path: FilePath, name: String): Unit = {
     if (source.header.getSortOrder != SortOrder.queryname && source.header.getGroupOrder != GroupOrder.query) {
-      logger.warning(s"${name} file ${path} does not appear to be queryname sorted or grouped.")
+      logger.warning(s"${name} file ${path} does not appear to be queryname sorted or grouped per the SAM header.")
       logger.warning(s"Continuing, but your output may be incorrect.")
     }
   }
