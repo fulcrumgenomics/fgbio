@@ -52,6 +52,10 @@ import com.fulcrumgenomics.util.ProgressLogger
     |input they are _ignored_.  Similarly, read pairs for which consensus reads cannot be generated for one or
     |other read (R1 or R2) are omitted from the output.
     |
+    |The consensus reads produced are unaligned, due to the difficulty and error-prone nature of inferring the conesensus
+    |alignment.  Consensus reads should therefore be aligned after, which should not be too expensive as likely there
+    |are far fewer conesnsus reads than input raw raws.
+    |
     |Consensus reads have a number of additional optional tags set in the resulting BAM file.  The tag names follow
     |a pattern where the first letter (a, b or c) denotes that the tag applies to the first single strand consensus (a),
     |second single-strand consensus (b) or the final duplex consensus (c).  The second letter is intended to capture
