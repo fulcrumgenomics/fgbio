@@ -54,7 +54,8 @@ import com.fulcrumgenomics.util.ProgressLogger
     |
     |The consensus reads produced are unaligned, due to the difficulty and error-prone nature of inferring the conesensus
     |alignment.  Consensus reads should therefore be aligned after, which should not be too expensive as likely there
-    |are far fewer conesnsus reads than input raw raws.
+    |are far fewer consensus reads than input raw raws.  Please see how best to use this tool within the best-practice
+    |pipeline: https://github.com/fulcrumgenomics/fgbio/blob/main/docs/best-practice-consensus-pipeline.md
     |
     |Consensus reads have a number of additional optional tags set in the resulting BAM file.  The tag names follow
     |a pattern where the first letter (a, b or c) denotes that the tag applies to the first single strand consensus (a),
