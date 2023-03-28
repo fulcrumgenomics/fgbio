@@ -482,7 +482,7 @@ class GroupReadsByUmi
   @arg(flag='T', doc="The output tag for UMI grouping.") val assignTag: String = "MI",
   @arg(flag='m', doc="Minimum mapping quality for mapped reads.")         val minMapQ: Int      = 1,
   @arg(flag='n', doc="Include non-PF reads.")            val includeNonPfReads: Boolean = false,
-  @arg(flag='N', doc="Use non-ATCG bases (N) in clustering.")             val includeNonATCG: Boolean = false,
+  @arg(flag='N', doc="Include UMIs which contain non-ATCG bases (N) in output.")             val includeNonATCG: Boolean = false,
   @arg(flag='s', doc="The UMI assignment strategy.")     val strategy: Strategy,
   @arg(flag='e', doc="The allowable number of edits between UMIs.") val edits: Int = 1,
   @arg(flag='l', doc= """The minimum UMI length. If not specified then all UMIs must have the same length,
