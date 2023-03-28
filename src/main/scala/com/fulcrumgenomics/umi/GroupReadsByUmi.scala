@@ -482,6 +482,7 @@ class GroupReadsByUmi
   @arg(flag='T', doc="The output tag for UMI grouping.") val assignTag: String = "MI",
   @arg(flag='m', doc="Minimum mapping quality for mapped reads.")         val minMapQ: Int      = 1,
   @arg(flag='n', doc="Include non-PF reads.")            val includeNonPfReads: Boolean = false,
+  @arg(flag='N', doc="Use non-ATCG bases (N) in clustering.")             val includeNonATCG: Boolean = false,
   @arg(flag='s', doc="The UMI assignment strategy.")     val strategy: Strategy,
   @arg(flag='e', doc="The allowable number of edits between UMIs.") val edits: Int = 1,
   @arg(flag='l', doc= """The minimum UMI length. If not specified then all UMIs must have the same length,
@@ -551,7 +552,8 @@ class GroupReadsByUmi
       .filter(r => (r.mapped || (r.paired && r.mateMapped))                         || { filteredPoorAlignment += 1; false })
       .filter(r => (allowInterContig || r.unpaired || r.refIndex == r.mateRefIndex) || { filteredPoorAlignment += 1; false })
       .filter(r => mapqOk(r, this.minMapQ)                                          || { filteredPoorAlignment += 1; false })
-      .filter(r => !r.get[String](rawTag).exists(_.contains('N'))                   || { filteredNsInUmi += 1; false })
+      .filter(r =>
+        (this.includeNonATCG || !r.get[String](rawTag).exists(_.contains('N')))     || { filteredNsInUmi += 1; false })
       .filter { r =>
         this.minUmiLength.forall { l =>
           r.get[String](this.rawTag).forall { umi =>
@@ -644,7 +646,7 @@ class GroupReadsByUmi
     logger.info(f"Accepted $kept%,d reads for grouping.")
     if (filteredNonPf > 0) logger.info(f"Filtered out $filteredNonPf%,d non-PF reads.")
     logger.info(f"Filtered out $filteredPoorAlignment%,d reads due to mapping issues.")
-    logger.info(f"Filtered out $filteredNsInUmi%,d reads that contained one or more Ns in their UMIs.")
+    if (!this.includeNonATCG) logger.info(f"Filtered out $filteredNsInUmi%,d reads that contained one or more Ns in their UMIs.")
     this.minUmiLength.foreach { _ => logger.info(f"Filtered out $filterUmisTooShort%,d reads that contained UMIs that were too short.") }
   }
 

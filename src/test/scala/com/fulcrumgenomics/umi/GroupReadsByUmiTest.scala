@@ -334,6 +334,20 @@ class GroupReadsByUmiTest extends UnitSpec with OptionValues with PrivateMethodT
     groups should contain theSameElementsAs Seq(Set("a01", "a02"), Set("a03", "a04"), Set("a05", "a06"), Set("a07", "a08"))
   }
 
+  it should "include reads that contain an N in the UMI, if option is set." in {
+    val builder = new SamBuilder(readLength = 100, sort = Some(SamOrder.Coordinate))
+    builder.addPair(name = "a01", start1 = 100, start2 = 300, strand1 = Plus, strand2 = Minus, attrs = Map("RX" -> "ACT-ACT"))
+    builder.addPair(name = "a02", start1 = 100, start2 = 300, strand1 = Plus, strand2 = Minus, attrs = Map("RX" -> "ACT-ACT"))
+    builder.addPair(name = "a03", start1 = 100, start2 = 300, strand1 = Plus, strand2 = Minus, attrs = Map("RX" -> "ACT-ANN"))
+
+    val in = builder.toTempFile()
+    val out = Files.createTempFile("umi_grouped.", ".bam")
+    new GroupReadsByUmi(input = in, output = out, rawTag = "RX", assignTag = "MI", includeNonATCG = true, strategy = Strategy.Paired, edits = 2).execute()
+
+    readBamRecs(out).map(_.name).distinct shouldBe Seq("a01", "a02", "a03")
+  }
+
+
   it should "exclude reads that contain an N in the UMI" in {
     val builder = new SamBuilder(readLength=100, sort=Some(SamOrder.Coordinate))
     builder.addPair(name="a01", start1=100, start2=300, strand1=Plus,  strand2=Minus, attrs=Map("RX" -> "ACT-ACT"))
