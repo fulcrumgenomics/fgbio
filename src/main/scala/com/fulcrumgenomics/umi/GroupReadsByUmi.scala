@@ -475,21 +475,22 @@ object Strategy extends FgBioEnum[Strategy] {
   """
 )
 class GroupReadsByUmi
-( @arg(flag='i', doc="The input BAM file.")              val input: PathToBam  = Io.StdIn,
-  @arg(flag='o', doc="The output BAM file.")             val output: PathToBam = Io.StdOut,
-  @arg(flag='f', doc="Optional output of tag family size counts.") val familySizeHistogram: Option[FilePath] = None,
-  @arg(flag='t', doc="The tag containing the raw UMI.")  val rawTag: String    = "RX",
-  @arg(flag='T', doc="The output tag for UMI grouping.") val assignTag: String = "MI",
-  @arg(flag='m', doc="Minimum mapping quality for mapped reads.")         val minMapQ: Int      = 1,
-  @arg(flag='n', doc="Include non-PF reads.")            val includeNonPfReads: Boolean = false,
-  @arg(flag='N', doc="Include UMIs which contain non-ATCG bases (N) in output.")             val includeNonATCG: Boolean = false,
-  @arg(flag='s', doc="The UMI assignment strategy.")     val strategy: Strategy,
-  @arg(flag='e', doc="The allowable number of edits between UMIs.") val edits: Int = 1,
-  @arg(flag='l', doc= """The minimum UMI length. If not specified then all UMIs must have the same length,
+(@arg(flag='i', doc="The input BAM file.")              val input: PathToBam  = Io.StdIn,
+ @arg(flag='o', doc="The output BAM file.")             val output: PathToBam = Io.StdOut,
+ @arg(flag='f', doc="Optional output of tag family size counts.") val familySizeHistogram: Option[FilePath] = None,
+ @arg(flag='t', doc="The tag containing the raw UMI.")  val rawTag: String    = "RX",
+ @arg(flag='T', doc="The output tag for UMI grouping.") val assignTag: String = "MI",
+ @arg(flag='m', doc="Minimum mapping quality for mapped reads.")         val minMapQ: Int      = 1,
+ @arg(flag='n', doc="Include non-PF reads.")            val includeNonPfReads: Boolean = false,
+ @arg(flag='N', doc="Allow UMIs which contain Ns.  Ns will be treated as mismatches to all other non-Ns")
+  val includeNs: Boolean = false,
+ @arg(flag='s', doc="The UMI assignment strategy.")     val strategy: Strategy,
+ @arg(flag='e', doc="The allowable number of edits between UMIs.") val edits: Int = 1,
+ @arg(flag='l', doc= """The minimum UMI length. If not specified then all UMIs must have the same length,
                        |otherwise discard reads with UMIs shorter than this length and allow for differing UMI lengths.
                        |""")
   val minUmiLength: Option[Int] = None,
-  @arg(flag='x', doc= """
+ @arg(flag='x', doc= """
                        |DEPRECATED: this option will be removed in future versions and inter-contig reads will be
                        |automatically processed.""")
   @deprecated val allowInterContig: Boolean = true
@@ -553,7 +554,7 @@ class GroupReadsByUmi
       .filter(r => (allowInterContig || r.unpaired || r.refIndex == r.mateRefIndex) || { filteredPoorAlignment += 1; false })
       .filter(r => mapqOk(r, this.minMapQ)                                          || { filteredPoorAlignment += 1; false })
       .filter(r =>
-        (this.includeNonATCG || !r.get[String](rawTag).exists(_.contains('N')))     || { filteredNsInUmi += 1; false })
+        (this.includeNs || !r.get[String](rawTag).exists(_.contains('N')))     || { filteredNsInUmi += 1; false })
       .filter { r =>
         this.minUmiLength.forall { l =>
           r.get[String](this.rawTag).forall { umi =>
@@ -646,7 +647,7 @@ class GroupReadsByUmi
     logger.info(f"Accepted $kept%,d reads for grouping.")
     if (filteredNonPf > 0) logger.info(f"Filtered out $filteredNonPf%,d non-PF reads.")
     logger.info(f"Filtered out $filteredPoorAlignment%,d reads due to mapping issues.")
-    if (!this.includeNonATCG) logger.info(f"Filtered out $filteredNsInUmi%,d reads that contained one or more Ns in their UMIs.")
+    if (!this.includeNs) logger.info(f"Filtered out $filteredNsInUmi%,d reads that contained one or more Ns in their UMIs.")
     this.minUmiLength.foreach { _ => logger.info(f"Filtered out $filterUmisTooShort%,d reads that contained UMIs that were too short.") }
   }
 
