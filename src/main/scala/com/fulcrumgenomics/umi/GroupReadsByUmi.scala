@@ -466,8 +466,9 @@ object Strategy extends FgBioEnum[Strategy] {
     |
     |By default, all UMIs must be the same length. If `--min-umi-length=len` is specified then reads that have a UMI
     |shorter than `len` will be discarded, and when comparing UMIs of different lengths, the first len bases will be
-    |compared, where `len` is the length of the shortest UMI. The UMI length is the number of [ACGT] bases in the UMI
-    |(i.e. does not count dashes and other non-ACGT characters). This option is not implemented for reads with UMI pairs
+    |compared, where `len` is the length of the shortest UMI. The UMI length is the number of [ACGT]
+    |([ACTGN], if the N flag is passed) bases in the UMI
+    |(i.e. does not count dashes and other non-ACGT(N) characters). This option is not implemented for reads with UMI pairs
     |(i.e. using the paired assigner).
     |
     |If the input is not template-coordinate sorted (i.e. `SO:unsorted GO:query SS:unsorted:template-coordinate`), then
