@@ -26,17 +26,18 @@ package com.fulcrumgenomics.vcf.filtration
 
 import com.fulcrumgenomics.bam.api.SamSource
 import com.fulcrumgenomics.bam.pileup.PileupBuilder
-import com.fulcrumgenomics.bam.pileup.PileupBuilder.{BamAccessPattern, PileupDefaults}
 import com.fulcrumgenomics.bam.pileup.PileupBuilder.BamAccessPattern.RandomAccess
+import com.fulcrumgenomics.bam.pileup.PileupBuilder.{BamAccessPattern, PileupDefaults}
 import com.fulcrumgenomics.cmdline.{ClpGroups, FgBioTool}
 import com.fulcrumgenomics.commons.CommonsDef._
 import com.fulcrumgenomics.commons.io.Io
 import com.fulcrumgenomics.commons.util.LazyLogging
 import com.fulcrumgenomics.sopt.{arg, clp}
 import com.fulcrumgenomics.util.ProgressLogger
+import com.fulcrumgenomics.vcf.api.Variant.PassingFilters
 import com.fulcrumgenomics.vcf.api.{VcfSource, VcfWriter}
 
-import scala.collection.immutable.ListMap
+import scala.collection.mutable.ListBuffer
 
 @clp(
   description =
@@ -182,16 +183,21 @@ import scala.collection.immutable.ListMap
         case Nil     => variant
         case filters =>
           val pileup         = piler.pileup(refName = variant.chrom, pos = variant.pos).withoutOverlaps
-          val allAnnotations = variant.attrs.toBuffer
-          val allFilters     = variant.filters.toBuffer
+          val newAnnotations = new ListBuffer[(String, Any)]
+          val newFilters     = new ListBuffer[String]
 
           filters.foreach { filter =>
             val annotations = filter.annotations(pileup, variant.genotypes(name))
-            allAnnotations ++= annotations
-            allFilters     ++= filter.filters(annotations)
+            newAnnotations ++= annotations
+            newFilters     ++= filter.filters(annotations)
           }
 
-          variant.copy(attrs = ListMap.from(allAnnotations), filters = Set.from(allFilters))
+          val allFilters = {
+            if (variant.filters == PassingFilters && newFilters.nonEmpty) newFilters.toSet
+            else variant.filters ++ newFilters
+          }
+
+          variant.copy(attrs = variant.attrs ++ newAnnotations, filters = allFilters)
       }
       writer.write(updated)
     }
