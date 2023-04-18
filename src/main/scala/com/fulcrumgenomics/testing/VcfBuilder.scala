@@ -24,14 +24,13 @@
 
 package com.fulcrumgenomics.testing
 
-import java.nio.file.Files
-
 import com.fulcrumgenomics.FgBioDef._
 import com.fulcrumgenomics.testing.VcfBuilder.Gt
 import com.fulcrumgenomics.vcf.api.Allele.NoCallAllele
+import com.fulcrumgenomics.vcf.api.Variant.PassingFilters
 import com.fulcrumgenomics.vcf.api._
 
-import scala.collection.compat._
+import java.nio.file.Files
 import scala.collection.immutable.ListMap
 import scala.collection.mutable
 import scala.util.Try
@@ -166,7 +165,7 @@ class VcfBuilder private (initialHeader: VcfHeader) extends Iterable[Variant] {
     require(!variants.contains(key), s"Variant already exists at position $chrom:$pos")
     require(alleles.nonEmpty, s"Must specify at least one allele.")
     info.keys.foreach(k => require(this._header.info.contains(k), s"No INFO header for key $k"))
-    filters.foreach(f => require(this._header.filter.contains(f), s"No FILTER header for key $f"))
+    filters.filterNot(PassingFilters.contains).foreach(f => require(this._header.filter.contains(f), s"No FILTER header for key $f"))
     require(gts.map(_.sample).toSet.size == gts.size, s"Non-unique sample names in genotypes.")
 
     val alleleSet = AlleleSet(alleles:_*)
