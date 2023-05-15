@@ -88,6 +88,24 @@ class SequencesTest extends UnitSpec {
     Sequences.complement("AACCGGTGTG") shouldBe "TTGGCCACAC"
   }
 
+  it should "correctly complement all IUPAC codes" in {
+    val bases = "ACGT".getBytes.toIndexedSeq
+    val comps = "TGCA".getBytes.toIndexedSeq
+    val codes = "ACGTMKRYWSBVHDN".getBytes.toIndexedSeq
+
+    codes.foreach { iupac =>
+      val complement = Sequences.complement(iupac)
+
+      // Checks to see that the set of non-ambigous bases that are deemed compatible
+      // with the iupac code, and the set of non-ambiguous bases that are compatible
+      // with the complement of the iupac code, are actually complements of one another
+      val x = bases.filter(ch => Sequences.compatible(ch, iupac))
+      val y = comps.filter(ch => Sequences.compatible(ch, complement))
+      val z = y.map(Sequences.complement)
+      x.map(_.toChar) should contain theSameElementsAs z.map(_.toChar)
+    }
+  }
+
   "Sequences.revcomp" should "return the reverse complement of sequences" in {
     Sequences.revcomp("AAA")        shouldBe "TTT"
     Sequences.revcomp("ACAC")       shouldBe "GTGT"
