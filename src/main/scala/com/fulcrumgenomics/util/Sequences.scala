@@ -233,8 +233,8 @@ object Sequences {
     case 'K' => 'M'
     case 'R' => 'Y'
     case 'Y' => 'R'
-    case 'W' => 'S'
-    case 'S' => 'W'
+    case 'W' => 'W'
+    case 'S' => 'S'
     // IUPAC codes that represent three bases
     case 'B' => 'V'
     case 'V' => 'B'
@@ -254,8 +254,8 @@ object Sequences {
     case 'k' => 'm'
     case 'r' => 'y'
     case 'y' => 'r'
-    case 'w' => 's'
-    case 's' => 'w'
+    case 'w' => 'w'
+    case 's' => 's'
     // IUPAC codes that represent three bases
     case 'b' => 'v'
     case 'v' => 'b'
