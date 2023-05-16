@@ -402,8 +402,8 @@ case class Alignment(query: Array[Byte],
     * @return a new [[Alignment]] with updated coordinates and cigar
     */
   def subByQuery(start: Int, end: Int): Alignment = {
-    require(start >= queryStart && start <= queryEnd, "start is outside of aligned region of target sequence")
-    require(end   >= queryStart && end   <= queryEnd, "end is outside of aligned region of target sequence")
+    require(start >= queryStart && start <= queryEnd, "start is outside of aligned region of query sequence")
+    require(end   >= queryStart && end   <= queryEnd, "end is outside of aligned region of query sequence")
     sub(start, end, this.queryStart, _.operator.consumesReadBases())
   }
 
