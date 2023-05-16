@@ -144,8 +144,8 @@ class AlignmentTest extends UnitSpec {
       +AACCGGGT
        """.stripMargin('+').trim.linesIterator.toSeq
 
-    Seq("8M", "6=1X2=").foreach { cigar =>
-      val alignment = Alignment(expected.head.replace("-", ""), expected.last.replace("-", ""), 1, 1, Cigar("8M"), 1)
+    Seq("8M", "6=1X1=").foreach { cigar =>
+      val alignment = Alignment(expected.head.replace("-", ""), expected.last.replace("-", ""), 1, 1, Cigar(cigar), 1)
       alignment.paddedString() shouldBe expected
     }
   }
