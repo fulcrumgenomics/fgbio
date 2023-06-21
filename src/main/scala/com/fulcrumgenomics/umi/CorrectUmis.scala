@@ -134,7 +134,8 @@ class CorrectUmis
   @arg(flag='U', doc="File of UMI sequences, one per line.", minElements=0) val umiFiles: Seq[FilePath] = Seq.empty,
   @arg(flag='t', doc="Tag in which UMIs are stored.") val umiTag: String = ConsensusTags.UmiBases,
   @arg(flag='x', doc="Don't store original UMIs upon correction.") val dontStoreOriginalUmis: Boolean = false,
-  @arg(doc="The number of uncorrected UMIs to cache; zero will disable the cache.") val cacheSize: Int = 100000
+  @arg(doc="The number of uncorrected UMIs to cache; zero will disable the cache.") val cacheSize: Int = 100000,
+  @arg(doc="The minimum ratio of kept UMIs to accept. A ratio below this will cause a failure (but all files will still be written).") val minCorrected: Option[Double] = None
 ) extends FgBioTool with LazyLogging {
 
   validate(umis.nonEmpty || umiFiles.nonEmpty, "At least one UMI or UMI file must be provided.")
@@ -142,6 +143,7 @@ class CorrectUmis
   Io.assertReadable(umiFiles)
   Io.assertCanWriteFile(output)
   rejects.foreach(Io.assertCanWriteFile(_))
+  minCorrected.foreach(m => validate(m >= 0 && m <= 1, "--min-corrected must be between 0 and 1."))
 
   // Construct the cache
   private lazy val cache = new LeastRecentlyUsedCache[String,UmiMatch](maxEntries = cacheSize)
@@ -259,6 +261,14 @@ class CorrectUmis
       if (missingUmisRecords > 0) logger.error(s"# ${mismatchedRecords} were missing UMI attributes in the BAM file!")
       if (wrongLengthRecords > 0) logger.error(s"# ${wrongLengthRecords} had unexpected UMIs of differing lengths in the BAM file!")
       logger.error("###################################################################")
+    }
+
+    minCorrected.foreach { min =>
+      val ratioKept = 1.0 * kept / totalRecords
+      assert(ratioKept >= min,
+        f"# Final ratio of reads kept / total was ${ratioKept}%2.2f (user specified minimum was ${min}%2.2f) " +
+          "This could indicate a mismatch between library preparation and the provided UMI file."
+      )
     }
   }
 
