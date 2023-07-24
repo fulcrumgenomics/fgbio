@@ -1166,7 +1166,7 @@ class DemuxFastqsTest extends UnitSpec with OptionValues with ErrorLogLevel {
     val standards = FastqStandards()
     val rec       = baseRec.copy(pairedEnd=true, name="Instrument:RunID:FlowCellID:Lane:Tile:X:Y", comment=Some("1:N:0:SampleNumber")).withReadInfo
     val writer    = new FastqRecordWriter(output.resolve("prefix"), pairedEnd=true, fastqStandards=standards)
-    writer.add(rec).header shouldBe "Instrument:RunID:FlowCellID:Lane:Tile:X:Y:SB:MB 1:N:0:SampleNumber"
+    writer.add(rec).header shouldBe "Instrument:RunID:FlowCellID:Lane:Tile:X:Y:SB:MB 1:Y:0:SampleNumber"
   }
 
   it should "set the read name to include the sample barcode for single-end" in {
@@ -1175,7 +1175,7 @@ class DemuxFastqsTest extends UnitSpec with OptionValues with ErrorLogLevel {
     val standards = FastqStandards(includeSampleBarcodes=true)
     val rec       = baseRec.copy(pairedEnd=true, name="Instrument:RunID:FlowCellID:Lane:Tile:X:Y", comment=Some("1:N:0:SB")).withReadInfo
     val writer    = new FastqRecordWriter(output.resolve("prefix"), pairedEnd=false, fastqStandards=standards)
-    writer.add(rec).header shouldBe "Instrument:RunID:FlowCellID:Lane:Tile:X:Y 1:N:0:SB"
+    writer.add(rec).header shouldBe "Instrument:RunID:FlowCellID:Lane:Tile:X:Y 1:Y:0:SB"
   }
 
   it should "set the read name to include the sample barcode for paired end" in {
@@ -1184,7 +1184,7 @@ class DemuxFastqsTest extends UnitSpec with OptionValues with ErrorLogLevel {
     val standards = FastqStandards(includeSampleBarcodes=true)
     val rec       = baseRec.copy(pairedEnd=true, name="Instrument:RunID:FlowCellID:Lane:Tile:X:Y", comment=Some("1:Y:0:SB1+SB2"), sampleBarcode=Seq("SB1","SB2"), molecularBarcode=Seq("MB1","MB2")).withReadInfo
     val writer    = new FastqRecordWriter(output.resolve("prefix"), pairedEnd=true, fastqStandards=standards)
-    writer.add(rec).header shouldBe "Instrument:RunID:FlowCellID:Lane:Tile:X:Y 1:Y:0:SB1+SB2"
+    writer.add(rec).header shouldBe "Instrument:RunID:FlowCellID:Lane:Tile:X:Y 1:N:0:SB1+SB2"
   }
 
   "ReadInfo" should "not be built if there was no comment in the given record when following Illumina standards" in {
