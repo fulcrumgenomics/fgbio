@@ -913,7 +913,7 @@ object OutputType extends FgBioEnum[OutputType] {
   */
 case class ReadInfo(readNumber: Int, passQc: Boolean, internalControl: Boolean, sampleInfo: String, rest: Seq[String]) {
   override def toString: String = {
-    val leading = f"$readNumber:${if (passQc) "Y" else "N"}:${if (internalControl) 1 else 0}:$sampleInfo"
+    val leading = f"$readNumber:${if (passQc) "N" else "Y"}:${if (internalControl) 1 else 0}:$sampleInfo"
     if (rest.isEmpty) leading else leading + " " + rest.mkString(" ")
   }
 }
