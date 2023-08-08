@@ -97,7 +97,7 @@ lazy val commonSettings = Seq(
   Test / fork          := true,
   resolvers            += Resolver.sonatypeRepo("public"),
   resolvers            += Resolver.mavenLocal,
-  resolvers            += "broad-snapshots" at "https://artifactory.broadinstitute.org/artifactory/libs-snapshot/",
+  resolvers            += "broad-snapshots" at "https://broadinstitute.jfrog.io/artifactory/libs-snapshot/",
   shellPrompt          := { state => "%s| %s> ".format(GitCommand.prompt.apply(state), version.value) },
   updateOptions        := updateOptions.value.withCachedResolution(true)
 ) ++ Defaults.coreDefaultSettings
