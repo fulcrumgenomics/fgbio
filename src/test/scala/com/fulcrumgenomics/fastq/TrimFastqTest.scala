@@ -133,7 +133,7 @@ class TrimFastqTest extends UnitSpec {
     r2Map("20x20").length shouldBe 15
   }
 
-  it should "trim some reads and discard others with FASTQ specific lengths" in {
+  it should "trim each FASTQ independently to a FASTQ-specific length" in {
     val (r1, r2) = fqFiles
     val (r1Out, r2Out) = (makeTempFile("r1out.", ".fq"), makeTempFile("r2out.", ".fq"))
     new TrimFastq(input = Seq(r1, r2), output=Seq(r1Out, r2Out), length = Seq(10, 15), exclude = false).execute()

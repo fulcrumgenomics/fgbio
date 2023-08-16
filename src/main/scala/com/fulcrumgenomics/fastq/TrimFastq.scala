@@ -58,7 +58,6 @@ class TrimFastq
     val progress = new ProgressLogger(this.logger, noun="records", verb="Wrote")
 
     val lengths = if (this.length.size == 1) List.fill(this.input.size)(this.length.head) else this.length
-
     val sources = input.map(FastqSource(_))
     val writers = output.map(FastqWriter(_))
     while (allHaveNext(sources)) {
