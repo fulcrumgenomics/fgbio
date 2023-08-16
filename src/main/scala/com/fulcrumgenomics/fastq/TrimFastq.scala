@@ -46,26 +46,28 @@ import com.fulcrumgenomics.sopt._
 class TrimFastq
 (   @arg(flag='i', doc="One or more input fastq files.") val input:  Seq[PathToFastq],
     @arg(flag='o', doc="A matching number of output fastq files.") val output: Seq[PathToFastq],
-    @arg(flag='l', doc="Length to trim reads to.")             val length: Int,
+    @arg(flag='l', doc="Length to trim reads to (either one per input fastq file, or one for all).") val length: Seq[Int],
     @arg(flag='x', doc="Exclude reads below the trim length.") val exclude: Boolean = false
 ) extends FgBioTool with LazyLogging {
 
   validate(input.size == output.size, "Number of input and output files must match.")
+  validate(length.size == 1 || input.size == length.size, "Number of lengths must be one or match the number of input files.")
 
   override def execute(): Unit = {
     var discarded: Long = 0
     val progress = new ProgressLogger(this.logger, noun="records", verb="Wrote")
 
+    val lengths = if (this.length.size == 1) List.fill(this.input.size)(this.length.head) else this.length
     val sources = input.map(FastqSource(_))
     val writers = output.map(FastqWriter(_))
     while (allHaveNext(sources)) {
       val recs = sources.map(_.next())
-      if (exclude && recs.exists(_.length < length)) {
+      if (exclude && recs.zip(lengths).exists { case (rec, length) => rec.length < length }) {
         discarded += 1
       }
       else {
-        writers.iterator.zip(recs.iterator).foreach { case(w, r) =>
-          w.write(r.trimmedTo(length))
+        writers.lazyZip(recs).lazyZip(lengths).foreach { case (w: FastqWriter, r: FastqRecord, l: Int) =>
+          w.write(r.trimmedTo(l))
           progress.record()
         }
       }
