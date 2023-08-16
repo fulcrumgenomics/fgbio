@@ -59,9 +59,9 @@ class TrimFastqTest extends UnitSpec {
   }
 
   "TrimFastq" should "trim a single file and not discard any records" in {
-    val (r1, r2) = fqFiles
+    val (r1, _) = fqFiles
     val out = makeTempFile("trimmed.", ".fq")
-    new TrimFastq(input=Seq(r1), output=Seq(out), length=15, exclude=false).execute()
+    new TrimFastq(input=Seq(r1), output=Seq(out), length=Seq(15), exclude=false).execute()
     val r1Map = FastqSource(out).map(r => r.name -> r).toMap
     r1Map.size shouldBe 3
     r1Map("10x10").length shouldBe 10
@@ -70,18 +70,18 @@ class TrimFastqTest extends UnitSpec {
   }
 
   it should "trim a single file and discard 2 records" in {
-    val (r1, r2) = fqFiles
+    val (r1, _) = fqFiles
     val out = makeTempFile("trimmed.", ".fq")
-    new TrimFastq(input=Seq(r1), output=Seq(out), length=15, exclude=true).execute()
+    new TrimFastq(input=Seq(r1), output=Seq(out), length=Seq(15), exclude=true).execute()
     val r1Map = FastqSource(out).map(r => r.name -> r).toMap
     r1Map.size shouldBe 1
     r1Map("20x20").length shouldBe 15
   }
 
   it should "trim a single file and discard 0 records because they are all long enough" in {
-    val (r1, r2) = fqFiles
+    val (r1, _) = fqFiles
     val out = makeTempFile("trimmed.", ".fq")
-    new TrimFastq(input=Seq(r1), output=Seq(out), length=5, exclude=true).execute()
+    new TrimFastq(input=Seq(r1), output=Seq(out), length=Seq(5), exclude=true).execute()
     val r1Map = FastqSource(out).map(r => r.name -> r).toMap
     r1Map.size shouldBe 3
     r1Map("10x10").length shouldBe 5
@@ -92,7 +92,7 @@ class TrimFastqTest extends UnitSpec {
   it should "not trim or discard any reads" in {
     val (r1, r2) = fqFiles
     val (r1Out, r2Out) = (makeTempFile("r1out.", ".fq"), makeTempFile("r2out.", ".fq"))
-    new TrimFastq(input=Seq(r1, r2), output=Seq(r1Out, r2Out), length=25, exclude=false).execute()
+    new TrimFastq(input=Seq(r1, r2), output=Seq(r1Out, r2Out), length=Seq(25), exclude=false).execute()
     val r1Map = FastqSource(r1Out).map(r => r.name -> r).toMap
     val r2Map = FastqSource(r2Out).map(r => r.name -> r).toMap
     r1Map.size shouldBe 3
@@ -108,7 +108,7 @@ class TrimFastqTest extends UnitSpec {
   it should "trim but not discard some reads" in {
     val (r1, r2) = fqFiles
     val (r1Out, r2Out) = (makeTempFile("r1out.", ".fq"), makeTempFile("r2out.", ".fq"))
-    new TrimFastq(input=Seq(r1, r2), output=Seq(r1Out, r2Out), length=15, exclude=false).execute()
+    new TrimFastq(input=Seq(r1, r2), output=Seq(r1Out, r2Out), length=Seq(15), exclude=false).execute()
     val r1Map = FastqSource(r1Out).map(r => r.name -> r).toMap
     val r2Map = FastqSource(r2Out).map(r => r.name -> r).toMap
     r1Map.size shouldBe 3
@@ -124,12 +124,28 @@ class TrimFastqTest extends UnitSpec {
   it should "trim some reads and discard others by pair in" in {
     val (r1, r2) = fqFiles
     val (r1Out, r2Out) = (makeTempFile("r1out.", ".fq"), makeTempFile("r2out.", ".fq"))
-    new TrimFastq(input=Seq(r1, r2), output=Seq(r1Out, r2Out), length=15, exclude=true).execute()
+    new TrimFastq(input=Seq(r1, r2), output=Seq(r1Out, r2Out), length=Seq(15), exclude=true).execute()
     val r1Map = FastqSource(r1Out).map(r => r.name -> r).toMap
     val r2Map = FastqSource(r2Out).map(r => r.name -> r).toMap
     r1Map.size shouldBe 1
     r2Map.size shouldBe r1Map.size
     r1Map("20x20").length shouldBe 15
+    r2Map("20x20").length shouldBe 15
+  }
+
+  it should "trim some reads and discard others with FASTQ specific lengths" in {
+    val (r1, r2) = fqFiles
+    val (r1Out, r2Out) = (makeTempFile("r1out.", ".fq"), makeTempFile("r2out.", ".fq"))
+    new TrimFastq(input = Seq(r1, r2), output=Seq(r1Out, r2Out), length = Seq(10, 15), exclude = false).execute()
+    val r1Map = FastqSource(r1Out).map(r => r.name -> r).toMap
+    val r2Map = FastqSource(r2Out).map(r => r.name -> r).toMap
+    r1Map.size shouldBe 3
+    r2Map.size shouldBe r1Map.size
+    r1Map("10x10").length shouldBe 10
+    r1Map("10x20").length shouldBe 10
+    r1Map("20x20").length shouldBe 10
+    r2Map("10x10").length shouldBe 10
+    r2Map("10x20").length shouldBe 15
     r2Map("20x20").length shouldBe 15
   }
 }
