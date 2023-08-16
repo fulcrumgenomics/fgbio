@@ -133,10 +133,10 @@ class TrimFastqTest extends UnitSpec {
     r2Map("20x20").length shouldBe 15
   }
 
-  it should "trim each FASTQ independently to a FASTQ-specific length" in {
+  it should "trim each FASTQ independently to a FASTQ-specific length and not discard reads" in {
     val (r1, r2) = fqFiles
     val (r1Out, r2Out) = (makeTempFile("r1out.", ".fq"), makeTempFile("r2out.", ".fq"))
-    new TrimFastq(input = Seq(r1, r2), output=Seq(r1Out, r2Out), length = Seq(10, 15), exclude = false).execute()
+    new TrimFastq(input = Seq(r1, r2), output = Seq(r1Out, r2Out), length = Seq(10, 15), exclude = false).execute()
     val r1Map = FastqSource(r1Out).map(r => r.name -> r).toMap
     val r2Map = FastqSource(r2Out).map(r => r.name -> r).toMap
     r1Map.size shouldBe 3
@@ -147,5 +147,17 @@ class TrimFastqTest extends UnitSpec {
     r2Map("10x10").length shouldBe 10
     r2Map("10x20").length shouldBe 15
     r2Map("20x20").length shouldBe 15
+  }
+
+  it should "trim each FASTQ independently to a FASTQ-specific length and discard reads" in {
+    val (r1, r2) = fqFiles
+    val (r1Out, r2Out) = (makeTempFile("r1out.", ".fq"), makeTempFile("r2out.", ".fq"))
+    new TrimFastq(input = Seq(r1, r2), output=Seq(r1Out, r2Out), length = Seq(20, 20), exclude = true).execute()
+    val r1Map = FastqSource(r1Out).map(r => r.name -> r).toMap
+    val r2Map = FastqSource(r2Out).map(r => r.name -> r).toMap
+    r1Map.size shouldBe 1
+    r2Map.size shouldBe r1Map.size
+    r1Map("20x20").length shouldBe 20
+    r2Map("20x20").length shouldBe 20
   }
 }
