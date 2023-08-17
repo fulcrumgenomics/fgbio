@@ -240,6 +240,13 @@ class ZipperBams
       }
     }
 
+    // There really should be no more reads, but lets continue on if so
+    if (mappedIter.hasNext) {
+      logger.warning("Processed all unmapped reads but mapped reads remaining, continuing")
+      // consume the remaining so piping in strict mode does not fail
+      mappedIter.foreach { _ => }
+    }
+
     out.close()
     unmappedSource.safelyClose()
     mappedSource.safelyClose()
