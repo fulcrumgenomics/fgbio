@@ -242,9 +242,11 @@ class ZipperBams
 
     // There really should be no more reads, but lets continue on if so
     if (mappedIter.hasNext) {
-      logger.warning("Processed all unmapped reads but mapped reads remaining, continuing")
-      // consume the remaining so piping in strict mode does not fail
-      mappedIter.foreach { _ => }
+      throw new IllegalStateException(
+        """Error: processed all unmapped reads but there are mapped reads remaining to be read.
+        |Please ensure the unmapped and mapped reads have the same set of read names in the same
+        |order, and reads with the same name are consecutive (grouped) in each input""".stripMargin
+      )
     }
 
     out.close()
