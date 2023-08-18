@@ -241,6 +241,16 @@ class ZipperBams
     }
 
     out.close()
+
+    // There really should be no more mapped reads!
+    if (mappedIter.hasNext) {
+      throw new IllegalStateException(
+        """Error: processed all unmapped reads but there are mapped reads remaining to be read.
+        |Please ensure the unmapped and mapped reads have the same set of read names in the same
+        |order, and reads with the same name are consecutive (grouped) in each input""".stripMargin
+      )
+    }
+    
     unmappedSource.safelyClose()
     mappedSource.safelyClose()
   }
