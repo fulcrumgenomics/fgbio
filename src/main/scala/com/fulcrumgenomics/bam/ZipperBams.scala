@@ -240,7 +240,7 @@ class ZipperBams
       }
     }
 
-    // There really should be no more reads, but lets continue on if so
+    // There really should be no more mapped reads!
     if (mappedIter.hasNext) {
       throw new IllegalStateException(
         """Error: processed all unmapped reads but there are mapped reads remaining to be read.
