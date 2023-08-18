@@ -240,6 +240,8 @@ class ZipperBams
       }
     }
 
+    out.close()
+
     // There really should be no more mapped reads!
     if (mappedIter.hasNext) {
       throw new IllegalStateException(
@@ -248,8 +250,7 @@ class ZipperBams
         |order, and reads with the same name are consecutive (grouped) in each input""".stripMargin
       )
     }
-
-    out.close()
+    
     unmappedSource.safelyClose()
     mappedSource.safelyClose()
   }
