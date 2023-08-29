@@ -42,9 +42,8 @@ import enumeratum.EnumEntry
 import htsjdk.samtools._
 import htsjdk.samtools.util.SequenceUtil
 
-import scala.collection.BufferedIterator
+import scala.collection.{BufferedIterator, Iterator, mutable}
 import scala.collection.immutable.IndexedSeq
-import scala.collection.mutable
 import scala.collection.mutable.ListBuffer
 
 
@@ -488,7 +487,7 @@ class GroupReadsByUmi
                        |otherwise discard reads with UMIs shorter than this length and allow for differing UMI lengths.
                        |""")
   val minUmiLength: Option[Int] = None,
-  @arg(flag='x', doc= """
+ @arg(flag='x', doc= """
                        |DEPRECATED: this option will be removed in future versions and inter-contig reads will be
                        |automatically processed.""")
   @deprecated val allowInterContig: Boolean = true
