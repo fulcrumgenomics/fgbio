@@ -612,10 +612,15 @@ class GroupReadsByUmi
       // Take the next set of templates by position and assign UMIs
       val templates = takeNextGroup(templateCoordinateIterator, canTakeNextGroupByUmi=canTakeNextGroupByUmi)
       assignUmiGroups(templates)
-
-      // Then output the records in the right order (assigned tag, read name, r1, r2)
+      // Then group the records in the right order (assigned tag, read name, r1, r2)
       val templatesByMi = templates.groupBy { t => t.r1.get.apply[String](this.assignTag) }
 
+      // If marking duplicate, assign bitflag to non-duplicate
+      if (this.markDup) {
+        templatesByMi.values.foreach(t => assignRepReadToGroup(t))
+      }
+
+      // Then output the records in the right order (assigned tag, read name, r1, r2)
       templatesByMi.keys.toSeq.sortBy(id => (id.length, id)).foreach(tag => {
         templatesByMi(tag).sortBy(t => t.name).flatMap(t => t.primaryReads).foreach(rec => {
           out += rec
