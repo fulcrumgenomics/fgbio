@@ -733,4 +733,28 @@ class GroupReadsByUmi
         r1[String](this.rawTag)
     }
   }
+
+  private def assignRepReadToGroup(group: Seq[Template]): Unit = {
+    //check all primary reads have SAME UMI defined
+    group.headOption match {
+      case Some(firstObject) =>
+        val groupUmi = firstObject.r1.get[String](this.assignTag)
+        group.foreach {
+          t =>
+            t.primaryReads.foreach { r =>
+              if (r.get[String](this.assignTag).getOrElse("") != groupUmi)
+                fail(s"Record '$r' has mismatched UMI from group '${groupUmi}'")
+            }
+        }
+    }
+    group.sortBy { t =>
+      calculateScore(t.primaryReads)
+    }
+    group.slice(1,group.length).foreach { t => t.allReads.foreach( r => r.duplicate = true) }
+  }
+
+  private def calculateScore(read: Iterator[SamRecord]): Int = {
+    read.foldLeft(0)((acc, obj) => acc + DuplicateScoringStrategy.computeDuplicateScore(obj.asSam, this.dupStrategy, true))
+  }
+
 }
