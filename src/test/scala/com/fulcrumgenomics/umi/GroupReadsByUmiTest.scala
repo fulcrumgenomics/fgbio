@@ -33,6 +33,7 @@ import com.fulcrumgenomics.cmdline.FgBioMain.FailureException
 import com.fulcrumgenomics.testing.SamBuilder.{Minus, Plus}
 import com.fulcrumgenomics.testing.{SamBuilder, UnitSpec}
 import com.fulcrumgenomics.umi.GroupReadsByUmi._
+import htsjdk.samtools.DuplicateScoringStrategy
 import org.scalatest.{OptionValues, PrivateMethodTester}
 
 import java.nio.file.Files
@@ -257,10 +258,10 @@ class GroupReadsByUmiTest extends UnitSpec with OptionValues with PrivateMethodT
 
   it should "correctly mark duplicates on duplicate reads in group, when flag is passed" in {
     val builder = new SamBuilder(readLength = 100, sort = Some(SamOrder.Coordinate))
-    // Mapping Quality is a tie breaker in all HTSLIB strategies, so use that to our advantage here.
-    builder.addPair(mapq1 = 100, mapq2 = 100, name = "a01", start1 = 100, start2 = 300, strand1 = Plus, strand2 = Minus, attrs = Map("RX" -> "ACT-ACT"))
+    // Mapping Quality is a tie breaker, so use that to our advantage here.
+    builder.addPair(mapq1 = 10, mapq2 = 10, name = "a01", start1 = 100, start2 = 300, strand1 = Plus, strand2 = Minus, attrs = Map("RX" -> "ACT-ACT"))
     builder.addPair(mapq1 = 30, mapq2 = 30, name = "a02", start1 = 100, start2 = 300, strand1 = Plus, strand2 = Minus, attrs = Map("RX" -> "ACT-ACT"))
-    builder.addPair(mapq1 = 10, mapq2 = 10, name = "a03", start1 = 100, start2 = 300, strand1 = Plus, strand2 = Minus, attrs = Map("RX" -> "ACT-ACT"))
+    builder.addPair(mapq1 = 100, mapq2 = 10, name = "a03", start1 = 100, start2 = 300, strand1 = Plus, strand2 = Minus, attrs = Map("RX" -> "ACT-ACT"))
     builder.addPair(mapq1 = 0, mapq2 = 0, name = "a04", start1 = 100, start2 = 300, strand1 = Plus, strand2 = Minus, attrs = Map("RX" -> "ACT-ACT"))
 
     val in = builder.toTempFile()
@@ -269,9 +270,9 @@ class GroupReadsByUmiTest extends UnitSpec with OptionValues with PrivateMethodT
     new GroupReadsByUmi(minMapQ = 0, input = in, output = out, familySizeHistogram = Some(hist), rawTag = "RX", assignTag = "MI", strategy = Strategy.Paired, edits = 1, markDup = true).execute()
 
     val recs = readBamRecs(out)
-    recs.filter(_.name.equals("a01")).forall(_.duplicate == false) shouldBe true
+    recs.filter(_.name.equals("a01")).forall(_.duplicate == true) shouldBe true
     recs.filter(_.name.equals("a02")).forall(_.duplicate == true) shouldBe true
-    recs.filter(_.name.equals("a03")).forall(_.duplicate == true) shouldBe true
+    recs.filter(_.name.equals("a03")).forall(_.duplicate == false) shouldBe true
     recs.filter(_.name.equals("a04")).forall(_.duplicate == true) shouldBe true
   }
 
