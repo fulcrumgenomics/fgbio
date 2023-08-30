@@ -752,14 +752,32 @@ class GroupReadsByUmi
             }
         }
     }
-    group.sortBy { t =>
-      calculateScore(t.primaryReads)
+    val deDupGroup = group.sortWith{ (t1, t2) =>
+      compareScore(t1.primaryReads, t2.primaryReads)
     }
-    group.slice(1,group.length).foreach { t => t.allReads.foreach( r => r.duplicate = true) }
+    deDupGroup.slice(1,deDupGroup.length).foreach { t => t.allReads.foreach( r => r.duplicate = true) }
   }
 
-  private def calculateScore(read: Iterator[SamRecord]): Int = {
-    read.foldLeft(0)((acc, obj) => acc + DuplicateScoringStrategy.computeDuplicateScore(obj.asSam, this.dupStrategy, true))
+  private def compareScore(priRead1: Iterator[SamRecord], priRead2: Iterator[SamRecord]): Boolean = {
+    var score1 = 0
+    var score2 = 0
+    var r1MapQ = 0
+    var r2MapQ = 0
+    priRead1.foreach{ r =>
+      score1 = score1 + DuplicateScoringStrategy.computeDuplicateScore(r.asSam, this.dupStrategy, true)
+      r1MapQ = r1MapQ + r.mapq
+    }
+    priRead2.foreach { r =>
+      score2 = score2 + DuplicateScoringStrategy.computeDuplicateScore(r.asSam, this.dupStrategy, true)
+      r2MapQ = r2MapQ + r.mapq
+    }
+    if (score1 == score2) {
+      // tie break on mapQ
+      r1MapQ > r2MapQ
+    }
+    else {
+      score1 > score2
+    }
   }
 
 }
