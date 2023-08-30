@@ -755,6 +755,8 @@ class GroupReadsByUmi
     val deDupGroup = group.sortWith{ (t1, t2) =>
       compareScore(t1.primaryReads, t2.primaryReads)
     }
+    //0 element is highest scoring item, therefor is the representative read.
+    //mark all SamRecords in other elements as duplicate.
     deDupGroup.slice(1,deDupGroup.length).foreach { t => t.allReads.foreach( r => r.duplicate = true) }
   }
 
