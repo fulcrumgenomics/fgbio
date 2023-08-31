@@ -184,6 +184,7 @@ class FastqToBam
 
         if (sampleBarcode.nonEmpty) rec("BC") = sampleBarcode
         if (storeSampleBarcodeQualities && sampleQuals.nonEmpty) rec("QT") = sampleQuals
+        
         // Set the UMI on the read depending on whether we got UMIs from the read names, reads or both
         (umi, umiFromReadName) match {
           case ("",       Some(fromName)) => rec(this.umiTag) = fromName
