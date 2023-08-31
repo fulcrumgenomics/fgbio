@@ -322,6 +322,24 @@ class FastqToBamTest extends UnitSpec {
     recs(3).basesString shouldBe "CCCCCCCCCC"
   }
 
+  it should "extract sample barcode qualities when requested" in {
+    val r1 = fq(
+      FastqRecord("q1:2:3:4:5:6:7", "AAACCCAAAA", "ABCDEFGHIJ"),
+      FastqRecord("q2:2:3:4:5:6:7", "TAANNNAAAA", "BCDEFGHIJK"),
+      FastqRecord("q3:2:3:4:5:6:7", "GAACCCTCGA", "CDEFGHIJKL"),
+    )
+    val bam = makeTempFile("fastqToBamTest.", ".bam")
+    new FastqToBam(input = Seq(r1), output = bam, sample = "s", library = "l", readStructures = Seq(rs("3B3M3B+T")), storeSampleBarcodeQualities = true).execute()
+    val recs = readBamRecs(bam)
+    recs should have size 3
+    recs(0).apply[String]("BC") shouldBe "AAA-AAA"
+    recs(0).apply[String]("QT") shouldBe "ABC GHI"
+    recs(1).apply[String]("BC") shouldBe "TAA-AAA"
+    recs(1).apply[String]("QT") shouldBe "BCD HIJ"
+    recs(2).apply[String]("BC") shouldBe "GAA-TCG"
+    recs(2).apply[String]("QT") shouldBe "CDE IJK"
+  }
+
   it should "extract UMIs from read names when requested" in {
     val r1 = fq(
       FastqRecord("q1:2:3:4:5:6:7:ACGT", "AAAAAAAAAA", "=========="),
