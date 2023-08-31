@@ -482,6 +482,8 @@ class GroupReadsByUmi
  @arg(flag='d', doc="Mark Duplicate Flag will be set on primary read.")     val markDup: Boolean = false,
  @arg(flag='D', doc="If -d is set, primary read assignment strategy, default = Sum Of Base Qualities.")
   val dupStrategy: DuplicateScoringStrategy.ScoringStrategy = DuplicateScoringStrategy.ScoringStrategy.SUM_OF_BASE_QUALITIES,
+ @arg(flag='S', doc="Include secondary reads.")         val includeSecondary: Boolean = false,
+ @arg(flag='U', doc="Include supplementary reads.")     val includeSupplementary: Boolean = false,
  @arg(flag='m', doc="Minimum mapping quality for mapped reads.")         val minMapQ: Int      = 1,
  @arg(flag='n', doc="Include non-PF reads.")            val includeNonPfReads: Boolean = false,
  @arg(flag='s', doc="The UMI assignment strategy.")     val strategy: Strategy,
@@ -548,7 +550,8 @@ class GroupReadsByUmi
     // Filter and sort the input BAM file
     logger.info("Filtering the input.")
     val filteredIterator = in.iterator
-      .filter(r => !r.secondary && !r.supplementary)
+      .filter(r => includeSecondary || !r.secondary  )
+      .filter(r => includeSupplementary || !r.supplementary )
       .filter(r => (includeNonPfReads || r.pf)                                      || { filteredNonPf += 1; false })
       .filter(r => (r.mapped || (r.paired && r.mateMapped))                         || { filteredPoorAlignment += 1; false })
       .filter(r => (allowInterContig || r.unpaired || r.refIndex == r.mateRefIndex) || { filteredPoorAlignment += 1; false })
