@@ -299,7 +299,6 @@ class GroupReadsByUmiTest extends UnitSpec with OptionValues with PrivateMethodT
     recs.filter(_.name.equals("a04")).forall(_.duplicate == false) shouldBe true
   }
 
-
   it should "correctly mark duplicates on duplicate single-end reads with UMIs" in {
     val builder = new SamBuilder(readLength = 100, sort = Some(SamOrder.Coordinate))
     builder.addFrag(mapq = 100, name = "a01", start = 100, attrs = Map("RX" -> "AAAAAAAA"))
