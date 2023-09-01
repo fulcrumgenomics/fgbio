@@ -92,7 +92,7 @@ class FastqToBam
   @arg(flag='s', doc="If true, queryname sort the BAM file, otherwise preserve input order.")  val sort: Boolean = false,
   @arg(flag='u', doc="Tag in which to store molecular barcodes/UMIs.")                         val umiTag: String = ConsensusTags.UmiBases,
   @arg(flag='q', doc="Tag in which to store molecular barcode/UMI qualities.")                 val umiQualTag: Option[String] = None,
-  @arg(doc="Store the sample barcode qualities in the QT Tag.")                                val storeSampleBarcodeQualities: Boolean = false,
+  @arg(flag='Q', doc="Store the sample barcode qualities in the QT Tag.")                      val storeSampleBarcodeQualities: Boolean = false,
   @arg(flag='n', doc="Extract UMI(s) from read names and prepend to UMIs from reads.")         val extractUmisFromReadNames: Boolean = false,
   @arg(          doc="Read group ID to use in the file header.")                               val readGroupId: String = "A",
   @arg(          doc="The name of the sequenced sample.")                                      val sample: String,
@@ -184,7 +184,7 @@ class FastqToBam
 
         if (sampleBarcode.nonEmpty) rec("BC") = sampleBarcode
         if (storeSampleBarcodeQualities && sampleQuals.nonEmpty) rec("QT") = sampleQuals
-        
+
         // Set the UMI on the read depending on whether we got UMIs from the read names, reads or both
         (umi, umiFromReadName) match {
           case ("",       Some(fromName)) => rec(this.umiTag) = fromName
