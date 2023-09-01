@@ -488,28 +488,28 @@ object Strategy extends FgBioEnum[Strategy] {
   """
 )
 class GroupReadsByUmi
-  (@arg(flag='i', doc="The input BAM file.")              val input: PathToBam  = Io.StdIn,
-   @arg(flag='o', doc="The output BAM file.")             val output: PathToBam = Io.StdOut,
-   @arg(flag='f', doc="Optional output of tag family size counts.") val familySizeHistogram: Option[FilePath] = None,
-   @arg(flag='t', doc="The tag containing the raw UMI.")  val rawTag: String    = "RX",
-   @arg(flag='T', doc="The output tag for UMI grouping.") val assignTag: String = "MI",
-   @arg(flag='d', doc="Mark duplicates, duplicate bitflag will be set on non-representative reads.")     val markDup: Boolean = false,
-   @arg(flag='D', doc="If -d is set, representative read assignment strategy, default = Sum Of Base Qualities.")
+( @arg(flag='i', doc="The input BAM file.")              val input: PathToBam  = Io.StdIn,
+  @arg(flag='o', doc="The output BAM file.")             val output: PathToBam = Io.StdOut,
+  @arg(flag='f', doc="Optional output of tag family size counts.") val familySizeHistogram: Option[FilePath] = None,
+  @arg(flag='t', doc="The tag containing the raw UMI.")  val rawTag: String    = "RX",
+  @arg(flag='T', doc="The output tag for UMI grouping.") val assignTag: String = "MI",
+  @arg(flag='d', doc="Mark duplicates, duplicate bitflag will be set on non-representative reads.")     val markDup: Boolean = false,
+  @arg(flag='D', doc="If -d is set, representative read assignment strategy, default = Sum Of Base Qualities.")
     val dupStrategy: DuplicateScoringStrategy.ScoringStrategy = DuplicateScoringStrategy.ScoringStrategy.SUM_OF_BASE_QUALITIES,
-   @arg(flag='S', doc="Include secondary reads.")         val includeSecondary: Boolean = false,
-   @arg(flag='U', doc="Include supplementary reads.")     val includeSupplementary: Boolean = false,
-   @arg(flag='m', doc="Minimum mapping quality for mapped reads.")         val minMapQ: Int      = 1,
-   @arg(flag='n', doc="Include non-PF reads.")            val includeNonPfReads: Boolean = false,
-   @arg(flag='s', doc="The UMI assignment strategy.")     val strategy: Strategy,
-   @arg(flag='e', doc="The allowable number of edits between UMIs.") val edits: Int = 1,
-   @arg(flag='l', doc= """The minimum UMI length. If not specified then all UMIs must have the same length,
+  @arg(flag='S', doc="Include secondary reads.")         val includeSecondary: Boolean = false,
+  @arg(flag='U', doc="Include supplementary reads.")     val includeSupplementary: Boolean = false,
+  @arg(flag='m', doc="Minimum mapping quality for mapped reads.")         val minMapQ: Int      = 1,
+  @arg(flag='n', doc="Include non-PF reads.")            val includeNonPfReads: Boolean = false,
+  @arg(flag='s', doc="The UMI assignment strategy.")     val strategy: Strategy,
+  @arg(flag='e', doc="The allowable number of edits between UMIs.") val edits: Int = 1,
+  @arg(flag='l', doc= """The minimum UMI length. If not specified then all UMIs must have the same length,
                          |otherwise discard reads with UMIs shorter than this length and allow for differing UMI lengths.
                          |""")
     val minUmiLength: Option[Int] = None,
-   @arg(flag='x', doc= """
+  @arg(flag='x', doc= """
                          |DEPRECATED: this option will be removed in future versions and inter-contig reads will be
                          |automatically processed.""")
-   @deprecated val allowInterContig: Boolean = true
+  @deprecated val allowInterContig: Boolean = true
 )extends FgBioTool with LazyLogging {
   import GroupReadsByUmi._
 
