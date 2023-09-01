@@ -513,7 +513,6 @@ class GroupReadsByUmi
 )extends FgBioTool with LazyLogging {
   import GroupReadsByUmi._
 
-
   require(this.minUmiLength.forall(_ => this.strategy != Strategy.Paired), "Paired strategy cannot be used with --min-umi-length")
 
   private val assigner = strategy.newStrategy(this.edits)
