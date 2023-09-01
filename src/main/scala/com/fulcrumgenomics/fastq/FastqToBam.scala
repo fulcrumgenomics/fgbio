@@ -92,6 +92,7 @@ class FastqToBam
   @arg(flag='s', doc="If true, queryname sort the BAM file, otherwise preserve input order.")  val sort: Boolean = false,
   @arg(flag='u', doc="Tag in which to store molecular barcodes/UMIs.")                         val umiTag: String = ConsensusTags.UmiBases,
   @arg(flag='q', doc="Tag in which to store molecular barcode/UMI qualities.")                 val umiQualTag: Option[String] = None,
+  @arg(flag='Q', doc="Store the sample barcode qualities in the QT Tag.")                      val storeSampleBarcodeQualities: Boolean = false,
   @arg(flag='n', doc="Extract UMI(s) from read names and prepend to UMIs from reads.")         val extractUmisFromReadNames: Boolean = false,
   @arg(          doc="Read group ID to use in the file header.")                               val readGroupId: String = "A",
   @arg(          doc="The name of the sequenced sample.")                                      val sample: String,
@@ -157,6 +158,7 @@ class FastqToBam
     try {
       val subs = fqs.iterator.zip(structures.iterator).flatMap { case(fq, rs) => rs.extract(fq.bases, fq.quals) }.toIndexedSeq
       val sampleBarcode = subs.iterator.filter(_.kind == SampleBarcode).map(_.bases).mkString("-")
+      val sampleQuals   = subs.iterator.filter(_.kind == SampleBarcode).map(_.quals).mkString(" ")
       val umi           = subs.iterator.filter(_.kind == MolecularBarcode).map(_.bases).mkString("-")
       val umiQual       = subs.iterator.filter(_.kind == MolecularBarcode).map(_.quals).mkString(" ")
       val templates     = subs.iterator.filter(_.kind == Template).toList
@@ -166,7 +168,7 @@ class FastqToBam
 
       templates.zipWithIndex.map { case (read, index) =>
         // If the template read had no bases, we'll substitute in a single N @ Q2 below to keep htsjdk happy
-        val empty = read.bases.length == 0
+        val empty = read.bases.isEmpty
 
         val rec = SamRecord(header)
         rec(ReservedTagConstants.READ_GROUP_ID) = this.readGroupId
@@ -181,6 +183,7 @@ class FastqToBam
         }
 
         if (sampleBarcode.nonEmpty) rec("BC") = sampleBarcode
+        if (storeSampleBarcodeQualities && sampleQuals.nonEmpty) rec("QT") = sampleQuals
 
         // Set the UMI on the read depending on whether we got UMIs from the read names, reads or both
         (umi, umiFromReadName) match {
