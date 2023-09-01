@@ -439,8 +439,9 @@ object Strategy extends FgBioEnum[Strategy] {
     |   4. Read Name
     |
     |During grouping, reads are filtered out if a) all reads with the same queryname are unmapped, b) any primary
-    |read has mapping quality < `min-map-q` (default=1), or c) the primary mappings for R1 and R2 are on different
-    |chromosomes and `--allow-inter-contig` has been set to false.
+    |read has mapping quality < `min-map-q` (default=1), c) the primary mappings for R1 and R2 are on different
+    |chromosomes and `--allow-inter-contig` has been set to false., or d.) all non-primary reads are filtered,
+    |if `--includeSecondary` and\or `--includeSupplementary` are set to false (default=false)
     |
     |Grouping of UMIs is performed by one of four strategies:
     |
@@ -469,8 +470,21 @@ object Strategy extends FgBioEnum[Strategy] {
     |(i.e. does not count dashes and other non-ACGT characters). This option is not implemented for reads with UMI pairs
     |(i.e. using the paired assigner).
     |
+    |If mark duplicates flag is set, will set duplicate bit flag on all non-representative reads inside of a UMI group
+    |which are output.
+    |
+    |Strategies for choosing representative read is independent of UMI grouping strategy.
+    |
+    |Choosing representative read is preformed by one of three strategies:
+    |
+    |In each strategy, ties are broken by mapping quality
+    |
+    |1. **SUM_OF_BASE_QUALITIES**:  Sum base quality across entire read, the read with the highest combined base quality is chosen.
+    |2. **TOTAL_MAPPED_REFERENCE_LENGTH**: Sum mapped reference across each paired read ( if paired , the longest read is chosen.
+    |3. **RANDOM**: Choose a representative read at random.
+    |
     |If the input is not template-coordinate sorted (i.e. `SO:unsorted GO:query SS:unsorted:template-coordinate`), then
-    |this tool will re-sort the input. The ouitput will be written in template-coordinate order.
+    |this tool will re-sort the input. The output will be written in template-coordinate order.
   """
 )
 class GroupReadsByUmi
@@ -479,8 +493,8 @@ class GroupReadsByUmi
  @arg(flag='f', doc="Optional output of tag family size counts.") val familySizeHistogram: Option[FilePath] = None,
  @arg(flag='t', doc="The tag containing the raw UMI.")  val rawTag: String    = "RX",
  @arg(flag='T', doc="The output tag for UMI grouping.") val assignTag: String = "MI",
- @arg(flag='d', doc="Mark Duplicate Flag will be set on primary read.")     val markDup: Boolean = false,
- @arg(flag='D', doc="If -d is set, primary read assignment strategy, default = Sum Of Base Qualities.")
+ @arg(flag='d', doc="Mark duplicates, duplicate bitflag will be set on non-representative reads.")     val markDup: Boolean = false,
+ @arg(flag='D', doc="If -d is set, representative read assignment strategy, default = Sum Of Base Qualities.")
   val dupStrategy: DuplicateScoringStrategy.ScoringStrategy = DuplicateScoringStrategy.ScoringStrategy.SUM_OF_BASE_QUALITIES,
  @arg(flag='S', doc="Include secondary reads.")         val includeSecondary: Boolean = false,
  @arg(flag='U', doc="Include supplementary reads.")     val includeSupplementary: Boolean = false,
@@ -498,6 +512,7 @@ class GroupReadsByUmi
   @deprecated val allowInterContig: Boolean = true
 )extends FgBioTool with LazyLogging {
   import GroupReadsByUmi._
+
 
   require(this.minUmiLength.forall(_ => this.strategy != Strategy.Paired), "Paired strategy cannot be used with --min-umi-length")
 
