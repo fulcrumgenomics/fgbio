@@ -43,7 +43,6 @@ import htsjdk.samtools._
 import htsjdk.samtools.util.SequenceUtil
 
 import java.util.concurrent.atomic.AtomicLong
-import scala.collection.immutable.IndexedSeq
 import scala.collection.mutable.ListBuffer
 import scala.collection.{BufferedIterator, Iterator, mutable}
 
@@ -210,7 +209,7 @@ object GroupReadsByUmi {
     * Class that implements the directed adjacency graph method from umi_tools.
     * See: https://github.com/CGATOxford/UMI-tools
     */
-  private[umi] class AdjacencyUmiAssigner(val maxMismatches: Int) extends UmiAssigner {
+  private[umi] class AdjacencyUmiAssigner(val maxMismatches: Int, val allowUmisWithDifferentLengths: Boolean) extends UmiAssigner {
     /** Represents a node in the adjacency graph; equality is just by UMI sequence. */
     class Node(val umi: Umi, val count: Long, val children: mutable.Buffer[Node] = mutable.Buffer()) {
       /** Gets the full set of descendants from this node. */
@@ -235,16 +234,22 @@ object GroupReadsByUmi {
 
     /** Returns whether or not a pair of UMIs match closely enough to be considered adjacent in the graph. */
     protected def matches(lhs: Umi, rhs: Umi): Boolean = {
-      require(lhs.length == rhs.length, s"UMIs of different length detected: $lhs vs. $rhs")
-      var idx = 0
-      var mismatches = 0
-      val len = lhs.length
-      while (idx < len && mismatches <= this.maxMismatches) {
-        if (lhs(idx) != rhs(idx)) mismatches += 1
-        idx += 1
-      }
+      if (allowUmisWithDifferentLengths) {
+        lhs.length == rhs.length
+      } else {
+        require(lhs.length == rhs.length, s"UMIs of different length detected: $lhs vs. $rhs")
+        true
+      } &&  {
+        var idx = 0
+        var mismatches = 0
+        val len = lhs.length
+        while (idx < len && mismatches <= this.maxMismatches) {
+          if (lhs(idx) != rhs(idx)) mismatches += 1
+          idx += 1
+        }
 
-      mismatches <= maxMismatches
+        mismatches <= maxMismatches
+      }
     }
 
     /** Assigns IDs to each UMI based on the root to which is it mapped. */
@@ -271,7 +276,6 @@ object GroupReadsByUmi {
         val nextRoot = remaining.remove(0)
         roots += nextRoot
         val working = mutable.Buffer[Node](nextRoot)
-
         while (working.nonEmpty) {
           val root = working.remove(0)
           val (hits, misses) = remaining.partition(other => root.count >= 2 * other.count - 1 && matches(root.umi, other.umi))
@@ -292,7 +296,7 @@ object GroupReadsByUmi {
     *
     * @param maxMismatches the maximum number of mismatches between UMIs
     */
-  class PairedUmiAssigner(maxMismatches: Int) extends AdjacencyUmiAssigner(maxMismatches) {
+  class PairedUmiAssigner(maxMismatches: Int, allowUmisWithDifferentLengths: Boolean) extends AdjacencyUmiAssigner(maxMismatches, allowUmisWithDifferentLengths) {
     /** String that is prefixed onto the UMI from the read with that maps to a lower coordinate in the genome.. */
     private[umi] val lowerReadUmiPrefix: String = ("a" * (maxMismatches+1)) + ":"
 
@@ -402,27 +406,32 @@ case class TagFamilySizeMetric(family_size: Int,
 
 /** The strategies implemented by [[GroupReadsByUmi]] to identify reads from the same source molecule.*/
 sealed trait Strategy extends EnumEntry {
-  def newStrategy(edits: Int): UmiAssigner
+  def newStrategy(edits: Int, allowUmisWithDifferentLengths: Boolean): UmiAssigner
 }
 object Strategy extends FgBioEnum[Strategy] {
   def values: IndexedSeq[Strategy] = findValues
   /** Strategy to only reads with identical UMI sequences are grouped together. */
   case object Identity extends Strategy {
-    def newStrategy(edits: Int = 0): UmiAssigner = {
+    def newStrategy(edits: Int = 0, allowUmisWithDifferentLengths: Boolean): UmiAssigner = {
       require(edits == 0, "Edits should be zero when using the identity UMI assigner.")
       new IdentityUmiAssigner
     }
   }
+
   /** Strategy to cluster reads into groups based on mismatches between reads in clusters. */
-  case object Edit extends Strategy { def newStrategy(edits: Int): UmiAssigner = new SimpleErrorUmiAssigner(edits) }
+  case object Edit extends Strategy { def newStrategy(edits: Int, allowUmisWithDifferentLengths: Boolean): UmiAssigner = new SimpleErrorUmiAssigner(edits) }
   /** Strategy based on the directed adjacency method described in [umi_tools](http://dx.doi.org/10.1101/051755)
     * that allows for errors between UMIs but only when there is a count gradient.
     */
-  case object Adjacency extends Strategy { def newStrategy(edits: Int): UmiAssigner = new AdjacencyUmiAssigner(edits) }
+  case object Adjacency extends Strategy {
+    def newStrategy(edits: Int, allowUmisWithDifferentLengths: Boolean): UmiAssigner = new AdjacencyUmiAssigner(edits, allowUmisWithDifferentLengths)
+  }
   /** Strategy similar to the [[Adjacency]] strategy similar to adjacency but for methods that produce template with a
     * pair of UMIs such that a read with A-B is related to but not identical to a read with B-A.
     */
-  case object Paired extends Strategy { def newStrategy(edits: Int): UmiAssigner = new PairedUmiAssigner(edits)}
+  case object Paired extends Strategy {
+    def newStrategy(edits: Int, allowUmisWithDifferentLengths: Boolean): UmiAssigner = new PairedUmiAssigner(edits, allowUmisWithDifferentLengths)
+  }
 }
 
 @clp(group=ClpGroups.Umi, description =
@@ -510,6 +519,8 @@ class GroupReadsByUmi
                          |otherwise discard reads with UMIs shorter than this length and allow for differing UMI lengths.
                          |""")
     val minUmiLength: Option[Int] = None,
+ @arg(flag='N', doc="Filter UMIs with N bases.") val filterUmisWithN: Boolean = true,
+ @arg(flag='a', doc="Allow UMIs with different lengths") val allowUmisWithDifferentLengths: Boolean = false,
  @arg(flag='x', doc= """
                          |DEPRECATED: this option will be removed in future versions and inter-contig reads will be
                          |automatically processed.""")
@@ -519,7 +530,7 @@ class GroupReadsByUmi
 
   require(this.minUmiLength.forall(_ => this.strategy != Strategy.Paired), "Paired strategy cannot be used with --min-umi-length")
 
-  private val assigner = strategy.newStrategy(this.edits)
+  private val assigner = strategy.newStrategy(this.edits, this.allowUmisWithDifferentLengths)
 
   // Give values to unset parameters that are different in duplicate marking mode
   private val _minMapQ = this.minMapQ.getOrElse(if (this.markDuplicates) 0 else 1)
@@ -578,7 +589,9 @@ class GroupReadsByUmi
       .filter(r => (r.mapped || (r.paired && r.mateMapped))                         || { filteredPoorAlignment += 1; false })
       .filter(r => (allowInterContig || r.unpaired || r.refIndex == r.mateRefIndex) || { filteredPoorAlignment += 1; false })
       .filter(r => mapqOk(r, this._minMapQ)                                         || { filteredPoorAlignment += 1; false })
-      .filter(r => !r.get[String](rawTag).exists(_.contains('N'))                   || { filteredNsInUmi += 1; false })
+      .filter(
+        r => !(filterUmisWithN && r.get[String](rawTag).exists(_.contains('N'))  ) || { filteredNsInUmi += 1; false }
+      )
       .filter { r =>
         this.minUmiLength.forall { l =>
           r.get[String](this.rawTag).forall { umi =>

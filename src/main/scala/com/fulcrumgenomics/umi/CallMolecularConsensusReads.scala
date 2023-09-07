@@ -72,9 +72,9 @@ import htsjdk.samtools.SAMFileHeader.{GroupOrder, SortOrder}
     |calls each end of a pair independently, and does not jointly call bases that overlap within a pair.  Insertion or
     |deletion errors in the reads are not considered in the consensus model.
     |
-    |The consensus reads produced are unaligned, due to the difficulty and error-prone nature of inferring the conesensus
+    |The consensus reads produced are unaligned, due to the difficulty and error-prone nature of inferring the consensus
     |alignment.  Consensus reads should therefore be aligned after, which should not be too expensive as likely there
-    |are far fewer consensus reads than input raw raws.  Please see how best to use this tool within the best-practice
+    |are far fewer consensus reads than input raw reads.  Please see how best to use this tool within the best-practice
     |pipeline: https://github.com/fulcrumgenomics/fgbio/blob/main/docs/best-practice-consensus-pipeline.md
     |
     |Particular attention should be paid to setting the `--min-reads` parameter as this can have a dramatic effect on
