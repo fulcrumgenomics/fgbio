@@ -97,7 +97,7 @@ class FastqToBam
   @arg(          doc="The name of the sequenced sample.")                                      val sample: String,
   @arg(          doc="The name/ID of the sequenced library.")                                  val library: String,
   @arg(          doc="Sequencing Platform.")                                                   val platform: String = "illumina",
-  @arg(doc="Platform unit (e.g. '<flowcell-barcode>.<lane>.<sample-barcode>')")                val platformUnit: Option[String] = None,
+  @arg(doc="Platform unit (e.g. '<flowcell-barcode>.<lane>')")                                 val platformUnit: Option[String] = None,
   @arg(doc="Platform model to insert into the group header (ex. miseq, hiseq2500, hiseqX)")    val platformModel: Option[String] = None,
   @arg(doc="The sequencing center from which the data originated")                             val sequencingCenter: Option[String] = None,
   @arg(doc="Predicted median insert size, to insert into the read group header")               val predictedInsertSize: Option[Integer] = None,
