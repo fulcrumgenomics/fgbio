@@ -270,7 +270,7 @@ class FastqToBamTest extends UnitSpec {
       output=bam,
       sample="foo",
       library="bar",
-      barcode=Some("TATA"),
+      barcode=Seq("TATA", "GAGA"),
       readGroupId="MyRG",
       platform="Illumina",
       platformUnit=Some("pee-eww"),
@@ -292,8 +292,9 @@ class FastqToBamTest extends UnitSpec {
     rg.getSample shouldBe "foo"
     rg.getLibrary shouldBe "bar"
     rg.getReadGroupId shouldBe "MyRG"
-    rg.getBarcodes() should have size 1
+    rg.getBarcodes() should have size 2
     rg.getBarcodes().get(0) shouldBe "TATA"
+    rg.getBarcodes().get(1) shouldBe "GAGA"
     rg.getPlatform shouldBe "Illumina"
     rg.getPlatformUnit shouldBe "pee-eww"
     rg.getPlatformModel shouldBe "hiseq2500"
