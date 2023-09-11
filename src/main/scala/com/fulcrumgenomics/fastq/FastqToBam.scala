@@ -97,6 +97,7 @@ class FastqToBam
   @arg(          doc="Read group ID to use in the file header.")                               val readGroupId: String = "A",
   @arg(          doc="The name of the sequenced sample.")                                      val sample: String,
   @arg(          doc="The name/ID of the sequenced library.")                                  val library: String,
+  @arg(flag='b', doc="Library or Sample barcode sequence.")                                    val barcode: Option[String] = None,
   @arg(          doc="Sequencing Platform.")                                                   val platform: String = "illumina",
   @arg(doc="Platform unit (e.g. '<flowcell-barcode>.<lane>.<sample-barcode>')")                val platformUnit: Option[String] = None,
   @arg(doc="Platform model to insert into the group header (ex. miseq, hiseq2500, hiseqX)")    val platformModel: Option[String] = None,
@@ -136,6 +137,7 @@ class FastqToBam
     val rg = new SAMReadGroupRecord(this.readGroupId)
     rg.setSample(sample)
     rg.setLibrary(library)
+    this.barcode.foreach(bc => rg.setBarcodes(util.Arrays.asList(bc)))
     rg.setPlatform(this.platform)
     this.platformUnit.foreach(pu => rg.setPlatformUnit(pu))
     this.sequencingCenter.foreach(cn => rg.setSequencingCenter(cn))
