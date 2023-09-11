@@ -270,7 +270,7 @@ class FastqToBamTest extends UnitSpec {
       output=bam,
       sample="foo",
       library="bar",
-      barcode=Seq("TATA", "GAGA"),
+      barcode=Some("TATA-GAGA"), //note that when passed a single string with a - separator like this, htsjdk prouduces two barcodes via getBarcodes()
       readGroupId="MyRG",
       platform="Illumina",
       platformUnit=Some("pee-eww"),
