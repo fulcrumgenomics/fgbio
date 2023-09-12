@@ -632,7 +632,7 @@ class GroupReadsByUmi
       // Then group the records in the right order (assigned tag, read name, r1, r2)
       val templatesByMi = templates.groupBy { t => t.r1.get.apply[String](this.assignTag) }
 
-      // If marking duplicate, assign bitflag to non-duplicate
+      // If marking duplicates, assign bitflag to all duplicate reads
       if (this.markDup) {
         templatesByMi.values.foreach(t => assignRepReadToGroup(t))
       }
