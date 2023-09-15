@@ -549,6 +549,18 @@ class ClipBamTest extends UnitSpec with ErrorLogLevel with OptionValues {
     r2.start shouldBe r1.end + 1
   }
 
+  it should "clip FR reads that extend past mate in asymmetrical read" in {
+    val builder = new SamBuilder(readLength = 200, sort = Some(Queryname))
+    val clipper = new ClipBam(input = dummyBam, output = dummyBam, ref = ref, clipBasesPastMate = true,
+      readTwoFivePrime = 50)
+    val Seq(r1, r2) = builder.addPair(start1 = 100, start2 = 90)
+
+    r1.end shouldBe 299
+    r2.end shouldBe 289
+    clipper.clipPair(r1, r2)
+    r2.end shouldBe r2.end
+  }
+
   it should "clip FR reads that extend past mate, and remove overlap in asymmetrical read" in {
     val builder = new SamBuilder(readLength = 200, sort = Some(Queryname))
     val clipper = new ClipBam(input = dummyBam, output = dummyBam, ref = ref, clipBasesPastMate = true,
@@ -558,10 +570,27 @@ class ClipBamTest extends UnitSpec with ErrorLogLevel with OptionValues {
     r1.end shouldBe 299
     r2.end shouldBe 289
     clipper.clipPair(r1, r2)
+    r1.start shouldBe 100
     r2.start shouldBe r1.end + 1
+    r2.start shouldBe 170
+    r2.end shouldBe 239
   }
 
+  it should "clip FR reads that extend past mate, and remove overlap in asymmetrical read, " +
+    "should result in even length reads when clipPast first" in {
+    val builder = new SamBuilder(readLength = 200, sort = Some(Queryname))
+    val clipper = new ClipBam(input = dummyBam, output = dummyBam, ref = ref, clipBasesPastMate = true,
+      clipOverlappingReads = true, readTwoThreePrime = 50, clipPastFirst = true)
+    val Seq(r1, r2) = builder.addPair(start1 = 100, start2 = 90)
 
+    r1.end shouldBe 299
+    r2.end shouldBe 289
+    clipper.clipPair(r1, r2)
+    r1.start shouldBe 100
+    r2.start shouldBe r1.end + 1
+    r2.start shouldBe 195
+    r2.end shouldBe 289
+  }
 
 }
 
