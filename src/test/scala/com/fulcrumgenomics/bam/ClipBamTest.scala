@@ -417,10 +417,10 @@ class ClipBamTest extends UnitSpec with ErrorLogLevel with OptionValues {
     }
   }
 
-  private def clipBases(rec: SamRecord, left: Int, right: Int): String = rec.basesString.slice(left, rec.length-right)
-  private def clipQuals(rec: SamRecord, left: Int, right: Int): String = rec.qualsString.slice(left, rec.length-right)
-  private def maskBases(rec: SamRecord, left: Int, right: Int): String = "N"*left + clipBases(rec, left, right) + "N"*right
-  private def maskQuals(rec: SamRecord, left: Int, right: Int): String = "#"*left + clipQuals(rec, left, right) + "#"*right
+  private def clipBases(rec: SamRecord, left: Int, right: Int): String = rec.basesString.slice(left, rec.length - right)
+  private def clipQuals(rec: SamRecord, left: Int, right: Int): String = rec.qualsString.slice(left, rec.length - right)
+  private def maskBases(rec: SamRecord, left: Int, right: Int): String = "N" * left + clipBases(rec, left, right) + "N" * right
+  private def maskQuals(rec: SamRecord, left: Int, right: Int): String = "#" * left + clipQuals(rec, left, right) + "#" * right
 
   Seq((Soft, SoftWithMask), (Soft, Hard), (SoftWithMask, Hard)).foreach { case (prior, mode) =>
     it should s"upgrade existing clipping from $prior to $mode with --upgrade-clipping" in {
