@@ -578,7 +578,7 @@ class ClipBamTest extends UnitSpec with ErrorLogLevel with OptionValues {
   }
 
   it should "clip FR reads that extend past mate, and remove overlap in asymmetrical read, " +
-    "should result in even length reads when clipPast first extreme" in {
+    "should result in even length reads extremely different" in {
     val builder = new SamBuilder(readLength = 200, sort = Some(Queryname))
     val clipper = new ClipBam(input = dummyBam, output = dummyBam, ref = ref, clipBasesPastMate = true,
       clipOverlappingReads = true, readTwoThreePrime = 175, readOneFivePrime = 25)
