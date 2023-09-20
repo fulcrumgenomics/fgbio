@@ -86,7 +86,6 @@ class ClipBam
   @arg(          doc="Require at least this number of bases to be clipped on the 3' end of R2") val readTwoThreePrime: Int = 0,
   @arg(          doc="Clip overlapping reads.") val clipOverlappingReads: Boolean = false,
   @arg(          doc="Clip reads in FR pairs that sequence past the far end of their mate.") val clipBasesPastMate: Boolean = false,
-  @arg(          doc="Clip bases past mate before clipping overlapping reads") val clipPastFirst: Boolean = false,
   @arg(flag='S', doc="The sort order of the output. If not given, output will be in the same order as input if the input.")
   val sortOrder: Option[SamOrder] = None
 ) extends FgBioTool with LazyLogging {
@@ -97,8 +96,9 @@ class ClipBam
   validate(upgradeClipping || clipOverlappingReads || clipBasesPastMate || Seq(readOneFivePrime, readOneThreePrime, readTwoFivePrime, readTwoThreePrime).exists(_ != 0),
     "At least one clipping option is required")
 
-  validate(clipPastFirst && (clipBasesPastMate && clipOverlappingReads) || (! clipPastFirst),
-    "Both clipBasesPastMate & clipOverlappingReads must be passed if clipPastFirst is.")
+  if (clipBasesPastMate && clipOverlappingReads) {
+    logger.info("Clipping overlapping reads supersedes clipping past the far end of their mate.")
+  }
 
   private val clipper = new SamRecordClipper(mode=clippingMode, autoClipAttributes=autoClipAttributes)
 
@@ -174,10 +174,6 @@ class ClipBam
   private[bam] def clipPair(r1: SamRecord, r2: SamRecord, r1Metric: Option[ClippingMetrics] = None, r2Metric: Option[ClippingMetrics] = None): Unit = {
     val priorBasesClippedReadOne = r1.cigar.clippedBases
     val priorBasesClippedReadTwo = r2.cigar.clippedBases
-    var numOverlappingBasesReadOne = 0
-    var numOverlappingBasesReadTwo = 0
-    var numExtendingPastMateStartReadOne = 0
-    var numExtendingPastMateStartReadTwo = 0
 
     // Clip the read!
     val numReadOneFivePrime  = this.clipper.clip5PrimeEndOfRead(r1, readOneFivePrime)
@@ -185,27 +181,16 @@ class ClipBam
     val numReadTwoFivePrime  = this.clipper.clip5PrimeEndOfRead(r2, readTwoFivePrime)
     val numReadTwoThreePrime = this.clipper.clip3PrimeEndOfRead(r2, readTwoThreePrime)
 
-    // This logic is more complex given the optional ordering possible.
-    if (clipPastFirst && clipBasesPastMate && r1.isFrPair) {
-      numExtendingPastMateStartReadOne = this.clipper.clipExtendingPastMateEnd(rec = r1, mateEnd = r2.end)
-      numExtendingPastMateStartReadTwo = this.clipper.clipExtendingPastMateEnd(rec = r2, mateEnd = r1.end)
-
-      if (clipOverlappingReads && r1.isFrPair) {
-        val (overHolderR1, overHolderR2) = this.clipper.clipOverlappingReads(r1, r2)
-        numOverlappingBasesReadOne = overHolderR1
-        numOverlappingBasesReadTwo = overHolderR2
-      }
+    val (numOverlappingBasesReadOne, numOverlappingBasesReadTwo) = {
+      if (clipOverlappingReads && r1.isFrPair) this.clipper.clipOverlappingReads(r1, r2)
+      else (0, 0)
     }
-    else {
-      if (clipOverlappingReads && r1.isFrPair) {
-        val (overHolderR1, overHolderR2) = this.clipper.clipOverlappingReads(r1, r2)
-        numOverlappingBasesReadOne = overHolderR1
-        numOverlappingBasesReadTwo = overHolderR2
-      }
+
+    val (numExtendingPastMateStartReadOne, numExtendingPastMateStartReadTwo) = {
       if (clipBasesPastMate && r1.isFrPair) {
-        numExtendingPastMateStartReadOne = this.clipper.clipExtendingPastMateEnd(rec = r1, mateEnd = r2.end)
-        numExtendingPastMateStartReadTwo = this.clipper.clipExtendingPastMateEnd(rec = r2, mateEnd = r1.end)
+        this.clipper.clipExtendingPastMateEnds(r1, r2)
       }
+      else (0, 0)
     }
 
     r1Metric.foreach { m =>
