@@ -202,6 +202,8 @@ object DemuxFastqs {
     """
       |Performs sample demultiplexing on FASTQs.
       |
+      |**Please see https://github.com/fulcrumgenomics/fqtk for a faster and supported replacement**
+      |
       |The sample barcode for each sample in the sample sheet will be compared against the sample barcode bases extracted from
       |the FASTQs, to assign each read to a sample.  Reads that do not match any sample within the given error tolerance
       |will be placed in the 'unmatched' file.
