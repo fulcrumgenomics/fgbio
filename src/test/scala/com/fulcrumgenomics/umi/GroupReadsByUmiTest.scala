@@ -33,7 +33,6 @@ import com.fulcrumgenomics.cmdline.FgBioMain.FailureException
 import com.fulcrumgenomics.testing.SamBuilder.{Minus, Plus}
 import com.fulcrumgenomics.testing.{SamBuilder, UnitSpec}
 import com.fulcrumgenomics.umi.GroupReadsByUmi._
-import htsjdk.samtools.DuplicateScoringStrategy
 import org.scalatest.{OptionValues, PrivateMethodTester}
 
 import java.nio.file.Files

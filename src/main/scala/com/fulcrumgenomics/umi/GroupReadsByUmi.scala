@@ -26,11 +26,10 @@
  */
 package com.fulcrumgenomics.umi
 
-import java.util.concurrent.atomic.AtomicLong
 import com.fulcrumgenomics.FgBioDef._
 import com.fulcrumgenomics.bam.api.SamOrder.TemplateCoordinate
-import com.fulcrumgenomics.bam.{Bams, Template}
 import com.fulcrumgenomics.bam.api.{SamOrder, SamRecord, SamSource, SamWriter}
+import com.fulcrumgenomics.bam.{Bams, Template}
 import com.fulcrumgenomics.cmdline.{ClpGroups, FgBioTool}
 import com.fulcrumgenomics.commons.util.{LazyLogging, NumericCounter, SimpleCounter}
 import com.fulcrumgenomics.sopt.{arg, clp}
@@ -43,10 +42,10 @@ import htsjdk.samtools.DuplicateScoringStrategy.ScoringStrategy
 import htsjdk.samtools._
 import htsjdk.samtools.util.SequenceUtil
 
-import scala.collection.{BufferedIterator, Iterator, mutable}
+import java.util.concurrent.atomic.AtomicLong
 import scala.collection.immutable.IndexedSeq
 import scala.collection.mutable.ListBuffer
-import scala.tools.nsc.doc.html.HtmlTags.B
+import scala.collection.{BufferedIterator, Iterator, mutable}
 
 
 object GroupReadsByUmi {
