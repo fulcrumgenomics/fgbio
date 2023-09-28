@@ -230,7 +230,7 @@ class GroupReadsByUmiTest extends UnitSpec with OptionValues with PrivateMethodT
       val in  = builder.toTempFile()
       val out = Files.createTempFile("umi_grouped.", ".sam")
       val hist = Files.createTempFile("umi_grouped.", ".histogram.txt")
-      val tool = new GroupReadsByUmi(input=in, output=out, familySizeHistogram=Some(hist), rawTag="RX", assignTag="MI", strategy=Strategy.Edit, edits=1, minMapQ=30)
+      val tool = new GroupReadsByUmi(input=in, output=out, familySizeHistogram=Some(hist), rawTag="RX", assignTag="MI", strategy=Strategy.Edit, edits=1, minMapQ=Some(30))
       val logs = executeFgbioTool(tool)
 
       val groups = readBamRecs(out).groupBy(_.name.charAt(0))
@@ -267,10 +267,9 @@ class GroupReadsByUmiTest extends UnitSpec with OptionValues with PrivateMethodT
     val in = builder.toTempFile()
     val out = Files.createTempFile("umi_grouped.", ".sam")
     val hist = Files.createTempFile("umi_grouped.", ".histogram.txt")
-    val gr = new GroupReadsByUmi(minMapQ = 0, input = in, output = out, familySizeHistogram = Some(hist), rawTag = "RX", assignTag = "MI", strategy = Strategy.Paired, edits = 1, markDup = true)
+    val gr = new GroupReadsByUmi(input=in, output=out, familySizeHistogram=Some(hist), strategy=Strategy.Paired, edits=1, markDuplicates=true)
 
-    gr.markDup shouldBe true
-    gr.dupStrategy shouldBe DuplicateScoringStrategy.ScoringStrategy.SUM_OF_BASE_QUALITIES
+    gr.markDuplicates shouldBe true
 
     val recs = readBamRecs(out)
     recs.filter(_.name.equals("a01")).forall(_.duplicate == true) shouldBe true
@@ -290,7 +289,7 @@ class GroupReadsByUmiTest extends UnitSpec with OptionValues with PrivateMethodT
     val in = builder.toTempFile()
     val out = Files.createTempFile("umi_grouped.", ".sam")
     val hist = Files.createTempFile("umi_grouped.", ".histogram.txt")
-    new GroupReadsByUmi(minMapQ = 0, input = in, output = out, familySizeHistogram = Some(hist), rawTag = "RX", assignTag = "MI", strategy = Strategy.Paired, edits = 1).execute()
+    new GroupReadsByUmi(input=in, output=out, familySizeHistogram=Some(hist), strategy=Strategy.Paired, edits=1).execute()
 
     val recs = readBamRecs(out)
     recs.filter(_.name.equals("a01")).forall(_.duplicate == false) shouldBe true
@@ -309,7 +308,7 @@ class GroupReadsByUmiTest extends UnitSpec with OptionValues with PrivateMethodT
     val in = builder.toTempFile()
     val out = Files.createTempFile("umi_grouped.", ".sam")
     val hist = Files.createTempFile("umi_grouped.", ".histogram.txt")
-    new GroupReadsByUmi(input = in, output = out, familySizeHistogram = Some(hist), rawTag = "RX", assignTag = "MI", strategy = Strategy.Edit, edits = 1, markDup = true).execute()
+    new GroupReadsByUmi(input = in, output = out, familySizeHistogram = Some(hist), rawTag = "RX", assignTag = "MI", strategy = Strategy.Edit, edits = 1, markDuplicates = true).execute()
 
     val recs = readBamRecs(out)
     recs.filter(_.name.equals("a01")).forall(_.duplicate == false) shouldBe true
