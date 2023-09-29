@@ -555,7 +555,7 @@ class GroupReadsByUmi
       .filter(r => (allowInterContig || r.unpaired || r.refIndex == r.mateRefIndex) || { filteredPoorAlignment += 1; false })
       .filter(r => mapqOk(r, this.minMapQ)                                          || { filteredPoorAlignment += 1; false })
       .filter(r =>
-        (this.includeNs || !r.get[String](rawTag).exists(_.contains('N')))     || { filteredNsInUmi += 1; false })
+        ((this.includeNs && !r.get[String](rawTag).forall(_.contains('N'))  || !r.get[String](rawTag).exists(_.contains('N'))))     || { filteredNsInUmi += 1; false })
       .filter { r =>
         this.minUmiLength.forall { l =>
           r.get[String](this.rawTag).forall { umi =>
@@ -649,6 +649,7 @@ class GroupReadsByUmi
     if (filteredNonPf > 0) logger.info(f"Filtered out $filteredNonPf%,d non-PF reads.")
     logger.info(f"Filtered out $filteredPoorAlignment%,d reads due to mapping issues.")
     if (!this.includeNs) logger.info(f"Filtered out $filteredNsInUmi%,d reads that contained one or more Ns in their UMIs.")
+    if (this.includeNs && filteredNsInUmi > 0) logger.info(f"Filtered out $filteredNsInUmi%,d reads that contained only Ns in their UMIs.")
     this.minUmiLength.foreach { _ => logger.info(f"Filtered out $filterUmisTooShort%,d reads that contained UMIs that were too short.") }
   }
 
