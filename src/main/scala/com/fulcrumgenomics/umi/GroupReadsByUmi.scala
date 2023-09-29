@@ -488,7 +488,7 @@ object Strategy extends FgBioEnum[Strategy] {
     |
     |  1. `--min-map-q` defaults to 0 in duplicate marking mode and 1 otherwise
     |  2. `--include-secondary` defaults to true in duplicate marking mode and false otherwise
-    |  3. `--include-suppementary` defaults to true in duplicate marking mode and false otherwise
+    |  3. `--include-supplementary` defaults to true in duplicate marking mode and false otherwise
   """
 )
 class GroupReadsByUmi
