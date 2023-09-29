@@ -421,7 +421,7 @@ class GroupReadsByUmiTest extends UnitSpec with OptionValues with PrivateMethodT
     val builder = new SamBuilder(readLength = 100, sort = Some(SamOrder.Coordinate))
     builder.addPair(name = "a01", start1 = 100, start2 = 300, strand1 = Plus, strand2 = Minus, attrs = Map("RX" -> "ACT-ACT"))
     builder.addPair(name = "a02", start1 = 100, start2 = 300, strand1 = Plus, strand2 = Minus, attrs = Map("RX" -> "ACT-ACT"))
-    builder.addPair(name = "a03", start1 = 100, start2 = 300, strand1 = Plus, strand2 = Minus, attrs = Map("RX" -> "ACT-ACU"))
+    builder.addPair(name = "a03", start1 = 100, start2 = 300, strand1 = Plus, strand2 = Minus, attrs = Map("RX" -> "ACT-ACN"))
 
     val in = builder.toTempFile()
     val out = Files.createTempFile("umi_grouped.", ".bam")
@@ -429,6 +429,27 @@ class GroupReadsByUmiTest extends UnitSpec with OptionValues with PrivateMethodT
 
     readBamRecs(out).map(_.name).distinct shouldBe Seq("a01", "a02", "a03")
   }
+
+  it should "correctly group UMIs within the edit distance, if option is set" in {
+    val builder = new SamBuilder(readLength = 100, sort = Some(SamOrder.Coordinate))
+    builder.addFrag(name = "a01", start = 100, attrs = Map("RX" -> "AAAAAANN"))
+    builder.addFrag(name = "a02", start = 100, attrs = Map("RX" -> "AAAAAAAA"))
+    builder.addFrag(name = "a03", start = 100, attrs = Map("RX" -> "AAAAANNN"))
+
+    val in = builder.toTempFile()
+    val out = Files.createTempFile("umi_grouped.", ".sam")
+    val hist = Files.createTempFile("umi_grouped.", ".histogram.txt")
+    new GroupReadsByUmi(input = in, output = out, familySizeHistogram = Some(hist), rawTag = "RX", assignTag = "MI", includeNs = true, strategy = Strategy.Edit, edits = 2).execute()
+
+    val recs = readBamRecs(out)
+    recs should have size 3
+
+    val groups = recs.groupBy(r => r[String]("MI")).values.map(rs => rs.map(_.name).toSet)
+    groups should have size 2
+    groups should contain theSameElementsAs Seq(Set("a01", "a02"), Set("a03"))
+
+  }
+
 
 
   it should "exclude reads that contain an N in the UMI" in {
