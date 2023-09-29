@@ -334,6 +334,124 @@ class GroupReadsByUmiTest extends UnitSpec with OptionValues with PrivateMethodT
     groups should contain theSameElementsAs Seq(Set("a01", "a02"), Set("a03", "a04"), Set("a05", "a06"), Set("a07", "a08"))
   }
 
+  it should "correctly group together single-end reads with UMIs containing N's, if option is set" in {
+    val builder = new SamBuilder(readLength = 100, sort = Some(SamOrder.Coordinate))
+    builder.addFrag(name = "a01", start = 100, attrs = Map("RX" -> "AAAAAAAA"))
+    builder.addFrag(name = "a02", start = 100, attrs = Map("RX" -> "AAAAAAAN"))
+    builder.addFrag(name = "a03", start = 100, attrs = Map("RX" -> "CACACACA"))
+    builder.addFrag(name = "a04", start = 100, attrs = Map("RX" -> "CACACACC"))
+    builder.addFrag(name = "a05", start = 105, attrs = Map("RX" -> "GTAGTAGG"))
+    builder.addFrag(name = "a06", start = 105, attrs = Map("RX" -> "GTAGTAGG"))
+    builder.addFrag(name = "a07", start = 107, attrs = Map("RX" -> "AAAAAAAA"))
+    builder.addFrag(name = "a08", start = 107, attrs = Map("RX" -> "AAAAAAAA"))
+
+    val in = builder.toTempFile()
+    val out = Files.createTempFile("umi_grouped.", ".sam")
+    val hist = Files.createTempFile("umi_grouped.", ".histogram.txt")
+    new GroupReadsByUmi(input = in, output = out, familySizeHistogram = Some(hist), rawTag = "RX", assignTag = "MI", includeNs = true, strategy = Strategy.Edit, edits = 1).execute()
+
+    val recs = readBamRecs(out)
+    recs should have size 8
+
+    val groups = recs.groupBy(r => r[String]("MI")).values.map(rs => rs.map(_.name).toSet)
+    groups should have size 4
+    groups should contain theSameElementsAs Seq(Set("a01", "a02"), Set("a03", "a04"), Set("a05", "a06"), Set("a07", "a08"))
+  }
+
+  it should "correctly filter UMIs which are only N's, if option is set" in {
+    val builder = new SamBuilder(readLength = 100, sort = Some(SamOrder.Coordinate))
+    builder.addFrag(name = "a01", start = 100, attrs = Map("RX" -> "NNNNNNNN"))
+    builder.addFrag(name = "a02", start = 100, attrs = Map("RX" -> "AAAAAAAA"))
+
+    val in = builder.toTempFile()
+    val out = Files.createTempFile("umi_grouped.", ".sam")
+    val hist = Files.createTempFile("umi_grouped.", ".histogram.txt")
+    new GroupReadsByUmi(input = in, output = out, familySizeHistogram = Some(hist), rawTag = "RX", assignTag = "MI", includeNs = true, strategy = Strategy.Edit, edits = 1).execute()
+
+    val recs = readBamRecs(out)
+    recs should have size 1
+
+    val groups = recs.groupBy(r => r[String]("MI")).values.map(rs => rs.map(_.name).toSet)
+    groups should have size 1
+    groups should contain theSameElementsAs Seq(Set("a02"))
+  }
+
+  it should "exclude reads that contain an only N's in the UMI, handle - also." in {
+    val builder = new SamBuilder(readLength = 100, sort = Some(SamOrder.Coordinate))
+    builder.addPair(name = "a01", start1 = 100, start2 = 300, strand1 = Plus, strand2 = Minus, attrs = Map("RX" -> "NNN-NNN"))
+    builder.addPair(name = "a02", start1 = 100, start2 = 300, strand1 = Plus, strand2 = Minus, attrs = Map("RX" -> "ACT-ACT"))
+
+    val in = builder.toTempFile()
+    val out = Files.createTempFile("umi_grouped.", ".bam")
+    new GroupReadsByUmi(input = in, output = out, rawTag = "RX", assignTag = "MI", includeNs = true, strategy = Strategy.Paired, edits = 2).execute()
+
+    val recs = readBamRecs(out)
+    recs should have size 2
+
+    readBamRecs(out).map(_.name).distinct shouldBe Seq("a02")
+  }
+
+
+  it should "correctly filter and not group together single-end reads with UMIs containing N's" in {
+    val builder = new SamBuilder(readLength = 100, sort = Some(SamOrder.Coordinate))
+    builder.addFrag(name = "a01", start = 100, attrs = Map("RX" -> "AAAAAAAA"))
+    builder.addFrag(name = "a02", start = 100, attrs = Map("RX" -> "AAAAAAAN"))
+    builder.addFrag(name = "a03", start = 100, attrs = Map("RX" -> "CACACACA"))
+    builder.addFrag(name = "a04", start = 100, attrs = Map("RX" -> "CACACACC"))
+    builder.addFrag(name = "a05", start = 105, attrs = Map("RX" -> "GTAGTAGG"))
+    builder.addFrag(name = "a06", start = 105, attrs = Map("RX" -> "GTAGTAGG"))
+    builder.addFrag(name = "a07", start = 107, attrs = Map("RX" -> "AAAAAAAA"))
+    builder.addFrag(name = "a08", start = 107, attrs = Map("RX" -> "AAAAAAAA"))
+
+    val in = builder.toTempFile()
+    val out = Files.createTempFile("umi_grouped.", ".sam")
+    val hist = Files.createTempFile("umi_grouped.", ".histogram.txt")
+    new GroupReadsByUmi(input = in, output = out, familySizeHistogram = Some(hist), rawTag = "RX", assignTag = "MI", includeNs = false, strategy = Strategy.Edit, edits = 1).execute()
+
+    val recs = readBamRecs(out)
+    recs should have size 7
+
+    val groups = recs.groupBy(r => r[String]("MI")).values.map(rs => rs.map(_.name).toSet)
+    groups should have size 4
+    groups should contain theSameElementsAs Seq(Set("a01"), Set("a03", "a04"), Set("a05", "a06"), Set("a07", "a08"))
+  }
+
+
+  it should "include reads that contain an N in the UMI, if option is set." in {
+    val builder = new SamBuilder(readLength = 100, sort = Some(SamOrder.Coordinate))
+    builder.addPair(name = "a01", start1 = 100, start2 = 300, strand1 = Plus, strand2 = Minus, attrs = Map("RX" -> "ACT-ACT"))
+    builder.addPair(name = "a02", start1 = 100, start2 = 300, strand1 = Plus, strand2 = Minus, attrs = Map("RX" -> "ACT-ACT"))
+    builder.addPair(name = "a03", start1 = 100, start2 = 300, strand1 = Plus, strand2 = Minus, attrs = Map("RX" -> "ACT-ACN"))
+
+    val in = builder.toTempFile()
+    val out = Files.createTempFile("umi_grouped.", ".bam")
+    new GroupReadsByUmi(input = in, output = out, rawTag = "RX", assignTag = "MI", includeNs = true, strategy = Strategy.Paired, edits = 2).execute()
+
+    readBamRecs(out).map(_.name).distinct shouldBe Seq("a01", "a02", "a03")
+  }
+
+  it should "correctly group UMIs within the edit distance, if option is set" in {
+    val builder = new SamBuilder(readLength = 100, sort = Some(SamOrder.Coordinate))
+    builder.addFrag(name = "a01", start = 100, attrs = Map("RX" -> "AAAAAANN"))
+    builder.addFrag(name = "a02", start = 100, attrs = Map("RX" -> "AAAAAAAA"))
+    builder.addFrag(name = "a03", start = 100, attrs = Map("RX" -> "AAAAANNN"))
+
+    val in = builder.toTempFile()
+    val out = Files.createTempFile("umi_grouped.", ".sam")
+    val hist = Files.createTempFile("umi_grouped.", ".histogram.txt")
+    new GroupReadsByUmi(input = in, output = out, familySizeHistogram = Some(hist), rawTag = "RX", assignTag = "MI", includeNs = true, strategy = Strategy.Edit, edits = 2).execute()
+
+    val recs = readBamRecs(out)
+    recs should have size 3
+
+    val groups = recs.groupBy(r => r[String]("MI")).values.map(rs => rs.map(_.name).toSet)
+    groups should have size 2
+    groups should contain theSameElementsAs Seq(Set("a01", "a02"), Set("a03"))
+
+  }
+
+
+
   it should "exclude reads that contain an N in the UMI" in {
     val builder = new SamBuilder(readLength=100, sort=Some(SamOrder.Coordinate))
     builder.addPair(name="a01", start1=100, start2=300, strand1=Plus,  strand2=Minus, attrs=Map("RX" -> "ACT-ACT"))

@@ -466,8 +466,9 @@ object Strategy extends FgBioEnum[Strategy] {
     |
     |By default, all UMIs must be the same length. If `--min-umi-length=len` is specified then reads that have a UMI
     |shorter than `len` will be discarded, and when comparing UMIs of different lengths, the first len bases will be
-    |compared, where `len` is the length of the shortest UMI. The UMI length is the number of [ACGT] bases in the UMI
-    |(i.e. does not count dashes and other non-ACGT characters). This option is not implemented for reads with UMI pairs
+    |compared, where `len` is the length of the shortest UMI. The UMI length is the number of [ACGT]
+    |([ACTGN], if the N flag is passed) bases in the UMI
+    |(i.e. does not count dashes and other non-ACGT(N) characters). This option is not implemented for reads with UMI pairs
     |(i.e. using the paired assigner).
     |
     |If the input is not template-coordinate sorted (i.e. `SO:unsorted GO:query SS:unsorted:template-coordinate`), then
@@ -482,6 +483,8 @@ class GroupReadsByUmi
   @arg(flag='T', doc="The output tag for UMI grouping.") val assignTag: String = "MI",
   @arg(flag='m', doc="Minimum mapping quality for mapped reads.")         val minMapQ: Int      = 1,
   @arg(flag='n', doc="Include non-PF reads.")            val includeNonPfReads: Boolean = false,
+  @arg(flag = 'N', doc = "Allow UMIs which contain Ns.  Ns will be treated as mismatches to all other non-Ns")
+  val includeNs: Boolean = false,
   @arg(flag='s', doc="The UMI assignment strategy.")     val strategy: Strategy,
   @arg(flag='e', doc="The allowable number of edits between UMIs.") val edits: Int = 1,
   @arg(flag='l', doc= """The minimum UMI length. If not specified then all UMIs must have the same length,
@@ -543,6 +546,7 @@ class GroupReadsByUmi
         (this.edits == 0 || this.strategy == Strategy.Identity)
     }
 
+
     // Filter and sort the input BAM file
     logger.info("Filtering the input.")
     val filteredIterator = in.iterator
@@ -551,7 +555,11 @@ class GroupReadsByUmi
       .filter(r => (r.mapped || (r.paired && r.mateMapped))                         || { filteredPoorAlignment += 1; false })
       .filter(r => (allowInterContig || r.unpaired || r.refIndex == r.mateRefIndex) || { filteredPoorAlignment += 1; false })
       .filter(r => mapqOk(r, this.minMapQ)                                          || { filteredPoorAlignment += 1; false })
-      .filter(r => !r.get[String](rawTag).exists(_.contains('N'))                   || { filteredNsInUmi += 1; false })
+      .filter(r =>
+        (this.includeNs && !r.get[String](rawTag).exists { umi =>
+          umi.forall(c => c == 'N' || c == '-')
+        } || !r.get[String](rawTag).exists(_.contains('N')))
+          || { filteredNsInUmi += 1; false })
       .filter { r =>
         this.minUmiLength.forall { l =>
           r.get[String](this.rawTag).forall { umi =>
@@ -644,7 +652,8 @@ class GroupReadsByUmi
     logger.info(f"Accepted $kept%,d reads for grouping.")
     if (filteredNonPf > 0) logger.info(f"Filtered out $filteredNonPf%,d non-PF reads.")
     logger.info(f"Filtered out $filteredPoorAlignment%,d reads due to mapping issues.")
-    logger.info(f"Filtered out $filteredNsInUmi%,d reads that contained one or more Ns in their UMIs.")
+    if (!this.includeNs) logger.info(f"Filtered out $filteredNsInUmi%,d reads that contained one or more Ns in their UMIs.")
+    if (this.includeNs && filteredNsInUmi > 0) logger.info(f"Filtered out $filteredNsInUmi%,d reads that contained only Ns in their UMIs.")
     this.minUmiLength.foreach { _ => logger.info(f"Filtered out $filterUmisTooShort%,d reads that contained UMIs that were too short.") }
   }
 
