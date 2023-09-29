@@ -556,7 +556,7 @@ class GroupReadsByUmi
       .filter(r => (allowInterContig || r.unpaired || r.refIndex == r.mateRefIndex) || { filteredPoorAlignment += 1; false })
       .filter(r => mapqOk(r, this.minMapQ)                                          || { filteredPoorAlignment += 1; false })
       .filter(r =>
-        (this.includeNs && !r.get[String](rawTag).exists{ umi =>
+        (this.includeNs && !r.get[String](rawTag).exists { umi =>
           umi.forall(c => c == 'N' || c == '-')
         } || !r.get[String](rawTag).exists(_.contains('N')))
           || { filteredNsInUmi += 1; false })

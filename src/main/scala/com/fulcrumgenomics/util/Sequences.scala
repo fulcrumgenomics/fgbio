@@ -94,7 +94,9 @@ object Sequences {
     */
   def gcContent(s: String): Double = if (s.isEmpty) 0 else SequenceUtil.calculateGc(s.getBytes)
 
-  /** Counts the number of mismatches between two sequences of the same length. */
+  /** Counts the number of mismatches between two sequences of the same length.
+    * N's always count as mismatches
+    */
   def countMismatches(s1: String, s2: String): Int = {
     require(s1.length == s2.length, s"Cannot count mismatches in strings of differing lengths: $s1 $s2")
 
@@ -102,7 +104,7 @@ object Sequences {
     forloop (from=0, until=s1.length) { i =>
       val a = Character.toUpperCase(s1.charAt(i))
       val b = Character.toUpperCase(s2.charAt(i))
-      if (a != b) count += 1
+      if (a != b || a  == 'N' || b == 'N') count += 1
     }
 
     count
