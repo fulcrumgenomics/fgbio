@@ -442,10 +442,15 @@ object Strategy extends FgBioEnum[Strategy] {
     |If the input is not template-coordinate sorted (i.e. `SO:unsorted GO:query SS:unsorted:template-coordinate`), then
     |this tool will re-sort the input. The output will be written in template-coordinate order.
     |
-    |During grouping, reads are filtered out if a) all reads with the same queryname are unmapped, b) any primary
-    |read has mapping quality < `min-map-q` (default=1), c) the primary mappings for R1 and R2 are on different
-    |chromosomes and `--allow-inter-contig` has been set to false., or d.) all non-primary reads are filtered,
-    |if `--includeSecondary` and\or `--includeSupplementary` are set to false (default=false)
+    |During grouping, reads and templates are filtered out as follows:
+    |
+    |1. Templates are filtered if all reads for the template are unmapped
+    |2. Templates are filtered if any non-secondary, non-supplementary read has mapping quality < `min-map-q`
+    |3. Templates are filtered if R1 and R2 are mapped to different chromosomes and `--allow-inter-contig` is false
+    |4. Templates are filtered if any UMI sequence contains one or more `N` bases
+    |5. Templates are filtered if `--min-umi-length` is specified and the UMI does not meet the length requirement
+    |6. Reads are filtered out if flagged as secondary and `--include-secondary` is false
+    |7. Reads are filtered out if flagged as supplementary and `--include-supplementary` is false
     |
     |Grouping of UMIs is performed by one of four strategies:
     |
@@ -490,8 +495,8 @@ class GroupReadsByUmi
 (@arg(flag='i', doc="The input BAM file.")              val input: PathToBam  = Io.StdIn,
  @arg(flag='o', doc="The output BAM file.")             val output: PathToBam = Io.StdOut,
  @arg(flag='f', doc="Optional output of tag family size counts.") val familySizeHistogram: Option[FilePath] = None,
- @arg(flag='t', doc="The tag containing the raw UMI.")  val rawTag: String    = "RX",
- @arg(flag='T', doc="The output tag for UMI grouping.") val assignTag: String = "MI",
+ @arg(flag='t', doc="The tag containing the raw UMI.")  val rawTag: String    = ConsensusTags.UmiBases,
+ @arg(flag='T', doc="The output tag for UMI grouping.") val assignTag: String = ConsensusTags.MolecularId,
  @arg(flag='d', doc="Turn on duplicate marking mode.") val markDuplicates: Boolean = false,
  @arg(flag='S', doc="Include secondary reads.")         val includeSecondary: Option[Boolean] = None,
  @arg(flag='U', doc="Include supplementary reads.")     val includeSupplementary: Option[Boolean] = None,
@@ -759,14 +764,14 @@ class GroupReadsByUmi
 
   /** Sets the duplicate flags on all reads within all templates.  */
   private def setDuplicateFlags(group: Seq[Template]): Unit = {
-    val nonDuplicateTemplate = group.minBy { template =>
+    val nonDuplicateTemplate = group.maxBy { template =>
       template.primaryReads.sumBy { r =>
         DuplicateScoringStrategy.computeDuplicateScore(r.asSam, ScoringStrategy.SUM_OF_BASE_QUALITIES)
       }
     }
 
     group.foreach { template =>
-      val flag = !(template eq nonDuplicateTemplate)
+      val flag = template ne nonDuplicateTemplate
       template.allReads.foreach(_.duplicate = flag)
     }
   }
