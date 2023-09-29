@@ -546,6 +546,7 @@ class GroupReadsByUmi
         (this.edits == 0 || this.strategy == Strategy.Identity)
     }
 
+
     // Filter and sort the input BAM file
     logger.info("Filtering the input.")
     val filteredIterator = in.iterator
@@ -555,7 +556,10 @@ class GroupReadsByUmi
       .filter(r => (allowInterContig || r.unpaired || r.refIndex == r.mateRefIndex) || { filteredPoorAlignment += 1; false })
       .filter(r => mapqOk(r, this.minMapQ)                                          || { filteredPoorAlignment += 1; false })
       .filter(r =>
-        ((this.includeNs && !r.get[String](rawTag).forall(_.contains('N'))  || !r.get[String](rawTag).exists(_.contains('N'))))     || { filteredNsInUmi += 1; false })
+        (this.includeNs && !r.get[String](rawTag).exists{ umi =>
+          umi.forall(c => c == 'N' || c == '-')
+        } || !r.get[String](rawTag).exists(_.contains('N')))
+          || { filteredNsInUmi += 1; false })
       .filter { r =>
         this.minUmiLength.forall { l =>
           r.get[String](this.rawTag).forall { umi =>
