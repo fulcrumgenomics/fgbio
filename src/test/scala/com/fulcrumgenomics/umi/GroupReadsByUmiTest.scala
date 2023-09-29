@@ -358,7 +358,7 @@ class GroupReadsByUmiTest extends UnitSpec with OptionValues with PrivateMethodT
     groups should contain theSameElementsAs Seq(Set("a01", "a02"), Set("a03", "a04"), Set("a05", "a06"), Set("a07", "a08"))
   }
 
-  it should "correctly group filter UMIs which are only N's, if option is set" in {
+  it should "correctly filter UMIs which are only N's, if option is set" in {
     val builder = new SamBuilder(readLength = 100, sort = Some(SamOrder.Coordinate))
     builder.addFrag(name = "a01", start = 100, attrs = Map("RX" -> "NNNNNNNN"))
     builder.addFrag(name = "a02", start = 100, attrs = Map("RX" -> "AAAAAAAA"))
@@ -376,6 +376,20 @@ class GroupReadsByUmiTest extends UnitSpec with OptionValues with PrivateMethodT
     groups should contain theSameElementsAs Seq(Set("a02"))
   }
 
+  it should "exclude reads that contain an only N's in the UMI, handle - also." in {
+    val builder = new SamBuilder(readLength = 100, sort = Some(SamOrder.Coordinate))
+    builder.addPair(name = "a01", start1 = 100, start2 = 300, strand1 = Plus, strand2 = Minus, attrs = Map("RX" -> "NNN-NNN"))
+    builder.addPair(name = "a02", start1 = 100, start2 = 300, strand1 = Plus, strand2 = Minus, attrs = Map("RX" -> "ACT-ACT"))
+
+    val in = builder.toTempFile()
+    val out = Files.createTempFile("umi_grouped.", ".bam")
+    new GroupReadsByUmi(input = in, output = out, rawTag = "RX", assignTag = "MI", includeNs = true, strategy = Strategy.Paired, edits = 2).execute()
+
+    val recs = readBamRecs(out)
+    recs should have size 2
+
+    readBamRecs(out).map(_.name).distinct shouldBe Seq("a02")
+  }
 
 
   it should "correctly filter and not group together single-end reads with UMIs containing N's" in {
@@ -401,7 +415,6 @@ class GroupReadsByUmiTest extends UnitSpec with OptionValues with PrivateMethodT
     groups should have size 4
     groups should contain theSameElementsAs Seq(Set("a01"), Set("a03", "a04"), Set("a05", "a06"), Set("a07", "a08"))
   }
-
 
 
   it should "include reads that contain an N in the UMI, if option is set." in {
