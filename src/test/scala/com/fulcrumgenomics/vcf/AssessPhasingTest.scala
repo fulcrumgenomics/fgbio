@@ -24,13 +24,12 @@
 
 package com.fulcrumgenomics.vcf
 
-import java.nio.file.{Files, Paths}
-
 import com.fulcrumgenomics.FgBioDef._
 import com.fulcrumgenomics.commons.io.PathUtil
 import com.fulcrumgenomics.commons.util.NumericCounter
 import com.fulcrumgenomics.fasta.Converters.FromSAMSequenceDictionary
-import com.fulcrumgenomics.testing.{ErrorLogLevel, UnitSpec, VariantContextSetBuilder}
+import com.fulcrumgenomics.testing.VcfBuilder.Gt
+import com.fulcrumgenomics.testing.{ErrorLogLevel, UnitSpec, VariantContextSetBuilder, VcfBuilder}
 import com.fulcrumgenomics.util.Metric
 import com.fulcrumgenomics.vcf.PhaseCigar.IlluminaSwitchErrors
 import htsjdk.samtools.SAMFileHeader
@@ -38,6 +37,8 @@ import htsjdk.samtools.util.{Interval, IntervalList}
 import htsjdk.variant.variantcontext.writer.{Options, VariantContextWriterBuilder}
 import htsjdk.variant.variantcontext.{GenotypeBuilder, VariantContext, VariantContextBuilder}
 import htsjdk.variant.vcf.{VCFFileReader, VCFHeader}
+
+import java.nio.file.{Files, Paths}
 
 object AssessPhasingTest {
   def withPhasingSetId(ctx: VariantContext, id: Int): VariantContext = {
@@ -48,47 +49,49 @@ object AssessPhasingTest {
     ctxBuilder.make()
   }
 
-  private val builderTruth = new VariantContextSetBuilder()
-  private val builderCall  = new VariantContextSetBuilder()
+  private val builderTruth = VcfBuilder(samples=Seq("S1"))
+  private val builderCall  = VcfBuilder(samples=Seq("S1"))
 
-  // init builderTruth and builderCall
   {
     // BLOCK #1: positions 1 - 4 (call 1-4, truth 1-4)
-    builderTruth.addVariant(start=1, variantAlleles=List("A", "C"), genotypeAlleles=List("A", "C"), phased=true) // Match
-    builderCall.addVariant( start=1, variantAlleles=List("A", "C"), genotypeAlleles=List("A", "C"), phased=true) //   - with previous
-    builderTruth.addVariant(start=2, variantAlleles=List("A", "C"), genotypeAlleles=List("A", "C"), phased=true) // TruthOnly
-    builderCall.addVariant( start=3, variantAlleles=List("A", "C"), genotypeAlleles=List("A", "C"), phased=true) // CallOnly
-    builderTruth.addVariant(start=4, variantAlleles=List("A", "C"), genotypeAlleles=List("A", "C"), phased=true) // Match
-    builderCall.addVariant( start=4, variantAlleles=List("A", "C"), genotypeAlleles=List("A", "C"), phased=true) //   - with previous
+    builderTruth.add(pos=1, alleles=Seq("A", "C"), gts=Seq(Gt(sample="S1", gt="0|1"))) // Match
+    builderCall.add( pos=1, alleles=Seq("A", "C"), gts=Seq(Gt(sample="S1", gt="0|1"))) //   - with previous
+    builderTruth.add(pos=2, alleles=Seq("A", "C"), gts=Seq(Gt(sample="S1", gt="0|1"))) // TruthOnly
+    builderCall.add( pos=3, alleles=Seq("A", "C"), gts=Seq(Gt(sample="S1", gt="0|1"))) // CallOnly
+    builderTruth.add(pos=4, alleles=Seq("A", "C"), gts=Seq(Gt(sample="S1", gt="0|1"))) // Match
+    builderCall.add( pos=4, alleles=Seq("A", "C"), gts=Seq(Gt(sample="S1", gt="0|1"))) //   - with previous
 
     // BLOCK #2: positions 11-16 (call 11-15, truth 11-16)
-    builderTruth.addVariant(start=11, variantAlleles=List("A", "C"), genotypeAlleles=List("A", "C"), phased=true) // Match
-    builderCall.addVariant( start=11, variantAlleles=List("A", "C"), genotypeAlleles=List("A", "C"), phased=true) //   - with previous
-    builderTruth.addVariant(start=12, variantAlleles=List("A", "C"), genotypeAlleles=List("A", "C"), phased=true) // Mismatch **** POINT ERROR ****
-    builderCall.addVariant( start=12, variantAlleles=List("A", "C"), genotypeAlleles=List("C", "A"), phased=true) //   - with previous
-    builderTruth.addVariant(start=13, variantAlleles=List("A", "C"), genotypeAlleles=List("A", "C"), phased=true) // NA
-    builderCall.addVariant( start=13, variantAlleles=List("A", "C"), genotypeAlleles=List("A", "C"), phased=true) // CallOnly
-    builderTruth.addVariant(start=14, variantAlleles=List("A", "C"), genotypeAlleles=List("A", "C"), phased=true) // TruthOnly
-    builderCall.addVariant( start=14, variantAlleles=List("A", "C"), genotypeAlleles=List("A", "C"), phased=true) // NA
-    builderTruth.addVariant(start=15, variantAlleles=List("A", "C"), genotypeAlleles=List("A", "C"), phased=true) // Match
-    builderCall.addVariant( start=15, variantAlleles=List("A", "C"), genotypeAlleles=List("A", "C"), phased=true) //   - with Previous
-    builderTruth.addVariant(start=16, variantAlleles=List("A", "C"), genotypeAlleles=List("A", "C"), phased=true) // TruthOnly
+    builderTruth.add(pos=11, alleles=Seq("A", "C"), gts=Seq(Gt(sample="S1", gt="0|1"))) // Match
+    builderCall.add( pos=11, alleles=Seq("A", "C"), gts=Seq(Gt(sample="S1", gt="0|1"))) //   - with previous
+    builderTruth.add(pos=12, alleles=Seq("A", "C"), gts=Seq(Gt(sample="S1", gt="0|1"))) // Mismatch **** POINT ERROR ****
+    builderCall.add( pos=12, alleles=Seq("A", "C"), gts=Seq(Gt(sample="S1", gt="1|0"))) //   - with previous
+    builderTruth.add(pos=13, alleles=Seq("A", "C"), gts=Seq(Gt(sample="S1", gt="0|1"))) // NA
+    builderCall.add( pos=13, alleles=Seq("A", "C"), gts=Seq(Gt(sample="S1", gt="0|1"))) // CallOnly
+    builderTruth.add( pos=14, alleles=Seq("A", "C"), gts=Seq(Gt(sample="S1", gt="0|1"))) // TruthOnly
+    builderCall.add( pos=14, alleles=Seq("A", "C"), gts=Seq(Gt(sample="S1", gt="0|1"))) // NA
+    builderTruth.add( pos=15, alleles=Seq("A", "C"), gts=Seq(Gt(sample="S1", gt="0|1"))) // Match
+    builderCall.add( pos=15, alleles=Seq("A", "C"), gts=Seq(Gt(sample="S1", gt="0|1"))) //   - with previous
+    builderTruth.add( pos=16, alleles=Seq("A", "C"), gts=Seq(Gt(sample="S1", gt="0|1"))) // TruthOnly
 
     // BLOCK #3: position 21 (call 21-21)
-    builderCall.addVariant( start=21, variantAlleles=List("A", "C"), genotypeAlleles=List("A", "C"), phased=true) // CallOnly
+    builderCall.add( pos=21, alleles=Seq("A", "C"), gts=Seq(Gt(sample="S1", gt="0|1"))) // CallOnly
 
     // BLOCK #4: position 30-42
     Range(30, 37).foreach { start =>
-      builderTruth.addVariant(start=start, variantAlleles=List("A", "C"), genotypeAlleles=List("A", "C"), phased=true) // Match
-      builderCall.addVariant( start=start, variantAlleles=List("A", "C"), genotypeAlleles=List("A", "C"), phased=true) //   - with previous
-    }
-    Range(37, 43).foreach { start =>
-      builderTruth.addVariant(start=start, variantAlleles=List("A", "C"), genotypeAlleles=List("A", "C"), phased=true) // Mismatch
-      builderCall.addVariant( start=start, variantAlleles=List("A", "C"), genotypeAlleles=List("C", "A"), phased=true) //   - with previous
+      builderTruth.add( pos=start, alleles=Seq("A", "C"), gts=Seq(Gt(sample="S1", gt="0|1"))) // Match
+      builderCall.add( pos=start, alleles=Seq("A", "C"), gts=Seq(Gt(sample="S1", gt="0|1"))) //   - with previous
     }
 
+    Range(37, 43).foreach { start =>
+      builderTruth.add( pos=start, alleles=Seq("A", "C"), gts=Seq(Gt(sample="S1", gt="0|1"))) // Match
+      builderCall.add( pos=start, alleles=Seq("A", "C"), gts=Seq(Gt(sample="S1", gt="1|0"))) //   - with previous
+    }
     // NB: call has blocks lengths 4, 5, 1, and 13; truth has block lengths 4, 6, and 13.
   }
+
+  val readBuilderCall: VCFFileReader = new VCFFileReader(builderCall.toTempFile())
+  val readBuilderTruth: VCFFileReader = new VCFFileReader(builderTruth.toTempFile())
 
   private def addPhaseSetId(ctx: VariantContext): VariantContext = {
     if (ctx.getStart <= 10) withPhasingSetId(ctx, 1)
@@ -100,7 +103,7 @@ object AssessPhasingTest {
 
   lazy val TruthVariants: Seq[VariantContext] = {
     // Keep the truth variant position 13 without a phase set
-    builderTruth.map { ctx =>
+    readBuilderTruth.iterator().map { ctx =>
       if (ctx.getStart == 13) ctx
       else addPhaseSetId(ctx)
     }.toSeq
@@ -108,13 +111,13 @@ object AssessPhasingTest {
 
   lazy val CallVariants: Seq[VariantContext] = {
     // Keep the call variant position 14 without a phase set
-    builderCall.map { ctx =>
+    readBuilderCall.iterator().map { ctx =>
       if (ctx.getStart == 14) ctx
       else addPhaseSetId(ctx)
     }.toSeq
   }
 
-  val Header = builderCall.header
+  val Header = readBuilderCall.getFileHeader
 }
 
 /**
@@ -298,19 +301,21 @@ class PhaseBlockTest extends ErrorLogLevel {
   import AssessPhasingTest.withPhasingSetId
 
   "PhaseBlock.toOverlapDetector" should "create an empty detector if no variants are given" in {
-    val builder = new VariantContextSetBuilder()
-    PhaseBlock.buildOverlapDetector(iterator=builder.iterator, dict=builder.dict).getAll.isEmpty shouldBe true
+    val builder = new VCFFileReader(VcfBuilder(samples=Seq("s1")).toTempFile())
+    PhaseBlock.buildOverlapDetector(iterator=builder.iterator, dict=builder.getFileHeader.getSequenceDictionary.fromSam).getAll.isEmpty shouldBe true
   }
 
   it should "create an empty detector when variants do not have the phase set tag" in {
-    val builder  = new VariantContextSetBuilder().addVariant(start=1, variantAlleles=List("A", "C"), genotypeAlleles=List("A", "C"), phased=true)
-    PhaseBlock.buildOverlapDetector(iterator=builder.iterator, dict=builder.dict).getAll.isEmpty shouldBe true
+    val builder = VcfBuilder(samples=Seq("s1")).add(pos=1, alleles=Seq("A", "C"), gts=Seq(Gt(sample="s1", gt="0/1")))
+    val contextBuilder = new VCFFileReader(builder.toTempFile())
+    PhaseBlock.buildOverlapDetector(iterator=contextBuilder.iterator, dict=contextBuilder.getFileHeader.getSequenceDictionary.fromSam).getAll.isEmpty shouldBe true
   }
 
   it should "create a detector for a single variant" in {
-    val builder  = new VariantContextSetBuilder().addVariant(start=1, variantAlleles=List("A", "C"), genotypeAlleles=List("A", "C"), phased=true)
+    val vcfBuilder = VcfBuilder(samples=Seq("s1")).add(pos=1, alleles=Seq("A", "C"), gts=Seq(Gt(sample="s1", gt="0/1")))
+    val builder = new VCFFileReader(vcfBuilder.toTempFile())
     val iterator = builder.iterator.map { ctx => withPhasingSetId(ctx, 1) }
-    val detector = PhaseBlock.buildOverlapDetector(iterator=iterator, dict=builder.dict)
+    val detector = PhaseBlock.buildOverlapDetector(iterator=iterator, dict=builder.getFileHeader.getSequenceDictionary.fromSam)
     detector.getAll should have size 1
     val interval = detector.getAll.toSeq.head
     interval.getStart shouldBe 1
@@ -318,13 +323,13 @@ class PhaseBlockTest extends ErrorLogLevel {
   }
 
   it should "create a detector from multiple variants within one block" in {
-    val builder = new VariantContextSetBuilder()
-    builder.addVariant(start=1, variantAlleles=List("A", "C"), genotypeAlleles=List("A", "C"), phased=true)
-    builder.addVariant(start=2, variantAlleles=List("A", "C"), genotypeAlleles=List("A", "C"), phased=true)
-    builder.addVariant(start=3, variantAlleles=List("A", "C"), genotypeAlleles=List("A", "C"), phased=true)
-
-    val iterator = builder.iterator.map { ctx => withPhasingSetId(ctx, 1) }
-    val detector = PhaseBlock.buildOverlapDetector(iterator=iterator, dict=builder.dict)
+    val vcfBuilder = VcfBuilder(samples=Seq("s1"))
+    vcfBuilder.add(pos=1, alleles=Seq("A", "C"), gts=Seq(Gt(sample="s1", gt="0|1")))
+    vcfBuilder.add(pos=2, alleles=Seq("A", "C"), gts=Seq(Gt(sample="s1", gt="0|1")))
+    vcfBuilder.add(pos=3, alleles=Seq("A", "C"), gts=Seq(Gt(sample="s1", gt="0|1")))
+    val builder = new VCFFileReader(vcfBuilder.toTempFile())
+    val iterator = builder.iterator().map { ctx => withPhasingSetId(ctx, 1) }
+    val detector = PhaseBlock.buildOverlapDetector(iterator=iterator, dict=builder.getFileHeader.getSequenceDictionary.fromSam)
     detector.getAll should have size 1
     val interval = detector.getAll.toSeq.head
     interval.getStart shouldBe 1
@@ -332,19 +337,20 @@ class PhaseBlockTest extends ErrorLogLevel {
   }
 
   it should "create a detector from multiple variants across multiple blocks" in {
-    val builderBlockOne = new VariantContextSetBuilder()
-    builderBlockOne.addVariant(start=1, variantAlleles=List("A", "C"), genotypeAlleles=List("A", "C"), phased=true)
-    builderBlockOne.addVariant(start=2, variantAlleles=List("A", "C"), genotypeAlleles=List("A", "C"), phased=true)
-    builderBlockOne.addVariant(start=3, variantAlleles=List("A", "C"), genotypeAlleles=List("A", "C"), phased=true)
+    val vcfBuilderBlockOne = VcfBuilder(samples=Seq("s1"))
+    vcfBuilderBlockOne.add(pos=1, alleles=Seq("A", "C"), gts=Seq(Gt(sample="s1", gt="0|1")))
+    vcfBuilderBlockOne.add(pos=2, alleles=Seq("A", "C"), gts=Seq(Gt(sample="s1", gt="0|1")))
+    vcfBuilderBlockOne.add(pos=3, alleles=Seq("A", "C"), gts=Seq(Gt(sample="s1", gt="0|1")))
+    val vcfBuilderBlockTwo = VcfBuilder(samples=Seq("s1"))
+    vcfBuilderBlockTwo.add(pos=4, alleles=Seq("A", "C"), gts=Seq(Gt(sample="s1", gt="0|1")))
+    vcfBuilderBlockTwo.add(pos=5, alleles=Seq("A", "C"), gts=Seq(Gt(sample="s1", gt="0|1")))
+    vcfBuilderBlockTwo.add(pos=6, alleles=Seq("A", "C"), gts=Seq(Gt(sample="s1", gt="0|1")))
 
-    val builderBlockTwo = new VariantContextSetBuilder()
-    builderBlockTwo.addVariant(start=4, variantAlleles=List("A", "C"), genotypeAlleles=List("A", "C"), phased=true)
-    builderBlockTwo.addVariant(start=5, variantAlleles=List("A", "C"), genotypeAlleles=List("A", "C"), phased=true)
-    builderBlockTwo.addVariant(start=6, variantAlleles=List("A", "C"), genotypeAlleles=List("A", "C"), phased=true)
+    val builderBlockOne = new VCFFileReader(vcfBuilderBlockOne.toTempFile())
+    val builderBlockTwo = new VCFFileReader(vcfBuilderBlockTwo.toTempFile())
+    val iterator = builderBlockOne.iterator().map { ctx => withPhasingSetId(ctx, 1) } ++ builderBlockTwo.iterator.map { ctx => withPhasingSetId(ctx, 4) }
 
-    val iterator = builderBlockOne.iterator.map { ctx => withPhasingSetId(ctx, 1) } ++ builderBlockTwo.iterator.map { ctx => withPhasingSetId(ctx, 4) }
-
-    val detector = PhaseBlock.buildOverlapDetector(iterator=iterator, dict=builderBlockOne.dict)
+    val detector = PhaseBlock.buildOverlapDetector(iterator=iterator, dict=builderBlockOne.getFileHeader.getSequenceDictionary.fromSam)
     detector.getAll should have size 2
     val intervals = detector.getAll.toSeq.sortBy(_.getStart)
     val head = intervals.head
@@ -356,22 +362,22 @@ class PhaseBlockTest extends ErrorLogLevel {
   }
 
   it should "keep the larger block when one block encloses/contains another" in {
-    val builderBlockOne = new VariantContextSetBuilder()
-    builderBlockOne.addVariant(start=1, variantAlleles=List("A", "C"), genotypeAlleles=List("A", "C"), phased=true)
-    builderBlockOne.addVariant(start=2, variantAlleles=List("A", "C"), genotypeAlleles=List("A", "C"), phased=true)
-    builderBlockOne.addVariant(start=3, variantAlleles=List("A", "C"), genotypeAlleles=List("A", "C"), phased=true)
+    val vcfBuilderBlockOne = VcfBuilder(samples=Seq("s1"))
+    vcfBuilderBlockOne.add(pos=1, alleles=Seq("A", "C"), gts=Seq(Gt(sample="s1", gt="0|1")))
+    vcfBuilderBlockOne.add(pos=2, alleles=Seq("A", "C"), gts=Seq(Gt(sample="s1", gt="0|1")))
+    vcfBuilderBlockOne.add(pos=3, alleles=Seq("A", "C"), gts=Seq(Gt(sample="s1", gt="0|1")))
+    val builderBlockOne = new VCFFileReader(vcfBuilderBlockOne.toTempFile())
 
     // second fully contained in the first
     {
-      val builderBlockTwo = new VariantContextSetBuilder()
-      builderBlockTwo.addVariant(start = 2, variantAlleles = List("A", "C"), genotypeAlleles = List("A", "C"), phased = true)
-
-      val contexts = (builderBlockOne.iterator.map { ctx => withPhasingSetId(ctx, 1) } ++ builderBlockTwo.iterator.map { ctx => withPhasingSetId(ctx, 2) }).toSeq
+      val vcfBuilderBlockTwo = VcfBuilder(samples=Seq("S1")).add(pos=2, alleles=Seq("A", "C"), gts=Seq(Gt(sample="s1", gt="0|1")))
+      val builderBlockTwo = new VCFFileReader(vcfBuilderBlockTwo.toTempFile())
+      val contexts = (builderBlockOne.iterator().map { ctx => withPhasingSetId(ctx, 1) } ++ builderBlockTwo.iterator().map { ctx => withPhasingSetId(ctx, 2) }).toSeq
 
       // Check that if we do not want to modify the blocks we get an exception
-      an[Exception] should be thrownBy PhaseBlock.buildOverlapDetector(iterator = contexts.iterator, dict = builderBlockOne.dict, modifyBlocks = false)
+      an[Exception] should be thrownBy PhaseBlock.buildOverlapDetector(iterator = contexts.iterator, dict = builderBlockOne.getFileHeader.getSequenceDictionary.fromSam, modifyBlocks = false)
 
-      val detector = PhaseBlock.buildOverlapDetector(iterator = contexts.iterator, dict = builderBlockOne.dict)
+      val detector = PhaseBlock.buildOverlapDetector(iterator = contexts.iterator, dict = builderBlockOne.getFileHeader.getSequenceDictionary.fromSam)
       detector.getAll should have size 1
       val intervals = detector.getAll.toSeq.sortBy(_.getStart)
       val head = intervals.head
@@ -381,15 +387,15 @@ class PhaseBlockTest extends ErrorLogLevel {
 
     // first fully contained in the second
     {
-      val builderBlockTwo = new VariantContextSetBuilder()
-      builderBlockTwo.addVariant(start = 2, variantAlleles = List("A", "C"), genotypeAlleles = List("A", "C"), phased = true)
+      val vcfBuilderBlockTwo = VcfBuilder(samples=Seq("s1")).add(pos=2, alleles=Seq("A", "C"), gts=Seq(Gt(sample="s1", gt="0|1")))
+      val builderBlockTwo = new VCFFileReader(vcfBuilderBlockTwo.toTempFile())
 
-      val contexts = (builderBlockTwo.iterator.map { ctx => withPhasingSetId(ctx, 2) } ++ builderBlockOne.iterator.map { ctx => withPhasingSetId(ctx, 1) }).toSeq
+      val contexts = (builderBlockTwo.iterator().map { ctx => withPhasingSetId(ctx, 2) } ++ builderBlockOne.iterator().map { ctx => withPhasingSetId(ctx, 1) }).toSeq
 
       // Check that if we do not want to modify the blocks we get an exception
-      an[Exception] should be thrownBy PhaseBlock.buildOverlapDetector(iterator = contexts.iterator, dict = builderBlockOne.dict, modifyBlocks = false)
+      an[Exception] should be thrownBy PhaseBlock.buildOverlapDetector(iterator = contexts.iterator, dict = builderBlockOne.getFileHeader.getSequenceDictionary.fromSam, modifyBlocks = false)
 
-      val detector = PhaseBlock.buildOverlapDetector(iterator = contexts.iterator, dict = builderBlockOne.dict)
+      val detector = PhaseBlock.buildOverlapDetector(iterator = contexts.iterator, dict = builderBlockOne.getFileHeader.getSequenceDictionary.fromSam)
       detector.getAll should have size 1
       val intervals = detector.getAll.toSeq.sortBy(_.getStart)
       val head = intervals.head
@@ -401,7 +407,7 @@ class PhaseBlockTest extends ErrorLogLevel {
     {
       val contexts = builderBlockOne.iterator.map { ctx => withPhasingSetId(ctx, 1) }.toSeq
 
-      val detector = PhaseBlock.buildOverlapDetector(iterator = (contexts ++ contexts).iterator, dict = builderBlockOne.dict)
+      val detector = PhaseBlock.buildOverlapDetector(iterator = (contexts ++ contexts).iterator, dict = builderBlockOne.getFileHeader.getSequenceDictionary.fromSam)
       detector.getAll should have size 1
       val intervals = detector.getAll.toSeq.sortBy(_.getStart)
       val head = intervals.head
@@ -411,24 +417,26 @@ class PhaseBlockTest extends ErrorLogLevel {
   }
 
   it should "truncate the smaller block when too blocks overlap" in {
-    val builderBlockOne = new VariantContextSetBuilder()
-    builderBlockOne.addVariant(start=2, variantAlleles=List("A", "C"), genotypeAlleles=List("A", "C"), phased=true)
-    builderBlockOne.addVariant(start=3, variantAlleles=List("A", "C"), genotypeAlleles=List("A", "C"), phased=true)
-    builderBlockOne.addVariant(start=4, variantAlleles=List("A", "C"), genotypeAlleles=List("A", "C"), phased=true)
+    val vcfBuilderBlockOne = VcfBuilder(samples=Seq("s1"))
+    vcfBuilderBlockOne.add(pos=2, alleles=Seq("A", "C"), gts=Seq(Gt(sample="s1", gt="0|1")))
+    vcfBuilderBlockOne.add(pos=3, alleles=Seq("A", "C"), gts=Seq(Gt(sample="s1", gt="0|1")))
+    vcfBuilderBlockOne.add(pos=4, alleles=Seq("A", "C"), gts=Seq(Gt(sample="s1", gt="0|1")))
+    val builderBlockOne = new VCFFileReader(vcfBuilderBlockOne.toTempFile())
 
     // first block is extended
     {
-      val builderBlockTwo = new VariantContextSetBuilder()
-      builderBlockTwo.addVariant(start = 3, variantAlleles = List("A", "C"), genotypeAlleles = List("A", "C"), phased = true)
-      builderBlockTwo.addVariant(start = 4, variantAlleles = List("A", "C"), genotypeAlleles = List("A", "C"), phased = true)
-      builderBlockTwo.addVariant(start = 5, variantAlleles = List("A", "C"), genotypeAlleles = List("A", "C"), phased = true)
+      val vcfBuilderBlockTwo = VcfBuilder(samples=Seq("s1"))
+      vcfBuilderBlockTwo.add(pos=3, alleles=Seq("A", "C"), gts=Seq(Gt(sample="s1", gt="0|1")))
+      vcfBuilderBlockTwo.add(pos=4, alleles=Seq("A", "C"), gts=Seq(Gt(sample="s1", gt="0|1")))
+      vcfBuilderBlockTwo.add(pos=5, alleles=Seq("A", "C"), gts=Seq(Gt(sample="s1", gt="0|1")))
+      val builderBlockTwo = new VCFFileReader(vcfBuilderBlockTwo.toTempFile())
 
-      val contexts = (builderBlockOne.iterator.map { ctx => withPhasingSetId(ctx, 2) } ++ builderBlockTwo.iterator.map { ctx => withPhasingSetId(ctx, 3) }).toSeq
+      val contexts = (builderBlockOne.iterator().map { ctx => withPhasingSetId(ctx, 2) } ++ builderBlockTwo.iterator().map { ctx => withPhasingSetId(ctx, 3) }).toSeq
 
       // Check that if we do not want to modify the blocks we get an exception
-      an[Exception] should be thrownBy PhaseBlock.buildOverlapDetector(iterator = contexts.iterator, dict = builderBlockOne.dict, modifyBlocks = false)
+      an[Exception] should be thrownBy PhaseBlock.buildOverlapDetector(iterator = contexts.iterator, dict = builderBlockOne.getFileHeader.getSequenceDictionary.fromSam, modifyBlocks = false)
 
-      val detector = PhaseBlock.buildOverlapDetector(iterator = contexts.iterator, dict = builderBlockOne.dict)
+      val detector = PhaseBlock.buildOverlapDetector(iterator = contexts.iterator, dict = builderBlockOne.getFileHeader.getSequenceDictionary.fromSam)
       detector.getAll should have size 2
       val intervals = detector.getAll.toSeq.sortBy(_.getStart)
       val head = intervals.head
@@ -441,18 +449,19 @@ class PhaseBlockTest extends ErrorLogLevel {
 
     // second block is extended
     {
-      val builderBlockTwo = new VariantContextSetBuilder()
-      builderBlockTwo.addVariant(start = 3, variantAlleles = List("A", "C"), genotypeAlleles = List("A", "C"), phased = true)
-      builderBlockTwo.addVariant(start = 4, variantAlleles = List("A", "C"), genotypeAlleles = List("A", "C"), phased = true)
-      builderBlockTwo.addVariant(start = 5, variantAlleles = List("A", "C"), genotypeAlleles = List("A", "C"), phased = true)
-      builderBlockTwo.addVariant(start = 6, variantAlleles = List("A", "C"), genotypeAlleles = List("A", "C"), phased = true)
+      val vcfBuilderBlockTwo = VcfBuilder(samples=Seq("s1"))
+      vcfBuilderBlockTwo.add(pos=3, alleles=Seq("A", "C"), gts=Seq(Gt(sample="s1", gt="0|1")))
+      vcfBuilderBlockTwo.add(pos=4, alleles=Seq("A", "C"), gts=Seq(Gt(sample="s1", gt="0|1")))
+      vcfBuilderBlockTwo.add(pos=5, alleles=Seq("A", "C"), gts=Seq(Gt(sample="s1", gt="0|1")))
+      vcfBuilderBlockTwo.add(pos=6, alleles=Seq("A", "C"), gts=Seq(Gt(sample="s1", gt="0|1")))
+      val builderBlockTwo = new VCFFileReader(vcfBuilderBlockTwo.toTempFile())
 
-      val contexts = (builderBlockOne.iterator.map { ctx => withPhasingSetId(ctx, 2) } ++ builderBlockTwo.iterator.map { ctx => withPhasingSetId(ctx, 3) }).toSeq
+      val contexts = (builderBlockOne.iterator().map { ctx => withPhasingSetId(ctx, 2) } ++ builderBlockTwo.iterator().map { ctx => withPhasingSetId(ctx, 3) }).toSeq
 
       // Check that if we do not want to modify the blocks we get an exception
-      an[Exception] should be thrownBy PhaseBlock.buildOverlapDetector(iterator = contexts.iterator, dict = builderBlockOne.dict, modifyBlocks = false)
+      an[Exception] should be thrownBy PhaseBlock.buildOverlapDetector(iterator = contexts.iterator, dict = builderBlockOne.getFileHeader.getSequenceDictionary.fromSam, modifyBlocks = false)
 
-      val detector = PhaseBlock.buildOverlapDetector(iterator = contexts.iterator, dict = builderBlockOne.dict)
+      val detector = PhaseBlock.buildOverlapDetector(iterator = contexts.iterator, dict = builderBlockOne.getFileHeader.getSequenceDictionary.fromSam)
       detector.getAll should have size 2
       val intervals = detector.getAll.toSeq.sortBy(_.getStart)
       val head = intervals.head
@@ -465,27 +474,30 @@ class PhaseBlockTest extends ErrorLogLevel {
   }
 
   it should "resolve three overlapping blocks, such that when the middle one is truncated and now starts after the third, it is resolved" in {
-    val builderBlockOne = new VariantContextSetBuilder()
-    builderBlockOne.addVariant(start=2, variantAlleles=List("A", "C"), genotypeAlleles=List("A", "C"), phased=true)
-    builderBlockOne.addVariant(start=10, variantAlleles=List("A", "C"), genotypeAlleles=List("A", "C"), phased=true)
-    val oneIter = builderBlockOne.iterator.map { ctx => withPhasingSetId(ctx, 2) }
+    val vcfBuilderBlockOne = VcfBuilder(samples=Seq("s1"))
+    vcfBuilderBlockOne.add(pos=2, alleles=Seq("A", "C"), gts=Seq(Gt(sample="s1", gt="0|1")))
+    vcfBuilderBlockOne.add(pos=10, alleles=Seq("A", "C"), gts=Seq(Gt(sample="s1", gt="0|1")))
+    val builderBlockOne = new VCFFileReader(vcfBuilderBlockOne.toTempFile())
+    val oneIter = builderBlockOne.iterator().map { ctx => withPhasingSetId(ctx, 2) }
 
-    val builderBlockTwo = new VariantContextSetBuilder()
-    builderBlockTwo.addVariant(start = 8, variantAlleles = List("A", "C"), genotypeAlleles = List("A", "C"), phased = true)
-    builderBlockTwo.addVariant(start = 14, variantAlleles = List("A", "C"), genotypeAlleles = List("A", "C"), phased = true)
-    val twoIter = builderBlockTwo.iterator.map { ctx => withPhasingSetId(ctx, 3) }
+    val vcfBuilderBlockTwo = VcfBuilder(samples=Seq("s1"))
+    vcfBuilderBlockTwo.add(pos=8, alleles=Seq("A", "C"), gts=Seq(Gt(sample="s1", gt="0|1")))
+    vcfBuilderBlockTwo.add(pos=14, alleles=Seq("A", "C"), gts=Seq(Gt(sample="s1", gt="0|1")))
+    val builderBlockTwo = new VCFFileReader(vcfBuilderBlockTwo.toTempFile())
+    val twoIter = builderBlockTwo.iterator().map { ctx => withPhasingSetId(ctx, 3) }
 
-    val builderBlockThree = new VariantContextSetBuilder()
-    builderBlockThree.addVariant(start = 9, variantAlleles = List("A", "C"), genotypeAlleles = List("A", "C"), phased = true)
-    builderBlockThree.addVariant(start = 13, variantAlleles = List("A", "C"), genotypeAlleles = List("A", "C"), phased = true)
-    val threeIter = builderBlockThree.iterator.map { ctx => withPhasingSetId(ctx, 4) }
+    val vcfBuilderBlockThree = VcfBuilder(samples=Seq("s1"))
+    vcfBuilderBlockThree.add(pos=9, alleles=Seq("A", "C"), gts=Seq(Gt(sample="s1", gt="0|1")))
+    vcfBuilderBlockThree.add(pos=13, alleles=Seq("A", "C"), gts=Seq(Gt(sample="s1", gt="0|1")))
+    val builderBlockThree = new VCFFileReader(vcfBuilderBlockThree.toTempFile())
+    val threeIter = builderBlockThree.iterator().map { ctx => withPhasingSetId(ctx, 4) }
 
     val contexts = (oneIter ++ twoIter ++ threeIter).toSeq
 
     // Check that if we do not want to modify the blocks we get an exception
-    an[Exception] should be thrownBy PhaseBlock.buildOverlapDetector(iterator = contexts.iterator, dict = builderBlockOne.dict, modifyBlocks = false)
+    an[Exception] should be thrownBy PhaseBlock.buildOverlapDetector(iterator = contexts.iterator, dict = builderBlockOne.getFileHeader.getSequenceDictionary.fromSam, modifyBlocks = false)
 
-    val detector = PhaseBlock.buildOverlapDetector(iterator = contexts.iterator, dict = builderBlockOne.dict)
+    val detector = PhaseBlock.buildOverlapDetector(iterator = contexts.iterator, dict = builderBlockOne.getFileHeader.getSequenceDictionary.fromSam)
     detector.getAll should have size 3
     val intervals = detector.getAll.toSeq.sortBy(_.getStart)
 
@@ -505,27 +517,30 @@ class PhaseBlockTest extends ErrorLogLevel {
   }
 
   it should "resolve three overlapping blocks, such that when the middle one is truncated and now is enclosed in the third, we get two blocks" in {
-    val builderBlockOne = new VariantContextSetBuilder()
-    builderBlockOne.addVariant(start=2, variantAlleles=List("A", "C"), genotypeAlleles=List("A", "C"), phased=true)
-    builderBlockOne.addVariant(start=10, variantAlleles=List("A", "C"), genotypeAlleles=List("A", "C"), phased=true)
-    val oneIter = builderBlockOne.iterator.map { ctx => withPhasingSetId(ctx, 2) }
+    val vcfBuilderBlockOne = VcfBuilder(samples=Seq("s1"))
+    vcfBuilderBlockOne.add(pos=2, alleles=Seq("A", "C"), gts=Seq(Gt(sample="s1", gt="0|1")))
+    vcfBuilderBlockOne.add(pos=10, alleles=Seq("A", "C"), gts=Seq(Gt(sample="s1", gt="0|1")))
+    val builderBlockOne = new VCFFileReader(vcfBuilderBlockOne.toTempFile())
+    val oneIter = builderBlockOne.iterator().map { ctx => withPhasingSetId(ctx, 2) }
 
-    val builderBlockTwo = new VariantContextSetBuilder()
-    builderBlockTwo.addVariant(start = 8, variantAlleles = List("A", "C"), genotypeAlleles = List("A", "C"), phased = true)
-    builderBlockTwo.addVariant(start = 13, variantAlleles = List("A", "C"), genotypeAlleles = List("A", "C"), phased = true)
-    val twoIter = builderBlockTwo.iterator.map { ctx => withPhasingSetId(ctx, 3) }
+    val vcfBuilderBlockTwo = VcfBuilder(samples=Seq("s1"))
+    vcfBuilderBlockTwo.add(pos=8, alleles=Seq("A", "C"), gts=Seq(Gt(sample="s1", gt="0|1")))
+    vcfBuilderBlockTwo.add(pos=13, alleles=Seq("A", "C"), gts=Seq(Gt(sample="s1", gt="0|1")))
+    val builderBlockTwo = new VCFFileReader(vcfBuilderBlockTwo.toTempFile())
+    val twoIter = builderBlockTwo.iterator().map { ctx => withPhasingSetId(ctx, 3) }
 
-    val builderBlockThree = new VariantContextSetBuilder()
-    builderBlockThree.addVariant(start = 9, variantAlleles = List("A", "C"), genotypeAlleles = List("A", "C"), phased = true)
-    builderBlockThree.addVariant(start = 13, variantAlleles = List("A", "C"), genotypeAlleles = List("A", "C"), phased = true)
-    val threeIter = builderBlockThree.iterator.map { ctx => withPhasingSetId(ctx, 4) }
+    val vcfBuilderBlockThree = VcfBuilder(samples=Seq("s1"))
+    vcfBuilderBlockThree.add(pos=9, alleles=Seq("A", "C"), gts=Seq(Gt(sample="s1", gt="0|1")))
+    vcfBuilderBlockThree.add(pos=13, alleles=Seq("A", "C"), gts=Seq(Gt(sample="s1", gt="0|1")))
+    val builderBlockThree = new VCFFileReader(vcfBuilderBlockThree.toTempFile())
+    val threeIter = builderBlockThree.iterator().map { ctx => withPhasingSetId(ctx, 4) }
 
     val contexts = (oneIter ++ twoIter ++ threeIter).toSeq
 
     // Check that if we do not want to modify the blocks we get an exception
-    an[Exception] should be thrownBy PhaseBlock.buildOverlapDetector(iterator = contexts.iterator, dict = builderBlockOne.dict, modifyBlocks = false)
+    an[Exception] should be thrownBy PhaseBlock.buildOverlapDetector(iterator = contexts.iterator, dict = builderBlockOne.getFileHeader.getSequenceDictionary.fromSam, modifyBlocks = false)
 
-    val detector = PhaseBlock.buildOverlapDetector(iterator = contexts.iterator, dict = builderBlockOne.dict)
+    val detector = PhaseBlock.buildOverlapDetector(iterator = contexts.iterator, dict = builderBlockOne.getFileHeader.getSequenceDictionary.fromSam)
     detector.getAll should have size 2
     val intervals = detector.getAll.toSeq.sortBy(_.getStart)
 
@@ -574,12 +589,13 @@ class PhaseCigarTest extends ErrorLogLevel {
   }
 
   "Cigar.toCigar" should "create an empty cigar if no variants have a phasing set" in {
-    val builder = new VariantContextSetBuilder().addVariant(start=1, variantAlleles=List("A", "C"), genotypeAlleles=List("A", "C"), phased=true)
-    val ctx     = builder.head
+    val vcfBuilder = VcfBuilder(samples=Seq("s1")).add(pos=1, alleles=Seq("A", "C"), gts=Seq(Gt(sample="s1", gt="0|1")))
+    val builder = new VCFFileReader(vcfBuilder.toTempFile())
+    val ctx     = builder.iterator().next()
 
     // truth variant only
     {
-      val (cigar, metric) = toCigar(truth = Seq(ctx), call = Seq.empty, header = builder.header, skipMismatchingAlleles = true)
+      val (cigar, metric) = toCigar(truth = Seq(ctx), call = Seq.empty, header = builder.getFileHeader, skipMismatchingAlleles = true)
       cigar should contain theSameElementsInOrderAs Seq(BothEnd, BothEnd)
       metric.num_called shouldBe 0
       metric.num_truth shouldBe 1
@@ -588,7 +604,7 @@ class PhaseCigarTest extends ErrorLogLevel {
 
     // call variant only
     {
-      val (cigar, metric) = toCigar(truth = Seq.empty, call = Seq(ctx), header = builder.header, skipMismatchingAlleles = true)
+      val (cigar, metric) = toCigar(truth = Seq.empty, call = Seq(ctx), header = builder.getFileHeader, skipMismatchingAlleles = true)
       cigar should contain theSameElementsInOrderAs Seq(BothEnd, BothEnd)
       metric.num_called shouldBe 1
       metric.num_phased shouldBe 0
@@ -597,12 +613,13 @@ class PhaseCigarTest extends ErrorLogLevel {
   }
 
   it should "create a cigar from either a single truth or call variant" in {
-    val builder = new VariantContextSetBuilder().addVariant(start=1, variantAlleles=List("A", "C"), genotypeAlleles=List("A", "C"), phased=true)
-    val ctx     = withPhasingSetId(builder.head, 1)
+    val vcfBuilder = VcfBuilder(samples=Seq("s1")).add(pos=1, alleles=Seq("A", "C"), gts=Seq(Gt(sample="s1", gt="0|1")))
+    val builder = new VCFFileReader(vcfBuilder.toTempFile())
+    val ctx     = withPhasingSetId(builder.iterator().next(), 1)
 
     // truth variant only
     {
-      val (cigar, metric) = toCigar(truth = Seq(ctx), call = Seq.empty, header = builder.header, skipMismatchingAlleles = true)
+      val (cigar, metric) = toCigar(truth = Seq(ctx), call = Seq.empty, header = builder.getFileHeader, skipMismatchingAlleles = true)
       cigar should contain theSameElementsInOrderAs Seq(BothEnd, TruthOnly, BothEnd)
       metric.num_called shouldBe 0
       metric.num_truth shouldBe 1
@@ -611,7 +628,7 @@ class PhaseCigarTest extends ErrorLogLevel {
 
     // call variant only
     {
-      val (cigar, metric) = toCigar(truth = Seq.empty, call = Seq(ctx), header = builder.header, skipMismatchingAlleles = true)
+      val (cigar, metric) = toCigar(truth = Seq.empty, call = Seq(ctx), header = builder.getFileHeader, skipMismatchingAlleles = true)
       cigar should contain theSameElementsInOrderAs Seq(BothEnd, CallOnly, BothEnd)
       metric.num_called shouldBe 1
       metric.num_phased shouldBe 1
@@ -620,13 +637,14 @@ class PhaseCigarTest extends ErrorLogLevel {
   }
 
   it should "create a cigar when both truth and call variants are present but only of the two are phased" in {
-    val builder    = new VariantContextSetBuilder().addVariant(start=1, variantAlleles=List("A", "C"), genotypeAlleles=List("A", "C"), phased=true)
-    val ctxPhased  = withPhasingSetId(builder.head, 1)
-    val ctxNoPhase = builder.head
+    val vcfBuilder = VcfBuilder(samples=Seq("s1")).add(pos=1, alleles=Seq("A", "C"), gts=Seq(Gt(sample="s1", gt="0|1")))
+    val builder = new VCFFileReader(vcfBuilder.toTempFile())
+    val ctxPhased  = withPhasingSetId(builder.iterator().next(), 1)
+    val ctxNoPhase = builder.iterator().next()
 
     // truth variant phased only
     {
-      val (cigar, metric) = toCigar(truth = Seq(ctxPhased), call = Seq(ctxNoPhase), header = builder.header, skipMismatchingAlleles = true)
+      val (cigar, metric) = toCigar(truth = Seq(ctxPhased), call = Seq(ctxNoPhase), header = builder.getFileHeader, skipMismatchingAlleles = true)
       cigar should contain theSameElementsInOrderAs Seq(BothEnd, TruthOnly, BothEnd)
       metric.num_called shouldBe 1
       metric.num_phased shouldBe 0
@@ -636,7 +654,7 @@ class PhaseCigarTest extends ErrorLogLevel {
 
     // call variant phased only
     {
-      val (cigar, metric) = toCigar(truth = Seq(ctxNoPhase), call = Seq(ctxPhased), header = builder.header, skipMismatchingAlleles = true)
+      val (cigar, metric) = toCigar(truth = Seq(ctxNoPhase), call = Seq(ctxPhased), header = builder.getFileHeader, skipMismatchingAlleles = true)
       cigar should contain theSameElementsInOrderAs Seq(BothEnd, CallOnly, BothEnd)
       metric.num_called shouldBe 1
       metric.num_phased shouldBe 1
@@ -646,12 +664,13 @@ class PhaseCigarTest extends ErrorLogLevel {
   }
 
   it should "create a cigar when both truth and call variants are present and both are phased" in {
-    val builder  = new VariantContextSetBuilder().addVariant(start=1, variantAlleles=List("A", "C"), genotypeAlleles=List("A", "C"), phased=true)
-    val ctx      = withPhasingSetId(builder.head, 1)
+    val vcfBuilder = VcfBuilder(samples=Seq("s1")).add(pos=1, alleles=Seq("A", "C"), gts=Seq(Gt(sample="s1", gt="0|1")))
+    val builder = new VCFFileReader(vcfBuilder.toTempFile())
+    val ctx      = withPhasingSetId(builder.iterator().next(), 1)
 
     // both variants are phased
     {
-      val (cigar, metric) = toCigar(truth = Seq(ctx), call = Seq(ctx), header = builder.header, skipMismatchingAlleles = true)
+      val (cigar, metric) = toCigar(truth = Seq(ctx), call = Seq(ctx), header = builder.getFileHeader, skipMismatchingAlleles = true)
       cigar should contain theSameElementsInOrderAs Seq(BothEnd, Match, BothEnd)
       metric.num_called shouldBe 1
       metric.num_phased shouldBe 1
@@ -659,16 +678,20 @@ class PhaseCigarTest extends ErrorLogLevel {
       metric.num_truth_phased shouldBe 1
     }
   }
-
+  // split into three different unit tests can put 683-693 into different function, and put three subtests in separate tests
   it should "create a cigar when both truth and call variants are present and both are phased but mismatch alleles" in {
-    val builderTruth = new VariantContextSetBuilder().addVariant(start=1, variantAlleles=List("A", "C"), genotypeAlleles=List("A", "C"), phased=true)
-    val builderCall  = new VariantContextSetBuilder().addVariant(start=1, variantAlleles=List("A", "C"), genotypeAlleles=List("C", "A"), phased=true)
-    val truth = withPhasingSetId(builderTruth.head, 1)
-    val call  = withPhasingSetId(builderCall.head, 1)
+    val vcfBuilderTruth = VcfBuilder(samples=Seq("s1")).add(pos=1, alleles=Seq("A", "C"), gts=Seq(Gt(sample="s1", gt="0|1")))
+    val builderTruth = new VCFFileReader(vcfBuilderTruth.toTempFile())
+
+    val vcfBuilderCall = VcfBuilder(samples=Seq("s1")).add(pos=1, alleles=Seq("A", "C"), gts=Seq(Gt(sample="s1", gt="1|0")))
+    val builderCall = new VCFFileReader(vcfBuilderCall.toTempFile())
+
+    val truth = withPhasingSetId(builderTruth.iterator().next(), 1)
+    val call  = withPhasingSetId(builderCall.iterator().next(), 1)
 
     // both variants are phased, phase is inverted, and we assume a fixed order, so a mismatch
     {
-      val (cigar, metric) = toCigar(truth = Seq(truth), call = Seq(call), header = builderTruth.header, skipMismatchingAlleles = true, assumeFixedAlleleOrder = true)
+      val (cigar, metric) = toCigar(truth = Seq(truth), call = Seq(call), header = builderTruth.getFileHeader, skipMismatchingAlleles = true, assumeFixedAlleleOrder = true)
       cigar should contain theSameElementsInOrderAs Seq(BothEnd, Mismatch, BothEnd)
       metric.num_called shouldBe 1
       metric.num_phased shouldBe 1
@@ -677,7 +700,7 @@ class PhaseCigarTest extends ErrorLogLevel {
     }
     // both variants are phased, phase is inverted, and we don't assume a fixed order, so a match
     {
-      val (cigar, metric) = toCigar(truth = Seq(truth), call = Seq(call), header = builderTruth.header, skipMismatchingAlleles = true, assumeFixedAlleleOrder = false)
+      val (cigar, metric) = toCigar(truth = Seq(truth), call = Seq(call), header = builderTruth.getFileHeader, skipMismatchingAlleles = true, assumeFixedAlleleOrder = false)
       cigar should contain theSameElementsInOrderAs Seq(BothEnd, Match, BothEnd)
       metric.num_called shouldBe 1
       metric.num_phased shouldBe 1
@@ -686,12 +709,14 @@ class PhaseCigarTest extends ErrorLogLevel {
     }
     // first site is a match, second is a mismatch since we inverted after the first
     {
-      builderTruth.addVariant(start=2, variantAlleles=List("A", "C"), genotypeAlleles=List("A", "C"), phased=true)
-      builderCall.addVariant(start=2, variantAlleles=List("A", "C"), genotypeAlleles=List("A", "C"), phased=true)
-      val truthTwo = withPhasingSetId(builderTruth.last, 1)
-      val callTwo  = withPhasingSetId(builderCall.last, 1)
+      vcfBuilderTruth.add(pos=2, alleles=Seq("A", "C"), gts=Seq(Gt(sample="s1", gt="0|1")))
+      vcfBuilderCall.add(pos=2, alleles=Seq("A", "C"), gts=Seq(Gt(sample="s1", gt="0|1")))
+      val builderTruth = new VCFFileReader(vcfBuilderTruth.toTempFile())
+      val builderCall = new VCFFileReader(vcfBuilderCall.toTempFile())
+      val truthTwo = withPhasingSetId(builderTruth.iterator().toSeq.last, 1)
+      val callTwo  = withPhasingSetId(builderCall.iterator().toSeq.last, 1)
 
-      val (cigar, metric) = toCigar(truth = Seq(truth, truthTwo), call = Seq(call, callTwo), header = builderTruth.header, skipMismatchingAlleles = true, assumeFixedAlleleOrder = false)
+      val (cigar, metric) = toCigar(truth = Seq(truth, truthTwo), call = Seq(call, callTwo), header = builderTruth.getFileHeader, skipMismatchingAlleles = true, assumeFixedAlleleOrder = false)
       cigar should contain theSameElementsInOrderAs Seq(BothEnd, Match, Mismatch, BothEnd)
       metric.num_called shouldBe 2
       metric.num_phased shouldBe 2
@@ -701,14 +726,18 @@ class PhaseCigarTest extends ErrorLogLevel {
   }
 
   it should "skip sites where alleles mismatch if specified" in {
-    val builderTruth = new VariantContextSetBuilder().addVariant(start=1, variantAlleles=List("A", "C"), genotypeAlleles=List("A", "C"), phased=true)
-    val builderCall  = new VariantContextSetBuilder().addVariant(start=1, variantAlleles=List("A", "G"), genotypeAlleles=List("A", "G"), phased=true)
-    val truth = withPhasingSetId(builderTruth.head, 1)
-    val call  = withPhasingSetId(builderCall.head, 1)
+    val vcfBuilderTruth = VcfBuilder(samples=Seq("s1")).add(pos=1, alleles=Seq("A", "C"), gts=Seq(Gt(sample="s1", gt="0|1")))
+    val builderTruth = new VCFFileReader(vcfBuilderTruth.toTempFile())
+
+    val vcfBuilderCall = VcfBuilder(samples=Seq("s1")).add(pos=1, alleles=Seq("A", "G"), gts=Seq(Gt(sample="s1", gt="0|1")))
+    val builderCall = new VCFFileReader(vcfBuilderCall.toTempFile())
+
+    val truth = withPhasingSetId(builderTruth.iterator().next(), 1)
+    val call  = withPhasingSetId(builderCall.iterator().next(), 1)
 
     // skip the sites that have mismatching alleles
     {
-      val (cigar, metric) = toCigar(truth = Seq(truth), call = Seq(call), header = builderTruth.header, skipMismatchingAlleles = true)
+      val (cigar, metric) = toCigar(truth = Seq(truth), call = Seq(call), header = builderTruth.getFileHeader, skipMismatchingAlleles = true)
       cigar should contain theSameElementsInOrderAs Seq(BothEnd, BothEnd)
       metric.num_called shouldBe 0
       metric.num_truth shouldBe 0
@@ -716,7 +745,7 @@ class PhaseCigarTest extends ErrorLogLevel {
 
     // include the sites that have mismatching alleles
     {
-      val (cigar, metric) = toCigar(truth = Seq(truth), call = Seq(call), header = builderTruth.header, skipMismatchingAlleles = false)
+      val (cigar, metric) = toCigar(truth = Seq(truth), call = Seq(call), header = builderTruth.getFileHeader, skipMismatchingAlleles = false)
       cigar should contain theSameElementsInOrderAs Seq(BothEnd, Mismatch, BothEnd)
       metric.num_called shouldBe 1
       metric.num_phased shouldBe 1
@@ -936,11 +965,12 @@ class PhaseCigarTest extends ErrorLogLevel {
   }
 
   "Cigar.contextsToBlockEndOperator/contextsToMatchingOperator" should "should return the cigar operator for two variant contexts" in {
-    val builder = new VariantContextSetBuilder()
-    builder.addVariant(start = 1, variantAlleles = List("A", "C"), genotypeAlleles = List("A", "C"), phased = true)
-    builder.addVariant(start = 2, variantAlleles = List("A", "C"), genotypeAlleles = List("A", "C"), phased = true)
-    val ctxStart   = withPhasingSetId(builder.head, 1)
-    val ctxNoStart = withPhasingSetId(builder.last, 1)
+    val vcfBuilder = VcfBuilder(samples=Seq("s1"))
+    vcfBuilder.add(pos=1, alleles=Seq("A", "C"), gts=Seq(Gt(sample="s1", gt="0|1")))
+    vcfBuilder.add(pos=2, alleles=Seq("A", "C"), gts=Seq(Gt(sample="s1", gt="0|1")))
+    val builder = new VCFFileReader(vcfBuilder.toTempFile())
+    val ctxStart   = withPhasingSetId(builder.iterator().toSeq.head, 1)
+    val ctxNoStart = withPhasingSetId(builder.iterator().toSeq.last, 1)
 
     // No truth, call is start of a phase block
     PhaseCigar.contextsToBlockEndOperator(truth=None, call=Some(ctxStart)) shouldBe Some(CallEnd)
@@ -976,9 +1006,10 @@ class PhaseCigarTest extends ErrorLogLevel {
   }
 
   it should "should return the cigar operator for two variant contexts that disagree on phase" in {
-    val builder = new VariantContextSetBuilder()
-    builder.addVariant(start = 1, variantAlleles = List("A", "C"), genotypeAlleles = List("A", "C"), phased = true)
-    builder.addVariant(start = 2, variantAlleles = List("A", "C"), genotypeAlleles = List("C", "A"), phased = true)
+    val vcfBuilder = VcfBuilder(samples=Seq("s1"))
+    vcfBuilder.add(pos=1, alleles=Seq("A", "C"), gts=Seq(Gt(sample="s1", gt="0|1")))
+    vcfBuilder.add(pos=2, alleles=Seq("A", "C"), gts=Seq(Gt(sample="s1", gt="1|0")))
+    val builder = new VCFFileReader(vcfBuilder.toTempFile()).iterator().toSeq
     val ctx         = withPhasingSetId(builder.head, 1)
     val ctxMismatch = withPhasingSetId(builder.last, 2)
 
@@ -992,25 +1023,28 @@ class PhaseCigarTest extends ErrorLogLevel {
   }
 
   "Cigar.cigarForVariantContexts" should "return a match if two variant contexts share the same alleles in the same order" in {
-    val builder = new VariantContextSetBuilder()
-    builder.addVariant(start = 1, variantAlleles = List("A", "C"), genotypeAlleles = List("A", "C"))
-    builder.addVariant(start = 2, variantAlleles = List("A", "C"), genotypeAlleles = List("A", "C"))
+    val vcfBuilder = VcfBuilder(samples=Seq("s1"))
+    vcfBuilder.add(pos=1, alleles=Seq("A", "C"), gts=Seq(Gt(sample="s1", gt="0/1")))
+    vcfBuilder.add(pos=2, alleles=Seq("A", "C"), gts=Seq(Gt(sample="s1", gt="0/1")))
+    val builder = new VCFFileReader(vcfBuilder.toTempFile()).iterator().toSeq
     PhaseCigar.cigarTypeForVariantContexts(builder.head, builder.last) shouldBe Match
     PhaseCigar.cigarTypeForVariantContexts(builder.last, builder.head) shouldBe Match
   }
 
   it should "return a mismatch if two variant contexts share the same alleles but in the different order" in {
-    val builder = new VariantContextSetBuilder()
-    builder.addVariant(start = 1, variantAlleles = List("A", "C"), genotypeAlleles = List("C", "A"))
-    builder.addVariant(start = 2, variantAlleles = List("A", "C"), genotypeAlleles = List("A", "C"))
+    val vcfBuilder = VcfBuilder(samples=Seq("s1"))
+    vcfBuilder.add(pos=1, alleles=Seq("A", "C"), gts=Seq(Gt(sample="s1", gt="0/1")))
+    vcfBuilder.add(pos=2, alleles=Seq("A", "C"), gts=Seq(Gt(sample="s1", gt="1/0")))
+    val builder = new VCFFileReader(vcfBuilder.toTempFile()).iterator().toSeq
     PhaseCigar.cigarTypeForVariantContexts(builder.head, builder.last) shouldBe Mismatch
     PhaseCigar.cigarTypeForVariantContexts(builder.last, builder.head) shouldBe Mismatch
   }
 
   it should "return a mismatch if two variant contexts share the different alleles" in {
-    val builder = new VariantContextSetBuilder()
-    builder.addVariant(start = 1, variantAlleles = List("A", "G"), genotypeAlleles = List("A", "G"))
-    builder.addVariant(start = 2, variantAlleles = List("A", "C"), genotypeAlleles = List("A", "C"))
+    val vcfBuilder = VcfBuilder(samples=Seq("s1"))
+    vcfBuilder.add(pos=1, alleles=Seq("A", "G"), gts=Seq(Gt(sample="s1", gt="0/1")))
+    vcfBuilder.add(pos=2, alleles=Seq("A", "C"), gts=Seq(Gt(sample="s1", gt="0/1")))
+    val builder = new VCFFileReader(vcfBuilder.toTempFile()).iterator().toSeq
     PhaseCigar.cigarTypeForVariantContexts(builder.head, builder.last) shouldBe Mismatch
     PhaseCigar.cigarTypeForVariantContexts(builder.last, builder.head) shouldBe Mismatch
   }
@@ -1018,17 +1052,19 @@ class PhaseCigarTest extends ErrorLogLevel {
   it should "throw an exception if the variant contexts do not have exactly two alleles" in {
     // One variant alleles, one genotype allele
     {
-      val builder = new VariantContextSetBuilder()
-      builder.addVariant(start = 1, variantAlleles = List("A"), genotypeAlleles = List("A"))
-      builder.addVariant(start = 2, variantAlleles = List("A"), genotypeAlleles = List("A"))
+      val vcfBuilder = VcfBuilder(samples=Seq("s1"))
+      vcfBuilder.add(pos=1, alleles=Seq("A"), gts=Seq(Gt(sample="s1", gt="0")))
+      vcfBuilder.add(pos=2, alleles=Seq("A"), gts=Seq(Gt(sample="s1", gt="0")))
+      val builder = new VCFFileReader(vcfBuilder.toTempFile()).iterator().toSeq
       an[Exception] should be thrownBy PhaseCigar.cigarTypeForVariantContexts(builder.head, builder.last)
     }
 
     // Two variant alleles, one genotype allele
     {
-      val builder = new VariantContextSetBuilder()
-      builder.addVariant(start = 1, variantAlleles = List("A", "C"), genotypeAlleles = List("C"))
-      builder.addVariant(start = 2, variantAlleles = List("A", "C"), genotypeAlleles = List("A", "C"))
+      val vcfBuilder = VcfBuilder(samples=Seq("s1"))
+      vcfBuilder.add(pos=1, alleles=Seq("A", "C"), gts=Seq(Gt(sample="s1", gt="1")))
+      vcfBuilder.add(pos=2, alleles=Seq("A", "C"), gts=Seq(Gt(sample="s1", gt="0/1")))
+      val builder = new VCFFileReader(vcfBuilder.toTempFile()).iterator().toSeq
       an[Exception] should be thrownBy PhaseCigar.cigarTypeForVariantContexts(builder.head, builder.last)
       an[Exception] should be thrownBy PhaseCigar.cigarTypeForVariantContexts(builder.last, builder.head)
     }
