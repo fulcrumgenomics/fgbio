@@ -29,7 +29,7 @@ import com.fulcrumgenomics.bam.api.{SamOrder, SamSource, SamWriter}
 import com.fulcrumgenomics.cmdline.{ClpGroups, FgBioTool}
 import com.fulcrumgenomics.commons.util.LazyLogging
 import com.fulcrumgenomics.sopt.{arg, clp}
-import com.fulcrumgenomics.util.Io
+import com.fulcrumgenomics.util.{Io, ProgressLogger, Sorter}
 
 @clp(group=ClpGroups.SamOrBam, description =
   """
@@ -57,15 +57,25 @@ class SortBam
 ( @arg(flag='i', doc="Input SAM or BAM.")   val input: PathToBam,
   @arg(flag='o', doc="Output SAM or BAM.")  val output: PathToBam,
   @arg(flag='s', doc="Order into which to sort the records.") val sortOrder: SamOrder = SamOrder.Coordinate,
-  @arg(flag='m', doc="Max records in RAM.") val maxRecordsInRam: Int = SamWriter.DefaultMaxRecordsInRam
+  @arg(flag='m', doc="Max records in RAM.") val maxRecordsInRam: Int = SamWriter.DefaultMaxRecordsInRam,
+  @arg(flag='t', doc="Number of threads to use.") val threads: Int = 4
 ) extends FgBioTool with LazyLogging {
   override def execute(): Unit = {
     Io.assertReadable(input)
     Io.assertCanWriteFile(output)
 
-    val in  = SamSource(input)
-    val out = SamWriter(output, in.header.clone(), sort=Some(sortOrder), maxRecordsInRam=maxRecordsInRam)
-    out ++= in
+    val in     = SamSource(input)
+    val header = in.header.clone()
+    sortOrder.applyTo(header)
+    val sorter = Bams.sorter(sortOrder, header, maxRecordsInRam=maxRecordsInRam, threads=threads)
+    val progress = ProgressLogger(logger, verb="sorted", unit=2e6.toInt)
+    in.foreach { r =>
+      sorter += r
+      progress.record(r)
+    }
+
+    val out = SamWriter(output, header=header)
+    sorter.foreach { r => out += r }
     out.close()
   }
 }
