@@ -128,7 +128,7 @@ class DuplexConsensusCaller(override val readNamePrefix: String,
     */
   private def sourceMoleculeAndStrandId(rec: SamRecord): String = {
     // Optimization: speed up retrieving this tag by storing it in the transient attributes
-    rec.transientAttrs.get[String](ConsensusTags) match {
+    rec.transientAttrs.get[String](ConsensusTags.MolecularId) match {
       case Some(mi) => mi
       case None =>
         rec.get[String](ConsensusTags.MolecularId) match {
