@@ -53,7 +53,9 @@ class ConsensusCallingIterator[ConsensusRead <: SimpleRead](sourceIterator: Iter
   private var collectedStats: Boolean = false
 
   protected val iter: Iterator[SamRecord] = {
-    val filteredIterator = sourceIterator.filterNot(r => r.secondary || r.supplementary)
+    val filteredIterator = sourceIterator.filterNot { r =>
+      r.secondary || r.supplementary || r.unmapped || (r.paired && r.mateUnmapped)
+    }
 
     // Wrap our input iterator in a progress logging iterator if we have a progress logger
     val progressIterator = progress match {

@@ -766,7 +766,7 @@ class GroupReadsByUmi
   private def setDuplicateFlags(group: Seq[Template]): Unit = {
     val nonDuplicateTemplate = group.maxBy { template =>
       template.primaryReads.sumBy { r =>
-        DuplicateScoringStrategy.computeDuplicateScore(r.asSam, ScoringStrategy.SUM_OF_BASE_QUALITIES)
+        r.mapq + DuplicateScoringStrategy.computeDuplicateScore(r.asSam, ScoringStrategy.SUM_OF_BASE_QUALITIES)
       }
     }
 
