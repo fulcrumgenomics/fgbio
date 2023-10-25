@@ -482,6 +482,8 @@ object Strategy extends FgBioEnum[Strategy] {
     |If the `--mark-duplicates` option is given, reads will also have their duplicate flag set in the BAM file.
     |Each tag-family is treated separately, and a single template within the tag family is chosen to be the "unique"
     |template and marked as non-duplicate, while all other templates in the tag family are then marked as duplicate.
+    |One limitation of duplicate-marking mode, vs. e.g. Picard MarkDuplicates, is that read pairs with one unmapped read
+    |are duplicate-marked independently from read pairs with both reads mapped.
     |
     |Several parameters have different defaults depending on whether duplicates are being marked or not (all are
     |directly settable on the command line):
