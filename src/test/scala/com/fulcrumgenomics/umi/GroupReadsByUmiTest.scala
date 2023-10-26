@@ -229,7 +229,7 @@ class GroupReadsByUmiTest extends UnitSpec with OptionValues with PrivateMethodT
       val in  = builder.toTempFile()
       val out = Files.createTempFile("umi_grouped.", ".sam")
       val hist = Files.createTempFile("umi_grouped.", ".histogram.txt")
-      val tool = new GroupReadsByUmi(input=in, output=out, familySizeHistogram=Some(hist), rawTag="RX", assignTag="MI", strategy=Strategy.Edit, edits=1, minMapQ=30)
+      val tool = new GroupReadsByUmi(input=in, output=out, familySizeHistogram=Some(hist), rawTag="RX", assignTag="MI", strategy=Strategy.Edit, edits=1, minMapQ=Some(30))
       val logs = executeFgbioTool(tool)
 
       val groups = readBamRecs(out).groupBy(_.name.charAt(0))
@@ -253,6 +253,67 @@ class GroupReadsByUmiTest extends UnitSpec with OptionValues with PrivateMethodT
       val sortMessage = "Sorting the input to TemplateCoordinate order"
       logs.exists(_.contains(sortMessage)) shouldBe (sortOrder != TemplateCoordinate)
     }
+  }
+
+  it should "correctly mark duplicates on duplicate reads in group, when flag is passed" in {
+    val builder = new SamBuilder(readLength = 100, sort = Some(SamOrder.Coordinate))
+    // Mapping Quality is a tie breaker, so use that to our advantage here.
+    builder.addPair(mapq1 = 10, mapq2 = 10, name = "a01", start1 = 100, start2 = 300, strand1 = Plus, strand2 = Minus, attrs = Map("RX" -> "ACT-ACT"))
+    builder.addPair(mapq1 = 30, mapq2 = 30, name = "a02", start1 = 100, start2 = 300, strand1 = Plus, strand2 = Minus, attrs = Map("RX" -> "ACT-ACT"))
+    builder.addPair(mapq1 = 100, mapq2 = 10, name = "a03", start1 = 100, start2 = 300, strand1 = Plus, strand2 = Minus, attrs = Map("RX" -> "ACT-ACT"))
+    builder.addPair(mapq1 = 0, mapq2 = 0, name = "a04", start1 = 100, start2 = 300, strand1 = Plus, strand2 = Minus, attrs = Map("RX" -> "ACT-ACT"))
+
+    val in = builder.toTempFile()
+    val out = Files.createTempFile("umi_grouped.", ".sam")
+    val hist = Files.createTempFile("umi_grouped.", ".histogram.txt")
+    val gr = new GroupReadsByUmi(input=in, output=out, familySizeHistogram=Some(hist), strategy=Strategy.Paired, edits=1, markDuplicates=true)
+
+    gr.markDuplicates shouldBe true
+
+    val recs = readBamRecs(out)
+    recs.filter(_.name.equals("a01")).forall(_.duplicate == true) shouldBe true
+    recs.filter(_.name.equals("a02")).forall(_.duplicate == true) shouldBe true
+    recs.filter(_.name.equals("a03")).forall(_.duplicate == false) shouldBe true
+    recs.filter(_.name.equals("a04")).forall(_.duplicate == true) shouldBe true
+  }
+
+  it should "does not mark duplicates on reads in group, when flag is not passed" in {
+    val builder = new SamBuilder(readLength = 100, sort = Some(SamOrder.Coordinate))
+    // Mapping Quality is a tie breaker, so use that to our advantage here.
+    builder.addPair(mapq1 = 10, mapq2 = 10, name = "a01", start1 = 100, start2 = 300, strand1 = Plus, strand2 = Minus, attrs = Map("RX" -> "ACT-ACT"))
+    builder.addPair(mapq1 = 30, mapq2 = 30, name = "a02", start1 = 100, start2 = 300, strand1 = Plus, strand2 = Minus, attrs = Map("RX" -> "ACT-ACT"))
+    builder.addPair(mapq1 = 100, mapq2 = 10, name = "a03", start1 = 100, start2 = 300, strand1 = Plus, strand2 = Minus, attrs = Map("RX" -> "ACT-ACT"))
+    builder.addPair(mapq1 = 0, mapq2 = 0, name = "a04", start1 = 100, start2 = 300, strand1 = Plus, strand2 = Minus, attrs = Map("RX" -> "ACT-ACT"))
+
+    val in = builder.toTempFile()
+    val out = Files.createTempFile("umi_grouped.", ".sam")
+    val hist = Files.createTempFile("umi_grouped.", ".histogram.txt")
+    new GroupReadsByUmi(input=in, output=out, familySizeHistogram=Some(hist), strategy=Strategy.Paired, edits=1).execute()
+
+    val recs = readBamRecs(out)
+    recs.filter(_.name.equals("a01")).forall(_.duplicate == false) shouldBe true
+    recs.filter(_.name.equals("a02")).forall(_.duplicate == false) shouldBe true
+    recs.filter(_.name.equals("a03")).forall(_.duplicate == false) shouldBe true
+    recs.filter(_.name.equals("a04")).forall(_.duplicate == false) shouldBe true
+  }
+
+  it should "correctly mark duplicates on duplicate single-end reads with UMIs" in {
+    val builder = new SamBuilder(readLength = 100, sort = Some(SamOrder.Coordinate))
+    builder.addFrag(mapq = 100, name = "a01", start = 100, attrs = Map("RX" -> "AAAAAAAA"))
+    builder.addFrag(mapq = 10, name = "a02", start = 100, attrs = Map("RX" -> "AAAAAAAA"))
+    builder.addFrag(mapq = 100, name = "a03", start = 100, attrs = Map("RX" -> "CACACACA"))
+    builder.addFrag(mapq = 10, name = "a04", start = 100, attrs = Map("RX" -> "CACACACC"))
+
+    val in = builder.toTempFile()
+    val out = Files.createTempFile("umi_grouped.", ".sam")
+    val hist = Files.createTempFile("umi_grouped.", ".histogram.txt")
+    new GroupReadsByUmi(input = in, output = out, familySizeHistogram = Some(hist), rawTag = "RX", assignTag = "MI", strategy = Strategy.Edit, edits = 1, markDuplicates = true).execute()
+
+    val recs = readBamRecs(out)
+    recs.filter(_.name.equals("a01")).forall(_.duplicate == false) shouldBe true
+    recs.filter(_.name.equals("a02")).forall(_.duplicate == true) shouldBe true
+    recs.filter(_.name.equals("a03")).forall(_.duplicate == false) shouldBe true
+    recs.filter(_.name.equals("a04")).forall(_.duplicate == true) shouldBe true
   }
 
   it should "correctly group reads with the paired assigner when the two UMIs are the same" in {
