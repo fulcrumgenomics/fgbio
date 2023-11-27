@@ -296,15 +296,15 @@ object GroupReadsByUmi {
               .map { case (_, idx) => idx }
               .getOrElse(-1)
 
-            if (searchFromIdx > 0) {
+            if (searchFromIdx >= 0) {
               val hits = taskSupport match {
                 case None =>
                   orderedNodes
-                    .drop(searchFromIdx + 1)
+                    .drop(searchFromIdx)
                     .filter(other => !other.assigned && matches(root.umi, other.umi))
                 case Some(ts) =>
                   orderedNodes
-                    .drop(searchFromIdx + 1)
+                    .drop(searchFromIdx)
                     .parWith(ts)
                     .filter(other => !other.assigned && matches(root.umi, other.umi))
                     .seq
