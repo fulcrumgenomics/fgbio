@@ -214,8 +214,6 @@ object GroupReadsByUmi {
     * See: https://github.com/CGATOxford/UMI-tools
     */
   private[umi] class AdjacencyUmiAssigner(final val maxMismatches: Int, val threads: Int = 1) extends UmiAssigner {
-    private val pool = new ForkJoinPool(threads, ForkJoinPool.defaultForkJoinWorkerThreadFactory, null, false)
-
     private val taskSupport = if (threads < 2) None else {
       val ctx = ExecutionContext.fromExecutorService(Executors.newFixedThreadPool(threads))
       Some(new ExecutionContextTaskSupport(ctx))
@@ -272,23 +270,24 @@ object GroupReadsByUmi {
     }
 
     override def assign(rawUmis: Seq[Umi]): Map[Umi, MoleculeId] = {
-      // A list of all the root UMIs/Nodes that we find
-      val roots = IndexedSeq.newBuilder[Node]
-
       // Make a list of counts of all UMIs in order from most to least abundant; we'll consume from this buffer
       val orderedNodes = count(rawUmis).map{ case(umi,count) => new Node(umi, count.toInt) }.toIndexedSeq.sortBy((n:Node) => -n.count)
       val lookup       = countIndexLookup(orderedNodes) // Seq of (count, firstIdx) pairs
 
+      // A list of all the root UMIs/Nodes that we find
+      val roots = Seq.newBuilder[Node]
+
       // Now build one or more graphs starting with the most abundant remaining umi
+      val working = mutable.Queue[Node]()
       forloop (from=0, until=orderedNodes.length) { rootIdx =>
         val nextRoot = orderedNodes(rootIdx)
 
         if (!nextRoot.assigned) {
           roots += nextRoot
-          val working = mutable.Queue[Node](nextRoot)
+          working.enqueue(nextRoot)
 
           while (working.nonEmpty) {
-            val root = working.remove(0)
+            val root = working.dequeue()
             root.assigned = true
             val maxChildCountPlusOne = (root.count / 2 + 1) + 1
             val searchFromIdx = lookup
@@ -311,7 +310,7 @@ object GroupReadsByUmi {
               }
 
               root.children ++= hits
-              working ++= hits
+              working.enqueueAll(hits)
               hits.foreach(_.assigned = true)
             }
           }
