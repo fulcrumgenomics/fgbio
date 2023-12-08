@@ -84,31 +84,31 @@ class GroupReadsByUmiTest extends UnitSpec with OptionValues with PrivateMethodT
       group(assigner.assign(umis)) should contain theSameElementsAs Set(Set("AAAAAA", "AAAATA", "AAAATT", "GGCGGC", "TGCACC", "TGCACG"))
     }
 
-    {
-      "AdjacencyUmiAssigner" should "assign each UMI to separate groups" in {
+    Seq(1, 4).foreach { threads =>
+      "AdjacencyUmiAssigner" should s"assign each UMI to separate groups with $threads thread(s)" in {
         val umis = Seq("AAAAAA", "CCCCCC", "GGGGGG", "TTTTTT", "AAATTT", "TTTAAA", "AGAGAG")
-        val groups  = group(new AdjacencyUmiAssigner(maxMismatches=2).assign(umis))
+        val groups  = group(new AdjacencyUmiAssigner(maxMismatches=2, threads=threads).assign(umis))
         groups shouldBe umis.map(Set(_)).toSet
       }
 
-      it should "assign everything into one group when all counts=1 and within mismatch threshold" in {
+      it should f"assign everything into one group when all counts=1 and within mismatch threshold with $threads thread(s)" in {
         val umis = Seq("AAAAAA", "AAAAAc", "AAAAAg").map(_.toUpperCase)
-        val groups = group(new AdjacencyUmiAssigner(maxMismatches=1).assign(umis))
+        val groups = group(new AdjacencyUmiAssigner(maxMismatches=1, threads=threads).assign(umis))
         groups shouldBe Set(umis.toSet)
       }
 
-      it should "assign everything into one group" in {
+      it should f"assign everything into one group with $threads thread(s)" in {
         val umis = Seq("AAAAAA", "AAAAAA", "AAAAAA", "AAAAAc", "AAAAAc", "AAAAAg", "AAAtAA").map(_.toUpperCase)
-        val groups = group(new AdjacencyUmiAssigner(maxMismatches=1).assign(umis))
+        val groups = group(new AdjacencyUmiAssigner(maxMismatches=1, threads=threads).assign(umis))
         groups shouldBe Set(umis.toSet)
       }
 
-      it should "make three groups" in {
+      it should f"make three groups with $threads thread(s)" in {
         val umis: Seq[String] = n("AAAAAA", 4) ++ n("AAAAAT", 2) ++ n("AATAAT", 1) ++ n("AATAAA", 2) ++
                                 n("GACGAC", 9) ++ n("GACGAT", 1) ++ n("GACGCC", 4) ++
                                 n("TACGAC", 7)
 
-        val groups  = group(new AdjacencyUmiAssigner(maxMismatches=2).assign(umis))
+        val groups  = group(new AdjacencyUmiAssigner(maxMismatches=2, threads=threads).assign(umis))
         groups shouldBe Set(
           Set("AAAAAA", "AAAAAT", "AATAAT", "AATAAA"),
           Set("GACGAC", "GACGAT", "GACGCC"),
@@ -117,15 +117,15 @@ class GroupReadsByUmiTest extends UnitSpec with OptionValues with PrivateMethodT
       }
 
       // Unit test for something that failed when running on real data
-      it should "correctly assign the following UMIs" in {
+      it should f"correctly assign the following UMIs with $threads thread(s)" in {
         val umis   = Seq("CGGGGG", "GTGGGG", "GGGGGG", "CTCACA", "TGCAGT", "CTCACA", "CGGGGG")
-        val groups = group(new AdjacencyUmiAssigner(maxMismatches=1).assign(umis))
+        val groups = group(new AdjacencyUmiAssigner(maxMismatches=1, threads=threads).assign(umis))
         groups shouldBe Set(Set("CGGGGG", "GGGGGG", "GTGGGG"), Set("CTCACA"), Set("TGCAGT"))
       }
 
-      it should "handle a deep tree of UMIs" in {
+      it should f"handle a deep tree of UMIs with $threads thread(s)" in {
         val umis   = n("AAAAAA", 256) ++ n("TAAAAA", 128) ++ n("TTAAAA", 64) ++ n("TTTAAA", 32) ++ n("TTTTAA", 16)
-        val groups = group(new AdjacencyUmiAssigner(maxMismatches=1).assign(umis))
+        val groups = group(new AdjacencyUmiAssigner(maxMismatches=1, threads=threads).assign(umis))
         groups shouldBe Set(Set("AAAAAA", "TAAAAA", "TTAAAA", "TTTAAA", "TTTTAA"))
       }
     }
