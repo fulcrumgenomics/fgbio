@@ -584,8 +584,8 @@ class GroupReadsByUmi
  @arg(flag='x', doc= """
                          |DEPRECATED: this option will be removed in future versions and inter-contig reads will be
                          |automatically processed.""")
-  @deprecated val allowInterContig: Boolean = true,
-@arg(flag='@', doc="Number of threads to use when comparing UMIs. Only recommended for amplicon or similar data.") val threads: Int = 1,
+ @deprecated val allowInterContig: Boolean = true,
+ @arg(flag='@', doc="Number of threads to use when comparing UMIs. Only recommended for amplicon or similar data.") val threads: Int = 1,
 )extends FgBioTool with LazyLogging {
   import GroupReadsByUmi._
 
