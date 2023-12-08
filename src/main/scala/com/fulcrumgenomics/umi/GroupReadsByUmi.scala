@@ -244,8 +244,6 @@ object GroupReadsByUmi {
     /** Returns whether or not a pair of UMIs match closely enough to be considered adjacent in the graph. */
     protected def matches(lhs: Umi, rhs: Umi): Boolean = {
       val len = lhs.length
-      require(rhs.length == len, s"UMIs of different length detected: $lhs vs. $rhs")
-
       var idx = 0
       var mismatches = 0
       val tooManyMismatches = this.maxMismatches + 1
@@ -272,52 +270,61 @@ object GroupReadsByUmi {
     override def assign(rawUmis: Seq[Umi]): Map[Umi, MoleculeId] = {
       // Make a list of counts of all UMIs in order from most to least abundant; we'll consume from this buffer
       val orderedNodes = count(rawUmis).map{ case(umi,count) => new Node(umi, count.toInt) }.toIndexedSeq.sortBy((n:Node) => -n.count)
-      val lookup       = countIndexLookup(orderedNodes) // Seq of (count, firstIdx) pairs
 
-      // A list of all the root UMIs/Nodes that we find
-      val roots = Seq.newBuilder[Node]
+      if (orderedNodes.length == 1) {
+        orderedNodes.head.assigned = true
+        assignIdsToNodes(orderedNodes)
+      }
+      else {
+        val umiLength = orderedNodes.head.umi.length
+        require(orderedNodes.forall(_.umi.length == umiLength), f"Multiple UMI lengths: ${orderedNodes.map(_.umi).mkString(", ")}")
+        val lookup = countIndexLookup(orderedNodes) // Seq of (count, firstIdx) pairs
 
-      // Now build one or more graphs starting with the most abundant remaining umi
-      val working = mutable.Queue[Node]()
-      forloop (from=0, until=orderedNodes.length) { rootIdx =>
-        val nextRoot = orderedNodes(rootIdx)
+        // A list of all the root UMIs/Nodes that we find
+        val roots = Seq.newBuilder[Node]
 
-        if (!nextRoot.assigned) {
-          roots += nextRoot
-          working.enqueue(nextRoot)
+        // Now build one or more graphs starting with the most abundant remaining umi
+        val working = mutable.Queue[Node]()
+        forloop (from=0, until=orderedNodes.length) { rootIdx =>
+          val nextRoot = orderedNodes(rootIdx)
 
-          while (working.nonEmpty) {
-            val root = working.dequeue()
-            root.assigned = true
-            val maxChildCountPlusOne = (root.count / 2 + 1) + 1
-            val searchFromIdx = lookup
-              .find { case (count, _) => count < maxChildCountPlusOne }
-              .map { case (_, idx) => idx }
-              .getOrElse(-1)
+          if (!nextRoot.assigned) {
+            roots += nextRoot
+            working.enqueue(nextRoot)
 
-            if (searchFromIdx >= 0) {
-              val hits = taskSupport match {
-                case None =>
-                  orderedNodes
-                    .drop(searchFromIdx)
-                    .filter(other => !other.assigned && matches(root.umi, other.umi))
-                case Some(ts) =>
-                  orderedNodes
-                    .drop(searchFromIdx)
-                    .parWith(ts)
-                    .filter(other => !other.assigned && matches(root.umi, other.umi))
-                    .seq
+            while (working.nonEmpty) {
+              val root = working.dequeue()
+              root.assigned = true
+              val maxChildCountPlusOne = (root.count / 2 + 1) + 1
+              val searchFromIdx = lookup
+                .find { case (count, _) => count < maxChildCountPlusOne }
+                .map { case (_, idx) => idx }
+                .getOrElse(-1)
+
+              if (searchFromIdx >= 0) {
+                val hits = taskSupport match {
+                  case None =>
+                    orderedNodes
+                      .drop(searchFromIdx)
+                      .filter(other => !other.assigned && matches(root.umi, other.umi))
+                  case Some(ts) =>
+                    orderedNodes
+                      .drop(searchFromIdx)
+                      .parWith(ts)
+                      .filter(other => !other.assigned && matches(root.umi, other.umi))
+                      .seq
+                }
+
+                root.children ++= hits
+                working.enqueueAll(hits)
+                hits.foreach(_.assigned = true)
               }
-
-              root.children ++= hits
-              working.enqueueAll(hits)
-              hits.foreach(_.assigned = true)
             }
           }
         }
-      }
 
-      assignIdsToNodes(roots.result())
+        assignIdsToNodes(roots.result())
+      }
     }
 
     /**
