@@ -200,6 +200,24 @@ class GroupReadsByUmiTest extends UnitSpec with OptionValues with PrivateMethodT
     templates.map(t => tool invokePrivate umiForRead(t)) should contain theSameElementsInOrderAs expected
   }
 
+  it should "correctly assign a/b for paired UMI prefixes when the UMI for one end of the source molecule is absent" in {
+    val tool = new GroupReadsByUmi(rawTag = "RX", assignTag = "MI", strategy = Strategy.Paired, edits = 0, allowInterContig = true)
+    val builder = new SamBuilder(readLength = 100)
+    val templates = Seq(
+      // This should be a::AAA-b:: since contig1 is lower
+      builder.addPair(contig = 1, contig2 = Some(2), start1 = 100, start2 = 300, strand1 = Plus, strand2 = Minus, attrs = Map("RX" -> "AAA-")),
+      // This should be b::AAA-a:: since contig2 is lower
+      builder.addPair(contig = 2, contig2 = Some(1), start1 = 100, start2 = 300, strand1 = Plus, strand2 = Minus, attrs = Map("RX" -> "AAA-")),
+      // This should be a::-b::TTT since contig1 is lower
+      builder.addPair(contig = 1, contig2 = Some(2), start1 = 100, start2 = 300, strand1 = Plus, strand2 = Minus, attrs = Map("RX" -> "-TTT")),
+      // This should be b::-a::TTT since contig2 is lower
+      builder.addPair(contig = 2, contig2 = Some(1), start1 = 100, start2 = 300, strand1 = Plus, strand2 = Minus, attrs = Map("RX" -> "-TTT")),
+    ).map { pair => Template(r1 = pair.headOption, r2 = pair.lastOption) }
+    val expected = n("a::AAA-b::", 1) ++ n("b::AAA-a::", 1) ++  n("a::-b::TTT", 1) ++ n("b::-a::TTT", 1)
+    val umiForRead = PrivateMethod[String](Symbol("umiForRead"))
+    templates.map(t => tool invokePrivate umiForRead(t)) should contain theSameElementsInOrderAs expected
+  }
+
   "GroupReads.ReadInfo" should "extract the same ReadEnds from a Template as from an R1 with mate cigar" in {
     val builder = new SamBuilder(readLength=100, sort=None)
     val Seq(r1, r2) = builder.addPair(contig=2, contig2=Some(1), start1=300, start2=400, cigar1="10S90M", cigar2="90M10S")
@@ -418,6 +436,37 @@ class GroupReadsByUmiTest extends UnitSpec with OptionValues with PrivateMethodT
     val tool = new GroupReadsByUmi(input=in, output=out, familySizeHistogram=None, rawTag="RX", assignTag="MI", strategy=Strategy.Paired, edits=1)
 
     an[Exception] should be thrownBy tool.execute()
+  }
+
+  Seq(
+    Seq("right", "ACT-", "-ACT"),
+    Seq("left", "-ACT", "ACT-"),
+  ).foreach { case Seq(orientation, leftUmi, rightUmi) =>
+    it should s"succeed when run in paired mode but the $orientation end of the source molecule does not have a UMI" in {
+      val builder = new SamBuilder(readLength = 100, sort = Some(SamOrder.Coordinate))
+      builder.addPair(name = "a01", start1 = 100, start2 = 300, strand1 = Plus, strand2 = Minus, attrs = Map("RX" -> leftUmi))
+      builder.addPair(name = "a02", start1 = 100, start2 = 300, strand1 = Plus, strand2 = Minus, attrs = Map("RX" -> leftUmi))
+      builder.addPair(name = "a03", start1 = 100, start2 = 300, strand1 = Plus, strand2 = Minus, attrs = Map("RX" -> leftUmi))
+      builder.addPair(name = "a04", start1 = 100, start2 = 300, strand1 = Plus, strand2 = Minus, attrs = Map("RX" -> leftUmi))
+
+      builder.addPair(name = "b01", start1 = 300, start2 = 100, strand1 = Minus, strand2 = Plus, attrs = Map("RX" -> rightUmi))
+      builder.addPair(name = "b02", start1 = 300, start2 = 100, strand1 = Minus, strand2 = Plus, attrs = Map("RX" -> rightUmi))
+      builder.addPair(name = "b03", start1 = 300, start2 = 100, strand1 = Minus, strand2 = Plus, attrs = Map("RX" -> rightUmi))
+      builder.addPair(name = "b04", start1 = 300, start2 = 100, strand1 = Minus, strand2 = Plus, attrs = Map("RX" -> rightUmi))
+
+      val in  = builder.toTempFile()
+      val out = Files.createTempFile("umi_grouped.", ".sam")
+      new GroupReadsByUmi(input = in, output = out, rawTag = "RX", assignTag = "MI", strategy = Strategy.Paired, edits = 1).execute()
+
+      val recs = readBamRecs(out)
+      val aIds = recs.filter(_.name.startsWith("a")).map(r => r[String]("MI")).distinct
+      val bIds = recs.filter(_.name.startsWith("b")).map(r => r[String]("MI")).distinct
+
+      aIds should have size 1
+      bIds should have size 1
+      aIds.head shouldBe "0/A"
+      bIds.head shouldBe "0/B"
+    }
   }
 
   it should "fail when the raw tag is not present" in {

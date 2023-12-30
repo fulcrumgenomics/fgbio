@@ -34,6 +34,7 @@ import com.fulcrumgenomics.cmdline.{ClpGroups, FgBioTool}
 import com.fulcrumgenomics.commons.util.{LazyLogging, NumericCounter, SimpleCounter}
 import com.fulcrumgenomics.sopt.{arg, clp}
 import com.fulcrumgenomics.umi.GroupReadsByUmi._
+import com.fulcrumgenomics.umi.Umis.UmiSeparatorPattern
 import com.fulcrumgenomics.util.Metric.{Count, Proportion}
 import com.fulcrumgenomics.util.Sequences.countMismatches
 import com.fulcrumgenomics.util._
@@ -42,8 +43,8 @@ import htsjdk.samtools.DuplicateScoringStrategy.ScoringStrategy
 import htsjdk.samtools._
 import htsjdk.samtools.util.SequenceUtil
 
+import java.util.concurrent.Executors
 import java.util.concurrent.atomic.AtomicLong
-import java.util.concurrent.{Executors, ForkJoinPool}
 import scala.collection.immutable.IndexedSeq
 import scala.collection.mutable.ListBuffer
 import scala.collection.parallel.ExecutionContextTaskSupport
@@ -529,14 +530,14 @@ object Strategy extends FgBioEnum[Strategy] {
     |                  reads per UMI, but breaks down at very high coverage of UMIs.
     |3. **adjacency**: a version of the directed adjacency method described in [umi_tools](http://dx.doi.org/10.1101/051755)
     |                  that allows for errors between UMIs but only when there is a count gradient.
-    |4. **paired**:    similar to adjacency but for methods that produce template with a pair of UMIs
-    |                  such that a read with A-B is related to but not identical to a read with B-A.
-    |                  Expects the pair of UMIs to be stored in a single tag, separated by a hyphen
-    |                  (e.g. `ACGT-CCGG`).  The molecular IDs produced have more structure than for single
-    |                  UMI strategies, and are of the form `{base}/{AB|BA}`. E.g. two UMI pairs would be
-    |                  mapped as follows AAAA-GGGG -> 1/AB, GGGG-AAAA -> 1/BA.
+    |4. **paired**:    similar to adjacency but for methods that produce template such that a read with A-B is related
+    |                  to but not identical to a read with B-A. Expects the UMI sequences to be stored in a single SAM
+    |                  tag separated by a hyphen (e.g. `ACGT-CCGG`) and allows for one of the two UMIs to be absent
+    |                  (e.g. `ACGT-` or `-ACGT`). The molecular IDs produced have more structure than for single
+    |                  UMI strategies and are of the form `{base}/{A|B}`. E.g. two UMI pairs would be mapped as
+    |                  follows AAAA-GGGG -> 1/A, GGGG-AAAA -> 1/B.
     |
-    |`edit`, `adjacency` and `paired` make use of the `--edits` parameter to control the matching of
+    |Strategies `edit`, `adjacency`, and `paired` make use of the `--edits` parameter to control the matching of
     |non-identical UMIs.
     |
     |By default, all UMIs must be the same length. If `--min-umi-length=len` is specified then reads that have a UMI
@@ -831,8 +832,8 @@ class GroupReadsByUmi
         val pos1 = if (r1.positiveStrand) r1.unclippedStart else r1.unclippedEnd
         val pos2 = if (r2.positiveStrand) r2.unclippedStart else r2.unclippedEnd
         val r1Lower = r1.refIndex < r2.refIndex || (r1.refIndex == r2.refIndex && (pos1 < pos2 || (pos1 == pos2 && r1.positiveStrand)))
-        val umis = umi.split('-')
-        require(umis.length == 2, s"Paired strategy used but umi did not contain 2 segments: $umi")
+        val umis = UmiSeparatorPattern.split(umi, -1) // Split and ensure we return empty strings for missing UMIs.
+        require(umis.length == 2, s"Paired strategy used but umi did not contain 2 segments delimited by a '-': $umi")
 
         if (r1Lower) paired.lowerReadUmiPrefix  + ":" + umis(0) + "-" + paired.higherReadUmiPrefix + ":" + umis(1)
         else         paired.higherReadUmiPrefix + ":" + umis(0) + "-" + paired.lowerReadUmiPrefix  + ":" + umis(1)

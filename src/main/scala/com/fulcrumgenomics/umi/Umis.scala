@@ -27,7 +27,12 @@ package com.fulcrumgenomics.umi
 
 import com.fulcrumgenomics.bam.api.SamRecord
 
+import java.util.regex.Pattern
+
 object Umis {
+
+  /** The separator pattern for concatenated UMIs. For example "ACGT-GTAA". */
+  val UmiSeparatorPattern: Pattern = Pattern.compile("-")
 
   /** Copies the UMI sequence from the read name.
     *

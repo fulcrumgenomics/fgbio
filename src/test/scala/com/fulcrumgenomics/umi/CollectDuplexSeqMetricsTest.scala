@@ -343,4 +343,41 @@ class CollectDuplexSeqMetricsTest extends UnitSpec {
     metrics.find(_.umi == "AAA-TTT") shouldBe defined
     metrics.find(_.umi == "AAA-TTT").foreach(m => m.unique_observations shouldBe 1)
   }
+
+  it should "count UMIs even if one of the UMIs on a 'molecule end' is an empty sequence" in collector(duplex = true).foreach { c =>
+    val builder = new SamBuilder(readLength = 10)
+    builder.addPair(start1 = 100, start2 = 200, strand1 = Plus, strand2 = Minus, attrs = Map(RX -> "-CCC", MI -> "1/A"))
+    builder.addPair(start1 = 200, start2 = 100, strand1 = Minus, strand2 = Plus, attrs = Map(RX -> "CCC-", MI -> "1/B"))
+    builder.addPair(start1 = 100, start2 = 200, strand1 = Plus, strand2 = Minus, attrs = Map(RX -> "AAA-", MI -> "2/A"))
+    builder.addPair(start1 = 200, start2 = 100, strand1 = Minus, strand2 = Plus, attrs = Map(RX -> "-AAA", MI -> "2/B"))
+    builder.addPair(start1 = 300, start2 = 400, strand1 = Plus, strand2 = Minus, attrs = Map(RX -> "-GGG", MI -> "3/A"))
+    builder.addPair(start1 = 900, start2 = 800, strand1 = Plus, strand2 = Minus, attrs = Map(RX -> "TTT-", MI -> "4/A"))
+    builder.addPair(start1 = 300, start2 = 400, strand1 = Minus, strand2 = Plus, attrs = Map(RX -> "-CGC", MI -> "5/A"))
+    builder.addPair(start1 = 900, start2 = 800, strand1 = Minus, strand2 = Plus, attrs = Map(RX -> "TAT-", MI -> "6/A"))
+
+    builder.toSeq.groupBy(r => r[String](MI).takeWhile(_ != '/')).values
+      .map(rs => rs.groupBy(r => r[String](MI)).values.toSeq).toSeq
+      .foreach(group => c.updateUmiMetrics(group))
+
+    val metrics = c.duplexUmiMetrics(c.umiMetrics)
+    metrics should have size 6
+
+    metrics.find(_.umi == "-CCC") shouldBe defined
+    metrics.find(_.umi == "-CCC").foreach(m => m.unique_observations shouldBe 1)
+
+    metrics.find(_.umi == "AAA-") shouldBe defined
+    metrics.find(_.umi == "AAA-").foreach(m => m.unique_observations shouldBe 1)
+
+    metrics.find(_.umi == "-GGG") shouldBe defined
+    metrics.find(_.umi == "-GGG").foreach(m => m.unique_observations shouldBe 1)
+
+    metrics.find(_.umi == "TTT-") shouldBe defined
+    metrics.find(_.umi == "TTT-").foreach(m => m.unique_observations shouldBe 1)
+
+    metrics.find(_.umi == "CGC-") shouldBe defined
+    metrics.find(_.umi == "CGC-").foreach(m => m.unique_observations shouldBe 1)
+
+    metrics.find(_.umi == "-TAT") shouldBe defined
+    metrics.find(_.umi == "-TAT").foreach(m => m.unique_observations shouldBe 1)
+  }
 }
