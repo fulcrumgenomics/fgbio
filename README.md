@@ -5,6 +5,7 @@
 [![Javadocs](http://javadoc.io/badge/com.fulcrumgenomics/fgbio_2.13.svg)](http://javadoc.io/doc/com.fulcrumgenomics/fgbio_2.13)
 [![License](http://img.shields.io/badge/license-MIT-blue.svg)](https://github.com/fulcrumgenomics/fgbio/blob/main/LICENSE)
 [![Language](http://img.shields.io/badge/language-scala-brightgreen.svg)](http://www.scala-lang.org/)
+[![DOI](https://zenodo.org/badge/53011104.svg)](https://zenodo.org/doi/10.5281/zenodo.10456900)
 
 fgbio
 ====
