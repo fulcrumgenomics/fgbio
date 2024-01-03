@@ -185,7 +185,7 @@ class CorrectUmis
           missingUmisRecords += 1
           rejectOut.foreach(w => w += rec)
         case Some(umi: String) =>
-          val sequences = umi.split('-')
+          val sequences = umi.split("-", -1)
           if (sequences.exists(_.length != umiLength)) {
             if (wrongLengthRecords == 0) {
               logger.warning(s"Read (${rec.name}) detected with unexpected length UMI(s): ${sequences.mkString(" ")}.")

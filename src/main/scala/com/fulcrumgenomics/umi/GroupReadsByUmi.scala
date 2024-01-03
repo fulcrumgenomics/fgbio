@@ -34,7 +34,6 @@ import com.fulcrumgenomics.cmdline.{ClpGroups, FgBioTool}
 import com.fulcrumgenomics.commons.util.{LazyLogging, NumericCounter, SimpleCounter}
 import com.fulcrumgenomics.sopt.{arg, clp}
 import com.fulcrumgenomics.umi.GroupReadsByUmi._
-import com.fulcrumgenomics.umi.Umis.UmiSeparatorPattern
 import com.fulcrumgenomics.util.Metric.{Count, Proportion}
 import com.fulcrumgenomics.util.Sequences.countMismatches
 import com.fulcrumgenomics.util._
@@ -832,7 +831,7 @@ class GroupReadsByUmi
         val pos1 = if (r1.positiveStrand) r1.unclippedStart else r1.unclippedEnd
         val pos2 = if (r2.positiveStrand) r2.unclippedStart else r2.unclippedEnd
         val r1Lower = r1.refIndex < r2.refIndex || (r1.refIndex == r2.refIndex && (pos1 < pos2 || (pos1 == pos2 && r1.positiveStrand)))
-        val umis = UmiSeparatorPattern.split(umi, -1) // Split and ensure we return empty strings for missing UMIs.
+        val umis = umi.split("-", -1) // Split and ensure we return empty strings for missing UMIs.
         require(umis.length == 2, s"Paired strategy used but umi did not contain 2 segments delimited by a '-': $umi")
 
         if (r1Lower) paired.lowerReadUmiPrefix  + ":" + umis(0) + "-" + paired.higherReadUmiPrefix + ":" + umis(1)

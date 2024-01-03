@@ -31,7 +31,6 @@ import com.fulcrumgenomics.commons.util.LazyLogging
 import com.fulcrumgenomics.umi.DuplexConsensusCaller._
 import com.fulcrumgenomics.umi.UmiConsensusCaller.ReadType.{ReadType, _}
 import com.fulcrumgenomics.umi.UmiConsensusCaller.{SimpleRead, SourceRead}
-import com.fulcrumgenomics.umi.Umis.UmiSeparatorPattern
 import com.fulcrumgenomics.util.NumericTypes.PhredScore
 
 /**
@@ -324,7 +323,7 @@ class DuplexConsensusCaller(override val readNamePrefix: String,
     // UMI bases are present, `None` otherwise.
     reads.flatMap(_.sam).flatMap { rec =>
       rec.get[String](ConsensusTags.UmiBases).map { umi =>
-        if (rec.firstOfPair == firstOfPair) umi else UmiSeparatorPattern.split(umi, -1).reverse.mkString("-")
+        if (rec.firstOfPair == firstOfPair) umi else umi.split("-", -1).reverse.mkString("-")
       }
     }
   }
