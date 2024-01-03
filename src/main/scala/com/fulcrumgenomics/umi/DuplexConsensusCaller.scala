@@ -25,7 +25,6 @@
 package com.fulcrumgenomics.umi
 
 import java.lang.Math.min
-
 import com.fulcrumgenomics.FgBioDef._
 import com.fulcrumgenomics.bam.api.SamRecord
 import com.fulcrumgenomics.commons.util.LazyLogging
@@ -324,7 +323,7 @@ class DuplexConsensusCaller(override val readNamePrefix: String,
     // UMI bases are present, `None` otherwise.
     reads.flatMap(_.sam).flatMap { rec =>
       rec.get[String](ConsensusTags.UmiBases).map { umi =>
-        if (rec.firstOfPair == firstOfPair) umi else umi.split('-').reverse.mkString("-")
+        if (rec.firstOfPair == firstOfPair) umi else umi.split("-", -1).reverse.mkString("-")
       }
     }
   }

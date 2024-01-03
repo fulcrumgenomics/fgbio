@@ -60,7 +60,10 @@ private[umi] class SimpleConsensusCaller(val errorRatePreLabeling: Byte = 90.toB
     require(sequences.nonEmpty, "Can't call consensus on an empty set of sequences!")
 
     if (sequences.length == 1) sequences.head else {
-      require(sequences.forall(_.length == sequences.head.length), "Sequences must all have the same length")
+      require(
+        sequences.forall(_.length == sequences.head.length),
+        s"Sequences must all have the same length. Found ${sequences.mkString(", ")}"
+      )
       val buffer = new StringBuilder
       val firstRead  = sequences.head
       val readLength = firstRead.length

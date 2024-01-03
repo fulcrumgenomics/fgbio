@@ -389,8 +389,8 @@ class CollectDuplexSeqMetrics
     val umi1s = IndexedSeq.newBuilder[String] // ab UMI 1 (and ba UMI 2) sequences
     val umi2s = IndexedSeq.newBuilder[String] // ab UMI 2 (and ba UMI 1) sequences
 
-    ab.iterator.map(r => r[String](this.umiTag).split('-')).foreach { case Array(u1, u2) => umi1s += u1; umi2s += u2 }
-    ba.iterator.map(r => r[String](this.umiTag).split('-')).foreach { case Array(u1, u2) => umi1s += u2; umi2s += u1 }
+    ab.iterator.map(r => r[String](this.umiTag).split("-", -1)).foreach { case Array(u1, u2) => umi1s += u1; umi2s += u2 }
+    ba.iterator.map(r => r[String](this.umiTag).split("-", -1)).foreach { case Array(u1, u2) => umi1s += u2; umi2s += u1 }
 
     val Seq(abConsensusUmi, baConsensusUmi) = Seq(umi1s, umi2s).map(_.result()).map{ umis =>
       val consensus = this.consensusBuilder.callConsensus(umis)
@@ -530,7 +530,7 @@ class CollectDuplexSeqMetrics
     val uniqueTotal      = metrics.map(_.unique_observations).sum.toDouble
 
     metrics.foreach { m =>
-      val Array(umi1, umi2)                   = m.umi.split('-')
+      val Array(umi1, umi2)                   = m.umi.split("-", -1)
       m.fraction_raw_observations             = m.raw_observations / rawTotal
       m.fraction_unique_observations          = m.unique_observations / uniqueTotal
       m.fraction_unique_observations_expected = singleUmiMetrics(umi1).fraction_unique_observations * singleUmiMetrics(umi2).fraction_unique_observations
