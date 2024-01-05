@@ -127,6 +127,7 @@ class PileupBuilderTest extends UnitSpec {
       builder.addFrag(name = "q3", start = 101, cigar = "31M9I10M").foreach(_.bases = "G" * ReadLength)
       builder.addFrag(name = "q4", start = 101, cigar = "30M9D20M").foreach(_.bases = "T" * ReadLength)
       builder.addFrag(name = "q5", start = 141, cigar = "10I40M"  ).foreach(_.bases = "N" * ReadLength)
+      builder.addFrag(name = "q6", start = 201, cigar = "47M3S"   ).foreach(_.bases = "N" * ReadLength)
 
       val source = builder.toSource
       val piler  = PileupBuilder(source, accessPattern = accessPattern, mappedPairsOnly = false)
@@ -169,6 +170,13 @@ class PileupBuilderTest extends UnitSpec {
       p4.baseIterator.map(_.base.toChar).toSeq.sorted.mkString shouldBe "ACGT"
       p4.iterator.collect{ case x: InsertionEntry => x }.map(_.rec.name).next() shouldBe "q5"
       p4.baseIterator.toSeq should contain theSameElementsAs p4.withoutIndels.iterator.toSeq
+
+      // Locus with the end of a read that is soft-clipped
+      val p5 = piler.pileup(Chr1, 247)
+      p5.depth shouldBe 1
+      p5.iterator.size shouldBe 1 // should not report an insertion due to the remaining bases
+      p5.baseIterator.size shouldBe 1
+      p5.baseIterator.toSeq should contain theSameElementsAs p5.withoutIndels.iterator.toSeq
 
       source.safelyClose()
       piler.safelyClose()

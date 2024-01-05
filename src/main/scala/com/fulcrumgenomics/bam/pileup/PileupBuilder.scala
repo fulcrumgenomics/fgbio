@@ -215,8 +215,8 @@ trait PileupBuilder extends PileupParameters {
             testAndAdd(DeletionEntry(rec, deletionPosition - 1))
           } else { // This site must be a matched site within the read.
             testAndAdd(BaseEntry(rec, offset - 1))
-            // Also check to see if the subsequent base represents an insertion.
-            if (offset < rec.length - 1 && rec.refPosAtReadPos(offset + 1) == 0) testAndAdd(InsertionEntry(rec, offset))
+            // Also check to see if any subsequent base represents an insertion.
+            if (rec.end > pos && rec.refPosAtReadPos(offset + 1) == 0) testAndAdd(InsertionEntry(rec, offset))
           }
         }
       }
