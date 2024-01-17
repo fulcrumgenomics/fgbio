@@ -171,13 +171,19 @@ class PileupBuilderTest extends UnitSpec {
       p4.iterator.collect{ case x: InsertionEntry => x }.map(_.rec.name).next() shouldBe "q5"
       p4.baseIterator.toSeq should contain theSameElementsAs p4.withoutIndels.iterator.toSeq
 
-      // Locus with the end of a read that is soft-clipped
+      // Locus with the remainder of a read that is soft-clipped
       val p5 = piler.pileup(Chr1, 247)
       p5.depth shouldBe 1
-      p5.iterator.size shouldBe 1 // should not report an insertion due to the remaining bases
+      p5.iterator.size shouldBe 1 // should not report an insertion due to the remaining soft-clipped bases
       p5.baseIterator.size shouldBe 1
       p5.baseIterator.toSeq should contain theSameElementsAs p5.withoutIndels.iterator.toSeq
 
+      // Locus at the site of a single read that is soft-clipped
+      val p6 = piler.pileup(Chr1, 248)
+      p6.depth shouldBe 0
+      p6.iterator.size shouldBe 0
+      p6.baseIterator.size shouldBe 0
+      p6.baseIterator.toSeq should contain theSameElementsAs p5.withoutIndels.iterator.toSeq
       source.safelyClose()
       piler.safelyClose()
     }
