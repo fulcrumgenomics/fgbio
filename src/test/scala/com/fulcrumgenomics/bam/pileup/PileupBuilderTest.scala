@@ -183,7 +183,7 @@ class PileupBuilderTest extends UnitSpec {
       p6.depth shouldBe 0
       p6.iterator.size shouldBe 0
       p6.baseIterator.size shouldBe 0
-      p6.baseIterator.toSeq should contain theSameElementsAs p5.withoutIndels.iterator.toSeq
+      p6.baseIterator.toSeq should contain theSameElementsAs p6.withoutIndels.iterator.toSeq
       source.safelyClose()
       piler.safelyClose()
     }
