@@ -42,11 +42,16 @@ import com.fulcrumgenomics.util.{Io, ProgressLogger}
     |
     |If a read name contains multiple UMIs they may be delimited by either hyphens (`-`) or pluses (`+`). The
     |resulting UMI in the `RX` tag will always be hyphen delimited.
+    |
+    |To obtain behavior similar to `umi_tools`' `--umi-separator=":r"`, specify the delimiter and
+    |prefix separately, i.e. `--umi-delimiter=":"` and `--umi-prefix="r"`.
   """)
 class CopyUmiFromReadName
 ( @arg(flag='i', doc="The input BAM file") input: PathToBam,
   @arg(flag='o', doc="The output BAM file") output: PathToBam,
-  @arg(doc="Remove the UMI from the read name") removeUmi: Boolean = false
+  @arg(doc="Remove the UMI from the read name") removeUmi: Boolean = false,
+  @arg(doc="Delimiter between the read name and UMI.") umiDelimiter: Char = ':',
+  @arg(doc="Any characters preceding the UMI sequence in the read name.") umiPrefix: Option[String] = None,
 ) extends FgBioTool with LazyLogging {
 
   Io.assertReadable(input)
@@ -58,7 +63,7 @@ class CopyUmiFromReadName
     val progress = new ProgressLogger(logger)
     source.foreach { rec =>
       progress.record(rec)
-      writer += Umis.copyUmiFromReadName(rec=rec, removeUmi=removeUmi)
+      writer += Umis.copyUmiFromReadName(rec=rec, removeUmi=removeUmi, delimiter=umiDelimiter, prefix=umiPrefix)
     }
     progress.logLast()
     source.safelyClose()
