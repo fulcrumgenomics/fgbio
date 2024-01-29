@@ -217,4 +217,23 @@ class SamOrderTest extends UnitSpec {
 
     actual should contain theSameElementsInOrderAs expected
   }
+
+  it should "handle supplementary alignments" in {
+    val builder = new SamBuilder(readLength=100, sort=Some(SamOrder.Queryname))
+    val exp = ListBuffer[SamRecord]()
+    // primary read pairs for q1, that map to different contigs
+    exp ++= builder.addPair("q1", contig=1, contig2=Some(2), start1=66, start2=47, cigar1="60M40S", cigar2="55M45S", strand2=Plus)
+    // supplementary R2 (ignore R1), which maps to the same chromosome as the primary R1
+    val Seq(_, s2) = builder.addPair("q1", contig=1, contig2=Some(1), start1=66, start2=66, cigar1="60M40S", strand2=Minus)
+    s2.supplementary = true
+    s2.properlyPaired = true
+    exp += s2
+    // primary read pairs for q1, that map to different contigs, but earlier that q1
+    exp ++= builder.addPair("q2", contig = 1, contig2 = Some(2), start1 = 50, start2 = 30, cigar1 = "60M40S", cigar2 = "55M45S")
+
+    val expected = List("q1/2:sup", "q1/1", "q1/2", "q2/1", "q2/2")
+    val actual = exp.sortBy(r => SamOrder.TemplateCoordinate.sortkey(r)).map(_.id)
+
+    actual should contain theSameElementsInOrderAs expected
+  }
 }
