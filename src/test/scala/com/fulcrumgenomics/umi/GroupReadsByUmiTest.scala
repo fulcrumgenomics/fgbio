@@ -344,6 +344,32 @@ class GroupReadsByUmiTest extends UnitSpec with OptionValues with PrivateMethodT
     recs.filter(_.name.equals("a04")).forall(_.duplicate == true) shouldBe true
   }
 
+  it should "mark duplicates on supplementary reads" in {
+    val builder = new SamBuilder(readLength = 100, sort = Some(SamOrder.TemplateCoordinate))
+    // primary read pairs for q1, that map to different contigs
+    builder.addPair("q1", contig = 1, contig2 = Some(2), start1 = 66, start2 = 47, cigar1 = "60M40S", cigar2 = "55M45S", strand2 = Plus, attrs = Map("RX" -> "ACT"))
+    // supplementary R2, which maps to the same chromosome as the primary R1
+    val Seq(s1, s2) = builder.addPair("q1", contig = 1, contig2 = Some(1), start1 = 66, start2 = 66, cigar1 = "60M40S", strand2 = Minus, attrs = Map("RX" -> "ACT"))
+    s1.supplementary = true
+    s2.supplementary = true
+    s2.properlyPaired = true
+    // primary read pairs for q1, that map to different contigs, but earlier that q1
+    builder.addPair("q2", contig = 1, contig2 = Some(2), start1 = 50, start2 = 30, cigar1 = "60M40S", cigar2 = "55M45S", attrs = Map("RX" -> "ACT"))
+
+    val in = builder.toTempFile()
+    val out = Files.createTempFile("umi_grouped.", ".sam")
+    val hist = Files.createTempFile("umi_grouped.", ".histogram.txt")
+    val gr = new GroupReadsByUmi(input = in, output = out, familySizeHistogram = Some(hist), strategy = Strategy.Adjacency, edits = 1, markDuplicates = true, includeSupplementary = Some(true))
+
+    gr.markDuplicates shouldBe true
+    gr.execute()
+
+    val recs = readBamRecs(out)
+    recs.length shouldBe 4
+    recs.filter(_.name.equals("q1")).forall(_.duplicate == true) shouldBe true
+    recs.filter(_.name.equals("q2")).forall(_.duplicate == false) shouldBe true
+  }
+
   it should "correctly group reads with the paired assigner when the two UMIs are the same" in {
     val builder = new SamBuilder(readLength=100, sort=Some(SamOrder.Coordinate))
     builder.addPair(name="a01", start1=100, start2=300, strand1=Plus,  strand2=Minus, attrs=Map("RX" -> "ACT-ACT"))
