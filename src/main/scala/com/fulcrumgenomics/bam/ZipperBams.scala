@@ -87,11 +87,15 @@ private[bam] object ZipperBams extends LazyLogging {
     val header = new SAMFileHeader(dict)
 
     // Copy over comments, RGs and PGs, letting mapped override unmapped if there are conflicts
-    Iterator(unmapped, mapped).foreach { old =>
-      old.getComments.iterator().foreach(header.addComment)
-      old.getReadGroups.iterator().foreach(header.addReadGroup)
-      old.getProgramRecords.iterator().foreach(header.addProgramRecord)
-    }
+    val mappedComments       = mapped.getComments.toSet
+    val mappedReadGroups     = mapped.getReadGroups.toSet
+    val mappedProgramRecords = mapped.getProgramRecords.toSet
+    unmapped.getComments.filterNot(mappedComments.contains).foreach(header.addComment)
+    unmapped.getReadGroups.filterNot(mappedReadGroups.contains).foreach(header.addReadGroup)
+    unmapped.getProgramRecords.filterNot(mappedProgramRecords.contains).foreach(header.addProgramRecord)
+    mapped.getComments.foreach(header.addComment)
+    mapped.getReadGroups.foreach(header.addReadGroup)
+    mapped.getProgramRecords.foreach(header.addProgramRecord)
 
     // Set the sort and group order
     header.setSortOrder(unmapped.getSortOrder)
