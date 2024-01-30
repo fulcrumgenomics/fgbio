@@ -287,8 +287,10 @@ class GroupReadsByUmiTest extends UnitSpec with OptionValues with PrivateMethodT
     val gr = new GroupReadsByUmi(input=in, output=out, familySizeHistogram=Some(hist), strategy=Strategy.Paired, edits=1, markDuplicates=true)
 
     gr.markDuplicates shouldBe true
+    gr.execute()
 
     val recs = readBamRecs(out)
+    recs.length shouldBe 8
     recs.filter(_.name.equals("a01")).forall(_.duplicate == true) shouldBe true
     recs.filter(_.name.equals("a02")).forall(_.duplicate == true) shouldBe true
     recs.filter(_.name.equals("a03")).forall(_.duplicate == false) shouldBe true
@@ -309,6 +311,7 @@ class GroupReadsByUmiTest extends UnitSpec with OptionValues with PrivateMethodT
     new GroupReadsByUmi(input=in, output=out, familySizeHistogram=Some(hist), strategy=Strategy.Paired, edits=1).execute()
 
     val recs = readBamRecs(out)
+    recs.length shouldBe 6
     recs.filter(_.name.equals("a01")).forall(_.duplicate == false) shouldBe true
     recs.filter(_.name.equals("a02")).forall(_.duplicate == false) shouldBe true
     recs.filter(_.name.equals("a03")).forall(_.duplicate == false) shouldBe true
@@ -328,6 +331,7 @@ class GroupReadsByUmiTest extends UnitSpec with OptionValues with PrivateMethodT
     new GroupReadsByUmi(input = in, output = out, familySizeHistogram = Some(hist), rawTag = "RX", assignTag = "MI", strategy = Strategy.Edit, edits = 1, markDuplicates = true).execute()
 
     val recs = readBamRecs(out)
+    recs.length shouldBe 4
     recs.filter(_.name.equals("a01")).forall(_.duplicate == false) shouldBe true
     recs.filter(_.name.equals("a02")).forall(_.duplicate == true) shouldBe true
     recs.filter(_.name.equals("a03")).forall(_.duplicate == false) shouldBe true
