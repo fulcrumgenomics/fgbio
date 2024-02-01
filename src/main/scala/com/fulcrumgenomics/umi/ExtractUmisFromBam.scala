@@ -61,7 +61,7 @@ import htsjdk.samtools.util._
     |The read structure describes the structure of a given read as one or more read segments. A read segment describes
     |a contiguous stretch of bases of the same type (ex. template bases) of some length and some offset from the start
     |of the read.  Read structures are made up of `<number><operator>` pairs much like the CIGAR string in BAM files.
-    |Four kinds ofoperators are recognized:
+    |Four kinds of operators are recognized:
     |
     |1. `T` identifies a template read
     |2. `B` identifies a sample barcode read
