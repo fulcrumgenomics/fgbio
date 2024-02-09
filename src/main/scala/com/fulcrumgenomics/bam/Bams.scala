@@ -105,16 +105,21 @@ case class Template(r1: Option[SamRecord],
     Template(x1, x2)
   }
 
-  /** Fixes mate information and sets mate cigar on all primary and supplementary (but not secondary) records. */
+  /** Fixes mate information and sets mate cigar and mate score on all primary and supplementary (but not secondary) records. */
   def fixMateInfo(): Unit = {
+    // Developer note: the mate score ("ms") tag is used by samtools markdup
     for (primary <- r1; supp <- r2Supplementals) {
       SamPairUtil.setMateInformationOnSupplementalAlignment(supp.asSam, primary.asSam, true)
+      primary.get[Int]("AS").foreach(supp("ms") = _)
     }
     for (primary <- r2; supp <- r1Supplementals) {
       SamPairUtil.setMateInformationOnSupplementalAlignment(supp.asSam, primary.asSam, true)
+      primary.get[Int]("AS").foreach(supp("ms") = _)
     }
     for (first <- r1; second <- r2) {
       SamPairUtil.setMateInfo(first.asSam, second.asSam, true)
+      first.get[Int]("AS").foreach(second("ms") = _)
+      second.get[Int]("AS").foreach(first("ms") = _)
     }
   }
 
