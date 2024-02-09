@@ -473,6 +473,7 @@ class BamsTest extends UnitSpec {
     builder.addPair(name="q1", contig=1, contig2=Some(2), start1=100, start2=200, cigar1="50M50S", cigar2="50S50M", mapq1=51, mapq2=52)
     builder.addPair(name="q1", contig=3, contig2=Some(4), start1=300, start2=400, cigar1="50S50M", cigar2="50M50S", mapq1=21, mapq2=22)
       .foreach(_.supplementary = true)
+    builder.addPair(name="q2", contig=1, contig2=Some(2), start1=100, start2=200, cigar1="50M50S", cigar2="50S50M", mapq1=51, mapq2=52, attrs=Map(("ms", 2)))
 
     val recs = builder.toIndexedSeq.tapEach { r =>
       r.mateMapped   = false
@@ -482,21 +483,34 @@ class BamsTest extends UnitSpec {
       r.remove("MQ")
     }
 
-    val template = Template(recs.iterator)
-    template.fixMateInfo()
+    val q1Template = Template(recs.iterator.filter(_.name == "q1"))
+    val q2Template = Template(recs.iterator.filter(_.name == "q2"))
+    val templates = Seq(q1Template, q2Template)
 
-    template.allReads.foreach { r =>
-      r.mateMapped shouldBe true
+    templates.foreach { template =>
+      template.fixMateInfo()
 
-      if (r.firstOfPair) {
-        r.mateRefIndex shouldBe 2
-        r.mateStart shouldBe 200
-        r.mateCigar.value.toString() shouldBe "50S50M"
-      }
-      else {
-        r.mateRefIndex shouldBe 1
-        r.mateStart shouldBe 100
-        r.mateCigar.value.toString() shouldBe "50M50S"
+      template.allReads.foreach { r =>
+        r.mateMapped shouldBe true
+
+        if (r.firstOfPair) {
+          r.mateRefIndex shouldBe 2
+          r.mateStart shouldBe 200
+          r.mateCigar.value.toString() shouldBe "50S50M"
+        }
+        else {
+          r.mateRefIndex shouldBe 1
+          r.mateStart shouldBe 100
+          r.mateCigar.value.toString() shouldBe "50M50S"
+        }
+
+        if (r.name == "q1") {
+          r.get[Int]("ms").isEmpty shouldBe true
+        }
+        else {
+          r.name shouldBe "q2"
+          r.get[Int]("ms").value shouldBe 2
+        }
       }
     }
   }
