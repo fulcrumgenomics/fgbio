@@ -33,14 +33,14 @@ class CopyUmiFromReadNameTest extends UnitSpec with OptionValues {
   private case class Result(name: String, umi: String)
 
   /** Runs CopyUmiFromReadName using the given read names returning the output read names and UMIs. */
-  private def run(names: Iterable[String], removeUmi: Boolean): IndexedSeq[Result] = {
+  private def run(names: Iterable[String], removeUmi: Boolean, umiPrefix: Option[String] = None): IndexedSeq[Result] = {
     // build the reads
     val builder = new SamBuilder()
     names.foreach { name => builder.addFrag(name=name, unmapped=true) }
 
     // run the tool
     val out  = makeTempFile("test.", ".bam")
-    val tool = new CopyUmiFromReadName(input=builder.toTempFile(), output=out, removeUmi=removeUmi)
+    val tool = new CopyUmiFromReadName(input=builder.toTempFile(), output=out, removeUmi=removeUmi, umiPrefix=umiPrefix)
     executeFgbioTool(tool)
 
     // slurp the results
@@ -66,6 +66,13 @@ class CopyUmiFromReadNameTest extends UnitSpec with OptionValues {
   it should "update the UMI delimiter in the read name when --umi-delimiter=+" in {
     val names   = Seq("1:AAAA", "1:2:CCCC", "1:2:3:GGGG", "blah:AAAA+CCCC")
     val results = run(names=names, removeUmi=true)
+    results.map(_.name) should contain theSameElementsInOrderAs Seq("1", "1:2", "1:2:3", "blah")
+    results.map(_.umi) should contain theSameElementsInOrderAs Seq("AAAA", "CCCC", "GGGG", "AAAA-CCCC")
+  }
+
+  it should "remove any additional separator characters preceding the UMI" in {
+    val names   = Seq("1:rAAAA", "1:2:rCCCC", "1:2:3:rGGGG", "blah:rAAAA-CCCC")
+    val results = run(names=names, removeUmi=true, umiPrefix=Some("r"))
     results.map(_.name) should contain theSameElementsInOrderAs Seq("1", "1:2", "1:2:3", "blah")
     results.map(_.umi) should contain theSameElementsInOrderAs Seq("AAAA", "CCCC", "GGGG", "AAAA-CCCC")
   }
