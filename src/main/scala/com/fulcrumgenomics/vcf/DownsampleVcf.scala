@@ -194,7 +194,7 @@ class DownsampleVcf
   @arg(flag='p', doc="Proportion of bases to retain (for single-sample VCF).") val proportion: Option[Double] = None,
   @arg(flag='b', doc="Original number of bases (for single-sample VCF).") val originalBases: Option[Double] = None,
   @arg(flag='m', doc="Index file with bases per sample.") val metadata: Option[FilePath] = None,
-  @arg(flag='n', doc="Target number of bases to downsample to.") val downsampleToBases: Option[Double],
+  @arg(flag='n', doc="Target number of bases to downsample to.") val downsampleToBases: Option[Double] = None,
   @arg(flag='o', doc="Output file name.") val output: PathToVcf,
   @arg(flag='w', doc="Winnowing window size.") val windowSize: Int = 0,
   @arg(flag='e', doc="Sequencing Error rate for genotyping.") val epsilon: Double = 0.01,
