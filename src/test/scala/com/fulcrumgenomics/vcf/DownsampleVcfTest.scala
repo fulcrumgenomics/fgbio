@@ -529,5 +529,33 @@ class DownsampleVcfTest extends UnitSpec {
       }
     )
   }
+
+  "DownsampleVcf" should "fail with invalid parameter combinations" in {
+    assertThrows[IllegalArgumentException] {
+      new DownsampleVcf(input=inVcf,
+                        output=inVcf,
+                        windowSize=150).execute()
+    }
+    assertThrows[IllegalArgumentException] {
+      new DownsampleVcf(input=inVcf,
+                        output=inVcf,
+                        proportion=Some(0.1),
+                        downsampleToBases=Some(100), 
+                        windowSize=150).execute()
+    }
+    assertThrows[IllegalArgumentException] {
+      new DownsampleVcf(input=inVcf,
+                        output=inVcf,
+                        proportion=Some(0.1),
+                        originalBases=Some(100), 
+                        windowSize=150).execute()
+    }
+    assertThrows[IllegalArgumentException] {
+      new DownsampleVcf(input=inVcf,
+                        output=inVcf,
+                        originalBases=Some(100), 
+                        windowSize=150).execute()
+    }
+  }
 }
 
