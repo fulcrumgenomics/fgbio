@@ -369,22 +369,28 @@ class DownsampleVcfTest extends UnitSpec {
   Metric.write(metadata, Seq(Sample(SAMPLE_NAME = sample, BASE_COUNT = 100)))
 
   "DownsampleVcf" should "write a new vcf with downsampled genotypes when provided a vcf" in {
-    List(true, false).foreach(
-      use_metdata => {
+    List("proportion", "number", "metadata").foreach(
+      kind => {
         // Construct the input VCF
         val outVcf = makeTempFile("out", ".vcf.gz")
-        if(use_metdata) {
-          new DownsampleVcf(input=inVcf,
-                            output=outVcf,
-                            metadata=Some(metadata),
-                            downsampleToBases=Some(1),
-                            windowSize=150).execute()
-        } else {
-          new DownsampleVcf(input=inVcf,
-                            output=outVcf,
-                            originalBases=Some(100),
-                            downsampleToBases=Some(1),
-                            windowSize=150).execute()
+        kind match {
+          case "proportion" =>
+            new DownsampleVcf(input=inVcf,
+                              output=outVcf,
+                              proportion=Some(0.01),
+                              windowSize=150).execute()
+          case "number" =>
+            new DownsampleVcf(input=inVcf,
+                              output=outVcf,
+                              originalBases=Some(100),
+                              downsampleToBases=Some(1),
+                              windowSize=150).execute()
+          case "metadata" =>
+            new DownsampleVcf(input=inVcf,
+                              output=outVcf,
+                              metadata=Some(metadata),
+                              downsampleToBases=Some(1),
+                              windowSize=150).execute()
         }
 
         val vs = readVcfRecs(outVcf)
@@ -428,24 +434,31 @@ class DownsampleVcfTest extends UnitSpec {
 
   "DownsampleVcf" should "write a new vcf with downsampled genotypes when provided a vcf, keeping nocalls" in {
     // Construct the input VCF
-    List(true, false).foreach(
-      use_metdata => {
+    List("proportion", "number", "metadata").foreach(
+      kind => {
         // Construct the input VCF
         val outVcf = makeTempFile("out", ".vcf.gz")
-        if (use_metdata) {
-          new DownsampleVcf(input=inVcf, 
-                            output=outVcf,
-                            metadata=Some(metadata),
-                            downsampleToBases=Some(1),
-                            writeNoCall=true,
-                            windowSize=150).execute()
-        } else {
-          new DownsampleVcf(input=inVcf,
-                            output=outVcf,
-                            originalBases=Some(100),
-                            downsampleToBases=Some(1),
-                            writeNoCall=true,
-                            windowSize=150).execute()
+        kind match {
+          case "proportion" =>
+            new DownsampleVcf(input=inVcf,
+                              output=outVcf,
+                              proportion=Some(0.01),
+                              writeNoCall=true,
+                              windowSize=150).execute()
+          case "number" =>
+            new DownsampleVcf(input=inVcf,
+                              output=outVcf,
+                              originalBases=Some(100),
+                              downsampleToBases=Some(1),
+                              writeNoCall=true,
+                              windowSize=150).execute()
+          case "metadata" =>
+            new DownsampleVcf(input=inVcf,
+                              output=outVcf,
+                              metadata=Some(metadata),
+                              downsampleToBases=Some(1),
+                              writeNoCall=true,
+                              windowSize=150).execute()
         }
 
         val vs = readVcfRecs(outVcf)
