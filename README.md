@@ -14,16 +14,21 @@ A set of tools to analyze genomic data with a focus on Next Generation Sequencin
 Detailed user documentation is available on the [project website](http://fulcrumgenomics.github.io/fgbio/) including [tool usage](http://fulcrumgenomics.github.io/fgbio/tools/latest) and [documentation of metrics produced](http://fulcrumgenomics.github.io/fgbio/metrics/latest).  Detailed developer documentation can be found [here](http://javadoc.io/doc/com.fulcrumgenomics/fgbio_2.13).
 
 <!---toc start-->
-  * [Goals](#goals)
-  * [Overview](#overview)
-  * [List of tools](#list-of-tools)
-  * [Building](#building)
-  * [Command line](#command-line)
-  * [Include fgbio in your project](#include-fgbio-in-your-project)
-  * [Contributing](#contributing)
-  * [Authors](#authors)
-  * [License](#license)
-  * [Sponsorship](#sponsorship)
+- [fgbio](#fgbio)
+- [Goals](#goals)
+  - [Overview](#overview)
+  - [List of tools](#list-of-tools)
+  - [Building](#building)
+    - [Cloning the Repository](#cloning-the-repository)
+    - [Running the build](#running-the-build)
+  - [Command line](#command-line)
+  - [Include fgbio in your project](#include-fgbio-in-your-project)
+  - [Contributing](#contributing)
+  - [Authors](#authors)
+  - [License](#license)
+  - [Sponsorship](#sponsorship)
+    - [Become a sponsor](#become-a-sponsor)
+    - [Sponsors](#sponsors)
 
 <!---toc end-->
 
@@ -76,7 +81,7 @@ Below we highlight a few tools that you may find useful.
 [Git LFS](https://git-lfs.github.com/) is used to store large files used in testing fgbio.  In order to compile and run tests it is necessary to [install git lfs](https://git-lfs.github.com/).  To retrieve the large files either:
 
 1. Clone the repository _after_ installing git lfs, or
-2. In a previously cloned repository run `git lfs pull` once
+2. In a previously cloned repository run the follwing once: `git lfs install && git lfs pull`
 
 After initial setup regular git commands (e.g. `pull`, `fetch`, `push`) will also operate on large files and no special handling is needed.
 
