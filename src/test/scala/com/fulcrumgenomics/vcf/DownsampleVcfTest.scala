@@ -6,7 +6,7 @@ import com.fulcrumgenomics.util.Metric
 import com.fulcrumgenomics.vcf.api.Allele.SimpleAllele
 import com.fulcrumgenomics.vcf.api.{Allele, AlleleSet, Genotype, Variant}
 import com.fulcrumgenomics.testing.UnitSpec
-import com.fulcrumgenomics.vcf.DownsampleVcf.{Likelihoods, computePls, downsampleAndRegenotype}
+import com.fulcrumgenomics.vcf.DownsampleVcf.{Likelihoods, downsampleAndRegenotype}
 
 import scala.util.Random
 
@@ -187,7 +187,7 @@ class DownsampleVcfTest extends UnitSpec {
   "DownsampleVcf.computePls" should "return new PLs that are not always 0,0,0" in {
     val ads = IndexedSeq[Int](0, 100)
     val expected = IndexedSeq(1996, 301, 0)
-    val newlikelihoods = computePls(ads)
+    val newlikelihoods = Likelihoods(ads).pls
     newlikelihoods should contain theSameElementsInOrderAs expected
   }
 
@@ -196,51 +196,57 @@ class DownsampleVcfTest extends UnitSpec {
    */
 
   "DownsampleVcf.Likelihoods" should "return ref if all allele depths are zero" in {
-    val likelihood = Likelihoods(alleleDepthA=0, alleleDepthB=0)
+    val likelihood = Likelihoods(IndexedSeq(0, 0))
     val expected = IndexedSeq[Int](0, 0, 0)
     likelihood.pls.length shouldBe expected.length
     likelihood.pls should contain theSameElementsInOrderAs expected
   }
 
   it should "return a likelihood of 0 for AA if there are only ref alleles observed" in {
-    val likelihood = Likelihoods(alleleDepthA = 10, alleleDepthB = 0)
+    val likelihood = Likelihoods(IndexedSeq(10, 0))
     val expected = IndexedSeq[Int](0, 30, 200)
     likelihood.pls should contain theSameElementsInOrderAs expected
   }
 
   it should "return a likelihood of 0 for BB if there are only alt alleles observed" in {
-    val likelihood = Likelihoods(alleleDepthA = 0, alleleDepthB = 10)
+    val likelihood = Likelihoods(IndexedSeq(0, 10))
     val expected = IndexedSeq[Int](200, 30, 0)
     likelihood.pls should contain theSameElementsInOrderAs expected
   }
 
   it should "return a likelihood of 0 for AB if there are an equal number of ref and alt alleles" in {
-    val likelihood = Likelihoods(alleleDepthA = 5, alleleDepthB = 5)
+    val likelihood = Likelihoods(IndexedSeq(5, 5))
     val expected = IndexedSeq[Int](70, 0, 70)
     likelihood.pls should contain theSameElementsInOrderAs expected
   }
 
   it should "return a likelihood of 0 for AA if the AD A >> AD B" in {
-    val likelihood = Likelihoods(alleleDepthA = 15, alleleDepthB = 2)
+    val likelihood = Likelihoods(IndexedSeq(15, 2))
     likelihood.pls(0) == 0
   }
 
   it should "return a likelihood of 0 for AB if AD.A and AD.B are similar but not equal" in {
-    val likelihood = Likelihoods(alleleDepthA = 15, alleleDepthB = 17)
+    val likelihood = Likelihoods(IndexedSeq(15, 17))
     likelihood.pls(1) == 0
   }
 
   it should "return a likelihood of 0 for BB if AD.B >> AD.A but neither are 0" in {
-    val likelihood = Likelihoods(alleleDepthA = 3, alleleDepthB = 30)
+    val likelihood = Likelihoods(IndexedSeq(3, 30))
     likelihood.pls(2) == 0
   }
 
   it should "return correct values when there are very few reads" in {
-    Likelihoods(0, 0).pls should contain theSameElementsInOrderAs IndexedSeq(0, 0, 0)
-    Likelihoods(1, 0).pls should contain theSameElementsInOrderAs IndexedSeq(0, 3, 20)
-    Likelihoods(1, 1).pls should contain theSameElementsInOrderAs IndexedSeq(14, 0, 14)
-    Likelihoods(0, 2).pls should contain theSameElementsInOrderAs IndexedSeq(40, 6, 0)
-    Likelihoods(1, 2).pls should contain theSameElementsInOrderAs IndexedSeq(31, 0, 11)
+    Likelihoods(IndexedSeq(0, 0)).pls should contain theSameElementsInOrderAs IndexedSeq(0, 0, 0)
+    Likelihoods(IndexedSeq(1, 0)).pls should contain theSameElementsInOrderAs IndexedSeq(0, 3, 20)
+    Likelihoods(IndexedSeq(1, 1)).pls should contain theSameElementsInOrderAs IndexedSeq(14, 0, 14)
+    Likelihoods(IndexedSeq(0, 2)).pls should contain theSameElementsInOrderAs IndexedSeq(40, 6, 0)
+    Likelihoods(IndexedSeq(1, 2)).pls should contain theSameElementsInOrderAs IndexedSeq(31, 0, 11)
+  }
+
+  it should "return correct values for multi-allelic variants" in {
+    Likelihoods(IndexedSeq(0, 0, 0)).pls should contain theSameElementsInOrderAs IndexedSeq(0, 0, 0, 0, 0, 0)
+    Likelihoods(IndexedSeq(10, 0, 0)).pls should contain theSameElementsInOrderAs IndexedSeq(0, 30, 200, 30, 200, 200)
+    Likelihoods(IndexedSeq(10, 10, 0)).pls should contain theSameElementsInOrderAs IndexedSeq(139, 0, 139, 169, 169, 339)
   }
 
 
@@ -251,10 +257,10 @@ class DownsampleVcfTest extends UnitSpec {
     Genotype(alleles=AlleleSet(ref=SimpleAllele(ref), alts=IndexedSeq(Allele(alt))),
       sample=sample,
       calls=IndexedSeq[Allele](Allele(ref), Allele(alt)),
-      attrs=Map("AD" -> ads, "PL" -> Likelihoods(alleleDepthA = ads(0), alleleDepthB = ads(1))))
+      attrs=Map("AD" -> ads, "PL" -> Likelihoods(ads))
+    )
   }
 
-  
   "DownsampleVcf.downsampleAndRegneotype(Genotype)" should "return no call if all allele depths are zero" in {
     val geno = makeGt(ref="A", alt="T", ads=IndexedSeq(0,0))
     val newGeno = downsampleAndRegenotype(gt=geno, proportion=0.01, random = new Random(42), epsilon = 0.01)
@@ -299,6 +305,30 @@ class DownsampleVcfTest extends UnitSpec {
   }
 
   /*
+  testing DownsampleVcf.downsampleAndRegenotype on downsampleAndRegenotypes
+   */
+  private def makeTriallelicGt(ref: String, alt1: String, alt2: String, ads: IndexedSeq[Int], sample: String ="test"): Genotype = {
+    val likelihoods = Likelihoods(ads)
+    val alleles = AlleleSet(ref=SimpleAllele(ref), alts=IndexedSeq(Allele(alt1), Allele(alt2)))
+    val calls = likelihoods.mostLikelyCall(alleles.toSeq)
+    Genotype(alleles, sample=sample, calls=calls, attrs=Map("AD" -> ads, "PL" -> likelihoods.pls))
+  }
+
+  it should "return ref,alt1 for a tri-allelic genotype if those alleles have the highest depth" in {
+    val geno = makeTriallelicGt(ref="A", alt1="T", alt2="G", ads=IndexedSeq(100, 100, 0))
+    val newGeno = downsampleAndRegenotype(gt=geno, proportion=0.1, random = new Random(42), epsilon = 0.01)
+    val expected = IndexedSeq(Allele("A"), Allele("T"))
+    newGeno.calls should contain theSameElementsInOrderAs expected
+  }
+
+  it should "return alt1,alt2 for a tri-allelic genotype if those alleles have the highest depth" in {
+    val geno = makeTriallelicGt(ref="A", alt1="T", alt2="G", ads=IndexedSeq(0, 100, 100))
+    val newGeno = downsampleAndRegenotype(gt=geno, proportion=0.1, random = new Random(42), epsilon = 0.01)
+    val expected = IndexedSeq(Allele("T"), Allele("G"))
+    newGeno.calls should contain theSameElementsInOrderAs expected
+  }
+
+  /*
     testing DownsampleVcf.downsampleAndRegenotype on Variant
    */
 
@@ -306,7 +336,7 @@ class DownsampleVcfTest extends UnitSpec {
     Variant(chrom="1",
             pos=10,
             alleles=AlleleSet(ref=Allele(ref), alts=Allele(alt)),
-            genotypes=Map(sample -> makeGt(ref=ref, alt=alt, ads=ads, sample = sample))
+            genotypes=Map(sample -> makeGt(ref=ref, alt=alt, ads=ads, sample=sample))
     )
   }
 
@@ -342,6 +372,32 @@ class DownsampleVcfTest extends UnitSpec {
     val variant = makeVariant(ref="A", alt="T", ads=IndexedSeq(500,500))
     val newVariant = DownsampleVcf.downsampleAndRegenotype(variant=variant, proportions = Map("test" -> 0.1), random = new Random(42))
     val expected = IndexedSeq(Allele("A"), Allele("T"))
+    newVariant.genotypes("test").calls should contain theSameElementsInOrderAs expected
+  }
+
+  /*
+  testing DownsampleVcf.downsampleAndRegenotype on downsampleAndRegenotypes
+   */
+  private def makeTriallelicVariant(ref: String, alt1: String, alt2: String, ads: IndexedSeq[Int], sample: String ="test"): Variant = {
+    val likelihoods = Likelihoods(ads)
+    val alleles = AlleleSet(ref=SimpleAllele(ref), alts=IndexedSeq(Allele(alt1), Allele(alt2)))
+    Variant(chrom="1",
+            pos=10,
+            alleles=alleles,
+            genotypes=Map(sample -> makeTriallelicGt(ref=ref, alt1=alt1, alt2=alt2, ads=ads, sample=sample)))
+  }
+
+  it should "return ref,alt1 for a tri-allelic variant if those alleles have the highest depth" in {
+    val variant = makeTriallelicVariant(ref="A", alt1="T", alt2="G", ads=IndexedSeq(100, 100, 0))
+    val newVariant = downsampleAndRegenotype(variant=variant, proportions = Map("test" -> 0.1), random = new Random(42), epsilon = 0.01)
+    val expected = IndexedSeq(Allele("A"), Allele("T"))
+    newVariant.genotypes("test").calls should contain theSameElementsInOrderAs expected
+  }
+
+  it should "return alt1,alt2 for a tri-allelic variant if those alleles have the highest depth" in {
+    val variant = makeTriallelicVariant(ref="A", alt1="T", alt2="G", ads=IndexedSeq(0, 100, 100))
+    val newVariant = downsampleAndRegenotype(variant=variant, proportions = Map("test" -> 0.1), random = new Random(42), epsilon = 0.01)
+    val expected = IndexedSeq(Allele("T"), Allele("G"))
     newVariant.genotypes("test").calls should contain theSameElementsInOrderAs expected
   }
 
