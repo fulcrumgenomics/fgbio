@@ -369,66 +369,81 @@ class DownsampleVcfTest extends UnitSpec {
   Metric.write(metadata, Seq(Sample(SAMPLE_NAME = sample, BASE_COUNT = 100)))
 
   "DownsampleVcf" should "write a new vcf with downsampled genotypes when provided a vcf" in {
-    List("proportion", "number", "metadata").foreach(
-      kind => {
+    List("proportion", "number", "metadata").foreach(kind => {
+      List(true, false).foreach(winnow => {
         // Construct the input VCF
         val outVcf = makeTempFile("out", ".vcf.gz")
+        val windowSize = if (winnow) { 150 } else { 0 }
         kind match {
           case "proportion" =>
             new DownsampleVcf(input=inVcf,
                               output=outVcf,
                               proportion=Some(0.01),
-                              windowSize=150).execute()
+                              windowSize=windowSize).execute()
           case "number" =>
             new DownsampleVcf(input=inVcf,
                               output=outVcf,
                               originalBases=Some(100),
                               downsampleToBases=Some(1),
-                              windowSize=150).execute()
+                              windowSize=windowSize).execute()
           case "metadata" =>
             new DownsampleVcf(input=inVcf,
                               output=outVcf,
                               metadata=Some(metadata),
                               downsampleToBases=Some(1),
-                              windowSize=150).execute()
+                              windowSize=windowSize).execute()
         }
 
         val vs = readVcfRecs(outVcf)
-        vs should have length 5
+        val expectedLength = if (winnow) { 5 } else { 6 }
+        vs should have length expectedLength
 
         val ad0 = vs(0).genotypes("test1")[IndexedSeq[Int]]("AD")
-        ad0(0) < 110 shouldBe true;
+        ad0(0) < 110 shouldBe true
         ad0(1) < 110 shouldBe true
         val pl0 = vs(0).genotypes("test1")[IndexedSeq[Int]]("PL")
         pl0(1) shouldBe 0
+        
+        val offset = if (winnow) {
+          0
+        } else {
+          val ad1 = vs(1).genotypes("test1")[IndexedSeq[Int]]("AD")
+          ad1(0) shouldBe 8
+          ad1(1) < 110 shouldBe true
+          val pl1 = vs(1).genotypes("test1")[IndexedSeq[Int]]("PL")
+          pl1(2) shouldBe 160
+          1
+        }
 
-        val ad1 = vs(1).genotypes("test1")[IndexedSeq[Int]]("AD")
-        ad1(0) shouldBe 0;
-        ad1(1) < 110 shouldBe true
-        val pl1 = vs(1).genotypes("test1")[IndexedSeq[Int]]("PL")
-        pl1(2) shouldBe 0
-
-        val ad2 = vs(2).genotypes("test1")[IndexedSeq[Int]]("AD")
-        ad2(0) < 30 shouldBe true;
+        val ad2 = vs(1 + offset).genotypes("test1")[IndexedSeq[Int]]("AD")
+        ad2(0) shouldBe 0
         ad2(1) < 110 shouldBe true
-        val pl2 = vs(2).genotypes("test1")[IndexedSeq[Int]]("PL")
+        val pl2 = vs(1 + offset).genotypes("test1")[IndexedSeq[Int]]("PL")
         pl2(2) shouldBe 0
 
-        val ad3 = vs(3).genotypes("test1")[IndexedSeq[Int]]("AD")
-        ad3(0) < 110 shouldBe true;
-        ad3(1) shouldBe 0;
-        val pl3 = vs(3).genotypes("test1")[IndexedSeq[Int]]("PL")
-        pl3(0) shouldBe 0
+        val ad3 = vs(2 + offset).genotypes("test1")[IndexedSeq[Int]]("AD")
+        ad3(0) < 30 shouldBe true
+        ad3(1) < 110 shouldBe true
+        val pl3 = vs(2 + offset).genotypes("test1")[IndexedSeq[Int]]("PL")
+        pl3(2) shouldBe 0
 
-        val ad4 = vs(4).genotypes("test1")[IndexedSeq[Int]]("AD")
-        ad4(0) < 100 shouldBe true;
-        ad4(1) < 100 shouldBe true;
-        ad4(0) > 1 shouldBe true;
-        ad4(1) > 2 shouldBe true;
-        val pl4 = vs(4).genotypes("test1")[IndexedSeq[Int]]("PL")
-        pl4(1) shouldBe 0
-      }
-    )
+        val ad4 = vs(3 + offset).genotypes("test1")[IndexedSeq[Int]]("AD")
+        ad4(0) < 110 shouldBe true
+        // changes due to random number generator
+        val expectedAD41 = if (winnow) { 0 } else { 1 }
+        ad4(1) shouldBe expectedAD41
+        val pl4 = vs(3 + offset).genotypes("test1")[IndexedSeq[Int]]("PL")
+        pl4(0) shouldBe 0
+
+        val ad5 = vs(4 + offset).genotypes("test1")[IndexedSeq[Int]]("AD")
+        ad5(0) < 100 shouldBe true
+        ad5(1) < 100 shouldBe true
+        ad5(0) > 1 shouldBe true
+        ad5(1) > 2 shouldBe true
+        val pl5 = vs(4 + offset).genotypes("test1")[IndexedSeq[Int]]("PL")
+        pl5(1) shouldBe 0
+      })
+    })
 
   }
 
@@ -465,50 +480,50 @@ class DownsampleVcfTest extends UnitSpec {
         vs should have length 7
 
         val ad0 = vs(0).genotypes("test1")[IndexedSeq[Int]]("AD")
-        ad0(0) < 110 shouldBe true;
+        ad0(0) < 110 shouldBe true
         ad0(1) < 110 shouldBe true
         val pl0 = vs(0).genotypes("test1")[IndexedSeq[Int]]("PL")
         pl0(1) shouldBe 0
 
         val ad1 = vs(1).genotypes("test1")[IndexedSeq[Int]]("AD")
-        ad1(0) shouldBe 0;
+        ad1(0) shouldBe 0
         ad1(1) < 110 shouldBe true
         val pl1 = vs(1).genotypes("test1")[IndexedSeq[Int]]("PL")
         pl1(2) shouldBe 0
 
         val ad2 = vs(2).genotypes("test1")[IndexedSeq[Int]]("AD")
-        ad2(0) shouldBe 0;
+        ad2(0) shouldBe 0
         ad2(1) shouldBe 0
         val pl2 = vs(2).genotypes("test1")[IndexedSeq[Int]]("PL")
-        pl2(0) shouldBe 0;
-        pl2(1) shouldBe 0;
+        pl2(0) shouldBe 0
+        pl2(1) shouldBe 0
         pl2(2) shouldBe 0
 
         val ad3 = vs(3).genotypes("test1")[IndexedSeq[Int]]("AD")
-        ad3(0) < 30 shouldBe true;
+        ad3(0) < 30 shouldBe true
         ad3(1) < 110 shouldBe true
         val pl3 = vs(3).genotypes("test1")[IndexedSeq[Int]]("PL")
         pl3(2) shouldBe 0
 
         val ad4 = vs(4).genotypes("test1")[IndexedSeq[Int]]("AD")
-        ad4(0) < 110 shouldBe true;
-        ad4(1) shouldBe 0;
+        ad4(0) < 110 shouldBe true
+        ad4(1) shouldBe 0
         val pl4 = vs(4).genotypes("test1")[IndexedSeq[Int]]("PL")
         pl4(0) shouldBe 0
 
         val ad5 = vs(5).genotypes("test1")[IndexedSeq[Int]]("AD")
-        ad5(0) shouldBe 0;
+        ad5(0) shouldBe 0
         ad5(1) shouldBe 0
         val pl5 = vs(5).genotypes("test1")[IndexedSeq[Int]]("PL")
-        pl5(0) shouldBe 0;
-        pl5(1) shouldBe 0;
+        pl5(0) shouldBe 0
+        pl5(1) shouldBe 0
         pl5(2) shouldBe 0
 
         val ad6 = vs(6).genotypes("test1")[IndexedSeq[Int]]("AD")
-        ad6(0) < 100 shouldBe true;
-        ad6(1) < 100 shouldBe true;
-        ad6(0) > 1 shouldBe true;
-        ad6(1) > 2 shouldBe true;
+        ad6(0) < 100 shouldBe true
+        ad6(1) < 100 shouldBe true
+        ad6(0) > 1 shouldBe true
+        ad6(1) > 2 shouldBe true
         val pl6 = vs(6).genotypes("test1")[IndexedSeq[Int]]("PL")
         pl6(1) shouldBe 0
       }
