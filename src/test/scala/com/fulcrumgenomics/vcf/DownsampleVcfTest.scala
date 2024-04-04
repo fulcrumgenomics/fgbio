@@ -202,6 +202,23 @@ class DownsampleVcfTest extends UnitSpec {
     likelihood.pls should contain theSameElementsInOrderAs expected
   }
 
+  it should "return correct results for basic cases" in {
+    val e = 0.01
+    val cases: IndexedSeq[(IndexedSeq[Int], IndexedSeq[Double])] = IndexedSeq(
+      (IndexedSeq(1, 0), IndexedSeq(1 - e, 0.5, e)),
+      (IndexedSeq(0, 1), IndexedSeq(e, 0.5, 1 - e)),
+      (IndexedSeq(1, 1), IndexedSeq((1 - e) * e, 0.25, (1 - e) * e)),
+      (IndexedSeq(2, 0), IndexedSeq(math.pow((1 - e), 2), 0.25, math.pow(e, 2))),
+      (IndexedSeq(0, 0, 1), IndexedSeq(e, e, e, 0.5, 0.5, 1 - e)),
+    )
+    cases.foreach { case (input, output) =>
+      val likelihood = Likelihoods(input, e)
+      val logOutput = output.map(p => math.log10(p))
+      likelihood.pls.length shouldBe logOutput.length
+      likelihood.pls should contain theSameElementsInOrderAs DownsampleVcf.logToPhredLikelihoods(logOutput)
+    }
+  }
+
   it should "return a likelihood of 0 for AA if there are only ref alleles observed" in {
     val likelihood = Likelihoods(IndexedSeq(10, 0))
     val expected = IndexedSeq[Int](0, 30, 200)

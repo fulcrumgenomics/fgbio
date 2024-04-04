@@ -13,6 +13,7 @@ import com.fulcrumgenomics.vcf.DownsampleVcf.{downsampleAndRegenotype, winnowVar
 
 import scala.math.log10
 import scala.util.Random
+import scala.tools.nsc.doc.html.HtmlTags
 
 object DownsampleVcf extends LazyLogging {
   /** Removes variants that are within a specified distance from a previous variant.
@@ -103,6 +104,16 @@ object DownsampleVcf extends LazyLogging {
     gt.copy(attrs=Map("PL" -> pls, "AD" -> newAds, "DP" -> newAds.sum), calls=calls)
   }
 
+  /**Converts a sequence of log-likelihoods to phred-scale by 1) multiplying each by -10, 2)
+   * subtracting from each the min value so the smallest value is 0, and 3) rounding to the
+   * nearest integer.
+   */
+  def logToPhredLikelihoods(logLikelihoods: IndexedSeq[Double]): IndexedSeq[Int] = {
+      val rawPL = logLikelihoods.map(gl => gl * -10)
+      val minPL = rawPL.min
+      rawPL.map(pl => (pl - minPL).round.toInt)
+  }
+
   object Likelihoods {
     /** Computes the likelihoods for each possible biallelic genotype.
      * @param alleleDepthA the reference allele depth
@@ -122,13 +133,14 @@ object DownsampleVcf extends LazyLogging {
       Likelihoods(2, IndexedSeq(rawGlAA, rawGlAB, rawGlBB))
     }
 
-    /** Computes the likelihoods for each possible multiallelic genotype.
+    /** Computes the likelihoods for each possible genotype given a sequence of read depths for any
+     * number of alleles.
      * @param alleleDepths the sequence of allele depths in the order specified in the VCF
      * @param epsilon      the error rate for genotyping
-     * @return a new `Likelihood` that has the likelihoods of all possible genotypes in the order
-     * specified in VFC spec for the GL/PL tags.
+     * @return a new `Likelihood` that has the log likelihoods of all possible genotypes in the
+     * order specified in VFC spec for the GL/PL tags.
      */
-    def multiallelic(alleleDepths: IndexedSeq[Int], epsilon: Double = 0.01): Likelihoods = {
+    def generalized(alleleDepths: IndexedSeq[Int], epsilon: Double = 0.01): Likelihoods = {
       val numAlleles = alleleDepths.length
       // probabilities associated with each possible genotype for a pair of alleles
       val probs: Array[Double] = Array(
@@ -151,8 +163,7 @@ object DownsampleVcf extends LazyLogging {
 
     def apply(alleleDepths: IndexedSeq[Int], epsilon: Double = 0.01): Likelihoods = {
       require(alleleDepths.length >= 2, "at least two alleles are required to calculate genotype likelihoods")
-      if (alleleDepths.length > 2) multiallelic(alleleDepths, epsilon)
-      else biallelic(alleleDepths(0), alleleDepths(1), epsilon)
+      generalized(alleleDepths, epsilon)
     }
   }
 
@@ -166,11 +177,7 @@ object DownsampleVcf extends LazyLogging {
       * @return a list of phred-scaled likelihooodS for AA, AB, BB.
       */
     def pls: IndexedSeq[Int] = {
-      // subtract the min value so the smallest GL is 0, then multiply by -10 and convert to
-      // Int to make it PHRED-scale
-      val rawPL = genotypeLikelihoods.map(gl => gl * -10)
-      val minPL = rawPL.min
-      rawPL.map(pl => (pl - minPL).round.toInt)
+      logToPhredLikelihoods(genotypeLikelihoods)
     }
 
     def mostLikelyGenotype: Option[(Int, Int)] = {
