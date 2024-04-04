@@ -104,17 +104,17 @@ object DownsampleVcf extends LazyLogging {
     gt.copy(attrs=Map("PL" -> pls, "AD" -> newAds, "DP" -> newAds.sum), calls=calls)
   }
 
-  /**Converts a sequence of log-likelihoods to phred-scale by 1) multiplying each by -10, 2)
-   * subtracting from each the min value so the smallest value is 0, and 3) rounding to the
-   * nearest integer.
-   */
-  def logToPhredLikelihoods(logLikelihoods: IndexedSeq[Double]): IndexedSeq[Int] = {
-      val rawPL = logLikelihoods.map(gl => gl * -10)
-      val minPL = rawPL.min
-      rawPL.map(pl => (pl - minPL).round.toInt)
-  }
-
   object Likelihoods {
+    /**Converts a sequence of log-likelihoods to phred-scale by 1) multiplying each by -10, 2)
+     * subtracting from each the min value so the smallest value is 0, and 3) rounding to the
+     * nearest integer.
+     */
+    def logToPhredLikelihoods(logLikelihoods: IndexedSeq[Double]): IndexedSeq[Int] = {
+        val rawPL = logLikelihoods.map(gl => gl * -10)
+        val minPL = rawPL.min
+        rawPL.map(pl => (pl - minPL).round.toInt)
+    }
+
     /** Computes the likelihoods for each possible biallelic genotype.
      * @param alleleDepthA the reference allele depth
      * @param alleleDepthB the alternate allele depth
@@ -143,7 +143,7 @@ object DownsampleVcf extends LazyLogging {
     def generalized(alleleDepths: IndexedSeq[Int], epsilon: Double = 0.01): Likelihoods = {
       val numAlleles = alleleDepths.length
       // probabilities associated with each possible genotype for a pair of alleles
-      val probs: Array[Double] = Array(
+      val logProbs: Array[Double] = Array(
         math.log10(epsilon),
         math.log10((1 - epsilon) / 2),
         math.log10(1 - epsilon)
@@ -154,7 +154,7 @@ object DownsampleVcf extends LazyLogging {
         (0 until numAlleles).flatMap(b =>
           (0 to b).map(a =>
             (0 until numAlleles).map(allele =>
-              probs(Array(a, b).count(_ == allele)) * alleleDepths(allele)
+              logProbs(Array(a, b).count(_ == allele)) * alleleDepths(allele)
             ).sum
           )
         )
@@ -177,7 +177,7 @@ object DownsampleVcf extends LazyLogging {
       * @return a list of phred-scaled likelihooodS for AA, AB, BB.
       */
     def pls: IndexedSeq[Int] = {
-      logToPhredLikelihoods(genotypeLikelihoods)
+      Likelihoods.logToPhredLikelihoods(genotypeLikelihoods)
     }
 
     def mostLikelyGenotype: Option[(Int, Int)] = {
