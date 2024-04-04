@@ -215,7 +215,22 @@ class DownsampleVcfTest extends UnitSpec {
       val likelihood = Likelihoods(input, e)
       val logOutput = output.map(p => math.log10(p))
       likelihood.pls.length shouldBe logOutput.length
-      likelihood.pls should contain theSameElementsInOrderAs DownsampleVcf.logToPhredLikelihoods(logOutput)
+      likelihood.pls should contain theSameElementsInOrderAs DownsampleVcf.Likelihoods.logToPhredLikelihoods(logOutput)
+    }
+  }
+
+  it should "return the same results for biallelic and generalized algorithm" in {
+    val e = 0.01
+    val cases: IndexedSeq[(IndexedSeq[Int], IndexedSeq[Double])] = IndexedSeq(
+      (IndexedSeq(1, 0), IndexedSeq(1 - e, 0.5, e)),
+      (IndexedSeq(0, 1), IndexedSeq(e, 0.5, 1 - e)),
+      (IndexedSeq(1, 1), IndexedSeq((1 - e) * e, 0.25, (1 - e) * e)),
+      (IndexedSeq(2, 0), IndexedSeq(math.pow((1 - e), 2), 0.25, math.pow(e, 2))),
+    )
+    cases.foreach { case (input, output) =>
+      val biallelic = DownsampleVcf.Likelihoods.biallelic(input(0), input(1), e)
+      val generalized = DownsampleVcf.Likelihoods.generalized(input, e)
+      biallelic.pls should contain theSameElementsInOrderAs generalized.pls
     }
   }
 
@@ -239,17 +254,17 @@ class DownsampleVcfTest extends UnitSpec {
 
   it should "return a likelihood of 0 for AA if the AD A >> AD B" in {
     val likelihood = Likelihoods(IndexedSeq(15, 2))
-    likelihood.pls(0) == 0
+    assert(likelihood.pls(0) == 0)
   }
 
   it should "return a likelihood of 0 for AB if AD.A and AD.B are similar but not equal" in {
     val likelihood = Likelihoods(IndexedSeq(15, 17))
-    likelihood.pls(1) == 0
+    assert(likelihood.pls(1) == 0)
   }
 
   it should "return a likelihood of 0 for BB if AD.B >> AD.A but neither are 0" in {
     val likelihood = Likelihoods(IndexedSeq(3, 30))
-    likelihood.pls(2) == 0
+    assert(likelihood.pls(2) == 0)
   }
 
   it should "return correct values when there are very few reads" in {
