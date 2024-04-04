@@ -228,8 +228,8 @@ class DownsampleVcfTest extends UnitSpec {
       (IndexedSeq(2, 0), IndexedSeq(math.pow((1 - e), 2), 0.25, math.pow(e, 2))),
     )
     cases.foreach { case (input, output) =>
-      val biallelic = DownsampleVcf.Likelihoods.biallelic(input(0), input(1), e)
-      val generalized = DownsampleVcf.Likelihoods.generalized(input, e)
+      val biallelic = Likelihoods(2, DownsampleVcf.Likelihoods.biallelic(input(0), input(1), e))
+      val generalized = Likelihoods(2, DownsampleVcf.Likelihoods.generalized(input, e))
       biallelic.pls should contain theSameElementsInOrderAs generalized.pls
     }
   }

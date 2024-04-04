@@ -121,7 +121,7 @@ object DownsampleVcf extends LazyLogging {
      * @param epsilon      the error rate for genotyping
      * @return a new `Likelihood` that has the likelihoods of AA, AB, and BB
      */
-    def biallelic(alleleDepthA: Int, alleleDepthB: Int, epsilon: Double = 0.01): Likelihoods = {
+    def biallelic(alleleDepthA: Int, alleleDepthB: Int, epsilon: Double = 0.01): IndexedSeq[Double] = {
       val aGivenAA = log10(1 - epsilon)
       val aGivenBB = log10(epsilon)
       val aGivenAB = log10((1 - epsilon) / 2)
@@ -130,7 +130,7 @@ object DownsampleVcf extends LazyLogging {
       val rawGlBB = ((alleleDepthA * aGivenBB) + (alleleDepthB * aGivenAA))
       val rawGlAB = ((alleleDepthA + alleleDepthB) * aGivenAB)
 
-      Likelihoods(2, IndexedSeq(rawGlAA, rawGlAB, rawGlBB))
+      IndexedSeq(rawGlAA, rawGlAB, rawGlBB)
     }
 
     /** Computes the likelihoods for each possible genotype given a sequence of read depths for any
@@ -140,7 +140,7 @@ object DownsampleVcf extends LazyLogging {
      * @return a new `Likelihood` that has the log likelihoods of all possible genotypes in the
      * order specified in VFC spec for the GL/PL tags.
      */
-    def generalized(alleleDepths: IndexedSeq[Int], epsilon: Double = 0.01): Likelihoods = {
+    def generalized(alleleDepths: IndexedSeq[Int], epsilon: Double = 0.01): IndexedSeq[Double] = {
       val numAlleles = alleleDepths.length
       // probabilities associated with each possible genotype for a pair of alleles
       val logProbs: Array[Double] = Array(
@@ -148,22 +148,20 @@ object DownsampleVcf extends LazyLogging {
         math.log10((1 - epsilon) / 2),
         math.log10(1 - epsilon)
       )
-      // raw genotype log-likelihoods
-      Likelihoods(
-        numAlleles,
-        (0 until numAlleles).flatMap(b =>
-          (0 to b).map(a =>
-            (0 until numAlleles).map(allele =>
-              logProbs(Array(a, b).count(_ == allele)) * alleleDepths(allele)
-            ).sum
-          )
+      // compute genotype log-likelihoods      
+      (0 until numAlleles).flatMap(b =>
+        (0 to b).map(a =>
+          (0 until numAlleles).map(allele =>
+            logProbs(Array(a, b).count(_ == allele)) * alleleDepths(allele)
+          ).sum
         )
       )
     }
 
     def apply(alleleDepths: IndexedSeq[Int], epsilon: Double = 0.01): Likelihoods = {
-      require(alleleDepths.length >= 2, "at least two alleles are required to calculate genotype likelihoods")
-      generalized(alleleDepths, epsilon)
+      val numAlleles = alleleDepths.length
+      require(numAlleles >= 2, "at least two alleles are required to calculate genotype likelihoods")
+      Likelihoods(numAlleles, generalized(alleleDepths, epsilon))
     }
   }
 
