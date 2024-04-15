@@ -13,6 +13,7 @@ import com.fulcrumgenomics.vcf.DownsampleVcf.{downsampleAndRegenotype, winnowVar
 
 import scala.math.log10
 import scala.util.Random
+import scala.tools.nsc.doc.html.HtmlTags
 
 object DownsampleVcf extends LazyLogging {
   /** Removes variants that are within a specified distance from a previous variant.
@@ -97,69 +98,106 @@ object DownsampleVcf extends LazyLogging {
   def downsampleAndRegenotype(gt: Genotype, proportion: Double, random: Random, epsilon: Double): Genotype = {
     val oldAds = gt.getOrElse[IndexedSeq[Int]]("AD", throw new Exception(s"AD tag not found for sample ${gt.sample}"))
     val newAds = downsampleADs(oldAds, proportion, random)
-    val Seq(aa, ab, bb) = computePls(newAds)
-    val Seq(alleleA, alleleB) = gt.alleles.toSeq
-
-    val calls = {
-      if (aa == 0 && ab == 0 && bb == 0) IndexedSeq(NoCallAllele, NoCallAllele)
-      else if (aa < ab && aa < bb) IndexedSeq(alleleA, alleleA)
-      else if (bb < ab && bb < aa) IndexedSeq(alleleB, alleleB)
-      else IndexedSeq(alleleA, alleleB)
-    }
-    gt.copy(attrs=Map("PL" -> IndexedSeq(aa, ab, bb), "AD" -> newAds, "DP" -> newAds.sum), calls=calls)
-  }
-
-  /**
-   * Compute the genotype likelihoods given the allele depths, assuming a diploid genotype (i.e. 
-   * two allele depths).
-   * @param ads The input depths for the two alleles A and B.
-   * @return a list of three likelihoods for the alleles AA, AB, and BB.
-   */
-  def computePls(ads: IndexedSeq[Int]): IndexedSeq[Int] = {
-    require(ads.length == 2, "there must be exactly two allele depths")
-    val likelihoods = Likelihoods(ads(0), ads(1))
-    IndexedSeq(likelihoods.aa.round.toInt, likelihoods.ab.round.toInt, likelihoods.bb.round.toInt)
+    val likelihoods = Likelihoods(newAds)
+    val pls = likelihoods.pls
+    val calls = likelihoods.mostLikelyCall(gt.alleles.toSeq)
+    gt.copy(attrs=Map("PL" -> pls, "AD" -> newAds, "DP" -> newAds.sum), calls=calls)
   }
 
   object Likelihoods {
-    /** Computes the likelihoods for each possible genotype.
-     *
+    /**Converts a sequence of log-likelihoods to phred-scale by 1) multiplying each by -10, 2)
+     * subtracting from each the min value so the smallest value is 0, and 3) rounding to the
+     * nearest integer.
+     */
+    def logToPhredLikelihoods(logLikelihoods: IndexedSeq[Double]): IndexedSeq[Int] = {
+        val rawPL = logLikelihoods.map(gl => gl * -10)
+        val minPL = rawPL.min
+        rawPL.map(pl => (pl - minPL).round.toInt)
+    }
+
+    /** Computes the likelihoods for each possible biallelic genotype.
      * @param alleleDepthA the reference allele depth
      * @param alleleDepthB the alternate allele depth
      * @param epsilon      the error rate for genotyping
      * @return a new `Likelihood` that has the likelihoods of AA, AB, and BB
      */
-    def apply(alleleDepthA: Int, alleleDepthB: Int, epsilon: Double=0.01): Likelihoods = {
+    def biallelic(alleleDepthA: Int, alleleDepthB: Int, epsilon: Double = 0.01): IndexedSeq[Double] = {
       val aGivenAA = log10(1 - epsilon)
       val aGivenBB = log10(epsilon)
       val aGivenAB = log10((1 - epsilon) / 2)
 
-      val rawGlAA = ((alleleDepthA * aGivenAA) + (alleleDepthB * aGivenBB)) * -10
-      val rawGlBB = ((alleleDepthA * aGivenBB) + (alleleDepthB * aGivenAA)) * -10
-      val rawGlAB = ((alleleDepthA + alleleDepthB) * aGivenAB) * -10
+      val rawGlAA = ((alleleDepthA * aGivenAA) + (alleleDepthB * aGivenBB))
+      val rawGlBB = ((alleleDepthA * aGivenBB) + (alleleDepthB * aGivenAA))
+      val rawGlAB = ((alleleDepthA + alleleDepthB) * aGivenAB)
 
-      val minGL = math.min(math.min(rawGlAA, rawGlAB), rawGlBB)
+      IndexedSeq(rawGlAA, rawGlAB, rawGlBB)
+    }
 
-      Likelihoods(
-        aa = rawGlAA - minGL,
-        ab = rawGlAB - minGL,
-        bb = rawGlBB - minGL
+    /** Computes the likelihoods for each possible genotype given a sequence of read depths for any
+     * number of alleles.
+     * @param alleleDepths the sequence of allele depths in the order specified in the VCF
+     * @param epsilon      the error rate for genotyping
+     * @return a new `Likelihood` that has the log likelihoods of all possible genotypes in the
+     * order specified in VFC spec for the GL/PL tags.
+     */
+    def generalized(alleleDepths: IndexedSeq[Int], epsilon: Double = 0.01): IndexedSeq[Double] = {
+      val numAlleles = alleleDepths.length
+      // probabilities associated with each possible genotype for a pair of alleles
+      val logProbs: Array[Double] = Array(
+        math.log10(epsilon),
+        math.log10((1 - epsilon) / 2),
+        math.log10(1 - epsilon)
       )
+      // compute genotype log-likelihoods      
+      (0 until numAlleles).flatMap(b =>
+        (0 to b).map(a =>
+          (0 until numAlleles).map(allele =>
+            logProbs(Array(a, b).count(_ == allele)) * alleleDepths(allele)
+          ).sum
+        )
+      )
+    }
+
+    def apply(alleleDepths: IndexedSeq[Int], epsilon: Double = 0.01): Likelihoods = {
+      val numAlleles = alleleDepths.length
+      require(numAlleles >= 2, "at least two alleles are required to calculate genotype likelihoods")
+      Likelihoods(numAlleles, generalized(alleleDepths, epsilon))
     }
   }
 
-  /** Stores the log10(likelihoods) for all possible bi-allelic genotypes.
-   *
-   * @param aa likelihood of AA
-   * @param ab likelihood of AB
-   * @param bb likelihood of BB
+  /** Stores the log10(likelihoods) for all possible genotypes.
+   * @param numAlleles the number of alleles the variant has
+   * @param genotypeLikelihoods sequence of GLs in the order specified in the VCF spec
    */
-  case class Likelihoods(aa: Double, ab: Double, bb: Double) {
+  case class Likelihoods(numAlleles: Int, genotypeLikelihoods: IndexedSeq[Double]) {
     /**
       * Returns the likelihoods as a list of phred-scaled integers (i.e, the value of the PL tag).
       * @return a list of phred-scaled likelihooodS for AA, AB, BB.
       */
-    def pls = IndexedSeq(aa.round.toInt, ab.round.toInt, bb.round.toInt)
+    def pls: IndexedSeq[Int] = {
+      Likelihoods.logToPhredLikelihoods(genotypeLikelihoods)
+    }
+
+    def mostLikelyGenotype: Option[(Int, Int)] = {
+      val minIndexes = pls.zipWithIndex.filter(pair => pair._1 == 0)
+      minIndexes.length match {
+        case 0 => throw new RuntimeException("expected the most likely PL to have a value of 0.0")
+        case 1 => {
+          val genotypes = 
+            for (b <- 0 until numAlleles; a <- 0 to b)
+            yield (a, b)
+          Some(genotypes(minIndexes.head._2))
+        }
+        case _ => None  // if multiple genotypes are most likely, don't make a call
+      }
+    }
+
+    def mostLikelyCall(alleles: Seq[Allele]): IndexedSeq[Allele] = {
+      mostLikelyGenotype match {
+        case None => IndexedSeq(NoCallAllele, NoCallAllele)
+        case Some((a, b)) => IndexedSeq(alleles(a), alleles(b))
+      }
+    }
   }
 }
 
