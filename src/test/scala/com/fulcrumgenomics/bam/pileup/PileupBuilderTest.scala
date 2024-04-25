@@ -289,7 +289,7 @@ class PileupBuilderTest extends UnitSpec {
       piler.safelyClose()
     }
 
-    it should "not filter out single-end records when we are removing records outside the insert of FR pairs" in {
+    it should "not filter out single-end records when we are not filter for mapped pairs only and we are not removing records where the position is outside the insert of FR pairs" in {
       val builder = new SamBuilder(readLength = ReadLength, sd = Some(TestSequenceDictionary), sort = Some(Coordinate))
 
       builder.addFrag(name = "q1", contig = Chr1Index, start = 100)
