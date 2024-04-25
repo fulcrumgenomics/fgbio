@@ -343,24 +343,6 @@ class PileupBuilderTest extends UnitSpec {
       piler.safelyClose()
     }
 
-    it should "exclude records that appear to be in an FR pair but are on different chromosomes" in {
-      val builder = new SamBuilder(readLength = ReadLength, sd = Some(TestSequenceDictionary), sort = Some(Coordinate))
-
-      builder.addPair(name = "q1", contig = Chr1Index, contig2 = Some(Chr2Index), start1 = 100, start2 = 125)
-
-      val source = builder.toSource
-      val piler  = PileupBuilder(source, accessPattern = accessPattern, includeMapPositionsOutsideFrInsert = false)
-
-      piler.pileup(Chr1, 100).depth shouldBe 0
-      piler.pileup(Chr1, 100 + ReadLength - 1).depth shouldBe 0
-
-      piler.pileup(Chr2, 125).depth shouldBe 0
-      piler.pileup(Chr2, 125 + ReadLength - 1).depth shouldBe 0
-
-      source.safelyClose()
-      piler.safelyClose()
-    }
-
     it should "not filter out records where a position is outside what might look like an 'insert' for a non-FR pair" in {
       val builder = new SamBuilder(readLength = ReadLength, sd = Some(TestSequenceDictionary), sort = Some(Coordinate))
 

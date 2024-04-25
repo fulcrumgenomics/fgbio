@@ -61,7 +61,15 @@ object PileupBuilder {
     /** Allow records flagged as supplementary alignments to contribute to a pileup by default. */
     val includeSupplementalAlignments: Boolean = false
 
-    /** Exclude any record of an FR pair where the site requested is outside the insert by default. */
+    /** For FR pairs only, determine if we should keep the pair of reads if the site requested is outside of the
+      * insert. By default this filter is set to <false> which means for FR pairs where R1 and R2 overlap each other
+      * and *extend* past the start coordinates of their mate, the pair will be filtered out if the position requested
+      * overlaps the end of either read in the span that is beyond the start coordinate of the read's mate.
+      *
+      * See the following GitHub issue comment for a visualization of when this filter applies:
+      *
+      * - https://github.com/fulcrumgenomics/fgbio/issues/980#issuecomment-2075049301
+      */
     val includeMapPositionsOutsideFrInsert: Boolean = false
   }
 
@@ -197,7 +205,7 @@ trait PileupBuilder extends PileupParameters {
         if (compare) compare = this.acceptRecord(rec)
         if (compare) compare = rec.end >= pos
         if (compare) compare = rec.start <= pos || PileupBuilder.startsWithInsertion(rec)
-        if (compare) compare = if (rec.paired && !includeMapPositionsOutsideFrInsert) {
+        if (compare) compare = if (!includeMapPositionsOutsideFrInsert && rec.isFrPair) {
           PileupBuilder.positionIsInsideFrInsert(rec, refIndex = refIndex, pos = pos)
         } else { compare }
         compare
