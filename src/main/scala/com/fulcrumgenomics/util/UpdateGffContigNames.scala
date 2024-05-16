@@ -34,7 +34,7 @@ import com.fulcrumgenomics.sopt.{arg, clp}
 
 @clp(description =
   """
-    |Updates then contig names in a GFF.
+    |Updates the contig names in a GFF.
     |
     |The name of each sequence must match one of the names (including aliases) in the given sequence dictionary.  The
     |new name will be the primary (non-alias) name in the sequence dictionary.
