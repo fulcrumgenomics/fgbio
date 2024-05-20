@@ -123,7 +123,7 @@ class FastqToBam
   validate(input.length == actualReadStructures.length, "input and read-structure must be supplied the same number of times.")
   validate(1 to 2 contains actualReadStructures.flatMap(_.templateSegments).size, "read structures must contain 1-2 template reads total.")
   validate(!extractUmisFromReadNames || umiQualTag.isEmpty, "Cannot extract UMI qualities when also extracting UMI from read names.")
-  validate(!extractUmisFromReadComment || umiQualTag.isEmpty, "Cannot extract UMI qualities when also extracting UMI from read description.")
+  validate(!extractUmisFromReadComment || umiQualTag.isEmpty, "Cannot extract UMI qualities when also extracting UMI from the comment in the read name.")
 
   override def execute(): Unit = {
     val encoding = qualityEncoding

@@ -43,7 +43,7 @@ class UmisTest extends UnitSpec with OptionValues {
     Umis.extractUmisFromReadName("1:2:3:4:5:6:7:ACGTACGT", strict=true).value shouldBe "ACGTACGT"
   }
 
-  it should "return None if the read has only 7 parts in strict mode" in {
+  it should "return None if the read name has only 7 parts in strict mode" in {
     Umis.extractUmisFromReadName("1:2:3:4:5:6:7", strict=true) shouldBe None
   }
 
@@ -126,7 +126,7 @@ class UmisTest extends UnitSpec with OptionValues {
     copyUmiFromReadName(rec=rec("UMI:C:ACC+GGT"), removeUmi=true).nameAndUmi shouldBe ("UMI:C", "ACC-GGT")
   }
   
-  it should "split on a different delimiter if specified" in {
+  it should "split on a different delimiter name if specified" in {
     copyUmiFromReadName(rec=rec("UMI-A"), delimiter='-').nameAndUmi shouldBe ("UMI-A", "A")
     copyUmiFromReadName(rec=rec("UMI-C-A"), delimiter='-').nameAndUmi shouldBe ("UMI-C-A", "A")
     copyUmiFromReadName(rec=rec("UMI-C-ACC+GGT"), delimiter='-').nameAndUmi shouldBe ("UMI-C-ACC+GGT", "ACC-GGT")
@@ -136,7 +136,7 @@ class UmisTest extends UnitSpec with OptionValues {
     copyUmiFromReadName(rec=rec("UMI:C:ACC+GGT")).nameAndUmi shouldBe ("UMI:C:ACC+GGT", "ACC-GGT")
   }
 
-  it should "fail if the read has only one field" in {
+  it should "fail if the read name has only one field" in {
     an[Exception] should be thrownBy copyUmiFromReadName(rec=rec("NAME"))
     an[Exception] should be thrownBy copyUmiFromReadName(rec=rec("1-2"))
   }
