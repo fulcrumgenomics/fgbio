@@ -10,10 +10,13 @@
 fgbio
 ====
 
-A set of tools to analyze genomic data with a focus on Next Generation Sequencing.  This readme document is mostly for developers/contributors and those attempting to build the project from source.
+A set of tools to analyze genomic data with a focus on Next Generation Sequencing.
+
+This readme document is mostly for developers/contributors and those attempting to build the project from source.
 Detailed user documentation is available on the [project website](http://fulcrumgenomics.github.io/fgbio/) including [tool usage](http://fulcrumgenomics.github.io/fgbio/tools/latest) and [documentation of metrics produced](http://fulcrumgenomics.github.io/fgbio/metrics/latest).  Detailed developer documentation can be found [here](http://javadoc.io/doc/com.fulcrumgenomics/fgbio_2.13).
 
 <!---toc start-->
+  * [Quick Installation](#quick-installation)
   * [Goals](#goals)
   * [Overview](#overview)
   * [List of tools](#list-of-tools)
@@ -26,6 +29,20 @@ Detailed user documentation is available on the [project website](http://fulcrum
   * [Sponsorship](#sponsorship)
 
 <!---toc end-->
+
+# Quick Installation
+
+The [conda](https://conda.io/) package manager (configured with [bioconda channels](https://bioconda.github.io/)) can be used to quickly install fgbio:
+
+```
+conda install fgbio
+```
+
+To install fgbio without extra dependencies (e.g. [R](https://www.r-project.org/)), use the command:
+
+```
+conda install fgbio-minimal
+```
 
 # Goals
 
