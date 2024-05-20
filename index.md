@@ -11,7 +11,21 @@
 
 fgbio is a command line toolkit for working with genomic and particularly next generation sequencing data.
 
-## Getting Started
+## Quick Installation
+
+The [conda](https://conda.io/) package manager (configured with [bioconda channels](https://bioconda.github.io/)) can be used to quickly install fgbio:
+
+```
+conda install fgbio
+```
+
+To install fgbio without extra dependencies (e.g. [R](https://www.r-project.org/)), use the command:
+
+```
+conda install fgbio-minimal
+```
+
+## Using the Project Jar File Directly
 
 Releases of fgbio are available from the [GitHub Releases](https://github.com/fulcrumgenomics/fgbio/releases) page for the project.  Start by downloading the `.jar` file for the latest release.
 
@@ -42,7 +56,7 @@ alias fgbio="java -Xmx4g -XX:+AggressiveOpts -XX:+AggressiveHeap -jar /path/to/f
 
 ## Documentation
 
-Each tool has detailed uage and argument documentation that can be viewed at the command line by running the tool in question with no arguments.
+Each tool has detailed usage and argument documentation that can be viewed at the command line by running the tool in question with no arguments.
 
 Documentation is also available online:
 * Tool usage documentation is available [here](tools/latest)
