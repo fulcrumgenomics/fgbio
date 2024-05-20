@@ -43,7 +43,7 @@ class UmisTest extends UnitSpec with OptionValues {
     Umis.extractUmisFromReadName("1:2:3:4:5:6:7:ACGTACGT", strict=true).value shouldBe "ACGTACGT"
   }
 
-  it should "return None if the read name has only 7 parts in strict mode" in {
+  it should "return None if the read has only 7 parts in strict mode" in {
     Umis.extractUmisFromReadName("1:2:3:4:5:6:7", strict=true) shouldBe None
   }
 
@@ -78,6 +78,41 @@ class UmisTest extends UnitSpec with OptionValues {
     Umis.extractUmisFromReadName("1:2:3:4:5:6:7:8", strict=false) shouldBe None
   }
 
+  "Umis.extractUmisFromReadComment" should "extract a UMI from a well-formed read name" in {
+    Umis.extractUmisFromReadComment("0:1:2:ACGTACGT", strict=true).value shouldBe "ACGTACGT"
+  }
+
+  it should "throw an exception in strict mode if the read has too many or too few segments" in {
+    an[Exception] shouldBe thrownBy { Umis.extractUmisFromReadComment("0:1:ACGTACGT", strict=true) }
+    an[Exception] shouldBe thrownBy { Umis.extractUmisFromReadComment("0:1:2:3:ACGTACGT", strict=true) }
+  }
+
+  it should "translate pluses to hyphens when multiple UMIs are present" in {
+    Umis.extractUmisFromReadComment("0:1:2:ACGTACGT+TTGCGGCT", strict=true).value shouldBe "ACGTACGT-TTGCGGCT"
+  }
+
+  it should "extract a UMI from the last segment in non-strict mode, if it looks like a UMI" in {
+    Umis.extractUmisFromReadComment("ACGT", strict=false).value shouldBe "ACGT"
+    Umis.extractUmisFromReadComment("1:ACGT", strict=false).value shouldBe "ACGT"
+    Umis.extractUmisFromReadComment("1:2:ACGT", strict=false).value shouldBe "ACGT"
+    Umis.extractUmisFromReadComment("1:2:3:ACGT", strict=false).value shouldBe "ACGT"
+    Umis.extractUmisFromReadComment("1:2:3:4:ACGT", strict=false).value shouldBe "ACGT"
+    Umis.extractUmisFromReadComment("1:2:3:4:5:ACGT", strict=false).value shouldBe "ACGT"
+    Umis.extractUmisFromReadComment("1:2:3:4:5:6:ACGT", strict=false).value shouldBe "ACGT"
+    Umis.extractUmisFromReadComment("1:2:3:4:5:6:7:ACGT", strict=false).value shouldBe "ACGT"
+    Umis.extractUmisFromReadComment("1:2:3:4:5:6:7:8:ACGT", strict=false).value shouldBe "ACGT"
+    Umis.extractUmisFromReadComment("1:2:3:4:5:6:7:8:9:ACGT", strict=false).value shouldBe "ACGT"
+  }
+
+  it should "return None in non-strict mode if the last segment doesn't look like a UMI" in {
+    Umis.extractUmisFromReadComment("1:2", strict=false) shouldBe None
+    Umis.extractUmisFromReadComment("1:2:3", strict=false) shouldBe None
+    Umis.extractUmisFromReadComment("1:2:3:4", strict=false) shouldBe None
+    Umis.extractUmisFromReadComment("1:2:3:4:5", strict=false) shouldBe None
+    Umis.extractUmisFromReadComment("1:2:3:4:5:6", strict=false) shouldBe None
+    Umis.extractUmisFromReadComment("1:2:3:4:5:6:7", strict=false) shouldBe None
+    Umis.extractUmisFromReadComment("1:2:3:4:5:6:7:8", strict=false) shouldBe None
+  }
 
   "Umis.copyUmiFromReadName" should "copy the UMI from the read name" in {
     copyUmiFromReadName(rec=rec("UMI:A")).nameAndUmi shouldBe ("UMI:A", "A")
@@ -91,7 +126,7 @@ class UmisTest extends UnitSpec with OptionValues {
     copyUmiFromReadName(rec=rec("UMI:C:ACC+GGT"), removeUmi=true).nameAndUmi shouldBe ("UMI:C", "ACC-GGT")
   }
   
-  it should "split on a different name delimiter if specified" in {
+  it should "split on a different delimiter if specified" in {
     copyUmiFromReadName(rec=rec("UMI-A"), delimiter='-').nameAndUmi shouldBe ("UMI-A", "A")
     copyUmiFromReadName(rec=rec("UMI-C-A"), delimiter='-').nameAndUmi shouldBe ("UMI-C-A", "A")
     copyUmiFromReadName(rec=rec("UMI-C-ACC+GGT"), delimiter='-').nameAndUmi shouldBe ("UMI-C-ACC+GGT", "ACC-GGT")
@@ -101,7 +136,7 @@ class UmisTest extends UnitSpec with OptionValues {
     copyUmiFromReadName(rec=rec("UMI:C:ACC+GGT")).nameAndUmi shouldBe ("UMI:C:ACC+GGT", "ACC-GGT")
   }
 
-  it should "fail if the read name has only one field" in {
+  it should "fail if the read has only one field" in {
     an[Exception] should be thrownBy copyUmiFromReadName(rec=rec("NAME"))
     an[Exception] should be thrownBy copyUmiFromReadName(rec=rec("1-2"))
   }

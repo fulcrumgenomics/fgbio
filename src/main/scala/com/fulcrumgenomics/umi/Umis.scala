@@ -55,7 +55,7 @@ object Umis {
 
   /**
     * Extracts the UMI from an Illumina fastq style read name.  Illumina documents their FASTQ read names as:
-    *   @<instrument>:<run number>:<flowcell ID>:<lane>:<tile>:<x-pos>:<y-pos>:<UMI> <read>:<is filtered>:<control number>:<index>
+    *   `@<instrument>:<run number>:<flowcell ID>:<lane>:<tile>:<x-pos>:<y-pos>:<UMI> <read>:<is filtered>:<control number>:<index>``
     *
     *  See https://support.illumina.com/help/BaseSpace_OLH_009008/Content/Source/Informatics/BS/FileFormat_FASTQ-files_swBS.htm
     *  The UMI field is optional, so read names may or may not contain it.  Illumina also specifies that the UMI
@@ -63,7 +63,7 @@ object Umis {
     *  translated to hyphens before returning.
     *
     *  If `strict` is true the name _must_ contain either 7 or 8 colon-separated segments, 
-    with the UMI being the last in the case of 8 and `None` in the case of 7.
+    *  with the UMI being the last in the case of 8 and `None` in the case of 7.
     * 
     * If `strict` is false the last segment is returned so long as it appears to be a valid UMI.
     */
@@ -84,6 +84,42 @@ object Umis {
     val valid = umi.forall(u => u.forall(isValidUmiCharacter))
 
     if (strict && !valid) throw new IllegalArgumentException(s"Invalid UMI '${umi.get}' extracted from name '${name}")
+    else if (!valid) None
+    else umi
+  }
+
+  /**
+    * Extracts the UMI from an Illumina fastq style read name.  Illumina documents their FASTQ read names as:
+    *   `@<instrument>:<run number>:<flowcell ID>:<lane>:<tile>:<x-pos>:<y-pos>:<UMI> <read>:<is filtered>:<control number>:<index>``
+    *
+    *   The index in the description may be replaced with a UMI field.
+    *
+    *  See https://support.illumina.com/help/BaseSpace_OLH_009008/Content/Source/Informatics/BS/FileFormat_FASTQ-files_swBS.htm
+    *  The UMI field is optional, so read names may or may not contain it.  Illumina also specifies that the UMI
+    *  field may contain multiple UMIs, in which case they will delimit them with `+` characters.  Pluses will be
+    *  translated to hyphens before returning.
+    *
+    *  If `strict` is true the comment _must_ contain either 4 colon-separated segments,
+    *  with the UMI being the last in the case of 4.
+    *
+    * If `strict` is false the last segment is returned so long as it appears to be a valid UMI.
+    */
+  def extractUmisFromReadComment(comment: String, delimiter: Char = ':', strict: Boolean): Option[String] = {
+    // If strict, check that the read name actually has eight parts, which is expected
+    val rawUmi = if (strict) {
+      val colons = comment.count(_ == delimiter)
+      if (colons == 3) Some(comment.substring(comment.lastIndexOf(delimiter) + 1, comment.length))
+      else throw new IllegalArgumentException(s"Trying to extract UMI from read comment with ${colons + 1} parts (4 expected): ${comment}")
+    } else {
+      val idx = comment.lastIndexOf(delimiter)
+      if (idx == -1) Some(comment)
+      else Some(comment.substring(idx + 1, comment.length))
+    }
+
+    val umi   = rawUmi.map(raw => (if (raw.indexOf('+') > 0) raw.replace('+', '-') else raw).toUpperCase)
+    val valid = umi.forall(u => u.forall(isValidUmiCharacter))
+
+    if (strict && !valid) throw new IllegalArgumentException(s"Invalid UMI '${umi.get}' extracted from name '${comment}")
     else if (!valid) None
     else umi
   }
