@@ -59,13 +59,15 @@ class SortBam
   @arg(flag='s', doc="Order into which to sort the records.") val sortOrder: SamOrder = SamOrder.Coordinate,
   @arg(flag='m', doc="Max records in RAM.") val maxRecordsInRam: Int = SamWriter.DefaultMaxRecordsInRam
 ) extends FgBioTool with LazyLogging {
+  
+  Io.assertReadable(input)
+  Io.assertCanWriteFile(output)
+  
   override def execute(): Unit = {
-    Io.assertReadable(input)
-    Io.assertCanWriteFile(output)
-
     val in  = SamSource(input)
     val out = SamWriter(output, in.header.clone(), sort=Some(sortOrder), maxRecordsInRam=maxRecordsInRam)
     out ++= in
     out.close()
+    in.safelyClose()
   }
 }
