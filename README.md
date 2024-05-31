@@ -67,25 +67,60 @@ For a full list of available tools please see the [tools section](http://fulcrum
 
 Below we highlight a few tools that you may find useful.
 
-* Tools for working with Unique Molecular Indexes (UMIs, aka Molecular IDs or MIDs). 
-  * Annotating/Extract Umis from read-level data: `AnnotateBamWithUmis` and `ExtractUmisFromBam`.
-  * Tools to manipulate read-level data containing Umis: `CorrectUmis`, `GroupReadsByUmi`, `CallMolecularConsensusReads` and `CallDuplexConsensusReads`
-* Tools to manipulate read-level data:
-  * FastqManipulation: `DemuxFastqs` and `FastqToBam`
-  * Filter read-level data: `FilterBam`.
-  * Clipping of reads: `ClipBam`.
-  * Randomize the order of read-level data: `RandomizeBam`.
-  * Update read-level metadata: `SetMateInformation` and `UpdateReadGroups`.
-* Quality assessment tools:
-  * Detailed substitution error rate evaluation: `ErrorRateByReadPosition`
-  * Sample pooling QC: `EstimatePoolingFractions`
-  * Splice-aware insert size QC for RNA-seq libraries: `EstimateRnaSeqInsertSize`
-  * Assessment of duplex sequencing experiments: `CollectDuplexSeqMetrics`
-* Miscellaneous tools:
-  * Pick molecular indices (ex. sample barcodes, or molecular indexes): `PickIlluminaIndices` and `PickLongIndices`.
-  * Convert the output of HAPCUT (a tool for phasing variants): `HapCutToVcf`.
-  * Find technical or synthetic sequences in read-level data: `FindTechnicalReads`.
-  * Assess phased variant calls: `AssessPhasing`.
+-   Tools for working with Unique Molecular Indexes (UMIs, aka Molecular IDs or Molecular Barcodes):
+    -   Annotating/Extract Umis from read-level data: [`FastqToBam`][fgbio-fastqtobam-link], [`AnnotateBamWithUmis`][fgbio-annotatebamwithumis-link], [`ExtractUmisFromBam`][fgbio-extractumisfrombam-link], and [`CopyUmiFromReadName`][fgbio-copyumifromreadname-link].
+    -   Manipulate read-level data containing Umis: [`CorrectUmis`][fgbio-correctumis-link], [`GroupReadsByUmi`][fgbio-groupreadsbyumi-link], [`CallMolecularConsensusReads`][fgbio-callmolecularconsensusreads-link], [`CallDuplexConsensusReads`][fgbio-callduplexconsensusreads-link], and [`FilterConsensusReads`][fgbio-filterconsensusreads-link].
+    -   Collect metrics and review consensus reads: [`CollectDuplexSeqMetrics`][fgbio-collectduplexseqmetrics-link] and [`ReviewConsensusVariants`][fgbio-reviewconsensusvariants-link].
+-   Tools to manipulate read-level data:
+    -   Fastq Manipulation: [`FastqToBam`][fgbio-fastqtobam-link], [`ZipperBams`][fgbio-zipperbams-link], and [`DemuxFastqs`][fgbio-demuxfastqs-link] (see `[fqtk`][fqtk-link], our rust re-implementation for sample demultiplexing).
+    -   Filter, clip, randomize, sort, and update metadata for read-level data: [`FilterBam`][fgbio-filterbam-link], [`ClipBam`][fgbio-clipbam-link], [`RandomizeBam`][fgbio-randomizebam-link], [`SortBam`][fgbio-sortbam-link], [`SetMateInformation`][fgbio-setmateinformation-link] and [`UpdateReadGroups`][fgbio-updatereadgroups-link].
+-   Tools for quality control assessment:
+    -   Detailed substitution error rate evaluation: [`ErrorRateByReadPosition`][fgbio-errorratebyreadposition-link].
+    -   Sample pooling QC: [`EstimatePoolingFractions`]: [fgbio-estimatepoolingfractions-link].
+    -   Splice-aware insert size QC for RNA-seq libraries: [`EstimateRnaSeqInsertSize`][fgbio-estimaternaseqinsertsize-link].
+-   Tools for adding or manipulating alternate contig names:
+    -   Extract from a NCBI Assembly Report: [`CollectAlternateContigNames`][fgbio-collectalternatecontignames-link].
+    -   Update contig names in common file formats: [`UpdateFastaContigNames`][fgbio-updatefastacontignames-link], [`UpdateVcfContigNames`][fgbio-updatevcfcontignames-link], [`UpdateGffContigNames`][fgbio-updategffcontignames-link], [`UpdateIntervalListContigNames`][fgbio-updateintervallistcontignames-link], [`UpdateDelimitedFileContigNames`][fgbio-updatedelimitedfilecontignames-link].
+-   Miscellaneous tools:
+    -   Pick molecular indices (ex. sample barcodes, or molecular indexes): [`PickIlluminaIndices`][fgbio-pickilluminaindices-link] and [`PickLongIndices`][fgbio-picklongindices-link].
+    -   Find technical/synthetic, or switch-back sequences in read-level data: [`FindTechnicalReads`][fgbio-findtechnicalreads-link] and [`FindSwitchbackReads`][fgbio-findswitchbackreads-link].
+    -   Make synthetic mixture VCFs: [`MakeMixtureVcf`][fgbio-makemixturevcf-link] and [`MakeTwoSampleMixtureVcf`][fgbio-maketwosamplemixturevcf-link].
+
+[fgbio-fastqtobam-link]: https://fulcrumgenomics.github.io/fgbio/tools/latest/FastqToBam.html
+[fgbio-annotatebamwithumis-link]: https://fulcrumgenomics.github.io/fgbio/tools/latest/AnnotateBamWithUmis.html
+[fgbio-extractumisfrombam-link]: https://fulcrumgenomics.github.io/fgbio/tools/latest/ExtractUmisFromBam.html
+[fgbio-copyumifromreadname-link]: https://fulcrumgenomics.github.io/fgbio/tools/latest/CopyUmiFromReadName.html
+[fgbio-correctumis-link]: https://fulcrumgenomics.github.io/fgbio/tools/latest/CorrectUmis.html
+[fgbio-groupreadsbyumi-link]: https://fulcrumgenomics.github.io/fgbio/tools/latest/GroupReadsByUmi.html
+[fgbio-callmolecularconsensusreads-link]: https://fulcrumgenomics.github.io/fgbio/tools/latest/CallMolecularConsensusReads.html
+[fgbio-callduplexconsensusreads-link]: https://fulcrumgenomics.github.io/fgbio/tools/latest/CallDuplexConsensusReads.html
+[fgbio-filterconsensusreads-link]: https://fulcrumgenomics.github.io/fgbio/tools/latest/FilterConsensusReads.html
+[fgbio-collectduplexseqmetrics-link]: https://fulcrumgenomics.github.io/fgbio/tools/latest/CollectDuplexSeqMetrics.html
+[fgbio-reviewconsensusvariants-link]: https://fulcrumgenomics.github.io/fgbio/tools/latest/ReviewConsensusVariants.html
+[fgbio-fastqtobam-link]: https://fulcrumgenomics.github.io/fgbio/tools/latest/FastqToBam.html
+[fgbio-zipperbams-link]: https://fulcrumgenomics.github.io/fgbio/tools/latest/ZipperBams.html
+[fgbio-demuxfastqs-link]: https://fulcrumgenomics.github.io/fgbio/tools/latest/DemuxFastqs.html
+[fgbio-filterbam-link]: https://fulcrumgenomics.github.io/fgbio/tools/latest/FilterBam.html
+[fgbio-clipbam-link]: https://fulcrumgenomics.github.io/fgbio/tools/latest/ClipBam.html
+[fgbio-randomizebam-link]: https://fulcrumgenomics.github.io/fgbio/tools/latest/RandomizeBam.html
+[fgbio-setmateinformation-link]: https://fulcrumgenomics.github.io/fgbio/tools/latest/SetMateInformation.html
+[fgbio-updatereadgroups-link]: https://fulcrumgenomics.github.io/fgbio/tools/latest/UpdateReadGroups.html
+[fgbio-collectalternatecontignames-link]: https://fulcrumgenomics.github.io/fgbio/tools/latest/CollectAlternateContigNames.html
+[fgbio-updatefastacontignames-link]: https://fulcrumgenomics.github.io/fgbio/tools/latest/UpdateFastaContigNames.html
+[fgbio-updatevcfcontignames-link]: https://fulcrumgenomics.github.io/fgbio/tools/latest/UpdateVcfContigNames.html
+[fgbio-updategffcontignames-link]: https://fulcrumgenomics.github.io/fgbio/tools/latest/UpdateGffContigNames.html
+[fgbio-updateintervallistcontignames-link]: https://fulcrumgenomics.github.io/fgbio/tools/latest/UpdateIntervalListContigNames.html
+[fgbio-updatedelimitedfilecontignames-link]: https://fulcrumgenomics.github.io/fgbio/tools/latest/UpdateDelimitedFileContigNames.html
+[fgbio-errorratebyreadposition-link]: https://fulcrumgenomics.github.io/fgbio/tools/latest/ErrorRateByReadPosition.html
+[fgbio-estimatepoolingfractions-link]: https://fulcrumgenomics.github.io/fgbio/tools/latest/EstimatePoolingFractions.html
+[fgbio-estimaternaseqinsertsize-link]: https://fulcrumgenomics.github.io/fgbio/tools/latest/EstimateRnaSeqInsertSize.html
+[fgbio-pickilluminaindices-link]: https://fulcrumgenomics.github.io/fgbio/tools/latest/PickIlluminaIndices.html
+[fgbio-picklongindices-link]: https://fulcrumgenomics.github.io/fgbio/tools/latest/PickLongIndices.html
+[fgbio-findtechnicalreads-link]: https://fulcrumgenomics.github.io/fgbio/tools/latest/FastqToBam.html
+[fgbio-sortbam-link]: https://fulcrumgenomics.github.io/fgbio/tools/latest/SortBam.html
+[fgbio-makemixturevcf-link]: https://fulcrumgenomics.github.io/fgbio/tools/latest/MakeMixtureVcf.html
+[fgbio-maketwosamplemixturevcf-link]: https://fulcrumgenomics.github.io/fgbio/tools/latest/MakeTwoSampleMixtureVcf.html
+[fgbio-findswitchbackreads-link]: https://fulcrumgenomics.github.io/fgbio/tools/latest/FindSwitchbackReads.html
 
 ## Building 
 ### Cloning the Repository
