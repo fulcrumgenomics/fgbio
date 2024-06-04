@@ -74,11 +74,13 @@ object DownsampleVcf extends LazyLogging {
    */
   def downsampleAndRegenotype(variant: Variant,
                               proportions: Map[String, Double],
-                              random: Random, epsilon: Double=0.01): Variant = {
+                              random: Random, epsilon: Double=0.01,
+                              minAdHomvar: Int = 4, minAdHomref: Int = 2): Variant = {
     try {
       variant.copy(genotypes=variant.genotypes.map { case (sample, gt) =>
         val proportion = proportions(sample)
-        sample -> downsampleAndRegenotype(gt=gt, proportion=proportion, random=random, epsilon=epsilon)
+        sample -> downsampleAndRegenotype(gt=gt, proportion=proportion, random=random, epsilon=epsilon,
+                                          minAdHomvar=minAdHomvar, minAdHomref=minAdHomref)
       })
     } catch {
       case e: MatchError => throw new Exception(
@@ -95,13 +97,23 @@ object DownsampleVcf extends LazyLogging {
    * @param epsilon the sequencing error rate for genotyping
    * @return a new Genotype with updated allele depths, PLs, and genotype
    */
-  def downsampleAndRegenotype(gt: Genotype, proportion: Double, random: Random, epsilon: Double): Genotype = {
+  def downsampleAndRegenotype(
+      gt: Genotype, proportion: Double, random: Random, epsilon: Double, minAdHomvar: Int, minAdHomref: Int
+    ): Genotype = {
     val oldAds = gt.getOrElse[IndexedSeq[Int]]("AD", throw new Exception(s"AD tag not found for sample ${gt.sample}"))
     val newAds = downsampleADs(oldAds, proportion, random)
     val likelihoods = Likelihoods(newAds, epsilon = epsilon)
     val pls = likelihoods.pls
     val calls = likelihoods.mostLikelyCall(gt.alleles.toSeq)
-    gt.copy(attrs=Map("PL" -> pls, "AD" -> newAds, "DP" -> newAds.sum), calls=calls)
+    val totalAd = newAds.sum
+    val new_gt = gt.copy(attrs=Map("PL" -> pls, "AD" -> newAds, "DP" -> totalAd), calls=calls)
+    if (new_gt.isHomVar && totalAd < minAdHomvar) {
+      new_gt.copy(calls = calls.map(_ => Allele.NoCallAllele))
+    } else if(new_gt.isHomRef && totalAd < minAdHomref) {
+      new_gt.copy(calls = calls.map(_ => Allele.NoCallAllele))
+    } else {
+      new_gt
+    }
   }
 
   object Likelihoods {
@@ -148,7 +160,7 @@ object DownsampleVcf extends LazyLogging {
         math.log10((1 - epsilon) / 2),
         math.log10(1 - epsilon)
       )
-      // compute genotype log-likelihoods      
+      // compute genotype log-likelihoods
       (0 until numAlleles).flatMap(b =>
         (0 to b).map(a =>
           (0 until numAlleles).map(allele =>
@@ -236,6 +248,8 @@ class DownsampleVcf
   @arg(flag='o', doc="Output file name.") val output: PathToVcf,
   @arg(flag='w', doc="Winnowing window size.") val windowSize: Int = 0,
   @arg(flag='e', doc="Sequencing Error rate for genotyping.") val epsilon: Double = 0.01,
+  @arg(flag='v', doc="Minimum allele depth to call HOMVAR (otherwise NO-CALL)") val minAdHomvar: Int = 4,
+  @arg(flag='r', doc="Minimum allele depth to call HOMREF (otherwise NO-CALL)") val minAdHomref: Int = 2,
   @arg(flag='c', doc="True to write out no-calls.") val writeNoCall: Boolean = false,
   @arg(flag='s', doc="Random seed value.") val seed: Int = 42,
   ) extends FgBioTool {
@@ -297,7 +311,8 @@ class DownsampleVcf
     val progress = ProgressLogger(logger, noun="variants written")
     val random = new Random(seed)
     winnowed.foreach { v =>
-      val ds = downsampleAndRegenotype(v, proportions=proportions, random=random, epsilon=epsilon)
+      val ds = downsampleAndRegenotype(v, proportions=proportions, random=random, epsilon=epsilon,
+                                       minAdHomvar=minAdHomvar, minAdHomref=minAdHomref)
       if (writeNoCall || !ds.gts.forall(g => g.isNoCall)) {
         outputVcf += ds
         progress.record(ds)

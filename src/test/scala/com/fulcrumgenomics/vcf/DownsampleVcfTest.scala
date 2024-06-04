@@ -299,35 +299,40 @@ class DownsampleVcfTest extends UnitSpec {
 
   "DownsampleVcf.downsampleAndRegneotype(Genotype)" should "return no call if all allele depths are zero" in {
     val geno = makeGt(ref="A", alt="T", ads=IndexedSeq(0,0))
-    val newGeno = downsampleAndRegenotype(gt=geno, proportion=0.01, random = new Random(42), epsilon = 0.01)
+    val newGeno = downsampleAndRegenotype(gt=geno, proportion=0.01, random = new Random(42), epsilon = 0.01,
+                                          minAdHomvar = 0, minAdHomref = 0)
     val expected = IndexedSeq(Allele("."), Allele("."))
     newGeno.calls should contain theSameElementsInOrderAs expected
   }
 
   it should "return two ref alleles if the ref AD is much larger than the alt AD" in {
     val geno = makeGt(ref="A", alt="T", ads=IndexedSeq(100,0))
-    val newGeno = downsampleAndRegenotype(gt=geno, proportion=0.1, random = new Random(42), epsilon = 0.01)
+    val newGeno = downsampleAndRegenotype(gt=geno, proportion=0.1, random = new Random(42), epsilon = 0.01,
+                                          minAdHomvar=0, minAdHomref=0)
     val expected = IndexedSeq(Allele("A"), Allele("A"))
     newGeno.calls should contain theSameElementsInOrderAs expected
   }
 
   it should "return two alt alleles if the alt AD is greater than the ref AD" in {
     val geno = makeGt(ref="A", alt="T", ads=IndexedSeq(0,100))
-    val newGeno = downsampleAndRegenotype(gt=geno, proportion=0.1, random = new Random(42), epsilon = 0.01)
+    val newGeno = downsampleAndRegenotype(gt=geno, proportion=0.1, random = new Random(42), epsilon = 0.01,
+                                          minAdHomvar = 0, minAdHomref = 0)
     val expected = IndexedSeq(Allele("T"), Allele("T"))
     newGeno.calls should contain theSameElementsInOrderAs expected
   }
 
   it should "return two alt alleles if ref and alt AD > 0 but ref << alt" in {
     val geno = makeGt(ref="A", alt="T", ads=IndexedSeq(30,200))
-    val newGeno = downsampleAndRegenotype(gt=geno, proportion=0.1, random = new Random(42), epsilon = 0.01)
+    val newGeno = downsampleAndRegenotype(gt=geno, proportion=0.1, random = new Random(42), epsilon = 0.01,
+                                          minAdHomvar = 0, minAdHomref = 0)
     val expected = IndexedSeq(Allele("T"), Allele("T"))
     newGeno.calls should contain theSameElementsInOrderAs expected
   }
 
   it should "return het if ref and alt ADs are similar but ref < alt" in {
     val geno = makeGt(ref="A", alt="T", ads=IndexedSeq(190,200))
-    val newGeno = downsampleAndRegenotype(gt=geno, proportion=0.1, random = new Random(42), epsilon = 0.01)
+    val newGeno = downsampleAndRegenotype(gt=geno, proportion=0.1, random = new Random(42), epsilon = 0.01,
+                                          minAdHomvar = 0, minAdHomref = 0)
     val expected = IndexedSeq(Allele("A"), Allele("T"))
     newGeno.calls should contain theSameElementsInOrderAs expected
   }
@@ -335,8 +340,25 @@ class DownsampleVcfTest extends UnitSpec {
 
   it should "return a ref and alt allele if the ref and alt ADs are the same" in {
     val geno = makeGt(ref="A", alt="T", ads=IndexedSeq(100,100))
-    val newGeno = downsampleAndRegenotype(gt=geno, proportion=0.1, random = new Random(42), epsilon = 0.01)
+    val newGeno = downsampleAndRegenotype(gt=geno, proportion=0.1, random = new Random(42), epsilon = 0.01,
+                                          minAdHomvar=0, minAdHomref=0)
     val expected = IndexedSeq(Allele("A"), Allele("T"))
+    newGeno.calls should contain theSameElementsInOrderAs expected
+  }
+
+  it  should "return no call if all alleles are alt but allele depth is less than minAdHomvar" in {
+    val geno = makeGt(ref = "A", alt = "T", ads = IndexedSeq(0, 400))
+    val newGeno = downsampleAndRegenotype(gt = geno, proportion = 0.01, random = new Random(42), epsilon = 0.01,
+      minAdHomvar = 8, minAdHomref = 0)
+    val expected = IndexedSeq(Allele("."), Allele("."))
+    newGeno.calls should contain theSameElementsInOrderAs expected
+  }
+
+  it should "return no call if all alleles are ref but allele depth is less than minAdHomref" in {
+    val geno = makeGt(ref = "A", alt = "T", ads = IndexedSeq(200, 0))
+    val newGeno = downsampleAndRegenotype(gt = geno, proportion = 0.01, random = new Random(42), epsilon = 0.01,
+      minAdHomvar = 0, minAdHomref = 4)
+    val expected = IndexedSeq(Allele("."), Allele("."))
     newGeno.calls should contain theSameElementsInOrderAs expected
   }
 
@@ -352,14 +374,16 @@ class DownsampleVcfTest extends UnitSpec {
 
   it should "return ref,alt1 for a tri-allelic genotype if those alleles have the highest depth" in {
     val geno = makeTriallelicGt(ref="A", alt1="T", alt2="G", ads=IndexedSeq(100, 100, 0))
-    val newGeno = downsampleAndRegenotype(gt=geno, proportion=0.1, random = new Random(42), epsilon = 0.01)
+    val newGeno = downsampleAndRegenotype(gt=geno, proportion=0.1, random = new Random(42), epsilon = 0.01,
+                                          minAdHomvar=0, minAdHomref=0)
     val expected = IndexedSeq(Allele("A"), Allele("T"))
     newGeno.calls should contain theSameElementsInOrderAs expected
   }
 
   it should "return alt1,alt2 for a tri-allelic genotype if those alleles have the highest depth" in {
     val geno = makeTriallelicGt(ref="A", alt1="T", alt2="G", ads=IndexedSeq(0, 100, 100))
-    val newGeno = downsampleAndRegenotype(gt=geno, proportion=0.1, random = new Random(42), epsilon = 0.01)
+    val newGeno = downsampleAndRegenotype(gt=geno, proportion=0.1, random = new Random(42), epsilon = 0.01,
+                                          minAdHomvar=0, minAdHomref=0)
     val expected = IndexedSeq(Allele("T"), Allele("G"))
     newGeno.calls should contain theSameElementsInOrderAs expected
   }
