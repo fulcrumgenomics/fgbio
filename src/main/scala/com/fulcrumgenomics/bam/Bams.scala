@@ -186,8 +186,9 @@ object Bams extends LazyLogging {
   def sorter(order: SamOrder,
              header: SAMFileHeader,
              maxRecordsInRam: Int = MaxInMemory,
-             tmpDir: DirPath = Io.tmpDir): Sorter[SamRecord,order.A] = {
-    new Sorter(maxRecordsInRam, new SamRecordCodec(header), order.sortkey, tmpDir=tmpDir)
+             tmpDir: DirPath = Io.tmpDir,
+             threads: Int = 4): Sorter[SamRecord,order.A] = {
+    new Sorter(maxRecordsInRam, new SamRecordCodec(header), order.sortkey, tmpDir=tmpDir, threads=threads)
   }
 
   /** A wrapper to order objects of type [[TagType]] using the ordering given.  Used when sorting by tag where we wish
