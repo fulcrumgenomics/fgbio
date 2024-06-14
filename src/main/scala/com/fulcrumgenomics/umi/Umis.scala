@@ -41,9 +41,9 @@ object Umis {
     * @param delimiter the delimiter of fields within the read name
     * @return the modified record
     */
-  def copyUmiFromReadName(rec: SamRecord, removeUmi: Boolean = false, delimiter: Char = ':'): SamRecord = {
+  def copyUmiFromReadName(rec: SamRecord, removeUmi: Boolean = false, delimiter: Char = ':', prefix: Option[String] = None): SamRecord = {
     // Extract and set the UMI
-    val umi = extractUmisFromReadName(rec.name, delimiter, strict=false)
+    val umi = extractUmisFromReadName(rec.name, delimiter, strict=false, prefix=prefix)
     require(umi.nonEmpty, f"No valid UMI found in: ${rec.name}")
     umi.foreach(u => rec(ConsensusTags.UmiBases) = u)
 
@@ -67,7 +67,7 @@ object Umis {
     * 
     * If `strict` is false the last segment is returned so long as it appears to be a valid UMI.
     */
-  def extractUmisFromReadName(name: String, delimiter: Char = ':', strict: Boolean): Option[String] = {
+  def extractUmisFromReadName(name: String, delimiter: Char = ':', strict: Boolean, prefix: Option[String] = None): Option[String] = {
     // If strict, check that the read name actually has eight parts, which is expected
     val rawUmi = if (strict) {
       val colons = name.count(_ == delimiter)
@@ -80,8 +80,9 @@ object Umis {
       Some(name.substring(idx + 1, name.length))
     }
 
-    val umi   = rawUmi.map(raw => (if (raw.indexOf('+') > 0) raw.replace('+', '-') else raw).toUpperCase)
-    val valid = umi.forall(u => u.forall(isValidUmiCharacter))
+    val umiSeq = rawUmi.map(seq => (if (prefix.isEmpty) seq else seq.stripPrefix(prefix.get)))
+    val umi = umiSeq.map(raw => (if (raw.indexOf('+') > 0) raw.replace('+', '-') else raw).toUpperCase)
+    val valid  = umi.forall(u => u.forall(isValidUmiCharacter))
 
     if (strict && !valid) throw new IllegalArgumentException(s"Invalid UMI '${umi.get}' extracted from name '${name}")
     else if (!valid) None
