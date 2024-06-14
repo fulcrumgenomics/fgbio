@@ -24,15 +24,15 @@
 
 package com.fulcrumgenomics.bam.api
 
-import java.nio.file.Files
-import java.util.concurrent.{Callable, Executors, TimeUnit}
-
 import com.fulcrumgenomics.FgBioDef._
+import com.fulcrumgenomics.bam.api.SamSource.{DefaultUseAsyncIo, DefaultValidationStringency}
 import com.fulcrumgenomics.fasta.{SequenceDictionary, SequenceMetadata}
 import com.fulcrumgenomics.testing.{SamBuilder, UnitSpec}
 import com.fulcrumgenomics.util.Io
 import htsjdk.samtools.GenomicIndexUtil
 
+import java.nio.file.Files
+import java.util.concurrent.{Callable, Executors, TimeUnit}
 import scala.util.Random
 
 class SamIoTest extends UnitSpec {
@@ -163,5 +163,30 @@ class SamIoTest extends UnitSpec {
     xs.toList
     filterCount shouldBe 10
     mapCount shouldBe 10
+  }
+
+  it should "allow reading from a stream of SAM bytes" in {
+    val builder = new SamBuilder()
+    builder.addPair(name = "q1", start1 = 100, start2 = 300)
+    builder.addPair(name = "q4", start1 = 200, start2 = 400)
+    builder.addPair(name = "q3", start1 = 300, start2 = 500)
+    builder.addPair(name = "q2", start1 = 400, start2 = 600)
+
+    val sam = makeTempFile(getClass.getSimpleName, ".sam")
+    val out = SamWriter(sam, builder.header, sort = Some(SamOrder.Coordinate))
+    builder.foreach(out.write)
+    out.close()
+
+    val source = SamSource(
+      stream     = Io.toInputStream(sam),
+      ref        = None,
+      async      = DefaultUseAsyncIo,
+      stringency = DefaultValidationStringency,
+      factory    = SamRecord.Factory
+    )
+
+    source.indexed shouldBe false
+    source.toSeq.map(_.start) should contain theSameElementsInOrderAs Seq(100, 200, 300, 300, 400, 400, 500, 600)
+    source.close()
   }
 }
