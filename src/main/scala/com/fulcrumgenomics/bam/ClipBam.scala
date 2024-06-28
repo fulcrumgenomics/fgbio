@@ -55,7 +55,7 @@ import scala.collection.immutable.IndexedSeq
     |done in streaming fashion with, for example:
     |
     |```
-    |samtools sort -n -u in.bam | fgbio ClipBam -i /dev/stdin ...
+    |samtools sort -n in.bam | fgbio ClipBam -i /dev/stdin ...
     |```
     |
     |The output sort order may be specified with `--sort-order`.  If not given, then the output will be in the same
@@ -86,7 +86,7 @@ class ClipBam
   @arg(          doc="Require at least this number of bases to be clipped on the 3' end of R2") val readTwoThreePrime: Int = 0,
   @arg(          doc="Clip overlapping reads.") val clipOverlappingReads: Boolean = false,
   @arg(          doc="Clip reads in FR pairs that sequence past the far end of their mate.") val clipBasesPastMate: Boolean = false,
-  @arg(flag='S', doc="The sort order of the output. If not given, output will be in the same order as input if the input.")
+  @arg(flag='S', doc="The sort order of the output. If not given, output will be in the same order as the input.")
   val sortOrder: Option[SamOrder] = None
 ) extends FgBioTool with LazyLogging {
   Io.assertReadable(input)
