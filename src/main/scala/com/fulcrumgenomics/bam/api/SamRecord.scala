@@ -27,6 +27,7 @@ package com.fulcrumgenomics.bam.api
 
 import com.fulcrumgenomics.FgBioDef._
 import com.fulcrumgenomics.alignment.Cigar
+import com.fulcrumgenomics.umi.ConsensusTags.PerRead.AllPerReadTags
 import htsjdk.samtools
 import htsjdk.samtools.SamPairUtil.PairOrientation
 import htsjdk.samtools._
@@ -267,6 +268,10 @@ trait SamRecord {
       mateMapped &&
       refIndex == mateRefIndex &&
       SamPairUtil.getPairOrientation(this) == PairOrientation.FR
+  }
+
+  def isConsensus: Boolean = {
+    AllPerReadTags.exists(this.contains)
   }
 
   /** Clone method that does a "reasonably deep" clone. The bases and quals are cloned as is the attributes map,

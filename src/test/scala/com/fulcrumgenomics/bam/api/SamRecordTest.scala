@@ -27,6 +27,7 @@ package com.fulcrumgenomics.bam.api
 import com.fulcrumgenomics.alignment.Cigar
 import com.fulcrumgenomics.testing.SamBuilder.{Minus, Plus}
 import com.fulcrumgenomics.testing.{SamBuilder, UnitSpec}
+import com.fulcrumgenomics.umi.ConsensusTags.PerRead.AllPerReadTags
 import htsjdk.samtools.TextCigarCodec
 import org.scalatest.OptionValues
 
@@ -288,5 +289,18 @@ class SamRecordTest extends UnitSpec with OptionValues {
     rec2.remove("MC")
     rec1.matesOverlap shouldBe None // Mate's start is not enclosed by rec, and mate's end cannot be determined
     rec2.matesOverlap.value shouldBe true // Mate's start is enclosed by rec, regardless of where mate end is
+  }
+
+  "SamRecord.isConsensus" should "return false for reads without consensus tags" in {
+    val builder = new SamBuilder(sort=Some(SamOrder.Coordinate), readLength=10, baseQuality=20)
+    builder.addFrag(start=100).exists(_.isConsensus) shouldBe false
+    builder.addPair(start1=100, start2=100, unmapped2=true).exists(_.isConsensus) shouldBe false
+  }
+
+  it should "return true for reads with consensus tags" in {
+    val builder = new SamBuilder(sort=Some(SamOrder.Coordinate), readLength=10, baseQuality=20)
+    AllPerReadTags.forall(
+      tag => builder.addFrag(start=10, attrs=Map(tag -> 123)).exists(_.isConsensus)
+    ) shouldBe true
   }
 }
