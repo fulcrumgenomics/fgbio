@@ -33,14 +33,21 @@ class CopyUmiFromReadNameTest extends UnitSpec with OptionValues {
   private case class Result(name: String, umi: String)
 
   /** Runs CopyUmiFromReadName using the given read names returning the output read names and UMIs. */
-  private def run(names: Iterable[String], removeUmi: Boolean, umiPrefix: Option[String] = None): IndexedSeq[Result] = {
+  private def run(names: Iterable[String], 
+                  removeUmi: Boolean,
+                  rcPrefix: Option[String] = None,
+                  normalizeRcUmis: Boolean = false): IndexedSeq[Result] = {
     // build the reads
     val builder = new SamBuilder()
     names.foreach { name => builder.addFrag(name=name, unmapped=true) }
 
     // run the tool
     val out  = makeTempFile("test.", ".bam")
-    val tool = new CopyUmiFromReadName(input=builder.toTempFile(), output=out, removeUmi=removeUmi, umiPrefix=umiPrefix)
+    val tool = new CopyUmiFromReadName(input=builder.toTempFile(), 
+                                       output=out, 
+                                       removeUmi=removeUmi,
+                                       rcPrefix=rcPrefix,
+                                       normalizeRcUmis=normalizeRcUmis)
     executeFgbioTool(tool)
 
     // slurp the results
@@ -70,10 +77,17 @@ class CopyUmiFromReadNameTest extends UnitSpec with OptionValues {
     results.map(_.umi) should contain theSameElementsInOrderAs Seq("AAAA", "CCCC", "GGGG", "AAAA-CCCC")
   }
 
-  it should "remove any additional separator characters preceding the UMI" in {
-    val names   = Seq("1:rAAAA", "1:2:rCCCC", "1:2:3:rGGGG", "blah:rAAAA-CCCC")
-    val results = run(names=names, removeUmi=true, umiPrefix=Some("r"))
+  it should "remove a reverse-complement prefix to the UMI" in {
+    val names   = Seq("1:rAAAA", "1:2:rCCCC", "1:2:3:rGGGG", "blah:rAAAA+CCCC")
+    val results = run(names=names, removeUmi=true, rcPrefix=Some("r"), normalizeRcUmis = false)
     results.map(_.name) should contain theSameElementsInOrderAs Seq("1", "1:2", "1:2:3", "blah")
     results.map(_.umi) should contain theSameElementsInOrderAs Seq("AAAA", "CCCC", "GGGG", "AAAA-CCCC")
+  }
+
+  it should "remove a reverse-complement prefix to the UMI and reverse-complement the UMI when '--normalize-rc-umis'" in {
+    val names   = Seq("1:rAAAA", "1:2:rCCCC", "1:2:3:rGGGG", "blah:rAAAA+CCCC")
+    val results = run(names=names, removeUmi=true, rcPrefix=Some("r"), normalizeRcUmis = true)
+    results.map(_.name) should contain theSameElementsInOrderAs Seq("1", "1:2", "1:2:3", "blah")
+    results.map(_.umi) should contain theSameElementsInOrderAs Seq("TTTT", "GGGG", "CCCC", "TTTT-CCCC")
   }
 }

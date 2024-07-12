@@ -26,6 +26,7 @@
 package com.fulcrumgenomics.umi
 
 import com.fulcrumgenomics.bam.api.SamRecord
+import com.fulcrumgenomics.util.Sequences
 
 object Umis {
 
@@ -38,17 +39,30 @@ object Umis {
     *
     * @param rec the record to modify
     * @param removeUmi true to remove the UMI from the read name, otherwise only copy the UMI to the tag
-    * @param delimiter the delimiter of fields within the read name
+    * @param fieldDelimiter the delimiter of fields within the read name
+    * @param umiDelimiter the delimiter between sequences in the UMI string
+    * @param rcPrefix the prefix of a UMI that indicates it is reverse-complimented
+    * @param normalizeRcUmis whether to normalize reverse-complemented UMIs
     * @return the modified record
     */
-  def copyUmiFromReadName(rec: SamRecord, removeUmi: Boolean = false, delimiter: Char = ':', prefix: Option[String] = None): SamRecord = {
+  def copyUmiFromReadName(rec: SamRecord,
+                          removeUmi: Boolean = false,
+                          fieldDelimiter: Char = ':',
+                          umiDelimiter: Char = '+',
+                          rcPrefix: Option[String] = None,
+                          normalizeRcUmis: Boolean = false): SamRecord = {
     // Extract and set the UMI
-    val umi = extractUmisFromReadName(rec.name, delimiter, strict=false, prefix=prefix)
+    val umi = extractUmisFromReadName(rec.name, 
+                                      fieldDelimiter,
+                                      strict=false,
+                                      umiDelimiter,
+                                      rcPrefix=rcPrefix,
+                                      normalizeRcUmis=normalizeRcUmis)
     require(umi.nonEmpty, f"No valid UMI found in: ${rec.name}")
     umi.foreach(u => rec(ConsensusTags.UmiBases) = u)
 
     // Remove the UMI from the read name if requested
-    if (removeUmi) rec.name = rec.name.substring(0, rec.name.lastIndexOf(delimiter))
+    if (removeUmi) rec.name = rec.name.substring(0, rec.name.lastIndexOf(fieldDelimiter))
 
     rec
   }
@@ -59,29 +73,43 @@ object Umis {
     *
     *  See https://support.illumina.com/help/BaseSpace_OLH_009008/Content/Source/Informatics/BS/FileFormat_FASTQ-files_swBS.htm
     *  The UMI field is optional, so read names may or may not contain it.  Illumina also specifies that the UMI
-    *  field may contain multiple UMIs, in which case they will delimit them with `+` characters.  Pluses will be
-    *  translated to hyphens before returning.
+    *  field may contain multiple UMIs, in which case they will delimit them with `umiDelimiter` characters, which
+    *  will be translated to hyphens before returning.
     *
     *  If `strict` is true the name _must_ contain either 7 or 8 colon-separated segments, 
     with the UMI being the last in the case of 8 and `None` in the case of 7.
     * 
     * If `strict` is false the last segment is returned so long as it appears to be a valid UMI.
     */
-  def extractUmisFromReadName(name: String, delimiter: Char = ':', strict: Boolean, prefix: Option[String] = None): Option[String] = {
+  def extractUmisFromReadName(name: String,
+                              fieldDelimiter: Char = ':',
+                              strict: Boolean,
+                              umiDelimiter: Char = '+',
+                              rcPrefix: Option[String] = None,
+                              normalizeRcUmis: Boolean = false): Option[String] = {
     // If strict, check that the read name actually has eight parts, which is expected
     val rawUmi = if (strict) {
-      val colons = name.count(_ == delimiter)
+      val colons = name.count(_ == fieldDelimiter)
       if (colons == 6) None
-      else if (colons == 7) Some(name.substring(name.lastIndexOf(delimiter) + 1, name.length))
+      else if (colons == 7) Some(name.substring(name.lastIndexOf(fieldDelimiter) + 1, name.length))
       else throw new IllegalArgumentException(s"Trying to extract UMI from read with ${colons + 1} parts (7-8 expected): ${name}")
     } else {
-      val idx = name.lastIndexOf(delimiter)
-      require(idx != -1, s"Read did not have multiple '${delimiter}'-separated fields: ${name}")
+      val idx = name.lastIndexOf(fieldDelimiter)
+      require(idx != -1, s"Read did not have multiple '${fieldDelimiter}'-separated fields: ${name}")
       Some(name.substring(idx + 1, name.length))
     }
 
-    val umiSeq = rawUmi.map(seq => (if (prefix.isEmpty) seq else seq.stripPrefix(prefix.get)))
-    val umi = umiSeq.map(raw => (if (raw.indexOf('+') > 0) raw.replace('+', '-') else raw).toUpperCase)
+    var umi = rawUmi.map(raw => rcPrefix match {
+      case Some(prefix) if raw.indexOf(prefix) >= 0 && normalizeRcUmis => 
+        raw.split(umiDelimiter).map(seq => 
+          (if (seq.startsWith(prefix)) Sequences.revcomp(seq.stripPrefix(prefix)) else seq).toUpperCase
+        ).mkString("-")
+      case Some(prefix) if raw.indexOf(prefix) >= 0 => 
+        raw.replace(prefix, "").replace(umiDelimiter, '-').toUpperCase
+      case _ if raw.indexOf(umiDelimiter) > 0 => raw.replace(umiDelimiter, '-').toUpperCase
+      case _ => raw.toUpperCase
+    })
+
     val valid  = umi.forall(u => u.forall(isValidUmiCharacter))
 
     if (strict && !valid) throw new IllegalArgumentException(s"Invalid UMI '${umi.get}' extracted from name '${name}")

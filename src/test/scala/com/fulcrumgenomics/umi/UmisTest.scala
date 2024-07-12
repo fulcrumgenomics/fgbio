@@ -92,9 +92,9 @@ class UmisTest extends UnitSpec with OptionValues {
   }
   
   it should "split on a different name delimiter if specified" in {
-    copyUmiFromReadName(rec=rec("UMI-A"), delimiter='-').nameAndUmi shouldBe ("UMI-A", "A")
-    copyUmiFromReadName(rec=rec("UMI-C-A"), delimiter='-').nameAndUmi shouldBe ("UMI-C-A", "A")
-    copyUmiFromReadName(rec=rec("UMI-C-ACC+GGT"), delimiter='-').nameAndUmi shouldBe ("UMI-C-ACC+GGT", "ACC-GGT")
+    copyUmiFromReadName(rec=rec("UMI-A"), fieldDelimiter='-').nameAndUmi shouldBe ("UMI-A", "A")
+    copyUmiFromReadName(rec=rec("UMI-C-A"), fieldDelimiter='-').nameAndUmi shouldBe ("UMI-C-A", "A")
+    copyUmiFromReadName(rec=rec("UMI-C-ACC+GGT"), fieldDelimiter='-').nameAndUmi shouldBe ("UMI-C-ACC+GGT", "ACC-GGT")
   }
 
   it should "change the UMI delimiter from + to -" in {
