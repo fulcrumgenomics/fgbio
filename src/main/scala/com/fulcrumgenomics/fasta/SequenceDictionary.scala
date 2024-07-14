@@ -185,7 +185,7 @@ case class SequenceMetadata private[fasta]
     this.get(Keys.Topology).flatMap(tp => Topology.values.find(_.name == tp))
   }
 
-  /** Returns true if the the sequences share a common reference name (including aliases), have the same length, and
+  /** Returns true if the sequences share a common reference name (including aliases), have the same length, and
     * the same MD5 if both have MD5s. */
   def sameAs(that: SequenceMetadata): Boolean = {
     if (this.length != that.length) false
@@ -267,7 +267,7 @@ case class SequenceDictionary(infos: IndexedSeq[SequenceMetadata]) extends Itera
   override def iterator: Iterator[SequenceMetadata] = this.infos.iterator
   def length: Int = this.infos.length
 
-  /** Returns true if the the sequences share a common reference name (including aliases), have the same length, and
+  /** Returns true if the sequences share a common reference name (including aliases), have the same length, and
     * the same MD5 if both have MD5s. */
   def sameAs(that: SequenceDictionary): Boolean = {
     this.length == that.length && this.zip(that).forall { case (thisInfo, thatInfo) => thisInfo.sameAs(thatInfo) }
