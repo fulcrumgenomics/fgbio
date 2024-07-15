@@ -41,23 +41,25 @@ object Umis {
     * @param removeUmi true to remove the UMI from the read name, otherwise only copy the UMI to the tag
     * @param fieldDelimiter the delimiter of fields within the read name
     * @param umiDelimiter the delimiter between sequences in the UMI string
-    * @param rcPrefix the prefix of a UMI that indicates it is reverse-complimented
-    * @param normalizeRcUmis whether to normalize reverse-complemented UMIs
+    * @param reverseComplementPrefix the prefix of a UMI that indicates it is reverse-complimented
+    * @param normalizeReverseComplementUmis whether to normalize reverse-complemented UMIs
     * @return the modified record
     */
   def copyUmiFromReadName(rec: SamRecord,
                           removeUmi: Boolean = false,
                           fieldDelimiter: Char = ':',
                           umiDelimiter: Char = '+',
-                          rcPrefix: Option[String] = None,
-                          normalizeRcUmis: Boolean = false): SamRecord = {
+                          reverseComplementPrefix: Option[String] = None,
+                          normalizeReverseComplementUmis: Boolean = false): SamRecord = {
     // Extract and set the UMI
-    val umi = extractUmisFromReadName(rec.name, 
-                                      fieldDelimiter,
-                                      strict=false,
-                                      umiDelimiter,
-                                      rcPrefix=rcPrefix,
-                                      normalizeRcUmis=normalizeRcUmis)
+    val umi = extractUmisFromReadName(
+      name                           = rec.name, 
+      fieldDelimiter                 = fieldDelimiter,
+      strict                         = false,
+      umiDelimiter                   = umiDelimiter,
+      reverseComplementPrefix        = reverseComplementPrefix,
+      normalizeReverseComplementUmis = normalizeReverseComplementUmis
+    )
     require(umi.nonEmpty, f"No valid UMI found in: ${rec.name}")
     umi.foreach(u => rec(ConsensusTags.UmiBases) = u)
 
@@ -85,8 +87,8 @@ object Umis {
                               fieldDelimiter: Char = ':',
                               strict: Boolean,
                               umiDelimiter: Char = '+',
-                              rcPrefix: Option[String] = None,
-                              normalizeRcUmis: Boolean = false): Option[String] = {
+                              reverseComplementPrefix: Option[String] = None,
+                              normalizeReverseComplementUmis: Boolean = false): Option[String] = {
     // If strict, check that the read name actually has eight parts, which is expected
     val rawUmi = if (strict) {
       val colons = name.count(_ == fieldDelimiter)
@@ -99,8 +101,8 @@ object Umis {
       Some(name.substring(idx + 1, name.length))
     }
 
-    var umi = rawUmi.map(raw => rcPrefix match {
-      case Some(prefix) if raw.indexOf(prefix) >= 0 && normalizeRcUmis => 
+    var umi = rawUmi.map(raw => reverseComplementPrefix match {
+      case Some(prefix) if raw.indexOf(prefix) >= 0 && normalizeReverseComplementUmis => 
         raw.split(umiDelimiter).map(seq => 
           (if (seq.startsWith(prefix)) Sequences.revcomp(seq.stripPrefix(prefix)) else seq).toUpperCase
         ).mkString("-")

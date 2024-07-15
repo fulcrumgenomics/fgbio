@@ -50,7 +50,7 @@ import com.fulcrumgenomics.util.{Io, ProgressLogger}
     |be normalized (i.e., reverse-complemented back to be in the forward orientation).
     |
     |To obtain behavior similar to `umi_tools`' `--umi-separator=":r"`, specify the delimiter and
-    |prefix separately, i.e. `--field-delimiter=":"` and `--rc-prefix="r"`.
+    |prefix separately, i.e. `--field-delimiter=":"` and `--reverse-complement-prefix="r"`.
   """)
 class CopyUmiFromReadName
 ( @arg(flag='i', doc="The input BAM file.") input: PathToBam,
@@ -58,12 +58,13 @@ class CopyUmiFromReadName
   @arg(doc="Remove the UMI from the read name.") removeUmi: Boolean = false,
   @arg(doc="Delimiter between the read name and UMI.") fieldDelimiter: Char = ':',
   @arg(doc="Delimiter between UMI sequences.") umiDelimiter: Char = '+',
-  @arg(doc="The prefix to a UMI sequence that indicates it is reverse-complemented.") rcPrefix: Option[String] = None,
-  @arg(doc="Whether to reverse-complement UMI sequences with the '--rc-prefix'.") normalizeRcUmis: Boolean = false,
+  @arg(flag='p', doc="The prefix to a UMI sequence that indicates it is reverse-complemented.") reverseComplementPrefix: Option[String] = None,
+  @arg(flag='r', doc="Whether to reverse-complement UMI sequences with the '--reverse-complement-prefix'.") normalizeReverseComplementUmis: Boolean = false,
 ) extends FgBioTool with LazyLogging {
 
   Io.assertReadable(input)
   Io.assertCanWriteFile(output)
+  validate(reverseComplementPrefix.forall(_.nonEmpty), "--reverse-complement-prefix cannot be an empty string")
 
   override def execute(): Unit = {
     val source   = SamSource(input)
@@ -71,13 +72,14 @@ class CopyUmiFromReadName
     val progress = new ProgressLogger(logger)
     source.foreach { rec =>
       progress.record(rec)
+
       writer += Umis.copyUmiFromReadName(
-        rec             = rec, 
-        removeUmi       = removeUmi,
-        fieldDelimiter  = fieldDelimiter,
-        umiDelimiter    = umiDelimiter,
-        rcPrefix        = rcPrefix,
-        normalizeRcUmis = normalizeRcUmis
+        rec                            = rec, 
+        removeUmi                      = removeUmi,
+        fieldDelimiter                 = fieldDelimiter,
+        umiDelimiter                   = umiDelimiter,
+        reverseComplementPrefix        = reverseComplementPrefix,
+        normalizeReverseComplementUmis = normalizeReverseComplementUmis
       )
     }
     progress.logLast()
