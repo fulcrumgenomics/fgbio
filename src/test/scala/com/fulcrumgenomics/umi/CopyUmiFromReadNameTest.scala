@@ -35,8 +35,7 @@ class CopyUmiFromReadNameTest extends UnitSpec with OptionValues {
   /** Runs CopyUmiFromReadName using the given read names returning the output read names and UMIs. */
   private def run(names: Iterable[String], 
                   removeUmi: Boolean,
-                  reverseComplementPrefix: Option[String] = None,
-                  normalizeReverseComplementUmis: Boolean = false): IndexedSeq[Result] = {
+                  reverseComplementPrefix: Option[String] = None): IndexedSeq[Result] = {
     // build the reads
     val builder = new SamBuilder()
     names.foreach { name => builder.addFrag(name=name, unmapped=true) }
@@ -48,7 +47,6 @@ class CopyUmiFromReadNameTest extends UnitSpec with OptionValues {
       output                         = out, 
       removeUmi                      = removeUmi,
       reverseComplementPrefix        = reverseComplementPrefix,
-      normalizeReverseComplementUmis = normalizeReverseComplementUmis
     )
     executeFgbioTool(tool)
 
@@ -84,20 +82,7 @@ class CopyUmiFromReadNameTest extends UnitSpec with OptionValues {
     val results = run(
       names                          = names,
       removeUmi                      = true, 
-      reverseComplementPrefix        = Some("r"), 
-      normalizeReverseComplementUmis = false
-    )
-    results.map(_.name) should contain theSameElementsInOrderAs Seq("1", "1:2", "1:2:3", "blah")
-    results.map(_.umi) should contain theSameElementsInOrderAs Seq("AAAA", "CCCC", "GGGG", "AAAA-CCCC")
-  }
-
-  it should "remove a reverse-complement prefix to the UMI and reverse-complement the UMI when '--normalize-reverse-complement-umis'" in {
-    val names   = Seq("1:rAAAA", "1:2:rCCCC", "1:2:3:rGGGG", "blah:rAAAA+CCCC")
-    val results = run(
-      names                          = names,
-      removeUmi                      = true, 
-      reverseComplementPrefix        = Some("r"), 
-      normalizeReverseComplementUmis = true
+      reverseComplementPrefix        = Some("r"),
     )
     results.map(_.name) should contain theSameElementsInOrderAs Seq("1", "1:2", "1:2:3", "blah")
     results.map(_.umi) should contain theSameElementsInOrderAs Seq("TTTT", "GGGG", "CCCC", "TTTT-CCCC")

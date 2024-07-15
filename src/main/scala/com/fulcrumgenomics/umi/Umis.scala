@@ -42,15 +42,13 @@ object Umis {
     * @param fieldDelimiter the delimiter of fields within the read name
     * @param umiDelimiter the delimiter between sequences in the UMI string
     * @param reverseComplementPrefix the prefix of a UMI that indicates it is reverse-complimented
-    * @param normalizeReverseComplementUmis whether to normalize reverse-complemented UMIs
     * @return the modified record
     */
   def copyUmiFromReadName(rec: SamRecord,
                           removeUmi: Boolean = false,
                           fieldDelimiter: Char = ':',
                           umiDelimiter: Char = '+',
-                          reverseComplementPrefix: Option[String] = None,
-                          normalizeReverseComplementUmis: Boolean = false): SamRecord = {
+                          reverseComplementPrefix: Option[String] = None): SamRecord = {
     // Extract and set the UMI
     val umi = extractUmisFromReadName(
       name                           = rec.name, 
@@ -58,7 +56,6 @@ object Umis {
       strict                         = false,
       umiDelimiter                   = umiDelimiter,
       reverseComplementPrefix        = reverseComplementPrefix,
-      normalizeReverseComplementUmis = normalizeReverseComplementUmis
     )
     require(umi.nonEmpty, f"No valid UMI found in: ${rec.name}")
     umi.foreach(u => rec(ConsensusTags.UmiBases) = u)
@@ -87,8 +84,7 @@ object Umis {
                               fieldDelimiter: Char = ':',
                               strict: Boolean,
                               umiDelimiter: Char = '+',
-                              reverseComplementPrefix: Option[String] = None,
-                              normalizeReverseComplementUmis: Boolean = false): Option[String] = {
+                              reverseComplementPrefix: Option[String] = None): Option[String] = {
     // If strict, check that the read name actually has eight parts, which is expected
     val rawUmi = if (strict) {
       val colons = name.count(_ == fieldDelimiter)
@@ -102,12 +98,10 @@ object Umis {
     }
 
     var umi = rawUmi.map(raw => reverseComplementPrefix match {
-      case Some(prefix) if raw.indexOf(prefix) >= 0 && normalizeReverseComplementUmis => 
+      case Some(prefix) if raw.indexOf(prefix) >= 0 => 
         raw.split(umiDelimiter).map(seq => 
           (if (seq.startsWith(prefix)) Sequences.revcomp(seq.stripPrefix(prefix)) else seq).toUpperCase
         ).mkString("-")
-      case Some(prefix) if raw.indexOf(prefix) >= 0 => 
-        raw.replace(prefix, "").replace(umiDelimiter, '-').toUpperCase
       case _ if raw.indexOf(umiDelimiter) > 0 => raw.replace(umiDelimiter, '-').toUpperCase
       case _ => raw.toUpperCase
     })

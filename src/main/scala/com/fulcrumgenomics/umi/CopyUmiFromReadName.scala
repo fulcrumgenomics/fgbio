@@ -45,9 +45,9 @@ import com.fulcrumgenomics.util.{Io, ProgressLogger}
     |will always be hyphen delimited.
     |
     |Some tools (e.g. BCL Convert) may reverse-complement UMIs on R2 and add a prefix to indicate that the sequence
-    |has been reverse-complemented.  The `--rc-prefix` option specifies the prefix character(s) and causes them to
-    |be removed.  Additionally, if the `--normalize-rc-umis` flag is specified, any reverse-complemented UMIs will
-    |be normalized (i.e., reverse-complemented back to be in the forward orientation).
+    |has been reverse-complemented.  The `--reverse-complement-prefix` option specifies the prefix character(s) and
+    |causes them to be removed.  Any reverse-complemented UMIs will be normalized (i.e., reverse-complemented back to 
+    |be in the forward orientation).
     |
     |To obtain behavior similar to `umi_tools`' `--umi-separator=":r"`, specify the delimiter and
     |prefix separately, i.e. `--field-delimiter=":"` and `--reverse-complement-prefix="r"`.
@@ -59,7 +59,6 @@ class CopyUmiFromReadName
   @arg(doc="Delimiter between the read name and UMI.") fieldDelimiter: Char = ':',
   @arg(doc="Delimiter between UMI sequences.") umiDelimiter: Char = '+',
   @arg(flag='p', doc="The prefix to a UMI sequence that indicates it is reverse-complemented.") reverseComplementPrefix: Option[String] = None,
-  @arg(flag='r', doc="Whether to reverse-complement UMI sequences with the '--reverse-complement-prefix'.") normalizeReverseComplementUmis: Boolean = false,
 ) extends FgBioTool with LazyLogging {
 
   Io.assertReadable(input)
@@ -79,7 +78,6 @@ class CopyUmiFromReadName
         fieldDelimiter                 = fieldDelimiter,
         umiDelimiter                   = umiDelimiter,
         reverseComplementPrefix        = reverseComplementPrefix,
-        normalizeReverseComplementUmis = normalizeReverseComplementUmis
       )
     }
     progress.logLast()
