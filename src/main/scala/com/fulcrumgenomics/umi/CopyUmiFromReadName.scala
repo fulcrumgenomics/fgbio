@@ -71,12 +71,14 @@ class CopyUmiFromReadName
     val progress = new ProgressLogger(logger)
     source.foreach { rec =>
       progress.record(rec)
-      writer += Umis.copyUmiFromReadName(rec=rec, 
-                                         removeUmi=removeUmi,
-                                         fieldDelimiter=fieldDelimiter,
-                                         umiDelimiter=umiDelimiter,
-                                         rcPrefix=rcPrefix,
-                                         normalizeRcUmis=normalizeRcUmis)
+      writer += Umis.copyUmiFromReadName(
+        rec             = rec, 
+        removeUmi       = removeUmi,
+        fieldDelimiter  = fieldDelimiter,
+        umiDelimiter    = umiDelimiter,
+        rcPrefix        = rcPrefix,
+        normalizeRcUmis = normalizeRcUmis
+      )
     }
     progress.logLast()
     source.safelyClose()
