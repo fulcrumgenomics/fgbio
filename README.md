@@ -68,7 +68,7 @@ For a full list of available tools please see the [tools section](http://fulcrum
 Below we highlight a few tools that you may find useful.
 
 -   Tools for working with Unique Molecular Indexes (UMIs, aka Molecular IDs or Molecular Barcodes):
-    -   Annotating/Extract Umis from read-level data: [`FastqToBam`][fgbio-fastqtobam-link], [`AnnotateBamWithUmis`][fgbio-annotatebamwithumis-link], [`ExtractUmisFromBam`][fgbio-extractumisfrombam-link], and [`CopyUmiFromReadName`][fgbio-copyumifromreadname-link].
+    -   Annotate/Extract Umis from read-level data: [`FastqToBam`][fgbio-fastqtobam-link], [`AnnotateBamWithUmis`][fgbio-annotatebamwithumis-link], [`ExtractUmisFromBam`][fgbio-extractumisfrombam-link], and [`CopyUmiFromReadName`][fgbio-copyumifromreadname-link].
     -   Manipulate read-level data containing Umis: [`CorrectUmis`][fgbio-correctumis-link], [`GroupReadsByUmi`][fgbio-groupreadsbyumi-link], [`CallMolecularConsensusReads`][fgbio-callmolecularconsensusreads-link], [`CallDuplexConsensusReads`][fgbio-callduplexconsensusreads-link], and [`FilterConsensusReads`][fgbio-filterconsensusreads-link].
     -   Collect metrics and review consensus reads: [`CollectDuplexSeqMetrics`][fgbio-collectduplexseqmetrics-link] and [`ReviewConsensusVariants`][fgbio-reviewconsensusvariants-link].
 -   Tools to manipulate read-level data:
@@ -79,7 +79,7 @@ Below we highlight a few tools that you may find useful.
     -   Sample pooling QC: [`EstimatePoolingFractions`]: [fgbio-estimatepoolingfractions-link].
     -   Splice-aware insert size QC for RNA-seq libraries: [`EstimateRnaSeqInsertSize`][fgbio-estimaternaseqinsertsize-link].
 -   Tools for adding or manipulating alternate contig names:
-    -   Extract from a NCBI Assembly Report: [`CollectAlternateContigNames`][fgbio-collectalternatecontignames-link].
+    -   Extract contig names from an NCBI Assembly Report: [`CollectAlternateContigNames`][fgbio-collectalternatecontignames-link].
     -   Update contig names in common file formats: [`UpdateFastaContigNames`][fgbio-updatefastacontignames-link], [`UpdateVcfContigNames`][fgbio-updatevcfcontignames-link], [`UpdateGffContigNames`][fgbio-updategffcontignames-link], [`UpdateIntervalListContigNames`][fgbio-updateintervallistcontignames-link], [`UpdateDelimitedFileContigNames`][fgbio-updatedelimitedfilecontignames-link].
 -   Miscellaneous tools:
     -   Pick molecular indices (ex. sample barcodes, or molecular indexes): [`PickIlluminaIndices`][fgbio-pickilluminaindices-link] and [`PickLongIndices`][fgbio-picklongindices-link].
