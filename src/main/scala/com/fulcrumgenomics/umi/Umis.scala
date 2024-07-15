@@ -29,6 +29,7 @@ import com.fulcrumgenomics.bam.api.SamRecord
 import com.fulcrumgenomics.util.Sequences
 
 object Umis {
+  val RevcompPrefix: String = "r"
 
   /** Copies the UMI sequence from the read name.
     *
@@ -41,21 +42,21 @@ object Umis {
     * @param removeUmi true to remove the UMI from the read name, otherwise only copy the UMI to the tag
     * @param fieldDelimiter the delimiter of fields within the read name
     * @param umiDelimiter the delimiter between sequences in the UMI string
-    * @param reverseComplementPrefix the prefix of a UMI that indicates it is reverse-complimented
+    * @param reverseComplementPrefixedUmis whether to reverse-compliment UMIs prefixed with 'r'
     * @return the modified record
     */
   def copyUmiFromReadName(rec: SamRecord,
                           removeUmi: Boolean = false,
                           fieldDelimiter: Char = ':',
                           umiDelimiter: Char = '+',
-                          reverseComplementPrefix: Option[String] = None): SamRecord = {
+                          reverseComplementPrefixedUmis: Boolean = true): SamRecord = {
     // Extract and set the UMI
     val umi = extractUmisFromReadName(
-      name                           = rec.name, 
-      fieldDelimiter                 = fieldDelimiter,
-      strict                         = false,
-      umiDelimiter                   = umiDelimiter,
-      reverseComplementPrefix        = reverseComplementPrefix,
+      name                          = rec.name, 
+      fieldDelimiter                = fieldDelimiter,
+      strict                        = false,
+      umiDelimiter                  = umiDelimiter,
+      reverseComplementPrefixedUmis = reverseComplementPrefixedUmis,
     )
     require(umi.nonEmpty, f"No valid UMI found in: ${rec.name}")
     umi.foreach(u => rec(ConsensusTags.UmiBases) = u)
@@ -84,7 +85,7 @@ object Umis {
                               fieldDelimiter: Char = ':',
                               strict: Boolean,
                               umiDelimiter: Char = '+',
-                              reverseComplementPrefix: Option[String] = None): Option[String] = {
+                              reverseComplementPrefixedUmis: Boolean = true): Option[String] = {
     // If strict, check that the read name actually has eight parts, which is expected
     val rawUmi = if (strict) {
       val colons = name.count(_ == fieldDelimiter)
@@ -97,14 +98,24 @@ object Umis {
       Some(name.substring(idx + 1, name.length))
     }
 
-    var umi = rawUmi.map(raw => reverseComplementPrefix match {
-      case Some(prefix) if raw.indexOf(prefix) >= 0 => 
-        raw.split(umiDelimiter).map(seq => 
-          (if (seq.startsWith(prefix)) Sequences.revcomp(seq.stripPrefix(prefix)) else seq).toUpperCase
-        ).mkString("-")
-      case _ if raw.indexOf(umiDelimiter) > 0 => raw.replace(umiDelimiter, '-').toUpperCase
-      case _ => raw.toUpperCase
-    })
+    // Remove 'r' prefixes, optionally reverse-complementing the prefixed UMIs if 
+    // reverseComplementPrefixedUmis = true, replace the delimiter (if any) with '-',
+    // and make sure the sequence is upper-case.
+    var umi = rawUmi.map(raw => 
+      (raw.indexOf(RevcompPrefix) >= 0, raw.indexOf(umiDelimiter) > 0) match {
+        case (true, true) if reverseComplementPrefixedUmis => 
+          raw.split(umiDelimiter).map(seq => 
+            if (seq.startsWith(RevcompPrefix)) Sequences.revcomp(seq.stripPrefix(RevcompPrefix))
+            else seq.stripPrefix(RevcompPrefix)
+          ).mkString("-").toUpperCase
+        case (true, false) if reverseComplementPrefixedUmis =>
+          Sequences.revcomp(raw.stripPrefix(RevcompPrefix)).toUpperCase
+        case (true, true) => raw.replace(RevcompPrefix, "").replace(umiDelimiter, '-').toUpperCase
+        case (true, false) => raw.replace(RevcompPrefix, "").toUpperCase
+        case (false, true) => raw.replace(umiDelimiter, '-').toUpperCase
+        case (false, false) => raw.toUpperCase
+      }
+    )
 
     val valid  = umi.forall(u => u.forall(isValidUmiCharacter))
 
