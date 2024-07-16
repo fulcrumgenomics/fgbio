@@ -46,9 +46,9 @@ object SequenceMetadata {
     val AlternateLocus        : String = "AH"
     val Assembly              : String = SAMSequenceRecord.ASSEMBLY_TAG
     val Description           : String = SAMSequenceRecord.DESCRIPTION_TAG
-    private[fasta] val Length : String = SAMSequenceRecord.SEQUENCE_LENGTH_TAG
+    val Length                : String = SAMSequenceRecord.SEQUENCE_LENGTH_TAG
     val Md5                   : String = SAMSequenceRecord.MD5_TAG
-    private[fasta] val Name   : String = SAMSequenceRecord.SEQUENCE_NAME_TAG
+    val Name                  : String = SAMSequenceRecord.SEQUENCE_NAME_TAG
     val Species               : String = SAMSequenceRecord.SPECIES_TAG
     val Topology              : String = "TP"
     val Uri                   : String = SAMSequenceRecord.URI_TAG
@@ -84,7 +84,7 @@ object SequenceMetadata {
             species: Option[String]                = None,
             topology: Option[Topology]             = None,
             uri: Option[String]                    = None,
-            customAttributes: Map[String, String]        = Map.empty
+            customAttributes: Map[String, String]  = Map.empty
            ): SequenceMetadata = {
     Keys.values.find(customAttributes.contains).foreach { key =>
       throw new IllegalArgumentException(s"Attributes contains a standard key: $key")
@@ -139,6 +139,10 @@ object SequenceMetadata {
 
 /** Stores information about a single Sequence (ex. chromosome, contig)
   *
+  * Important: when retrieving attributes using the `apply`, `get`, and `getOrElse` methods, all values will be
+  * returned as `String`s.  Use the named accessors for attributes that have non-`String` types (i.e. `length`,
+  * `aliases`, `alternate`, and `topology`).
+  *
   * @param name the primary name of the sequence
   * @param length the length of the sequence, or zero if unknown
   * @param index the index in the sequence dictionary
@@ -156,10 +160,20 @@ case class SequenceMetadata private[fasta]
   require(!attributes.contains(Keys.Name), f"`${Keys.Name}` should not given in the list of attributes")
   require(!attributes.contains(Keys.Length), s"`${Keys.Length}` should not given in the list of attributes")
 
-  @inline final def apply(key: String): String = this.attributes(key)
-  @inline final def get(key: String): Option[String] = this.attributes.get(key)
-  @inline final def getOrElse(key: String, default: String): String = this.attributes.getOrElse(key, default)
-  @inline final def contains(key: String): Boolean = this.attributes.contains(key)
+  @inline final def apply(key: String): String = {
+    if (key == Keys.Name) this.name
+    else if (key == Keys.Length) s"${this.length}"
+    else this.attributes(key)
+  }
+  @inline final def get(key: String): Option[String] = {
+    if (key == Keys.Name) Some(this.name)
+    else if (key == Keys.Length) Some(s"${this.length}")
+    else this.attributes.get(key)
+  }
+  @inline final def getOrElse(key: String, default: String): String = this.get(key).getOrElse(default)
+  @inline final def contains(key: String): Boolean = {
+    this.attributes.contains(key) || key == Keys.Name || key == Keys.Length
+  }
   lazy val aliases: Seq[String] = this.get(Keys.Aliases).map(_.split(',').toSeq).getOrElse(Seq.empty[String])
   /** All names, including aliases */
   @inline final def allNames: Seq[String] = name +: aliases
