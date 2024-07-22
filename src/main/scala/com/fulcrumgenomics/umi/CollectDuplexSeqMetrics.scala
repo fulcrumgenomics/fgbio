@@ -340,6 +340,7 @@ class CollectDuplexSeqMetrics
 
       // Assign reads a random number between 0 and 1 inclusive based on their read name
       group.foreach { rec =>
+        if (rec.isConsensus) throw new IllegalArgumentException("Found consensus record. Expected UMI-grouped BAM")
         val intHash    = math.abs(this.hasher.hashUnencodedChars(rec.name))
         val doubleHash = intHash / MaxIntAsDouble
         rec.transientAttrs(HashKey) = doubleHash

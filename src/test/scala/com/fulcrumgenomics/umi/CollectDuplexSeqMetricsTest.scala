@@ -32,6 +32,7 @@ import com.fulcrumgenomics.bam.api.SamOrder
 import com.fulcrumgenomics.commons.util.SimpleCounter
 import com.fulcrumgenomics.testing.SamBuilder.{Minus, Plus}
 import com.fulcrumgenomics.testing.{SamBuilder, UnitSpec}
+import com.fulcrumgenomics.umi.ConsensusTags.PerRead.AllPerReadTags
 import com.fulcrumgenomics.util.{Io, Metric, Rscript}
 import htsjdk.samtools.util.{Interval, IntervalList}
 import org.apache.commons.math3.distribution.NormalDistribution
@@ -41,6 +42,7 @@ import scala.math.{max, min}
 class CollectDuplexSeqMetricsTest extends UnitSpec {
   private val MI = "MI"
   private val RX = "RX"
+  private val aD = "aD"
 
   // Case class to hold pointers to all the outputs of CollectDuplexSeqMetrics
   private case class Outputs(families: Path, duplexFamilies: Path, umis: Path, duplexUmis: Path, yields: Path, plots: Path) {
@@ -310,6 +312,14 @@ class CollectDuplexSeqMetricsTest extends UnitSpec {
     duplexFamilies.find(f => f.ab_size == 3 && f.ba_size == 0).get.count shouldBe 1
     duplexFamilies.find(f => f.ab_size == 5 && f.ba_size == 0).get.count shouldBe 1
     duplexFamilies.find(f => f.ab_size == 6 && f.ba_size == 0).get.count shouldBe 1
+  }
+
+  it should "raise an exception if consensus records are provided" in {
+    val builder = new SamBuilder(readLength=100, sort=Some(SamOrder.TemplateCoordinate))
+    AllPerReadTags.foreach {
+      tag => builder.addPair(contig=1, start1=1000, start2=1100, attrs=Map(RX -> "AAA-GGG", MI -> "1/A", tag -> 10))
+      an[IllegalArgumentException] shouldBe thrownBy { exec(builder) }
+    }
   }
 
   "CollectDuplexSeqMetrics.updateUmiMetrics" should "not count duplex umis" in collector(duplex=false).foreach { c =>
