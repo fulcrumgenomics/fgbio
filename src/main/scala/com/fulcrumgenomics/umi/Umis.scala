@@ -26,6 +26,8 @@
 package com.fulcrumgenomics.umi
 
 import com.fulcrumgenomics.bam.api.SamRecord
+import com.fulcrumgenomics.umi.ConsensusTags.PerBase.AbRawReadCount
+import com.fulcrumgenomics.umi.ConsensusTags.PerRead.{BaRawReadCount, RawReadCount}
 import com.fulcrumgenomics.util.Sequences
 
 object Umis {
@@ -126,5 +128,14 @@ object Umis {
 
   @inline private def isValidUmiCharacter(ch: Char): Boolean = {
     ch == 'A' || ch == 'C' || ch == 'G' || ch == 'T' || ch == 'N' || ch == '-'
+  }
+
+  /** Tests if a record is a consensus or not
+   *
+   * @param rec the record to test
+   * @return boolean indicating if the record is a consensus or not
+   */
+  def isConsensusRead(rec: SamRecord): Boolean = {
+    rec.contains(RawReadCount) | (rec.contains(AbRawReadCount) & rec.contains(BaRawReadCount))
   }
 }

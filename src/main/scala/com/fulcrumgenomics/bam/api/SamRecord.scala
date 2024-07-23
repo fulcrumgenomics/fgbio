@@ -270,10 +270,6 @@ trait SamRecord {
       SamPairUtil.getPairOrientation(this) == PairOrientation.FR
   }
 
-  def isConsensus: Boolean = {
-    AllPerReadTags.exists(this.contains)
-  }
-
   /** Clone method that does a "reasonably deep" clone. The bases and quals are cloned as is the attributes map,
     * though not the values in the attributes map. */
   override def clone(): SamRecord = {
