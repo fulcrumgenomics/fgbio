@@ -26,13 +26,13 @@ package com.fulcrumgenomics.umi
 
 import java.nio.file.{Path, Paths}
 import java.util.Random
-
 import com.fulcrumgenomics.FgBioDef._
 import com.fulcrumgenomics.bam.api.SamOrder
 import com.fulcrumgenomics.commons.util.SimpleCounter
 import com.fulcrumgenomics.testing.SamBuilder.{Minus, Plus}
 import com.fulcrumgenomics.testing.{SamBuilder, UnitSpec}
-import com.fulcrumgenomics.umi.ConsensusTags.PerRead.AllPerReadTags
+import com.fulcrumgenomics.umi.ConsensusTags.PerBase.AbRawReadCount
+import com.fulcrumgenomics.umi.ConsensusTags.PerRead.{AllPerReadTags, BaRawReadCount}
 import com.fulcrumgenomics.util.{Io, Metric, Rscript}
 import htsjdk.samtools.util.{Interval, IntervalList}
 import org.apache.commons.math3.distribution.NormalDistribution
@@ -312,6 +312,17 @@ class CollectDuplexSeqMetricsTest extends UnitSpec {
     duplexFamilies.find(f => f.ab_size == 3 && f.ba_size == 0).get.count shouldBe 1
     duplexFamilies.find(f => f.ab_size == 5 && f.ba_size == 0).get.count shouldBe 1
     duplexFamilies.find(f => f.ab_size == 6 && f.ba_size == 0).get.count shouldBe 1
+  }
+
+  it should "raise an exception if duplex consensus records are provided" in {
+    val builder = new SamBuilder(readLength=100, sort=Some(SamOrder.TemplateCoordinate))
+    builder.addPair(
+      contig=1,
+      start1=1000,
+      start2=1100,
+      attrs=Map(RX -> "AAA-GGG", MI -> "1/A", AbRawReadCount -> 10, BaRawReadCount -> 10)
+    )
+    an[IllegalArgumentException] shouldBe thrownBy { exec(builder) }
   }
 
   "CollectDuplexSeqMetrics.updateUmiMetrics" should "not count duplex umis" in collector(duplex=false).foreach { c =>
