@@ -307,11 +307,18 @@ class CollectDuplexSeqMetrics
     // Build the iterator we'll use based on whether or not we're restricting to a set of intervals
     val in = SamSource(input)
     val _filteredIterator = in.iterator.filter(r => r.paired && r.mapped && r.mateMapped && r.firstOfPair && !r.secondary && !r.supplementary)
-      .tapEach {
-        r =>
-          if (Umis.isConsensusRead(r)) throw new IllegalArgumentException("Found consensus record. Expected UMI-grouped BAM")
-          else r
-      }
+      .bufferBetter
+    // Ensure the records are not consensus records
+    _filteredIterator.headOption.foreach {
+      r =>
+        def exceptionString = s"Input BAM file to CollectDuplexSeqMetrics ($input) appears to contain consensus reads." +
+          "CollectDuplexSeqMetrics cannot run on consensus BAMs, and instead requires the UMI-grouped BAM generated " +
+          "prior to consensus calling. The UMI-grouped BAM is the output of running GroupReadsByUmi." +
+          s"\nFirst record in $input has consensus tags present:\n${_filteredIterator.head}"
+
+        if (Umis.isConsensusRead(r)) throw new IllegalArgumentException(exceptionString)
+        else r
+    }
     val iterator = intervals match {
       case None       => _filteredIterator
       case Some(path) =>
