@@ -26,12 +26,12 @@ package com.fulcrumgenomics.umi
 
 import java.nio.file.{Path, Paths}
 import java.util.Random
+
 import com.fulcrumgenomics.FgBioDef._
 import com.fulcrumgenomics.bam.api.SamOrder
 import com.fulcrumgenomics.commons.util.SimpleCounter
 import com.fulcrumgenomics.testing.SamBuilder.{Minus, Plus}
 import com.fulcrumgenomics.testing.{SamBuilder, UnitSpec}
-import com.fulcrumgenomics.umi.ConsensusTags
 import com.fulcrumgenomics.util.{Io, Metric, Rscript}
 import htsjdk.samtools.util.{Interval, IntervalList}
 import org.apache.commons.math3.distribution.NormalDistribution
