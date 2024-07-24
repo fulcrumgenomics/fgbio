@@ -41,7 +41,6 @@ import scala.math.{max, min}
 class CollectDuplexSeqMetricsTest extends UnitSpec {
   private val MI = "MI"
   private val RX = "RX"
-  private val aD = "aD"
 
   // Case class to hold pointers to all the outputs of CollectDuplexSeqMetrics
   private case class Outputs(families: Path, duplexFamilies: Path, umis: Path, duplexUmis: Path, yields: Path, plots: Path) {

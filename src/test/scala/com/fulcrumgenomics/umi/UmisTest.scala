@@ -27,7 +27,6 @@ package com.fulcrumgenomics.umi
 
 import com.fulcrumgenomics.bam.api.{SamOrder, SamRecord}
 import com.fulcrumgenomics.testing.{SamBuilder, UnitSpec}
-import com.fulcrumgenomics.umi.ConsensusTags
 import org.scalatest.OptionValues
 
 class UmisTest extends UnitSpec with OptionValues {
