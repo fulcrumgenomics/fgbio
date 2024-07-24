@@ -318,7 +318,7 @@ class CollectDuplexSeqMetrics
           "prior to consensus calling. The UMI-grouped BAM is the output of running GroupReadsByUmi." +
           s"\nFirst record in $input has consensus SAM tags present:\n$rec"
 
-        if (Umis.isConsensusRead(rec)) throw new IllegalArgumentException(exceptionString)
+        if (Umis.isFgbioStyleConsensus(rec)) throw new IllegalArgumentException(exceptionString)
     }
     val iterator = intervals match {
       case None       => _filteredIterator

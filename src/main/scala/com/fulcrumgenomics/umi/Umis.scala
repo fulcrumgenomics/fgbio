@@ -134,7 +134,7 @@ object Umis {
    * @param rec the record to test
    * @return boolean indicating if the record is a consensus or not
    */
-  def isConsensusRead(rec: SamRecord): Boolean = {
+  def isFgbioStyleConsensus(rec: SamRecord): Boolean = {
     rec.contains(ConsensusTags.PerRead.RawReadCount) ||
       (rec.contains(ConsensusTags.PerRead.AbRawReadCount) && rec.contains(ConsensusTags.PerRead.BaRawReadCount))
   }
