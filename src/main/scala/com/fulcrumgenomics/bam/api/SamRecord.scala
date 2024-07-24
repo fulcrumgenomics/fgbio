@@ -27,7 +27,6 @@ package com.fulcrumgenomics.bam.api
 
 import com.fulcrumgenomics.FgBioDef._
 import com.fulcrumgenomics.alignment.Cigar
-import com.fulcrumgenomics.umi.ConsensusTags.PerRead.AllPerReadTags
 import htsjdk.samtools
 import htsjdk.samtools.SamPairUtil.PairOrientation
 import htsjdk.samtools._
