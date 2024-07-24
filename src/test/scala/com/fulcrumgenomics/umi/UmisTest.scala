@@ -27,8 +27,7 @@ package com.fulcrumgenomics.umi
 
 import com.fulcrumgenomics.bam.api.{SamOrder, SamRecord}
 import com.fulcrumgenomics.testing.{SamBuilder, UnitSpec}
-import com.fulcrumgenomics.umi.ConsensusTags.PerBase.AbRawReadCount
-import com.fulcrumgenomics.umi.ConsensusTags.PerRead.{BaRawReadCount, RawReadCount}
+import com.fulcrumgenomics.umi.ConsensusTags
 import org.scalatest.OptionValues
 
 class UmisTest extends UnitSpec with OptionValues {
@@ -122,8 +121,11 @@ class UmisTest extends UnitSpec with OptionValues {
 
   it should "return true for reads with consensus tags" in {
     val builder = new SamBuilder(sort=Some(SamOrder.Coordinate), readLength=10, baseQuality=20)
-    builder.addFrag(start=10, attrs=Map(RawReadCount -> 10)).exists(Umis.isConsensusRead) shouldBe true
-    builder.addFrag(start=10, attrs=Map(AbRawReadCount -> 10, BaRawReadCount -> 10))
+    builder.addFrag(start=10, attrs=Map(ConsensusTags.PerRead.RawReadCount -> 10))
       .exists(Umis.isConsensusRead) shouldBe true
+    builder.addFrag(
+        start=10,
+        attrs=Map(ConsensusTags.PerRead.AbRawReadCount -> 10, ConsensusTags.PerRead.BaRawReadCount -> 10)
+    ).exists(Umis.isConsensusRead) shouldBe true
   }
 }

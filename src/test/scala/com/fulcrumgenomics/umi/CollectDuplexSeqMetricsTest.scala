@@ -31,8 +31,7 @@ import com.fulcrumgenomics.bam.api.SamOrder
 import com.fulcrumgenomics.commons.util.SimpleCounter
 import com.fulcrumgenomics.testing.SamBuilder.{Minus, Plus}
 import com.fulcrumgenomics.testing.{SamBuilder, UnitSpec}
-import com.fulcrumgenomics.umi.ConsensusTags.PerBase.AbRawReadCount
-import com.fulcrumgenomics.umi.ConsensusTags.PerRead.{AllPerReadTags, BaRawReadCount}
+import com.fulcrumgenomics.umi.ConsensusTags
 import com.fulcrumgenomics.util.{Io, Metric, Rscript}
 import htsjdk.samtools.util.{Interval, IntervalList}
 import org.apache.commons.math3.distribution.NormalDistribution
@@ -320,7 +319,12 @@ class CollectDuplexSeqMetricsTest extends UnitSpec {
       contig=1,
       start1=1000,
       start2=1100,
-      attrs=Map(RX -> "AAA-GGG", MI -> "1/A", AbRawReadCount -> 10, BaRawReadCount -> 10)
+      attrs=Map(
+        RX -> "AAA-GGG",
+        MI -> "1/A",
+        ConsensusTags.PerRead.AbRawReadCount -> 10,
+        ConsensusTags.PerRead.BaRawReadCount -> 10
+      )
     )
     an[IllegalArgumentException] shouldBe thrownBy { exec(builder) }
   }
