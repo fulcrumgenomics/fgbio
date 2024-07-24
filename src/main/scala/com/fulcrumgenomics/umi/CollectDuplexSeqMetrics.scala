@@ -313,7 +313,7 @@ class CollectDuplexSeqMetrics
     // Ensure the records are not consensus records
     _filteredIterator.headOption.foreach {
       rec =>
-        def exceptionString = s"Input BAM file to CollectDuplexSeqMetrics ($input) appears to contain consensus sequences. " +
+        val exceptionString = s"Input BAM file to CollectDuplexSeqMetrics ($input) appears to contain consensus sequences. " +
           "CollectDuplexSeqMetrics cannot run on consensus BAMs, and instead requires the UMI-grouped BAM generated " +
           "prior to consensus calling. The UMI-grouped BAM is the output of running GroupReadsByUmi." +
           s"\nFirst record in $input has consensus SAM tags present:\n$rec"
