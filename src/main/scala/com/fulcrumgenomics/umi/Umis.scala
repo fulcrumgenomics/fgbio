@@ -129,9 +129,10 @@ object Umis {
     ch == 'A' || ch == 'C' || ch == 'G' || ch == 'T' || ch == 'N' || ch == '-'
   }
 
-  /** Tests if a record is a consensus or not
+  /** Returns True if the record appears to be a consensus read,
+   *  typically produced by fgbio's CallMolecularConsensusReads or CallDuplexConsensusReads.
    *
-   * @param rec the record to test
+   * @param rec the record to check
    * @return boolean indicating if the record is a consensus or not
    */
   def isFgbioStyleConsensus(rec: SamRecord): Boolean = {
