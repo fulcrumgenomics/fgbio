@@ -44,6 +44,7 @@ jobs:
     
     needs: test
     runs-on: ubuntu-latest
+    environment: github-actions
     env:
       SONATYPE_USER: ${{ secrets.SONATYPE_USER }}
       SONATYPE_PASS: ${{ secrets.SONATYPE_PASS }}
