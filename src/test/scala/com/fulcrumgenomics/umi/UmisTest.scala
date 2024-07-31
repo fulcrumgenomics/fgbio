@@ -25,7 +25,7 @@
 
 package com.fulcrumgenomics.umi
 
-import com.fulcrumgenomics.bam.api.SamRecord
+import com.fulcrumgenomics.bam.api.{SamOrder, SamRecord}
 import com.fulcrumgenomics.testing.{SamBuilder, UnitSpec}
 import org.scalatest.OptionValues
 
@@ -110,5 +110,21 @@ class UmisTest extends UnitSpec with OptionValues {
     an[Exception] should be thrownBy copyUmiFromReadName(rec=rec("NAME:XYZ"))
     an[Exception] should be thrownBy copyUmiFromReadName(rec=rec("NAME:ACGT-CCKC"))
     an[Exception] should be thrownBy copyUmiFromReadName(rec=rec("NAME:CCKC-ACGT"))
+  }
+
+  "Umis.isConsensusRead" should "return false for reads without consensus tags" in {
+    val builder = new SamBuilder(sort=Some(SamOrder.Coordinate), readLength=10, baseQuality=20)
+    builder.addFrag(start=100).exists(Umis.isFgbioStyleConsensus) shouldBe false
+    builder.addPair(start1=100, start2=100, unmapped2=true).exists(Umis.isFgbioStyleConsensus) shouldBe false
+  }
+
+  it should "return true for reads with consensus tags" in {
+    val builder = new SamBuilder(sort=Some(SamOrder.Coordinate), readLength=10, baseQuality=20)
+    builder.addFrag(start=10, attrs=Map(ConsensusTags.PerRead.RawReadCount -> 10))
+      .exists(Umis.isFgbioStyleConsensus) shouldBe true
+    builder.addFrag(
+        start=10,
+        attrs=Map(ConsensusTags.PerRead.AbRawReadCount -> 10, ConsensusTags.PerRead.BaRawReadCount -> 10)
+    ).exists(Umis.isFgbioStyleConsensus) shouldBe true
   }
 }

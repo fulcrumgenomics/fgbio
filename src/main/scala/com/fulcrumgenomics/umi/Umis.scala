@@ -26,6 +26,7 @@
 package com.fulcrumgenomics.umi
 
 import com.fulcrumgenomics.bam.api.SamRecord
+import com.fulcrumgenomics.umi.ConsensusTags
 import com.fulcrumgenomics.util.Sequences
 
 object Umis {
@@ -126,5 +127,16 @@ object Umis {
 
   @inline private def isValidUmiCharacter(ch: Char): Boolean = {
     ch == 'A' || ch == 'C' || ch == 'G' || ch == 'T' || ch == 'N' || ch == '-'
+  }
+
+  /** Returns True if the record appears to be a consensus read,
+   *  typically produced by fgbio's CallMolecularConsensusReads or CallDuplexConsensusReads.
+   *
+   * @param rec the record to check
+   * @return boolean indicating if the record is a consensus or not
+   */
+  def isFgbioStyleConsensus(rec: SamRecord): Boolean = {
+    rec.contains(ConsensusTags.PerRead.RawReadCount) ||
+      (rec.contains(ConsensusTags.PerRead.AbRawReadCount) && rec.contains(ConsensusTags.PerRead.BaRawReadCount))
   }
 }

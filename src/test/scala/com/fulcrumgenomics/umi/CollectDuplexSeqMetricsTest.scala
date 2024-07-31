@@ -312,6 +312,22 @@ class CollectDuplexSeqMetricsTest extends UnitSpec {
     duplexFamilies.find(f => f.ab_size == 6 && f.ba_size == 0).get.count shouldBe 1
   }
 
+  it should "raise an exception if duplex consensus records are provided" in {
+    val builder = new SamBuilder(readLength=100, sort=Some(SamOrder.TemplateCoordinate))
+    builder.addPair(
+      contig=1,
+      start1=1000,
+      start2=1100,
+      attrs=Map(
+        RX -> "AAA-GGG",
+        MI -> "1/A",
+        ConsensusTags.PerRead.AbRawReadCount -> 10,
+        ConsensusTags.PerRead.BaRawReadCount -> 10
+      )
+    )
+    an[IllegalArgumentException] shouldBe thrownBy { exec(builder) }
+  }
+
   "CollectDuplexSeqMetrics.updateUmiMetrics" should "not count duplex umis" in collector(duplex=false).foreach { c =>
     val builder = new SamBuilder(readLength=10)
     builder.addPair(start1=100, start2=200, attrs=Map(RX -> "AAA-CCC", MI -> "1/A"))
