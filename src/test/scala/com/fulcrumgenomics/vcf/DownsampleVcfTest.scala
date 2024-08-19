@@ -4,7 +4,7 @@ import com.fulcrumgenomics.sopt.cmdline.ValidationException
 import com.fulcrumgenomics.testing.VcfBuilder.Gt
 import com.fulcrumgenomics.testing.{UnitSpec, VcfBuilder}
 import com.fulcrumgenomics.util.Metric
-import com.fulcrumgenomics.vcf.DownsampleVcf.{Likelihoods, downsampleAndRegenotype}
+import com.fulcrumgenomics.vcf.DownsampleVcf.{HaploidLikelihoods, Likelihoods, downsampleAndRegenotype}
 import com.fulcrumgenomics.vcf.api.Allele.SimpleAllele
 import com.fulcrumgenomics.vcf.api.{Allele, AlleleSet, Genotype, Variant}
 
@@ -290,11 +290,23 @@ class DownsampleVcfTest extends UnitSpec {
   testing DownsampleVcf.downsampleAndRegenotype on downsampleAndRegenotypes
    */
   private def makeGt(ref: String, alt: String, ads: IndexedSeq[Int], sample: String ="test"): Genotype = {
-    Genotype(alleles=AlleleSet(ref=SimpleAllele(ref), alts=IndexedSeq(Allele(alt))),
+    val genotype = Genotype(alleles=AlleleSet(ref=SimpleAllele(ref), alts=IndexedSeq(Allele(alt))),
       sample=sample,
       calls=IndexedSeq[Allele](Allele(ref), Allele(alt)),
       attrs=Map("AD" -> ads, "PL" -> Likelihoods(ads))
     )
+    genotype.ploidy shouldBe 2
+    genotype
+  }
+  
+  private def makeHaploidGt(ref: String, alt: String, ads: IndexedSeq[Int], sample: String ="test"): Genotype = {
+    val genotype = Genotype(alleles=AlleleSet(ref=SimpleAllele(ref), alts=IndexedSeq(Allele(alt))),
+      sample=sample,
+      calls=if (ads.head >= ads.last) { IndexedSeq[Allele](Allele(ref)) } else { IndexedSeq[Allele](Allele(alt)) },
+      attrs=Map("AD" -> ads, "PL" -> HaploidLikelihoods(ads))
+    )
+    genotype.ploidy shouldBe 1
+    genotype
   }
 
   "DownsampleVcf.downsampleAndRegneotype(Genotype)" should "return no call if all allele depths are zero" in {
@@ -360,6 +372,79 @@ class DownsampleVcfTest extends UnitSpec {
       minAdHomvar = 0, minAdHomref = 4)
     val expected = IndexedSeq(Allele("."), Allele("."))
     newGeno.calls should contain theSameElementsInOrderAs expected
+  }
+  
+  it should "return a haploid ref call if the original call is haploid ref and there is sufficient AD" in {
+    val geno = makeHaploidGt(ref = "A", alt = "T", ads = IndexedSeq(200, 0))
+    val newGeno = downsampleAndRegenotype(gt = geno, proportion = 0.1, random = new Random(42), epsilon = 0.01,
+      minAdHomvar = 3, minAdHomref = 1)
+    val expected = IndexedSeq(Allele("A"))
+    newGeno.calls should contain theSameElementsInOrderAs expected
+  }
+  
+  it should "return a haploid alt call if the original call is haploid alt and there is sufficient AD" in {
+    val geno = makeHaploidGt(ref = "A", alt = "T", ads = IndexedSeq(0, 200))
+    val newGeno = downsampleAndRegenotype(gt = geno, proportion = 0.1, random = new Random(42), epsilon = 0.01,
+      minAdHomvar = 3, minAdHomref = 1)
+    val expected = IndexedSeq(Allele("T"))
+    newGeno.calls should contain theSameElementsInOrderAs expected
+  }
+  
+  it should "return no-call call if the original call is haploid ref and there is insufficient AD" in {
+    val geno = makeHaploidGt(ref = "A", alt = "T", ads = IndexedSeq(400, 0))
+    val newGeno = downsampleAndRegenotype(gt = geno, proportion = 0.01, random = new Random(42), epsilon = 0.01,
+      minAdHomvar = 1, minAdHomref = 40)
+    val expected = IndexedSeq(Allele("."))
+    newGeno.calls should contain theSameElementsInOrderAs expected
+  }
+
+  it should "return no-call call if the original call is haploid alt and there is insufficient AD" in {
+    val geno = makeHaploidGt(ref = "A", alt = "T", ads = IndexedSeq(0, 400))
+    val newGeno = downsampleAndRegenotype(gt = geno, proportion = 0.01, random = new Random(42), epsilon = 0.01,
+      minAdHomvar = 40, minAdHomref = 1)
+    val expected = IndexedSeq(Allele("."))
+    newGeno.calls should contain theSameElementsInOrderAs expected
+  }
+
+  it should "return no-call call if more than one allele have the same likelihood" in {
+    val geno = makeHaploidGt(ref = "A", alt = "T", ads = IndexedSeq(10, 10))
+    // Note: no downsampling to ensure that "downsampled GT has same likelihoods for both alleles"
+    val newGeno = downsampleAndRegenotype(gt = geno, proportion = 1.0, random = new Random(42), epsilon = 0.01,
+      minAdHomvar = 1, minAdHomref = 3)
+    val expected = IndexedSeq(Allele("."))
+    newGeno.calls should contain theSameElementsInOrderAs expected
+  }
+
+  it should "throw an exception if ploidy is not 1 or 2" in {
+    val geno = Genotype(alleles=AlleleSet(ref=SimpleAllele("T"), alts=IndexedSeq(Allele("A"))),
+      sample=sample,
+      calls=IndexedSeq[Allele](Allele("T"), Allele("T"), Allele("A")),
+      attrs=Map("AD" -> IndexedSeq(100, 100))
+    )
+    val ex = intercept[Exception] { 
+      downsampleAndRegenotype(gt = geno, proportion = 0.01, random = new Random(42), epsilon = 0.01,
+        minAdHomvar = 3, minAdHomref = 1)
+    }
+    ex.getMessage should include ("Got ploidy")
+  }
+  
+  it should "return the same results for haploid biallelic and generalized algorithm" in {
+    val e = 0.01
+    val cases: IndexedSeq[(IndexedSeq[Int], IndexedSeq[Double])] = IndexedSeq(
+      (IndexedSeq(1, 0), IndexedSeq(1 - e, e)),
+      (IndexedSeq(0, 1), IndexedSeq(e, 1 - e)),
+      (IndexedSeq(1, 1), IndexedSeq(e * (1 - e), e * (1 - e))),
+      (IndexedSeq(2, 0), IndexedSeq(Math.pow(1 - e, 2), e * e)),
+    ).map { case (input, output) =>
+      (input, output.map(Math.log10))
+    }
+    cases.foreach { case (input, output) =>
+      val biallelic               = DownsampleVcf.HaploidLikelihoods.biallelic(input(0), input(1), e)
+      val biallelicLikelihoods    = HaploidLikelihoods(2, biallelic)
+      val generalizedLikelihoods  = HaploidLikelihoods(2, DownsampleVcf.HaploidLikelihoods.generalized(input, e))
+      biallelic.zip(output).foreach { case (actual, expected) => (actual-expected).abs should be <= e }
+      biallelicLikelihoods.pls should contain theSameElementsInOrderAs generalizedLikelihoods.pls
+    }
   }
 
   /*
