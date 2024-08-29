@@ -26,7 +26,7 @@
 package com.fulcrumgenomics.umi
 
 import com.fulcrumgenomics.bam.api.SamRecord
-import com.fulcrumgenomics.umi.ConsensusTags
+import com.fulcrumgenomics.umi.ConsensusTags.PerRead.{RawReadCount, AbRawReadCount, BaRawReadCount}
 import com.fulcrumgenomics.util.Sequences
 
 object Umis {
@@ -129,14 +129,17 @@ object Umis {
     ch == 'A' || ch == 'C' || ch == 'G' || ch == 'T' || ch == 'N' || ch == '-'
   }
 
-  /** Returns True if the record appears to be a consensus read,
-   *  typically produced by fgbio's CallMolecularConsensusReads or CallDuplexConsensusReads.
-   *
-   * @param rec the record to check
-   * @return boolean indicating if the record is a consensus or not
-   */
-  def isFgbioStyleConsensus(rec: SamRecord): Boolean = {
-    rec.contains(ConsensusTags.PerRead.RawReadCount) ||
-      (rec.contains(ConsensusTags.PerRead.AbRawReadCount) && rec.contains(ConsensusTags.PerRead.BaRawReadCount))
-  }
+  /** Returns True if the record appears to be a consensus sequence typically produced by fgbio's
+    * CallMolecularConsensusReads or CallDuplexConsensusReads.
+    *
+    * @param rec the record to check
+    * @return boolean indicating if the record is a consensus or not
+    */
+  def isFgbioStyleConsensus(rec: SamRecord): Boolean = isFgbioSimplexConsensus(rec) || isFgbioDuplexConsensus(rec)
+
+  /** Returns true if the record appears to be a simplex consensus sequence. */
+  def isFgbioSimplexConsensus(rec: SamRecord): Boolean = rec.contains(RawReadCount) && !isFgbioDuplexConsensus(rec)
+
+  /** Returns true if the record appears to be a duplex consensus sequence. */
+  def isFgbioDuplexConsensus(rec: SamRecord): Boolean = rec.contains(AbRawReadCount) && rec.contains(BaRawReadCount)
 }

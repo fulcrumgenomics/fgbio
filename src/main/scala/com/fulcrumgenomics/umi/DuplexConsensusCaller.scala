@@ -194,7 +194,13 @@ class DuplexConsensusCaller(override val readNamePrefix: String,
       val y = groups.lift(1).getOrElse(Seq.empty)
 
       if (hasMinimumNumberOfReads(x, y)) {
-        callDuplexConsensusRead(x, y)
+        val consensus = callDuplexConsensusRead(x, y)
+        if (consensus.forall(duplexHasMinimumNumberOfReads)) {
+          consensus
+        } else {
+          rejectRecords(groups.flatten, FilterMinReads)
+          Nil
+        }
       }
       else {
         rejectRecords(groups.flatten, FilterMinReads)
@@ -204,12 +210,23 @@ class DuplexConsensusCaller(override val readNamePrefix: String,
 
   }
 
-  /** Returns true if there enough reads according to the minReads option. */
+  /** Returns true if there are enough reads according to the minReads option. */
   private def hasMinimumNumberOfReads(x: Seq[SamRecord], y: Seq[SamRecord]): Boolean = {
     // Get the number of reads per strand, in decreasing (more stringent) order.
     val (numXy: Int, numYx: Int) = {
       val numAb = x.count(r => r.paired && r.firstOfPair)
       val numBa = y.count(r => r.paired && r.firstOfPair)
+      if (numAb >= numBa) (numAb, numBa) else (numBa, numAb)
+    }
+    this.minTotalReads <= numXy + numYx && this.minXyReads <= numXy && this.minYxReads <= numYx
+  }
+
+  /** Returns true if there enough are enough reads composing the consensus according to the minReads option. */
+  private def duplexHasMinimumNumberOfReads(consensus: SamRecord): Boolean = {
+    if (!Umis.isFgbioDuplexConsensus(consensus)) throw new IllegalArgumentException(s"Record is not a duplex consensus: $consensus")
+    val (numXy: Int, numYx: Int) = {
+      val numAb = consensus[Int](ConsensusTags.PerRead.AbRawReadCount)
+      val numBa = consensus[Int](ConsensusTags.PerRead.BaRawReadCount)
       if (numAb >= numBa) (numAb, numBa) else (numBa, numAb)
     }
     this.minTotalReads <= numXy + numYx && this.minXyReads <= numXy && this.minYxReads <= numYx

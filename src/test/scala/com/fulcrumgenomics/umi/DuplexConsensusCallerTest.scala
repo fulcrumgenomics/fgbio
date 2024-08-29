@@ -160,7 +160,7 @@ class DuplexConsensusCallerTest extends UnitSpec with OptionValues {
   }
 
   /** A builder where we have one duplex, with five total reads, three on one strand and two on the other. */
-  private val builderForMinReads: SamBuilder = {
+  private def builderForMinReads(): SamBuilder = {
     val builder = new SamBuilder(readLength=10, baseQuality=20)
     builder.addPair(name="q1", start1=100, start2=200, strand1=Plus, strand2=Minus, bases1="AAAAAAAAAA", bases2="CCCCCCCCCC", attrs=Map(MI -> "foo/A"))
     builder.addPair(name="q2", start1=100, start2=200, strand1=Plus, strand2=Minus, bases1="AAAAAAAAAA", bases2="CCCCCCCCCC", attrs=Map(MI -> "foo/A"))
@@ -171,18 +171,43 @@ class DuplexConsensusCallerTest extends UnitSpec with OptionValues {
   }
 
   it should "support the --min-reads option when one value is provided" in {
-    caller(minReads=Seq(3)).consensusReadsFromSamRecords(builderForMinReads.toSeq) shouldBe empty
-    caller(minReads=Seq(2)).consensusReadsFromSamRecords(builderForMinReads.toSeq) should have size 2
+    val builder = builderForMinReads()
+    caller(minReads=Seq(3)).consensusReadsFromSamRecords(builder.toSeq) shouldBe empty
+    caller(minReads=Seq(2)).consensusReadsFromSamRecords(builder.toSeq) should have size 2
   }
 
   it should "support the --min-reads option when two values are provided" in {
-    caller(minReads=Seq(5, 3)).consensusReadsFromSamRecords(builderForMinReads.toSeq) shouldBe empty
-    caller(minReads=Seq(5, 2)).consensusReadsFromSamRecords(builderForMinReads.toSeq) should have size 2
+    val builder = builderForMinReads()
+    caller(minReads=Seq(5, 3)).consensusReadsFromSamRecords(builder.toSeq) shouldBe empty
+    caller(minReads=Seq(5, 2)).consensusReadsFromSamRecords(builder.toSeq) should have size 2
   }
 
   it should "support the --min-reads option when three values are provided" in {
-    caller(minReads=Seq(5, 3, 3)).consensusReadsFromSamRecords(builderForMinReads.toSeq) shouldBe empty
-    caller(minReads=Seq(5, 3, 2)).consensusReadsFromSamRecords(builderForMinReads.toSeq) should have size 2
+    val builder = builderForMinReads()
+    caller(minReads=Seq(5, 3, 3)).consensusReadsFromSamRecords(builder.toSeq) shouldBe empty
+    caller(minReads=Seq(5, 3, 2)).consensusReadsFromSamRecords(builder.toSeq) should have size 2
+  }
+
+  it should "support the --min-reads option as a hard filter if some records are removed during consensus calling for not having the most common structural alignment" in {
+    val builder = builderForMinReads()
+    val records = builder.toSeq
+    caller(minReads=Seq(3)).consensusReadsFromSamRecords(records) shouldBe empty
+    caller(minReads=Seq(2)).consensusReadsFromSamRecords(records) should have size 2
+
+    // Test for a coalesced and simplified cigar
+    val similar1 = builder.addPair(name="q6", start1=200, start2=100, strand1=Minus, strand2=Plus, bases1="CCCCCCCCCC", bases2="AAAAAAAAAA", attrs=Map(MI -> "foo/B"), cigar1 = "10M")
+    caller(minReads=Seq(3)).consensusReadsFromSamRecords(records ++ similar1) should have size 2 // the new read pair is considered in the final consensus
+    caller(minReads=Seq(2)).consensusReadsFromSamRecords(records ++ similar1) should have size 2
+
+    // Test for a non-coalesced but simplified cigar
+    val similar2 = builder.addPair(name="q6", start1=200, start2=100, strand1=Minus, strand2=Plus, bases1="CCCCCCCCCC", bases2="AAAAAAAAAA", attrs=Map(MI -> "foo/B"), cigar1 = "5M5M")
+    caller(minReads=Seq(3)).consensusReadsFromSamRecords(records ++ similar2) should have size 2 // the new read pair is considered in the final consensus
+    caller(minReads=Seq(2)).consensusReadsFromSamRecords(records ++ similar2) should have size 2
+
+    val dissimilar = builder.addPair(name="q6", start1=200, start2=100, strand1=Minus, strand2=Plus, bases1="CCCCCCCCCC", bases2="AAAAAAAAAA", attrs=Map(MI -> "foo/B"), cigar1 = "5M1D5M")
+    caller(minReads=Seq(3)).consensusReadsFromSamRecords(records ++ dissimilar) shouldBe empty // the new read pair is *not* considered in the final consensus
+    caller(minReads=Seq(2)).consensusReadsFromSamRecords(records ++ dissimilar) should have size 2
+
   }
 
   it should "not saturate the qualities with deep AB and light BA coverage" in {
