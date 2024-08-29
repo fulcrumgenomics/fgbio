@@ -207,7 +207,6 @@ class DuplexConsensusCallerTest extends UnitSpec with OptionValues {
     val dissimilar = builder.addPair(name="q6", start1=200, start2=100, strand1=Minus, strand2=Plus, bases1="CCCCCCCCCC", bases2="AAAAAAAAAA", attrs=Map(MI -> "foo/B"), cigar1 = "5M1D5M")
     caller(minReads=Seq(3)).consensusReadsFromSamRecords(records ++ dissimilar) shouldBe empty // the new read pair is *not* considered in the final consensus
     caller(minReads=Seq(2)).consensusReadsFromSamRecords(records ++ dissimilar) should have size 2
-
   }
 
   it should "not saturate the qualities with deep AB and light BA coverage" in {
