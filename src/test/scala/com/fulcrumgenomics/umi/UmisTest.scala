@@ -115,31 +115,39 @@ class UmisTest extends UnitSpec with OptionValues {
 
   "Umis.isFgbioStyleConsensus" should "return false for reads without consensus tags" in {
     val builder = new SamBuilder(sort=Some(SamOrder.Coordinate), readLength=10, baseQuality=20)
-    builder.addFrag(start=100).exists(Umis.isFgbioStyleConsensus) shouldBe false
-    builder.addPair(start1=100, start2=100, unmapped2=true).exists(Umis.isFgbioStyleConsensus) shouldBe false
+    Umis.isFgbioStyleConsensus(builder.addFrag(start=100).value) shouldBe false
+    val pair = builder.addPair(start1=100, start2=100, unmapped2=true)
+    pair.length shouldBe 2
+    pair.forall(rec => Umis.isFgbioStyleConsensus(rec)) shouldBe false
   }
 
   it should "return true for reads with consensus tags" in {
     val builder = new SamBuilder(sort=Some(SamOrder.Coordinate), readLength=10, baseQuality=20)
-    builder.addFrag(start=10, attrs=Map(RawReadCount -> 10)).exists(Umis.isFgbioStyleConsensus) shouldBe true
-    builder.addFrag(start=10, attrs=Map(AbRawReadCount -> 10, BaRawReadCount -> 10)).exists(Umis.isFgbioStyleConsensus) shouldBe true
+    Umis.isFgbioStyleConsensus(builder.addFrag(start=10, attrs=Map(RawReadCount -> 10)).value) shouldBe true
+    Umis.isFgbioStyleConsensus(builder.addFrag(start=10, attrs=Map(AbRawReadCount -> 10, BaRawReadCount -> 10)).value) shouldBe true
   }
 
   "Umis.isFgbioSimplexConsensus" should "return true for reads with simplex only consensus tags" in {
     val builder = new SamBuilder(sort=Some(SamOrder.Coordinate), readLength=10, baseQuality=20)
-    builder.addFrag(start=10, attrs=Map(RawReadCount -> 10)).exists(Umis.isFgbioSimplexConsensus) shouldBe true
-    builder.addFrag(start=100).exists(Umis.isFgbioSimplexConsensus) shouldBe false
-    builder.addPair(start1=100, start2=100, unmapped2=true).exists(Umis.isFgbioSimplexConsensus) shouldBe false
-    builder.addFrag(start=10, attrs=Map(AbRawReadCount -> 10, BaRawReadCount -> 10)).exists(Umis.isFgbioSimplexConsensus) shouldBe false
-    builder.addFrag(start=10, attrs=Map(RawReadCount -> 20, AbRawReadCount -> 10, BaRawReadCount -> 10)).exists(Umis.isFgbioSimplexConsensus) shouldBe false
+    Umis.isFgbioSimplexConsensus(builder.addFrag(start=100).value) shouldBe false
+    Umis.isFgbioSimplexConsensus(builder.addFrag(start=10, attrs=Map(RawReadCount -> 10)).value) shouldBe true
+    Umis.isFgbioSimplexConsensus(builder.addFrag(start=10, attrs=Map(AbRawReadCount -> 10, BaRawReadCount -> 10)).value) shouldBe false
+    Umis.isFgbioSimplexConsensus(builder.addFrag(start=10, attrs=Map(RawReadCount -> 20, AbRawReadCount -> 10, BaRawReadCount -> 10)).value) shouldBe false
+
+    val pair = builder.addPair(start1=100, start2=100, unmapped2=true)
+    pair.length shouldBe 2
+    pair.forall(rec => Umis.isFgbioSimplexConsensus(rec)) shouldBe false
   }
 
   "Umis.isFgbioDuplexConsensus" should "return true for reads with duplex only consensus tags" in {
     val builder = new SamBuilder(sort=Some(SamOrder.Coordinate), readLength=10, baseQuality=20)
-    builder.addFrag(start=10, attrs=Map(AbRawReadCount -> 10, BaRawReadCount -> 10)).exists(Umis.isFgbioDuplexConsensus) shouldBe true
-    builder.addFrag(start=10, attrs=Map(RawReadCount -> 20, AbRawReadCount -> 10, BaRawReadCount -> 10)).exists(Umis.isFgbioDuplexConsensus) shouldBe true
-    builder.addFrag(start=100).exists(Umis.isFgbioDuplexConsensus) shouldBe false
-    builder.addPair(start1=100, start2=100, unmapped2=true).exists(Umis.isFgbioDuplexConsensus) shouldBe false
-    builder.addFrag(start=10, attrs=Map(RawReadCount -> 10)).exists(Umis.isFgbioDuplexConsensus) shouldBe false
+    Umis.isFgbioDuplexConsensus(builder.addFrag(start=100).value) shouldBe false
+    Umis.isFgbioDuplexConsensus(builder.addFrag(start=10, attrs=Map(RawReadCount -> 10)).value) shouldBe false
+    Umis.isFgbioDuplexConsensus(builder.addFrag(start=10, attrs=Map(AbRawReadCount -> 10, BaRawReadCount -> 10)).value) shouldBe true
+    Umis.isFgbioDuplexConsensus(builder.addFrag(start=10, attrs=Map(RawReadCount -> 20, AbRawReadCount -> 10, BaRawReadCount -> 10)).value) shouldBe true
+
+    val pair = builder.addPair(start1=100, start2=100, unmapped2=true)
+    pair.length shouldBe 2
+    pair.forall(rec => Umis.isFgbioDuplexConsensus(rec)) shouldBe false
   }
 }
