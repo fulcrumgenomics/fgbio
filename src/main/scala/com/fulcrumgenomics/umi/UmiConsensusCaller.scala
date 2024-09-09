@@ -369,7 +369,7 @@ trait UmiConsensusCaller[ConsensusRead <: SimpleRead] {
   private def simplifyCigar(cigar: Cigar) = {
     import CigarOperator._
     if (cigar.forall(e => e.operator == M || e.operator == I || e.operator == D)) {
-      cigar
+      cigar.coalesce
     }
     else {
       val newElems = cigar.elems.map {

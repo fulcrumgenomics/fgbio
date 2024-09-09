@@ -250,7 +250,7 @@ class FilterConsensusReads
       FilterResult(keepRead=false, 0)
     }
     else {
-      val result = if (isDuplexRecord(rec)) filterDuplexConsensusRead(rec) else filterVanillaConsensusRead(rec)
+      val result = if (Umis.isFgbioDuplexConsensus(rec)) filterDuplexConsensusRead(rec) else filterVanillaConsensusRead(rec)
       result.copy(keepRead = result.keepRead && fractionNoCalls(rec) <= this.maxNoCallFraction)
     }
   }
@@ -328,9 +328,6 @@ class FilterConsensusReads
       FilterResult(keepRead=true, maskedBases=maskedBases)
     }
   }
-
-  /** Quick check to see if a record is a duplex record. */
-  private def isDuplexRecord(rec: SamRecord): Boolean = rec.get(ConsensusTags.PerRead.AbRawReadCount).isDefined
 
   /** Reverses all the consensus tags if the right conditions are set. */
   private def reverseConsensusTagsIfNeeded(rec: SamRecord): Unit = if (reversePerBaseTags && rec.negativeStrand) {
