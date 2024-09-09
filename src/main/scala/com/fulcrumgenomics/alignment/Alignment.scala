@@ -164,7 +164,7 @@ private[alignment] object CigarStats {
   */
 case class Cigar(elems: IndexedSeq[CigarElem]) extends Iterable[CigarElem] {
   // Cache whether or not the Cigar is coalesced already (i.e. has no pair of adjacent elements with the same operator)
-  private lazy val isCoalesced: Boolean = {
+  private lazy val isCoalesced: Boolean = elems.length == 1 || {
     var itIs = true
     var index = 0
     while (index < elems.length-1 && itIs) {
