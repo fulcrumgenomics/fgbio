@@ -347,4 +347,49 @@ class EstimateRnaSeqInsertSizeTest extends UnitSpec with OptionValues {
       }
     }
   }
+
+  it should "run end-to-end and ignore reads missing a mate cigar" in {
+    val builder = new SamBuilder()
+    // FR = (133804075 + 100) - 133801671 = 2504
+    builder.addPair(contig=2, start1=133801671, start2=133804075, strand1=Plus, strand2=Minus) // overlaps ACKR4 by 100%
+    builder.addPair(contig=2, start1=133801671, start2=133804075, strand1=Plus, strand2=Minus).foreach { rec =>
+      rec.remove("MC") // remove the mate cigar
+    }
+
+    // fails, since the default is to require the mate cigar
+    assertThrows[Exception] {
+      val bam = builder.toTempFile()
+      new EstimateRnaSeqInsertSize(input=bam, refFlat=RefFlatFile).execute()
+    }
+
+    val bam = builder.toTempFile()
+    val out = PathUtil.pathTo(PathUtil.removeExtension(bam).toString + EstimateRnaSeqInsertSize.RnaSeqInsertSizeMetricExtension)
+    new EstimateRnaSeqInsertSize(input=bam, refFlat=RefFlatFile, skipMissingMateCigar=true).execute()
+    val metrics = Metric.read[InsertSizeMetric](path=out)
+    metrics.length shouldBe PairOrientation.values().length
+
+    val expectedMetrics = Seq(
+      InsertSizeMetric(
+        pair_orientation = PairOrientation.FR,
+        read_pairs                = 1,
+        standard_deviation        = 0,
+        mean                      = 2504,
+        min                       = 1,
+        max                       = 1,
+        median                    = 2504,
+        median_absolute_deviation = 0
+      ),
+    )
+
+    metrics.zip(expectedMetrics).foreach { case (actual, expected) =>
+      actual shouldBe expected
+    }
+
+    val histogramPath = PathUtil.pathTo(PathUtil.removeExtension(bam).toString + EstimateRnaSeqInsertSize.RnaSeqInsertSizeMetricHistogramExtension)
+    Io.readLines(path=histogramPath).mkString("\n") shouldBe
+      """
+        |insert_size	fr	rf	tandem
+        |2504	1	0	0
+      """.stripMargin.trim
+  }
 }
