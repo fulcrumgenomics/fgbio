@@ -36,4 +36,4 @@ set -euo pipefail
 sources=$(find src/main/scala -name \*.scala)
 cp=$(sbt -Dsbt.log.noformat=true "export runtime:fullClasspath" 2> /dev/null | tail -n 1)
 
-scaladoc -toolcp $cp -d target -doc-generator com.fulcrumgenomics.internal.FgMetricsDoclet $sources
+scaladoc -toolcp $cp -d docs -doc-generator com.fulcrumgenomics.internal.FgMetricsDoclet $sources
