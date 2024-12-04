@@ -4,7 +4,7 @@ on: [push, pull_request]
 
 jobs:
   test:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     environment: github-actions
     steps:
       - name: Checkout
@@ -43,7 +43,7 @@ jobs:
     if: github.repository == 'fulcrumgenomics/fgbio' && github.ref == 'refs/heads/main'
     
     needs: test
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     environment: github-actions
     env:
       SONATYPE_USER: ${{ secrets.SONATYPE_USER }}
