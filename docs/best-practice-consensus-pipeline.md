@@ -201,7 +201,7 @@ fgbio -Xmx8g --compression 0 FilterConsensusReads \
 
 ## Phase 2(b): GroupedBam -> Filtered Consensus, HT Version
 
-For a high throughput production pipeline looking to maximize throughput and minimize turaround time, the following pipeline is recommended:
+For a high throughput production pipeline looking to maximize throughput and minimize turnaround time, the following pipeline is recommended:
 
 ```mermaid
 graph TD;
