@@ -468,17 +468,17 @@ case class TagFamilySizeMetric(family_size: Int,
 
 /**
  * Metrics produced by `GroupReadsByUmi` to describe reads passed through UMI grouping
- * @param sam_records The number of SAM records accepted for grouping.
- * @param filtered_non_pf The number of non-PF SAM records.
- * @param filtered_poor_alignment The number of SAM records discarded for poor alignment.
- * @param filtered_ns_in_umi The number of SAM records discarded due to one or more Ns in the UMI.
- * @param filtered_umis_to_short The number of SAM records discarded due to a shorter than expected UMI.
+ * @param accepted_sam_records The number of SAM records accepted for grouping.
+ * @param discarded_non_pf The number of discarded non-PF SAM records.
+ * @param discarded_poor_alignment The number of SAM records discarded for poor alignment.
+ * @param discarded_ns_in_umi The number of SAM records discarded due to one or more Ns in the UMI.
+ * @param discarded_umis_to_short The number of SAM records discarded due to a shorter than expected UMI.
  */
-case class UmiGroupingMetric(sam_records: Long,
-                             filtered_non_pf: Long,
-                             filtered_poor_alignment: Long,
-                             filtered_ns_in_umi: Long,
-                             filtered_umis_to_short: Long) extends Metric
+case class UmiGroupingMetric(accepted_sam_records: Long,
+                             discarded_non_pf: Long,
+                             discarded_poor_alignment: Long,
+                             discarded_ns_in_umi: Long,
+                             discarded_umis_to_short: Long) extends Metric
 
 /** The strategies implemented by [[GroupReadsByUmi]] to identify reads from the same source molecule.*/
 sealed trait Strategy extends EnumEntry {
@@ -760,13 +760,13 @@ class GroupReadsByUmi
 
     // Write out UMI grouping metrics
     this.groupingMetrics.foreach { path =>
-        val groupingMetrics = UmiGroupingMetric(
-          sam_records             = kept,
-          filtered_non_pf         = filteredNonPf,
-          filtered_poor_alignment = filteredPoorAlignment,
-          filtered_ns_in_umi      = filteredNsInUmi,
-          filtered_umis_to_short  = filterUmisTooShort,
-        )
+      val groupingMetrics = UmiGroupingMetric(
+        accepted_sam_records     = kept,
+        discarded_non_pf         = filteredNonPf,
+        discarded_poor_alignment = filteredPoorAlignment,
+        discarded_ns_in_umi      = filteredNsInUmi,
+        discarded_umis_to_short  = filterUmisTooShort,
+      )
       Metric.write(path, groupingMetrics)
     }
   }

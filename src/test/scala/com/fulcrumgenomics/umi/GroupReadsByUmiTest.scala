@@ -270,7 +270,7 @@ class GroupReadsByUmiTest extends UnitSpec with OptionValues with PrivateMethodT
       hist.toFile.exists() shouldBe true
 
       // TODO: Create a more comprehensive test case
-      val expectedMetric = UmiGroupingMetric(sam_records = 10, filtered_non_pf = 0, filtered_poor_alignment = 2, filtered_ns_in_umi = 0, filtered_umis_to_short = 0)
+      val expectedMetric = UmiGroupingMetric(accepted_sam_records = 10, discarded_non_pf = 0, discarded_poor_alignment = 2, discarded_ns_in_umi = 0, discarded_umis_to_short = 0)
       Metric.read[UmiGroupingMetric](metrics) shouldEqual Seq(expectedMetric)
 
       // Make sure that we skip sorting for TemplateCoordinate
