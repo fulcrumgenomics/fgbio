@@ -33,6 +33,7 @@ import com.fulcrumgenomics.cmdline.FgBioMain.FailureException
 import com.fulcrumgenomics.testing.SamBuilder.{Minus, Plus}
 import com.fulcrumgenomics.testing.{SamBuilder, UnitSpec}
 import com.fulcrumgenomics.umi.GroupReadsByUmi._
+import com.fulcrumgenomics.util.Metric
 import org.scalatest.{OptionValues, PrivateMethodTester}
 
 import java.nio.file.Files
@@ -268,7 +269,9 @@ class GroupReadsByUmiTest extends UnitSpec with OptionValues with PrivateMethodT
 
       hist.toFile.exists() shouldBe true
 
-      metrics.toFile.exists() shouldBe true
+      // TODO: Create a more comprehensive test case
+      val expectedMetric = UmiGroupingMetric(sam_records = 10, filtered_non_pf = 0, filtered_poor_alignment = 2, filtered_ns_in_umi = 0, filtered_umis_to_short = 0)
+      Metric.read[UmiGroupingMetric](metrics) shouldEqual Seq(expectedMetric)
 
       // Make sure that we skip sorting for TemplateCoordinate
       val sortMessage = "Sorting the input to TemplateCoordinate order"
