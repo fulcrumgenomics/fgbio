@@ -33,6 +33,7 @@ import com.fulcrumgenomics.cmdline.FgBioMain.FailureException
 import com.fulcrumgenomics.testing.SamBuilder.{Minus, Plus}
 import com.fulcrumgenomics.testing.{SamBuilder, UnitSpec}
 import com.fulcrumgenomics.umi.GroupReadsByUmi._
+import com.fulcrumgenomics.util.Metric
 import org.scalatest.{OptionValues, PrivateMethodTester}
 
 import java.nio.file.Files
@@ -247,7 +248,8 @@ class GroupReadsByUmiTest extends UnitSpec with OptionValues with PrivateMethodT
       val in  = builder.toTempFile()
       val out = Files.createTempFile("umi_grouped.", ".sam")
       val hist = Files.createTempFile("umi_grouped.", ".histogram.txt")
-      val tool = new GroupReadsByUmi(input=in, output=out, familySizeHistogram=Some(hist), rawTag="RX", assignTag="MI", strategy=Strategy.Edit, edits=1, minMapQ=Some(30))
+      val metrics = Files.createTempFile("umi_grouped.", ".metrics.txt")
+      val tool = new GroupReadsByUmi(input=in, output=out, familySizeHistogram=Some(hist), groupingMetrics=Some(metrics), rawTag="RX", assignTag="MI", strategy=Strategy.Edit, edits=1, minMapQ=Some(30))
       val logs = executeFgbioTool(tool)
 
       val groups = readBamRecs(out).groupBy(_.name.charAt(0))
@@ -266,6 +268,10 @@ class GroupReadsByUmiTest extends UnitSpec with OptionValues with PrivateMethodT
       groups.contains('c') shouldBe false
 
       hist.toFile.exists() shouldBe true
+
+      // TODO: Consider creating more unit tests that vary the following metric fields
+      val expectedMetric = UmiGroupingMetric(accepted_sam_records = 10, discarded_non_pf = 0, discarded_poor_alignment = 2, discarded_ns_in_umi = 0, discarded_umis_to_short = 0)
+      Metric.read[UmiGroupingMetric](metrics) shouldEqual Seq(expectedMetric)
 
       // Make sure that we skip sorting for TemplateCoordinate
       val sortMessage = "Sorting the input to TemplateCoordinate order"
@@ -424,8 +430,12 @@ class GroupReadsByUmiTest extends UnitSpec with OptionValues with PrivateMethodT
     builder.addPair(name="a03", start1=100, start2=300, strand1=Plus,  strand2=Minus, attrs=Map("RX" -> "ACT-ANN"))
 
     val in  = builder.toTempFile()
+    val metrics = Files.createTempFile("umi_grouped.", ".metrics.txt")
     val out = Files.createTempFile("umi_grouped.", ".bam")
-    new GroupReadsByUmi(input=in, output=out, rawTag="RX", assignTag="MI", strategy=Strategy.Paired, edits=2).execute()
+    new GroupReadsByUmi(input=in, output=out, groupingMetrics=Some(metrics), rawTag="RX", assignTag="MI", strategy=Strategy.Paired, edits=2).execute()
+
+    val expectedMetric = UmiGroupingMetric(accepted_sam_records = 4, discarded_non_pf = 0, discarded_poor_alignment = 0, discarded_ns_in_umi = 2, discarded_umis_to_short = 0)
+    Metric.read[UmiGroupingMetric](metrics) shouldEqual Seq(expectedMetric)
 
     readBamRecs(out).map(_.name).distinct shouldBe Seq("a01", "a02")
   }
