@@ -247,7 +247,8 @@ class GroupReadsByUmiTest extends UnitSpec with OptionValues with PrivateMethodT
       val in  = builder.toTempFile()
       val out = Files.createTempFile("umi_grouped.", ".sam")
       val hist = Files.createTempFile("umi_grouped.", ".histogram.txt")
-      val tool = new GroupReadsByUmi(input=in, output=out, familySizeHistogram=Some(hist), rawTag="RX", assignTag="MI", strategy=Strategy.Edit, edits=1, minMapQ=Some(30))
+      val metrics = Files.createTempFile("umi_grouped.", ".metrics.txt")
+      val tool = new GroupReadsByUmi(input=in, output=out, familySizeHistogram=Some(hist), groupingMetrics=Some(metrics), rawTag="RX", assignTag="MI", strategy=Strategy.Edit, edits=1, minMapQ=Some(30))
       val logs = executeFgbioTool(tool)
 
       val groups = readBamRecs(out).groupBy(_.name.charAt(0))
@@ -266,6 +267,8 @@ class GroupReadsByUmiTest extends UnitSpec with OptionValues with PrivateMethodT
       groups.contains('c') shouldBe false
 
       hist.toFile.exists() shouldBe true
+
+      metrics.toFile.exists() shouldBe true
 
       // Make sure that we skip sorting for TemplateCoordinate
       val sortMessage = "Sorting the input to TemplateCoordinate order"

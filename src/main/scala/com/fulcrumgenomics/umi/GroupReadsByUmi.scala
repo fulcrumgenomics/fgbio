@@ -466,6 +466,20 @@ case class TagFamilySizeMetric(family_size: Int,
                                var fraction: Proportion = 0,
                                var fraction_gt_or_eq_family_size: Proportion = 0) extends Metric
 
+/**
+ * Metrics produced by `GroupReadsByUmi` to describe reads passed through UMI grouping
+ * @param reads The number of reads accepted for grouping
+ * @param filteredNonPf The number of non-PF reads
+ * @param filteredPoorAlignment The number of templates discarded for poor
+ * @param filteredNsInUmi The number of templates discarded due to one or more Ns in the UMI
+ * @param filterUmisTooShort The number of templates discarded due to a shorter than expected UMI
+ */
+case class UmiGroupingMetric(reads: Long,
+                             filteredNonPf: Long,
+                             filteredPoorAlignment: Long,
+                             filteredNsInUmi: Long,
+                             filterUmisTooShort: Long) extends Metric
+
 /** The strategies implemented by [[GroupReadsByUmi]] to identify reads from the same source molecule.*/
 sealed trait Strategy extends EnumEntry {
   def newStrategy(edits: Int, threads: Int): UmiAssigner
@@ -568,6 +582,7 @@ class GroupReadsByUmi
 (@arg(flag='i', doc="The input BAM file.")              val input: PathToBam  = Io.StdIn,
  @arg(flag='o', doc="The output BAM file.")             val output: PathToBam = Io.StdOut,
  @arg(flag='f', doc="Optional output of tag family size counts.") val familySizeHistogram: Option[FilePath] = None,
+ @arg(flag='g', doc="Optional output of UMI grouping metrics.") val groupingMetrics: Option[FilePath] = None,
  @arg(flag='t', doc="The tag containing the raw UMI.")  val rawTag: String    = ConsensusTags.UmiBases,
  @arg(flag='T', doc="The output tag for UMI grouping.") val assignTag: String = ConsensusTags.MolecularId,
  @arg(flag='d', doc="Turn on duplicate marking mode.") val markDuplicates: Boolean = false,
@@ -741,6 +756,20 @@ class GroupReadsByUmi
         ms.foreach(m => m.fraction = m.count / total)
         ms.tails.foreach { tail => tail.headOption.foreach(m => m.fraction_gt_or_eq_family_size = tail.map(_.fraction).sum) }
         Metric.write(p, ms)
+    }
+
+  // Write out UMI grouping metrics
+  this.groupingMetrics match {
+    case None    => ()
+    case Some(p) =>
+      val groupingMetrics = UmiGroupingMetric(
+        reads                 = kept,
+        filteredNonPf         = filteredNonPf,
+        filteredPoorAlignment = filteredPoorAlignment,
+        filteredNsInUmi       = filteredNsInUmi,
+        filterUmisTooShort    = filterUmisTooShort,
+      )
+      Metric.write(p, groupingMetrics)
     }
   }
 
