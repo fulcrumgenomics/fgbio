@@ -269,7 +269,7 @@ class GroupReadsByUmiTest extends UnitSpec with OptionValues with PrivateMethodT
 
       hist.toFile.exists() shouldBe true
 
-      // TODO: Create a more comprehensive test case
+      // TODO: Consider creating more unit tests that vary the following metric fields
       val expectedMetric = UmiGroupingMetric(accepted_sam_records = 10, discarded_non_pf = 0, discarded_poor_alignment = 2, discarded_ns_in_umi = 0, discarded_umis_to_short = 0)
       Metric.read[UmiGroupingMetric](metrics) shouldEqual Seq(expectedMetric)
 
@@ -430,8 +430,12 @@ class GroupReadsByUmiTest extends UnitSpec with OptionValues with PrivateMethodT
     builder.addPair(name="a03", start1=100, start2=300, strand1=Plus,  strand2=Minus, attrs=Map("RX" -> "ACT-ANN"))
 
     val in  = builder.toTempFile()
+    val metrics = Files.createTempFile("umi_grouped.", ".metrics.txt")
     val out = Files.createTempFile("umi_grouped.", ".bam")
-    new GroupReadsByUmi(input=in, output=out, rawTag="RX", assignTag="MI", strategy=Strategy.Paired, edits=2).execute()
+    new GroupReadsByUmi(input=in, output=out, groupingMetrics=Some(metrics), rawTag="RX", assignTag="MI", strategy=Strategy.Paired, edits=2).execute()
+
+    val expectedMetric = UmiGroupingMetric(accepted_sam_records = 4, discarded_non_pf = 0, discarded_poor_alignment = 0, discarded_ns_in_umi = 2, discarded_umis_to_short = 0)
+    Metric.read[UmiGroupingMetric](metrics) shouldEqual Seq(expectedMetric)
 
     readBamRecs(out).map(_.name).distinct shouldBe Seq("a01", "a02")
   }
