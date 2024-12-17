@@ -79,6 +79,15 @@ class SequencesTest extends UnitSpec {
     Sequences.longestDinuc("AGTGTGT")  shouldBe OffsetAndLength(1, 6)
     Sequences.longestDinuc("GGGGGGGG") shouldBe OffsetAndLength(0, 8)
     Sequences.longestDinuc("AGCGtagCGCGCgcGCTCTCTatCGCGCA") shouldBe OffsetAndLength(6, 10)
+    Sequences.longestDinuc("ACACACTCTCTCT") shouldBe OffsetAndLength(5, 8)
+    Sequences.longestDinuc("") shouldBe OffsetAndLength(0, 0)
+    Sequences.longestDinuc("ccgTATGC") shouldBe OffsetAndLength(0, 2)
+    Sequences.longestDinuc("ATATCC") shouldBe OffsetAndLength(0, 4)
+    Sequences.longestDinuc("CCATATCC") shouldBe OffsetAndLength(2, 4)
+    Sequences.longestDinuc("ATAC") shouldBe OffsetAndLength(0, 2)
+    Sequences.longestDinuc("AACC") shouldBe OffsetAndLength(0, 2)
+    Sequences.longestDinuc("ACGTAAAAAATT") shouldBe OffsetAndLength(4, 6)
+    Sequences.longestDinuc("ATAT") shouldBe OffsetAndLength(0, 4)
   }
 
   "Sequences.complement" should "return the complement of sequences" in {
