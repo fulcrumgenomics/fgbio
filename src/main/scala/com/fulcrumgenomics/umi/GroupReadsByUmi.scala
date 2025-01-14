@@ -466,6 +466,20 @@ case class TagFamilySizeMetric(family_size: Int,
                                var fraction: Proportion = 0,
                                var fraction_gt_or_eq_family_size: Proportion = 0) extends Metric
 
+/**
+ * Metrics produced by `GroupReadsByUmi` to describe reads passed through UMI grouping
+ * @param accepted_sam_records The number of SAM records accepted for grouping.
+ * @param discarded_non_pf The number of discarded non-PF SAM records.
+ * @param discarded_poor_alignment The number of SAM records discarded for poor alignment.
+ * @param discarded_ns_in_umi The number of SAM records discarded due to one or more Ns in the UMI.
+ * @param discarded_umis_to_short The number of SAM records discarded due to a shorter than expected UMI.
+ */
+case class UmiGroupingMetric(accepted_sam_records: Long,
+                             discarded_non_pf: Long,
+                             discarded_poor_alignment: Long,
+                             discarded_ns_in_umi: Long,
+                             discarded_umis_to_short: Long) extends Metric
+
 /** The strategies implemented by [[GroupReadsByUmi]] to identify reads from the same source molecule.*/
 sealed trait Strategy extends EnumEntry {
   def newStrategy(edits: Int, threads: Int): UmiAssigner
@@ -568,6 +582,7 @@ class GroupReadsByUmi
 (@arg(flag='i', doc="The input BAM file.")              val input: PathToBam  = Io.StdIn,
  @arg(flag='o', doc="The output BAM file.")             val output: PathToBam = Io.StdOut,
  @arg(flag='f', doc="Optional output of tag family size counts.") val familySizeHistogram: Option[FilePath] = None,
+ @arg(flag='g', doc="Optional output of UMI grouping metrics.") val groupingMetrics: Option[FilePath] = None,
  @arg(flag='t', doc="The tag containing the raw UMI.")  val rawTag: String    = ConsensusTags.UmiBases,
  @arg(flag='T', doc="The output tag for UMI grouping.") val assignTag: String = ConsensusTags.MolecularId,
  @arg(flag='d', doc="Turn on duplicate marking mode.") val markDuplicates: Boolean = false,
@@ -742,14 +757,26 @@ class GroupReadsByUmi
         ms.tails.foreach { tail => tail.headOption.foreach(m => m.fraction_gt_or_eq_family_size = tail.map(_.fraction).sum) }
         Metric.write(p, ms)
     }
+
+    // Write out UMI grouping metrics
+    this.groupingMetrics.foreach { path =>
+      val groupingMetrics = UmiGroupingMetric(
+        accepted_sam_records     = kept,
+        discarded_non_pf         = filteredNonPf,
+        discarded_poor_alignment = filteredPoorAlignment,
+        discarded_ns_in_umi      = filteredNsInUmi,
+        discarded_umis_to_short  = filterUmisTooShort,
+      )
+      Metric.write(path, groupingMetrics)
+    }
   }
 
   private def logStats(): Unit = {
-    logger.info(f"Accepted $kept%,d reads for grouping.")
-    if (filteredNonPf > 0) logger.info(f"Filtered out $filteredNonPf%,d non-PF reads.")
-    logger.info(f"Filtered out $filteredPoorAlignment%,d reads due to mapping issues.")
-    logger.info(f"Filtered out $filteredNsInUmi%,d reads that contained one or more Ns in their UMIs.")
-    this.minUmiLength.foreach { _ => logger.info(f"Filtered out $filterUmisTooShort%,d reads that contained UMIs that were too short.") }
+    logger.info(f"Accepted $kept%,d SAM records for grouping.")
+    if (filteredNonPf > 0) logger.info(f"Filtered out $filteredNonPf%,d non-PF SAM records.")
+    logger.info(f"Filtered out $filteredPoorAlignment%,d SAM records due to mapping issues.")
+    logger.info(f"Filtered out $filteredNsInUmi%,d SAM records that contained one or more Ns in their UMIs.")
+    this.minUmiLength.foreach { _ => logger.info(f"Filtered out $filterUmisTooShort%,d SAM records that contained UMIs that were too short.") }
   }
 
   /** Consumes the next group of templates with all matching end positions and returns them. */
