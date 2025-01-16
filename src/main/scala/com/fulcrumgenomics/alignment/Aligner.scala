@@ -145,7 +145,6 @@ object Aligner {
     }.toArray
 
     override protected def buildMatrices(query: Array[Byte], target: Array[Byte]): Array[AlignmentMatrix] = {
-      println("HERE")
       if (query.length > this.matrices(0).scoring.x || target.length > this.matrices(0).scoring.y) {
         val xLength = math.max(query.length, this.matrices(0).scoring.x)
         val yLength = math.max(target.length, this.matrices(0).scoring.y)
