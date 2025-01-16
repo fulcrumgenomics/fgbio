@@ -144,7 +144,7 @@ object Aligner {
       )
     }.toArray
 
-    override protected def buildMatrices(query: Array[Byte], target: Array[Byte]): Array[AlignmentMatrix] = {
+    override protected def allocMatrices(query: Array[Byte], target: Array[Byte]): Array[AlignmentMatrix] = {
       if (query.length > this.matrices(0).scoring.x || target.length > this.matrices(0).scoring.y) {
         val xLength = math.max(query.length, this.matrices(0).scoring.x)
         val yLength = math.max(target.length, this.matrices(0).scoring.y)
@@ -162,29 +162,9 @@ object Aligner {
           matrix.copy(queryLength=query.length, targetLength=target.length)
         }
       }
-
-      // While we have `matrices` above, it's useful to unpack all the matrices for direct access
-      // in the core loop; when we know the exact matrix we need at compile time, it's faster
-      val (leftScoreMatrix, leftTraceMatrix, upScoreMatrix, upTraceMatrix, diagScoreMatrix, diagTraceMatrix) = {
-        val Seq(l, u, d) = Seq(Left, Up, Diagonal).map(matrices.apply)
-        (l.scoring, l.trace, u.scoring, u.trace, d.scoring, d.trace)
-      }
-
-      // Top left corner - allow all to be zero score but then must be careful to initialize Up and Left to have a gap open
-      AllDirections.foreach { direction =>
-        matrices(direction).scoring(0, 0) = 0
-        matrices(direction).trace(0, 0)   = Done
-      }
-
-      fillLeftmostColumn(query, target, leftScoreMatrix, leftTraceMatrix, upScoreMatrix, upTraceMatrix, diagScoreMatrix, diagTraceMatrix)
-      fillTopRow(query, target, leftScoreMatrix, leftTraceMatrix, upScoreMatrix, upTraceMatrix, diagScoreMatrix, diagTraceMatrix)
-      fillInterior(query, target, leftScoreMatrix, leftTraceMatrix, upScoreMatrix, upTraceMatrix, diagScoreMatrix, diagTraceMatrix)
-
-      matrices.map(_.asInstanceOf[AlignmentMatrix])
+      this.matrices.map(_.asInstanceOf[AlignmentMatrix])
     }
-
   }
-
 
   /** Represents a cell within the set of matrices used for alignment. */
   private case class MatrixLocation(queryIndex: Int, targetIndex: Int, direction: Direction)
@@ -304,6 +284,10 @@ class Aligner(val scorer: AlignmentScorer,
     locations.map(l => generateAlignment(query, target, matrices, l))
   }
 
+  protected def allocMatrices(query: Array[Byte], target: Array[Byte]): Array[AlignmentMatrix] = {
+    AllDirections.sorted.map(dir => AlignmentMatrix(direction=dir, queryLength=query.length, targetLength=target.length)).toArray
+  }
+
   /**
     * Constructs both the scoring and traceback matrices.
     *
@@ -320,8 +304,9 @@ class Aligner(val scorer: AlignmentScorer,
     * @param target the target sequence
     * @return an array of alignment matrices, where the indices to the array are the Directions
     */
+
   protected def buildMatrices(query: Array[Byte], target: Array[Byte]): Array[AlignmentMatrix] = {
-    val matrices = AllDirections.sorted.map(dir => AlignmentMatrix(direction=dir, queryLength=query.length, targetLength=target.length)).toArray
+    val matrices = allocMatrices(query=query, target=target)
 
     // While we have `matrices` above, it's useful to unpack all the matrices for direct access
     // in the core loop; when we know the exact matrix we need at compile time, it's faster
