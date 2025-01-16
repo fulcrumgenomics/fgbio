@@ -50,7 +50,6 @@ object Mode extends FgBioEnum[Mode] {
   override def values: immutable.IndexedSeq[Mode] = findValues
 }
 
-
 object Aligner {
   /** Creates a NW aligner with fixed match and mismatch scores. */
   def apply(matchScore: Int, mismatchScore: Int, gapOpen: Int, gapExtend: Int, mode: Mode = Global): Aligner = {
@@ -75,30 +74,118 @@ object Aligner {
   /** Directions within the trace back matrix. */
   private type Direction = Int
   // NB: types are purposely omitted for match performance.  See: https://stackoverflow.com/questions/16311540/why-cant-scala-optimize-this-match-to-a-switch
-  private final val Left     = 0
-  private final val Up       = 1
-  private final val Diagonal = 2
-  private final val Done     = 3
+  final val Left     = 0
+  final val Up       = 1
+  final val Diagonal = 2
+  final val Done     = 3
 
-  private val AllDirections: Seq[Direction]   = Seq(Diagonal, Left, Up)
+  final val AllDirections: Seq[Direction]   = Seq(Diagonal, Left, Up)
 
   /** The minimum score allowed to start an alignment.  This prevents underflow. */
   val MinStartScore: Int = Int.MinValue / 2
 
   object AlignmentMatrix {
     def apply(direction: Direction, queryLength: Int, targetLength: Int): AlignmentMatrix = {
-      AlignmentMatrix(
+      SimpleAlignmentMatrix(
         direction = direction,
         scoring   = Matrix(queryLength+1, targetLength+1),
         trace     = Matrix(queryLength+1, targetLength+1))
     }
   }
 
+  abstract class AlignmentMatrix {
+    def direction: Direction
+    def scoring: Matrix[Int]
+    def trace: Matrix[Direction]
+    def queryLength: Int
+    def targetLength: Int
+  }
+
   /** A single alignment matrix for a given `Direction` storing both the scoring and traceback matrices produce by the aligner. */
-  case class AlignmentMatrix(direction: Direction, scoring: Matrix[Int], trace: Matrix[Direction]) {
+  private case class SimpleAlignmentMatrix(direction: Direction, scoring: Matrix[Int], trace: Matrix[Direction]) extends AlignmentMatrix {
     val queryLength: Int  = scoring.x - 1
     val targetLength: Int = scoring.y - 1
   }
+
+  object CachedAligner {
+
+    case class CachedAlignmentMatrix
+    (direction: Direction,
+     scoring: Matrix[Int],
+     trace: Matrix[Direction],
+     queryLength: Int,
+     targetLength: Int) extends AlignmentMatrix {
+      require(queryLength <= scoring.x)
+      require(queryLength <= trace.x)
+      require(targetLength <= scoring.y)
+      require(targetLength <= trace.y)
+    }
+
+    def apply(matchScore: Int, mismatchScore: Int, gapOpen: Int, gapExtend: Int, mode: Mode = Global): CachedAligner = {
+      val aligner = Aligner(matchScore, mismatchScore, gapOpen, gapExtend, mode)
+      new CachedAligner(scorer=aligner.scorer, mode=aligner.mode)
+    }
+  }
+
+  class CachedAligner(scorer: AlignmentScorer,
+                      useEqualsAndX: Boolean = true,
+                      mode: Mode = Global,
+                      initQueryLength: Int = 1024,
+                      initTargetLength: Int = 1024) extends Aligner(scorer=scorer, useEqualsAndX=useEqualsAndX, mode=mode) {
+    import CachedAligner.CachedAlignmentMatrix
+
+    private var matrices: Array[CachedAlignmentMatrix] = AllDirections.sorted.map { dir =>
+      CachedAlignmentMatrix(
+        direction=dir,
+        scoring=Matrix[Int](initQueryLength, initTargetLength),
+        trace=Matrix[Int](initQueryLength, initTargetLength),
+        queryLength=initQueryLength,
+        targetLength=initTargetLength,
+      )
+    }.toArray
+
+    override protected def buildMatrices(query: Array[Byte], target: Array[Byte]): Array[AlignmentMatrix] = {
+      println("HERE")
+      if (query.length > this.matrices(0).scoring.x || target.length > this.matrices(0).scoring.y) {
+        val xLength = math.max(query.length, this.matrices(0).scoring.x)
+        val yLength = math.max(target.length, this.matrices(0).scoring.y)
+        this.matrices = AllDirections.sorted.map { dir =>
+          CachedAlignmentMatrix(
+            direction=dir,
+            scoring=Matrix[Int](xLength, yLength),
+            trace=Matrix[Int](xLength, yLength),
+            queryLength=query.length,
+            targetLength=target.length,
+          )
+        }.toArray
+      } else if (this.matrices(0).queryLength != query.length || this.matrices(0).targetLength != target.length) {
+        this.matrices = this.matrices.map { matrix =>
+          matrix.copy(queryLength=query.length, targetLength=target.length)
+        }
+      }
+
+      // While we have `matrices` above, it's useful to unpack all the matrices for direct access
+      // in the core loop; when we know the exact matrix we need at compile time, it's faster
+      val (leftScoreMatrix, leftTraceMatrix, upScoreMatrix, upTraceMatrix, diagScoreMatrix, diagTraceMatrix) = {
+        val Seq(l, u, d) = Seq(Left, Up, Diagonal).map(matrices.apply)
+        (l.scoring, l.trace, u.scoring, u.trace, d.scoring, d.trace)
+      }
+
+      // Top left corner - allow all to be zero score but then must be careful to initialize Up and Left to have a gap open
+      AllDirections.foreach { direction =>
+        matrices(direction).scoring(0, 0) = 0
+        matrices(direction).trace(0, 0)   = Done
+      }
+
+      fillLeftmostColumn(query, target, leftScoreMatrix, leftTraceMatrix, upScoreMatrix, upTraceMatrix, diagScoreMatrix, diagTraceMatrix)
+      fillTopRow(query, target, leftScoreMatrix, leftTraceMatrix, upScoreMatrix, upTraceMatrix, diagScoreMatrix, diagTraceMatrix)
+      fillInterior(query, target, leftScoreMatrix, leftTraceMatrix, upScoreMatrix, upTraceMatrix, diagScoreMatrix, diagTraceMatrix)
+
+      matrices.map(_.asInstanceOf[AlignmentMatrix])
+    }
+
+  }
+
 
   /** Represents a cell within the set of matrices used for alignment. */
   private case class MatrixLocation(queryIndex: Int, targetIndex: Int, direction: Direction)
@@ -258,7 +345,7 @@ class Aligner(val scorer: AlignmentScorer,
   }
 
   /** Fills in the leftmost column of the matrices. */
-  private final def fillLeftmostColumn(query: Array[Byte],
+  protected final def fillLeftmostColumn(query: Array[Byte],
                                        target: Array[Byte],
                                        leftScoreMatrix: Matrix[Int],
                                        leftTraceMatrix: Matrix[Direction],
@@ -289,7 +376,7 @@ class Aligner(val scorer: AlignmentScorer,
   }
 
   /** Fills in the top row of the matrices. */
-  private final def fillTopRow(query: Array[Byte],
+  protected final def fillTopRow(query: Array[Byte],
                                target: Array[Byte],
                                leftScoreMatrix: Matrix[Int],
                                leftTraceMatrix: Matrix[Direction],
@@ -321,7 +408,7 @@ class Aligner(val scorer: AlignmentScorer,
   }
 
   /** Fills the interior of the matrix. */
-  private final def fillInterior(query: Array[Byte],
+  protected final def fillInterior(query: Array[Byte],
                                  target: Array[Byte],
                                  leftScoreMatrix: Matrix[Int],
                                  leftTraceMatrix: Matrix[Direction],
