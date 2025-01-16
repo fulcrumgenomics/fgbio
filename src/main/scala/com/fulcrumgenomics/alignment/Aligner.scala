@@ -136,11 +136,11 @@ object Aligner {
 
     private var matrices: Array[CachedAlignmentMatrix] = AllDirections.sorted.map { dir =>
       CachedAlignmentMatrix(
-        direction=dir,
-        scoring=Matrix[Int](initQueryLength, initTargetLength),
-        trace=Matrix[Int](initQueryLength, initTargetLength),
-        queryLength=initQueryLength,
-        targetLength=initTargetLength,
+        direction    = dir,
+        scoring      = Matrix[Int](initQueryLength, initTargetLength),
+        trace        = Matrix[Int](initQueryLength, initTargetLength),
+        queryLength  = initQueryLength,
+        targetLength = initTargetLength,
       )
     }.toArray
 
@@ -150,11 +150,11 @@ object Aligner {
         val yLength = math.max(target.length, this.matrices(0).scoring.y)
         this.matrices = AllDirections.sorted.map { dir =>
           CachedAlignmentMatrix(
-            direction=dir,
-            scoring=Matrix[Int](xLength, yLength),
-            trace=Matrix[Int](xLength, yLength),
-            queryLength=query.length,
-            targetLength=target.length,
+            direction    = dir,
+            scoring      = Matrix[Int](xLength, yLength),
+            trace        = Matrix[Int](xLength, yLength),
+            queryLength  = query.length,
+            targetLength = target.length,
           )
         }.toArray
       } else if (this.matrices(0).queryLength != query.length || this.matrices(0).targetLength != target.length) {
