@@ -74,12 +74,12 @@ object Aligner {
   /** Directions within the trace back matrix. */
   private type Direction = Int
   // NB: types are purposely omitted for match performance.  See: https://stackoverflow.com/questions/16311540/why-cant-scala-optimize-this-match-to-a-switch
-  final val Left     = 0
-  final val Up       = 1
-  final val Diagonal = 2
-  final val Done     = 3
+  private final val Left     = 0
+  private final val Up       = 1
+  private final val Diagonal = 2
+  private final val Done     = 3
 
-  final val AllDirections: Seq[Direction]   = Seq(Diagonal, Left, Up)
+  private val AllDirections: Seq[Direction]   = Seq(Diagonal, Left, Up)
 
   /** The minimum score allowed to start an alignment.  This prevents underflow. */
   val MinStartScore: Int = Int.MinValue / 2
