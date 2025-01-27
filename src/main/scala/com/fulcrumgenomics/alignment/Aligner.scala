@@ -115,10 +115,10 @@ object Aligner {
      trace: Matrix[Direction],
      queryLength: Int,
      targetLength: Int) extends AlignmentMatrix {
-      require(queryLength <= scoring.x)
-      require(queryLength <= trace.x)
-      require(targetLength <= scoring.y)
-      require(targetLength <= trace.y)
+      require(queryLength < scoring.x)
+      require(queryLength < trace.x)
+      require(targetLength < scoring.y)
+      require(targetLength < trace.y)
     }
 
     def apply(matchScore: Int, mismatchScore: Int, gapOpen: Int, gapExtend: Int, mode: Mode = Global): CachedAligner = {
@@ -137,24 +137,24 @@ object Aligner {
     private var matrices: Array[CachedAlignmentMatrix] = AllDirections.sorted.map { dir =>
       CachedAlignmentMatrix(
         direction    = dir,
-        scoring      = Matrix[Int](initQueryLength, initTargetLength),
-        trace        = Matrix[Int](initQueryLength, initTargetLength),
+        scoring      = Matrix[Int](initQueryLength+1, initTargetLength+1),
+        trace        = Matrix[Direction](initQueryLength+1, initTargetLength+1),
         queryLength  = initQueryLength,
-        targetLength = initTargetLength,
+        targetLength = initTargetLength
       )
     }.toArray
 
     override protected def allocMatrices(query: Array[Byte], target: Array[Byte]): Array[AlignmentMatrix] = {
-      if (query.length > this.matrices(0).scoring.x || target.length > this.matrices(0).scoring.y) {
-        val xLength = math.max(query.length, this.matrices(0).scoring.x)
-        val yLength = math.max(target.length, this.matrices(0).scoring.y)
+      if (query.length + 1 > this.matrices(0).scoring.x || target.length + 1 > this.matrices(0).scoring.y) {
+        val xLength = math.max(query.length + 1, this.matrices(0).scoring.x)
+        val yLength = math.max(target.length + 1, this.matrices(0).scoring.y)
         this.matrices = AllDirections.sorted.map { dir =>
           CachedAlignmentMatrix(
             direction    = dir,
             scoring      = Matrix[Int](xLength, yLength),
-            trace        = Matrix[Int](xLength, yLength),
+            trace        = Matrix[Direction](xLength, yLength),
             queryLength  = query.length,
-            targetLength = target.length,
+            targetLength = target.length
           )
         }.toArray
       } else if (this.matrices(0).queryLength != query.length || this.matrices(0).targetLength != target.length) {
