@@ -12,6 +12,20 @@ fgbio
 
 A set of tools to analyze genomic data with a focus on Next Generation Sequencing.
 
+<p>
+<a href float="left"="https://fulcrumgenomics.com"><img src=".github/logos/fulcrumgenomics.svg" alt="Fulcrum Genomics" height="100"/></a>
+</p>
+
+
+[Visit us at Fulcrum Genomics](www.fulcrumgenomics.com) to learn more about how we can power your Bioinformatics with fgbio and beyond.
+
+<a href="mailto:contact@fulcrumgenomics.com?subject=[GitHub inquiry]"><img src="https://img.shields.io/badge/Email_us-brightgreen.svg?&style=for-the-badge&logo=gmail&logoColor=white"/></a>
+<a href="https://www.fulcrumgenomics.com"><img src="https://img.shields.io/badge/Visit_Us-blue.svg?&style=for-the-badge&logo=gmail&logoColor=white"/></a>
+
+
+
+
+
 This readme document is mostly for developers/contributors and those attempting to build the project from source.
 Detailed user documentation is available on the [project website](http://fulcrumgenomics.github.io/fgbio/) including [tool usage](http://fulcrumgenomics.github.io/fgbio/tools/latest) and [documentation of metrics produced](http://fulcrumgenomics.github.io/fgbio/metrics/latest).  Detailed developer documentation can be found [here](http://javadoc.io/doc/com.fulcrumgenomics/fgbio_2.13).
 
@@ -30,7 +44,7 @@ Detailed user documentation is available on the [project website](http://fulcrum
 
 <!---toc end-->
 
-# Quick Installation
+## Quick Installation
 
 The [conda](https://conda.io/) package manager (configured with [bioconda channels](https://bioconda.github.io/)) can be used to quickly install fgbio:
 
@@ -44,7 +58,7 @@ To install fgbio without extra dependencies (e.g. [R](https://www.r-project.org/
 conda install fgbio-minimal
 ```
 
-# Goals
+## Goals
 
 There are many toolkits available for analyzing genomic data; fgbio does not aim to be all things to all people but is specifically focused on providing:
 
