@@ -71,6 +71,13 @@ object VcfFieldType extends FgBioEnum[VcfFieldType] {
 /** Trait representing an entry/line in a VCF header. */
 sealed trait VcfHeaderEntry {}
 
+sealed trait VcfHeaderInfoOrFormatEntry extends VcfHeaderEntry {
+  def id: String
+  def count: VcfCount
+  def kind: VcfFieldType
+  def description: String
+}
+
 // TODO add subclasses for ALT and PEDIGREE lines
 
 /** A contig line/entry in the VCF header.
@@ -103,7 +110,7 @@ case class VcfInfoHeader(id: String,
                          description: String,
                          source: Option[String] = None,
                          version: Option[String] = None
-                        ) extends VcfHeaderEntry {}
+                        ) extends VcfHeaderInfoOrFormatEntry {}
 
 
 /**
@@ -117,7 +124,7 @@ case class VcfInfoHeader(id: String,
 case class VcfFormatHeader(id: String,
                            count: VcfCount,
                            kind: VcfFieldType,
-                           description: String) extends VcfHeaderEntry {}
+                           description: String) extends VcfHeaderInfoOrFormatEntry {}
 
 
 /**
@@ -175,4 +182,55 @@ case class VcfHeader(contigs: IndexedSeq[VcfContigHeader],
 
   /** How many lines total are in the header. */
   def size: Int = entries.size
+}
+
+object VcfHeader {
+
+    import com.fulcrumgenomics.vcf.api.VcfCount._
+    import com.fulcrumgenomics.vcf.api.{VcfFieldType => Kind}
+
+    private implicit def countToFixedVcfCount(count: Int): VcfCount.Fixed = VcfCount.Fixed(count)
+
+    val ReservedVcfInfoHeaders: Seq[VcfInfoHeader] = IndexedSeq(
+      VcfInfoHeader(id="AA",        count=1,               kind=Kind.String,  description=""),
+      VcfInfoHeader(id="AC",        count=OnePerAltAllele, kind=Kind.Integer, description=""),
+      VcfInfoHeader(id="AD",        count=OnePerAllele,    kind=Kind.Integer, description=""),
+      VcfInfoHeader(id="ADF",       count=OnePerAllele,    kind=Kind.Integer, description=""),
+      VcfInfoHeader(id="ADR",       count=OnePerAllele,    kind=Kind.Integer, description=""),
+      VcfInfoHeader(id="AF",        count=OnePerAltAllele, kind=Kind.Float,   description=""),
+      VcfInfoHeader(id="AN",        count=1,               kind=Kind.Integer, description=""),
+      VcfInfoHeader(id="BQ",        count=1,               kind=Kind.Integer, description=""),
+      VcfInfoHeader(id="CIGAR",     count=OnePerAltAllele, kind=Kind.String,  description=""),
+      VcfInfoHeader(id="DB",        count=0,               kind=Kind.Flag,    description=""),
+      VcfInfoHeader(id="DP",        count=1,               kind=Kind.Integer, description=""),
+      VcfInfoHeader(id="END",       count=1,               kind=Kind.Integer, description=""),
+      VcfInfoHeader(id="H2",        count=0,               kind=Kind.Flag,    description=""),
+      VcfInfoHeader(id="H3",        count=0,               kind=Kind.Flag,    description=""),
+      VcfInfoHeader(id="MQ",        count=1,               kind=Kind.Float,   description=""),
+      VcfInfoHeader(id="MQ0",       count=1,               kind=Kind.Integer, description=""),
+      VcfInfoHeader(id="NS",        count=1,               kind=Kind.Integer, description=""),
+      VcfInfoHeader(id="SB",        count=4,               kind=Kind.Integer, description=""),
+      VcfInfoHeader(id="SOMATIC",   count=0,               kind=Kind.Flag,    description=""),
+      VcfInfoHeader(id="VALIDATED", count=0,               kind=Kind.Flag,    description=""),
+      VcfInfoHeader(id="1000G",     count=0,               kind=Kind.Flag,    description=""),
+    )
+
+    val ReservedVcfFormatHeaders: Seq[VcfFormatHeader] = IndexedSeq(
+      VcfFormatHeader(id="AD",  count=OnePerAllele,    kind=Kind.Integer, description=""),
+      VcfFormatHeader(id="ADF", count=OnePerAllele,    kind=Kind.Integer, description=""),
+      VcfFormatHeader(id="ADR", count=OnePerAllele,    kind=Kind.Integer, description=""),
+      VcfFormatHeader(id="DP",  count=1,               kind=Kind.Integer, description=""),
+      VcfFormatHeader(id="EC",  count=OnePerAltAllele, kind=Kind.Integer, description=""),
+      VcfFormatHeader(id="FT",  count=1,               kind=Kind.String,  description=""),
+      VcfFormatHeader(id="GL",  count=OnePerGenotype,  kind=Kind.Float,   description=""),
+      VcfFormatHeader(id="GP",  count=OnePerGenotype,  kind=Kind.Float,   description=""),
+      VcfFormatHeader(id="GQ",  count=1,               kind=Kind.Integer, description=""),
+      VcfFormatHeader(id="GT",  count=1,               kind=Kind.String,  description=""),
+      VcfFormatHeader(id="HQ",  count=2,               kind=Kind.Integer, description=""),
+      VcfFormatHeader(id="MQ",  count=1,               kind=Kind.Integer, description=""),
+      VcfFormatHeader(id="PL",  count=OnePerGenotype,  kind=Kind.Integer, description=""),
+      VcfFormatHeader(id="PP",  count=OnePerGenotype,  kind=Kind.Integer, description=""),
+      VcfFormatHeader(id="PQ",  count=1,               kind=Kind.Integer, description=""),
+      VcfFormatHeader(id="PS",  count=1,               kind=Kind.Integer, description=""),
+    )
 }
