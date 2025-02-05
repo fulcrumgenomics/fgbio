@@ -208,7 +208,7 @@ case class Cigar(elems: IndexedSeq[CigarElem]) extends Iterable[CigarElem] {
   def trailingSoftClippedBases: Int = stats.trailingSoftClippedBases
 
   /** Returns the number of bases that are hard-clipped at the start of the sequence. */
-  def leadingHardClippedBases = this.headOption.map { elem =>
+  def leadingHardClippedBases: Int = this.headOption.map { elem =>
     if (elem.operator == CigarOperator.H) elem.length else 0
   }.getOrElse(0)
 
@@ -216,12 +216,22 @@ case class Cigar(elems: IndexedSeq[CigarElem]) extends Iterable[CigarElem] {
   def leadingClippedBases: Int = leadingHardClippedBases + leadingSoftClippedBases
 
   /** Returns the number of bases that are hard-clipped at the end of the sequence. */
-  def trailingHardClippedBases = this.lastOption.map { elem =>
+  def trailingHardClippedBases: Int = this.lastOption.map { elem =>
     if (elem.operator == CigarOperator.H) elem.length else 0
   }.getOrElse(0)
 
   /** Returns the number of bases that are clipped at the end of the sequence. */
   def trailingClippedBases: Int = trailingHardClippedBases + trailingSoftClippedBases
+
+  /** Returns the alignment start position adjusted for leading soft and hard clipped bases. */
+  def unclippedStart(start: Int): Int = {
+    start - this.iterator.takeWhile(_.operator.isClipping).map(_.length).sum
+  }
+
+  /** Returns the alignment end position adjusted for trailing soft and hard clipped bases. */
+  def unclippedEnd(end: Int): Int = {
+    end + this.reverseIterator.takeWhile(_.operator.isClipping).map(_.length).sum
+  }
 
   /** Truncates the cigar based on either query or target length cutoff. */
   private def truncate(len: Int, shouldCount: CigarElem => Boolean): Cigar = {

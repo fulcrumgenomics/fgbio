@@ -24,14 +24,12 @@
 
 package com.fulcrumgenomics.bam.api
 
-import com.fulcrumgenomics.bam.{Bams, Supplementary}
+import com.fulcrumgenomics.bam.{Bams, AlignmentInfo, Template}
 import com.fulcrumgenomics.umi.ConsensusTags
 import htsjdk.samtools.SAMFileHeader.{GroupOrder, SortOrder}
 import htsjdk.samtools.util.Murmur3
 import htsjdk.samtools.{SAMFileHeader, SAMUtils}
 import org.apache.commons.math3.genetics.RandomKey
-
-import scala.reflect.runtime.universe.Template
 
 
 /** Trait for specifying BAM orderings. */
@@ -178,50 +176,38 @@ object SamOrder {
     override val groupOrder: GroupOrder     = GroupOrder.query
     override val subSort:    Option[String] = Some("template-coordinate")
     override val sortkey: SamRecord => A = rec => {
-      // For non-secondary/non-supplementary alignments, use the info in the record.  For secondary and supplementary
-      // alignments, use the info in the pa/pm tags.
-      if (!rec.secondary && !rec.supplementary) {
-        val readChrom = if (rec.unmapped)     Int.MaxValue else rec.refIndex
-        val mateChrom = if (rec.unpaired || rec.mateUnmapped) Int.MaxValue else rec.mateRefIndex
-        val readNeg   = rec.negativeStrand
-        val mateNeg   = if (rec.paired) rec.mateNegativeStrand else false
-        val readPos   = if (rec.unmapped)     Int.MaxValue else if (readNeg) rec.unclippedEnd else rec.unclippedStart
-        val matePos   = if (rec.unpaired || rec.mateUnmapped) Int.MaxValue else if (mateNeg) SAMUtils.getMateUnclippedEnd(rec.asSam) else SAMUtils.getMateUnclippedStart(rec.asSam)
-        val lib       = Option(rec.readGroup).flatMap(rg => Option(rg.getLibrary)).getOrElse("Unknown")
-        val mid       = rec.get[String](ConsensusTags.MolecularId).map { m =>
-          val index: Int = m.lastIndexOf('/')
-          if (index >= 0) m.substring(0, index) else m
-        }.getOrElse("")
+      // For non-secondary/non-supplementary alignments, or unpaired or mate unmapped reads, use the info in the record.
+      // Otherwise, use the info in the pa/pm tags.
+      val primary = if (!rec.secondary && !rec.supplementary) AlignmentInfo(rec) else {
+        val readPrimaryTag = rec.get[String](Template.ReadPrimarySamTag).getOrElse {
+          throw new IllegalStateException(
+            s"Missing '${Template.ReadPrimarySamTag}' tag required for TemplateCoordinate; try using ZipperBams or SetMateInformation"
+          )
+        }
+        AlignmentInfo(readPrimaryTag, rec.header)
+      }
+      val mate = if ((!rec.secondary && !rec.supplementary) || rec.unpaired || rec.mateUnmapped) AlignmentInfo(rec, mate=true) else {
+        val matePrimaryTag = rec.get[String](Template.MatePrimarySamTag).getOrElse {
+          throw new IllegalStateException(
+            s"Missing '${Template.MatePrimarySamTag}' tag required for TemplateCoordinate; try using ZipperBams or SetMateInformation"
+          )
+        }
+        AlignmentInfo(matePrimaryTag, rec.header)
+      }
+      val readPos = if (primary.unmapped) Int.MaxValue else if (primary.negativeStrand) primary.unclippedEnd else primary.unclippedStart
+      val matePos = if (mate.unmapped) Int.MaxValue else if (mate.negativeStrand) mate.unclippedEnd else mate.unclippedStart
+      val lib = Option(rec.readGroup).flatMap(rg => Option(rg.getLibrary)).getOrElse("Unknown")
+      val mid = rec.get[String](ConsensusTags.MolecularId).map { m =>
+        val index: Int = m.lastIndexOf('/')
+        if (index >= 0) m.substring(0, index) else m
+      }.getOrElse("")
 
-        if (readChrom < mateChrom || (readChrom == mateChrom && readPos < matePos) ||
-             (readChrom == mateChrom && readPos == matePos && !readNeg)) {
-          TemplateCoordinateKey(readChrom, mateChrom, readPos, matePos, readNeg, mateNeg, lib, mid, rec.name, false)
-        }
-        else {
-          TemplateCoordinateKey(mateChrom, readChrom, matePos, readPos, mateNeg, readNeg, lib, mid, rec.name, true)
-        }
-      } else {
-        val primary   = Supplementary(rec[String]("rp"))
-        val mate      = Supplementary(rec[String]("mp"))
-        val readChrom = if (rec.unmapped) Int.MaxValue else primary.refIndex(rec.header)
-        val mateChrom = if (rec.unpaired || rec.mateUnmapped) Int.MaxValue else mate.refIndex(rec.header)
-        val readNeg   = primary.negativeStrand
-        val mateNeg   = if (rec.paired) mate.negativeStrand else false
-        val readPos   = if (rec.unmapped) Int.MaxValue else if (readNeg) primary.unclippedEnd else primary.unclippedStart
-        val matePos   = if (rec.unpaired || rec.mateUnmapped) Int.MaxValue else if (mateNeg) mate.unclippedEnd else mate.unclippedStart
-        val lib       = Option(rec.readGroup).flatMap(rg => Option(rg.getLibrary)).getOrElse("Unknown")
-        val mid       = rec.get[String](ConsensusTags.MolecularId).map { m =>
-          val index: Int = m.lastIndexOf('/')
-          if (index >= 0) m.substring(0, index) else m
-        }.getOrElse("")
-
-        if (readChrom < mateChrom || (readChrom == mateChrom && readPos < matePos) ||
-          (readChrom == mateChrom && readPos == matePos && !readNeg)) {
-          TemplateCoordinateKey(readChrom, mateChrom, readPos, matePos, readNeg, mateNeg, lib, mid, rec.name, false)
-        }
-        else {
-          TemplateCoordinateKey(mateChrom, readChrom, matePos, readPos, mateNeg, readNeg, lib, mid, rec.name, true)
-        }
+      if (primary.refIndex < mate.refIndex || (primary.refIndex == mate.refIndex && readPos < matePos) ||
+           (primary.refIndex == mate.refIndex && readPos == matePos && primary.positiveStrand)) {
+        TemplateCoordinateKey(primary.refIndex, mate.refIndex, readPos, matePos, primary.negativeStrand, mate.negativeStrand, lib, mid, rec.name, false)
+      }
+      else {
+        TemplateCoordinateKey(mate.refIndex, primary.refIndex, matePos, readPos, mate.negativeStrand, primary.negativeStrand, lib, mid, rec.name, true)
       }
     }
   }

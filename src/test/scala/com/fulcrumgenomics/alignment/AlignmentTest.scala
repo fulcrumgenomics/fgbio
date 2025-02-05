@@ -121,6 +121,41 @@ class AlignmentTest extends UnitSpec {
     Cigar("10M2D20M").reverse.toString shouldBe "20M2D10M"
   }
 
+  private case class ClippingTestCase
+  (cigar: String, clippedBases: Int,
+   leadingSoftClippedBases: Int, trailingSoftClippedBases: Int,
+   leadingHardClippedBases: Int, trailingHardClippedBases: Int,
+   leadingClippedBases: Int, trailingClippedBases: Int,
+   unclippedStart: Int, unclippedEnd: Int)
+
+  Seq(
+    ClippingTestCase("50M",             0,  0,  0,  0,  0,  0,  0,   0,  0), // no clipping
+    ClippingTestCase("20S50M",         20, 20,  0,  0,  0, 20,  0, -20,  0), // leading soft clipping
+    ClippingTestCase("50M10S",         10,  0, 10,  0,  0,  0, 10,   0, 10), // trailing soft clipping
+    ClippingTestCase("20S50M10S",      30, 20, 10,  0,  0, 20, 10, -20, 10), // leading and trailing soft clipping
+    ClippingTestCase("20H50M",         20,  0,  0, 20,  0, 20,  0, -20,  0), // leading hard clipping
+    ClippingTestCase("50M10H",         10,  0,  0,  0, 10,  0, 10,   0, 10), // trailing hard clipping
+    ClippingTestCase("20H50M10H",      30,  0,  0, 20, 10, 20, 10, -20, 10), // leading and trailing hard clipping
+    ClippingTestCase("15H5S50M",       20,  5,  0, 15,  0, 20,  0, -20,  0), // leading hard-the-soft clipping
+    ClippingTestCase("50M5S15H",       20,  0,  5,  0, 15,  0, 20,   0, 20), // trailing hard-the-soft clipping
+    ClippingTestCase("20H15S50M10S5H", 50, 15, 10, 20,  5, 35, 15, -35, 15), // leading and trailing hard-the-soft clipping
+  ).foreach { testCase =>
+    "Cigar clipping methods" should s"account for leading and trailing clipping in ${testCase.cigar}" in {
+      val cigar = Cigar(testCase.cigar)
+      cigar.clippedBases shouldBe testCase.clippedBases
+      cigar.leadingSoftClippedBases shouldBe testCase.leadingSoftClippedBases
+      cigar.trailingSoftClippedBases shouldBe testCase.trailingSoftClippedBases
+      cigar.leadingHardClippedBases shouldBe testCase.leadingHardClippedBases
+      cigar.trailingHardClippedBases shouldBe testCase.trailingHardClippedBases
+      cigar.leadingClippedBases shouldBe testCase.leadingClippedBases
+      cigar.trailingClippedBases shouldBe testCase.trailingClippedBases
+      cigar.unclippedStart(100) shouldBe testCase.unclippedStart + 100
+      cigar.unclippedEnd(200) shouldBe testCase.unclippedEnd + 200
+    }
+
+  }
+
+
   /////////////////////////////////////////////////////////////////////////////
   // Tests for the Alignment class
   /////////////////////////////////////////////////////////////////////////////

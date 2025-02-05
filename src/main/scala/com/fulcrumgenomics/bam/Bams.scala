@@ -43,33 +43,54 @@ import java.io.Closeable
 import scala.math.{max, min}
 
 
-
-case class Supplementary(refName: String, start: Int, positiveStrand: Boolean, cigar: Cigar, mapq: Int, nm: Int) {
+/** Class to store information about an alignment, as described in the SAM SA tag. */
+private[bam] case class AlignmentInfo(refIndex: Int, start: Int, positiveStrand: Boolean, cigar: Option[Cigar], mapq: Int, nm: Int) {
   def negativeStrand: Boolean = !positiveStrand
-  def refIndex(header: SAMFileHeader): Int = header.getSequence(refName).getSequenceIndex
-
-  def end: Int = start + cigar.lengthOnTarget - 1
-  def unclippedStart: Int = {
-    SAMUtils.getUnclippedStart(start, cigar.toHtsjdkCigar)
+  def refName(header: SAMFileHeader): String = header.getSequence(refIndex).getSequenceName
+  def mapped: Boolean = cigar.isDefined
+  def unmapped: Boolean = !mapped
+  private def _cigar: Cigar = cigar.getOrElse {
+    throw new IllegalStateException(s"Cannot get cigar for AlignmentInfo: ${this}")
   }
-
-  def unclippedEnd: Int = {
-    SAMUtils.getUnclippedEnd(end, cigar.toHtsjdkCigar)
+  def end: Int = start + _cigar.lengthOnTarget - 1
+  def unclippedStart: Int = _cigar.unclippedStart(start)
+  def unclippedEnd: Int = _cigar.unclippedEnd(end)
+  /** Returns a formatted alignment as per the SA tag: `(rname ,pos ,strand ,CIGAR ,mapQ ,NM ;)+` */
+  def toSA(header: SAMFileHeader): String = {
+    val strand  = if (positiveStrand) '+' else '-'
+    val refName = header.getSequence(refIndex).getSequenceName
+    val cigar   = this.cigar.getOrElse("*")
+    f"${refName},${start},${strand},${cigar},${mapq},${nm}"
   }
 }
 
-object Supplementary {
+private[bam] object AlignmentInfo {
+  def apply(rec: SamRecord, mate: Boolean = false): AlignmentInfo = {
+    if (mate) {
+      val mateRefIndex = if (rec.unpaired || rec.mateUnmapped) Int.MaxValue else rec.mateRefIndex
+      val mateCigar    = if (rec.unpaired || rec.mateUnmapped) None else Some(rec.mateCigar.getOrElse {
+        throw new IllegalStateException(s"Mate CIGAR (Tag 'MC') not found for $rec, consider using SetMateInformation.")
+      })
+      // NB: mateCigar has already checked for the existence of the MC tag, so using .get here is fine
+      val mateStart    = if (rec.unpaired || rec.mateUnmapped) Int.MaxValue else rec.mateStart
+      val mateStrand   = if (rec.unpaired || rec.mateUnmapped) true else rec.matePositiveStrand
+      AlignmentInfo(mateRefIndex, mateStart, mateStrand, mateCigar, rec.mapq, 0)
+    } else {
+      val refIndex       = if (rec.unmapped)     Int.MaxValue else rec.refIndex
+      val positiveStrand = rec.positiveStrand
+      val start          = if (rec.unmapped)     Int.MaxValue else rec.start
+      AlignmentInfo(refIndex, start, positiveStrand, Some(rec.cigar), rec.mapq, rec.getOrElse(SAMTag.NM.name(), 0))
+    }
+  }
+
+  def apply(sa: String, header: SAMFileHeader): AlignmentInfo = {
+    val parts    = sa.split(",")
+    require(parts.length == 6, f"Could not parse SA tag: ${sa}")
+    val refIndex = header.getSequenceIndex(parts(0))
+    AlignmentInfo(refIndex, parts(1).toInt, parts(2) == "+", Some(Cigar(parts(3))), parts(4).toInt, parts(5).toInt)
+  }
   /** Returns a formatted alignment as per the SA tag: `(rname ,pos ,strand ,CIGAR ,mapQ ,NM ;)+` */
-  def toString(rec: SamRecord): String = {
-    val strand = if (rec.positiveStrand) '+' else '-'
-    f"${rec.refName},${rec.start},${strand},${rec.cigar},${rec.mapq},${rec.getOrElse(SAMTag.NM.name(),0)}"
-  }
-
-
-  def apply(sa: String): Supplementary = {
-    val parts = sa.split(",")
-    Supplementary(parts(0), parts(1).toInt, parts(2) == "+", Cigar(parts(3)), parts(4).toInt, parts(5).toInt)
-  }
+  def toSA(rec: SamRecord): String = AlignmentInfo(rec).toSA(rec.header)
 }
 
 /**
@@ -136,7 +157,8 @@ case class Template(r1: Option[SamRecord],
     Template(x1, x2)
   }
 
-  /** Fixes mate information and sets mate cigar and mate score on all primary and supplementary (but not secondary) records. */
+
+  /** Fixes mate information and sets mate cigar and mate score on all primary, secondary, and supplementary records. */
   def fixMateInfo(): Unit = {
     // Developer note: the mate score ("ms") tag is used by samtools markdup
     // Set all mate info on BOTH secondary and supplementary records, not just supplementary records.  We also need to
@@ -147,15 +169,15 @@ case class Template(r1: Option[SamRecord],
       SamPairUtil.setMateInformationOnSupplementalAlignment(nonPrimary.asSam, primary.asSam, true)
       primary.get[Int]("AS").foreach(nonPrimary("ms") = _)
       nonPrimary(SAMTag.MQ.name()) = primary.mapq
-      nonPrimary("mp") = Supplementary.toString(primary)
-      r2.foreach(r => nonPrimary("rp") = Supplementary.toString(r))
+      nonPrimary(Template.MatePrimarySamTag) = AlignmentInfo.toSA(primary)
+      r2.foreach(r => nonPrimary(Template.ReadPrimarySamTag) = AlignmentInfo.toSA(r))
     }
     for (primary <- r2; nonPrimary <- r1NonPrimary) {
       SamPairUtil.setMateInformationOnSupplementalAlignment(nonPrimary.asSam, primary.asSam, true)
       primary.get[Int]("AS").foreach(nonPrimary("ms") = _)
       nonPrimary(SAMTag.MQ.name()) = primary.mapq
-      nonPrimary("mp") = Supplementary.toString(primary)
-      r1.foreach(r => nonPrimary("rp") = Supplementary.toString(r))
+      nonPrimary(Template.MatePrimarySamTag) = AlignmentInfo.toSA(primary)
+      r1.foreach(r => nonPrimary(Template.ReadPrimarySamTag) = AlignmentInfo.toSA(r))
     }
     for (first <- r1; second <- r2) {
       SamPairUtil.setMateInfo(first.asSam, second.asSam, true)
@@ -169,6 +191,10 @@ case class Template(r1: Option[SamRecord],
 }
 
 object Template {
+  /** The local SAM tag to store the alignment information of the primary alignment (in the same format as the SA tag) */
+  val ReadPrimarySamTag: String = "rp"
+  /** The local SAM tag to store the alignment information of the mate's primary alignment (in the same format as the SA tag) */
+  val MatePrimarySamTag: String = "mp"
   /**
     * Generates a Template for the next template in the buffered iterator. Assumes that the
     * iterator is queryname sorted or grouped.
