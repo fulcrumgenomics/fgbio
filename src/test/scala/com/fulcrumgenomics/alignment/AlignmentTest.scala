@@ -152,9 +152,7 @@ class AlignmentTest extends UnitSpec {
       cigar.unclippedStart(100) shouldBe testCase.unclippedStart + 100
       cigar.unclippedEnd(200) shouldBe testCase.unclippedEnd + 200
     }
-
   }
-
 
   /////////////////////////////////////////////////////////////////////////////
   // Tests for the Alignment class
