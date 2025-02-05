@@ -58,9 +58,8 @@ private[bam] case class AlignmentInfo(refIndex: Int, start: Int, positiveStrand:
   /** Returns a formatted alignment as per the SA tag: `(rname ,pos ,strand ,CIGAR ,mapQ ,NM ;)+` */
   def toSA(header: SAMFileHeader): String = {
     val strand  = if (positiveStrand) '+' else '-'
-    val refName = header.getSequence(refIndex).getSequenceName
     val cigar   = this.cigar.getOrElse("*")
-    f"${refName},${start},${strand},${cigar},${mapq},${nm}"
+    f"${refName(header)},${start},${strand},${cigar},${mapq},${nm}"
   }
 }
 
