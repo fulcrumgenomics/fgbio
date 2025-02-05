@@ -26,14 +26,15 @@
  */
 package com.fulcrumgenomics.umi
 
-import com.fulcrumgenomics.bam.Template
-import com.fulcrumgenomics.bam.api.SamOrder
+import com.fulcrumgenomics.bam.{Bams, Template}
+import com.fulcrumgenomics.bam.api.{SamOrder, SamWriter}
 import com.fulcrumgenomics.bam.api.SamOrder.TemplateCoordinate
 import com.fulcrumgenomics.cmdline.FgBioMain.FailureException
 import com.fulcrumgenomics.testing.SamBuilder.{Minus, Plus}
 import com.fulcrumgenomics.testing.{SamBuilder, UnitSpec}
 import com.fulcrumgenomics.umi.GroupReadsByUmi._
 import com.fulcrumgenomics.util.Metric
+import com.fulcrumgenomics.util.Io
 import org.scalatest.{OptionValues, PrivateMethodTester}
 
 import java.nio.file.Files
@@ -345,7 +346,7 @@ class GroupReadsByUmiTest extends UnitSpec with OptionValues with PrivateMethodT
   }
 
   it should "mark duplicates on supplementary reads" in {
-    val builder = new SamBuilder(readLength = 100, sort = Some(SamOrder.TemplateCoordinate))
+    val builder = new SamBuilder(readLength = 100, sort = Some(SamOrder.Coordinate))
     // primary read pairs for q1, that map to different contigs
     builder.addPair("q1", contig = 1, contig2 = Some(2), start1 = 66, start2 = 47, cigar1 = "60M40S", cigar2 = "55M45S", strand2 = Plus, attrs = Map("RX" -> "ACT"))
     // supplementary R2, which maps to the same chromosome as the primary R1
@@ -353,21 +354,35 @@ class GroupReadsByUmiTest extends UnitSpec with OptionValues with PrivateMethodT
     s1.supplementary = true
     s2.supplementary = true
     s2.properlyPaired = true
-    // primary read pairs for q1, that map to different contigs, but earlier that q1
+    // primary read pairs for q2, that map to different contigs, but earlier that q1
     builder.addPair("q2", contig = 1, contig2 = Some(2), start1 = 50, start2 = 30, cigar1 = "60M40S", cigar2 = "55M45S", attrs = Map("RX" -> "ACT"))
 
-    val in = builder.toTempFile()
-    val out = Files.createTempFile("umi_grouped.", ".sam")
+    // primary read pairs for q3, that are duplicates of q2
+    builder.addPair("q3", contig = 1, contig2 = Some(2), start1 = 50, start2 = 30, cigar1 = "60M40S", cigar2 = "55M45S", attrs = Map("RX" -> "ACT"))
+
+    // Fix the mate information and write the input.  Note: sorting here to get a template-iterator will write the
+    // records to disk first, so we cannot use the records in builder and therefore must write to the input file
+    // directly.
+    val in = Files.createTempFile("raw_reads", ".sam")
+    val writer = SamWriter(in, builder.header, sort = builder.sort)
+    Bams.templateIterator(iterator = builder.iterator, header = builder.header, maxInMemory = Bams.MaxInMemory, tmpDir = Io.tmpDir).foreach { template =>
+      template.fixMateInfo()
+      writer ++= template.allReads
+    }
+    writer.close()
+
+    val out  = Files.createTempFile("umi_grouped.", ".sam")
     val hist = Files.createTempFile("umi_grouped.", ".histogram.txt")
-    val gr = new GroupReadsByUmi(input = in, output = out, familySizeHistogram = Some(hist), strategy = Strategy.Adjacency, edits = 1, markDuplicates = true, includeSupplementary = Some(true))
+    val gr   = new GroupReadsByUmi(input = in, output = out, familySizeHistogram = Some(hist), strategy = Strategy.Adjacency, edits = 1, markDuplicates = true)
 
     gr.markDuplicates shouldBe true
     gr.execute()
 
     val recs = readBamRecs(out)
-    recs.length shouldBe 4
-    recs.filter(_.name.equals("q1")).forall(_.duplicate == true) shouldBe true
+    recs.length shouldBe 8
+    recs.filter(_.name.equals("q1")).forall(_.duplicate == false) shouldBe true
     recs.filter(_.name.equals("q2")).forall(_.duplicate == false) shouldBe true
+    recs.filter(_.name.equals("q3")).forall(_.duplicate == true) shouldBe true
   }
 
   it should "correctly group reads with the paired assigner when the two UMIs are the same" in {

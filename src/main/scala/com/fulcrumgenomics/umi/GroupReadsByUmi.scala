@@ -734,7 +734,7 @@ class GroupReadsByUmi
 
       // Then output the records in the right order (assigned tag, read name, r1, r2)
       templatesByMi.keys.toSeq.sortBy(id => (id.length, id)).foreach(tag => {
-        templatesByMi(tag).sortBy(t => t.name).flatMap(t => t.primaryReads).foreach(rec => {
+        templatesByMi(tag).sortBy(t => t.name).flatMap(t => t.allReads).foreach(rec => {
           out += rec
         })
       })

@@ -25,6 +25,7 @@
 package com.fulcrumgenomics.bam
 
 import com.fulcrumgenomics.FgBioDef._
+import com.fulcrumgenomics.alignment.Cigar
 import com.fulcrumgenomics.bam.api.SamOrder.Queryname
 import com.fulcrumgenomics.bam.api._
 import com.fulcrumgenomics.commons.collection.{BetterBufferedIterator, SelfClosingIterator}
@@ -40,6 +41,36 @@ import htsjdk.samtools.util.{CloserUtil, CoordMath, Murmur3, SequenceUtil}
 
 import java.io.Closeable
 import scala.math.{max, min}
+
+
+
+case class Supplementary(refName: String, start: Int, positiveStrand: Boolean, cigar: Cigar, mapq: Int, nm: Int) {
+  def negativeStrand: Boolean = !positiveStrand
+  def refIndex(header: SAMFileHeader): Int = header.getSequence(refName).getSequenceIndex
+
+  def end: Int = start + cigar.lengthOnTarget - 1
+  def unclippedStart: Int = {
+    SAMUtils.getUnclippedStart(start, cigar.toHtsjdkCigar)
+  }
+
+  def unclippedEnd: Int = {
+    SAMUtils.getUnclippedEnd(end, cigar.toHtsjdkCigar)
+  }
+}
+
+object Supplementary {
+  /** Returns a formatted alignment as per the SA tag: `(rname ,pos ,strand ,CIGAR ,mapQ ,NM ;)+` */
+  def toString(rec: SamRecord): String = {
+    val strand = if (rec.positiveStrand) '+' else '-'
+    f"${rec.refName},${rec.start},${strand},${rec.cigar},${rec.mapq},${rec.getOrElse(SAMTag.NM.name(),0)}"
+  }
+
+
+  def apply(sa: String): Supplementary = {
+    val parts = sa.split(",")
+    Supplementary(parts(0), parts(1).toInt, parts(2) == "+", Cigar(parts(3)), parts(4).toInt, parts(5).toInt)
+  }
+}
 
 /**
   * Class that represents all reads from a template within a BAM file.
@@ -108,13 +139,23 @@ case class Template(r1: Option[SamRecord],
   /** Fixes mate information and sets mate cigar and mate score on all primary and supplementary (but not secondary) records. */
   def fixMateInfo(): Unit = {
     // Developer note: the mate score ("ms") tag is used by samtools markdup
-    for (primary <- r1; supp <- r2Supplementals) {
-      SamPairUtil.setMateInformationOnSupplementalAlignment(supp.asSam, primary.asSam, true)
-      primary.get[Int]("AS").foreach(supp("ms") = _)
+    // Set all mate info on BOTH secondary and supplementary records, not just supplementary records.  We also need to
+    // add the "pa" and "pm" tags with information about the primary alignments.  Finally, we need the MQ tag!
+    val r1NonPrimary = r1Supplementals ++ r1Secondaries
+    val r2NonPrimary = r2Supplementals ++ r2Secondaries
+    for (primary <- r1; nonPrimary <- r2NonPrimary) {
+      SamPairUtil.setMateInformationOnSupplementalAlignment(nonPrimary.asSam, primary.asSam, true)
+      primary.get[Int]("AS").foreach(nonPrimary("ms") = _)
+      nonPrimary(SAMTag.MQ.name()) = primary.mapq
+      nonPrimary("mp") = Supplementary.toString(primary)
+      r2.foreach(r => nonPrimary("rp") = Supplementary.toString(r))
     }
-    for (primary <- r2; supp <- r1Supplementals) {
-      SamPairUtil.setMateInformationOnSupplementalAlignment(supp.asSam, primary.asSam, true)
-      primary.get[Int]("AS").foreach(supp("ms") = _)
+    for (primary <- r2; nonPrimary <- r1NonPrimary) {
+      SamPairUtil.setMateInformationOnSupplementalAlignment(nonPrimary.asSam, primary.asSam, true)
+      primary.get[Int]("AS").foreach(nonPrimary("ms") = _)
+      nonPrimary(SAMTag.MQ.name()) = primary.mapq
+      nonPrimary("mp") = Supplementary.toString(primary)
+      r1.foreach(r => nonPrimary("rp") = Supplementary.toString(r))
     }
     for (first <- r1; second <- r2) {
       SamPairUtil.setMateInfo(first.asSam, second.asSam, true)
