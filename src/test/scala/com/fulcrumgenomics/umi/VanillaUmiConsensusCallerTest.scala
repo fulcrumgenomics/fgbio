@@ -541,9 +541,9 @@ class VanillaUmiConsensusCallerTest extends UnitSpec with OptionValues {
     val s1          = cc().toSourceRead(r1, minBaseQuality=2.toByte, trim=false).value
     val s2          = cc().toSourceRead(r2, minBaseQuality=2.toByte, trim=false).value
 
-    s1.baseString shouldBe "A"*2 + "C"*38 // trimmed by ten bases at the 3' end, five due to existing soft-clipping and the other due to past mate start
-    s1.cigar.toString shouldBe "10S30M"
-    s2.baseString shouldBe "C"*2 + "G"*46 // trimmed by 2 bases at the 3' end (the "12S - 10S" in the cigars)
+    s1.baseString shouldBe "A"*2 + "C"*46 // end of r1 is 60, whereas the end of r2 is 58, so trim 2bp off the end of r1
+    s1.cigar.toString shouldBe "10S35M3S"
+    s2.baseString shouldBe "C"*2 + "G"*46 // start of r1 is 10, whereas the start of r2 is 8, so trim 2bp off the start of r2
     s2.cigar.toString shouldBe "8S30M10S" // NB: cigar is reversed in toSourceRead
   }
 
