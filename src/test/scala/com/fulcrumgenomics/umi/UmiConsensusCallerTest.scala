@@ -79,4 +79,14 @@ class UmiConsensusCallerTest extends UnitSpec with OptionValues {
     rg.getLibrary shouldBe "L1,L2"
     rg.getPlatform shouldBe "ILLUMINA"
   }
+
+  "UmiConsensusCaller.toSourceRead" should "trim back the alignment if it extends past the mate" in {
+    val builder = new SamBuilder(sort=Some(SamOrder.TemplateCoordinate))
+    val Seq(r1, r2) = builder.addPair(start1=100, start2=100, cigar1="20S80M", cigar2="10S90M")
+    val caller = new VanillaUmiConsensusCaller(readNamePrefix = "prefix")
+    val s1 = caller.toSourceRead(r1, minBaseQuality=0, trim=false).value
+    val s2 = caller.toSourceRead(r2, minBaseQuality=0, trim=false).value
+    s1.cigar.toString shouldBe "20S80M"
+    s2.cigar.toString shouldBe "90M"
+  }
 }
