@@ -344,18 +344,22 @@ class SamRecordClipper(val mode: ClippingMode, val autoClipAttributes: Boolean) 
     */
   def numBasesExtendingPastMate(rec: SamRecord, mateEnd: Int): Int = {
     if (!rec.isFrPair) 0 else rec.positiveStrand match {
-      case true if rec.end >= mateEnd => 
+      case true if rec.end >= mateEnd =>
+        // account for any soft-clipping on the same side of the template
+        val trailingClippedBases = if (rec.end == mateEnd) Math.min(rec.cigar.trailingClippedBases, rec.mateCigar.get.trailingClippedBases) else 0
         // positive strand record is aligned to/past the mate alignment end: count any bases aligned/softclipped after
-        Math.max(0, rec.length - rec.readPosAtRefPos(pos=mateEnd, returnLastBaseIfDeleted=false)) 
-      case true => 
+        Math.max(0, rec.length - rec.readPosAtRefPos(pos=mateEnd, returnLastBaseIfDeleted=false) - trailingClippedBases)
+      case true =>
         // positive strand record alignment ends before the mate alignment end: remove any excess soft-clipped reads
         Math.max(0, rec.cigar.trailingSoftClippedBases - (mateEnd - rec.end))
       case false if rec.start > rec.mateStart =>
         // negative strand record alignment starts after the mate alignment start: remove any excess soft-clipped reads
         Math.max(0, rec.cigar.leadingSoftClippedBases - (rec.start - rec.mateStart))
       case false =>
+        // account for any soft-clipping on the same side of the template
+        val leadingClippedBases = if (rec.start == rec.mateStart) Math.min(rec.cigar.leadingClippedBases, rec.mateCigar.get.leadingClippedBases) else 0
         // negative strand record alignment starts at or before the mate start: count up to and including one base before
-        Math.max(0, rec.readPosAtRefPos(pos=rec.mateStart, returnLastBaseIfDeleted=false) - 1)
+        Math.max(0, rec.readPosAtRefPos(pos=rec.mateStart, returnLastBaseIfDeleted=false) - 1 - leadingClippedBases)
     }
   }
 
