@@ -879,4 +879,49 @@ class SamRecordClipperTest extends UnitSpec with OptionValues {
     mate.start shouldBe 1
     mate.cigar.toString shouldBe "40M20I40M"
   }
+
+  "SamRecordClipper.numBasesExtendingPastMate" should "return zero when reads do not extend past the end or are not FR pairs" in {
+    val builder = new SamBuilder()
+    val Seq(r1, r2) = builder.addPair(start1=100, start2=200, cigar1="20S80M", cigar2="10S90M")
+    val Seq(r3, r4) = builder.addPair(start1=100, start2=200, cigar1="10S90M", cigar2="20S80M")
+    val Seq(r5, r6) = builder.addPair(start1=100, start2=100, cigar1="10S90M", cigar2="20S80M", strand1=Plus, strand2=Plus)
+    val Seq(r7, r8) = builder.addPair(start1=100, start2=100, cigar1="10S90M", cigar2="20S80M", strand1=Minus, strand2=Minus)
+
+    Seq(r1, r2, r3, r4, r5, r6, r7, r8).foreach { r =>
+      clipper(Soft).numBasesExtendingPastMate(r) shouldBe 0
+    }
+  }
+
+  it should "return a return a positive value when reads extend past its mate" in {
+    val builder = new SamBuilder()
+
+    // both extend 50bp beyond the mates
+    val Seq(r1, r2) = builder.addPair(start1=100, start2=50, cigar1="100M", cigar2="100M")
+    clipper(Soft).numBasesExtendingPastMate(r1) shouldBe 50
+    clipper(Soft).numBasesExtendingPastMate(r2) shouldBe 50
+
+    // r3 ends at 149, which is the same as the end of r4 at 149
+    // r4 starts at 51, which is the same as the start of r3 at 51
+    val Seq(r3, r4) = builder.addPair(start1=100, start2=100, cigar1="50S50M", cigar2="50S50M")
+    clipper(Soft).numBasesExtendingPastMate(r3) shouldBe 0
+    clipper(Soft).numBasesExtendingPastMate(r4) shouldBe 0
+
+    // r5 ends at 199, which is the same as the end of r6 at 199
+    // r6 starts at 51, which is the same as the start of 45 at 51
+    val Seq(r5, r6) = builder.addPair(start1=100, start2=100, cigar1="50M50S", cigar2="50M50S")
+    clipper(Soft).numBasesExtendingPastMate(r5) shouldBe 0
+    clipper(Soft).numBasesExtendingPastMate(r6) shouldBe 0
+
+    // r7 ends at 149, which is before the end of r8 at 169
+    // r8 starts at 71, which is after the start of r7 at 51
+    val Seq(r7, r8) = builder.addPair(start1=100, start2=100, cigar1="50S50M", cigar2="30S70M")
+    clipper(Soft).numBasesExtendingPastMate(r7) shouldBe 0
+    clipper(Soft).numBasesExtendingPastMate(r8) shouldBe 0
+
+    // r9 ends at 169, which is after the end of r10 at 149
+    // r10 starts at 51, which is before the start of r9 at 71
+    val Seq(r9, r10) = builder.addPair(start1=100, start2=100, cigar1="30S70M", cigar2="50S50M")
+    clipper(Soft).numBasesExtendingPastMate(r9) shouldBe 20
+    clipper(Soft).numBasesExtendingPastMate(r10) shouldBe 20
+  }
 }
