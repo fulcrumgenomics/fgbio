@@ -91,9 +91,17 @@ class SamSource private(private val reader: SamReader) extends View[SamRecord] w
   /** Returns an iterator over all the records in the source. */
   override def iterator: SamIterator = new SamIterator(reader.getFileHeader, reader.iterator())
 
+  private def newQueryInterval(region: Locatable): QueryInterval = {
+    val contig      = dict(region.getContig)
+    val contigIndex = contig.index
+    val start       = Math.max(l.getStart, 1);
+    val end         = Math.min(l.getEnd, contig.length)
+    new QueryInterval(contigIndex, start, end)
+  }
+
   /** Returns an iterator over the records in the regions provided. */
   def query(regions: IterableOnce[Locatable], queryType: QueryType = QueryType.Overlapping): SamIterator = {
-    val queries = QueryInterval.optimizeIntervals(regions.iterator.map(l => new QueryInterval(dict(l.getContig).index, l.getStart, l.getEnd)).toArray)
+    val queries = QueryInterval.optimizeIntervals(regions.iterator.map(l => newQueryInterval(l)).toArray)
     val contained = queryType == QueryType.Contained
     new SamIterator(header, reader.query(queries, contained))
   }
