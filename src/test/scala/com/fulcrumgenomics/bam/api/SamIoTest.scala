@@ -177,7 +177,7 @@ class SamIoTest extends UnitSpec {
       source.query("chr1", -100, 1000, queryType).length shouldBe 10
 
       // test a query after the contig end
-      val contigEnd = builder.dict("chr1", queryType).length
+      val contigEnd = builder.dict("chr1").length
       source.query("chr1", 100, contigEnd+1, queryType).length shouldBe 10
       source.query("chr1", 100, contigEnd+100, queryType).length shouldBe 10
 
