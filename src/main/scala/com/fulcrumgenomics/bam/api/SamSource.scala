@@ -92,11 +92,10 @@ class SamSource private(private val reader: SamReader) extends View[SamRecord] w
   override def iterator: SamIterator = new SamIterator(reader.getFileHeader, reader.iterator())
 
   private def newQueryInterval(region: Locatable): QueryInterval = {
-    val contig      = dict(region.getContig)
-    val contigIndex = contig.index
-    val start       = Math.max(region.getStart, 1);
-    val end         = Math.min(region.getEnd, contig.length)
-    new QueryInterval(contigIndex, start, end)
+    val contig = dict(region.getContig)
+    val start  = Math.max(region.getStart, 1);
+    val end    = Math.min(region.getEnd, contig.length)
+    new QueryInterval(contig.index, start, end)
   }
 
   /** Returns an iterator over the records in the regions provided. */
