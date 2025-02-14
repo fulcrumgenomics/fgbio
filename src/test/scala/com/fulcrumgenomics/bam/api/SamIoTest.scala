@@ -168,7 +168,7 @@ class SamIoTest extends UnitSpec {
 
   "SamSource.query" should "" in {
       val queryType = QueryType.Overlapping
-      val builder = new SamBuilder(readLength=10, baseQuality=20)
+      val builder = new SamBuilder(readLength=10, baseQuality=20, sort=Some(SamOrder.Coordinate))
       Range(0, 10).foreach { _ => builder.addFrag(start=100) }
       val source = builder.toSource
 
