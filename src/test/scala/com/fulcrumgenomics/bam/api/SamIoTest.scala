@@ -164,4 +164,27 @@ class SamIoTest extends UnitSpec {
     filterCount shouldBe 10
     mapCount shouldBe 10
   }
+
+  "SamSource.query" should "" in {
+      val builder = new SamBuilder(readLength=10, baseQuality=20)
+      Range(0, 10).foreach { _ => builder.addFrag(start=100) }
+      val source = builder.toSource
+
+      // test a query before the contig start
+      source.query("chr1", 0, 1000).length shouldBe 10
+      source.query("chr1", -100, 1000).length shouldBe 10
+
+      // test a query after the contig end
+      val contigEnd = builder.dict("chr1").length
+      source.query("chr1", 100, contigEnd+1).length shouldBe 10
+      source.query("chr1", 100, contigEnd+100).length shouldBe 10
+
+      // test a query both before and after the contig start and end respectively
+      source.query("chr1", -100, contigEnd+100).length shouldBe 10
+
+      // at the start and end     
+      source.query("chr1", 1, 1000).length shouldBe 10 
+      source.query("chr1", 100, contigEnd).length shouldBe 10
+      source.query("chr1", 1, contigEnd).length shouldBe 10
+  }
 }
