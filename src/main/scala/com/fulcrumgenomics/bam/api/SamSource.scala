@@ -94,8 +94,8 @@ class SamSource private(private val reader: SamReader) extends View[SamRecord] w
   private def newQueryInterval(region: Locatable): QueryInterval = {
     val contig      = dict(region.getContig)
     val contigIndex = contig.index
-    val start       = Math.max(l.getStart, 1);
-    val end         = Math.min(l.getEnd, contig.length)
+    val start       = Math.max(region.getStart, 1);
+    val end         = Math.min(region.getEnd, contig.length)
     new QueryInterval(contigIndex, start, end)
   }
 
