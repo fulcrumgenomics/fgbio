@@ -225,7 +225,7 @@ trait UmiConsensusCaller[ConsensusRead <: SimpleRead] {
     *
     * @return Some(SourceRead) if there are any called bases with quality > minBaseQuality, else None
     */
-  protected[umi] def toSourceRead(rec: SamRecord, minBaseQuality: PhredScore, trim: Boolean): Option[SourceRead] = {
+  protected[umi] def toSourceRead(rec: SamRecord, minBaseQuality: PhredScore, qualityTrim: Boolean): Option[SourceRead] = {
     // Extract and possibly RC the source bases and quals from the SamRecord
     val bases = rec.bases.clone()
     val quals = rec.quals.clone()
@@ -236,7 +236,7 @@ trait UmiConsensusCaller[ConsensusRead <: SimpleRead] {
     }
 
     // Quality trim the reads if requested.
-    val trimToLength = if (trim) TrimmingUtil.findQualityTrimPoint(quals, minBaseQuality) else bases.length
+    val trimToLength = if (qualityTrim) TrimmingUtil.findQualityTrimPoint(quals, minBaseQuality) else bases.length
 
     // Mask remaining low quality bases to Ns
     forloop (from=0, until=trimToLength) { i =>
