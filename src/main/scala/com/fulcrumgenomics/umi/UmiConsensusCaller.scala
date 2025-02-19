@@ -252,7 +252,13 @@ trait UmiConsensusCaller[ConsensusRead <: SimpleRead] {
       var index = if (!rec.isFrPair) trimToLength - 1 else {
         // Get the number of mapped bases to clip that maps beyond the mate's end, including any soft-clipped bases. Use
         // that to compute where in the read to keep.
-        val clipPosition = rec.length - this.clipper.numBasesExtendingPastMate(rec=rec)
+        val mateUnclippedStart = rec.mateUnclippedStart.getOrElse(throw new IllegalStateException(f"Mate cigar (MC SAM tag) needed for read: ${rec.name}"))
+        val mateUnclippedEnd   = rec.mateUnclippedEnd.getOrElse(throw new IllegalStateException(f"Mate cigar (MC SAM tag) needed for read: ${rec.name}"))
+        val clipPosition = rec.length - this.clipper.numBasesExtendingPastMate(
+          rec                = rec,
+          mateUnclippedStart = mateUnclippedStart,
+          mateUnclippedEnd   = mateUnclippedEnd
+        )
         min(clipPosition, trimToLength) - 1
       }
       // Find the last non-N base of sufficient quality in the record, starting from either the
@@ -277,6 +283,26 @@ trait UmiConsensusCaller[ConsensusRead <: SimpleRead] {
   }
 
   /**
+    * Adds mate-cigars to records without mate cigars.
+    */
+  private def updateMateCigars(recs: Seq[SamRecord]): Unit = {
+    // Get all the names of all read pairs that do not have a mate cigar set
+    val readNamesToUpdate = recs
+      .iterator
+      .filter { rec => rec.paired && rec.isFrPair && !rec.contains("MC") }
+      .map(_.name)
+      .toSet
+    //
+    recs.filter(rec => readNamesToUpdate.contains(rec.name))
+      .groupBy(_.name)
+      .values
+      .foreach { case Seq(rec1, rec2) =>
+        rec1("MC") = rec2.cigar.toString()
+        rec2("MC") = rec1.cigar.toString()
+      }
+  }
+
+  /**
     * Takes in all the reads for a source molecule and, if possible, generates one or more
     * output consensus reads as SAM records.
     *
@@ -285,6 +311,9 @@ trait UmiConsensusCaller[ConsensusRead <: SimpleRead] {
     */
   final def consensusReadsFromSamRecords(recs: Seq[SamRecord]): Seq[SamRecord] = {
     this._totalReads += recs.size
+    // Ensure that mate cigar is set on all read pairs.  This is needed when using
+    // `clipper.numBasesExtendingPastMate` subsequently
+    updateMateCigars(recs)
     val result = consensusSamRecordsFromSamRecords(recs)
     this._consensusReadsConstructed += result.size
     result
