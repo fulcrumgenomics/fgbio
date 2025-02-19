@@ -327,8 +327,9 @@ class SamRecordClipper(val mode: ClippingMode, val autoClipAttributes: Boolean) 
 
   /** Returns the number of bases extending past the mate end for FR pairs including any soft-clipped bases, zero otherwise.
     *
-    * The largest mapped genomic coordinate of the mate is computed via the mate-cigar (MC) SAM tag if present,
-    * otherwise the reported insert size is used.
+    * If the mate-cigar (MC SAM tag) cigar is present, then the _unclipped_ mate start and end will be used (i.e.
+    * `mateUnclippedStart` and `mateUnclippedEnd`).  Otherwise,the mate start will be `mateStart` and the mate end will
+    * be computed from this records start plus the insert size (minus one).
     *
     * @param rec the record to examine
     */
@@ -375,7 +376,9 @@ class SamRecordClipper(val mode: ClippingMode, val autoClipAttributes: Boolean) 
 
   /** Clips the read in FR read pairs whose alignments extend beyond the far end of their mate's alignment.
     *
-    * The mate end is computed via the mate-cigar (MC) SAM tag if present, otherwise the reported insert size is used.
+    * If the mate-cigar (MC SAM tag) cigar is present, then the _unclipped_ mate start and end will be used (i.e.
+    * `mateUnclippedStart` and `mateUnclippedEnd`).  Otherwise,the mate start will be `mateStart` and the mate end will
+    * be computed from this records start plus the insert size (minus one).
     *
     * @param rec the record to clip
     * @return the additional number of bases clipped (3' end in sequencing order)
