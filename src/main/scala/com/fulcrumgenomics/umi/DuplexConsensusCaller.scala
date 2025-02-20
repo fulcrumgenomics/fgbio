@@ -91,7 +91,7 @@ object DuplexConsensusCaller {
   * @param readNamePrefix the prefix to apply to all consensus read names
   * @param readGroupId    the read group ID to apply to all created consensus reads
   * @param minInputBaseQuality the minimum input base quality score to use a raw read's base
-  * @param trim if true, quality trim reads in addition to masking. If false just mask.
+  * @param qualityTrim if true, quality trim reads in addition to masking. If false just mask.
   * @param errorRatePreUmi the estimated rate of errors in the DNA prior to attaching UMIs
   * @param errorRatePostUmi the estimated rate of errors in the DNA post attaching UMIs
   * @param minReads the minimum number of input reads to a consensus read (see [[CallDuplexConsensusReads]]).
@@ -99,7 +99,7 @@ object DuplexConsensusCaller {
 class DuplexConsensusCaller(override val readNamePrefix: String,
                             override val readGroupId: String    = "A",
                             val minInputBaseQuality: PhredScore = DuplexConsensusCaller.MinInputBaseQuality,
-                            val trim: Boolean                   = false,
+                            val qualityTrim: Boolean            = false,
                             val errorRatePreUmi: PhredScore     = DuplexConsensusCaller.ErrorRatePreUmi,
                             val errorRatePostUmi: PhredScore    = DuplexConsensusCaller.ErrorRatePostUmi,
                             val minReads: Seq[Int]              = Seq(1),
@@ -144,7 +144,7 @@ class DuplexConsensusCaller(override val readNamePrefix: String,
       readNamePrefix      = readNamePrefix,
       readGroupId         = readGroupId,
       minInputBaseQuality = minInputBaseQuality,
-      trim                = trim,
+      qualityTrim         = qualityTrim,
       errorRatePreUmi     = errorRatePreUmi,
       errorRatePostUmi    = errorRatePostUmi,
       minReads            = minReads,
@@ -289,8 +289,8 @@ class DuplexConsensusCaller(override val readNamePrefix: String,
         Nil
       case (true, true) =>
         // Filter by common indel pattern with AB and BA together
-        val filteredXs = filterToMostCommonAlignment((abR1s ++ baR2s).flatMap(toSourceRead(_, this.minInputBaseQuality, this.trim)))
-        val filteredYs = filterToMostCommonAlignment((abR2s ++ baR1s).flatMap(toSourceRead(_, this.minInputBaseQuality, this.trim)))
+        val filteredXs = filterToMostCommonAlignment((abR1s ++ baR2s).flatMap(toSourceRead(_, this.minInputBaseQuality, this.qualityTrim)))
+        val filteredYs = filterToMostCommonAlignment((abR2s ++ baR1s).flatMap(toSourceRead(_, this.minInputBaseQuality, this.qualityTrim)))
 
         // Then split then back apart for SS calling
         val filteredAbR1s = filteredXs.filter(_.sam.exists(_.firstOfPair))

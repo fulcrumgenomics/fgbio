@@ -188,9 +188,7 @@ class ClipBam
 
     val (numExtendingPastMateStartReadOne, numExtendingPastMateStartReadTwo) = {
       if (clipBasesPastMate && r1.isFrPair) {
-        val clip1 = this.clipper.clipExtendingPastMateEnd(rec=r1, mateEnd=r2.end)
-        val clip2 = this.clipper.clipExtendingPastMateEnd(rec=r2, mateEnd=r1.end)
-        (clip1, clip2)
+        this.clipper.clipExtendingPastMateEnds(rec=r1, mate=r2)
       }
       else (0, 0)
     }

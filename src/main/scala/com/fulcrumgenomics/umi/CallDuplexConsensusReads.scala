@@ -140,7 +140,7 @@ class CallDuplexConsensusReads
       readNamePrefix      = readNamePrefix.getOrElse(UmiConsensusCaller.makePrefixFromSamHeader(in.header)),
       readGroupId         = readGroupId,
       minInputBaseQuality = minInputBaseQuality,
-      trim                = trim,
+      qualityTrim         = trim,
       errorRatePreUmi     = errorRatePreUmi,
       errorRatePostUmi    = errorRatePostUmi,
       minReads            = minReads,
