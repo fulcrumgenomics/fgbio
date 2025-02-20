@@ -617,7 +617,7 @@ class VanillaUmiConsensusCallerTest extends UnitSpec with OptionValues {
     s2.cigar.toString shouldBe "40M20I40M"
   }
 
-  "VanillaUmiConsensusCaller.consensusReadsFromSamRecords" should "throw an exception if a paired read is missing the mate cigar" in {
+  "VanillaUmiConsensusCaller.consensusReadsFromSamRecords" should "add the mate cigar when not present before consensus calling" in {
     val builder = new SamBuilder(readLength=10)
     val Seq(r1, r2) = builder.addPair("READ1", start1=1, start2=100, attrs=Map(DefaultTag -> "AAA", ConsensusTags.UmiBases -> "GAT-ACA"))
 
