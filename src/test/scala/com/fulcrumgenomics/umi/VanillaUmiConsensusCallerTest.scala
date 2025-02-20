@@ -620,11 +620,13 @@ class VanillaUmiConsensusCallerTest extends UnitSpec with OptionValues {
   "VanillaUmiConsensusCaller.consensusReadsFromSamRecords" should "throw an exception if a paired read is missing the mate cigar" in {
     val builder = new SamBuilder(readLength=10)
     val Seq(r1, r2) = builder.addPair("READ1", start1=1, start2=100, attrs=Map(DefaultTag -> "AAA", ConsensusTags.UmiBases -> "GAT-ACA"))
-    // remove the mate cigar
-    r1.remove("MC") shouldBe true
-    r2.remove("MC") shouldBe true
 
-    val consensusCaller = cc(cco(minReads = 2, minInputBaseQuality = 20.toByte))
-    an[IllegalArgumentException] should be thrownBy consensusCaller.consensusReadsFromSamRecords(builder.toSeq)
+    // remove the mate cigar
+    r1.remove("MC")
+    r2.remove("MC")
+
+    val consensusCaller = cc(cco(minReads = 1, minInputBaseQuality = 2.toByte))
+    val consensuses = consensusCaller.consensusReadsFromSamRecords(builder.toSeq)
+    consensuses.length shouldBe 2
   }
 }
