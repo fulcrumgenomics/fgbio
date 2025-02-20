@@ -97,13 +97,14 @@ object DuplexConsensusCaller {
   * @param minReads the minimum number of input reads to a consensus read (see [[CallDuplexConsensusReads]]).
   * */
 class DuplexConsensusCaller(override val readNamePrefix: String,
-                            override val readGroupId: String    = "A",
-                            val minInputBaseQuality: PhredScore = DuplexConsensusCaller.MinInputBaseQuality,
-                            val qualityTrim: Boolean            = false,
-                            val errorRatePreUmi: PhredScore     = DuplexConsensusCaller.ErrorRatePreUmi,
-                            val errorRatePostUmi: PhredScore    = DuplexConsensusCaller.ErrorRatePostUmi,
-                            val minReads: Seq[Int]              = Seq(1),
-                            val maxReadsPerStrand: Int          = VanillaUmiConsensusCallerOptions.DefaultMaxReads
+                            override val readGroupId: String           = "A",
+                            val minInputBaseQuality: PhredScore        = DuplexConsensusCaller.MinInputBaseQuality,
+                            val qualityTrim: Boolean                   = false,
+                            val errorRatePreUmi: PhredScore            = DuplexConsensusCaller.ErrorRatePreUmi,
+                            val errorRatePostUmi: PhredScore           = DuplexConsensusCaller.ErrorRatePostUmi,
+                            val minReads: Seq[Int]                     = Seq(1),
+                            val maxReadsPerStrand: Int                 = VanillaUmiConsensusCallerOptions.DefaultMaxReads,
+                            val missingBaseQuality: Option[PhredScore] = None
                            ) extends UmiConsensusCaller[DuplexConsensusRead] with LazyLogging {
 
   private val Seq(minTotalReads, minXyReads, minYxReads) = this.minReads.padTo(3, this.minReads.last)
@@ -119,7 +120,8 @@ class DuplexConsensusCaller(override val readNamePrefix: String,
       maxReads                = maxReadsPerStrand,
       minInputBaseQuality     = this.minInputBaseQuality,
       minConsensusBaseQuality = PhredScore.MinValue,
-      producePerBaseTags      = true
+      producePerBaseTags      = true,
+      missingBaseQuality      = missingBaseQuality
     ))
 
   /**
@@ -289,8 +291,8 @@ class DuplexConsensusCaller(override val readNamePrefix: String,
         Nil
       case (true, true) =>
         // Filter by common indel pattern with AB and BA together
-        val filteredXs = filterToMostCommonAlignment((abR1s ++ baR2s).flatMap(toSourceRead(_, this.minInputBaseQuality, this.qualityTrim)))
-        val filteredYs = filterToMostCommonAlignment((abR2s ++ baR1s).flatMap(toSourceRead(_, this.minInputBaseQuality, this.qualityTrim)))
+        val filteredXs = filterToMostCommonAlignment((abR1s ++ baR2s).flatMap(toSourceRead(_, this.minInputBaseQuality, this.qualityTrim, this.missingBaseQuality)))
+        val filteredYs = filterToMostCommonAlignment((abR2s ++ baR1s).flatMap(toSourceRead(_, this.minInputBaseQuality, this.qualityTrim, this.missingBaseQuality)))
 
         // Then split then back apart for SS calling
         val filteredAbR1s = filteredXs.filter(_.sam.exists(_.firstOfPair))
