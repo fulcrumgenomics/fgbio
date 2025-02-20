@@ -57,15 +57,16 @@ object VanillaUmiConsensusCallerOptions {
   */
 case class VanillaUmiConsensusCallerOptions
 (
-  tag: String                         = DefaultTag,
-  errorRatePreUmi: PhredScore         = DefaultErrorRatePreUmi,
-  errorRatePostUmi: PhredScore        = DefaultErrorRatePostUmi,
-  minInputBaseQuality: PhredScore     = DefaultMinInputBaseQuality,
-  qualityTrim: Boolean                = DefaultQualityTrim,
-  minConsensusBaseQuality: PhredScore = DefaultMinConsensusBaseQuality,
-  minReads: Int                       = DefaultMinReads,
-  maxReads: Int                       = DefaultMaxReads,
-  producePerBaseTags: Boolean         = DefaultProducePerBaseTags
+  tag: String                            = DefaultTag,
+  errorRatePreUmi: PhredScore            = DefaultErrorRatePreUmi,
+  errorRatePostUmi: PhredScore           = DefaultErrorRatePostUmi,
+  minInputBaseQuality: PhredScore        = DefaultMinInputBaseQuality,
+  qualityTrim: Boolean                   = DefaultQualityTrim,
+  minConsensusBaseQuality: PhredScore    = DefaultMinConsensusBaseQuality,
+  minReads: Int                          = DefaultMinReads,
+  maxReads: Int                          = DefaultMaxReads,
+  producePerBaseTags: Boolean            = DefaultProducePerBaseTags,
+  missingBaseQuality: Option[PhredScore] = None
 )
 
 
@@ -165,7 +166,7 @@ class VanillaUmiConsensusCaller(override val readNamePrefix: String,
       None
     }
     else {
-      val sourceRecords   = records.flatMap(toSourceRead(_, this.options.minInputBaseQuality, this.options.qualityTrim))
+      val sourceRecords   = records.flatMap(toSourceRead(_, this.options.minInputBaseQuality, this.options.qualityTrim, this.options.missingBaseQuality))
       val filteredRecords = filterToMostCommonAlignment(sourceRecords)
 
       if (filteredRecords.size < records.size) {

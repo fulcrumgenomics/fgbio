@@ -132,6 +132,7 @@ class CallMolecularConsensusReads
  @arg(flag='D', doc="Turn on debug logging.") val debug: Boolean = false,
  @arg(doc="The number of threads to use while consensus calling.") val threads: Int = 1,
  @arg(doc="Consensus call overlapping bases in mapped paired end reads") val consensusCallOverlappingBases: Boolean = true,
+ @arg(doc="The phred-scaled base quality to use when base qualities are missing in the input") val missingBaseQuality: Option[PhredScore] = None,
  val maxQualOnAgreement: Boolean = false
 ) extends FgBioTool with LazyLogging {
 
@@ -165,14 +166,15 @@ class CallMolecularConsensusReads
     val out       = SamWriter(output, outHeader, sort=sortOrder)
 
     val options = new VanillaUmiConsensusCallerOptions(
-      tag                          = tag,
-      errorRatePreUmi              = errorRatePreUmi,
-      errorRatePostUmi             = errorRatePostUmi,
-      minInputBaseQuality          = minInputBaseQuality,
-      minConsensusBaseQuality      = minConsensusBaseQuality,
-      minReads                     = minReads,
-      maxReads                     = maxReads.getOrElse(VanillaUmiConsensusCallerOptions.DefaultMaxReads),
-      producePerBaseTags           = outputPerBaseTags
+      tag                      = tag,
+      errorRatePreUmi          = errorRatePreUmi,
+      errorRatePostUmi         = errorRatePostUmi,
+      minInputBaseQuality      = minInputBaseQuality,
+      minConsensusBaseQuality  = minConsensusBaseQuality,
+      minReads                 = minReads,
+      maxReads                 = maxReads.getOrElse(VanillaUmiConsensusCallerOptions.DefaultMaxReads),
+      producePerBaseTags       = outputPerBaseTags,
+      missingBaseQuality       = missingBaseQuality
     )
 
     val caller = new VanillaUmiConsensusCaller(

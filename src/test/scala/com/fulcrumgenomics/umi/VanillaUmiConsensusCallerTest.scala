@@ -26,6 +26,7 @@
 package com.fulcrumgenomics.umi
 
 import com.fulcrumgenomics.alignment.Cigar
+import com.fulcrumgenomics.bam.api.SamRecord.MissingQuals
 import com.fulcrumgenomics.testing.SamBuilder.{Minus, Plus}
 import com.fulcrumgenomics.testing.{SamBuilder, UnitSpec}
 import com.fulcrumgenomics.umi.UmiConsensusCaller.SourceRead
@@ -615,6 +616,21 @@ class VanillaUmiConsensusCallerTest extends UnitSpec with OptionValues {
     s1.cigar.toString shouldBe "40M20I40M"
     s2.baseString shouldBe "T"*100
     s2.cigar.toString shouldBe "40M20I40M"
+  }
+
+  it should "except when the reads do not have base qualities and a minimum base quality is not given" in {
+    val builder = new SamBuilder(readLength=10)
+    val rec     = builder.addFrag(start=1, bases="AAAAAAAAAA").map { r => r.quals = MissingQuals; r }.value
+    an[IllegalArgumentException] should be thrownBy cc().toSourceRead(rec, minBaseQuality=20.toByte, qualityTrim=false, missingBaseQuality=None)
+  }
+
+  it should "use a minimum base quality when given for reads that do not have base qualities" in {
+    val builder = new SamBuilder(readLength=10)
+    val rec     = builder.addFrag(start=1, bases="AAAAAAAAAA").map { r => r.quals = MissingQuals; r }.value
+    val source  = cc().toSourceRead(rec, minBaseQuality=20.toByte, qualityTrim=false,  missingBaseQuality=Some(20.toByte)).value
+
+    source.baseString shouldBe "AAAAAAAAAA"
+    source.quals      shouldBe Array.fill(10)(20.toByte)
   }
 
   "VanillaUmiConsensusCaller.consensusReadsFromSamRecords" should "add the mate cigar when not present before consensus calling" in {
