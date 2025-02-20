@@ -25,11 +25,13 @@
 package com.fulcrumgenomics.bam.api
 
 import java.util.Random
-
 import com.fulcrumgenomics.FgBioDef._
+import com.fulcrumgenomics.bam.Bams
+import com.fulcrumgenomics.bam.Bams.{MaxInMemory, templateIterator}
 import com.fulcrumgenomics.commons.util.SimpleCounter
 import com.fulcrumgenomics.testing.SamBuilder.{Minus, Plus}
 import com.fulcrumgenomics.testing.{SamBuilder, UnitSpec}
+import com.fulcrumgenomics.util.Io
 import htsjdk.samtools.{SAMFileHeader, SAMRecordCoordinateComparator, SAMRecordQueryNameComparator}
 import htsjdk.samtools.SAMFileHeader.{GroupOrder, SortOrder}
 import htsjdk.samtools.util.Murmur3
@@ -214,6 +216,32 @@ class SamOrderTest extends UnitSpec {
     // Order they are added in except for q4 gets it's mate's flipped because of strand order
     val expected = List("q1/1", "q1/2", "q2/1", "q2/2", "q3/1", "q3/2", "q4/2", "q4/1", "q5/1", "q5/2", "q6/1", "q6/2")
     val actual   = builder.toList.sortBy(r => SamOrder.TemplateCoordinate.sortkey(r)).map(_.id)
+
+    actual should contain theSameElementsInOrderAs expected
+  }
+
+  it should "handle supplementary alignments" in {
+    val builder = new SamBuilder(readLength=100, sort=Some(SamOrder.Queryname))
+    val exp = ListBuffer[SamRecord]()
+    // primary read pairs for q1, that map to different contigs
+    exp ++= builder.addPair("q1", contig=1, contig2=Some(2), start1=66, start2=47, cigar1="60M40S", cigar2="55M45S", strand2=Plus)
+    // supplementary R2 (ignore R1), which maps to the same chromosome as the primary R1
+    val Seq(_, s2) = builder.addPair("q1", contig=1, contig2=Some(1), start1=66, start2=66, cigar1="60M40S", strand2=Minus)
+    s2.supplementary = true
+    s2.properlyPaired = true
+    exp += s2
+    // primary read pairs for q2, that map to different contigs, but earlier that q1
+    exp ++= builder.addPair("q2", contig = 1, contig2 = Some(2), start1 = 50, start2 = 30, cigar1 = "60M40S", cigar2 = "55M45S")
+
+    // Fix the mate information.  Note: sorting here to get a template-iterator will write the records to disk first,
+    // so we cannot use the records in builder/exp.
+    val records = Bams.templateIterator(iterator=exp.iterator, header=builder.header, maxInMemory=MaxInMemory, tmpDir=Io.tmpDir).flatMap { template =>
+      template.fixMateInfo()
+      template.allReads
+    }.toList
+
+    val expected = List("q2/1", "q2/2", "q1/1", "q1/2", "q1/2:sup")
+    val actual = records.sortBy(r => SamOrder.TemplateCoordinate.sortkey(r)).map(_.id)
 
     actual should contain theSameElementsInOrderAs expected
   }
