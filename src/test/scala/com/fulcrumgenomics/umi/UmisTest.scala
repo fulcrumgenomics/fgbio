@@ -79,6 +79,41 @@ class UmisTest extends UnitSpec with OptionValues {
     Umis.extractUmisFromReadName("1:2:3:4:5:6:7:8", strict=false) shouldBe None
   }
 
+  "Umis.extractUmisFromReadComment" should "extract a UMI from a well-formed read name" in {
+    Umis.extractUmisFromReadComment("0:1:2:ACGTACGT", strict=true).value shouldBe "ACGTACGT"
+  }
+
+  it should "throw an exception in strict mode if the read has too many or too few segments" in {
+    an[Exception] shouldBe thrownBy { Umis.extractUmisFromReadComment("0:1:ACGTACGT", strict=true) }
+    an[Exception] shouldBe thrownBy { Umis.extractUmisFromReadComment("0:1:2:3:ACGTACGT", strict=true) }
+  }
+
+  it should "translate pluses to hyphens when multiple UMIs are present" in {
+    Umis.extractUmisFromReadComment("0:1:2:ACGTACGT+TTGCGGCT", strict=true).value shouldBe "ACGTACGT-TTGCGGCT"
+  }
+
+  it should "extract a UMI from the last segment in non-strict mode, if it looks like a UMI" in {
+    Umis.extractUmisFromReadComment("ACGT", strict=false).value shouldBe "ACGT"
+    Umis.extractUmisFromReadComment("1:ACGT", strict=false).value shouldBe "ACGT"
+    Umis.extractUmisFromReadComment("1:2:ACGT", strict=false).value shouldBe "ACGT"
+    Umis.extractUmisFromReadComment("1:2:3:ACGT", strict=false).value shouldBe "ACGT"
+    Umis.extractUmisFromReadComment("1:2:3:4:ACGT", strict=false).value shouldBe "ACGT"
+    Umis.extractUmisFromReadComment("1:2:3:4:5:ACGT", strict=false).value shouldBe "ACGT"
+    Umis.extractUmisFromReadComment("1:2:3:4:5:6:ACGT", strict=false).value shouldBe "ACGT"
+    Umis.extractUmisFromReadComment("1:2:3:4:5:6:7:ACGT", strict=false).value shouldBe "ACGT"
+    Umis.extractUmisFromReadComment("1:2:3:4:5:6:7:8:ACGT", strict=false).value shouldBe "ACGT"
+    Umis.extractUmisFromReadComment("1:2:3:4:5:6:7:8:9:ACGT", strict=false).value shouldBe "ACGT"
+  }
+
+  it should "return None in non-strict mode if the last segment doesn't look like a UMI" in {
+    Umis.extractUmisFromReadComment("1:2", strict=false) shouldBe None
+    Umis.extractUmisFromReadComment("1:2:3", strict=false) shouldBe None
+    Umis.extractUmisFromReadComment("1:2:3:4", strict=false) shouldBe None
+    Umis.extractUmisFromReadComment("1:2:3:4:5", strict=false) shouldBe None
+    Umis.extractUmisFromReadComment("1:2:3:4:5:6", strict=false) shouldBe None
+    Umis.extractUmisFromReadComment("1:2:3:4:5:6:7", strict=false) shouldBe None
+    Umis.extractUmisFromReadComment("1:2:3:4:5:6:7:8", strict=false) shouldBe None
+  }
 
   "Umis.copyUmiFromReadName" should "copy the UMI from the read name" in {
     copyUmiFromReadName(rec=rec("UMI:A")).nameAndUmi shouldBe ("UMI:A", "A")

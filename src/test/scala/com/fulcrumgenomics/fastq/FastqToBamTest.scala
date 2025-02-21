@@ -383,6 +383,37 @@ class FastqToBamTest extends UnitSpec {
     recs(1).apply[String]("RX") shouldBe "TTGA-TAAT-TA-AA"
   }
 
+
+  it should "extract UMIs from the comment in read names when requested" in {
+    val r1 = fq(
+      FastqRecord("q1:2:3:4:5:6:7:8", "AAAAAAAAAA", "==========", comment=Some("0:1:2:ACGT")),
+      FastqRecord("q2:2:3:4:5:6:7:8", "TAAAAAAAAA", "==========", comment=Some("0:1:2:TTGA")),
+      FastqRecord("q3:2:3:4:5:6:7",      "TAAAAAAAAA", "=========="),
+    )
+    val bam = makeTempFile("fastqToBamTest.", ".bam")
+    new FastqToBam(input=Seq(r1), output=bam, sample="s", library="l", extractUmisFromReadComment=true).execute()
+    val recs = readBamRecs(bam)
+    recs should have size 3
+    recs(0).apply[String]("RX") shouldBe "ACGT"
+    recs(1).apply[String]("RX") shouldBe "TTGA"
+    recs(2).get[String]("RX")   shouldBe None
+  }
+
+  it should "extract UMIs from the comment in read names and read sequences" in {
+    val r1 = fq(
+      FastqRecord("q1:2:3:4:5:6:7:8", "GGNCCGAAAAAAA", "=============", comment=Some("0:1:2:ACGT+CGTA")),
+      FastqRecord("q2:2:3:4:5:6:7:8", "TANAACAAAAAAA", "=============", comment=Some("0:1:2:TTGA+TAAT")),
+    )
+    val rs  = ReadStructure("2M1S2M+T")
+    val bam = makeTempFile("fastqToBamTest.", ".bam")
+    new FastqToBam(input=Seq(r1), readStructures=Seq(rs), output=bam, sample="s", library="l", extractUmisFromReadComment=true).execute()
+    val recs = readBamRecs(bam)
+    recs should have size 2
+    recs(0).apply[String]("RX") shouldBe "ACGT-CGTA-GG-CC"
+    recs(1).apply[String]("RX") shouldBe "TTGA-TAAT-TA-AA"
+  }
+
+
   it should "fail when read names don't match up" in {
     val r1 = fq(FastqRecord("q1", "AAAAAAAAAA", "=========="))
     val r2 = fq(FastqRecord("x1", "CCCCCCCCCC", "##########"))
