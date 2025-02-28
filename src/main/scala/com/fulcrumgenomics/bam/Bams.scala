@@ -39,6 +39,7 @@ import htsjdk.samtools.reference.ReferenceSequence
 import htsjdk.samtools.util.{CloserUtil, CoordMath, Murmur3, SequenceUtil}
 
 import java.io.Closeable
+import scala.collection.mutable
 import scala.math.{max, min}
 
 /**
@@ -565,6 +566,34 @@ object Bams extends LazyLogging {
         writer += rec
       }
       def close(): Unit = writer.close()
+    }
+  }
+
+  /** Builds a [[Writer]] of [[SamRecord]]s where all records for a given read name (e.g. pair, including any
+    * secondary and supplementary) are output to the writer.  This is implemented via collecting the unique read
+    * names from records passed into `write()`, then upon closing, all records in the original BAM are examined and any
+    * records with a matching read name are written the provided writer.
+    *
+    * @param original the original BAM that will be filtered
+    * @param writer the final writer to which filtered records shuld be written
+    * @return
+    */
+  def readNameFilteringWriter(original: PathToBam, writer: SamWriter): Writer[SamRecord] with Closeable = {
+    // TODO:
+    // - could log how many read names are being stored every 10000th record, and with memory usage
+    // - upon a given HashSet size, could examine for a common read name prefix, to reduce memory.  Could also
+    //   just store a sorted list of read names (after prefix removal) and do binary search to lookup.  Could also
+    //   look at more memory efficient data structures (e.g. a trie?)
+    // - if the input is query name sorted, and records are provided in query name sorted, the hash could be a simple
+    //   list of read names (prefix removed?)
+    new Writer[SamRecord] with Closeable {
+      private val readNames = new mutable.HashSet[String]()
+      override def write(rec: SamRecord): Unit = readNames.add(rec.name)
+      override def close(): Unit = {
+        val source = SamSource(original)
+        source.filter(rec => this.readNames.contains(rec.name)).foreach(writer.write)
+        source.close()
+      }
     }
   }
 }
