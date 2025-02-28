@@ -26,7 +26,7 @@ package com.fulcrumgenomics.bam
 
 import com.fulcrumgenomics.FgBioDef._
 import com.fulcrumgenomics.alignment.Cigar
-import com.fulcrumgenomics.bam.api.{SamOrder, SamRecord}
+import com.fulcrumgenomics.bam.api.{SamOrder, SamRecord, SamWriter}
 import com.fulcrumgenomics.testing.SamBuilder.{Minus, Plus}
 import com.fulcrumgenomics.testing.{SamBuilder, UnitSpec}
 import com.fulcrumgenomics.util.{Io, Sequences}
@@ -550,5 +550,41 @@ class BamsTest extends UnitSpec {
     template.r2Supplementals.foreach { supp =>
       supp.insertSize shouldBe -150
     }
+  }
+
+  "Bams.readNameFilteringWriter" should "write all records in the original BAM for the read names written to it" in {
+    val builder = new SamBuilder(sort=Some(SamOrder.Queryname))
+    Range(0, 5).foreach { i =>
+      builder.addPair(s"p$i", start1=100 + i, start2=200 + i)
+      builder.addPair(s"p$i", start1=1000 + i, start2=2000 + i).foreach(_.secondary = true)
+      builder.addPair(s"p$i", start1=5000 + i, start2=6000 + i).foreach(_.supplementary = true)
+    }
+    builder.addFrag("f0", start=300)
+    builder.addFrag("f1", start=400)
+    val original = builder.toTempFile()
+
+    val output          = makeTempFile("filtered.", ".bam")
+    val out             = SamWriter(output, builder.header)
+    val filteringWriter = Bams.readNameFilteringWriter(original=original, writer=out)
+    // Write only one record for some of the read names, including a read name written more than once
+    val keep = Set("p1", "p3", "f1")
+    builder.iterator.filter(r => keep.contains(r.name) && !r.secondary && !r.supplementary).foreach(filteringWriter.write)
+    filteringWriter.close()
+    out.close()
+
+    val expected = readBamRecs(original).filter(r => keep.contains(r.name))
+    val actual   = readBamRecs(output)
+    expected should have size 13
+    actual.map(_.asSam.getSAMString) should contain theSameElementsInOrderAs expected.map(_.asSam.getSAMString)
+  }
+
+  it should "write no records when no read names were written to it" in {
+    val builder = new SamBuilder(sort=Some(SamOrder.Queryname))
+    builder.addPair("p0", start1=100, start2=200)
+    val output = makeTempFile("filtered.", ".bam")
+    val out    = SamWriter(output, builder.header)
+    Bams.readNameFilteringWriter(original=builder.toTempFile(), writer=out).close()
+    out.close()
+    readBamRecs(output) shouldBe empty
   }
 }
