@@ -31,7 +31,7 @@ import com.fulcrumgenomics.commons.collection.{BetterBufferedIterator, SelfClosi
 import com.fulcrumgenomics.commons.io.Writer
 import com.fulcrumgenomics.commons.util.LazyLogging
 import com.fulcrumgenomics.fasta.ReferenceSequenceIterator
-import com.fulcrumgenomics.util.{Io, ProgressLogger, Sorter}
+import com.fulcrumgenomics.util.{Io, PrefixTrieSet, ProgressLogger, Sorter}
 import htsjdk.samtools.SAMFileHeader.{GroupOrder, SortOrder}
 import htsjdk.samtools.SamPairUtil.PairOrientation
 import htsjdk.samtools._
@@ -579,20 +579,23 @@ object Bams extends LazyLogging {
     * @return
     */
   def readNameFilteringWriter(original: PathToBam, writer: SamWriter): Writer[SamRecord] with Closeable = {
-    // TODO:
-    // - could log how many read names are being stored every 10000th record, and with memory usage
-    // - upon a given HashSet size, could examine for a common read name prefix, to reduce memory.  Could also
-    //   just store a sorted list of read names (after prefix removal) and do binary search to lookup.  Could also
-    //   look at more memory efficient data structures (e.g. a trie?)
-    // - if the input is query name sorted, and records are provided in query name sorted, the hash could be a simple
-    //   list of read names (prefix removed?)
     new Writer[SamRecord] with Closeable {
-      private val readNames = new mutable.HashSet[String]()
-      override def write(rec: SamRecord): Unit = readNames.add(rec.name)
+      private val readNames = new PrefixTrieSet()
+      private val progress = new ProgressLogger(logger, noun="unique reads", verb="added", unit=1e6.toInt)
+      override def write(rec: SamRecord): Unit = {
+        readNames.add(rec.name)
+        progress.record(rec)
+      }
       override def close(): Unit = {
+        val progress = new ProgressLogger(logger, verb="written", unit=1e6.toInt)
+        logger.info("Filtering original input based on read names")
         val source = SamSource(original)
-        source.filter(rec => this.readNames.contains(rec.name)).foreach(writer.write)
+        source.filter(rec => this.readNames.contains(rec.name)).foreach { rec =>
+          progress.record(rec)
+          writer.write(rec)
+        }
         source.close()
+        progress.logLast()
       }
     }
   }
