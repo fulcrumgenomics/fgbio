@@ -100,7 +100,7 @@ class FilterBam
           minMappedBases.exists(count => countMappedBases(rec) < count)
 
         if (throwOut) {
-          rejects.foreach { writer => writer += rec }
+          rejects.foreach(writer.write)
           false
         }
         else {
