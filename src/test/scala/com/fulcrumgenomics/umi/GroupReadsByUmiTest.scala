@@ -372,6 +372,57 @@ class GroupReadsByUmiTest extends UnitSpec with OptionValues with PrivateMethodT
     aIds.head should not equal bIds.head
   }
 
+  it should "correctly group reads when reads are a mix of paired and single end data for non-Paired strategies" in {
+    val builder = new SamBuilder(readLength=100, sort=Some(SamOrder.Coordinate))
+    builder.addPair(name="a01", start1=100, start2=300, strand1=Plus,  strand2=Minus, attrs=Map("RX" -> "ACT-ACT"))
+    builder.addPair(name="a02", start1=100, start2=300, strand1=Plus,  strand2=Minus, attrs=Map("RX" -> "ACT-ACT"))
+
+    builder.addFrag(name="b01", start=100, strand=Plus, attrs = Map("RX" -> "ACT-"))
+    builder.addFrag(name="b02", start=100, strand=Plus, attrs = Map("RX" -> "ACT-"))
+
+    val in  = builder.toTempFile()
+    val out = Files.createTempFile("umi_grouped.", ".sam")
+    val hist = Files.createTempFile("umi_grouped.", ".histogram.txt")
+
+    // Test Adjacency
+    new GroupReadsByUmi(input=in, output=out, familySizeHistogram=Some(hist), rawTag="RX", assignTag="MI", strategy=Strategy.Adjacency, edits=1).execute()
+    val recs_adjacency = readBamRecs(out)
+    val aIds_adjacency = recs_adjacency.filter(_.name.startsWith("a")).map(r => r[String]("MI")).distinct
+    val bIds_adjacency = recs_adjacency.filter(_.name.startsWith("b")).map(r => r[String]("MI")).distinct
+    aIds_adjacency should have size 1
+    bIds_adjacency should have size 1
+
+    // Test Edit
+    new GroupReadsByUmi(input=in, output=out, familySizeHistogram=Some(hist), rawTag="RX", assignTag="MI", strategy=Strategy.Edit, edits=1).execute()
+    val recs_edit = readBamRecs(out)
+    val aIds_edit = recs_edit.filter(_.name.startsWith("a")).map(r => r[String]("MI")).distinct
+    val bIds_edit = recs_edit.filter(_.name.startsWith("b")).map(r => r[String]("MI")).distinct
+    aIds_edit should have size 1
+    bIds_edit should have size 1
+
+    // Test Identity
+    new GroupReadsByUmi(input=in, output=out, familySizeHistogram=Some(hist), rawTag="RX", assignTag="MI", strategy=Strategy.Identity, edits=0).execute()
+    val recs_identity = readBamRecs(out)
+    val aIds_identity = recs_identity.filter(_.name.startsWith("a")).map(r => r[String]("MI")).distinct
+    val bIds_identity = recs_identity.filter(_.name.startsWith("b")).map(r => r[String]("MI")).distinct
+    aIds_identity should have size 1
+    bIds_identity should have size 1
+  }
+
+  it should "fail when single end data is used with the Paired strategy" in {
+    val builder = new SamBuilder(readLength=100, sort=Some(SamOrder.Coordinate))
+    builder.addFrag(name="b01", start=100, strand=Plus, attrs = Map("RX" -> "ACT-"))
+    builder.addFrag(name="b02", start=100, strand=Plus, attrs = Map("RX" -> "ACT-"))
+
+    val in  = builder.toTempFile()
+    val out = Files.createTempFile("umi_grouped.", ".sam")
+    val hist = Files.createTempFile("umi_grouped.", ".histogram.txt")
+
+    an[FailureException] shouldBe thrownBy {
+      new GroupReadsByUmi(input=in, output=out, familySizeHistogram=Some(hist), rawTag="RX", assignTag="MI", strategy=Strategy.Paired, edits=1).execute()
+    }
+  }
+
   it should "correctly group reads with the paired assigner when the two UMIs are the same in cross-contig read pairs" in {
     val builder = new SamBuilder(readLength=100, sort=Some(SamOrder.Coordinate))
     builder.addPair(name="a01", contig = 1, contig2 = Some(2), start1=100, start2=300, strand1=Plus,  strand2=Minus, attrs=Map("RX" -> "ACT-ACT"))
