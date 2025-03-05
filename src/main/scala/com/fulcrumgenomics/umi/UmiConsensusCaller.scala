@@ -223,12 +223,19 @@ trait UmiConsensusCaller[ConsensusRead <: SimpleRead] {
     * to remove Ns and bases below the `minBaseQuality`.  Remaining bases that are below
     * `minBaseQuality` are then masked to Ns.  Also trims reads so that no mapped bases extend past their mate.
     *
+    * If the given record has no base qualities, then `missingBaseQuality` will be used if given.
+    *
     * @return Some(SourceRead) if there are any called bases with quality > minBaseQuality, else None
     */
-  protected[umi] def toSourceRead(rec: SamRecord, minBaseQuality: PhredScore, qualityTrim: Boolean): Option[SourceRead] = {
+  protected[umi] def toSourceRead(rec: SamRecord, minBaseQuality: PhredScore, qualityTrim: Boolean, missingBaseQuality: Option[PhredScore] = None): Option[SourceRead] = {
     // Extract and possibly RC the source bases and quals from the SamRecord
     val bases = rec.bases.clone()
-    val quals = rec.quals.clone()
+    val quals = if (rec.quals.nonEmpty) rec.quals.clone() else missingBaseQuality match {
+      case Some(qual) => Array.fill(bases.length)(qual)
+      case None       => throw new IllegalArgumentException(
+        f"The input read is missing base qualities: ${rec.asSam.getSAMString}"
+      )
+    }
     val cigar = if (rec.positiveStrand) rec.cigar else {
       SequenceUtil.reverseComplement(bases)
       SequenceUtil.reverse(quals, 0, quals.length)

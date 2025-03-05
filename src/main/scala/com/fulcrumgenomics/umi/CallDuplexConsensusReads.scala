@@ -113,6 +113,7 @@ class CallDuplexConsensusReads
  val maxReadsPerStrand: Option[Int] = None,
  @arg(doc="The number of threads to use while consensus calling.") val threads: Int = 1,
  @arg(doc="Consensus call overlapping bases in mapped paired end reads") val consensusCallOverlappingBases: Boolean = true,
+ @arg(doc = "The phred-scaled base quality to use when base qualities are missing in the input") val missingBaseQuality: Option[PhredScore] = None,
 ) extends FgBioTool with LazyLogging {
 
   Io.assertReadable(input)
@@ -144,7 +145,8 @@ class CallDuplexConsensusReads
       errorRatePreUmi     = errorRatePreUmi,
       errorRatePostUmi    = errorRatePostUmi,
       minReads            = minReads,
-      maxReadsPerStrand   = maxReadsPerStrand.getOrElse(VanillaUmiConsensusCallerOptions.DefaultMaxReads)
+      maxReadsPerStrand   = maxReadsPerStrand.getOrElse(VanillaUmiConsensusCallerOptions.DefaultMaxReads),
+      missingBaseQuality  = missingBaseQuality
     )
     val progress = ProgressLogger(logger, unit=1000000)
     val iterator = new ConsensusCallingIterator(inIter, caller, Some(progress), threads)
