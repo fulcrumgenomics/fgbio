@@ -30,12 +30,12 @@ jobs:
           fail_ci_if_error: true # optional (default = false)
           verbose: true # optional (default = false)
       - name: Cache .ivy2
-        uses: actions/cache@v2
+        uses: actions/cache@v4
         with:
           path: ~/.ivy2
           key: ${{ runner.os }}-ivy2-${{ hashFiles('**/build.sbt') }}
       - name: Cache .sbt
-        uses: actions/cache@v2
+        uses: actions/cache@v4
         with:
           path: ~/.sbt
           key: ${{ runner.os }}-sbt-${{ hashFiles('**/build.properties') }}
