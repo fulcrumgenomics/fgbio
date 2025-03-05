@@ -85,7 +85,6 @@ class FilterBam
   }
 
   override def execute(): Unit = {
-    val progress = ProgressLogger(logger, verb="written", unit=5e6.toInt)
     val in       = SamSource(input)
     val iterator = buildInputIterator(in, intervals)
     val out      = SamWriter(output, in.header)
