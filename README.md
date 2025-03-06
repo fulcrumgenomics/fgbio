@@ -1,4 +1,4 @@
-[![Build Status](https://github.com/fulcrumgenomics/fgbio/workflows/unit%20tests/badge.svg)](https://github.com/fulcrumgenomics/fgbio/actions?query=workflow%3A%22unit+tests%22)
+[![Build Status](https://github.com/fulcrumgenomics/fgbio/actions/workflows/unittests.yaml/badge.svg?branch=main)](https://github.com/fulcrumgenomics/fgbio/actions/workflows/unittests.yaml)
 [![codecov](https://codecov.io/gh/fulcrumgenomics/fgbio/branch/main/graph/badge.svg)](https://codecov.io/gh/fulcrumgenomics/fgbio)
 [![Maven Central](https://maven-badges.herokuapp.com/maven-central/com.fulcrumgenomics/fgbio_2.13/badge.svg)](https://maven-badges.herokuapp.com/maven-central/com.fulcrumgenomics/fgbio_2.13)
 [![Bioconda](https://img.shields.io/conda/dn/bioconda/fgbio.svg?label=Bioconda)](http://bioconda.github.io/recipes/fgbio/README.html)
