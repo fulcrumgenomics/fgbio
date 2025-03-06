@@ -62,6 +62,7 @@ import math.abs
 class FilterBam
 ( @arg(flag='i', doc="Input BAM file.")                                           val input: PathToBam,
   @arg(flag='o', doc="Output BAM file.")                                          val output: PathToBam,
+  @arg(flag='r', doc="Optional output SAM or BAM file to write reads not kept.")  val rejects: Option[PathToBam] = None,
   @arg(flag='l', doc="Optionally remove reads not overlapping intervals.")        val intervals: Option[PathToIntervals] = None,
   @arg(flag='D', doc="If true remove all reads that are marked as duplicates.")   val removeDuplicates: Boolean = true,
   @arg(flag='U', doc="Remove all unmapped reads.")                                val removeUnmappedReads: Boolean = true,
@@ -75,6 +76,7 @@ class FilterBam
 
   Io.assertReadable(input)
   Io.assertCanWriteFile(output)
+  rejects.foreach(Io.assertCanWriteFile(_))
   intervals.foreach(Io.assertReadable)
 
   if (!removeUnmappedReads && (minInsertSize.isDefined || minMappedBases.isDefined)) {
@@ -83,10 +85,10 @@ class FilterBam
   }
 
   override def execute(): Unit = {
-    val progress = ProgressLogger(logger, verb="written", unit=5e6.toInt)
     val in       = SamSource(input)
     val iterator = buildInputIterator(in, intervals)
     val out      = SamWriter(output, in.header)
+    val rejects  = this.rejects.map(path => SamWriter(path, in.header))
     val kept = iterator.count { rec => {
         val throwOut = (removeDuplicates && rec.duplicate) ||
           (removeUnmappedReads && rec.unmapped) ||
@@ -98,6 +100,7 @@ class FilterBam
           minMappedBases.exists(count => countMappedBases(rec) < count)
 
         if (throwOut) {
+          rejects.foreach(_.write(rec))
           false
         }
         else {
@@ -109,6 +112,7 @@ class FilterBam
 
     logger.info("Kept " + new DecimalFormat("#,##0").format(kept) + " records.")
     out.close()
+    rejects.foreach(_.close())
     in.safelyClose()
   }
 
