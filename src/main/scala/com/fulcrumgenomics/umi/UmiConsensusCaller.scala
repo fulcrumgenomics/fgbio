@@ -228,7 +228,11 @@ trait UmiConsensusCaller[ConsensusRead <: SimpleRead] {
   protected[umi] def toSourceRead(rec: SamRecord, minBaseQuality: PhredScore, qualityTrim: Boolean): Option[SourceRead] = {
     // Extract and possibly RC the source bases and quals from the SamRecord
     val bases = rec.bases.clone()
-    val quals = rec.quals.clone()
+    val quals = if (rec.quals.nonEmpty) rec.quals.clone() else {
+      throw new IllegalArgumentException(
+        f"The input read is missing base qualities: ${rec.asSam.getSAMString}"
+      )
+    }
     val cigar = if (rec.positiveStrand) rec.cigar else {
       SequenceUtil.reverseComplement(bases)
       SequenceUtil.reverse(quals, 0, quals.length)
