@@ -27,6 +27,7 @@ package com.fulcrumgenomics.umi
 import com.fulcrumgenomics.FgBioDef._
 import com.fulcrumgenomics.bam.api.SamOrder
 import com.fulcrumgenomics.commons.io.PathUtil
+import com.fulcrumgenomics.sopt.cmdline.ValidationException
 import com.fulcrumgenomics.testing.SamBuilder.{Minus, Plus}
 import com.fulcrumgenomics.testing.{SamBuilder, UnitSpec, VariantContextSetBuilder}
 import com.fulcrumgenomics.umi.ReviewConsensusVariants.ConsensusVariantReviewInfo
@@ -64,18 +65,25 @@ object ReviewConsensusVariantsTest {
 class ReviewConsensusVariantsTest extends UnitSpec {
   import ReviewConsensusVariantsTest._
 
-  /** Sets up a trivial reference for testing against. */
-  lazy val refFasta: PathToFasta = {
+  def buildRefFasta(withFai: Boolean = true, withDict: Boolean = true): PathToFasta = {
     val ref  = makeTempFile("ref.", ".fa")
-    val fai  = ref.getParent.resolve(s"${ref.getFileName}.fai")
-    val dict = PathUtil.replaceExtension(ref, ".dict")
-    Seq(fai, dict).foreach(_.toFile.deleteOnExit())
-
     Io.writeLines(ref, Fasta)
-    Io.writeLines(fai, Fai)
-    Io.writeLines(dict, Dict)
+
+    if (withFai) {
+      val fai  = ref.getParent.resolve(s"${ref.getFileName}.fai")
+      fai.toFile.deleteOnExit()
+      Io.writeLines(fai, Fai)
+    }
+    if (withDict) {
+      val dict = PathUtil.replaceExtension(ref, ".dict")
+      dict.toFile.deleteOnExit()
+      Io.writeLines(dict, Dict)
+    }
     ref
   }
+
+  /** Sets up a trivial reference for testing against. */
+  lazy val refFasta: PathToFasta = buildRefFasta()
 
   lazy val ref: ReferenceSequenceFile = ReferenceSequenceFileFactory.getReferenceSequenceFile(refFasta)
 
@@ -238,5 +246,27 @@ class ReviewConsensusVariantsTest extends UnitSpec {
     val metrics = Metric.read[ConsensusVariantReviewInfo](txtOut)
     // The metrics don't currently contain reads with spanning deletions, so D/1 is present above and absent below
     metrics.toIndexedSeq.map(_.consensus_read) should contain theSameElementsAs Seq("A/1", "B/1", "E/1", "F/1", "H/1", "H/2")
+  }
+
+  it should "fail if a FASTA sequence dictionary (.dict) is not present" in {
+    val outBase   = makeTempFile("review_consensus.", ".out")
+    val intervals = makeTempFile("empty.", ".vcf")
+    val ref       = buildRefFasta(withDict=false)
+
+    val vcfBuilder = VariantContextSetBuilder("s1")
+    vcfBuilder.header.setSequenceDictionary(header.getSequenceDictionary)
+    vcfBuilder.write(intervals)
+    a[ValidationException] should be thrownBy new ReviewConsensusVariants(input=intervals, consensusBam=consensusBam, groupedBam=rawBam, ref=ref, output=outBase)
+  }
+
+  it should "fail if a FASTA index (.fai) is not present" in {
+    val outBase   = makeTempFile("review_consensus.", ".out")
+    val intervals = makeTempFile("empty.", ".vcf")
+    val ref       = buildRefFasta(withFai=false)
+
+    val vcfBuilder = VariantContextSetBuilder("s1")
+    vcfBuilder.header.setSequenceDictionary(header.getSequenceDictionary)
+    vcfBuilder.write(intervals)
+    a[ValidationException] should be thrownBy new ReviewConsensusVariants(input=intervals, consensusBam=consensusBam, groupedBam=rawBam, ref=ref, output=outBase)
   }
 }

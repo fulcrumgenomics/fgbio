@@ -28,6 +28,7 @@ import com.fulcrumgenomics.FgBioDef._
 import com.fulcrumgenomics.bam.BaseCounts
 import com.fulcrumgenomics.bam.api.{SamRecord, SamSource, SamWriter}
 import com.fulcrumgenomics.cmdline.{ClpGroups, FgBioTool}
+import com.fulcrumgenomics.commons.io.PathUtil
 import com.fulcrumgenomics.commons.util.LazyLogging
 import com.fulcrumgenomics.sopt.{arg, clp}
 import com.fulcrumgenomics.umi.ReviewConsensusVariants._
@@ -159,6 +160,13 @@ class ReviewConsensusVariants
   Io.assertCanWriteFile(output)
   private val refFile = ReferenceSequenceFileFactory.getReferenceSequenceFile(ref)
   private val dict = refFile.getSequenceDictionary
+
+  validate(this.refFile.isIndexed,
+    f"The reference file has not indexed (use `samtools faidx ${this.ref}`)."
+  )
+  validate(this.refFile.getSequenceDictionary != null,
+    f"The reference file has no sequence dictionary (use `samtools dict ${this.ref} -o  ${PathUtil.replaceExtension(this.ref, ".dict")}`)"
+  )
 
   /** Simple case class to hold the relevant information from a variant context for easy access. */
   private[umi] case class Variant(chrom: String, start: Int, refBase: Char, genotype: Option[String], filters: Option[String])
