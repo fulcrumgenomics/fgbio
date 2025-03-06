@@ -32,6 +32,7 @@ import com.fulcrumgenomics.bam.api.{SamOrder, SamRecord, SamSource, SamWriter}
 import com.fulcrumgenomics.bam.{Bams, Template}
 import com.fulcrumgenomics.cmdline.{ClpGroups, FgBioTool}
 import com.fulcrumgenomics.commons.util.{LazyLogging, NumericCounter, SimpleCounter}
+import com.fulcrumgenomics.illumina.{OpticalDuplicateFinder, PhysicalLocation, ReadEnds, ReadEndsForMarkDuplicates}
 import com.fulcrumgenomics.sopt.{arg, clp}
 import com.fulcrumgenomics.umi.GroupReadsByUmi._
 import com.fulcrumgenomics.util.Metric.{Count, Proportion}
@@ -49,6 +50,8 @@ import scala.collection.mutable.ListBuffer
 import scala.collection.parallel.ExecutionContextTaskSupport
 import scala.collection.{BufferedIterator, Iterator, mutable}
 import scala.concurrent.ExecutionContext
+import scala.jdk.CollectionConverters._
+
 
 
 object GroupReadsByUmi {
@@ -64,6 +67,19 @@ object GroupReadsByUmi {
   /** The suffix appended to molecular identifier reads from the "bottom strand" of the duplex molecule. These reads have
     * 5' coordinate for read 1 greater than the 5' coordinate for read 2. */
   val BottomStrandDuplex = "/B"
+
+  /**
+    * The optional attribute in SAM/BAM/CRAM files used to store the duplicate type.
+    */
+  val DUPLICATE_TYPE_TAG:String = "DT"
+  /**
+    * The duplicate type tag value for duplicate type: library.
+    */
+  val DUPLICATE_TYPE_LIBRARY:String = "LB"
+  /**
+    * The duplicate type tag value for duplicate type: sequencing (optical & pad-hopping, or "co-localized").
+    */
+  val DUPLICATE_TYPE_SEQUENCING:String = "SQ"
 
   private val ReadInfoTempAttributeName = "__GRBU_ReadInfo"
 
@@ -592,6 +608,9 @@ class GroupReadsByUmi
  @arg(flag='n', doc="Include non-PF reads.")            val includeNonPfReads: Boolean = false,
  @arg(flag='s', doc="The UMI assignment strategy.")     val strategy: Strategy,
  @arg(flag='e', doc="The allowable number of edits between UMIs.") val edits: Int = 1,
+ @arg(flag = 'D', doc = "Optical Duplicate distance") val opticalDuplicateDistance: Int = 2500,
+ @arg(flag = 'O', doc = "Do not count optical duplicates towards group sizes") val ignoreOpticalDuplicates: Boolean = false,
+ @arg(doc = "Tag optical Duplicate reads with tag DT") val tagOpticalDuplicates: Boolean = false,
  @arg(flag='l', doc= """The minimum UMI length. If not specified then all UMIs must have the same length,
                          |otherwise discard reads with UMIs shorter than this length and allow for differing UMI lengths.
                          |""")
@@ -608,6 +627,8 @@ class GroupReadsByUmi
 
   private val assigner = strategy.newStrategy(this.edits, this.threads)
 
+  private val opticalDuplicateFinder = new OpticalDuplicateFinder()
+  opticalDuplicateFinder.opticalDuplicatePixelDistance = opticalDuplicateDistance
   // Give values to unset parameters that are different in duplicate marking mode
   private val _minMapQ = this.minMapQ.getOrElse(if (this.markDuplicates) 0 else 1)
   private val _includeSecondaryReads = this.includeSecondary.getOrElse(this.markDuplicates)
@@ -727,9 +748,14 @@ class GroupReadsByUmi
       // Then group the records in the right order (assigned tag, read name, r1, r2)
       val templatesByMi = templates.groupBy { t => t.r1.get.apply[String](this.assignTag) }
 
+
+      if (this.ignoreOpticalDuplicates) {
+        templatesByMi.values.foreach(t => setOpticalDuplicateFlags(t))
+      }
+
       // If marking duplicates, assign bitflag to all duplicate reads
       if (this.markDuplicates) {
-        templatesByMi.values.foreach(t => setDuplicateFlags(t))
+        templatesByMi.values.foreach(t => setDuplicateFlags(t, addOpticalTag = tagOpticalDuplicates))
       }
 
       // Then output the records in the right order (assigned tag, read name, r1, r2)
@@ -740,7 +766,14 @@ class GroupReadsByUmi
       })
 
       // Count up the family sizes
-      templatesByMi.values.foreach(ps => tagFamilySizeCounter.count(ps.size))
+      if (this.ignoreOpticalDuplicates) {
+        //        count the templates that are not
+        templatesByMi.values.foreach { ps =>
+          tagFamilySizeCounter.count(ps.count(t => t.allReads.exists(r => !r.transientAttrs[Boolean]("OpticalDup"))))
+        }
+      } else {
+        templatesByMi.values.foreach(ps => tagFamilySizeCounter.count(ps.size))
+      }
     }
     out.close()
 
@@ -870,8 +903,36 @@ class GroupReadsByUmi
     }
   }
 
-  /** Sets the duplicate flags on all reads within all templates.  */
-  private def setDuplicateFlags(group: Seq[Template]): Unit = {
+
+  /** Sets the (Transient) Optical duplicate flags on all reads within all templates. */
+  private def setOpticalDuplicateFlags(group: Seq[Template]): Seq[Template] = {
+    //  find a templates that has a read that isn't a duplicate. that's the keeper.
+    val keeper = new ReadEndsForMarkDuplicates()
+    group.find(t => t.allReads.exists(r => !r.duplicate)).map(_.name)
+      .map(s => this.opticalDuplicateFinder.addLocationInformation(s, keeper))
+
+    // get the locations of all the templates
+    val locs: Seq[PhysicalLocation] =
+      group.map { template =>
+        val loc = new ReadEndsForMarkDuplicates()
+        // this could return false indicating that the parsing failed.
+        // need to protect against that eventuality
+        this.opticalDuplicateFinder.addLocationInformation(template.name, loc)
+        loc
+      }
+    //    identify the templates that are optical duplicates
+    val opticalDups: Array[Boolean]
+    = this.opticalDuplicateFinder.findOpticalDuplicates(locs.asJava, keeper)
+
+    // set the OpticalDup transient attributes to the reads.
+    for (i <- group.indices) {
+      group(i).allReads.foreach(_.transientAttrs.update("OpticalDup", opticalDups(i)))
+    }
+    group
+  }
+
+  /** Sets the duplicate flags on all reads within all templates. */
+  private def setDuplicateFlags(group: Seq[Template], addOpticalTag: Boolean): Unit = {
     val nonDuplicateTemplate = group.maxBy { template =>
       template.primaryReads.sumBy { r =>
         r.mapq + DuplicateScoringStrategy.computeDuplicateScore(r.asSam, ScoringStrategy.SUM_OF_BASE_QUALITIES)
@@ -881,6 +942,16 @@ class GroupReadsByUmi
     group.foreach { template =>
       val flag = template ne nonDuplicateTemplate
       template.allReads.foreach(_.duplicate = flag)
+      if (addOpticalTag) {
+        template.allReads.foreach(r => {
+          val opticalTagValue: String = if (r.transientAttrs.get("OpticalDup").getOrElse(false)) {
+            DUPLICATE_TYPE_LIBRARY
+          } else {
+            DUPLICATE_TYPE_SEQUENCING
+          }
+          r.update(DUPLICATE_TYPE_TAG, opticalTagValue)
+        })
+      }
     }
   }
 }

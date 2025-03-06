@@ -526,4 +526,43 @@ class GroupReadsByUmiTest extends UnitSpec with OptionValues with PrivateMethodT
       recs.map(r => r[String]("MI")).distinct should have length 1 // all should be assigned to one molecule
     }
   }
+
+  "GroupReadsByUmi.umiForRead" should "correctly count umi groups sizes taking into account position" in {
+    val tool = new GroupReadsByUmi(rawTag = "RX", assignTag = "MI", strategy = Strategy.Edit, edits = 0, allowInterContig = true)
+    val builder = new SamBuilder(readLength = 100)
+    val templates = Seq(
+      builder.addPair(name = "K00336:160:HH73HBBXY:5:2220:14966:18247", contig = 1, contig2 = Some(2), start1 = 100, start2 = 300, strand1 = Plus, strand2 = Minus, attrs = Map("RX" -> "AAA-TTT")),
+      builder.addPair(name = "K00336:160:HH73HBBXY:5:2220:14692:18124", contig = 1, contig2 = Some(2), start1 = 100, start2 = 300, strand1 = Plus, strand2 = Minus, attrs = Map("RX" -> "AAA-TTT")),
+
+      builder.addPair(name = "K00336:160:HH73HBBXY:5:1115:6482:44201", contig = 1, contig2 = Some(2), start1 = 100, start2 = 300, strand1 = Plus, strand2 = Minus, attrs = Map("RX" -> "AAA-TTT")),
+      builder.addPair(name = "K00336:160:HH73HBBXY:5:1115:6685:43884", contig = 1, contig2 = Some(2), start1 = 100, start2 = 300, strand1 = Plus, strand2 = Minus, attrs = Map("RX" -> "AAA-TTT")),
+      builder.addPair(name = "K00336:160:HH73HBBXY:5:1115:6715:44816", contig = 1, contig2 = Some(2), start1 = 100, start2 = 300, strand1 = Plus, strand2 = Minus, attrs = Map("RX" -> "AAA-TTT")),
+      builder.addPair(name = "K00336:160:HH73HBBXY:5:1115:6766:44658", contig = 1, contig2 = Some(2), start1 = 100, start2 = 300, strand1 = Plus, strand2 = Minus, attrs = Map("RX" -> "AAA-TTT")),
+
+      builder.addPair(name = "K00336:160:HH73HBBXY:5:1214:15422:47313", contig = 1, contig2 = Some(2), start1 = 100, start2 = 300, strand1 = Plus, strand2 = Minus, attrs = Map("RX" -> "AAA-TTT")),
+      builder.addPair(name = "K00336:160:HH73HBBXY:5:1214:16082:47295", contig = 1, contig2 = Some(2), start1 = 100, start2 = 300, strand1 = Plus, strand2 = Minus, attrs = Map("RX" -> "AAA-TTT")),
+
+      builder.addPair(name = "K00336:160:HH73HBBXY:5:1215:15615:1648", contig = 1, contig2 = Some(2), start1 = 100, start2 = 300, strand1 = Plus, strand2 = Minus, attrs = Map("RX" -> "AAA-TTT")),
+
+      builder.addPair(name = "K00336:160:HH73HBBXY:5:2125:16336:42952", contig = 1, contig2 = Some(2), start1 = 100, start2 = 300, strand1 = Plus, strand2 = Minus, attrs = Map("RX" -> "AAA-TTT")),
+
+      builder.addPair(name = "K00336:160:HH73HBBXY:5:2224:25946:18951", contig = 1, contig2 = Some(2), start1 = 100, start2 = 300, strand1 = Plus, strand2 = Minus, attrs = Map("RX" -> "AAA-TTT")),
+      builder.addPair(name = "K00336:160:HH73HBBXY:5:2224:26169:18423", contig = 1, contig2 = Some(2), start1 = 100, start2 = 300, strand1 = Plus, strand2 = Minus, attrs = Map("RX" -> "AAA-TTT")),
+
+      builder.addPair(name = "K00336:160:HH73HBBXY:5:2226:9983:11091", contig = 1, contig2 = Some(2), start1 = 100, start2 = 300, strand1 = Plus, strand2 = Minus, attrs = Map("RX" -> "AAA-TTT")),
+    ).map { pair => Template(r1 = pair.headOption, r2 = pair.lastOption) }
+    val expected = n("a::AAA-b::TTT", 4) ++ n("b::AAA-a::TTT", 4) ++ n("a::AAA-b::TTT", 1) ++ n("b::AAA-a::TTT", 1) ++ n("a::AAA-b::TTT", 1) ++ n("b::AAA-a::TTT", 1)
+    val setOpticalDuplicateFlags = PrivateMethod[Seq[Template]](Symbol("setOpticalDuplicateFlags"))
+    val temp = tool invokePrivate setOpticalDuplicateFlags(templates)
+    val count: Int = temp.count(t => t.allReads.exists(r => !r.transientAttrs[Boolean]("OpticalDup")))
+    assert(count == 7)
+
+    val count2: Int = templates.count(t => t.allReads.exists(r => !r.transientAttrs[Boolean]("OpticalDup")))
+    assert(count2 == 7)
+
+    val setDuplicateFlags = PrivateMethod[Seq[Template]](Symbol("setDuplicateFlags"))
+    tool invokePrivate setDuplicateFlags(templates, true)
+    val count3: Int = templates.count(t => t.allReads.exists(r => r.get[Boolean]("DT").getOrElse("") == DUPLICATE_TYPE_SEQUENCING))
+    assert(count3 == 7)
+  }
 }
