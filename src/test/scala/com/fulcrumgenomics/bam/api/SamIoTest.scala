@@ -190,6 +190,6 @@ class SamIoTest extends UnitSpec {
       source.query("chr1", 1, contigEnd, queryType).length shouldBe 10
 
       // exception when the contig does not exist
-      an[NoSuchElementException] should be thrownBy source.query("contig-does-not-exist", 1, 1000, queryType).length shouldBe 10 
+      an[NoSuchElementException] should be thrownBy source.query("contig-does-not-exist", 1, 1000, queryType)
   }
 }
