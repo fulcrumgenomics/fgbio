@@ -166,7 +166,7 @@ class SamIoTest extends UnitSpec {
     mapCount shouldBe 10
   }
 
-  "SamSource.query" should "" in {
+  "SamSource.query" should "query a BAM, accounting for queries before and after the contig start and end" in {
       val queryType = QueryType.Overlapping
       val builder = new SamBuilder(readLength=10, baseQuality=20, sort=Some(SamOrder.Coordinate))
       Range(0, 10).foreach { _ => builder.addFrag(start=100) }
@@ -188,5 +188,8 @@ class SamIoTest extends UnitSpec {
       source.query("chr1", 1, 1000, queryType).length shouldBe 10 
       source.query("chr1", 100, contigEnd, queryType).length shouldBe 10
       source.query("chr1", 1, contigEnd, queryType).length shouldBe 10
+
+      // exception when the contig does not exist
+      an[NoSuchElementException] should be thrownBy source.query("contig-does-not-exist", 1, 1000, queryType).length shouldBe 10 
   }
 }
