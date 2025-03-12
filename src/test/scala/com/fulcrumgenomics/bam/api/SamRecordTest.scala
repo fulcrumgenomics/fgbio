@@ -330,4 +330,232 @@ class SamRecordTest extends UnitSpec with OptionValues {
     rec1.matesOverlap shouldBe None // Mate's start is not enclosed by rec, and mate's end cannot be determined
     rec2.matesOverlap.value shouldBe true // Mate's start is enclosed by rec, regardless of where mate end is
   }
+
+  "SamRecord.refBasesFromMd" should "preserve ambiguous (N) reference bases" in {
+    val builder = new SamBuilder(readLength=3)
+    val rec     = builder.addFrag(bases="AAA", cigar="3M", start=1, attrs=Map("MD" -> "1N1")).value
+    new String(rec.refBasesFromMd) shouldBe "ANA"
+  }
+
+  it should "omit soft-clipped and inserted bases, and include deleted bases" in {
+    val builder = new SamBuilder(readLength=9)
+    val rec     = builder.addFrag(bases="TTACGGGAC", cigar="2S2M1I1M1D3M", start=1, attrs=Map("MD" -> "2C0^T3")).value
+    new String(rec.refBasesFromMd) shouldBe "ACCTGAC"
+  }
+
+  it should "return Ns for reference skips" in {
+    val builder = new SamBuilder(readLength=4)
+    val rec     = builder.addFrag(bases="ACGT", cigar="2M3N2M", start=1, attrs=Map("MD" -> "4")).value
+    new String(rec.refBasesFromMd) shouldBe "ACNNNGT"
+    new String(rec.refBasesFromMd(includeSkippedBases=false)) shouldBe "ACGT"
+  }
+
+  it should "accept any letter for mismatched and deleted reference bases" in {
+    val builder = new SamBuilder(readLength=4)
+    val rec     = builder.addFrag(bases="ACTA", cigar="2M1I1D1M", start=1, attrs=Map("MD" -> "1R0^Y1")).value
+    new String(rec.refBasesFromMd) shouldBe "ARYA"
+  }
+
+  Seq("0\u01411", "0\u03b11", "0\u04111").foreach { md =>
+    it should s"reject non-ASCII mismatch letters in MD $md" in {
+      val rec = new SamBuilder(readLength=3).addFrag(bases="AAT", cigar="1M1I1M", start=1, attrs=Map("MD" -> md)).value
+      an[IllegalArgumentException] should be thrownBy rec.refBasesFromMd
+    }
+  }
+
+  Seq("1^\u01411", "1^A\u01411", "1^A0^\u01411").foreach { md =>
+    it should s"reject non-ASCII deletion letters in MD $md" in {
+      val cigar = if (md == "1^\u01411") "1M1D1M" else "1M1D1D1M"
+      val rec = new SamBuilder(readLength=2).addFrag(bases="AT", cigar=cigar, start=1, attrs=Map("MD" -> md)).value
+      an[IllegalArgumentException] should be thrownBy rec.refBasesFromMd
+    }
+  }
+
+  it should "retain every upper- and lower-case ASCII MD letter and zero-padded match counts" in {
+    val rec = new SamBuilder(readLength=2).addFrag(bases="AT", cigar="1M1D1M", start=1).value
+    (('A' to 'Z') ++ ('a' to 'z')).foreach { base =>
+      rec("MD") = s"00${base}0^${base}01"
+      new String(rec.refBasesFromMd) shouldBe s"${base}${base}T"
+    }
+  }
+
+  it should "reject non-ASCII MD digits" in {
+    val bases = "A" * 1586
+    val rec = new SamBuilder(readLength=bases.length).addFrag(bases=bases, cigar="1586M", start=1, attrs=Map("MD" -> "\u0662")).value
+    an[IllegalArgumentException] should be thrownBy rec.refBasesFromMd
+    rec("MD") = "1586"
+    new String(rec.refBasesFromMd) shouldBe bases
+  }
+
+  it should "accept a trailing zero after a mismatch" in {
+    val builder = new SamBuilder(readLength=3)
+    val rec     = builder.addFrag(bases="AAC", cigar="3M", start=1, attrs=Map("MD" -> "2A0")).value
+    new String(rec.refBasesFromMd) shouldBe "AAA"
+  }
+
+  it should "accept adjacent deletions written as one run or as separate runs (as htsjdk and samtools write them)" in {
+    val builder = new SamBuilder(readLength=4)
+    val rec     = builder.addFrag(bases="ACGT", cigar="2M1D1D2M", start=1, attrs=Map("MD" -> "2^T0^G2")).value
+    new String(rec.refBasesFromMd) shouldBe "ACTGGT"
+    // the MD tag that htsjdk writes for this alignment
+    val expected = rec.asSam.deepCopy()
+    htsjdk.samtools.util.SequenceUtil.calculateMdAndNmTags(expected, "ACTGGT".getBytes, true, false)
+    expected.getStringAttribute("MD") shouldBe "2^T0^G2"
+    rec("MD") = "2^TG2"
+    new String(rec.refBasesFromMd) shouldBe "ACTGGT"
+    // a single deletion of two bases, given as one run or as separate runs
+    rec.cigar = "2M2D2M"
+    new String(rec.refBasesFromMd) shouldBe "ACTGGT"
+    rec("MD") = "2^T0^G2"
+    new String(rec.refBasesFromMd) shouldBe "ACTGGT"
+    // only a zero may separate the runs within a deletion
+    rec("MD") = "2^T1^G1"
+    intercept[IllegalArgumentException] { rec.refBasesFromMd }.getMessage should include ("expected a deleted base")
+  }
+
+  it should "accept zero-padded counts between MD deletion runs for equivalent CIGARs" in {
+    val cases = Seq(
+      ("1M2D2M",   "1^A", "^C2", "AACAT"),
+      ("1M1D1D2M", "1^A", "^C2", "AACAT"),
+      ("2D3M",     "0^A", "^C3", "ACAAT"),
+      ("3M2D",     "3^A", "^C0", "AATAC")
+    )
+    cases.foreach { case (cigar, prefix, suffix, expected) =>
+      Seq("0", "00", "000").foreach { count =>
+        val md = prefix + count + suffix
+        withClue(s"cigar=$cigar MD=$md: ") {
+          val rec = new SamBuilder(readLength=3).addFrag(
+            bases="AAT", cigar=cigar, start=1, attrs=Map("MD" -> md)
+          ).value
+          new String(rec.refBasesFromMd) shouldBe expected
+        }
+      }
+    }
+  }
+
+  it should "reject nonzero or malformed MD counts within a deletion" in {
+    Seq("1", "01", "10", "4294967296", "00C", "00^^").foreach { separator =>
+      val md = s"1^A$separator^C2"
+      withClue(s"MD=$md: ") {
+        val rec = new SamBuilder(readLength=3).addFrag(
+          bases="AAT", cigar="1M2D2M", start=1, attrs=Map("MD" -> md)
+        ).value
+        an[IllegalArgumentException] should be thrownBy rec.refBasesFromMd
+      }
+    }
+  }
+
+  it should "accept deletions separated by an insertion" in {
+    val builder = new SamBuilder(readLength=3)
+    val rec     = builder.addFrag(bases="ACG", cigar="1M1D1I1D1M", start=1, attrs=Map("MD" -> "1^T0^A1")).value
+    new String(rec.refBasesFromMd) shouldBe "ATAG"
+  }
+
+  for (operator <- Seq("P", "I"); md <- Seq("1^AC1", "1^A0^C1", "1^A00^C1")) {
+    it should s"keep an MD deletion run across $operator with MD=$md" in {
+      val bases = if (operator == "I") "TAG" else "TG"
+      val rec = new SamBuilder(readLength=bases.length).addFrag(bases=bases, cigar=s"1M1D1${operator}1D1M",
+        start=1, attrs=Map("MD" -> md)).value
+      new String(rec.refBasesFromMd) shouldBe "TACG"
+    }
+  }
+
+  it should "reject an '=' read base that the MD tag reports as matching" in {
+    val builder = new SamBuilder(readLength=3)
+    val rec     = builder.addFrag(bases="A=A", cigar="2M1D1M", start=1, attrs=Map("MD" -> "2^C1")).value
+    intercept[IllegalArgumentException] { rec.refBasesFromMd }.getMessage should include ("for an '=' read base")
+    // an '=' read base that is a mismatch in the MD tag is not needed
+    rec("MD") = "1G0^C1"
+    new String(rec.refBasesFromMd) shouldBe "AGCA"
+  }
+
+  it should "reject an MD tag that does not match the CIGAR" in {
+    val builder = new SamBuilder(readLength=3)
+    val rec     = builder.addFrag(bases="AAA", cigar="3M", start=1, attrs=Map("MD" -> "4")).value
+    def failure(md: String): String = { rec("MD") = md; intercept[IllegalArgumentException] { rec.refBasesFromMd }.getMessage }
+    failure("4") should include ("the MD tag is longer than the alignment")
+    failure("2") should include ("expected a match or mismatch")
+    failure("1^A2") should include ("expected a match or mismatch")
+    failure("1AC1") should include ("expected a number between mismatched or deleted bases")
+    rec.cigar = "1M1D2M"
+    failure("1A2") should include ("expected a deletion")
+    failure("1^2") should include ("expected a deleted base")
+    failure("0A^C2") should include ("expected a number between mismatched or deleted bases")
+    failure("1^CA1") should include ("expected a number between mismatched or deleted bases")
+  }
+
+  it should "require the MD tag" in {
+    val builder = new SamBuilder(readLength=3)
+    val rec     = builder.addFrag(bases="AAA", cigar="3M", start=1).value
+    intercept[IllegalArgumentException] { rec.refBasesFromMd }.getMessage should include ("without the MD tag")
+  }
+
+  it should "reject an MD tag that is not a string" in {
+    val builder = new SamBuilder(readLength=3)
+    val rec     = builder.addFrag(bases="AAA", cigar="3M", start=1, attrs=Map("MD" -> 3)).value
+    intercept[IllegalArgumentException] { rec.refBasesFromMd }.getMessage should include ("MD tag is not a string")
+  }
+
+  it should "reject a match count in the MD tag that overflows" in {
+    val builder = new SamBuilder(readLength=3)
+    val rec     = builder.addFrag(bases="AAA", cigar="3M", start=1, attrs=Map("MD" -> "4294967299")).value
+    intercept[IllegalArgumentException] { rec.refBasesFromMd }.getMessage should include ("too large")
+    rec("MD") = "0003"
+    new String(rec.refBasesFromMd) shouldBe "AAA"
+  }
+
+  it should "reject an MD tag that contradicts the = and X operators of the CIGAR" in {
+    val builder = new SamBuilder(readLength=3)
+    val rec     = builder.addFrag(bases="AAT", cigar="1X1I1M", start=1, attrs=Map("MD" -> "2")).value
+    def failure(md: String): String = { rec("MD") = md; intercept[IllegalArgumentException] { rec.refBasesFromMd }.getMessage }
+    failure("2") should include ("expected a mismatch for an X operator")
+    failure("0A1") should include ("expected a mismatch for an X operator")
+    failure("0a1") should include ("expected a mismatch for an X operator")
+    rec("MD") = "0C1"
+    new String(rec.refBasesFromMd) shouldBe "CT"
+    rec.cigar = "1=1I1M"
+    failure("0C1") should include ("expected a match for an = operator")
+    failure("0N1") should include ("expected a match for an = operator")
+    rec("MD") = "2"
+    new String(rec.refBasesFromMd) shouldBe "AT"
+    // an M operator accepts either
+    rec.cigar = "1M1I1M"
+    new String(rec.refBasesFromMd) shouldBe "AT"
+    rec("MD") = "0C1"
+    new String(rec.refBasesFromMd) shouldBe "CT"
+    // an N may be counted as either a match or a mismatch
+    rec.bases = "NAT"
+    rec.cigar = "1X1I1M"
+    rec("MD") = "2"
+    new String(rec.refBasesFromMd) shouldBe "NT"
+    rec.cigar = "1=1I1M"
+    rec("MD") = "0N1"
+    new String(rec.refBasesFromMd) shouldBe "NT"
+    failure("0A1") should include ("expected a match for an = operator")
+    rec.cigar = "1X1I1M"
+    rec("MD") = "0N1"
+    new String(rec.refBasesFromMd) shouldBe "NT"
+  }
+
+  it should "require a number before and after each mismatched base and run of deleted bases" in {
+    val builder = new SamBuilder(readLength=4)
+    val rec     = builder.addFrag(bases="ACGT", cigar="4M", start=1, attrs=Map("MD" -> "4")).value
+    def failure(md: String): String = { rec("MD") = md; intercept[IllegalArgumentException] { rec.refBasesFromMd }.getMessage }
+    failure("C3") should include ("expected a number at the start of the MD tag")
+    failure("3C") should include ("expected a number after the last mismatched or deleted base")
+    rec.cigar = "2M1D1D2M"
+    failure("2^T^G2") should include ("expected a number between mismatched or deleted bases")
+    rec("MD") = "2^T0^G2"
+    new String(rec.refBasesFromMd) shouldBe "ACTGGT"
+    rec("MD") = "2^TG2"
+    new String(rec.refBasesFromMd) shouldBe "ACTGGT"
+    rec.cigar = "4M1D"
+    failure("4^T") should include ("expected a number after the last mismatched or deleted base")
+    rec("MD") = "4^T0"
+    new String(rec.refBasesFromMd) shouldBe "ACGTT"
+    rec.cigar = "1D4M"
+    failure("^A4") should include ("expected a number at the start of the MD tag")
+    rec("MD") = "0^A4"
+    new String(rec.refBasesFromMd) shouldBe "AACGT"
+  }
 }

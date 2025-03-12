@@ -25,7 +25,9 @@
 package com.fulcrumgenomics.cmdline
 
 import com.fulcrumgenomics.FgBioDef.DirPath
-import com.fulcrumgenomics.bam.api.{SamSource, SamWriter}
+import com.fulcrumgenomics.bam.LeftAlignIndels
+import com.fulcrumgenomics.bam.api.{SamOrder, SamSource, SamWriter}
+import com.fulcrumgenomics.cmdline.FgBioMain.FailureException
 import com.fulcrumgenomics.commons.util.{LogLevel, Logger}
 import com.fulcrumgenomics.fasta.{SequenceDictionary, SequenceMetadata}
 import com.fulcrumgenomics.sopt.{arg, clp}
@@ -33,7 +35,7 @@ import com.fulcrumgenomics.testing.{SamBuilder, UnitSpec}
 import com.fulcrumgenomics.util.{Io, Metric}
 import htsjdk.samtools.ValidationStringency
 
-import java.nio.file.{Path, Paths}
+import java.nio.file.{Files, Path, Paths}
 
 /* This a silly CLP. */
 @clp(group=ClpGroups.Utilities, description="A test class")
@@ -226,6 +228,64 @@ class ClpTests extends UnitSpec {
     }
   }
   
+  for (cramOutput <- Seq(true, false); indexCollision <- Seq(true, false); alias <- Seq("hard link", "symlink")) {
+    it should s"protect the common CRAM reference in LeftAlignIndels with cramOutput=$cramOutput indexCollision=$indexCollision through $alias" in {
+      val snapshot = captureGlobalState()
+      try {
+        val reference = makeTempFile("reference.", ".fasta")
+        val original = ">chr1\nACGT\n".getBytes
+        Files.write(reference, original)
+        val order = if (indexCollision) SamOrder.Coordinate else SamOrder.Queryname
+        val builder = new SamBuilder(sort=Some(order), sd=Some(SequenceDictionary(SequenceMetadata(name="chr1", length=4))))
+        val input = if (cramOutput) builder.toTempFile() else {
+          val path = makeTempFile("test.", ".cram")
+          val writer = SamWriter(path, builder.header, ref=Some(reference))
+          writer.close()
+          path
+        }
+        val originalInput = Files.readAllBytes(input)
+        val suffix = if (cramOutput) ".cram" else ".bam"
+        val output = makeTempFile("test.", suffix)
+        Files.delete(output)
+        val destination = if (!indexCollision) output else if (cramOutput) Paths.get(output.toString + ".crai")
+                          else Paths.get(output.toString.stripSuffix(".bam") + ".bai")
+        val configuredReference = alias match {
+          case "hard link" => Files.createLink(destination, reference); reference
+          case "symlink" => Files.createSymbolicLink(destination, reference); reference
+        }
+        // Install the common reference as the command line would, then run the tool to check the failure it reports
+        FgBioCommonArgs.args = new FgBioCommonArgs(cramRefFasta=Some(configuredReference))
+        val ex = intercept[FailureException] { new LeftAlignIndels(input=input, output=output).execute() }
+        ex.message.value should include (
+          if (indexCollision) "The output index must not be the same file" else "The output must not be the same file as a reference FASTA")
+        Files.readAllBytes(configuredReference) shouldBe original
+        Files.readAllBytes(destination) shouldBe original
+        Files.readAllBytes(input) shouldBe originalInput
+        if (indexCollision) Files.exists(output) shouldBe false
+      } finally {
+        restoreGlobalState(snapshot)
+      }
+    }
+  }
+
+  it should "allow LeftAlignIndels CRAM output with a distinct common reference" in {
+    val snapshot = captureGlobalState()
+    try {
+      val reference = makeTempFile("reference.", ".fasta")
+      val original = ">chr1\nACGT\n".getBytes
+      Files.write(reference, original)
+      val builder = new SamBuilder(sort=Some(SamOrder.Queryname),
+        sd=Some(SequenceDictionary(SequenceMetadata(name="chr1", length=4))))
+      val output = makeTempFile("test.", ".cram")
+      new FgBioMain().makeItSo(Array("--cram-ref-fasta", reference.toString,
+        "LeftAlignIndels", "--input", builder.toTempFile().toString, "--output", output.toString)) shouldBe 0
+      Files.readAllBytes(reference) shouldBe original
+      Files.size(output) should be > 0L
+    } finally {
+      restoreGlobalState(snapshot)
+    }
+  }
+
   it should "use fail writing and reading CRAM files when no reference is given" in {
     // Create a small reference sequence (500bp chr1)
     val refSequence = "N" * 500  // Simple 500bp sequence of N's

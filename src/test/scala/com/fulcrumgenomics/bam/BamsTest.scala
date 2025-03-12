@@ -124,6 +124,18 @@ class BamsTest extends UnitSpec {
     Bams.querySortedIterator(in=builder.toSource).map(_.name).toSeq shouldBe Seq("p1", "p1", "q1", "q2")
   }
 
+  it should "remove its temporary files when reading the input fails while sorting" in {
+    val builder = new SamBuilder(sort=Some(SamOrder.Coordinate))
+    (1 to 10).foreach(i => builder.addFrag(name=s"q$i", start=100 + i))
+    val tmpDir  = java.nio.file.Files.createTempDirectory("bams_test.")
+    tmpDir.toFile.deleteOnExit()
+    val records = builder.iterator.take(5) ++ Iterator.continually[SamRecord](throw new IllegalStateException("failed"))
+    an[IllegalStateException] shouldBe thrownBy {
+      Bams.querySortedIterator(records, builder.header, maxInMemory=2, tmpDir=tmpDir)
+    }
+    java.nio.file.Files.list(tmpDir).toArray shouldBe empty
+  }
+
   it should "sort an unsorted input" in {
     val builder = new SamBuilder(sort=None)
     builder.addFrag(name="q1", start=100)
