@@ -86,6 +86,9 @@ object Sequences {
     */
   final def compatible(base1: Byte, base2: Byte): Boolean = base1 == base2 || (IupacMasks(base1) & IupacMasks(base2)) > 0
 
+  /** Returns true if two bases are compatible. */
+  final def compatible(base1: Char, base2: Char): Boolean = compatible(base1.toByte, base2.toByte)
+
   /**
     * Calculates GC content for a DNA sequence as a fraction (between 0 and 1).
     *
