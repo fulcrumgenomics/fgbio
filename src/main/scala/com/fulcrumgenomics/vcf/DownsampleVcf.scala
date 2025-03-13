@@ -337,7 +337,7 @@ private object Sample {
   }
 }
 
-case class Sample(ENA_FILE_PATH: String = ".",
+private case class Sample(ENA_FILE_PATH: String = ".",
                   MD5SUM: String = ".",
                   RUN_ID: String = ".",
                   STUDY_ID: String = ".",
