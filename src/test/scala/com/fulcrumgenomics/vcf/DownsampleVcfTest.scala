@@ -1,5 +1,6 @@
 package com.fulcrumgenomics.vcf
 
+import com.fulcrumgenomics.sopt.cmdline.ValidationException
 import com.fulcrumgenomics.testing.VcfBuilder
 import com.fulcrumgenomics.testing.VcfBuilder.Gt
 import com.fulcrumgenomics.util.Metric
@@ -619,26 +620,26 @@ class DownsampleVcfTest extends UnitSpec {
   }
 
   "DownsampleVcf" should "fail with invalid parameter combinations" in {
-    assertThrows[IllegalArgumentException] {
+    assertThrows[ValidationException] {
       new DownsampleVcf(input=inVcf,
                         output=inVcf,
                         windowSize=150).execute()
     }
-    assertThrows[IllegalArgumentException] {
+    assertThrows[ValidationException] {
       new DownsampleVcf(input=inVcf,
                         output=inVcf,
                         proportion=Some(0.1),
                         downsampleToBases=Some(100), 
                         windowSize=150).execute()
     }
-    assertThrows[IllegalArgumentException] {
+    assertThrows[ValidationException] {
       new DownsampleVcf(input=inVcf,
                         output=inVcf,
                         proportion=Some(0.1),
                         originalBases=Some(100), 
                         windowSize=150).execute()
     }
-    assertThrows[IllegalArgumentException] {
+    assertThrows[ValidationException] {
       new DownsampleVcf(input=inVcf,
                         output=inVcf,
                         originalBases=Some(100), 
