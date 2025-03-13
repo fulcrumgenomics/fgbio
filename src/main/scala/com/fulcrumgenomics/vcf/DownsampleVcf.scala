@@ -5,6 +5,7 @@ import com.fulcrumgenomics.commons.io.Io
 import com.fulcrumgenomics.commons.util.LazyLogging
 import com.fulcrumgenomics.fasta.SequenceDictionary
 import com.fulcrumgenomics.sopt.{arg, clp}
+import com.fulcrumgenomics.sopt.cmdline.ValidationException
 import com.fulcrumgenomics.util.{Metric, ProgressLogger}
 import com.fulcrumgenomics.vcf.api.Allele.NoCallAllele
 import com.fulcrumgenomics.vcf.api.{Allele, Genotype, Variant, VcfCount, VcfFieldType, VcfFormatHeader, VcfHeader, VcfSource, VcfWriter}
@@ -241,24 +242,24 @@ class DownsampleVcf
   ) extends FgBioTool {
   Io.assertReadable(input)
   Io.assertCanWriteFile(output)
-  require(windowSize >= 0, "window size must be greater than or equal to zero")
-  require(0 <= epsilon && epsilon <= 1, "epsilon/error rate must be between 0 and 1")
+  validate(windowSize >= 0, "window size must be greater than or equal to zero")
+  validate(0 <= epsilon && epsilon <= 1, "epsilon/error rate must be between 0 and 1")
   (proportion, originalBases, metadata, downsampleToBases) match {
     case (Some(x), None, None, None) => 
-      require(x > 0, "proportion must be greater than 0")
-      require(x < 1, "proportion must be less than 1")
+      validate(x > 0, "proportion must be greater than 0")
+      validate(x < 1, "proportion must be less than 1")
     case (None, Some(original), None, Some(target)) =>
-      require(original > 0, "originalBases must be greater than zero")
-      require(target > 0, "target base count must be greater than zero")
+      validate(original > 0, "originalBases must be greater than zero")
+      validate(target > 0, "target base count must be greater than zero")
     case (None, None, Some(metadata), Some(target)) =>
       Io.assertReadable(metadata)
       require(target > 0, "target base count must be greater than zero")
     case (None, _, _, None) =>
-      throw new IllegalArgumentException(
+      throw new ValidationException(
         "exactly one of proportion or downsampleToBases must be specified"
       )
     case _ =>
-      throw new IllegalArgumentException(
+      throw new ValidationException(
         "exactly one of proportion, originalBases, or metadata must be specified"
       )
   }
