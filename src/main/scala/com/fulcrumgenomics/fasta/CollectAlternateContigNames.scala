@@ -216,7 +216,7 @@ class CollectAlternateContigNames
 
     // Apply to an existing sequence dictionary if necessary
     val dict: SequenceDictionary = existing match {
-      case None if sortBySequencingRole => SequenceDictionary(metadatas.toSeq:_*)
+      case None if !sortBySequencingRole => SequenceDictionary(metadatas.toSeq:_*)
       case None =>
         // Use the user-provided roles, otherwise use all role
         val roles = (if (sequenceRoles.nonEmpty) sequenceRoles.toIndexedSeq else SequenceRole.values)

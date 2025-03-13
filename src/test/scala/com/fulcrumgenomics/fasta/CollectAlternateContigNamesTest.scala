@@ -147,4 +147,45 @@ class CollectAlternateContigNamesTest extends UnitSpec {
     dict.last.name shouldBe "NC_012920.1"
     dict.last.aliases should contain theSameElementsInOrderAs Seq("J01415.2", "chrM")
   }
+
+  it should "sort by sequencing roles when they all are defined" in {
+    val output = makeTempFile("test.", ".dict")
+    val tool = new CollectAlternateContigNames(
+      input                = reportHg19,
+      output               = output,
+      primary              = Column.RefSeqAccession,
+      alternates           = Seq(Column.UcscName),
+      sequenceRoles        = Seq(UnplacedScaffold, UnlocalizedScaffold, AssembledMolecule),
+      sortBySequencingRole = true
+    )
+    executeFgbioTool(tool)
+
+    val dict = SequenceDictionary(output)
+    dict should have length 84
+    dict.head.name shouldBe "NT_113961.1"
+    dict.head.aliases should contain theSameElementsInOrderAs Seq("chrUn_gl000211")
+    dict.last.name shouldBe "NC_012920.1"
+    dict.last.aliases should contain theSameElementsInOrderAs Seq("chrM")
+    dict.map(m => m(Column.SequenceRole.tag)).toIndexedSeq.distinct should contain theSameElementsInOrderAs Seq(UnplacedScaffold, UnlocalizedScaffold, AssembledMolecule).map(_.key)
+  }
+
+  it should "sort by sequencing roles when no roles are defined" in {
+    val output = makeTempFile("test.", ".dict")
+    val tool = new CollectAlternateContigNames(
+      input                = reportHg19,
+      output               = output,
+      primary              = Column.RefSeqAccession,
+      alternates           = Seq(Column.UcscName),
+      sortBySequencingRole = true
+    )
+    executeFgbioTool(tool)
+
+    val dict = SequenceDictionary(output)
+    dict should have length 93
+    dict.head.name shouldBe "NC_000001.10"
+    dict.head.aliases should contain theSameElementsInOrderAs Seq("chr1")
+    dict.last.name shouldBe "NT_167243.1"
+    dict.last.aliases should contain theSameElementsInOrderAs Seq("chrUn_gl000249")
+    dict.map(m => m(Column.SequenceRole.tag)).toIndexedSeq.distinct should contain theSameElementsInOrderAs Seq(AssembledMolecule, AltScaffold, UnlocalizedScaffold, UnplacedScaffold).map(_.key)
+  }
 }
