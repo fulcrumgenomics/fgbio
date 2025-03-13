@@ -142,7 +142,7 @@ Below we highlight a few tools that you may find useful.
 [Git LFS](https://git-lfs.github.com/) is used to store large files used in testing fgbio.  In order to compile and run tests it is necessary to [install git lfs](https://git-lfs.github.com/).  To retrieve the large files either:
 
 1. Clone the repository _after_ installing git lfs, or
-2. In a previously cloned repository run `git lfs pull` once
+2. In a previously cloned repository run the follwing once: `git lfs install && git lfs pull`
 
 After initial setup regular git commands (e.g. `pull`, `fetch`, `push`) will also operate on large files and no special handling is needed.
 

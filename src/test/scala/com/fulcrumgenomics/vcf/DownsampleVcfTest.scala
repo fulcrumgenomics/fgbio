@@ -374,9 +374,17 @@ class DownsampleVcfTest extends UnitSpec {
         // Construct the input VCF
         val outVcf = makeTempFile("out", ".vcf.gz")
         if(use_metdata) {
-          new DownsampleVcf(input = inVcf, output = outVcf, metadata = Some(metadata), downsampleToBases = 1).execute()
+          new DownsampleVcf(input=inVcf,
+                            output=outVcf,
+                            metadata=Some(metadata),
+                            downsampleToBases=Some(1),
+                            windowSize=150).execute()
         } else {
-          new DownsampleVcf(input = inVcf, output = outVcf, originalBases = Some(100), downsampleToBases = 1).execute()
+          new DownsampleVcf(input=inVcf,
+                            output=outVcf,
+                            originalBases=Some(100),
+                            downsampleToBases=Some(1),
+                            windowSize=150).execute()
         }
 
         val vs = readVcfRecs(outVcf)
@@ -425,9 +433,19 @@ class DownsampleVcfTest extends UnitSpec {
         // Construct the input VCF
         val outVcf = makeTempFile("out", ".vcf.gz")
         if (use_metdata) {
-          new DownsampleVcf(input = inVcf, output = outVcf, metadata = Some(metadata), downsampleToBases = 1, writeNoCall = true).execute()
+          new DownsampleVcf(input=inVcf, 
+                            output=outVcf,
+                            metadata=Some(metadata),
+                            downsampleToBases=Some(1),
+                            writeNoCall=true,
+                            windowSize=150).execute()
         } else {
-          new DownsampleVcf(input = inVcf, output = outVcf, originalBases = Some(100), downsampleToBases = 1, writeNoCall = true).execute()
+          new DownsampleVcf(input=inVcf,
+                            output=outVcf,
+                            originalBases=Some(100),
+                            downsampleToBases=Some(1),
+                            writeNoCall=true,
+                            windowSize=150).execute()
         }
 
         val vs = readVcfRecs(outVcf)
