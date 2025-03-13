@@ -25,10 +25,13 @@
 
 package com.fulcrumgenomics.util
 
+import com.fulcrumgenomics.cmdline.FgBioMain.FailureException
 import com.fulcrumgenomics.testing.UnitSpec
 
 
 case class MetricBuilderTestMetric(name: String, count: Long = 1) extends Metric
+
+case class MetricBuilderNameMetric(first: String, second: String, age: Int) extends Metric
 
 class MetricBuilderTest extends UnitSpec {
   private val builder = new MetricBuilder[MetricBuilderTestMetric]()
@@ -39,5 +42,20 @@ class MetricBuilderTest extends UnitSpec {
 
   it should "build a metric from an argmap with only required values specified" in {
     builder.fromArgMap(Map("name" -> "foo")) shouldBe MetricBuilderTestMetric(name="foo")
+  }
+
+  it should "build a metric from a delimited line" in {
+    builder.fromLine(line = "Foo Bar\t42", delim = "\t") shouldBe MetricBuilderTestMetric(name="Foo Bar", count=42)
+    builder.fromLine(line = "Foo Bar,42", delim = ",") shouldBe MetricBuilderTestMetric(name="Foo Bar", count=42)
+
+    val nameBuilder = new MetricBuilder[MetricBuilderNameMetric]()
+    nameBuilder.fromLine(line = "Foo Bar 42", delim = " ") shouldBe MetricBuilderNameMetric(first="Foo", second="Bar", age=42)
+  }
+
+  it should "throw an FailureException when the # of values are incorrect or wrong type" in {
+    val builder = new MetricBuilder[MetricBuilderNameMetric]()
+    an[FailureException] should be thrownBy builder.fromLine(line="one\ttwo")
+    an[FailureException] should be thrownBy builder.fromLine(line="one\ttwo\t3\tfour", lineNumber=Some(1))
+    an[FailureException] should be thrownBy builder.fromLine(line="one\ttwo\tthree")
   }
 }
