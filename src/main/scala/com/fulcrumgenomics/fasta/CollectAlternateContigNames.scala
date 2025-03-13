@@ -216,18 +216,17 @@ class CollectAlternateContigNames
 
     // Apply to an existing sequence dictionary if necessary
     val dict: SequenceDictionary = existing match {
-      case None       =>
-        if (!sortBySequencingRole) SequenceDictionary(metadatas.toSeq:_*) else {
-          // Use the user-provided roles, otherwise use all role
-          val roles = (if (sequenceRoles.nonEmpty) sequenceRoles.toIndexedSeq else SequenceRole.values)
-            .zipWithIndex
-            .map { case (role, index) =>  role.key -> index }
-            .toMap
-          val metas = metadatas.toSeq.sortBy { metadata =>
-            metadata.get(Column.SequenceRole.tag).map { name => roles(name) }.getOrElse(roles.size)
-          }.zipWithIndex.map { case (metadata, index) => metadata.copy(index=index) }
-          SequenceDictionary(metas:_*)
-        }
+      case None if sortBySequencingRole => SequenceDictionary(metadatas.toSeq:_*)
+      case None =>
+        // Use the user-provided roles, otherwise use all role
+        val roles = (if (sequenceRoles.nonEmpty) sequenceRoles.toIndexedSeq else SequenceRole.values)
+          .zipWithIndex
+          .map { case (role, index) =>  role.key -> index }
+          .toMap
+        val metas = metadatas.toSeq.sortBy { metadata =>
+          metadata.get(Column.SequenceRole.tag).flatMap { name => roles.get(name) }.getOrElse(roles.size)
+        }.zipWithIndex.map { case (metadata, index) => metadata.copy(index=index) }
+        SequenceDictionary(metas:_*)
       case Some(path) =>
         val assemblyReportMetadataMap = metadatas.map { m => (m.name, m) }.toMap
         val updatedMetadatas          = SequenceDictionary(path).map { existingMetadata =>
