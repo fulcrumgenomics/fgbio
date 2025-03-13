@@ -42,13 +42,15 @@ class ReferenceSetBuilder(val assembly: Option[String] = Some("testassembly"),
                           val lineLength: Int = 80) {
   // Class to build up a single reference sequence
   class ReferenceBuilder private[ReferenceSetBuilder](val name: String, val assembly: Option[String], val species: Option[String]) {
-    private[ReferenceSetBuilder] val bases = new StringBuilder
+    private[ReferenceSetBuilder] val _bases = new StringBuilder
 
     /** Adds bases to the reference. */
     def add(s: String, times: Int=1): this.type = {
-      forloop (from=0, until=times) { _ => bases.append(s) }
+      forloop (from=0, until=times) { _ => _bases.append(s) }
       this
     }
+
+    def bases: String = this._bases.toString()
   }
 
   /** The sequences in order. */
@@ -76,7 +78,7 @@ class ReferenceSetBuilder(val assembly: Option[String] = Some("testassembly"),
       out.write('>')
       out.write(ref.name)
       out.newLine()
-      val bases = ref.bases.toString()
+      val bases = ref._bases.toString()
       bases.grouped(lineLength).foreach { line =>
         out.write(line)
         out.newLine()
@@ -107,9 +109,12 @@ class ReferenceSetBuilder(val assembly: Option[String] = Some("testassembly"),
     if (deleteOnExit) dictOut.toFile.deleteOnExit()
 
     // Create the FAI file
+    val previousLevel = htsjdk.samtools.util.Log.getGlobalLogLevel // to suppress the annoying aAsciiLineReader warning
+    htsjdk.samtools.util.Log.setGlobalLogLevel(htsjdk.samtools.util.Log.LogLevel.ERROR)
     val faiOut = ReferenceSequenceFileFactory.getFastaIndexFileName(path)
     val fai    = FastaSequenceIndexCreator.buildFromFasta(path)
     fai.write(faiOut)
     if (deleteOnExit) faiOut.toFile.deleteOnExit()
+    htsjdk.samtools.util.Log.setGlobalLogLevel(previousLevel)
   }
 }
