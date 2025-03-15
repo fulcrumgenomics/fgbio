@@ -133,7 +133,7 @@ class SamBuilder(val readLength: Int=100,
     val cig2 = Cigar(cigar2)
     require(bases1 == MissingBases || quals1 == MissingQuals || bases1.length == quals1.length, "bases1 and quals1 were different lengths.")
     require(bases2 == MissingBases || quals2 == MissingQuals || bases2.length == quals2.length, "bases2 and quals2 were different lengths.")
-    require(unmapped1 || bases1 == MissingBases || bases1.length == cig1.lengthOnQuery, "bases1 doesn't agree with cigar on length.")
+    require(unmapped1 || bases1 == MissingBases || bases1.length == cig1.lengthOnQuery, "bases1 doesn't agree with cigar on length %d != %d".format(bases1.length,cig1.lengthOnQuery))
     require(unmapped2 || bases2 == MissingBases || bases2.length == cig2.lengthOnQuery, "bases2 doesn't agree with cigar on length.")
     require(unmapped1 || quals1 == MissingQuals || quals1.length == cig1.lengthOnQuery, "quals1 doesn't agree with cigar on length.")
     require(unmapped2 || quals2 == MissingQuals || quals2.length == cig2.lengthOnQuery, "quals2 doesn't agree with cigar on length.")

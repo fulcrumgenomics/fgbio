@@ -67,8 +67,9 @@ public class OpticalDuplicateFinder extends ReadNameParser implements Serializab
     public void setMaxDuplicateSetSize(final long maxDuplicateSetSize) {
         if (maxDuplicateSetSize < 1) {
             this.maxDuplicateSetSize = Long.MAX_VALUE;
+        }else {
+            this.maxDuplicateSetSize = maxDuplicateSetSize;
         }
-        this.maxDuplicateSetSize = maxDuplicateSetSize;
     }
 
     /**

@@ -44,14 +44,16 @@ import scala.collection.mutable
   */
 class GroupReadsByUmiTest extends UnitSpec with OptionValues with PrivateMethodTester {
   // Returns a List of the element 't' repeated 'n' times
-  private def n[T](t: T, n:Int =1): List[T] = List.tabulate(n)(x => t)
+  private def n[T](t: T, n: Int = 1): List[T] = List.tabulate(n)(x => t)
 
   /**
     * Converts a mapping of umi->id to a Set of Sets of Umis that are assigned the same ID.
     * E.g. { "AAA" -> 1, "AAC" -> 1, "CCC" -> 2 } => (("AAA", "AAC"), ("CCC"))
     */
-  private def group(assignments: Map[Umi,MoleculeId], stripSuffix: Boolean = false): Set[Set[Umi]] = {
-    def strip(s:String) = { if (stripSuffix) s.substring(0, s.indexOf('/')) else s }
+  private def group(assignments: Map[Umi, MoleculeId], stripSuffix: Boolean = false): Set[Set[Umi]] = {
+    def strip(s: String) = {
+      if (stripSuffix) s.substring(0, s.indexOf('/')) else s
+    }
 
     val groups: Map[MoleculeId, mutable.Set[Umi]] = assignments.map(kv => (strip(kv._2), mutable.Set[Umi]()))
     assignments.foreach { case (umi, id) => groups(strip(id)).add(umi) }
@@ -71,8 +73,8 @@ class GroupReadsByUmiTest extends UnitSpec with OptionValues with PrivateMethodT
     "SimpleErrorUmiAssigner" should "group UMIs together by mismatches" in {
       val assigner = new GroupReadsByUmi.SimpleErrorUmiAssigner(1)
       val umis = Seq("AAAAAA", "AAAATT", "AAAATA",
-                     "TGCACC", "TGCACG",
-                     "GGCGGC", "GGCGGC", "GGCGGC")
+        "TGCACC", "TGCACG",
+        "GGCGGC", "GGCGGC", "GGCGGC")
 
       group(assigner.assign(umis)) should contain theSameElementsAs Set(Set("AAAAAA", "AAAATT", "AAAATA"), Set("GGCGGC"), Set("TGCACC", "TGCACG"))
     }
@@ -87,28 +89,28 @@ class GroupReadsByUmiTest extends UnitSpec with OptionValues with PrivateMethodT
     Seq(1, 4).foreach { threads =>
       "AdjacencyUmiAssigner" should s"assign each UMI to separate groups with $threads thread(s)" in {
         val umis = Seq("AAAAAA", "CCCCCC", "GGGGGG", "TTTTTT", "AAATTT", "TTTAAA", "AGAGAG")
-        val groups  = group(new AdjacencyUmiAssigner(maxMismatches=2, threads=threads).assign(umis))
+        val groups = group(new AdjacencyUmiAssigner(maxMismatches = 2, threads = threads).assign(umis))
         groups shouldBe umis.map(Set(_)).toSet
       }
 
       it should f"assign everything into one group when all counts=1 and within mismatch threshold with $threads thread(s)" in {
         val umis = Seq("AAAAAA", "AAAAAc", "AAAAAg").map(_.toUpperCase)
-        val groups = group(new AdjacencyUmiAssigner(maxMismatches=1, threads=threads).assign(umis))
+        val groups = group(new AdjacencyUmiAssigner(maxMismatches = 1, threads = threads).assign(umis))
         groups shouldBe Set(umis.toSet)
       }
 
       it should f"assign everything into one group with $threads thread(s)" in {
         val umis = Seq("AAAAAA", "AAAAAA", "AAAAAA", "AAAAAc", "AAAAAc", "AAAAAg", "AAAtAA").map(_.toUpperCase)
-        val groups = group(new AdjacencyUmiAssigner(maxMismatches=1, threads=threads).assign(umis))
+        val groups = group(new AdjacencyUmiAssigner(maxMismatches = 1, threads = threads).assign(umis))
         groups shouldBe Set(umis.toSet)
       }
 
       it should f"make three groups with $threads thread(s)" in {
         val umis: Seq[String] = n("AAAAAA", 4) ++ n("AAAAAT", 2) ++ n("AATAAT", 1) ++ n("AATAAA", 2) ++
-                                n("GACGAC", 9) ++ n("GACGAT", 1) ++ n("GACGCC", 4) ++
-                                n("TACGAC", 7)
+          n("GACGAC", 9) ++ n("GACGAT", 1) ++ n("GACGCC", 4) ++
+          n("TACGAC", 7)
 
-        val groups  = group(new AdjacencyUmiAssigner(maxMismatches=2, threads=threads).assign(umis))
+        val groups = group(new AdjacencyUmiAssigner(maxMismatches = 2, threads = threads).assign(umis))
         groups shouldBe Set(
           Set("AAAAAA", "AAAAAT", "AATAAT", "AATAAA"),
           Set("GACGAC", "GACGAT", "GACGCC"),
@@ -118,14 +120,14 @@ class GroupReadsByUmiTest extends UnitSpec with OptionValues with PrivateMethodT
 
       // Unit test for something that failed when running on real data
       it should f"correctly assign the following UMIs with $threads thread(s)" in {
-        val umis   = Seq("CGGGGG", "GTGGGG", "GGGGGG", "CTCACA", "TGCAGT", "CTCACA", "CGGGGG")
-        val groups = group(new AdjacencyUmiAssigner(maxMismatches=1, threads=threads).assign(umis))
+        val umis = Seq("CGGGGG", "GTGGGG", "GGGGGG", "CTCACA", "TGCAGT", "CTCACA", "CGGGGG")
+        val groups = group(new AdjacencyUmiAssigner(maxMismatches = 1, threads = threads).assign(umis))
         groups shouldBe Set(Set("CGGGGG", "GGGGGG", "GTGGGG"), Set("CTCACA"), Set("TGCAGT"))
       }
 
       it should f"handle a deep tree of UMIs with $threads thread(s)" in {
-        val umis   = n("AAAAAA", 256) ++ n("TAAAAA", 128) ++ n("TTAAAA", 64) ++ n("TTTAAA", 32) ++ n("TTTTAA", 16)
-        val groups = group(new AdjacencyUmiAssigner(maxMismatches=1, threads=threads).assign(umis))
+        val umis = n("AAAAAA", 256) ++ n("TAAAAA", 128) ++ n("TTAAAA", 64) ++ n("TTTAAA", 32) ++ n("TTTTAA", 16)
+        val groups = group(new AdjacencyUmiAssigner(maxMismatches = 1, threads = threads).assign(umis))
         groups shouldBe Set(Set("AAAAAA", "TAAAAA", "TTAAAA", "TTTAAA", "TTTTAA"))
       }
     }
@@ -133,67 +135,69 @@ class GroupReadsByUmiTest extends UnitSpec with OptionValues with PrivateMethodT
     {
       "PairedUmiAssigner" should "assign A-B and B-A into groups with the same prefix but different suffix" in {
         val umis = Seq("AAAA-CCCC", "CCCC-AAAA")
-        val map = new PairedUmiAssigner(maxMismatches=1).assign(umis)
-        group(map, stripSuffix=false) shouldBe Set(Set("AAAA-CCCC"), Set("CCCC-AAAA"))
-        group(map, stripSuffix=true)  shouldBe Set(Set("AAAA-CCCC", "CCCC-AAAA"))
+        val map = new PairedUmiAssigner(maxMismatches = 1).assign(umis)
+        group(map, stripSuffix = false) shouldBe Set(Set("AAAA-CCCC"), Set("CCCC-AAAA"))
+        group(map, stripSuffix = true) shouldBe Set(Set("AAAA-CCCC", "CCCC-AAAA"))
       }
 
       it should "assign A-B and B-A into groups with the same prefix but different suffix, with errors" in {
         val umis = Seq("AAAA-CCCC", "CCCC-CAAA", "AAAA-GGGG", "GGGG-AAGA")
-        val map = new PairedUmiAssigner(maxMismatches=1).assign(umis)
-        group(map, stripSuffix=false) shouldBe Set(Set("AAAA-CCCC"), Set("CCCC-CAAA"), Set("AAAA-GGGG"), Set("GGGG-AAGA"))
-        group(map, stripSuffix=true)  shouldBe Set(Set("AAAA-CCCC", "CCCC-CAAA"), Set("AAAA-GGGG", "GGGG-AAGA"))
+        val map = new PairedUmiAssigner(maxMismatches = 1).assign(umis)
+        group(map, stripSuffix = false) shouldBe Set(Set("AAAA-CCCC"), Set("CCCC-CAAA"), Set("AAAA-GGGG"), Set("GGGG-AAGA"))
+        group(map, stripSuffix = true) shouldBe Set(Set("AAAA-CCCC", "CCCC-CAAA"), Set("AAAA-GGGG", "GGGG-AAGA"))
       }
 
       it should "handle errors in the first base changing lexical ordering of AB vs. BA" in {
-        val umis   = n("GTGT-ACAC", 500) ++ n("ACAC-GTGT", 460) ++ n("GTGT-TCAC", 6)  ++ n("TCAC-GTGT", 6) ++ n("GTGT-TGAC", 1)
+        val umis = n("GTGT-ACAC", 500) ++ n("ACAC-GTGT", 460) ++ n("GTGT-TCAC", 6) ++ n("TCAC-GTGT", 6) ++ n("GTGT-TGAC", 1)
 
-        val map = new PairedUmiAssigner(maxMismatches=1).assign(umis)
-        group(map, stripSuffix=false) shouldBe Set(Set("GTGT-ACAC", "GTGT-TCAC", "GTGT-TGAC"), Set("TCAC-GTGT", "ACAC-GTGT"))
-        group(map, stripSuffix=true)  shouldBe Set(Set("GTGT-ACAC", "ACAC-GTGT", "GTGT-TCAC", "TCAC-GTGT", "GTGT-TGAC"))
+        val map = new PairedUmiAssigner(maxMismatches = 1).assign(umis)
+        group(map, stripSuffix = false) shouldBe Set(Set("GTGT-ACAC", "GTGT-TCAC", "GTGT-TGAC"), Set("TCAC-GTGT", "ACAC-GTGT"))
+        group(map, stripSuffix = true) shouldBe Set(Set("GTGT-ACAC", "ACAC-GTGT", "GTGT-TCAC", "TCAC-GTGT", "GTGT-TGAC"))
       }
 
       it should "count A-B and B-A together when constructing adjacency graph" in {
         // Since the graph only creates nodes where count(child) <= count(parent) / 2 + 1, it should
         // group everything together in the first set, but not in the second set.
-        val umis1   = n("AAAA-CCCC", 256) ++ n("AAAA-CCCG", 64)  ++ n("CCCG-AAAA", 64)
-        val umis2   = n("AAAA-CCCC", 256) ++ n("AAAA-CCCG", 128) ++ n("CCCG-AAAA", 128)
+        val umis1 = n("AAAA-CCCC", 256) ++ n("AAAA-CCCG", 64) ++ n("CCCG-AAAA", 64)
+        val umis2 = n("AAAA-CCCC", 256) ++ n("AAAA-CCCG", 128) ++ n("CCCG-AAAA", 128)
 
-        val map1 = new PairedUmiAssigner(maxMismatches=1).assign(umis1)
-        val map2 = new PairedUmiAssigner(maxMismatches=1).assign(umis2)
-        group(map1, stripSuffix=true) shouldBe Set(Set("AAAA-CCCC", "AAAA-CCCG", "CCCG-AAAA"))
-        group(map2, stripSuffix=true) shouldBe Set(Set("AAAA-CCCC"), Set("AAAA-CCCG", "CCCG-AAAA"))
+        val map1 = new PairedUmiAssigner(maxMismatches = 1).assign(umis1)
+        val map2 = new PairedUmiAssigner(maxMismatches = 1).assign(umis2)
+        group(map1, stripSuffix = true) shouldBe Set(Set("AAAA-CCCC", "AAAA-CCCG", "CCCG-AAAA"))
+        group(map2, stripSuffix = true) shouldBe Set(Set("AAAA-CCCC"), Set("AAAA-CCCG", "CCCG-AAAA"))
       }
 
       it should "fail if supplied non-paired UMIs" in {
-        val umis   = Seq("AAAAAAAA", "GGGGGGGG")
-        an[IllegalStateException] shouldBe thrownBy { new PairedUmiAssigner(maxMismatches=1).assign(umis) }
+        val umis = Seq("AAAAAAAA", "GGGGGGGG")
+        an[IllegalStateException] shouldBe thrownBy {
+          new PairedUmiAssigner(maxMismatches = 1).assign(umis)
+        }
       }
     }
   }
 
   "GroupReadsByUmi.umiForRead" should "correctly assign a/b for paired UMI prefixes" in {
-    val tool = new GroupReadsByUmi(rawTag="RX", assignTag="MI", strategy=Strategy.Paired, edits = 0, allowInterContig=true)
-    val builder = new SamBuilder(readLength=100)
+    val tool = new GroupReadsByUmi(rawTag = "RX", assignTag = "MI", strategy = Strategy.Paired, edits = 0)
+    val builder = new SamBuilder(readLength = 100)
     val templates = Seq(
       // These 4 should be a::AAA-b::TTT since contig1 is lower
-      builder.addPair(contig = 1, contig2 = Some(2), start1=100, start2=300, strand1=Plus,  strand2=Minus, attrs=Map("RX" -> "AAA-TTT")),
-      builder.addPair(contig = 1, contig2 = Some(2), start1=300, start2=100, strand1=Plus,  strand2=Minus, attrs=Map("RX" -> "AAA-TTT")),
-      builder.addPair(contig = 1, contig2 = Some(2), start1=100, start2=100, strand1=Plus,  strand2=Minus, attrs=Map("RX" -> "AAA-TTT")),
-      builder.addPair(contig = 1, contig2 = Some(2), start1=100, start2=100, strand1=Minus,  strand2=Plus, attrs=Map("RX" -> "AAA-TTT")),
+      builder.addPair(contig = 1, contig2 = Some(2), start1 = 100, start2 = 300, strand1 = Plus, strand2 = Minus, attrs = Map("RX" -> "AAA-TTT")),
+      builder.addPair(contig = 1, contig2 = Some(2), start1 = 300, start2 = 100, strand1 = Plus, strand2 = Minus, attrs = Map("RX" -> "AAA-TTT")),
+      builder.addPair(contig = 1, contig2 = Some(2), start1 = 100, start2 = 100, strand1 = Plus, strand2 = Minus, attrs = Map("RX" -> "AAA-TTT")),
+      builder.addPair(contig = 1, contig2 = Some(2), start1 = 100, start2 = 100, strand1 = Minus, strand2 = Plus, attrs = Map("RX" -> "AAA-TTT")),
       // These 4 should be b::AAA-a::TTT since contig2 is lower
-      builder.addPair(contig = 2, contig2 = Some(1), start1=100, start2=300, strand1=Plus,  strand2=Minus, attrs=Map("RX" -> "AAA-TTT")),
-      builder.addPair(contig = 2, contig2 = Some(1), start1=300, start2=100, strand1=Plus,  strand2=Minus, attrs=Map("RX" -> "AAA-TTT")),
-      builder.addPair(contig = 2, contig2 = Some(1), start1=100, start2=100, strand1=Plus,  strand2=Minus, attrs=Map("RX" -> "AAA-TTT")),
-      builder.addPair(contig = 2, contig2 = Some(1), start1=100, start2=100, strand1=Minus,  strand2=Plus, attrs=Map("RX" -> "AAA-TTT")),
+      builder.addPair(contig = 2, contig2 = Some(1), start1 = 100, start2 = 300, strand1 = Plus, strand2 = Minus, attrs = Map("RX" -> "AAA-TTT")),
+      builder.addPair(contig = 2, contig2 = Some(1), start1 = 300, start2 = 100, strand1 = Plus, strand2 = Minus, attrs = Map("RX" -> "AAA-TTT")),
+      builder.addPair(contig = 2, contig2 = Some(1), start1 = 100, start2 = 100, strand1 = Plus, strand2 = Minus, attrs = Map("RX" -> "AAA-TTT")),
+      builder.addPair(contig = 2, contig2 = Some(1), start1 = 100, start2 = 100, strand1 = Minus, strand2 = Plus, attrs = Map("RX" -> "AAA-TTT")),
       // Should be a::AAA-b::TTT since r1 pos < r2 pos
-      builder.addPair(contig = 1, start1=100, start2=300, strand1=Plus,  strand2=Minus, attrs=Map("RX" -> "AAA-TTT")),
+      builder.addPair(contig = 1, start1 = 100, start2 = 300, strand1 = Plus, strand2 = Minus, attrs = Map("RX" -> "AAA-TTT")),
       // Should be b::AAA-a::TTT since r1 pos < r2 pos
-      builder.addPair(contig = 1, start1=300, start2=100, strand1=Plus,  strand2=Minus, attrs=Map("RX" -> "AAA-TTT")),
+      builder.addPair(contig = 1, start1 = 300, start2 = 100, strand1 = Plus, strand2 = Minus, attrs = Map("RX" -> "AAA-TTT")),
       // Should be a::AAA-b::TTT since same contig/pos, r1 positive strand
-      builder.addPair(contig = 1, start1=100, start2=100, strand1=Plus,  strand2=Minus, attrs=Map("RX" -> "AAA-TTT")),
+      builder.addPair(contig = 1, start1 = 100, start2 = 100, strand1 = Plus, strand2 = Minus, attrs = Map("RX" -> "AAA-TTT")),
       // Should be b::AAA-a::TTT since same contig/pos, r2 positive strand
-      builder.addPair(contig = 1, start1=100, start2=100, strand1=Minus,  strand2=Plus, attrs=Map("RX" -> "AAA-TTT")),
+      builder.addPair(contig = 1, start1 = 100, start2 = 100, strand1 = Minus, strand2 = Plus, attrs = Map("RX" -> "AAA-TTT")),
     ).map { pair => Template(r1 = pair.headOption, r2 = pair.lastOption) }
     val expected = n("a::AAA-b::TTT", 4) ++ n("b::AAA-a::TTT", 4) ++ n("a::AAA-b::TTT", 1) ++ n("b::AAA-a::TTT", 1) ++ n("a::AAA-b::TTT", 1) ++ n("b::AAA-a::TTT", 1)
     val umiForRead = PrivateMethod[String](Symbol("umiForRead"))
@@ -201,7 +205,7 @@ class GroupReadsByUmiTest extends UnitSpec with OptionValues with PrivateMethodT
   }
 
   it should "correctly assign a/b for paired UMI prefixes when the UMI for one end of the source molecule is absent" in {
-    val tool = new GroupReadsByUmi(rawTag = "RX", assignTag = "MI", strategy = Strategy.Paired, edits = 0, allowInterContig = true)
+    val tool = new GroupReadsByUmi(rawTag = "RX", assignTag = "MI", strategy = Strategy.Paired, edits = 0)
     val builder = new SamBuilder(readLength = 100)
     val templates = Seq(
       // This should be a::AAA-b:: since contig1 is lower
@@ -213,47 +217,47 @@ class GroupReadsByUmiTest extends UnitSpec with OptionValues with PrivateMethodT
       // This should be b::-a::TTT since contig2 is lower
       builder.addPair(contig = 2, contig2 = Some(1), start1 = 100, start2 = 300, strand1 = Plus, strand2 = Minus, attrs = Map("RX" -> "-TTT")),
     ).map { pair => Template(r1 = pair.headOption, r2 = pair.lastOption) }
-    val expected = n("a::AAA-b::", 1) ++ n("b::AAA-a::", 1) ++  n("a::-b::TTT", 1) ++ n("b::-a::TTT", 1)
+    val expected = n("a::AAA-b::", 1) ++ n("b::AAA-a::", 1) ++ n("a::-b::TTT", 1) ++ n("b::-a::TTT", 1)
     val umiForRead = PrivateMethod[String](Symbol("umiForRead"))
     templates.map(t => tool invokePrivate umiForRead(t)) should contain theSameElementsInOrderAs expected
   }
 
   "GroupReads.ReadInfo" should "extract the same ReadEnds from a Template as from an R1 with mate cigar" in {
-    val builder = new SamBuilder(readLength=100, sort=None)
-    val Seq(r1, r2) = builder.addPair(contig=2, contig2=Some(1), start1=300, start2=400, cigar1="10S90M", cigar2="90M10S")
-    val template    = Template(r1=Some(r1), r2=Some(r2))
+    val builder = new SamBuilder(readLength = 100, sort = None)
+    val Seq(r1, r2) = builder.addPair(contig = 2, contig2 = Some(1), start1 = 300, start2 = 400, cigar1 = "10S90M", cigar2 = "90M10S")
+    val template = Template(r1 = Some(r1), r2 = Some(r2))
 
     val tReadInfo = ReadInfo(template)
     val rReadInfo = ReadInfo(r1)
     rReadInfo shouldBe tReadInfo
 
     tReadInfo.refIndex1 shouldBe 1
-    tReadInfo.start1    shouldBe 499
+    tReadInfo.start1 shouldBe 499
     tReadInfo.refIndex2 shouldBe 2
-    tReadInfo.start2    shouldBe 290
+    tReadInfo.start2 shouldBe 290
   }
 
   // Test for running the GroupReadsByUmi command line program with some sample input
   "GroupReadsByUmi" should "group reads correctly" in {
     Seq(SamOrder.Coordinate, SamOrder.Queryname, SamOrder.TemplateCoordinate).foreach { sortOrder =>
-      val builder = new SamBuilder(readLength=100, sort=Some(sortOrder))
-      builder.addPair(name="a01", start1=100, start2=300, attrs=Map("RX" -> "AAAAAAAA"))
-      builder.addPair(name="a02", start1=100, start2=300, attrs=Map("RX" -> "AAAAgAAA"))
-      builder.addPair(name="a03", start1=100, start2=300, attrs=Map("RX" -> "AAAAAAAA"))
-      builder.addPair(name="a04", start1=100, start2=300, attrs=Map("RX" -> "AAAAAAAt"))
-      builder.addPair(name="b01", start1=100, start2=100, unmapped2=true, attrs=Map("RX" -> "AAAAAAAt"))
-      builder.addPair(name="c01", start1=100, start2=300, mapq1=5)
+      val builder = new SamBuilder(readLength = 100, sort = Some(sortOrder))
+      builder.addPair(name = "a01", start1 = 100, start2 = 300, attrs = Map("RX" -> "AAAAAAAA"))
+      builder.addPair(name = "a02", start1 = 100, start2 = 300, attrs = Map("RX" -> "AAAAgAAA"))
+      builder.addPair(name = "a03", start1 = 100, start2 = 300, attrs = Map("RX" -> "AAAAAAAA"))
+      builder.addPair(name = "a04", start1 = 100, start2 = 300, attrs = Map("RX" -> "AAAAAAAt"))
+      builder.addPair(name = "b01", start1 = 100, start2 = 100, unmapped2 = true, attrs = Map("RX" -> "AAAAAAAt"))
+      builder.addPair(name = "c01", start1 = 100, start2 = 300, mapq1 = 5)
 
-      val in  = builder.toTempFile()
+      val in = builder.toTempFile()
       val out = Files.createTempFile("umi_grouped.", ".sam")
       val hist = Files.createTempFile("umi_grouped.", ".histogram.txt")
-      val tool = new GroupReadsByUmi(input=in, output=out, familySizeHistogram=Some(hist), rawTag="RX", assignTag="MI", strategy=Strategy.Edit, edits=1, minMapQ=Some(30))
+      val tool = new GroupReadsByUmi(input = in, output = out, familySizeHistogram = Some(hist), rawTag = "RX", assignTag = "MI", strategy = Strategy.Edit, edits = 1, minMapQ = Some(30))
       val logs = executeFgbioTool(tool)
 
       val groups = readBamRecs(out).groupBy(_.name.charAt(0))
 
       // Group A: 1-4 all passed through into one umi group
-      groups('a') should have size 4*2
+      groups('a') should have size 4 * 2
       groups('a').map(_.name).toSet shouldEqual Set("a01", "a02", "a03", "a04")
       groups('a').map(r => r[String]("MI")).toSet should have size 1
 
@@ -284,7 +288,7 @@ class GroupReadsByUmiTest extends UnitSpec with OptionValues with PrivateMethodT
     val in = builder.toTempFile()
     val out = Files.createTempFile("umi_grouped.", ".sam")
     val hist = Files.createTempFile("umi_grouped.", ".histogram.txt")
-    val gr = new GroupReadsByUmi(input=in, output=out, familySizeHistogram=Some(hist), strategy=Strategy.Paired, edits=1, markDuplicates=true)
+    val gr = new GroupReadsByUmi(input = in, output = out, familySizeHistogram = Some(hist), strategy = Strategy.Paired, edits = 1, markDuplicates = true)
 
     gr.markDuplicates shouldBe true
     gr.execute()
@@ -308,7 +312,7 @@ class GroupReadsByUmiTest extends UnitSpec with OptionValues with PrivateMethodT
     val in = builder.toTempFile()
     val out = Files.createTempFile("umi_grouped.", ".sam")
     val hist = Files.createTempFile("umi_grouped.", ".histogram.txt")
-    new GroupReadsByUmi(input=in, output=out, familySizeHistogram=Some(hist), strategy=Strategy.Paired, edits=1).execute()
+    new GroupReadsByUmi(input = in, output = out, familySizeHistogram = Some(hist), strategy = Strategy.Paired, edits = 1).execute()
 
     val recs = readBamRecs(out)
     recs.length shouldBe 6
@@ -339,20 +343,20 @@ class GroupReadsByUmiTest extends UnitSpec with OptionValues with PrivateMethodT
   }
 
   it should "correctly group reads with the paired assigner when the two UMIs are the same" in {
-    val builder = new SamBuilder(readLength=100, sort=Some(SamOrder.Coordinate))
-    builder.addPair(name="a01", start1=100, start2=300, strand1=Plus,  strand2=Minus, attrs=Map("RX" -> "ACT-ACT"))
-    builder.addPair(name="a02", start1=100, start2=300, strand1=Plus,  strand2=Minus, attrs=Map("RX" -> "ACT-ACT"))
-    builder.addPair(name="a03", start1=100, start2=300, strand1=Plus,  strand2=Minus, attrs=Map("RX" -> "ACT-ACT"))
-    builder.addPair(name="a04", start1=100, start2=300, strand1=Plus,  strand2=Minus, attrs=Map("RX" -> "ACT-ACT"))
-    builder.addPair(name="b01", start1=300, start2=100, strand1=Minus, strand2=Plus,  attrs=Map("RX" -> "ACT-ACT"))
-    builder.addPair(name="b02", start1=300, start2=100, strand1=Minus, strand2=Plus,  attrs=Map("RX" -> "ACT-ACT"))
-    builder.addPair(name="b03", start1=300, start2=100, strand1=Minus, strand2=Plus,  attrs=Map("RX" -> "ACT-ACT"))
-    builder.addPair(name="b04", start1=300, start2=100, strand1=Minus, strand2=Plus,  attrs=Map("RX" -> "ACT-ACT"))
+    val builder = new SamBuilder(readLength = 100, sort = Some(SamOrder.Coordinate))
+    builder.addPair(name = "a01", start1 = 100, start2 = 300, strand1 = Plus, strand2 = Minus, attrs = Map("RX" -> "ACT-ACT"))
+    builder.addPair(name = "a02", start1 = 100, start2 = 300, strand1 = Plus, strand2 = Minus, attrs = Map("RX" -> "ACT-ACT"))
+    builder.addPair(name = "a03", start1 = 100, start2 = 300, strand1 = Plus, strand2 = Minus, attrs = Map("RX" -> "ACT-ACT"))
+    builder.addPair(name = "a04", start1 = 100, start2 = 300, strand1 = Plus, strand2 = Minus, attrs = Map("RX" -> "ACT-ACT"))
+    builder.addPair(name = "b01", start1 = 300, start2 = 100, strand1 = Minus, strand2 = Plus, attrs = Map("RX" -> "ACT-ACT"))
+    builder.addPair(name = "b02", start1 = 300, start2 = 100, strand1 = Minus, strand2 = Plus, attrs = Map("RX" -> "ACT-ACT"))
+    builder.addPair(name = "b03", start1 = 300, start2 = 100, strand1 = Minus, strand2 = Plus, attrs = Map("RX" -> "ACT-ACT"))
+    builder.addPair(name = "b04", start1 = 300, start2 = 100, strand1 = Minus, strand2 = Plus, attrs = Map("RX" -> "ACT-ACT"))
 
-    val in  = builder.toTempFile()
+    val in = builder.toTempFile()
     val out = Files.createTempFile("umi_grouped.", ".sam")
     val hist = Files.createTempFile("umi_grouped.", ".histogram.txt")
-    new GroupReadsByUmi(input=in, output=out, familySizeHistogram=Some(hist), rawTag="RX", assignTag="MI", strategy=Strategy.Paired, edits=1).execute()
+    new GroupReadsByUmi(input = in, output = out, familySizeHistogram = Some(hist), rawTag = "RX", assignTag = "MI", strategy = Strategy.Paired, edits = 1).execute()
 
     val recs = readBamRecs(out)
 
@@ -367,20 +371,20 @@ class GroupReadsByUmiTest extends UnitSpec with OptionValues with PrivateMethodT
   }
 
   it should "correctly group reads with the paired assigner when the two UMIs are the same in cross-contig read pairs" in {
-    val builder = new SamBuilder(readLength=100, sort=Some(SamOrder.Coordinate))
-    builder.addPair(name="a01", contig = 1, contig2 = Some(2), start1=100, start2=300, strand1=Plus,  strand2=Minus, attrs=Map("RX" -> "ACT-ACT"))
-    builder.addPair(name="a02", contig = 1, contig2 = Some(2), start1=100, start2=300, strand1=Plus,  strand2=Minus, attrs=Map("RX" -> "ACT-ACT"))
-    builder.addPair(name="a03", contig = 1, contig2 = Some(2), start1=100, start2=300, strand1=Plus,  strand2=Minus, attrs=Map("RX" -> "ACT-ACT"))
-    builder.addPair(name="a04", contig = 1, contig2 = Some(2), start1=100, start2=300, strand1=Plus,  strand2=Minus, attrs=Map("RX" -> "ACT-ACT"))
-    builder.addPair(name="b01", contig = 2, contig2 = Some(1), start1=300, start2=100, strand1=Minus, strand2=Plus,  attrs=Map("RX" -> "ACT-ACT"))
-    builder.addPair(name="b02", contig = 2, contig2 = Some(1), start1=300, start2=100, strand1=Minus, strand2=Plus,  attrs=Map("RX" -> "ACT-ACT"))
-    builder.addPair(name="b03", contig = 2, contig2 = Some(1), start1=300, start2=100, strand1=Minus, strand2=Plus,  attrs=Map("RX" -> "ACT-ACT"))
-    builder.addPair(name="b04", contig = 2, contig2 = Some(1), start1=300, start2=100, strand1=Minus, strand2=Plus,  attrs=Map("RX" -> "ACT-ACT"))
+    val builder = new SamBuilder(readLength = 100, sort = Some(SamOrder.Coordinate))
+    builder.addPair(name = "a01", contig = 1, contig2 = Some(2), start1 = 100, start2 = 300, strand1 = Plus, strand2 = Minus, attrs = Map("RX" -> "ACT-ACT"))
+    builder.addPair(name = "a02", contig = 1, contig2 = Some(2), start1 = 100, start2 = 300, strand1 = Plus, strand2 = Minus, attrs = Map("RX" -> "ACT-ACT"))
+    builder.addPair(name = "a03", contig = 1, contig2 = Some(2), start1 = 100, start2 = 300, strand1 = Plus, strand2 = Minus, attrs = Map("RX" -> "ACT-ACT"))
+    builder.addPair(name = "a04", contig = 1, contig2 = Some(2), start1 = 100, start2 = 300, strand1 = Plus, strand2 = Minus, attrs = Map("RX" -> "ACT-ACT"))
+    builder.addPair(name = "b01", contig = 2, contig2 = Some(1), start1 = 300, start2 = 100, strand1 = Minus, strand2 = Plus, attrs = Map("RX" -> "ACT-ACT"))
+    builder.addPair(name = "b02", contig = 2, contig2 = Some(1), start1 = 300, start2 = 100, strand1 = Minus, strand2 = Plus, attrs = Map("RX" -> "ACT-ACT"))
+    builder.addPair(name = "b03", contig = 2, contig2 = Some(1), start1 = 300, start2 = 100, strand1 = Minus, strand2 = Plus, attrs = Map("RX" -> "ACT-ACT"))
+    builder.addPair(name = "b04", contig = 2, contig2 = Some(1), start1 = 300, start2 = 100, strand1 = Minus, strand2 = Plus, attrs = Map("RX" -> "ACT-ACT"))
 
-    val in   = builder.toTempFile()
-    val out  = Files.createTempFile("umi_grouped.", ".sam")
+    val in = builder.toTempFile()
+    val out = Files.createTempFile("umi_grouped.", ".sam")
     val hist = Files.createTempFile("umi_grouped.", ".histogram.txt")
-    new GroupReadsByUmi(input=in, output=out, familySizeHistogram=Some(hist), rawTag="RX", assignTag="MI", strategy=Strategy.Paired, edits=1, allowInterContig=true).execute()
+    new GroupReadsByUmi(input = in, output = out, familySizeHistogram = Some(hist), rawTag = "RX", assignTag = "MI", strategy = Strategy.Paired, edits = 1).execute()
 
     val recs = readBamRecs(out)
     val aIds = recs.filter(_.name.startsWith("a")).map(r => r[String]("MI")).distinct
@@ -394,20 +398,20 @@ class GroupReadsByUmiTest extends UnitSpec with OptionValues with PrivateMethodT
   }
 
   it should "correctly group together single-end reads with UMIs" in {
-    val builder = new SamBuilder(readLength=100, sort=Some(SamOrder.Coordinate))
-    builder.addFrag(name="a01", start=100, attrs=Map("RX" -> "AAAAAAAA"))
-    builder.addFrag(name="a02", start=100, attrs=Map("RX" -> "AAAAAAAA"))
-    builder.addFrag(name="a03", start=100, attrs=Map("RX" -> "CACACACA"))
-    builder.addFrag(name="a04", start=100, attrs=Map("RX" -> "CACACACC"))
-    builder.addFrag(name="a05", start=105, attrs=Map("RX" -> "GTAGTAGG"))
-    builder.addFrag(name="a06", start=105, attrs=Map("RX" -> "GTAGTAGG"))
-    builder.addFrag(name="a07", start=107, attrs=Map("RX" -> "AAAAAAAA"))
-    builder.addFrag(name="a08", start=107, attrs=Map("RX" -> "AAAAAAAA"))
+    val builder = new SamBuilder(readLength = 100, sort = Some(SamOrder.Coordinate))
+    builder.addFrag(name = "a01", start = 100, attrs = Map("RX" -> "AAAAAAAA"))
+    builder.addFrag(name = "a02", start = 100, attrs = Map("RX" -> "AAAAAAAA"))
+    builder.addFrag(name = "a03", start = 100, attrs = Map("RX" -> "CACACACA"))
+    builder.addFrag(name = "a04", start = 100, attrs = Map("RX" -> "CACACACC"))
+    builder.addFrag(name = "a05", start = 105, attrs = Map("RX" -> "GTAGTAGG"))
+    builder.addFrag(name = "a06", start = 105, attrs = Map("RX" -> "GTAGTAGG"))
+    builder.addFrag(name = "a07", start = 107, attrs = Map("RX" -> "AAAAAAAA"))
+    builder.addFrag(name = "a08", start = 107, attrs = Map("RX" -> "AAAAAAAA"))
 
-    val in  = builder.toTempFile()
+    val in = builder.toTempFile()
     val out = Files.createTempFile("umi_grouped.", ".sam")
     val hist = Files.createTempFile("umi_grouped.", ".histogram.txt")
-    new GroupReadsByUmi(input=in, output=out, familySizeHistogram=Some(hist), rawTag="RX", assignTag="MI", strategy=Strategy.Edit, edits=1).execute()
+    new GroupReadsByUmi(input = in, output = out, familySizeHistogram = Some(hist), rawTag = "RX", assignTag = "MI", strategy = Strategy.Edit, edits = 1).execute()
 
     val recs = readBamRecs(out)
     recs should have size 8
@@ -418,26 +422,26 @@ class GroupReadsByUmiTest extends UnitSpec with OptionValues with PrivateMethodT
   }
 
   it should "exclude reads that contain an N in the UMI" in {
-    val builder = new SamBuilder(readLength=100, sort=Some(SamOrder.Coordinate))
-    builder.addPair(name="a01", start1=100, start2=300, strand1=Plus,  strand2=Minus, attrs=Map("RX" -> "ACT-ACT"))
-    builder.addPair(name="a02", start1=100, start2=300, strand1=Plus,  strand2=Minus, attrs=Map("RX" -> "ACT-ACT"))
-    builder.addPair(name="a03", start1=100, start2=300, strand1=Plus,  strand2=Minus, attrs=Map("RX" -> "ACT-ANN"))
+    val builder = new SamBuilder(readLength = 100, sort = Some(SamOrder.Coordinate))
+    builder.addPair(name = "a01", start1 = 100, start2 = 300, strand1 = Plus, strand2 = Minus, attrs = Map("RX" -> "ACT-ACT"))
+    builder.addPair(name = "a02", start1 = 100, start2 = 300, strand1 = Plus, strand2 = Minus, attrs = Map("RX" -> "ACT-ACT"))
+    builder.addPair(name = "a03", start1 = 100, start2 = 300, strand1 = Plus, strand2 = Minus, attrs = Map("RX" -> "ACT-ANN"))
 
-    val in  = builder.toTempFile()
+    val in = builder.toTempFile()
     val out = Files.createTempFile("umi_grouped.", ".bam")
-    new GroupReadsByUmi(input=in, output=out, rawTag="RX", assignTag="MI", strategy=Strategy.Paired, edits=2).execute()
+    new GroupReadsByUmi(input = in, output = out, rawTag = "RX", assignTag = "MI", strategy = Strategy.Paired, edits = 2).execute()
 
     readBamRecs(out).map(_.name).distinct shouldBe Seq("a01", "a02")
   }
 
   it should "fail when umis have different length" in {
-    val builder = new SamBuilder(readLength=100, sort=Some(SamOrder.Coordinate))
-    builder.addPair(name="a01", start1=100, start2=300, strand1=Plus,  strand2=Minus, attrs=Map("RX" -> "ACT-ACT"))
-    builder.addPair(name="a02", start1=100, start2=300, strand1=Plus,  strand2=Minus, attrs=Map("RX" -> "ACT-AC"))
+    val builder = new SamBuilder(readLength = 100, sort = Some(SamOrder.Coordinate))
+    builder.addPair(name = "a01", start1 = 100, start2 = 300, strand1 = Plus, strand2 = Minus, attrs = Map("RX" -> "ACT-ACT"))
+    builder.addPair(name = "a02", start1 = 100, start2 = 300, strand1 = Plus, strand2 = Minus, attrs = Map("RX" -> "ACT-AC"))
 
-    val in   = builder.toTempFile()
-    val out  = Files.createTempFile("umi_grouped.", ".sam")
-    val tool = new GroupReadsByUmi(input=in, output=out, familySizeHistogram=None, rawTag="RX", assignTag="MI", strategy=Strategy.Paired, edits=1)
+    val in = builder.toTempFile()
+    val out = Files.createTempFile("umi_grouped.", ".sam")
+    val tool = new GroupReadsByUmi(input = in, output = out, familySizeHistogram = None, rawTag = "RX", assignTag = "MI", strategy = Strategy.Paired, edits = 1)
 
     an[Exception] should be thrownBy tool.execute()
   }
@@ -458,7 +462,7 @@ class GroupReadsByUmiTest extends UnitSpec with OptionValues with PrivateMethodT
       builder.addPair(name = "b03", start1 = 300, start2 = 100, strand1 = Minus, strand2 = Plus, attrs = Map("RX" -> rightUmi))
       builder.addPair(name = "b04", start1 = 300, start2 = 100, strand1 = Minus, strand2 = Plus, attrs = Map("RX" -> rightUmi))
 
-      val in  = builder.toTempFile()
+      val in = builder.toTempFile()
       val out = Files.createTempFile("umi_grouped.", ".sam")
       new GroupReadsByUmi(input = in, output = out, rawTag = "RX", assignTag = "MI", strategy = Strategy.Paired, edits = 1).execute()
 
@@ -474,26 +478,26 @@ class GroupReadsByUmiTest extends UnitSpec with OptionValues with PrivateMethodT
   }
 
   it should "fail when the raw tag is not present" in {
-    val builder = new SamBuilder(readLength=100, sort=Some(SamOrder.Coordinate))
-    builder.addPair(name="a01", start1=100, start2=300, strand1=Plus, strand2=Minus)
-    val in   = builder.toTempFile()
-    val out  = Files.createTempFile("umi_grouped.", ".sam")
+    val builder = new SamBuilder(readLength = 100, sort = Some(SamOrder.Coordinate))
+    builder.addPair(name = "a01", start1 = 100, start2 = 300, strand1 = Plus, strand2 = Minus)
+    val in = builder.toTempFile()
+    val out = Files.createTempFile("umi_grouped.", ".sam")
     val exception = intercept[FailureException] {
-      new GroupReadsByUmi(input=in, output=out, familySizeHistogram=None, rawTag="RX", assignTag="MI", strategy=Strategy.Paired, edits=1).execute()
+      new GroupReadsByUmi(input = in, output = out, familySizeHistogram = None, rawTag = "RX", assignTag = "MI", strategy = Strategy.Paired, edits = 1).execute()
     }
-    exception.message.value should include ("was missing the raw UMI tag")
+    exception.message.value should include("was missing the raw UMI tag")
   }
 
   Strategy.values.filterNot(_ == Strategy.Paired).foreach { strategy =>
     it should s"reject records with UMIs that are shorter than the specified minimum length with the $strategy strategy" in {
-      val builder = new SamBuilder(readLength=100, sort=Some(SamOrder.Coordinate))
+      val builder = new SamBuilder(readLength = 100, sort = Some(SamOrder.Coordinate))
 
-      builder.addPair(name="a01", start1=100, start2=300, strand1=Plus,  strand2=Minus, attrs=Map("RX" -> "ACTACT"))
-      builder.addPair(name="a02", start1=100, start2=300, strand1=Plus,  strand2=Minus, attrs=Map("RX" -> "ACTAC"))
+      builder.addPair(name = "a01", start1 = 100, start2 = 300, strand1 = Plus, strand2 = Minus, attrs = Map("RX" -> "ACTACT"))
+      builder.addPair(name = "a02", start1 = 100, start2 = 300, strand1 = Plus, strand2 = Minus, attrs = Map("RX" -> "ACTAC"))
 
-      val in   = builder.toTempFile()
-      val out  = Files.createTempFile("umi_grouped.", ".sam")
-      new GroupReadsByUmi(input=in, output=out, familySizeHistogram=None, rawTag="RX", assignTag="MI", strategy=strategy, edits=0, minUmiLength=Some(6)).execute()
+      val in = builder.toTempFile()
+      val out = Files.createTempFile("umi_grouped.", ".sam")
+      new GroupReadsByUmi(input = in, output = out, familySizeHistogram = None, rawTag = "RX", assignTag = "MI", strategy = strategy, edits = 0, minUmiLength = Some(6)).execute()
 
       val recs = readBamRecs(out)
       recs should have length 2
@@ -502,13 +506,13 @@ class GroupReadsByUmiTest extends UnitSpec with OptionValues with PrivateMethodT
     }
 
     it should s"truncate to the specified minimum length with the $strategy strategy" in {
-      val builder = new SamBuilder(readLength=100, sort=Some(SamOrder.Coordinate))
-      builder.addPair(name="a01", start1=100, start2=300, strand1=Plus,  strand2=Minus, attrs=Map("RX" -> "ACTACT"))
-      builder.addPair(name="a02", start1=100, start2=300, strand1=Plus,  strand2=Minus, attrs=Map("RX" -> "ACTAC"))
+      val builder = new SamBuilder(readLength = 100, sort = Some(SamOrder.Coordinate))
+      builder.addPair(name = "a01", start1 = 100, start2 = 300, strand1 = Plus, strand2 = Minus, attrs = Map("RX" -> "ACTACT"))
+      builder.addPair(name = "a02", start1 = 100, start2 = 300, strand1 = Plus, strand2 = Minus, attrs = Map("RX" -> "ACTAC"))
 
-      val in   = builder.toTempFile()
-      val out  = Files.createTempFile("umi_grouped.", ".sam")
-      new GroupReadsByUmi(input=in, output=out, familySizeHistogram=None, rawTag="RX", assignTag="MI", strategy=strategy, edits=0, minUmiLength=Some(5)).execute()
+      val in = builder.toTempFile()
+      val out = Files.createTempFile("umi_grouped.", ".sam")
+      new GroupReadsByUmi(input = in, output = out, familySizeHistogram = None, rawTag = "RX", assignTag = "MI", strategy = strategy, edits = 0, minUmiLength = Some(5)).execute()
 
       val recs = readBamRecs(out)
       recs should have length 4
@@ -518,7 +522,7 @@ class GroupReadsByUmiTest extends UnitSpec with OptionValues with PrivateMethodT
   }
 
   "GroupReadsByUmi.umiForRead" should "correctly count umi groups sizes taking into account position" in {
-    val tool = new GroupReadsByUmi(rawTag = "RX", assignTag = "MI", strategy = Strategy.Edit, edits = 0, allowInterContig = true)
+    val tool = new GroupReadsByUmi(rawTag = "RX", assignTag = "MI", strategy = Strategy.Edit, edits = 0, tagOpticalDuplicates = true)
     val builder = new SamBuilder(readLength = 100)
     val templates = Seq(
       builder.addPair(name = "K00336:160:HH73HBBXY:5:2220:14966:18247", contig = 1, contig2 = Some(2), start1 = 100, start2 = 300, strand1 = Plus, strand2 = Minus, attrs = Map("RX" -> "AAA-TTT")),
@@ -540,19 +544,150 @@ class GroupReadsByUmiTest extends UnitSpec with OptionValues with PrivateMethodT
       builder.addPair(name = "K00336:160:HH73HBBXY:5:2224:26169:18423", contig = 1, contig2 = Some(2), start1 = 100, start2 = 300, strand1 = Plus, strand2 = Minus, attrs = Map("RX" -> "AAA-TTT")),
 
       builder.addPair(name = "K00336:160:HH73HBBXY:5:2226:9983:11091", contig = 1, contig2 = Some(2), start1 = 100, start2 = 300, strand1 = Plus, strand2 = Minus, attrs = Map("RX" -> "AAA-TTT")),
+
+
+    ).map { pair => Template(r1 = pair.headOption, r2 = pair.lastOption) }
+    val setOpticalDuplicateFlags = PrivateMethod[Seq[Template]](Symbol("setOpticalDuplicateFlags"))
+    tool invokePrivate setOpticalDuplicateFlags(templates)
+
+    val count: Int = templates.count(t => t.allReads.exists(r => !r.transientAttrs[Boolean]("OpticalDup")))
+    count should equal(7)
+    val setDuplicateFlags = PrivateMethod[Seq[Template]](Symbol("setDuplicateFlags"))
+    tool invokePrivate setDuplicateFlags(templates)
+    val count2: Int = templates.count(t => t.allReads.exists(r => r.get[Boolean](DUPLICATE_TYPE_TAG).getOrElse("") == DUPLICATE_TYPE_SEQUENCING))
+    count2 should equal(7)
+    val count3: Int = templates.count(t => t.allReads.exists(r => r.get[Boolean](DUPLICATE_TYPE_TAG).getOrElse("") == DUPLICATE_TYPE_LIBRARY))
+    count3 should equal(5)
+  }
+
+  it should "correctly count example read names" in {
+    val tool = new GroupReadsByUmi(rawTag = "RX", assignTag = "MI", strategy = Strategy.Edit, edits = 0, tagOpticalDuplicates = true)
+    val builder = new SamBuilder(readLength = 136)
+    val templates = Seq(
+
+      builder.addPair(name = "FS10002738:91:BTR67824-1422:1:1109:15500:1320", contig = 1, contig2 = Some(1), start1 = 3642, start2 = 3642, strand1 = Plus, strand2 = Minus, cigar1 = "115M2I8M2I9M", cigar2 = "115M2I8M2I9M", attrs = Map("RX" -> "AAA-TTTT")),
+      builder.addPair(name = "FS10002738:91:BTR67824-1422:1:1109:15510:1320", contig = 1, contig2 = Some(1), start1 = 3642, start2 = 3642, strand1 = Plus, strand2 = Minus, cigar1 = "115M2I8M2I9M", cigar2 = "115M2I8M2I9M", attrs = Map("RX" -> "AAA-TTTT")),
+
     ).map { pair => Template(r1 = pair.headOption, r2 = pair.lastOption) }
     val expected = n("a::AAA-b::TTT", 4) ++ n("b::AAA-a::TTT", 4) ++ n("a::AAA-b::TTT", 1) ++ n("b::AAA-a::TTT", 1) ++ n("a::AAA-b::TTT", 1) ++ n("b::AAA-a::TTT", 1)
     val setOpticalDuplicateFlags = PrivateMethod[Seq[Template]](Symbol("setOpticalDuplicateFlags"))
-    val temp = tool invokePrivate setOpticalDuplicateFlags(templates)
-    val count: Int = temp.count(t => t.allReads.exists(r => !r.transientAttrs[Boolean]("OpticalDup")))
-    assert(count == 7)
+    tool invokePrivate setOpticalDuplicateFlags(templates)
 
-    val count2: Int = templates.count(t => t.allReads.exists(r => !r.transientAttrs[Boolean]("OpticalDup")))
-    assert(count2 == 7)
+    val count: Int = templates.count(t => t.allReads.exists(r => !r.transientAttrs[Boolean]("OpticalDup")))
+    count should equal(1)
+    val setDuplicateFlags = PrivateMethod[Seq[Template]](Symbol("setDuplicateFlags"))
+    tool invokePrivate setDuplicateFlags(templates)
+    val count2: Int = templates.count(t => t.allReads.exists(r => r.get[Boolean](DUPLICATE_TYPE_TAG).getOrElse("") == DUPLICATE_TYPE_SEQUENCING))
+    count2 should equal(0)
+    val count3: Int = templates.count(t => t.allReads.exists(r => r.get[Boolean](DUPLICATE_TYPE_TAG).getOrElse("") == DUPLICATE_TYPE_LIBRARY))
+    count3 should equal(1)
+  }
+
+
+  it should "correctly count other example read names" in {
+    val tool = new GroupReadsByUmi(rawTag = "RX", assignTag = "MI", strategy = Strategy.Edit, edits = 0, tagOpticalDuplicates = true)
+    val builder = new SamBuilder(readLength = 100)
+    val templates = Seq(
+
+      builder.addPair(name = "FS10002738:91:BTR67824-1422:1:1119:15500:1320", contig = 1, contig2 = Some(2), start1 = 100, start2 = 300, strand1 = Plus, strand2 = Minus, attrs = Map("RX" -> "AAA-TTTT")),
+      builder.addPair(name = "FS10002738:91:BTR67824-1422:1:1109:15510:1320", contig = 1, contig2 = Some(2), start1 = 100, start2 = 300, strand1 = Plus, strand2 = Minus, attrs = Map("RX" -> "AAA-TTTT")),
+
+    ).map { pair => Template(r1 = pair.headOption, r2 = pair.lastOption) }
+    val expected = n("a::AAA-b::TTT", 4) ++ n("b::AAA-a::TTT", 4) ++ n("a::AAA-b::TTT", 1) ++ n("b::AAA-a::TTT", 1) ++ n("a::AAA-b::TTT", 1) ++ n("b::AAA-a::TTT", 1)
+    val setOpticalDuplicateFlags = PrivateMethod[Seq[Template]](Symbol("setOpticalDuplicateFlags"))
+    tool invokePrivate setOpticalDuplicateFlags(templates)
+
+    val count: Int = templates.count(t => t.allReads.exists(r => !r.transientAttrs[Boolean]("OpticalDup")))
+    count should equal(2)
+    val setDuplicateFlags = PrivateMethod[Seq[Template]](Symbol("setDuplicateFlags"))
+    tool invokePrivate setDuplicateFlags(templates)
+    val count2: Int = templates.count(t => t.allReads.exists(r => r.get[Boolean](DUPLICATE_TYPE_TAG).getOrElse("") == DUPLICATE_TYPE_SEQUENCING))
+    count2 should equal(1)
+    val count3: Int = templates.count(t => t.allReads.exists(r => r.get[Boolean](DUPLICATE_TYPE_TAG).getOrElse("") == DUPLICATE_TYPE_LIBRARY))
+    count3 should equal(0)
+  }
+
+  "it" should "cluster all the reads but one into a cluster of optical duplicates" in {
+    val tool = new GroupReadsByUmi(rawTag = "RX", assignTag = "MI", strategy = Strategy.Edit, edits = 0, tagOpticalDuplicates = true)
+
+    val builder = new SamBuilder(readLength = 100)
+    val templates = Seq(
+      builder.addPair(name = "FAKE1234:1:FAKE123-123:1:1103:10540:1440", contig = 1, contig2 = Some(2), start1 = 100, start2 = 300, strand1 = Plus, strand2 = Minus, attrs = Map("RX" -> "AAA-TTT")),
+      builder.addPair(name = "FAKE1234:1:FAKE123-123:1:1103:10540:1440", contig = 1, contig2 = Some(2), start1 = 100, start2 = 300, strand1 = Plus, strand2 = Minus, attrs = Map("RX" -> "AAA-TTT")),
+      builder.addPair(name = "FAKE1234:1:FAKE123-123:1:1103:10690:1360", contig = 1, contig2 = Some(2), start1 = 100, start2 = 300, strand1 = Plus, strand2 = Minus, attrs = Map("RX" -> "AAA-TTT")),
+      builder.addPair(name = "FAKE1234:1:FAKE123-123:1:1103:10690:1360", contig = 1, contig2 = Some(2), start1 = 100, start2 = 300, strand1 = Plus, strand2 = Minus, attrs = Map("RX" -> "AAA-TTT")),
+      builder.addPair(name = "FAKE1234:1:FAKE123-123:1:1103:10980:2890", contig = 1, contig2 = Some(2), start1 = 100, start2 = 300, strand1 = Plus, strand2 = Minus, attrs = Map("RX" -> "AAA-TTT")),
+      builder.addPair(name = "FAKE1234:1:FAKE123-123:1:1103:10980:2890", contig = 1, contig2 = Some(2), start1 = 100, start2 = 300, strand1 = Plus, strand2 = Minus, attrs = Map("RX" -> "AAA-TTT")),
+      builder.addPair(name = "FAKE1234:1:FAKE123-123:1:1103:1120:4000", contig = 1, contig2 = Some(2), start1 = 100, start2 = 300, strand1 = Plus, strand2 = Minus, attrs = Map("RX" -> "AAA-TTT")),
+      builder.addPair(name = "FAKE1234:1:FAKE123-123:1:1103:1120:4000", contig = 1, contig2 = Some(2), start1 = 100, start2 = 300, strand1 = Plus, strand2 = Minus, attrs = Map("RX" -> "AAA-TTT")),
+      builder.addPair(name = "FAKE1234:1:FAKE123-123:1:1103:12100:1430", contig = 1, contig2 = Some(2), start1 = 100, start2 = 300, strand1 = Plus, strand2 = Minus, attrs = Map("RX" -> "AAA-TTT")),
+      builder.addPair(name = "FAKE1234:1:FAKE123-123:1:1103:12100:1430", contig = 1, contig2 = Some(2), start1 = 100, start2 = 300, strand1 = Plus, strand2 = Minus, attrs = Map("RX" -> "AAA-TTT")),
+      builder.addPair(name = "FAKE1234:1:FAKE123-123:1:1103:12100:3340", contig = 1, contig2 = Some(2), start1 = 100, start2 = 300, strand1 = Plus, strand2 = Minus, attrs = Map("RX" -> "AAA-TTT")),
+      builder.addPair(name = "FAKE1234:1:FAKE123-123:1:1103:12100:3340", contig = 1, contig2 = Some(2), start1 = 100, start2 = 300, strand1 = Plus, strand2 = Minus, attrs = Map("RX" -> "AAA-TTT")),
+      builder.addPair(name = "FAKE1234:1:FAKE123-123:1:1103:12600:1780", contig = 1, contig2 = Some(2), start1 = 100, start2 = 300, strand1 = Plus, strand2 = Minus, attrs = Map("RX" -> "AAA-TTT")),
+      builder.addPair(name = "FAKE1234:1:FAKE123-123:1:1103:12600:1780", contig = 1, contig2 = Some(2), start1 = 100, start2 = 300, strand1 = Plus, strand2 = Minus, attrs = Map("RX" -> "AAA-TTT")),
+      builder.addPair(name = "FAKE1234:1:FAKE123-123:1:1103:13030:1350", contig = 1, contig2 = Some(2), start1 = 100, start2 = 300, strand1 = Plus, strand2 = Minus, attrs = Map("RX" -> "AAA-TTT")),
+      builder.addPair(name = "FAKE1234:1:FAKE123-123:1:1103:13030:1350", contig = 1, contig2 = Some(2), start1 = 100, start2 = 300, strand1 = Plus, strand2 = Minus, attrs = Map("RX" -> "AAA-TTT")),
+      builder.addPair(name = "FAKE1234:1:FAKE123-123:1:1103:13210:3730", contig = 1, contig2 = Some(2), start1 = 100, start2 = 300, strand1 = Plus, strand2 = Minus, attrs = Map("RX" -> "AAA-TTT")),
+      builder.addPair(name = "FAKE1234:1:FAKE123-123:1:1103:13210:3730", contig = 1, contig2 = Some(2), start1 = 100, start2 = 300, strand1 = Plus, strand2 = Minus, attrs = Map("RX" -> "AAA-TTT")),
+      builder.addPair(name = "FAKE1234:1:FAKE123-123:1:1103:14570:3610", contig = 1, contig2 = Some(2), start1 = 100, start2 = 300, strand1 = Plus, strand2 = Minus, attrs = Map("RX" -> "AAA-TTT")),
+      builder.addPair(name = "FAKE1234:1:FAKE123-123:1:1103:14570:3610", contig = 1, contig2 = Some(2), start1 = 100, start2 = 300, strand1 = Plus, strand2 = Minus, attrs = Map("RX" -> "AAA-TTT")),
+      builder.addPair(name = "FAKE1234:1:FAKE123-123:1:1103:15050:3490", contig = 1, contig2 = Some(2), start1 = 100, start2 = 300, strand1 = Plus, strand2 = Minus, attrs = Map("RX" -> "AAA-TTT")),
+      builder.addPair(name = "FAKE1234:1:FAKE123-123:1:1103:15050:3490", contig = 1, contig2 = Some(2), start1 = 100, start2 = 300, strand1 = Plus, strand2 = Minus, attrs = Map("RX" -> "AAA-TTT")),
+      builder.addPair(name = "FAKE1234:1:FAKE123-123:1:1103:15240:2470", contig = 1, contig2 = Some(2), start1 = 100, start2 = 300, strand1 = Plus, strand2 = Minus, attrs = Map("RX" -> "AAA-TTT")),
+      builder.addPair(name = "FAKE1234:1:FAKE123-123:1:1103:15240:2470", contig = 1, contig2 = Some(2), start1 = 100, start2 = 300, strand1 = Plus, strand2 = Minus, attrs = Map("RX" -> "AAA-TTT")),
+      builder.addPair(name = "FAKE1234:1:FAKE123-123:1:1103:15340:1460", contig = 1, contig2 = Some(2), start1 = 100, start2 = 300, strand1 = Plus, strand2 = Minus, attrs = Map("RX" -> "AAA-TTT")),
+      builder.addPair(name = "FAKE1234:1:FAKE123-123:1:1103:15340:1460", contig = 1, contig2 = Some(2), start1 = 100, start2 = 300, strand1 = Plus, strand2 = Minus, attrs = Map("RX" -> "AAA-TTT")),
+      builder.addPair(name = "FAKE1234:1:FAKE123-123:1:1103:15360:2970", contig = 1, contig2 = Some(2), start1 = 100, start2 = 300, strand1 = Plus, strand2 = Minus, attrs = Map("RX" -> "AAA-TTT")),
+      builder.addPair(name = "FAKE1234:1:FAKE123-123:1:1103:15360:2970", contig = 1, contig2 = Some(2), start1 = 100, start2 = 300, strand1 = Plus, strand2 = Minus, attrs = Map("RX" -> "AAA-TTT")),
+      builder.addPair(name = "FAKE1234:1:FAKE123-123:1:1103:15660:3180", contig = 1, contig2 = Some(2), start1 = 100, start2 = 300, strand1 = Plus, strand2 = Minus, attrs = Map("RX" -> "AAA-TTT")),
+      builder.addPair(name = "FAKE1234:1:FAKE123-123:1:1103:15660:3180", contig = 1, contig2 = Some(2), start1 = 100, start2 = 300, strand1 = Plus, strand2 = Minus, attrs = Map("RX" -> "AAA-TTT")),
+      builder.addPair(name = "FAKE1234:1:FAKE123-123:1:1103:16440:2770", contig = 1, contig2 = Some(2), start1 = 100, start2 = 300, strand1 = Plus, strand2 = Minus, attrs = Map("RX" -> "AAA-TTT")),
+      builder.addPair(name = "FAKE1234:1:FAKE123-123:1:1103:16440:2770", contig = 1, contig2 = Some(2), start1 = 100, start2 = 300, strand1 = Plus, strand2 = Minus, attrs = Map("RX" -> "AAA-TTT")),
+      builder.addPair(name = "FAKE1234:1:FAKE123-123:1:1103:1710:3330", contig = 1, contig2 = Some(2), start1 = 100, start2 = 300, strand1 = Plus, strand2 = Minus, attrs = Map("RX" -> "AAA-TTT")),
+      builder.addPair(name = "FAKE1234:1:FAKE123-123:1:1103:1710:3330", contig = 1, contig2 = Some(2), start1 = 100, start2 = 300, strand1 = Plus, strand2 = Minus, attrs = Map("RX" -> "AAA-TTT")),
+      builder.addPair(name = "FAKE1234:1:FAKE123-123:1:1103:1830:1150", contig = 1, contig2 = Some(2), start1 = 100, start2 = 300, strand1 = Plus, strand2 = Minus, attrs = Map("RX" -> "AAA-TTT")),
+      builder.addPair(name = "FAKE1234:1:FAKE123-123:1:1103:1830:1150", contig = 1, contig2 = Some(2), start1 = 100, start2 = 300, strand1 = Plus, strand2 = Minus, attrs = Map("RX" -> "AAA-TTT")),
+      builder.addPair(name = "FAKE1234:1:FAKE123-123:1:1103:1950:1920", contig = 1, contig2 = Some(2), start1 = 100, start2 = 300, strand1 = Plus, strand2 = Minus, attrs = Map("RX" -> "AAA-TTT")),
+      builder.addPair(name = "FAKE1234:1:FAKE123-123:1:1103:1950:1920", contig = 1, contig2 = Some(2), start1 = 100, start2 = 300, strand1 = Plus, strand2 = Minus, attrs = Map("RX" -> "AAA-TTT")),
+      builder.addPair(name = "FAKE1234:1:FAKE123-123:1:1103:2400:2140", contig = 1, contig2 = Some(2), start1 = 100, start2 = 300, strand1 = Plus, strand2 = Minus, attrs = Map("RX" -> "AAA-TTT")),
+      builder.addPair(name = "FAKE1234:1:FAKE123-123:1:1103:2400:2140", contig = 1, contig2 = Some(2), start1 = 100, start2 = 300, strand1 = Plus, strand2 = Minus, attrs = Map("RX" -> "AAA-TTT")),
+      builder.addPair(name = "FAKE1234:1:FAKE123-123:1:1103:2610:3050", contig = 1, contig2 = Some(2), start1 = 100, start2 = 300, strand1 = Plus, strand2 = Minus, attrs = Map("RX" -> "AAA-TTT")),
+      builder.addPair(name = "FAKE1234:1:FAKE123-123:1:1103:2610:3050", contig = 1, contig2 = Some(2), start1 = 100, start2 = 300, strand1 = Plus, strand2 = Minus, attrs = Map("RX" -> "AAA-TTT")),
+      builder.addPair(name = "FAKE1234:1:FAKE123-123:1:1103:3300:1590", contig = 1, contig2 = Some(2), start1 = 100, start2 = 300, strand1 = Plus, strand2 = Minus, attrs = Map("RX" -> "AAA-TTT")),
+      builder.addPair(name = "FAKE1234:1:FAKE123-123:1:1103:3300:1590", contig = 1, contig2 = Some(2), start1 = 100, start2 = 300, strand1 = Plus, strand2 = Minus, attrs = Map("RX" -> "AAA-TTT")),
+      builder.addPair(name = "FAKE1234:1:FAKE123-123:1:1103:5320:1820", contig = 1, contig2 = Some(2), start1 = 100, start2 = 300, strand1 = Plus, strand2 = Minus, attrs = Map("RX" -> "AAA-TTT")),
+      builder.addPair(name = "FAKE1234:1:FAKE123-123:1:1103:5320:1820", contig = 1, contig2 = Some(2), start1 = 100, start2 = 300, strand1 = Plus, strand2 = Minus, attrs = Map("RX" -> "AAA-TTT")),
+      builder.addPair(name = "FAKE1234:1:FAKE123-123:1:1103:5440:2740", contig = 1, contig2 = Some(2), start1 = 100, start2 = 300, strand1 = Plus, strand2 = Minus, attrs = Map("RX" -> "AAA-TTT")),
+      builder.addPair(name = "FAKE1234:1:FAKE123-123:1:1103:5440:2740", contig = 1, contig2 = Some(2), start1 = 100, start2 = 300, strand1 = Plus, strand2 = Minus, attrs = Map("RX" -> "AAA-TTT")),
+      builder.addPair(name = "FAKE1234:1:FAKE123-123:1:1103:5520:2180", contig = 1, contig2 = Some(2), start1 = 100, start2 = 300, strand1 = Plus, strand2 = Minus, attrs = Map("RX" -> "AAA-TTT")),
+      builder.addPair(name = "FAKE1234:1:FAKE123-123:1:1103:5520:2180", contig = 1, contig2 = Some(2), start1 = 100, start2 = 300, strand1 = Plus, strand2 = Minus, attrs = Map("RX" -> "AAA-TTT")),
+      builder.addPair(name = "FAKE1234:1:FAKE123-123:1:1103:5900:1060", contig = 1, contig2 = Some(2), start1 = 100, start2 = 300, strand1 = Plus, strand2 = Minus, attrs = Map("RX" -> "AAA-TTT")),
+      builder.addPair(name = "FAKE1234:1:FAKE123-123:1:1103:5900:1060", contig = 1, contig2 = Some(2), start1 = 100, start2 = 300, strand1 = Plus, strand2 = Minus, attrs = Map("RX" -> "AAA-TTT")),
+      builder.addPair(name = "FAKE1234:1:FAKE123-123:1:1103:5970:1590", contig = 1, contig2 = Some(2), start1 = 100, start2 = 300, strand1 = Plus, strand2 = Minus, attrs = Map("RX" -> "AAA-TTT")),
+      builder.addPair(name = "FAKE1234:1:FAKE123-123:1:1103:5970:1590", contig = 1, contig2 = Some(2), start1 = 100, start2 = 300, strand1 = Plus, strand2 = Minus, attrs = Map("RX" -> "AAA-TTT")),
+      builder.addPair(name = "FAKE1234:1:FAKE123-123:1:1103:6370:1820", contig = 1, contig2 = Some(2), start1 = 100, start2 = 300, strand1 = Plus, strand2 = Minus, attrs = Map("RX" -> "AAA-TTT")),
+      builder.addPair(name = "FAKE1234:1:FAKE123-123:1:1103:6370:1820", contig = 1, contig2 = Some(2), start1 = 100, start2 = 300, strand1 = Plus, strand2 = Minus, attrs = Map("RX" -> "AAA-TTT")),
+      builder.addPair(name = "FAKE1234:1:FAKE123-123:1:1103:8220:3630", contig = 1, contig2 = Some(2), start1 = 100, start2 = 300, strand1 = Plus, strand2 = Minus, attrs = Map("RX" -> "AAA-TTT")),
+      builder.addPair(name = "FAKE1234:1:FAKE123-123:1:1103:8220:3630", contig = 1, contig2 = Some(2), start1 = 100, start2 = 300, strand1 = Plus, strand2 = Minus, attrs = Map("RX" -> "AAA-TTT")),
+      builder.addPair(name = "FAKE1234:1:FAKE123-123:1:1103:8290:3330", contig = 1, contig2 = Some(2), start1 = 100, start2 = 300, strand1 = Plus, strand2 = Minus, attrs = Map("RX" -> "AAA-TTT")),
+      builder.addPair(name = "FAKE1234:1:FAKE123-123:1:1103:8290:3330", contig = 1, contig2 = Some(2), start1 = 100, start2 = 300, strand1 = Plus, strand2 = Minus, attrs = Map("RX" -> "AAA-TTT")),
+    ).map { pair => Template(r1 = pair.headOption, r2 = pair.lastOption) }
+//    val expected = n("a::AAA-b::TTT", 4) ++ n("b::AAA-a::TTT", 4) ++ n("a::AAA-b::TTT", 1) ++ n("b::AAA-a::TTT", 1) ++ n("a::AAA-b::TTT", 1) ++ n("b::AAA-a::TTT", 1)
+    val setOpticalDuplicateFlags = PrivateMethod[Seq[Template]](Symbol("setOpticalDuplicateFlags"))
+    tool invokePrivate setOpticalDuplicateFlags(templates)
+
+    val count: Int = templates.count(t => t.allReads.exists(r => !r.transientAttrs[Boolean]("OpticalDup")))
+    count should equal(1)
+
+    val count2: Int = templates.count(t => t.allReads.exists(r => r.transientAttrs[Boolean]("OpticalDup")))
+    count2 should equal(59)
 
     val setDuplicateFlags = PrivateMethod[Seq[Template]](Symbol("setDuplicateFlags"))
-    tool invokePrivate setDuplicateFlags(templates, true)
-    val count3: Int = templates.count(t => t.allReads.exists(r => r.get[Boolean]("DT").getOrElse("") == DUPLICATE_TYPE_SEQUENCING))
-    assert(count3 == 7)
+    tool invokePrivate setDuplicateFlags(templates)
+    val count3: Int = templates.count(t => t.allReads.exists(r => r.get[Boolean](DUPLICATE_TYPE_TAG).getOrElse("") == DUPLICATE_TYPE_SEQUENCING))
+    count3 should equal(58)
+    val count4: Int = templates.count(t => t.allReads.exists(r => r.get[Boolean](DUPLICATE_TYPE_TAG).getOrElse("") == DUPLICATE_TYPE_LIBRARY))
+    count4 should equal(1)
   }
 }

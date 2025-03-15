@@ -114,6 +114,8 @@ class CallMolecularConsensusReads
  @arg(flag='R', doc="The new read group ID for all the consensus reads.") val readGroupId: String = "A",
  @arg(flag='1', doc="The Phred-scaled error rate for an error prior to the UMIs being integrated.") val errorRatePreUmi: PhredScore = DefaultErrorRatePreUmi,
  @arg(flag='2', doc="The Phred-scaled error rate for an error post the UMIs have been integrated.") val errorRatePostUmi: PhredScore = DefaultErrorRatePostUmi,
+ @arg(flag='x', doc = "Ignore (for the purpose of counting) the optical duplicate reads (if DT tag is present), though still use the bases to form the consensus.") val uncountOpticalDuplicates: Boolean = false,
+
  @arg(flag='m', doc="Ignore bases in raw reads that have Q below this value.") val minInputBaseQuality: PhredScore = DefaultMinInputBaseQuality,
  @arg(flag='N', doc=
    """

@@ -50,6 +50,7 @@ object VanillaUmiConsensusCallerOptions {
   val DefaultMaxReads: Int                       = Int.MaxValue
   val DefaultProducePerBaseTags: Boolean         = true
   val DefaultQualityTrim: Boolean                = false
+  val DefaultCountOpticalDuplicateReads: Boolean = true
 }
 
 /**
@@ -65,7 +66,8 @@ case class VanillaUmiConsensusCallerOptions
   minConsensusBaseQuality: PhredScore = DefaultMinConsensusBaseQuality,
   minReads: Int                       = DefaultMinReads,
   maxReads: Int                       = DefaultMaxReads,
-  producePerBaseTags: Boolean         = DefaultProducePerBaseTags
+  producePerBaseTags: Boolean         = DefaultProducePerBaseTags,
+  countOpticalDuplicateReads: Boolean = DefaultCountOpticalDuplicateReads
 )
 
 

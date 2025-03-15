@@ -81,6 +81,8 @@ object GroupReadsByUmi {
     */
   val DUPLICATE_TYPE_SEQUENCING:String = "SQ"
 
+  val OPTICAL_DUPLICATE_TEMPORARY_TAG = "OpticalDup"
+
   private val ReadInfoTempAttributeName = "__GRBU_ReadInfo"
 
   /** A case class to represent all the information we need to order reads for duplicate marking / grouping. */
@@ -614,6 +616,8 @@ class GroupReadsByUmi
 
   private val opticalDuplicateFinder = new OpticalDuplicateFinder()
   opticalDuplicateFinder.opticalDuplicatePixelDistance = opticalDuplicateDistance
+//  opticalDuplicateFinder.setBigDuplicateSetSize()
+//  opticalDuplicateFinder.setMaxDuplicateSetSize()
   // Give values to unset parameters that are different in duplicate marking mode
   private val _minMapQ = this.minMapQ.getOrElse(if (this.markDuplicates) 0 else 1)
   private val _includeSecondaryReads = this.includeSecondary.getOrElse(this.markDuplicates)
@@ -734,13 +738,13 @@ class GroupReadsByUmi
       val templatesByMi = templates.groupBy { t => t.r1.get.apply[String](this.assignTag) }
 
 
-      if (this.ignoreOpticalDuplicates) {
+      if (this.ignoreOpticalDuplicates || this.tagOpticalDuplicates) {
         templatesByMi.values.foreach(t => setOpticalDuplicateFlags(t))
       }
 
       // If marking duplicates, assign bitflag to all duplicate reads
       if (this.markDuplicates) {
-        templatesByMi.values.foreach(t => setDuplicateFlags(t, addOpticalTag = tagOpticalDuplicates))
+        templatesByMi.values.foreach(t => setDuplicateFlags(t))
       }
 
       // Then output the records in the right order (assigned tag, read name, r1, r2)
@@ -754,7 +758,7 @@ class GroupReadsByUmi
       if (this.ignoreOpticalDuplicates) {
         //        count the templates that are not
         templatesByMi.values.foreach { ps =>
-          tagFamilySizeCounter.count(ps.count(t => t.allReads.exists(r => !r.transientAttrs[Boolean]("OpticalDup"))))
+          tagFamilySizeCounter.count(ps.count(t => t.allReads.exists(r => !r.transientAttrs[Boolean](OPTICAL_DUPLICATE_TEMPORARY_TAG))))
         }
       } else {
         templatesByMi.values.foreach(ps => tagFamilySizeCounter.count(ps.size))
@@ -894,18 +898,21 @@ class GroupReadsByUmi
         loc
       }
     //    identify the templates that are optical duplicates
+//    logger.info("Finding the optical duplicates")
     val opticalDups: Array[Boolean]
     = this.opticalDuplicateFinder.findOpticalDuplicates(locs.asJava, keeper)
 
+//    logger.info("Found %d optical duplicates out of %d reads".format(opticalDups.count(l=>l),opticalDups.length))
     // set the OpticalDup transient attributes to the reads.
     for (i <- group.indices) {
-      group(i).allReads.foreach(_.transientAttrs.update("OpticalDup", opticalDups(i)))
+//      logger.info("temp Optical tag == %s".format(opticalDups(i).toString))
+      group(i).allReads.foreach(_.transientAttrs.update(OPTICAL_DUPLICATE_TEMPORARY_TAG, opticalDups(i)))
     }
     group
   }
 
   /** Sets the duplicate flags on all reads within all templates. */
-  private def setDuplicateFlags(group: Seq[Template], addOpticalTag: Boolean): Unit = {
+  private def setDuplicateFlags(group: Seq[Template]): Unit = {
     val nonDuplicateTemplate = group.maxBy { template =>
       template.primaryReads.sumBy { r =>
         r.mapq + DuplicateScoringStrategy.computeDuplicateScore(r.asSam, ScoringStrategy.SUM_OF_BASE_QUALITIES)
@@ -915,12 +922,14 @@ class GroupReadsByUmi
     group.foreach { template =>
       val flag = template ne nonDuplicateTemplate
       template.allReads.foreach(_.duplicate = flag)
-      if (addOpticalTag) {
-        template.allReads.foreach(r => {
-          val opticalTagValue: String = if (r.transientAttrs.get("OpticalDup").getOrElse(false)) {
-            DUPLICATE_TYPE_LIBRARY
-          } else {
+      if (this.tagOpticalDuplicates) {
+        template.allReads.filter(r=>r.duplicate).foreach(r => {
+          val opticalTagValue: String = if (r.transientAttrs.get(OPTICAL_DUPLICATE_TEMPORARY_TAG).getOrElse(false)) {
+            //            logger.info("tagging a SEQUENCING Dup")
             DUPLICATE_TYPE_SEQUENCING
+          } else {
+            //            logger.info("tagging a LIBRARY Dup")
+            DUPLICATE_TYPE_LIBRARY
           }
           r.update(DUPLICATE_TYPE_TAG, opticalTagValue)
         })
