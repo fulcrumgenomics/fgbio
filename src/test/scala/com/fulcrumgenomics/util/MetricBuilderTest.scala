@@ -25,7 +25,7 @@
 
 package com.fulcrumgenomics.util
 
-import com.fulcrumgenomics.cmdline.FgBioMain.FailureException
+import com.fulcrumgenomics.commons.util.DelimitedDataParser
 import com.fulcrumgenomics.testing.UnitSpec
 
 
@@ -36,26 +36,53 @@ case class MetricBuilderNameMetric(first: String, second: String, age: Int) exte
 class MetricBuilderTest extends UnitSpec {
   private val builder = new MetricBuilder[MetricBuilderTestMetric]()
 
-  "MetricBuilder.fromArgMap" should "build a metric from an argmap with all value specified" in {
-    builder.fromArgMap(Map("name" -> "foo", "count" -> "2")) shouldBe MetricBuilderTestMetric(name="foo", count=2)
+  "MetricBuilder.fromValues" should "build a metric from a list of values" in {
+    builder.fromValues(Seq("foo", "2")) shouldBe MetricBuilderTestMetric(name="foo", count=2)
   }
 
-  it should "build a metric from an argmap with only required values specified" in {
-    builder.fromArgMap(Map("name" -> "foo")) shouldBe MetricBuilderTestMetric(name="foo")
+  it should "fail if the number of values is different than expected" in {
+    a[MetricBuilderException] should be thrownBy builder.fromValues(Seq())
+    a[MetricBuilderException] should be thrownBy builder.fromValues(Seq("Foo"))
+    a[MetricBuilderException] should be thrownBy builder.fromValues(Seq("1", "2", "3"))
   }
 
-  it should "build a metric from a delimited line" in {
-    builder.fromLine(line = "Foo Bar\t42", delim = "\t") shouldBe MetricBuilderTestMetric(name="Foo Bar", count=42)
-    builder.fromLine(line = "Foo Bar,42", delim = ",") shouldBe MetricBuilderTestMetric(name="Foo Bar", count=42)
-
-    val nameBuilder = new MetricBuilder[MetricBuilderNameMetric]()
-    nameBuilder.fromLine(line = "Foo Bar 42", delim = " ") shouldBe MetricBuilderNameMetric(first="Foo", second="Bar", age=42)
-  }
-
-  it should "throw an FailureException when the # of values are incorrect or wrong type" in {
+  it should "fail if the # of values are incorrect or wrong type" in {
     val builder = new MetricBuilder[MetricBuilderNameMetric]()
-    an[FailureException] should be thrownBy builder.fromLine(line="one\ttwo")
-    an[FailureException] should be thrownBy builder.fromLine(line="one\ttwo\t3\tfour", lineNumber=Some(1))
-    an[FailureException] should be thrownBy builder.fromLine(line="one\ttwo\tthree")
+    a[MetricBuilderException] should be thrownBy builder.fromValues(Seq("one", "two"))
+    a[MetricBuilderException] should be thrownBy builder.fromValues(Seq("one", "two", "3", "four"), lineNumber=Some(1))
+    a[MetricBuilderException] should be thrownBy builder.fromValues(Seq("one", "two", "three"))
+  }
+
+  "MetricBuilder.fromRow" should "build a metric from a Row" in {
+    val path = makeTempFile("data", ".tab")
+    Io.writeLines(path, Seq("name\tcount", "Foo Bar\t42", "Car Dog\t32"))
+    val parser = DelimitedDataParser(path=path, delimiter='\t')
+    val metrics = parser.zipWithIndex.map { case (row, lineNumber) =>
+      builder.fromRow(row=row, headers=parser.headers, lineNumber=Some(lineNumber))
+    }.toIndexedSeq
+    metrics.length shouldBe 2
+    metrics.head shouldBe MetricBuilderTestMetric(name="Foo Bar", count=42)
+    metrics.last shouldBe MetricBuilderTestMetric(name="Car Dog", count=32)
+  }
+
+  it should "build a metric if the row is missing an optional field" in {
+    val path = makeTempFile("data", ".tab")
+    Io.writeLines(path, Seq("name\tnumber", "Foo Bar\t42", "Car Dog\t32"))
+    val parser = DelimitedDataParser(path=path, delimiter='\t')
+    val metrics = parser.zipWithIndex.map { case (row, lineNumber) =>
+      builder.fromRow(row=row, headers=parser.headers, lineNumber=Some(lineNumber))
+    }.toIndexedSeq
+    metrics.length shouldBe 2
+    metrics.head shouldBe MetricBuilderTestMetric(name="Foo Bar")
+    metrics.last shouldBe MetricBuilderTestMetric(name="Car Dog")
+  }
+
+  it should "fail if the row is missing a required field" in {
+    val path = makeTempFile("data", ".tab")
+    Io.writeLines(path, Seq("desc\tcount", "Foo Bar\t42", "Car Dog\t32"))
+    val parser = DelimitedDataParser(path=path, delimiter='\t')
+    parser.zipWithIndex.foreach { case (row, lineNumber) =>
+      a[MetricBuilderException] should be thrownBy builder.fromRow(row=row, headers=parser.headers, lineNumber=Some(lineNumber))
+    }
   }
 }

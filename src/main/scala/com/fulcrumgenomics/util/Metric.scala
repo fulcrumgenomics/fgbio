@@ -102,11 +102,8 @@ object Metric {
     val builder = new MetricBuilder[T](source=source)(tt)
     if (lines.isEmpty) builder.fail(message="No header found", lineNumber=Some(1))
     val parser  = new DelimitedDataParser(lines=lines, delimiter=Delimiter, ignoreBlankLines=false, trimFields=true)
-    val names   = parser.headers.toIndexedSeq
-
     parser.zipWithIndex.map { case (row, rowIndex) =>
-      val argMap = names.zipWithIndex.map { case (name, i) => name -> row[String](i) }.toMap
-      builder.fromArgMap(argMap=argMap, lineNumber=Some(rowIndex+2))
+      builder.fromRow(row, headers=parser.headers, lineNumber=Some(rowIndex+2), ignoreExtra=false)
     }
   }
 

@@ -25,14 +25,15 @@
 
 package com.fulcrumgenomics.util
 
-import com.fulcrumgenomics.cmdline.FgBioMain.FailureException
 import com.fulcrumgenomics.commons.CommonsDef.{forloop, unreachable}
 import com.fulcrumgenomics.commons.reflect.{ReflectionUtil, ReflectiveBuilder}
-import com.fulcrumgenomics.commons.util.LazyLogging
+import com.fulcrumgenomics.commons.util.{LazyLogging, Row}
 
 import java.io.{PrintWriter, StringWriter}
 import scala.reflect.runtime.{universe => ru}
 import scala.util.{Failure, Success}
+
+case class MetricBuilderException private[util](message: Option[String] = None) extends Exception
 
 /** Class for building metrics of type [[T]].
   *
@@ -46,16 +47,23 @@ class MetricBuilder[T <: Metric](source: Option[String] = None)(implicit tt: ru.
   private val clazz: Class[T]   = ReflectionUtil.typeTagToClass[T]
   private val reflectiveBuilder = new ReflectiveBuilder(clazz)
   private val names             = Metric.names[T]
+  private val namesSet          = names.toSet
 
-  /** Builds a metric from a delimited line
+  /** Builds a metric from a [[ com.fulcrumgenomics.commons.util.Row]] produced from a
+    * [[ com.fulcrumgenomics.commons.util.DelimitedDataParser]].
     *
-    * @param line       the line with delimited values
-    * @param delim      the delimiter of the values
+    * @param row        the row to parse.  All required fields must be given.  Can be in any order.
     * @param lineNumber optionally, the line number when building a metric from a line in a file
+    * @param ignoreExtra ignore extra fields (that are not in the metric)
     * @return
     */
-  def fromLine(line: String, delim: String = Metric.DelimiterAsString, lineNumber: Option[Int] = None): T = {
-    fromValues(values = line.split(delim), lineNumber = lineNumber)
+  def fromRow(row: Row, headers: Seq[String], lineNumber: Option[Int] = None, ignoreExtra: Boolean = true): T = {
+    val argMap = headers  // NB: filter after map so the row lookup is faster
+      .zipWithIndex
+      .map { case (header, i) => header -> row[String](i) }
+      .filter { case (key, _) => !ignoreExtra || namesSet.contains(key) }
+      .toMap
+    fromArgMap(argMap=argMap, lineNumber=lineNumber)
   }
 
   /** Builds a metric from values for the complete set of metric fields
@@ -78,7 +86,7 @@ class MetricBuilder[T <: Metric](source: Option[String] = None)(implicit tt: ru.
     * @param lineNumber optionally, the line number when building a metric from a line in a file
     * @return a new instance of type [[T]]
     */
-  def fromArgMap(argMap: Map[String, String], lineNumber: Option[Int] = None): T = {
+  private[util] def fromArgMap(argMap: Map[String, String], lineNumber: Option[Int] = None): T = {
     reflectiveBuilder.reset() // reset the arguments to their initial values
 
     val names = argMap.keys.toIndexedSeq
@@ -111,17 +119,22 @@ class MetricBuilder[T <: Metric](source: Option[String] = None)(implicit tt: ru.
     // build it.  NB: if arguments are missing values, then an exception will be thrown here
     // Also, we don't use the default "build()" method since if a collection or option is empty, it will be treated as
     // missing.
-    val params = reflectiveBuilder.argumentLookup.ordered.map(arg => arg.value getOrElse unreachable(s"Arguments not set: ${arg.name}"))
-    reflectiveBuilder.build(params)
+    val params = reflectiveBuilder.argumentLookup.ordered.map(arg => arg.value getOrElse buildFailure(s"Arguments not set: ${arg.name}"))
+    try {
+      reflectiveBuilder.build(params)
+    } catch {
+      case e: Exception => throw buildFailure(message=s"Failure building metric: ${e.getMessage}")
+    }
   }
 
-  /** Logs the throwable, if given, and throws a [[FailureException]] with information about when reading metrics fails
+  /** Logs the throwable, if given, and builds a [[MetricBuilderException]] with information about when reading metrics
+    *  fails
     *
     * @param message    the message to include in the exception thrown
     * @param throwable  optionally, a throwable that should be logged
     * @param lineNumber optionally, the line number when building a metric from a line in a file
     */
-  def fail(message: String, throwable: Option[Throwable] = None, lineNumber: Option[Int] = None): Unit = {
+  private[util] def buildFailure(message: String, throwable: Option[Throwable] = None, lineNumber: Option[Int] = None): MetricBuilderException = {
     throwable.foreach { thr =>
       val stringWriter = new StringWriter
       thr.printStackTrace(new PrintWriter(stringWriter))
@@ -137,6 +150,16 @@ class MetricBuilder[T <: Metric](source: Option[String] = None)(implicit tt: ru.
     }
     val fullMessage = s"$prefix '${clazz.getSimpleName}'$sourceMessage\n$message"
 
-    throw FailureException(message = Some(fullMessage))
+    MetricBuilderException(message = Some(fullMessage))
+  }
+
+  /** Logs the throwable, if given, and throws a [[MetricBuilderException]] with information about when reading metrics fails
+    *
+    * @param message    the message to include in the exception thrown
+    * @param throwable  optionally, a throwable that should be logged
+    * @param lineNumber optionally, the line number when building a metric from a line in a file
+    */
+  private[util] def fail(message: String, throwable: Option[Throwable] = None, lineNumber: Option[Int] = None): Unit = {
+    throw buildFailure(message=message, throwable=throwable, lineNumber=lineNumber)
   }
 }
