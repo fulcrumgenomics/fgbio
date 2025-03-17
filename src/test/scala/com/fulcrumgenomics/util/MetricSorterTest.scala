@@ -48,8 +48,6 @@ class MetricSorterTest extends UnitSpec {
 
   private val metricsSorted = metrics.sortBy(m => (m.count, m.name))
 
-  private case class Key()
-
   "MetricSorter" should "sort metrics in memory" in {
     val sorter = new MetricSorter[MetricSorterTestMetric, MetricSorterTestMetric](
       maxObjectsInRam = 10000,
