@@ -555,9 +555,9 @@ class GroupReadsByUmiTest extends UnitSpec with OptionValues with PrivateMethodT
     val setDuplicateFlags = PrivateMethod[Seq[Template]](Symbol("setDuplicateFlags"))
     tool invokePrivate setDuplicateFlags(templates)
     val count2: Int = templates.count(t => t.allReads.exists(r => r.get[Boolean](DUPLICATE_TYPE_TAG).getOrElse("") == DUPLICATE_TYPE_SEQUENCING))
-    count2 should equal(7)
+    count2 should equal(5)
     val count3: Int = templates.count(t => t.allReads.exists(r => r.get[Boolean](DUPLICATE_TYPE_TAG).getOrElse("") == DUPLICATE_TYPE_LIBRARY))
-    count3 should equal(5)
+    count3 should equal(7)
   }
 
   it should "correctly count example read names" in {
@@ -578,9 +578,9 @@ class GroupReadsByUmiTest extends UnitSpec with OptionValues with PrivateMethodT
     val setDuplicateFlags = PrivateMethod[Seq[Template]](Symbol("setDuplicateFlags"))
     tool invokePrivate setDuplicateFlags(templates)
     val count2: Int = templates.count(t => t.allReads.exists(r => r.get[Boolean](DUPLICATE_TYPE_TAG).getOrElse("") == DUPLICATE_TYPE_SEQUENCING))
-    count2 should equal(0)
+    count2 should equal(1)
     val count3: Int = templates.count(t => t.allReads.exists(r => r.get[Boolean](DUPLICATE_TYPE_TAG).getOrElse("") == DUPLICATE_TYPE_LIBRARY))
-    count3 should equal(1)
+    count3 should equal(0)
   }
 
 
@@ -599,6 +599,29 @@ class GroupReadsByUmiTest extends UnitSpec with OptionValues with PrivateMethodT
 
     val count: Int = templates.count(t => t.allReads.exists(r => !r.transientAttrs[Boolean]("OpticalDup")))
     count should equal(2)
+    val setDuplicateFlags = PrivateMethod[Seq[Template]](Symbol("setDuplicateFlags"))
+    tool invokePrivate setDuplicateFlags(templates)
+    val count2: Int = templates.count(t => t.allReads.exists(r => r.get[Boolean](DUPLICATE_TYPE_TAG).getOrElse("") == DUPLICATE_TYPE_SEQUENCING))
+    count2 should equal(0)
+    val count3: Int = templates.count(t => t.allReads.exists(r => r.get[Boolean](DUPLICATE_TYPE_TAG).getOrElse("") == DUPLICATE_TYPE_LIBRARY))
+    count3 should equal(1)
+  }
+
+  it should "correctly identify LB and SQ duplicates" in {
+    val tool = new GroupReadsByUmi(rawTag = "RX", assignTag = "MI", strategy = Strategy.Edit, edits = 0, tagOpticalDuplicates = true)
+    val builder = new SamBuilder(readLength = 100)
+    val templates = Seq(
+
+      builder.addPair(name = "FS10002738:91:BTR67824-1422:1:1104:1150:1610", contig = 1, contig2 = Some(2), start1 = 100, strand1 = Plus, unmapped2=true, strand2 = Minus, attrs = Map("RX" -> "AAA-TTTT")),
+      builder.addPair(name = "FS10002738:91:BTR67824-1422:1:1104:1170:1650", contig = 1, contig2 = Some(2), start1 = 100, strand1 = Plus, unmapped2=true, strand2 = Minus, attrs = Map("RX" -> "AAA-TTTT")),
+
+    ).map { pair => Template(r1 = pair.headOption, r2 = pair.lastOption) }
+    val expected = n("a::AAA-b::TTT", 4) ++ n("b::AAA-a::TTT", 4) ++ n("a::AAA-b::TTT", 1) ++ n("b::AAA-a::TTT", 1) ++ n("a::AAA-b::TTT", 1) ++ n("b::AAA-a::TTT", 1)
+    val setOpticalDuplicateFlags = PrivateMethod[Seq[Template]](Symbol("setOpticalDuplicateFlags"))
+    tool invokePrivate setOpticalDuplicateFlags(templates)
+
+    val count: Int = templates.count(t => t.allReads.exists(r => !r.transientAttrs[Boolean]("OpticalDup")))
+    count should equal(1)
     val setDuplicateFlags = PrivateMethod[Seq[Template]](Symbol("setDuplicateFlags"))
     tool invokePrivate setDuplicateFlags(templates)
     val count2: Int = templates.count(t => t.allReads.exists(r => r.get[Boolean](DUPLICATE_TYPE_TAG).getOrElse("") == DUPLICATE_TYPE_SEQUENCING))
