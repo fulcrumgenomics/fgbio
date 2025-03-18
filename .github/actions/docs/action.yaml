@@ -1,0 +1,112 @@
+name: Tool and Metric Docs
+
+workflow_call:
+  inputs:
+    build-dir:
+      description: the sub-directory in which to build the documentation
+      required: false
+      type: string
+      default: gh-pages
+    latest:
+      description: |
+        set to true if to set to the latest doc (release or preview), false
+        to set to develop (main branch)
+      required: true
+      type: boolean
+
+runs:
+  using: "composite"
+  steps:
+    - name: Checkout gh-pages
+      uses: actions/checkout@v4
+      with:
+        fetch-depth: 0
+        lfs: true
+        ref: gh-pages
+        path: ${{ inputs.build-dir }}
+    # Note: we use sdkman to install java and scala as other actions do not provide support for
+    # Java 8 and scaladoc
+    - name: Setup sdkman
+      shell: bash -l {0}
+      run: |
+        curl -s "https://get.sdkman.io" | bash
+        source "$HOME/.sdkman/bin/sdkman-init.sh"
+        sdk version
+        echo 'source "$HOME/.sdkman/bin/sdkman-init.sh"' >> "$HOME/.bash_profile"
+    - name: Install tools
+      shell: bash -l {0}
+      run: |
+        sdk install java 8.312.07.1-amzn
+        sdk install scala 2.13.0
+        sdk install sbt 1.10.4
+    - name: Cache .ivy2
+      uses: actions/cache@v4
+      with:
+        path: ~/.ivy2
+        key: ${{ runner.os }}-ivy2-${{ hashFiles('**/build.sbt') }}
+    - name: Cache .sbt
+      uses: actions/cache@v4
+      with:
+        path: ~/.sbt
+        key: ${{ runner.os }}-sbt-${{ hashFiles('**/build.properties') }}
+    - name: Get fgbio version
+      shell: bash -l {0}
+      run: |
+        FGBIO_VERSION=$(sbt -Dsbt.supershell=false --no-colors --error 'print ThisBuild / version' | tail -n 1)
+        if [ "${FGBIO_VERSION}" == "" ]; then
+          echo "Error: FGBIO_VERSION was empty"
+          exit 1
+        fi
+        echo "fgbio version: ${FGBIO_VERSION}"
+        echo "FGBIO_VERSION=${FGBIO_VERSION}" >> $GITHUB_ENV
+    - name: Build assembly JAR
+      shell: bash -l {0}
+      run: |
+        sbt +assembly
+    - name: Build tool docs
+      shell: bash -l {0}
+      env:
+        LATEST: ${{ inputs.latest }}
+      run: |
+        if [[ "${{ env.LATEST }}" == "true" ]]; then
+          OUTDIR="${{ inputs.build-dir }}/tools/${FGBIO_VERSION}";
+        else
+          OUTDIR="${{ inputs.build-dir }}/tools/develop";
+          if [ -d "${OUTDIR}" ]; then
+            rm -rf "${OUTDIR}"
+          fi
+        fi
+        mkdir -p "${OUTDIR}"
+        java -cp target/scala-2.13/fgbio-*.jar com.fulcrumgenomics.internal.InternalTools BuildToolDocs -o "${OUTDIR}"
+        if [[ "${{ env.LATEST }}" == "true" ]]; then
+          pushd "${{ inputs.build-dir }}"/tools
+          rm latest 
+          ln -s ${FGBIO_VERSION} latest
+          popd
+        fi
+    - name: Build metric docs
+      shell: bash -l {0}
+      env:
+        LATEST: ${{ inputs.latest }}
+      run: |
+        if [[ "${{ env.LATEST }}" == "true" ]]; then
+          OUTDIR="${{ inputs.build-dir }}/metrics/${FGBIO_VERSION}";
+        else
+          OUTDIR="${{ inputs.build-dir }}/metrics/develop";
+          if [ -d "${OUTDIR}" ]; then
+            rm -rf "${OUTDIR}"
+          fi
+        fi
+        mkdir -p "${OUTDIR}"
+        bash run_metrics_doclet.sh
+        mv -v target/metrics.md ${OUTDIR}/index.md
+        if [[ "${{ env.LATEST }}" == "true" ]]; then
+          pushd ${{ inputs.build-dir }}/metrics
+          rm latest 
+          ln -s ${FGBIO_VERSION} latest
+          popd
+        fi
+    - name: Update JAR version in index.md
+      shell: bash -l {0}
+      run: |
+        sed -i -e 's_fgbio-.*.jar_fgbio-'${FGBIO_VERSION}'.jar_g' ${{ inputs.build-dir }}/index.md

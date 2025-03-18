@@ -1,0 +1,118 @@
+name: release
+
+on:
+  push:
+    tags: '\d+.\d+.\d+'
+
+jobs:
+  release:
+    name: Release, update tool, and metric markdown docs
+    needs: test
+    runs-on: ubuntu-latest
+    environment: github-actions
+    env:
+      SONATYPE_USER: ${{ secrets.SONATYPE_USER }}
+      SONATYPE_PASS: ${{ secrets.SONATYPE_PASS }}
+      PGP_PASSPHRASE: ${{ secrets.PGP_PASSPHRASE }}
+      PGP_SECRET: ${{ secrets.PGP_SECRET }}
+    steps:
+      - name: Check for secrets.SONATYPE_USER
+        if: ${{ env.SONATYPE_USER == '' }}
+        run: |
+          echo '"SONATYPE_USER" secret not set'
+          echo 'please go to "settings > secrets > actions" to create it'
+      - name: Check for secrets.SONATYPE_PASS
+        if: ${{ env.SONATYPE_PASS == '' }}
+        run: |
+          echo '"SONATYPE_PASS" secret not set'
+          echo 'please go to "settings > secrets > actions" to create it'
+      - name: Check for secrets.PGP_PASSPHRASE
+        if: ${{ env.PGP_PASSPHRASE== '' }}
+        run: |
+          echo '"PGP_PASSPHRASE" secret not set'
+          echo 'please go to "settings > secrets > actions" to create it'
+      - name: Check for secrets.PGP_SECRET
+        if: ${{ env.PGP_SECRET== '' }}
+        run: |
+          echo '"PGP_SECRET" secret not set'
+          echo 'please go to "settings > secrets > actions" to create it'
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          # To work with the `pull_request` or any other non-`push` even with git-auto-commit
+          ref: ${{ github.head_ref }}
+      - name: Generate the docs
+        uses: ./.github/actions/docs/
+        with:
+          latest: true
+      - name: Setup GPG
+        shell: bash -l {0}
+        run: |
+          echo $"PGP_SECRET" | base64 --decode | gpg --import --batch --yes
+      - name: Build and sign artifacts
+        shell: bash -l {0}
+        run: |
+          sbt +publishSigned
+      - name: Release to Sonatype
+        shell: bash -l {0}
+        run: |
+          sbt sonatypeRelease
+      - name: Commit generated docs
+        uses: nick-fields/retry@v3
+        with:
+          shell: bash -l {0}
+          max_attempts: 2
+          retry_on: error
+          polling_interval_seconds: 5
+          timeout_minutes: 5
+          command: |
+            pushd gh-pages
+            git add tools metrics index.md
+            git config --global user.name "Github Actions"
+            git config --global user.email "nobody@fulcrumgenomics.com"
+            git commit --all --message "release: ${FGBIO_VERSION}" --author "Nobody <nobody@fulcrumgenomics.com>" || echo "nothing to commit"
+            git rebase origin/gh-pages
+            git fetch origin
+            git push --atomic --set-upstream origin gh-pages
+            popd
+
+  make-changelog:
+    runs-on: ubuntu-24.04
+    needs: publish-to-pypi
+    outputs:
+      release_body: ${{ steps.git-cliff.outputs.content }}
+    steps:
+      - name: Checkout the Repository at the Tagged Commit
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          ref: ${{ github.ref_name }}
+          submodules: true
+
+      - name: Generate a Changelog
+        uses: orhun/git-cliff-action@v3
+        id: git-cliff
+        with:
+          config: pyproject.toml
+          args: --latest --verbose
+        env:
+          GITHUB_REPO: ${{ github.repository }}
+
+  make-github-release:
+    runs-on: ubuntu-24.04
+    environment: github
+    permissions:
+      contents: write
+      pull-requests: read
+    needs: make-changelog
+    steps:
+      - name: Create Draft Release
+        id: create_release
+        uses: softprops/action-gh-release@v2
+        with:
+          name: ${{ github.ref_name }}
+          body: ${{ needs.make-changelog.outputs.release_body }}
+          draft: false
+          prerelease: false
+
