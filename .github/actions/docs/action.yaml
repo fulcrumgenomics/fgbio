@@ -79,7 +79,7 @@ runs:
         mkdir -p "${OUTDIR}"
         java -cp target/scala-2.13/fgbio-*.jar com.fulcrumgenomics.internal.InternalTools BuildToolDocs -o "${OUTDIR}"
         if [[ "${{ env.LATEST }}" == "true" ]]; then
-          pushd "${OUTDIR}"/tools
+          pushd "${{ inputs.build-dir }}"/tools
           rm latest 
           ln -s ${FGBIO_VERSION} latest
           popd
@@ -97,7 +97,7 @@ runs:
             rm -rf "${OUTDIR}"
           fi
         fi
-        mkdir -p ${{ inputs.build-dir }}/metrics/${FGBIO_VERSION}
+        mkdir -p "${OUTDIR}"
         bash run_metrics_doclet.sh
         mv -v target/metrics.md ${OUTDIR}/index.md
         if [[ "${{ env.LATEST }}" == "true" ]]; then
