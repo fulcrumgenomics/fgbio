@@ -18,6 +18,16 @@ jobs:
         uses: olafurpg/setup-scala@v12
         with:
           java-version: adopt-openj9@1.8.0-292
+      - name: Cache .ivy2
+        uses: actions/cache@v4
+        with:
+          path: ~/.ivy2
+          key: ${{ runner.os }}-ivy2-${{ hashFiles('**/build.sbt') }}
+      - name: Cache .sbt
+        uses: actions/cache@v4
+        with:
+          path: ~/.sbt
+          key: ${{ runner.os }}-sbt-${{ hashFiles('**/build.properties') }}
       - name: Unit Tests
         run: |
           set -e
@@ -29,16 +39,6 @@ jobs:
           flags: unittests # optional
           fail_ci_if_error: true # optional (default = false)
           verbose: true # optional (default = false)
-      - name: Cache .ivy2
-        uses: actions/cache@v4
-        with:
-          path: ~/.ivy2
-          key: ${{ runner.os }}-ivy2-${{ hashFiles('**/build.sbt') }}
-      - name: Cache .sbt
-        uses: actions/cache@v4
-        with:
-          path: ~/.sbt
-          key: ${{ runner.os }}-sbt-${{ hashFiles('**/build.properties') }}
   release:
     if: github.repository == 'fulcrumgenomics/fgbio' && github.ref == 'refs/heads/main'
     
