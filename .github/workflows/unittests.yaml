@@ -76,7 +76,7 @@ jobs:
           # To work with the `pull_request` or any other non-`push` even with git-auto-commit
           ref: ${{ github.head_ref }}
       - name: Generate the docs
-        uses: ./github/workflows/docs.yaml
+        uses: ./github/actions/docs/
         with:
           build-dir: ./build
           latest: ${{ github.event_name == 'pull_request' }}
