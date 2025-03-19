@@ -4,7 +4,7 @@ on:
   push:
     tags: '\d+.\d+.\d+'
 
-on: []
+jobs:
   release:
     name: Release, update tool, and metric markdown docs
     needs: test
