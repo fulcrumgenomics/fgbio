@@ -36,10 +36,6 @@ jobs:
         run: |
           echo '"PGP_SECRET" secret not set'
           echo 'please go to "settings > secrets > actions" to create it'
-      - name: Check for required environment variables
-        uses: bash
-        run: |
-          pass
       - name: Checkout
         uses: actions/checkout@v4
         with:
