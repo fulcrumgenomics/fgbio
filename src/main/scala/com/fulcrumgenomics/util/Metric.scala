@@ -45,6 +45,7 @@ import scala.util.{Failure, Success}
 object Metric extends LazyLogging {
   val Delimiter: Char = '\t'
   val DelimiterAsString: String = s"$Delimiter"
+  val DefaultCollectionDelimiter: Char = ','
 
   /** A typedef for [[scala.Long]] to be used when representing counts. */
   type Count = Long
@@ -101,7 +102,9 @@ object Metric extends LazyLogging {
 
   /** Reads metrics from a set of lines.  The first line should be the header with the field names.  Each subsequent
     * line should be a single metric. */
-  def iterator[T <: Metric](lines: Iterator[String], source: Option[String] = None)(implicit tt: ru.TypeTag[T]): Iterator[T] = {
+  def iterator[T <: Metric](lines: Iterator[String],
+                            source: Option[String] = None,
+                            collectionDelimiter: Char = DefaultCollectionDelimiter)(implicit tt: ru.TypeTag[T]): Iterator[T] = {
     val clazz: Class[T]   = ReflectionUtil.typeTagToClass[T]
 
     def fail(lineNumber: Int,
@@ -127,15 +130,28 @@ object Metric extends LazyLogging {
 
     parser.zipWithIndex.map { case (row, rowIndex) =>
       forloop(from = 0, until = names.length) { i =>
+
         reflectiveBuilder.argumentLookup.forField(names(i)) match {
           case Some(arg) =>
-            val value = {
+            val value: String = {
               val tmp = row[String](i)
               if (tmp.isEmpty && arg.argumentType == classOf[Option[_]]) ReflectionUtil.SpecialEmptyOrNoneToken else tmp
             }
+            val values: Seq[String] = {
 
-            val argumentValue = ReflectionUtil.constructFromString(arg.argumentType, arg.unitType, value) match {
-              case Success(v) => v
+              // If we have a collection, then we need to check for the delimiter to rebuild it
+              if (value != ReflectionUtil.SpecialEmptyOrNoneToken &&
+                ReflectionUtil.isCollectionClass(arg.argumentType)) {
+                // If the argument type is equal to the unit type, then we need to return a single string value,
+                // otherwise, one value per unit
+                if (arg.argumentType == arg.unitType) Seq(value) else value.split(collectionDelimiter)
+              }
+              else {
+                Seq(value)
+              }
+            }
+            val argumentValue = ReflectionUtil.constructFromString(arg.argumentType, arg.unitType, values:_*) match {
+              case Success(v)   => v
               case Failure(thr) =>
                 fail(lineNumber=rowIndex+2, message=s"Could not construct value for column '${arg.name}' of type '${arg.typeDescription}' from '$value'", Some(thr))
             }
@@ -154,13 +170,21 @@ object Metric extends LazyLogging {
 
   /** Reads metrics from the given path.  The first line should be the header with the field names.  Each subsequent
     * line should be a single metric. */
+  def iterator[T <: Metric](path: Path, collectionDelimiter: Char)(implicit tt: ru.TypeTag[T]): Iterator[T] = iterator[T](Io.readLines(path), Some(path.toString), collectionDelimiter)
+
+  /** Reads metrics from the given path.  The first line should be the header with the field names.  Each subsequent
+    * line should be a single metric. */
   def iterator[T <: Metric](path: Path)(implicit tt: ru.TypeTag[T]): Iterator[T] = iterator[T](Io.readLines(path), Some(path.toString))
 
   /** Reads metrics from a set of lines.  The first line should be the header with the field names.  Each subsequent
     * line should be a single metric. */
-  def read[T <: Metric](lines: Iterator[String], source: Option[String] = None)(implicit tt: ru.TypeTag[T]): Seq[T] = {
-    iterator(lines, source).toSeq
+  def read[T <: Metric](lines: Iterator[String], source: Option[String] = None, collectionDelimiter: Char = DefaultCollectionDelimiter)(implicit tt: ru.TypeTag[T]): Seq[T] = {
+    iterator(lines, source, collectionDelimiter).toSeq
   }
+
+  /** Reads metrics from the given path.  The first line should be the header with the field names.  Each subsequent
+    * line should be a single metric. */
+  def read[T <: Metric](path: Path, collectionDelimiter: Char)(implicit tt: ru.TypeTag[T]): Seq[T] = read[T](Io.readLines(path), Some(path.toString), collectionDelimiter)
 
   /** Reads metrics from the given path.  The first line should be the header with the field names.  Each subsequent
     * line should be a single metric. */
@@ -234,6 +258,9 @@ trait Metric extends Product with Iterable[(String,String)] {
   /** Gets an iterator over the fields of this metric in the order they were defined.  Returns tuples of names and values */
   override def iterator: Iterator[(String,String)] = this.names.zip(this.values).iterator
 
+  /** The delimiter for collection types. */
+  protected def collectionDelimiter: Char = Metric.DefaultCollectionDelimiter
+
   /** @deprecated use [[formatValue]] instead. */
   @deprecated(message="Use formatValue instead.", since="0.5.0")
   protected def formatValues(value: Any): String = formatValue(value)
@@ -251,6 +278,27 @@ trait Metric extends Product with Iterable[(String,String)] {
     case d: Double if d.isNaN || d.isInfinity => d.toString
     case d: Double      => Metric.BigDoubleFormat.synchronized { Metric.BigDoubleFormat.format(d) }
     case e: EnumEntry   => e.entryName
+    case other if ReflectionUtil.isCollectionClass(other.getClass) =>
+      val resultType = other.getClass
+      // Condition for the collection type
+      val collection: Seq[String] = if (ReflectionUtil.isJavaCollectionClass(resultType)) {
+        other.asInstanceOf[java.util.Collection[AnyRef]].map(formatValue).toSeq
+      }
+      else if (ReflectionUtil.isSeqClass(resultType) || ReflectionUtil.isSetClass(resultType)) {
+        other.asInstanceOf[Iterable[_]].map(formatValue).toList
+      }
+      else {
+        throw new IllegalArgumentException(s"Unknown collection type '${resultType.getSimpleName}'")
+      }
+      // No commas in the values allowed.
+      if (collection.exists(_.contains(collectionDelimiter))) {
+        throw new IllegalArgumentException(s"Metric collection value contained a comma: $value")
+      }
+      if (collection.isEmpty) {
+        ReflectionUtil.SpecialEmptyOrNoneToken
+      } else {
+        collection.mkString(collectionDelimiter.toString)
+      }
     case other          => other.toString
   }
 

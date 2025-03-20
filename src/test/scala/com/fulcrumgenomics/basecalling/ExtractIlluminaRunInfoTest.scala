@@ -25,6 +25,7 @@
 
 package com.fulcrumgenomics.basecalling
 
+import com.fulcrumgenomics.commons.io.Io
 import com.fulcrumgenomics.illumina.RunInfo
 import com.fulcrumgenomics.testing.UnitSpec
 import com.fulcrumgenomics.util.{Metric, ReadStructure}
