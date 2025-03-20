@@ -37,7 +37,7 @@ import scala.util.{Failure, Success}
 /** Exception for errors building metrics. */
 case class MetricBuilderException
 (private val message: Option[String] = None, private val cause: Option[Throwable] = None)
-extends Exception(message.orNull, cause.orNull)
+extends Exception(message.getOrElse(""), cause.orNull)
 
 
 /** Class for building metrics of type [[T]].
@@ -58,15 +58,29 @@ class MetricBuilder[T <: Metric](source: Option[String] = None)(implicit tt: ru.
     * [[com.fulcrumgenomics.commons.util.DelimitedDataParser]].
     *
     * @param row        the row to parse.  All required fields must be given.  Can be in any order.
-    * @param headers    the header row
+    * @param headers    the header for the row, in the same order as values in the row, otherwise use the header in the
+    *                   row itself.  Providing this may be faster than using the value from the provided row.
     * @param lineNumber optionally, the line number when building a metric from a line in a file
     * @param ignoreExtra ignore extra fields (that are not in the metric)
     * @return a new instance of type [[T]]
     */
-  def fromRow(row: Row, headers: Option[Seq[String]] = None, lineNumber: Option[Int] = None, ignoreExtra: Boolean = true): T = {
-    val argMap = headers.getOrElse(row.header)  // NB: filter after map so the row lookup is faster
+  def fromRow(row: Row, headers: Option[Iterable[String]] = None, lineNumber: Option[Int] = None, ignoreExtra: Boolean = true): T = {
+    val argMap = headers.getOrElse(row.header) // NB: filter after map so the row lookup is faster
       .zipWithIndex
-      .map { case (header, i) => header -> row[String](i) }
+      .map { case (header, i) =>
+        val value = try {
+          row[String](i)
+        } catch {
+          case e: IndexOutOfBoundsException => {
+            throw buildFailure(
+              message    = f"Failed decoding: the ${i + 1}th field is missing, expected ${row.header.size} fields.",
+              throwable  = Some(e),
+              lineNumber = lineNumber
+            )
+          }
+        }
+        header -> value
+      }
       .filter { case (key, _) => !ignoreExtra || namesSet.contains(key) }
       .toMap
     fromArgMap(argMap=argMap, lineNumber=lineNumber)

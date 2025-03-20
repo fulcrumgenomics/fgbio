@@ -56,13 +56,16 @@ class MetricBuilderTest extends UnitSpec {
   "MetricBuilder.fromRow" should "build a metric from a Row" in {
     val path = makeTempFile("data", ".tab")
     Io.writeLines(path, Seq("name\tcount", "Foo Bar\t42", "Car Dog\t32"))
-    val parser = DelimitedDataParser(path=path, delimiter='\t')
-    val metrics = parser.zipWithIndex.map { case (row, lineNumber) =>
-      builder.fromRow(row=row, headers=parser.headers, lineNumber=Some(lineNumber))
-    }.toIndexedSeq
-    metrics.length shouldBe 2
-    metrics.head shouldBe MetricBuilderTestMetric(name="Foo Bar", count=42)
-    metrics.last shouldBe MetricBuilderTestMetric(name="Car Dog", count=32)
+    Seq(true, false).foreach { useParserHeaders =>
+      val parser  = DelimitedDataParser(path=path, delimiter='\t')
+      val headers = if (useParserHeaders) Some(parser.headers) else None
+      val metrics = parser.zipWithIndex.map { case (row, lineNumber) =>
+        builder.fromRow(row=row, headers=headers, lineNumber=Some(lineNumber))
+      }.toIndexedSeq
+      metrics.length shouldBe 2
+      metrics.head shouldBe MetricBuilderTestMetric(name = "Foo Bar", count = 42)
+      metrics.last shouldBe MetricBuilderTestMetric(name = "Car Dog", count = 32)
+    }
   }
 
   it should "build a metric if the row is missing an optional field" in {
@@ -70,7 +73,7 @@ class MetricBuilderTest extends UnitSpec {
     Io.writeLines(path, Seq("name\tnumber", "Foo Bar\t42", "Car Dog\t32"))
     val parser = DelimitedDataParser(path=path, delimiter='\t')
     val metrics = parser.zipWithIndex.map { case (row, lineNumber) =>
-      builder.fromRow(row=row, headers=parser.headers, lineNumber=Some(lineNumber))
+      builder.fromRow(row=row, lineNumber=Some(lineNumber))
     }.toIndexedSeq
     metrics.length shouldBe 2
     metrics.head shouldBe MetricBuilderTestMetric(name="Foo Bar")
@@ -82,7 +85,24 @@ class MetricBuilderTest extends UnitSpec {
     Io.writeLines(path, Seq("desc\tcount", "Foo Bar\t42", "Car Dog\t32"))
     val parser = DelimitedDataParser(path=path, delimiter='\t')
     parser.zipWithIndex.foreach { case (row, lineNumber) =>
-      a[MetricBuilderException] should be thrownBy builder.fromRow(row=row, headers=parser.headers, lineNumber=Some(lineNumber))
+      a[MetricBuilderException] should be thrownBy builder.fromRow(row=row, lineNumber=Some(lineNumber))
+    }
+  }
+
+  it should "fail if the row the header provided is missing a required field" in {
+    val path = makeTempFile("data", ".tab")
+    Io.writeLines(path, Seq("name\tcount", "Foo Bar\t42", "Car Dog\t32"))
+
+    // missing and too few
+    var parser = DelimitedDataParser(path=path, delimiter='\t')
+    parser.zipWithIndex.foreach { case (row, lineNumber) =>
+      a[MetricBuilderException] should be thrownBy builder.fromRow(row=row, headers=Some(Seq("count")), lineNumber=Some(lineNumber))
+    }
+
+    // missing and too many
+    parser = DelimitedDataParser(path=path, delimiter='\t')
+    parser.zipWithIndex.foreach { case (row, lineNumber) =>
+      a[MetricBuilderException] should be thrownBy builder.fromRow(row=row, headers=Some(Seq("name", "count", "foo")), lineNumber=Some(lineNumber))
     }
   }
 }

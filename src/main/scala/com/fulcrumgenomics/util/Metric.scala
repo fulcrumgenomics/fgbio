@@ -103,7 +103,7 @@ object Metric {
     if (lines.isEmpty) builder.fail(message="No header found", lineNumber=Some(1))
     val parser  = new DelimitedDataParser(lines=lines, delimiter=Delimiter, ignoreBlankLines=false, trimFields=true)
     parser.zipWithIndex.map { case (row, rowIndex) =>
-      builder.fromRow(row, headers=parser.headers, lineNumber=Some(rowIndex+2), ignoreExtra=false)
+      builder.fromRow(row, headers=Some(parser.headers), lineNumber=Some(rowIndex+2), ignoreExtra=false)
     }
   }
 
