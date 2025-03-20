@@ -33,7 +33,12 @@ import java.io.{PrintWriter, StringWriter}
 import scala.reflect.runtime.{universe => ru}
 import scala.util.{Failure, Success}
 
-case class MetricBuilderException private[util](message: Option[String] = None) extends Exception
+
+/** Exception for errors building metrics. */
+case class MetricBuilderException
+(private val message: Option[String] = None, private val cause: Option[Throwable] = None)
+extends Exception(message.orNull, cause.orNull)
+
 
 /** Class for building metrics of type [[T]].
   *
@@ -49,16 +54,17 @@ class MetricBuilder[T <: Metric](source: Option[String] = None)(implicit tt: ru.
   private val names             = Metric.names[T]
   private val namesSet          = names.toSet
 
-  /** Builds a metric from a [[ com.fulcrumgenomics.commons.util.Row]] produced from a
-    * [[ com.fulcrumgenomics.commons.util.DelimitedDataParser]].
+  /** Builds a metric from a [[com.fulcrumgenomics.commons.util.Row]] produced from a
+    * [[com.fulcrumgenomics.commons.util.DelimitedDataParser]].
     *
     * @param row        the row to parse.  All required fields must be given.  Can be in any order.
+    * @param headers    the header row
     * @param lineNumber optionally, the line number when building a metric from a line in a file
     * @param ignoreExtra ignore extra fields (that are not in the metric)
-    * @return
+    * @return a new instance of type [[T]]
     */
-  def fromRow(row: Row, headers: Seq[String], lineNumber: Option[Int] = None, ignoreExtra: Boolean = true): T = {
-    val argMap = headers  // NB: filter after map so the row lookup is faster
+  def fromRow(row: Row, headers: Option[Seq[String]] = None, lineNumber: Option[Int] = None, ignoreExtra: Boolean = true): T = {
+    val argMap = headers.getOrElse(row.header)  // NB: filter after map so the row lookup is faster
       .zipWithIndex
       .map { case (header, i) => header -> row[String](i) }
       .filter { case (key, _) => !ignoreExtra || namesSet.contains(key) }
@@ -150,7 +156,7 @@ class MetricBuilder[T <: Metric](source: Option[String] = None)(implicit tt: ru.
     }
     val fullMessage = s"$prefix '${clazz.getSimpleName}'$sourceMessage\n$message"
 
-    MetricBuilderException(message = Some(fullMessage))
+    MetricBuilderException(message=Some(fullMessage), cause=throwable)
   }
 
   /** Logs the throwable, if given, and throws a [[MetricBuilderException]] with information about when reading metrics fails
