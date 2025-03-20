@@ -115,7 +115,7 @@ class MetricTest extends UnitSpec with OptionValues with TimeLimits {
   }
 
   it should "fail when an unknown argument is given" in {
-    an[Exception] should be thrownBy Metric.read[TestMetric](Iterator("foo\tdoh\tbar", "fooValue\t1\t1"))
+    an[MetricBuilderException] should be thrownBy Metric.read[TestMetric](Iterator("foo\tdoh\tbar", "fooValue\t1\t1"))
   }
 
   it should "fail when an argument cannot be built from the given string" in {
@@ -321,5 +321,15 @@ class MetricTest extends UnitSpec with OptionValues with TimeLimits {
     val metricMixin = TestMetricWithEnumEntryMixin(TestEnumMixin.TestUpperCase)
     metricMixin.formatted(metricMixin.foo)            shouldBe "TESTUPPERCASE"             // Serialization
     TestEnumMixin.withName(metricMixin.foo.entryName) shouldBe TestEnumMixin.TestUpperCase // De-serialization
+  }
+
+  "Metric.iterator" should "fail if there are no lines" in {
+    a[MetricBuilderException] should be thrownBy Metric.iterator[TestFloatMetric](Iterator.empty)
+  }
+
+  it should "read in a metric from a set of lines" in {
+    val metrics: Seq[TestCharMetric] = Metric.iterator[TestCharMetric](lines=Iterator("c", "A", "a")).toIndexedSeq
+    metrics.head.c shouldBe 'A'
+    metrics.last.c shouldBe 'a'
   }
 }
