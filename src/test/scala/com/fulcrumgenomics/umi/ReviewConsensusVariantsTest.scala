@@ -29,9 +29,11 @@ import com.fulcrumgenomics.bam.api.SamOrder
 import com.fulcrumgenomics.commons.io.PathUtil
 import com.fulcrumgenomics.sopt.cmdline.ValidationException
 import com.fulcrumgenomics.testing.SamBuilder.{Minus, Plus}
-import com.fulcrumgenomics.testing.{SamBuilder, UnitSpec, VariantContextSetBuilder}
+import com.fulcrumgenomics.testing.VcfBuilder.Gt
+import com.fulcrumgenomics.testing.{SamBuilder, UnitSpec, VcfBuilder}
 import com.fulcrumgenomics.umi.ReviewConsensusVariants.ConsensusVariantReviewInfo
 import com.fulcrumgenomics.util.{Io, Metric}
+import com.fulcrumgenomics.vcf.api._
 import htsjdk.samtools.SAMFileHeader
 import htsjdk.samtools.reference.{ReferenceSequenceFile, ReferenceSequenceFileFactory}
 import htsjdk.samtools.util.IntervalList
@@ -87,11 +89,18 @@ class ReviewConsensusVariantsTest extends UnitSpec {
 
   lazy val ref: ReferenceSequenceFile = ReferenceSequenceFileFactory.getReferenceSequenceFile(refFasta)
 
-  lazy val header = {
+  lazy val intervalListHeader = {
     val h = new SAMFileHeader
     h.setSequenceDictionary(ref.getSequenceDictionary)
     h
   }
+
+  lazy val vcfDefaultHeader: VcfHeader = VcfBuilder.DefaultHeader.copy(
+    contigs = ref.getSequenceDictionary.getSequences.iterator().map { r =>
+      VcfContigHeader(r.getSequenceIndex, r.getSequenceName, Some(r.getSequenceLength)) } .toIndexedSeq
+  )
+
+//  lazy val vcfHeader = VcfHeader(ref.)
 
   // We're going to simulate raw reads and consensuses as if there were variants at:
   //    chr1:10
@@ -188,7 +197,7 @@ class ReviewConsensusVariantsTest extends UnitSpec {
     val rawOut  = outBase.getParent.resolve(s"${outBase.getFileName}.grouped.bam")
     val txtOut  = outBase.getParent.resolve(s"${outBase.getFileName}.txt")
     val intervals = makeTempFile("empty.", ".interval_list")
-    new IntervalList(header).write(intervals.toFile)
+    new IntervalList(intervalListHeader).write(intervals.toFile)
     new ReviewConsensusVariants(input=intervals, consensusBam=consensusBam, groupedBam=rawBam, ref=refFasta, output=outBase).execute()
 
     conOut.toFile.exists() shouldBe true
@@ -207,9 +216,9 @@ class ReviewConsensusVariantsTest extends UnitSpec {
     val txtOut  = outBase.getParent.resolve(s"${outBase.getFileName}.txt")
     val intervals = makeTempFile("empty.", ".vcf")
 
-    val vcfBuilder = VariantContextSetBuilder("s1")
-    vcfBuilder.header.setSequenceDictionary(header.getSequenceDictionary)
+    val vcfBuilder = VcfBuilder(vcfDefaultHeader.copy(samples=IndexedSeq("s1")))
     vcfBuilder.write(intervals)
+
     new ReviewConsensusVariants(input=intervals, consensusBam=consensusBam, groupedBam=rawBam, ref=refFasta, output=outBase).execute()
 
     conOut.toFile.exists() shouldBe true
@@ -227,12 +236,15 @@ class ReviewConsensusVariantsTest extends UnitSpec {
     val rawOut  = outBase.getParent.resolve(s"${outBase.getFileName}.grouped.bam")
     val txtOut  = outBase.getParent.resolve(s"${outBase.getFileName}.txt")
 
-    val vcfBuilder = new VariantContextSetBuilder(sampleNames=List("tumor"))
-    vcfBuilder.header.setSequenceDictionary(this.header.getSequenceDictionary)
-    vcfBuilder.addVariant(refIdx=0, start=10, variantAlleles=List("A","T"), genotypeAlleles=List("A","T"), genotypeAttributes=Map("AF" -> 0.01))
-    vcfBuilder.addVariant(refIdx=0, start=20, variantAlleles=List("A","C"), genotypeAlleles=List("A","C"), genotypeAttributes=Map("AF" -> 0.01))
-    vcfBuilder.addVariant(refIdx=0, start=30, variantAlleles=List("A","G"), genotypeAlleles=List("A","G"), genotypeAttributes=Map("AF" -> 0.01))
-    vcfBuilder.addVariant(refIdx=1, start=20, variantAlleles=List("C","T"), genotypeAlleles=List("C","T"), genotypeAttributes=Map("AD" -> Array(100,2)))
+    val vcfBuilder = VcfBuilder(vcfDefaultHeader.copy(
+      samples=IndexedSeq("tumor"),
+      infos = Seq(VcfInfoHeader(id="AF", count=VcfCount.OnePerAllele, kind=VcfFieldType("Float"), description="Allele Frequency"),
+        VcfInfoHeader(id="AD", count=VcfCount.OnePerAllele, kind=VcfFieldType("Integer"), description="Allele Depth)")))
+    )
+    vcfBuilder.add(chrom="chr1", pos=10, alleles=Seq("A", "T"), gts=Seq(Gt(sample="tumor", gt="0/1")),info=Map("AF" -> 0.01))
+    vcfBuilder.add(chrom="chr1", pos=20, alleles=Seq("A", "C"), gts=Seq(Gt(sample="tumor", gt="0/1")),info=Map("AF" -> 0.01))
+    vcfBuilder.add(chrom="chr1", pos=30, alleles=Seq("A", "G"), gts=Seq(Gt(sample="tumor", gt="0/1")),info=Map("AF" -> 0.01))
+    vcfBuilder.add(chrom="chr2", pos=20, alleles=Seq("C", "T"), gts=Seq(Gt(sample="tumor", gt="0/1")),info=Map("AD" -> Seq(100, 2)))
 
     new ReviewConsensusVariants(input=vcfBuilder.toTempFile(), consensusBam=consensusBam, groupedBam=rawBam, ref=refFasta, output=outBase).execute()
 

@@ -26,13 +26,13 @@
 package com.fulcrumgenomics.bam
 
 import java.nio.file.{Files, Path}
-
 import com.fulcrumgenomics.bam.api.SamOrder
 import com.fulcrumgenomics.commons.io.PathUtil
 import com.fulcrumgenomics.fasta.Converters.ToSAMSequenceDictionary
 import com.fulcrumgenomics.fasta.SequenceDictionary
 import com.fulcrumgenomics.testing.SamBuilder.{Minus, Plus}
-import com.fulcrumgenomics.testing.{ReferenceSetBuilder, SamBuilder, UnitSpec, VariantContextSetBuilder}
+import com.fulcrumgenomics.testing.VcfBuilder.Gt
+import com.fulcrumgenomics.testing.{ReferenceSetBuilder, SamBuilder, UnitSpec, VcfBuilder}
 import com.fulcrumgenomics.util.{Metric, Rscript}
 import htsjdk.samtools.util.{Interval, IntervalList}
 import com.fulcrumgenomics.util.Metric.Count
@@ -74,11 +74,11 @@ class ErrorRateByReadPositionTest extends UnitSpec with OptionValues {
   private val dict = SequenceDictionary.extract(ref)
 
   private val vcf = {
-    val builder = new VariantContextSetBuilder().setSequenceDictionary(dict)
-    builder.addVariant(1, 500, variantAlleles=List("A", "C"), genotypeAlleles=List("A", "C"))
-    builder.addVariant(2, 500, variantAlleles=List("C", "T"), genotypeAlleles=List("C", "T"))
-    builder.addVariant(3, 500, variantAlleles=List("G", "A"), genotypeAlleles=List("G", "A"))
-    builder.addVariant(4, 500, variantAlleles=List("T", "C"), genotypeAlleles=List("T", "C"))
+    val builder = VcfBuilder(samples=List("sample1"))
+    builder.add("chr1", 500, alleles=List("A", "C"), gts=Seq(Gt(sample="sample1", gt="0/1")))
+    builder.add("chr2", 500, alleles=List("C", "T"), gts=Seq(Gt(sample="sample1", gt="0/1")))
+    builder.add("chr3", 500, alleles=List("G", "A"), gts=Seq(Gt(sample="sample1", gt="0/1")))
+    builder.add("chr4", 500, alleles=List("T", "C"), gts=Seq(Gt(sample="sample1", gt="0/1")))
     builder.toTempFile()
   }
 
