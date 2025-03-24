@@ -31,6 +31,7 @@ import htsjdk.samtools
 import htsjdk.samtools.SamPairUtil.PairOrientation
 import htsjdk.samtools._
 import htsjdk.samtools.util.CoordMath
+import htsjdk.samtools.util.SequenceUtil
 
 // TODO long-term: methods for 5'end, 3' end, unclipped 5' end and unclipped 3' end
 // TODO long-term: replacement for alignment blocks?
@@ -184,17 +185,16 @@ trait SamRecord {
   }
   @inline final def mateEnd: Option[Int] = {
     require(paired && mateMapped, "Cannot get mate end position on read without a mapped mate.")
-    get[String]("MC").map(cig => mateStart + Cigar(cig).lengthOnTarget - 1)
+    mateCigar.map(cig => mateStart + cig.lengthOnTarget - 1)
   }
   @inline final def mateUnclippedStart: Option[Int] = {
     require(paired && mateMapped, "Cannot get mate unclipped start position on read without a mapped mate.")
-    get[String]("MC").map(cig => mateStart - Cigar(cig).iterator.takeWhile(_.operator.isClipping).map(_.length).sum)
+    mateCigar.map(cig => mateStart - cig.iterator.takeWhile(_.operator.isClipping).map(_.length).sum)
   }
   @inline final def mateUnclippedEnd: Option[Int] = {
     require(paired && mateMapped, "Cannot get mate unclipped end position on read without a mapped mate.")
-    get[String]("MC").map { cig =>
-      val cigar = Cigar(cig)
-      mateStart + cigar.lengthOnTarget - 1 + cigar.reverseIterator.takeWhile(_.operator.isClipping).map(_.length).sum
+    mateCigar.map { cig =>
+      mateStart + cig.lengthOnTarget - 1 + cig.reverseIterator.takeWhile(_.operator.isClipping).map(_.length).sum
     }
   }
   @inline final def matesOverlap: Option[Boolean] = {
@@ -239,6 +239,11 @@ trait SamRecord {
   // TODO long-term: replace these two methods with methods on [[Cigar]] to save creating alignment blocks in memory
   @inline final def refPosAtReadPos(pos: Int) = getReferencePositionAtReadPosition(pos)
   @inline final def readPosAtRefPos(pos: Int, returnLastBaseIfDeleted: Boolean) = getReadPositionAtReferencePosition(pos, returnLastBaseIfDeleted)
+
+  @inline final def refBasesFromMd(includeDeletedBases: Boolean = true): Array[Byte] = {
+    require(this.contains("MD"), s"Cannot get the reference bases without the MD tag for record with name: $name")
+    SequenceUtil.makeReferenceFromAlignment(this.asSam, includeDeletedBases).filter(SequenceUtil.isValidBase)
+  }
 
   ////////////////////////////////////////////////////////////////////////////
   // Non-wrapper methods.

@@ -25,7 +25,9 @@
 package com.fulcrumgenomics.alignment
 
 import com.fulcrumgenomics.FgBioDef._
+import com.fulcrumgenomics.util.Sequences
 import htsjdk.samtools.{CigarElement, CigarOperator, SAMRecord, Cigar => HtsJdkCigar}
+import scala.annotation.tailrec
 
 import scala.collection.mutable.ArrayBuffer
 
@@ -208,7 +210,7 @@ case class Cigar(elems: IndexedSeq[CigarElem]) extends Iterable[CigarElem] {
   def trailingSoftClippedBases: Int = stats.trailingSoftClippedBases
 
   /** Returns the number of bases that are hard-clipped at the start of the sequence. */
-  def leadingHardClippedBases = this.headOption.map { elem =>
+  def leadingHardClippedBases: Int = this.headOption.map { elem =>
     if (elem.operator == CigarOperator.H) elem.length else 0
   }.getOrElse(0)
 
@@ -216,7 +218,7 @@ case class Cigar(elems: IndexedSeq[CigarElem]) extends Iterable[CigarElem] {
   def leadingClippedBases: Int = leadingHardClippedBases + leadingSoftClippedBases
 
   /** Returns the number of bases that are hard-clipped at the end of the sequence. */
-  def trailingHardClippedBases = this.lastOption.map { elem =>
+  def trailingHardClippedBases: Int = this.lastOption.map { elem =>
     if (elem.operator == CigarOperator.H) elem.length else 0
   }.getOrElse(0)
 
@@ -307,6 +309,43 @@ object Alignment {
   /** Construct an alignment using Strings for sequences instead of byte arrays. */
   def apply(query: String, target: String, queryStart: Int, targetStart: Int, cigar: Cigar, score: Int): Alignment = {
     new Alignment(query.getBytes, target.getBytes, queryStart, targetStart, cigar, score)
+  }
+
+  /** Constructs a Cigar from a padded alignment. */
+  def cigarFrom(queryPadded: String, targetPadded: String, padChar: Char = '-', softClipChar: Char = 'X', useEqualsAndX: Boolean = false): Cigar = {
+    require(queryPadded.length == targetPadded.length,
+      f"Lengths differ for query ($queryPadded : ${queryPadded.length}) and target ($targetPadded :${targetPadded.length}"
+    )
+
+    /** Gets the operator in the alignment at the given index */
+    def operatorFrom(index: Int): CigarOperator = {
+      val query  = queryPadded(index)
+      val target = targetPadded(index)
+      val op = if (target == padChar) CigarOperator.I
+      else if (query == padChar) CigarOperator.D
+      else if (softClipChar == target) CigarOperator.S
+      else if (!useEqualsAndX) CigarOperator.M
+      else if (Sequences.compatible(query, target)) CigarOperator.EQ
+      else CigarOperator.X
+      op
+    }
+
+    @tailrec
+    /** Recursively builds a cigar starting at a given index.  */
+    def buildCigar(index: Int, elems: Seq[CigarElem], lastElem: CigarElem): Cigar = {
+      if (index == queryPadded.length) Cigar(elems.toIndexedSeq :+ lastElem)
+      else {
+        val nextOp = operatorFrom(index=index)
+        if (nextOp == lastElem.operator) {
+          buildCigar(index + 1, elems, lastElem.copy(length=lastElem.length + 1))
+        }
+        else {
+          buildCigar(index + 1, elems :+ lastElem, CigarElem(nextOp, length=1))
+        }
+      }
+    }
+
+    buildCigar(index=1, elems=Seq.empty, lastElem=CigarElem(operatorFrom(0), 1))
   }
 }
 

@@ -121,6 +121,16 @@ class AlignmentTest extends UnitSpec {
     Cigar("10M2D20M").reverse.toString shouldBe "20M2D10M"
   }
 
+  private def validatePaddedString(alignment: Alignment, expected: Seq[String], matchChar: Char = '|', mismatchChar: Char = '.', gapChar: Char = ' ', padChar: Char = '-'): Unit = {
+    val paddedString = alignment.paddedString(matchChar=matchChar, mismatchChar=mismatchChar, gapChar=gapChar, padChar=padChar)
+    val Seq(queryPadded, _, targetPadded) = paddedString
+    paddedString shouldBe expected
+    val useEqualsAndX = alignment.cigar.elems.map(_.operator).exists(op => op == Op.EQ || op == Op.X)
+    println(f"expected: ${alignment.cigar} useEqualsAndX: $useEqualsAndX")
+
+    Alignment.cigarFrom(queryPadded=queryPadded, targetPadded=targetPadded, padChar=padChar, useEqualsAndX=useEqualsAndX  ) shouldBe alignment.cigar
+  }
+
   /////////////////////////////////////////////////////////////////////////////
   // Tests for the Alignment class
   /////////////////////////////////////////////////////////////////////////////
@@ -133,7 +143,7 @@ class AlignmentTest extends UnitSpec {
        """.stripMargin('+').trim.linesIterator.toSeq
 
     val alignment = Alignment(expected.head.replace("-", ""), expected.last.replace("-", ""), 1, 1, Cigar("8M"), 1)
-    alignment.paddedString() shouldBe expected
+    validatePaddedString(alignment, expected)
   }
 
   it should "handle an alignment that has a single mismatch in it" in {
@@ -146,7 +156,7 @@ class AlignmentTest extends UnitSpec {
 
     Seq("8M", "6=1X1=").foreach { cigar =>
       val alignment = Alignment(expected.head.replace("-", ""), expected.last.replace("-", ""), 1, 1, Cigar(cigar), 1)
-      alignment.paddedString() shouldBe expected
+      validatePaddedString(alignment, expected)
     }
   }
 
@@ -159,7 +169,7 @@ class AlignmentTest extends UnitSpec {
        """.stripMargin('+').trim.linesIterator.toSeq
 
     val alignment = Alignment(expected.head.replace("-", ""), expected.last.replace("-", ""), 1, 1, Cigar("2=2D9=1D2=1I3="), 1)
-    alignment.paddedString() shouldBe expected
+    validatePaddedString(alignment, expected)
   }
 
   it should "handle a messy alignment with indels and mismatches" in {
@@ -171,7 +181,7 @@ class AlignmentTest extends UnitSpec {
        """.stripMargin('+').trim.linesIterator.toSeq
 
     val alignment = Alignment(expected.head.replace("-", ""), expected.last.replace("-", ""), 1, 1, Cigar("2M2D9M1D2M1I3M"), 1)
-    alignment.paddedString() shouldBe expected
+    validatePaddedString(alignment, expected)
   }
 
   Seq("5S10M", "10M5H", "5M50N5M", "50P10M").foreach { cigar =>
@@ -191,7 +201,7 @@ class AlignmentTest extends UnitSpec {
        """.stripMargin.trim.linesIterator.toSeq
 
     val alignment = Alignment(expected.head.replace(".", ""), expected.last.replace(".", ""), 1, 1, Cigar("2M2D9M1D2M1I3M"), 1)
-    alignment.paddedString(matchChar='+', mismatchChar='#', gapChar='-', padChar='.') shouldBe expected
+    validatePaddedString(alignment, expected, matchChar='+', mismatchChar='#', gapChar='-', padChar='.')
   }
 
   "Alignment.subByTarget" should "yield appropriate sub-alignment when all bases are aligned" in {
