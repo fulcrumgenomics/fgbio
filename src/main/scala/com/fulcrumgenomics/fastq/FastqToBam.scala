@@ -71,12 +71,15 @@ import htsjdk.samtools.{ReservedTagConstants, SAMFileHeader, SAMReadGroupRecord}
     |For more information on read structures see the
     |[Read Structure Wiki Page](https://github.com/fulcrumgenomics/fgbio/wiki/Read-Structures)
     |
-    |UMIs may be extracted from the read sequences, the read names, or both.  If `--extract-umis-from-read-names` is
+    |UMIs may be extracted from the read sequences, the read names (or comment), or both.  If `--extract-umis-from-read-names` is
     |specified, any UMIs present in the read names are extracted; read names are expected to be `:`-separated with
     |any UMIs present in the 8th field.  If this option is specified, the `--umi-qual-tag` option may not be used as
     |qualities are not available for UMIs in the read name. If UMI segments are present in the read structures those
     |will also be extracted.  If UMIs are present in both, the final UMIs are constructed by first taking the UMIs
-    |from the read names, then adding a hyphen, then the UMIs extracted from the reads.
+    |from the read names, then adding a hyphen, then the UMIs extracted from the reads.  If `--extract-umis-from-read-comment` is
+    |specified, any UMIs present in the read name comments are extracted; the read name comment is the text _after_
+    |the first white space in the read name (like a FASTA).  If the comment is `:`-separated, then the UMI will be
+    |extracted from the last field, otherwise the full comment will be used.
     |
     |The same number of input files and read structures must be provided, with one exception: if supplying exactly
     |1 or 2 fastq files, both of which are solely template reads, no read structures need be provided.
@@ -93,7 +96,10 @@ class FastqToBam
   @arg(flag='u', doc="Tag in which to store molecular barcodes/UMIs.")                         val umiTag: String = ConsensusTags.UmiBases,
   @arg(flag='q', doc="Tag in which to store molecular barcode/UMI qualities.")                 val umiQualTag: Option[String] = None,
   @arg(flag='Q', doc="Store the sample barcode qualities in the QT Tag.")                      val storeSampleBarcodeQualities: Boolean = false,
-  @arg(flag='n', doc="Extract UMI(s) from read names and prepend to UMIs from reads.")         val extractUmisFromReadNames: Boolean = false,
+  @arg(flag='n', doc="Extract UMI(s) from read names and prepend to UMIs from reads.", mutex=Array("extractUmisFromReadComment"))
+  val extractUmisFromReadNames: Boolean = false,
+  @arg(flag='c', doc="Extract UMI(s) from read name comment and prepend to UMIs from reads.", mutex=Array("extractUmisFromReadNames"))
+  val extractUmisFromReadComment: Boolean = false,
   @arg(          doc="Read group ID to use in the file header.")                               val readGroupId: String = "A",
   @arg(          doc="The name of the sequenced sample.")                                      val sample: String,
   @arg(          doc="The name/ID of the sequenced library.")                                  val library: String,
@@ -117,6 +123,7 @@ class FastqToBam
   validate(input.length == actualReadStructures.length, "input and read-structure must be supplied the same number of times.")
   validate(1 to 2 contains actualReadStructures.flatMap(_.templateSegments).size, "read structures must contain 1-2 template reads total.")
   validate(!extractUmisFromReadNames || umiQualTag.isEmpty, "Cannot extract UMI qualities when also extracting UMI from read names.")
+  validate(!extractUmisFromReadComment || umiQualTag.isEmpty, "Cannot extract UMI qualities when also extracting UMI from the comment in the read name.")
 
   override def execute(): Unit = {
     val encoding = qualityEncoding
@@ -166,7 +173,11 @@ class FastqToBam
       val templates     = subs.iterator.filter(_.kind == Template).toList
 
       // If requested, pull out the UMI(s) from the read name
-      val umiFromReadName = if (extractUmisFromReadNames) Umis.extractUmisFromReadName(fqs.head.name, strict=true) else None
+      val umiFromReadName = {
+        if (extractUmisFromReadNames) Umis.extractUmisFromReadName(fqs.head.name, strict=true)
+        else if (extractUmisFromReadComment) fqs.head.comment.flatMap(comment => Umis.extractUmisFromReadComment(comment, strict=true))
+        else None
+      }
 
       templates.zipWithIndex.map { case (read, index) =>
         // If the template read had no bases, we'll substitute in a single N @ Q2 below to keep htsjdk happy
