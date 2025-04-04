@@ -13,6 +13,10 @@ workflow_call:
         to set to develop (main branch)
       required: true
       type: boolean
+  outputs:
+    fgbio-version:
+      description: the fgbio version
+      value: ${{ steps.version-output.outputs.version }}
 
 runs:
   using: "composite"
@@ -110,3 +114,8 @@ runs:
       shell: bash -l {0}
       run: |
         sed -i -e 's_fgbio-.*.jar_fgbio-'${FGBIO_VERSION}'.jar_g' ${{ inputs.build-dir }}/index.md
+    - name: Set output
+      id: version-output
+      shell: bash -l {0}
+      run: |
+        echo "version=${FGBIO_VERSION}" >> GITHUB_OUTPUT

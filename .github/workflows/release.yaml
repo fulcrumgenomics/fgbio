@@ -42,14 +42,19 @@ jobs:
           fetch-depth: 0
           # To work with the `pull_request` or any other non-`push` even with git-auto-commit
           ref: ${{ github.head_ref }}
-      - name: Generate the docs
-        uses: ./.github/actions/docs/
-        with:
-          latest: true
       - name: Setup GPG
         shell: bash -l {0}
         run: |
           echo $"PGP_SECRET" | base64 --decode | gpg --import --batch --yes
+      - name: Generate the docs
+        id: docs
+        uses: ./.github/actions/docs/
+        with:
+          latest: true
+      - name: Copy assembly JAR into place
+        shell: bash -l {0}
+        run: |
+          cp -v target/scala-2.13/fgbio-*.jar fgbio-${{ steps.docs.outputs.fgbio-version }}.jar
       - name: Build and sign artifacts
         shell: bash -l {0}
         run: |
@@ -71,11 +76,16 @@ jobs:
             git add tools metrics index.md
             git config --global user.name "Github Actions"
             git config --global user.email "nobody@fulcrumgenomics.com"
-            git commit --all --message "release: ${FGBIO_VERSION}" --author "Nobody <nobody@fulcrumgenomics.com>" || echo "nothing to commit"
+            git commit --all --message "release: ${{ steps.docs.outputs.fgbio-version }}" --author "Nobody <nobody@fulcrumgenomics.com>" || echo "nothing to commit"
             git rebase origin/gh-pages
             git fetch origin
             git push --atomic --set-upstream origin gh-pages
             popd
+      - name: Upload fgbio.jar
+        uses: actions/upload-artifact@v4
+        with:
+          name: fgbio-${{ steps.docs.outputs.fgbio-version }}.jar
+          path: fgbio-${{ steps.docs.outputs.fgbio-version }}.jar
 
   make-changelog:
     runs-on: ubuntu-24.04
@@ -115,4 +125,6 @@ jobs:
           body: ${{ needs.make-changelog.outputs.release_body }}
           draft: false
           prerelease: false
+          files:
+            fgbio*jar
 
