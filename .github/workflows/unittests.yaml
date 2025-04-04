@@ -36,7 +36,12 @@ jobs:
       - name: Unit Tests
         run: |
           set -e
-          sbt +clean coverage +test && sbt coverageReport coverageAggregate && (find $HOME/.sbt -name "*.lock" | xargs rm) && (find $HOME/.ivy2 -name "ivydata-*.properties" | xargs rm)
+          sbt +clean coverage +test
+          sbt coverageReport coverageAggregate 
+          find $HOME/.sbt -name "*.lock" | wc -l
+          find $HOME/.sbt -name "*.lock" | xargs rm
+          find $HOME/.ivy2 -name "ivydata-*.properties" | wc -l
+          find $HOME/.ivy2 -name "ivydata-*.properties" | xargs rm
       - name: Code Coverage
         uses: codecov/codecov-action@v5.1.1
         with:
