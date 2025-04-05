@@ -69,6 +69,9 @@ jobs:
         run: |
           echo '"PGP_SECRET" secret not set'
           echo 'please go to "settings > secrets > actions" to create it'
+      - name: Export tty
+        run: |
+          echo "GPG_TTY=$(tty)" >> $GITHUB_ENV
       - name: Checkout
         uses: actions/checkout@v4
         with:
