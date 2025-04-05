@@ -1,4 +1,6 @@
 name: Tool and Metric Docs
+author: Nils Homer (@nh13)
+description: Builds the metric and tool markdown docs
 
 inputs:
   build-dir:

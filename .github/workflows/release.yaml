@@ -2,7 +2,7 @@ name: release
 
 on:
   push:
-    tags: '\d+.\d+.\d+'
+    tags: '[0-9]+.[0-9]+.[0-9]+'
 
 jobs:
   on-main-branch-check:
@@ -34,8 +34,9 @@ jobs:
   tests:
     name: tests
     needs: on-main-branch-check
-    environment: github-actions
     uses: "./.github/workflows/unittests.yaml"
+    secrets:
+      CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
 
   release:
     name: Release, update tool and metric markdown docs

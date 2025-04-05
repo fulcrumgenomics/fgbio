@@ -1,9 +1,16 @@
 name: unit tests
 
 on:
-  - push
-  - pull_request
-  - workflow_call
+  push:
+  pull_request:
+  workflow_call:
+    secrets:
+      CODECOV_TOKEN:
+        required: true
+      SONATYPE_USER:
+        required: false
+      SONATYPE_PASS:
+        required: false
 
 concurrency:
   group: unittest-${{ github.workflow }}-${{ github.ref }}
@@ -41,8 +48,8 @@ jobs:
           set -e
           sbt +clean coverage +test
           sbt coverageReport coverageAggregate 
-          (find $HOME/.sbt -name "*.lock" | xargs rm) || echo "No sbt lock files found in $HOME/.sbt"
-          (find $HOME/.ivy2 -name "ivydata-*.properties" | xargs rm) || echo "No ivy properties found in $HOME/.ivy2"
+          (find "$HOME/.sbt" -name "*.lock" -print0 | xargs -0 rm) || echo "No sbt lock files found in $HOME/.sbt"
+          (find "$HOME/.ivy2" -name "ivydata-*.properties" -print0 | xargs -0 rm) || echo "No ivy properties found in $HOME/.ivy2"
       - name: Code Coverage
         uses: codecov/codecov-action@v5.1.1
         with:
@@ -59,7 +66,7 @@ jobs:
       SONATYPE_USER: ${{ secrets.SONATYPE_USER }}
       SONATYPE_PASS: ${{ secrets.SONATYPE_PASS }}
     steps:
-      - uses: actions/checkout@v2
+      - uses: actions/checkout@v4
         with:
           fetch-depth: 0
       - name: Setup Scala
