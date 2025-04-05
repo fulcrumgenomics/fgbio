@@ -51,7 +51,7 @@ jobs:
           fail_ci_if_error: true # optional (default = false)
           verbose: true # optional (default = false)
   release:
-    if: ${{ github.repository == 'fulcrumgenomics/fgbio' && github.ref == 'refs/heads/main' }}
+    if: ${{ github.repository == 'fulcrumgenomics/fgbio' && github.ref == 'refs/heads/main' && github.event_name != 'workflow_call' }}
     needs: test
     runs-on: ubuntu-24.04
     environment: github-actions
@@ -73,7 +73,7 @@ jobs:
     name: Generate tool and metric markdown docs
     needs: test
     runs-on: ubuntu-24.04
-    if: ${{ github.event_name == 'pull_request' || (github.repository == 'fulcrumgenomics/fgbio' && github.ref == 'refs/heads/main') }}
+    if: ${{ github.event_name != 'workflow_call' && (github.event_name == 'pull_request' || (github.repository == 'fulcrumgenomics/fgbio' && github.ref == 'refs/heads/main')) }}
     steps:
       - name: Checkout
         id: checkout

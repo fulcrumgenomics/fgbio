@@ -34,6 +34,7 @@ jobs:
   tests:
     name: tests
     needs: on-main-branch-check
+    environment: github-actions
     uses: "./.github/workflows/unittests.yaml"
 
   release:
