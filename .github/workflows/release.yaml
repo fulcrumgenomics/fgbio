@@ -5,8 +5,39 @@ on:
     tags: '\d+.\d+.\d+'
 
 jobs:
+  on-main-branch-check:
+    runs-on: ubuntu-24.04
+    outputs:
+      on_main: ${{ steps.contains_tag.outputs.retval }}
+    steps:
+      # TODO: remove this and the `git branch -a` when the following PR
+      # is merged and released:
+      #   https://github.com/rickstaa/action-contains-tag/pull/18
+      - name: git config --global remote.origin.followRemoteHEAD never
+        shell: bash
+        run: git config --global remote.origin.followRemoteHEAD never
+
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: debug git branch -a
+        shell: bash
+        run: git branch -a
+
+      - uses: rickstaa/action-contains-tag@v1
+        id: contains_tag
+        with:
+          reference: "main"
+          tag: "${{ github.ref_name }}"
+
+  tests:
+    name: tests
+    needs: on-main-branch-check
+    uses: "./.github/workflows/unittests.yml"
+
   release:
-    name: Release, update tool, and metric markdown docs
+    name: Release, update tool and metric markdown docs
     needs: test
     runs-on: ubuntu-latest
     environment: github-actions
@@ -98,7 +129,6 @@ jobs:
         with:
           fetch-depth: 0
           ref: ${{ github.ref_name }}
-          submodules: true
 
       - name: Generate a Changelog
         uses: orhun/git-cliff-action@v3
