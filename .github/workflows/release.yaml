@@ -34,7 +34,7 @@ jobs:
   tests:
     name: tests
     needs: on-main-branch-check
-    uses: "./.github/workflows/unittests.yml"
+    uses: "./.github/workflows/unittests.yaml"
 
   release:
     name: Release, update tool and metric markdown docs
