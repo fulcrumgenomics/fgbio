@@ -115,14 +115,15 @@ jobs:
             git config --global user.email "nobody@fulcrumgenomics.com"
             git commit --all --message "release: ${FGBIO_VERSION}" --author "Nobody <nobody@fulcrumgenomics.com>" || echo "nothing to commit"
             git fetch origin
-            git rebase origin/gh-pages
+            git rebase -X ours origin/gh-pages
             git push --atomic --set-upstream origin gh-pages
             popd
           new_command_on_retry: |
             set -euo pipefail
             pushd ./build
             git fetch origin
-            git rebase origin/gh-pages
+            git rebase --abort
+            git rebase -X ours origin/gh-pages
             git push --atomic --set-upstream origin gh-pages
             popd
       - name: Upload fgbio.jar
