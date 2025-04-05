@@ -103,7 +103,6 @@ jobs:
       - name: Commit generated docs
         uses: nick-fields/retry@v3
         with:
-          shell: bash -l {0}
           max_attempts: 2
           retry_on: error
           polling_interval_seconds: 5
