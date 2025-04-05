@@ -11,7 +11,7 @@
 
 fgbio is a command line toolkit for working with genomic and particularly next generation sequencing data.
 
-See the [latest available tools here](tools/latest).
+See the [latest available released tools here](tools/latest) and the [latest development tools here](tools/develop).
 
 ## Quick Installation
 
