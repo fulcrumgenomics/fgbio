@@ -93,7 +93,7 @@ jobs:
         uses: ./.github/actions/docs/
         with:
           build-dir: ./build
-          latest: ${{ github.event_name == 'pull_request' }}
+          latest: false
       - name: Generate gh-pages preview (pull request only)
         uses: rossjrw/pr-preview-action@df22037db54ab6ee34d3c1e2b8810ac040a530c6 # v1.6.0
         if: ${{ github.event_name == 'pull_request' }}
@@ -109,12 +109,20 @@ jobs:
           polling_interval_seconds: 5
           timeout_minutes: 5
           command: |
+            set -euo pipefail
             pushd ./build
             git add tools metrics index.md
             git config --global user.name "Github Actions"
             git config --global user.email "nobody@fulcrumgenomics.com"
             git commit --all --message "devel: ${{ steps.checkout.outputs.ref }}" --author "Nobody <nobody@fulcrumgenomics.com>" || echo "nothing to commit"
-            git rebase origin/gh-pages
             git fetch origin
+            git rebase origin/gh-pages
+            git push --atomic --set-upstream origin gh-pages
+            popd
+          new_command_on_retry: |
+            set -euo pipefail
+            pushd ./build
+            git fetch origin
+            git rebase origin/gh-pages
             git push --atomic --set-upstream origin gh-pages
             popd

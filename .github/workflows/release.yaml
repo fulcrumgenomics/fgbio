@@ -103,18 +103,26 @@ jobs:
       - name: Commit generated docs
         uses: nick-fields/retry@v3
         with:
-          max_attempts: 2
+          max_attempts: 5
           retry_on: error
           polling_interval_seconds: 5
           timeout_minutes: 5
           command: |
+            set -euo pipefail
             pushd ./build
             git add tools metrics index.md
             git config --global user.name "Github Actions"
             git config --global user.email "nobody@fulcrumgenomics.com"
             git commit --all --message "release: ${FGBIO_VERSION}" --author "Nobody <nobody@fulcrumgenomics.com>" || echo "nothing to commit"
-            git rebase origin/gh-pages
             git fetch origin
+            git rebase origin/gh-pages
+            git push --atomic --set-upstream origin gh-pages
+            popd
+          new_command_on_retry: |
+            set -euo pipefail
+            pushd ./build
+            git fetch origin
+            git rebase origin/gh-pages
             git push --atomic --set-upstream origin gh-pages
             popd
       - name: Upload fgbio.jar

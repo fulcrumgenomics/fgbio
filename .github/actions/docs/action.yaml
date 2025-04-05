@@ -10,7 +10,7 @@ inputs:
     default: gh-pages
   latest:
     description: |
-      set to true if to set to the latest doc (release or preview), false
+      set to true if to set to the latest doc (release), false
       to set to develop (main branch)
     required: true
     type: boolean
