@@ -184,6 +184,8 @@ Contributions are welcome and encouraged.
 We will do our best to provide an initial response to any pull request or issue within one-week.
 For urgent matters, please contact us directly.
 
+See [Contributing](Contributing.md) for more details.
+
 ## Authors
 
 * [Tim Fennell](https://github.com/tfenne) (maintainer)
