@@ -120,7 +120,7 @@ jobs:
 
   make-changelog:
     runs-on: ubuntu-24.04
-    needs: publish-to-pypi
+    needs: release
     outputs:
       release_body: ${{ steps.git-cliff.outputs.content }}
     steps:
@@ -141,7 +141,7 @@ jobs:
 
   make-github-release:
     runs-on: ubuntu-24.04
-    environment: github
+    environment: github-actions
     permissions:
       contents: write
       pull-requests: read
