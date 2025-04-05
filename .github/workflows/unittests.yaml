@@ -1,6 +1,9 @@
 name: unit tests
 
-on: [push, pull_request]
+on:
+  - push
+  - pull_request
+  - workflow_call
 
 concurrency:
   group: unittest-${{ github.workflow }}-${{ github.ref }}
