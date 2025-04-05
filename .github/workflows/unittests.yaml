@@ -38,10 +38,8 @@ jobs:
           set -e
           sbt +clean coverage +test
           sbt coverageReport coverageAggregate 
-          find $HOME/.sbt -name "*.lock" | wc -l
-          find $HOME/.sbt -name "*.lock" | xargs rm
-          find $HOME/.ivy2 -name "ivydata-*.properties" | wc -l
-          find $HOME/.ivy2 -name "ivydata-*.properties" | xargs rm
+          (find $HOME/.sbt -name "*.lock" | xargs rm) || echo "No sbt lock files found in $HOME/.sbt"
+          (find $HOME/.ivy2 -name "ivydata-*.properties" | xargs rm) || echo "No ivy properties found in $HOME/.ivy2"
       - name: Code Coverage
         uses: codecov/codecov-action@v5.1.1
         with:
