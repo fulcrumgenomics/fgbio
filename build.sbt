@@ -102,11 +102,6 @@ lazy val commonSettings = Seq(
   resolvers            += "broad-snapshots" at "https://broadinstitute.jfrog.io/artifactory/libs-snapshot/",
   shellPrompt          := { state => "%s| %s> ".format(GitCommand.prompt.apply(state), version.value) },
   updateOptions        := updateOptions.value.withCachedResolution(true),
-  developers           := List(
-      Developer(id="nh13", name="Nils Homer", email="nils@fulcrumgenomics.com", url=url("https://fulcrumgenomics.com/")),
-      Developer(id="tfenne", name="Tim Fennell", email="tim@fulcrumgenomics.com", url=url("https://fulcrumgenomics.com/")),
-  ),
-  licenses             := List("MIT" -> new URL("https://opensource.org/license/mit"))
 ) ++ Defaults.coreDefaultSettings
 
 ////////////////////////////////////////////////////////////////////////////////////////////////
