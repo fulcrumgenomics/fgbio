@@ -38,7 +38,7 @@ jobs:
 
   release:
     name: Release, update tool and metric markdown docs
-    needs: test
+    needs: tests
     runs-on: ubuntu-latest
     environment: github-actions
     env:
