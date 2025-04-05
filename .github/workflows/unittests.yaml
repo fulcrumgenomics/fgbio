@@ -73,6 +73,7 @@ jobs:
     if: ${{ github.event_name == 'pull_request' || (github.repository == 'fulcrumgenomics/fgbio' && github.ref == 'refs/heads/main') }}
     steps:
       - name: Checkout
+        id: checkout
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
@@ -102,7 +103,7 @@ jobs:
             git add tools metrics index.md
             git config --global user.name "Github Actions"
             git config --global user.email "nobody@fulcrumgenomics.com"
-            git commit --all --message "devel: ${{ github.head_ref }}" --author "Nobody <nobody@fulcrumgenomics.com>" || echo "nothing to commit"
+            git commit --all --message "devel: ${{ steps.checkout.outputs.ref }}" --author "Nobody <nobody@fulcrumgenomics.com>" || echo "nothing to commit"
             git rebase origin/gh-pages
             git fetch origin
             git push --atomic --set-upstream origin gh-pages
