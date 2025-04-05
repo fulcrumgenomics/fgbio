@@ -129,7 +129,7 @@ jobs:
       - name: Upload fgbio.jar
         uses: actions/upload-artifact@v4
         with:
-          name: fgbio-${{ env.FGBIO_VERSION }}.jar
+          name: fgbio-jar
           path: fgbio-${{ env.FGBIO_VERSION }}.jar
 
   make-changelog:
@@ -161,9 +161,13 @@ jobs:
       pull-requests: read
     needs: make-changelog
     steps:
-      - uses: actions/download-artifact@v4
+      - name: Download fgbio.jar artifact
+        uses: actions/download-artifact@v4
         with:
-          pattern: 'fgbio-*jar'
+          name: fgbio-jar
+      - name: Display structure of downloaded files
+        shell: bash
+        run: ls -R
       - name: Create a Release
         id: create_release
         uses: softprops/action-gh-release@v2
@@ -172,6 +176,5 @@ jobs:
           body: ${{ needs.make-changelog.outputs.release_body }}
           draft: false
           prerelease: false
-          files:
-            fgbio-*jar
+          files: fgbio-*jar
 
