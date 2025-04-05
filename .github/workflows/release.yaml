@@ -86,6 +86,7 @@ jobs:
         id: docs
         uses: ./.github/actions/docs/
         with:
+          build-dir: ./build
           latest: true
       - name: Copy assembly JAR into place
         shell: bash -l {0}
@@ -108,7 +109,7 @@ jobs:
           polling_interval_seconds: 5
           timeout_minutes: 5
           command: |
-            pushd gh-pages
+            pushd ./build
             git add tools metrics index.md
             git config --global user.name "Github Actions"
             git config --global user.email "nobody@fulcrumgenomics.com"
