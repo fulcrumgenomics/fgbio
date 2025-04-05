@@ -1,22 +1,22 @@
 name: Tool and Metric Docs
 
-workflow_call:
-  inputs:
-    build-dir:
-      description: the sub-directory in which to build the documentation
-      required: false
-      type: string
-      default: gh-pages
-    latest:
-      description: |
-        set to true if to set to the latest doc (release or preview), false
-        to set to develop (main branch)
-      required: true
-      type: boolean
-  outputs:
-    fgbio-version:
-      description: the fgbio version
-      value: ${{ steps.version-output.outputs.version }}
+inputs:
+  build-dir:
+    description: the sub-directory in which to build the documentation
+    required: false
+    type: string
+    default: gh-pages
+  latest:
+    description: |
+      set to true if to set to the latest doc (release or preview), false
+      to set to develop (main branch)
+    required: true
+    type: boolean
+
+outputs:
+  fgbio-version:
+    description: the fgbio version
+    value: ${{ steps.version-output.outputs.version }}
 
 runs:
   using: "composite"
