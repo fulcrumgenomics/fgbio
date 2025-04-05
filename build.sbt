@@ -83,7 +83,9 @@ val primaryScalaVersion = "2.13.8"
 lazy val commonSettings = Seq(
   organization         := "com.fulcrumgenomics",
   organizationName     := "Fulcrum Genomics LLC",
+  organizationHomepage := Some(url("https://fulcrumgenomics.com/")),
   homepage             := Some(url("http://github.com/fulcrumgenomics/fgbio")),
+  scmInfo              := Some(ScmInfo(url("http://github.com/fulcrumgenomics/fgbio"), "scm:git@github.com:fulcrumgenomics/fgbio.git")),
   startYear            := Some(2015),
   scalaVersion         := primaryScalaVersion,
   crossScalaVersions   :=  Seq(primaryScalaVersion),
@@ -99,7 +101,12 @@ lazy val commonSettings = Seq(
   resolvers            += Resolver.mavenLocal,
   resolvers            += "broad-snapshots" at "https://broadinstitute.jfrog.io/artifactory/libs-snapshot/",
   shellPrompt          := { state => "%s| %s> ".format(GitCommand.prompt.apply(state), version.value) },
-  updateOptions        := updateOptions.value.withCachedResolution(true)
+  updateOptions        := updateOptions.value.withCachedResolution(true),
+  developers           := List(
+      Developer(id="nh13", name="Nils Homer", email="nils@fulcrumgenomics.com", url=url("https://fulcrumgenomics.com/")),
+      Developer(id="tfenne", name="Tim Fennell", email="tim@fulcrumgenomics.com", url=url("https://fulcrumgenomics.com/")),
+  ),
+  licenses             := List("MIT" -> new URL("https://opensource.org/license/mit"))
 ) ++ Defaults.coreDefaultSettings
 
 ////////////////////////////////////////////////////////////////////////////////////////////////
