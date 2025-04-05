@@ -160,7 +160,10 @@ jobs:
       pull-requests: read
     needs: make-changelog
     steps:
-      - name: Create Draft Release
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: 'fgbio-*jar'
+      - name: Create a Release
         id: create_release
         uses: softprops/action-gh-release@v2
         with:
@@ -169,5 +172,5 @@ jobs:
           draft: false
           prerelease: false
           files:
-            fgbio*jar
+            fgbio-*jar
 
