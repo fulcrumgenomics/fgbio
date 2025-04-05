@@ -78,7 +78,7 @@ jobs:
       - name: Setup GPG
         shell: bash -l {0}
         run: |
-          echo $"PGP_SECRET" | base64 --decode | gpg --import --batch --yes
+          echo "$PGP_SECRET" | base64 --decode | gpg --import --batch --yes
       - name: Generate the docs
         id: docs
         uses: ./.github/actions/docs/
