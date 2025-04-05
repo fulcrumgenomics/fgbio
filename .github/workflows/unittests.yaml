@@ -69,7 +69,7 @@ jobs:
   docs:
     name: Generate tool and metric markdown docs
     needs: test
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     if: ${{ github.event_name == 'pull_request' || (github.repository == 'fulcrumgenomics/fgbio' && github.ref == 'refs/heads/main') }}
     steps:
       - name: Checkout
@@ -93,13 +93,12 @@ jobs:
         #i.e. if: ${{ github.event_name != 'pull_request' }}
         if: ${{ github.repository == 'fulcrumgenomics/fgbio' && github.ref == 'refs/heads/main' }}
         with:
-          shell: bash -l {0}
           max_attempts: 5
           retry_on: error
           polling_interval_seconds: 5
           timeout_minutes: 5
           command: |
-            pushd gh-pages
+            pushd ./build
             git add tools metrics index.md
             git config --global user.name "Github Actions"
             git config --global user.email "nobody@fulcrumgenomics.com"
