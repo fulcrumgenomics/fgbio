@@ -90,7 +90,7 @@ jobs:
       - name: Copy assembly JAR into place
         shell: bash -l {0}
         run: |
-          cp -v target/scala-2.13/fgbio-*.jar fgbio-${{ steps.docs.outputs.fgbio-version }}.jar
+          cp -v target/scala-2.13/fgbio-*.jar fgbio-"${FGBIO_VERSION}".jar
       - name: Build and sign artifacts
         shell: bash -l {0}
         run: |
@@ -112,7 +112,7 @@ jobs:
             git add tools metrics index.md
             git config --global user.name "Github Actions"
             git config --global user.email "nobody@fulcrumgenomics.com"
-            git commit --all --message "release: ${{ steps.docs.outputs.fgbio-version }}" --author "Nobody <nobody@fulcrumgenomics.com>" || echo "nothing to commit"
+            git commit --all --message "release: ${FGBIO_VERSION}" --author "Nobody <nobody@fulcrumgenomics.com>" || echo "nothing to commit"
             git rebase origin/gh-pages
             git fetch origin
             git push --atomic --set-upstream origin gh-pages
@@ -120,8 +120,8 @@ jobs:
       - name: Upload fgbio.jar
         uses: actions/upload-artifact@v4
         with:
-          name: fgbio-${{ steps.docs.outputs.fgbio-version }}.jar
-          path: fgbio-${{ steps.docs.outputs.fgbio-version }}.jar
+          name: fgbio-${{ env.FGBIO_VERSION }}.jar
+          path: fgbio-${{ env.FGBIO_VERSION }}.jar
 
   make-changelog:
     runs-on: ubuntu-24.04
