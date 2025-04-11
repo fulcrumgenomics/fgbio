@@ -13,7 +13,7 @@ fgbio
 A set of tools to analyze genomic data with a focus on Next Generation Sequencing.
 
 <p>
-<a href float="left"="https://fulcrumgenomics.com"><img src=".github/logos/fulcrumgenomics.svg" alt="Fulcrum Genomics" height="100"/></a>
+<a href="https://fulcrumgenomics.com"><img src=".github/logos/fulcrumgenomics.svg" alt="Fulcrum Genomics" height="100"/></a>
 </p>
 
 
@@ -207,25 +207,25 @@ Sponsors provide support for `fgbio` through direct funding or employing contrib
 Public sponsors include:
 
 <p>
-<a href float="left"="https://fulcrumgenomics.com"><img src=".github/logos/fulcrumgenomics.svg" alt="Fulcrum Genomics" height="35"/></a>
+<a href="https://fulcrumgenomics.com"><img src=".github/logos/fulcrumgenomics.svg" alt="Fulcrum Genomics" height="35"/></a>
 &nbsp;
-<a href float="left"="https://twinstrandbio.com/"><img src=".github/logos/twinstrandbio.svg" alt="TwinStrand Biosciences" height="45"/></a>
+<a href="https://twinstrandbio.com/"><img src=".github/logos/twinstrandbio.svg" alt="TwinStrand Biosciences" height="45"/></a>
 &nbsp;
-<a href float="left"="https://www.jumpcodegenomics.com//"><img src=".github/logos/jumpcodegenomics.png" alt="Jumpcode Genomics" height="30"/></a>
+<a href="https://www.jumpcodegenomics.com//"><img src=".github/logos/jumpcodegenomics.png" alt="Jumpcode Genomics" height="30"/></a>
 &nbsp;
-<a href float="left"="https://www.igenomx.com//"><img src=".github/logos/igenomx.png" alt="iGenomX" height="30"/></a>
+<a href="https://www.igenomx.com//"><img src=".github/logos/igenomx.png" alt="iGenomX" height="30"/></a>
 &nbsp;
-<a href float="left"="https://myriad.com"><img src=".github/logos/myriad.png" alt="Myriad Genetics" height="35"/></a>
+<a href="https://myriad.com"><img src=".github/logos/myriad.png" alt="Myriad Genetics" height="35"/></a>
 &nbsp;
-<a href float="left"="https://missionbio.com"><img src=".github/logos/missionbio.svg" alt="Mission Bio" height="30"/></a>
+<a href="https://missionbio.com"><img src=".github/logos/missionbio.svg" alt="Mission Bio" height="30"/></a>
 &nbsp;
-<a href float="left"="https://singulargenomics.com"><img src=".github/logos/singulargenomics.svg" alt="Singular Genomics" height="30"/></a>
+<a href="https://singulargenomics.com"><img src=".github/logos/singulargenomics.svg" alt="Singular Genomics" height="30"/></a>
 &nbsp;
-<a href float="left"="https://verogen.com"><img src=".github/logos/verogen.jpg" alt="Verogen" height="30"/></a>
+<a href="https://verogen.com"><img src=".github/logos/verogen.jpg" alt="Verogen" height="30"/></a>
 &nbsp;
-<a href float="left"="https://idtdna.com"><img src=".github/logos/idtdna.png" alt="Integrated DNA Technologies" height="30"/></a>
+<a href="https://idtdna.com"><img src=".github/logos/idtdna.png" alt="Integrated DNA Technologies" height="30"/></a>
 &nbsp;
-<a href float="left"="https://strataoncology.com"><img src=".github/logos/strataoncology.png" alt="Strata Oncology" height="30"/></a>
+<a href="https://strataoncology.com"><img src=".github/logos/strataoncology.png" alt="Strata Oncology" height="30"/></a>
 </p>
 
 The full list of sponsors supporting `fgbio` is available in the [sponsor](https://github.com/sponsors/fulcrumgenomics) page.
