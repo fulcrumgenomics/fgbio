@@ -24,7 +24,6 @@
 
 package com.fulcrumgenomics.util
 
-import com.fulcrumgenomics.FgBioDef._
 import com.fulcrumgenomics.testing.UnitSpec
 import com.fulcrumgenomics.util.Sorter.Codec
 

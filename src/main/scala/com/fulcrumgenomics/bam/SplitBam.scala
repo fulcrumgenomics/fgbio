@@ -25,9 +25,6 @@
 
 package com.fulcrumgenomics.bam
 
-import java.io.Closeable
-import java.nio.file.Files
-
 import com.fulcrumgenomics.FgBioDef._
 import com.fulcrumgenomics.bam.api.{SamRecord, SamSource, SamWriter}
 import com.fulcrumgenomics.cmdline.{ClpGroups, FgBioTool}
@@ -38,7 +35,8 @@ import com.fulcrumgenomics.util.ProgressLogger
 import enumeratum.EnumEntry
 import htsjdk.samtools._
 
-import scala.collection.immutable.IndexedSeq
+import java.io.Closeable
+import java.nio.file.Files
 
 sealed trait SplitType extends EnumEntry
 object SplitType extends FgBioEnum[SplitType] {

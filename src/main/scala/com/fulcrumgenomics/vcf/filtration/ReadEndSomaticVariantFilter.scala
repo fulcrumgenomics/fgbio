@@ -287,7 +287,7 @@ class ATailingArtifactLikelihoodFilter(override val distance: Int = 2, override 
     }
     else {
       val congruentRef = if (congruentAlt == altAllele) refAllele else Sequences.complement(refAllele)
-      entry.baseInReadOrientation == (if (isRef) congruentRef else congruentAlt)
+      entry.baseInReadOrientation == (if (isRef) congruentRef else congruentAlt.toByte)
     }
   }
 }

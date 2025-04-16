@@ -24,10 +24,6 @@
 
 package com.fulcrumgenomics.vcf
 
-import java.nio.file.Paths
-import java.util
-import java.util.Comparator
-
 import com.fulcrumgenomics.FgBioDef._
 import com.fulcrumgenomics.cmdline.{ClpGroups, FgBioTool}
 import com.fulcrumgenomics.commons.io.{Io, PathUtil}
@@ -41,9 +37,12 @@ import htsjdk.variant.variantcontext.writer.{Options, VariantContextWriter, Vari
 import htsjdk.variant.variantcontext.{Genotype, GenotypeBuilder, VariantContext, VariantContextBuilder}
 import htsjdk.variant.vcf._
 
-import scala.annotation.tailrec
-import scala.jdk.CollectionConverters._
+import java.nio.file.Paths
+import java.util
+import java.util.Comparator
+import scala.annotation.{tailrec, unused}
 import scala.collection.mutable.ListBuffer
+import scala.jdk.CollectionConverters._
 
 @clp(
   description =
@@ -194,7 +193,7 @@ class AssessPhasing
                             metric: AssessPhasingMetric,
                             calledBlockLengthCounter: NumericCounter[Long],
                             truthBlockLengthCounter: NumericCounter[Long],
-                            writer: Option[VariantContextWriter] = None
+                            writer: Option[VariantContextWriter]
                            ): Unit = {
     logger.info(s"Assessing $contig")
 
@@ -210,7 +209,6 @@ class AssessPhasing
       val calledReader = new VCFFileReader(calledVcf.toFile, true)
       val detector = PhaseBlock.buildOverlapDetector(
         iterator     = toVariantContextIterator(calledReader, contig, contigLength),
-        dict         = dict,
         modifyBlocks = modifyBlocks
       )
       calledReader.close()
@@ -221,7 +219,6 @@ class AssessPhasing
       val truthReader = new VCFFileReader(truthVcf.toFile, true)
       val detector = PhaseBlock.buildOverlapDetector(
         iterator     = toVariantContextIterator(truthReader, contig, contigLength, intervalList=intervalListForContig),
-        dict         = dict,
         modifyBlocks = modifyBlocks
       )
       truthReader.close()
@@ -253,7 +250,7 @@ class AssessPhasing
     // Get the number of short and long switch errors, and other metrics
     /////////////////////////////////////////////////////////////////////////////////////////////////////////
     logger.info("Computing short switch errors")
-    metric.num_short_switch_errors = cigar.toShortSwitchErrorIndices().length
+    metric.num_short_switch_errors = cigar.toShortSwitchErrorIndices().length.toLong
 
     // To find the # of long switch errors, we need to ignore runs of consecutive indices.
     logger.info("Computing long switch errors")
@@ -273,8 +270,8 @@ class AssessPhasing
     /////////////////////////////////////////////////////////////////////////////////////////////////////////
     logger.info("Computing block metrics")
 
-    calledPhaseBlockDetector.getAll.iterator.foreach { block => calledBlockLengthCounter.count(block.length) }
-    truthPhaseBlockDetector.getAll.iterator.foreach { block => truthBlockLengthCounter.count(block.length) }
+    calledPhaseBlockDetector.getAll.iterator.foreach { block => calledBlockLengthCounter.count(block.length.toLong) }
+    truthPhaseBlockDetector.getAll.iterator.foreach { block => truthBlockLengthCounter.count(block.length.toLong) }
 
     calledReader.safelyClose()
     truthReader.safelyClose()
@@ -396,7 +393,7 @@ object PhaseBlock extends LazyLogging {
   /** Creates an overlap detector for blocks of phased variants.  Variants from the same block are found using the
     * "PS" tag.  The modify blocks option resolves overlapping blocks
     */
-  private[vcf] def buildOverlapDetector(iterator: Iterator[VariantContext], dict: SequenceDictionary, modifyBlocks: Boolean = true): OverlapDetector[PhaseBlock] = {
+  private[vcf] def buildOverlapDetector(iterator: Iterator[VariantContext], modifyBlocks: Boolean = true): OverlapDetector[PhaseBlock] = {
     val detector = new OverlapDetector[PhaseBlock](0, 0)
     val progress = new ProgressLogger(logger)
 
@@ -642,6 +639,7 @@ private[vcf] object PhaseCigar {
       case _ => true
     }.flatMap { case (t, c) => // collect metrics but only keep sites where either variant context (i.e. truth or call) is phased.
       val ctxs                  = Seq(t, c).flatten // NB: can be 1 or 2 contexts here
+      @unused // TODO: should this be unused or should it be used to set something upon the metric?
       val inTruthPhaseBlock     = ctxs.headOption.exists(truthPhaseBlockDetector.overlapsAny)
       val inCalledPhaseBlock    = ctxs.headOption.exists(calledPhaseBlockDetector.overlapsAny)
       val isTruthVariant        = t.isDefined
@@ -655,6 +653,7 @@ private[vcf] object PhaseCigar {
         metric.num_called += 1
         if (isCalledVariantPhased) metric.num_phased += 1
       }
+
       if (isTruthVariant) {
         metric.num_truth += 1
         if (isTruthVariantPhased) metric.num_truth_phased += 1
@@ -773,8 +772,8 @@ private[vcf] object PhaseCigar {
 
   /** Returns the cigar for the two variant contexts. */
   private[vcf] def contextsToMatchingOperator(truth: Option[VariantContext], call: Option[VariantContext]): Option[PhaseCigarOp] = (truth, call) match {
-    case (None, Some(c: VCtx))          => Some(CallOnly)
-    case (Some(t: VCtx), None)          => Some(TruthOnly)
+    case (None, Some(_: VCtx))          => Some(CallOnly)
+    case (Some(_: VCtx), None)          => Some(TruthOnly)
     case (Some(t: VCtx), Some(c: VCtx)) => Some(cigarTypeForVariantContexts(t, c))
     case _                              => unreachable()
   }
@@ -950,7 +949,7 @@ private[vcf] class PhaseCigar private(val cigar: Seq[PhaseCigarOp]) {
     /** Computes the # of long switch errors in the HMM output phased list. */
     def numLongSwitchErrors(states: List[Int]): Int = {
       if (states.length == 1) 0
-      else states.sliding(2).count { case Seq(first, last) => first != last }
+      else states.sliding(2).filter(_.length == 2).count(seq => seq.head != seq(1))
     }
 
     /** Backtracks to find the haplotype states, in reverse order. */

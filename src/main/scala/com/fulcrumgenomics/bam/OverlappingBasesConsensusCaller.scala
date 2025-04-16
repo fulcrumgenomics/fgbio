@@ -150,8 +150,8 @@ object OverlappingBasesConsensusCaller {
       if (basesCorrected > 0) templateMetric.corrected += 1
       templateMetric.total += 1
       basesMetric.total += template.primaryReads.map(_.length).sum
-      basesMetric.overlapping = stats.overlappingBases
-      basesMetric.corrected = basesCorrected
+      basesMetric.overlapping = stats.overlappingBases.toLong
+      basesMetric.corrected = basesCorrected.toLong
       template.allReads
     }
     new SelfClosingIterator(templateIterator, closer = () => {
@@ -194,7 +194,7 @@ object AgreementStrategy extends FgBioEnum[AgreementStrategy] {
   /** Call the consensus base and return a new base quality that is the maximum of the two base qualities. */
   case object MaxQual extends AgreementStrategy {
     def qual(qual1: PhredScore, qual2: PhredScore): (PhredScore, PhredScore) = {
-      val qual = PhredScore.cap(Math.max(qual1, qual2))
+      val qual = PhredScore.cap(Math.max(qual1.toInt, qual2.toInt))
       (qual, qual)
     }
   }

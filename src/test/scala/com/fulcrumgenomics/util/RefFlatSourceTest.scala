@@ -25,11 +25,11 @@
 
 package com.fulcrumgenomics.util
 
-import java.nio.file.Paths
-
 import com.fulcrumgenomics.fasta.{SequenceDictionary, SequenceMetadata}
 import com.fulcrumgenomics.testing.UnitSpec
 import com.fulcrumgenomics.util.GeneAnnotations.Exon
+
+import java.nio.file.Paths
 
 class RefFlatSourceTest extends UnitSpec {
 

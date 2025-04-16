@@ -24,13 +24,12 @@
 
 package com.fulcrumgenomics.bam.api
 
-import java.io.Closeable
-
 import com.fulcrumgenomics.FgBioDef._
 import com.fulcrumgenomics.bam.api.QueryType.QueryType
 import htsjdk.samtools._
 import htsjdk.samtools.util.{Interval, Locatable}
 
+import java.io.Closeable
 import scala.collection.compat._
 
 /** Companion to the [[SamSource]] class that provides factory methods for sources. */
@@ -93,7 +92,7 @@ class SamSource private(private val reader: SamReader) extends View[SamRecord] w
 
   private def newQueryInterval(region: Locatable): QueryInterval = {
     val contig = dict.get(region.getContig).getOrElse(
-      throw new NoSuchElementException("Contig '${region.getContig}' not in SAM/BAM header.")
+      throw new NoSuchElementException(s"Contig '${region.getContig}' not in SAM/BAM header.")
     )
     val start  = Math.max(region.getStart, 1);
     val end    = Math.min(region.getEnd, contig.length)

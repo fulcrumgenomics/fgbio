@@ -24,7 +24,6 @@
 
 package com.fulcrumgenomics.umi
 
-import java.lang.Math.min
 import com.fulcrumgenomics.FgBioDef._
 import com.fulcrumgenomics.bam.api.SamRecord
 import com.fulcrumgenomics.commons.util.LazyLogging
@@ -32,6 +31,8 @@ import com.fulcrumgenomics.umi.DuplexConsensusCaller._
 import com.fulcrumgenomics.umi.UmiConsensusCaller.ReadType.{ReadType, _}
 import com.fulcrumgenomics.umi.UmiConsensusCaller.{SimpleRead, SourceRead}
 import com.fulcrumgenomics.util.NumericTypes.PhredScore
+
+import java.lang.Math.min
 
 /**
   * Container for constant values and types used by the [[DuplexConsensusCaller]]

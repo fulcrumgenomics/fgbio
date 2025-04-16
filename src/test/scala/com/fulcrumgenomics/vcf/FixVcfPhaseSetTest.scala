@@ -37,8 +37,8 @@ class FixVcfPhaseSetTest extends UnitSpec with OptionValues {
   private case class TestCase(variant: Variant, genotype: Genotype, header: VcfHeader)
 
   private def testCase(builder: VcfBuilder = VcfBuilder(samples=Seq("sample")),
-                       phased: Boolean = false,
-                       phaseSet: Option[Any] = None
+                       phased: Boolean,
+                       phaseSet: Option[Any]
                        ): TestCase = {
     val gtAttrs = phaseSet.map { value => "PS" -> value }.toMap
     val gt = Gt(
@@ -133,7 +133,7 @@ class FixVcfPhaseSetTest extends UnitSpec with OptionValues {
   }
 
   // Compares genotypes individually to make it a bit easier to debug later
-  private def compareVariant(actual: Variant, expected: Variant): Unit = withClue(f"${actual.chrom}:${actual.pos}" ) {
+  private def compareVariant(actual: Variant, expected: Variant) = withClue(f"${actual.chrom}:${actual.pos}" ) {
     actual.genotypes.size shouldBe expected.genotypes.size
     actual.genotypes.zip(expected.genotypes).foreach { case (left, right) => left shouldBe right }
     actual shouldBe expected

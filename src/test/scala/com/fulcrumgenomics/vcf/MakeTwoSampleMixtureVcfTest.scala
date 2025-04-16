@@ -24,19 +24,22 @@
 
 package com.fulcrumgenomics.vcf
 
+import com.fulcrumgenomics.FgBioDef._
 import com.fulcrumgenomics.testing.{UnitSpec, VariantContextSetBuilder}
 import htsjdk.variant.variantcontext.Allele
-import com.fulcrumgenomics.FgBioDef._
 import htsjdk.variant.vcf.VCFFileReader
 
+import scala.annotation.nowarn
+
+@nowarn("msg=class VariantContextSetBuilder in package testing is deprecated")
 class MakeTwoSampleMixtureVcfTest extends UnitSpec {
   private val builder = new VariantContextSetBuilder(sampleNames = List("s1", "s2"))
-  private val (_A, _C, _G, _T, _N) = ("A", "C", "G", "T", Allele.NO_CALL_STRING)
+  private val (_A, _C,  _T, _N) = ("A", "C", "T", Allele.NO_CALL_STRING)
 
   def addVariant(pos: Int, refAllele: String, s1Allele1: String, s1Allele2: String, s2Allele1: String, s2Allele2: String) = {
     val alleles = List(refAllele) ++ Set(s1Allele1, s1Allele2, s2Allele1, s2Allele2).filterNot(_ == refAllele).filterNot(_ == _N)
-    builder.addVariant(start=pos, variantAlleles=alleles, sampleName=Some("s1"), genotypeAlleles=List(s1Allele1, s1Allele2))
-    builder.addVariant(start=pos, variantAlleles=alleles, sampleName=Some("s2"), genotypeAlleles=List(s2Allele1, s2Allele2))
+    builder.addVariant(start=pos.toLong, variantAlleles=alleles, sampleName=Some("s1"), genotypeAlleles=List(s1Allele1, s1Allele2))
+    builder.addVariant(start=pos.toLong, variantAlleles=alleles, sampleName=Some("s2"), genotypeAlleles=List(s2Allele1, s2Allele2))
   }
 
   addVariant(10, _A, _A, _A, _A, _A)  // Monomorphic, should not come out

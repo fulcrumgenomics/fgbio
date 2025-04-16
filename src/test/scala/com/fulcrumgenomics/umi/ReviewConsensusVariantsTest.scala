@@ -36,6 +36,8 @@ import htsjdk.samtools.SAMFileHeader
 import htsjdk.samtools.reference.{ReferenceSequenceFile, ReferenceSequenceFileFactory}
 import htsjdk.samtools.util.IntervalList
 
+import scala.annotation.nowarn
+
 object ReviewConsensusVariantsTest {
   val Fasta : Seq[String] =
     """
@@ -61,7 +63,8 @@ object ReviewConsensusVariantsTest {
     """.stripMargin.linesIterator.map(_.trim.replaceAll("\\s+", "\t")).filter(_.nonEmpty).toSeq
 }
 
-
+@nowarn("msg=class VariantContextSetBuilder in package testing is deprecated")
+@nowarn("msg=method apply in object VariantContextSetBuilder is deprecated")
 class ReviewConsensusVariantsTest extends UnitSpec {
   import ReviewConsensusVariantsTest._
 

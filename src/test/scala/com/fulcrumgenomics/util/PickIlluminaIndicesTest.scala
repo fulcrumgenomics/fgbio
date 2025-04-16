@@ -25,9 +25,9 @@
 
 package com.fulcrumgenomics.util
 
-import java.nio.file.Path
-
 import com.fulcrumgenomics.testing.UnitSpec
+
+import java.nio.file.Path
 
 /**
   * Tests for PickIlluminaIndices.

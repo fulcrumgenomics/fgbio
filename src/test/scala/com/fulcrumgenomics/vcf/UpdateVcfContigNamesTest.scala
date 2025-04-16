@@ -31,6 +31,9 @@ import com.fulcrumgenomics.fasta.SequenceDictionary
 import com.fulcrumgenomics.testing.{UnitSpec, VariantContextSetBuilder}
 import htsjdk.variant.vcf.VCFFileReader
 
+import scala.annotation.nowarn
+
+@nowarn("msg=class VariantContextSetBuilder in package testing is deprecated")
 class UpdateVcfContigNamesTest extends UnitSpec {
 
   private val testDir        = PathUtil.pathTo("src/test/resources/com/fulcrumgenomics/vcf/update_vcf_contig_names/")

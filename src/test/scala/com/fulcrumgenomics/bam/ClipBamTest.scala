@@ -54,7 +54,7 @@ class ClipBamTest extends UnitSpec with ErrorLogLevel with OptionValues {
 
   private case class StartAndEnd(start: Int, end: Int) {
     // NB: assumes FR reads
-    def checkClipping(r: SamRecord, fivePrime: Int, threePrime: Int): Unit = {
+    private[bam] def checkClipping(r: SamRecord, fivePrime: Int, threePrime: Int) = {
       if (r.negativeStrand) {
         r.start shouldBe (this.start + threePrime)
         r.end shouldBe (this.end - fivePrime)
@@ -70,9 +70,9 @@ class ClipBamTest extends UnitSpec with ErrorLogLevel with OptionValues {
     private val prior1 = StartAndEnd(r1)
     private val prior2 = StartAndEnd(r2)
     // NB: assumes FR reads
-    def checkClipping(r1: SamRecord, r2: SamRecord,
+    private[bam] def checkClipping(r1: SamRecord, r2: SamRecord,
                       readOneFivePrime: Int, readOneThreePrime: Int,
-                      readTwoFivePrime: Int, readTwoThreePrime: Int): Unit = {
+                      readTwoFivePrime: Int, readTwoThreePrime: Int) = {
       prior1.checkClipping(r=r1, readOneFivePrime, readOneThreePrime)
       prior2.checkClipping(r=r2, readTwoFivePrime, readTwoThreePrime)
     }
@@ -343,6 +343,7 @@ class ClipBamTest extends UnitSpec with ErrorLogLevel with OptionValues {
         metric.productIterator.toSeq should contain theSameElementsInOrderAs pair.productIterator.toSeq
       case metric if metric.read_type == ReadType.All =>
         metric.productIterator.toSeq should contain theSameElementsInOrderAs all.productIterator.toSeq
+      case _ => unreachable("This case should never happen!")
     }
   }
 
@@ -413,6 +414,7 @@ class ClipBamTest extends UnitSpec with ErrorLogLevel with OptionValues {
         metric.bases_clipped_overlapping shouldBe 0
       case metric if metric.read_type == ReadType.ReadOne | metric.read_type == ReadType.ReadTwo | metric.read_type == ReadType.Pair =>
         metric shouldBe ClippingMetrics(read_type=metric.read_type)
+      case _ => unreachable("This case should never happen!")
     }
   }
 

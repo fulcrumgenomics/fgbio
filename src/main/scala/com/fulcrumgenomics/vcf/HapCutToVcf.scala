@@ -25,22 +25,20 @@
 
 package com.fulcrumgenomics.vcf
 
-import java.io.{Closeable, InputStream}
-import java.util
-import java.util.NoSuchElementException
-
-import com.fulcrumgenomics.cmdline.{ClpGroups, FgBioTool}
-import com.fulcrumgenomics.util.Io
 import com.fulcrumgenomics.FgBioDef._
+import com.fulcrumgenomics.cmdline.{ClpGroups, FgBioTool}
 import com.fulcrumgenomics.commons.io.PathUtil
 import com.fulcrumgenomics.commons.util.LazyLogging
 import com.fulcrumgenomics.sopt._
+import com.fulcrumgenomics.util.Io
 import htsjdk.variant.variantcontext._
 import htsjdk.variant.variantcontext.writer.{Options, VariantContextWriter, VariantContextWriterBuilder}
 import htsjdk.variant.vcf._
 
-import scala.jdk.CollectionConverters._
+import java.io.{Closeable, InputStream}
+import java.util
 import scala.io.Source
+import scala.jdk.CollectionConverters._
 
 @clp(
   description =
@@ -102,8 +100,8 @@ class HapCutToVcf
   @arg(          doc="Fix IUPAC codes in the original VCF to be VCF 4.3 spec-compliant (ex 'R' -> 'A').  Does not support BCF inputs.")
   val fixAmbiguousReferenceAlleles: Boolean = false
 ) extends FgBioTool with LazyLogging {
-  import HapCutType._
   import HapCutToVcf.fixIupacBases
+  import HapCutType._
 
   Io.assertReadable(vcf)
   Io.assertReadable(input)
@@ -350,7 +348,7 @@ private class HapCutAndVcfMergingIterator(hapCutPath: FilePath,
         // unset the phase and remove the phasing set ID if the input has phase set
         builder.genotypes(sourceContext.getGenotypes().map { g =>
           val builder = new GenotypeBuilder(g).phased(false)
-          val attrs = g.getExtendedAttributes.asScala.filterNot { case (tag, value) =>  tag == HapCut1VcfHeaderLines.PhaseSetFormatTag }
+          val attrs = g.getExtendedAttributes.asScala.filterNot { case (tag, _) =>  tag == HapCut1VcfHeaderLines.PhaseSetFormatTag }
           builder.noAttributes()
           builder.attributes(attrs.asJava)
           builder.make()
@@ -597,8 +595,8 @@ private case class HapCutCall private(block: BlockInfo,
 }
 
 private object HapCutCall {
-  import HapCutType._
   import HapCutToVcf.fixIupacBases
+  import HapCutType._
 
   /** Parse a variant line.
     *
@@ -668,15 +666,17 @@ private[vcf] class HapCutReader(iterator: Iterator[String],
                                 private[this] val source: Option[{ def close(): Unit }] = None)
   extends Iterator[HapCutOffsetAndCall] with Closeable {
   import HapCutType._
+
   import scala.collection.mutable.ListBuffer
+  import scala.language.reflectiveCalls
 
   private val lineIterator = iterator.buffered
   val hapCutType: HapCutType = {
     if (lineIterator.isEmpty) Unknown // Default to true if the file is empty
     else {
       lineIterator.head match {
-        case HapCutReader.HapCut1BlockLinePattern(offset, len, phased, span, mecScore, fragments) => HapCut1
-        case HapCutReader.HapCut2BlockLinePattern(offset, len, phased, span, fragments)           => HapCut2
+        case HapCutReader.HapCut1BlockLinePattern(offset@_, len@_, phased@_, span@_, mecScore@_, fragments@_) => HapCut1
+        case HapCutReader.HapCut2BlockLinePattern(offset@_, len@_, phased@_, span@_, fragments@_)           => HapCut2
         case blockLine => throw new IllegalStateException("Could not parse block line: " + blockLine)
       }
     }
@@ -714,8 +714,6 @@ private[vcf] class HapCutReader(iterator: Iterator[String],
       this.firstOffset = call.offset + 1
       call
     }
-
-    def isEmpty: Boolean = this.callBuffer.isEmpty
 
     def nonEmpty: Boolean = this.callBuffer.nonEmpty
   }

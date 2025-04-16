@@ -25,8 +25,6 @@
 package com.fulcrumgenomics.fastq
 
 import com.fulcrumgenomics.FgBioDef._
-import com.fulcrumgenomics.alignment.Mode
-import com.fulcrumgenomics.alignment.Mode.findValues
 import com.fulcrumgenomics.commons.util.{NumericCounter, SimpleCounter}
 import enumeratum.EnumEntry
 
@@ -122,7 +120,7 @@ class QualityEncodingDetector {
 
   /** Returns the set of quality formats that are compatible with the qualities seen thus far. */
   def compatibleEncodings: List[QualityEncoding] = {
-    QualityEncoding.all.filter(enc => counter.forall { case (ch, count) => enc.asciiRange.contains(ch.toInt)} )
+    QualityEncoding.all.filter(enc => counter.forall { case (ch, _) => enc.asciiRange.contains(ch.toInt)} )
   }
 
   /** Returns true if the observed qualities are compatible with the encoding, false otherwise. */
@@ -140,7 +138,7 @@ class QualityEncodingDetector {
     else {
       compatible.map { enc =>
         val x = new NumericCounter[Int]()
-        this.counter.foreach { case (ch, count) => x.count(enc.toStandardNumeric(ch), count) }
+        this.counter.foreach { case (ch, count) => x.count(enc.toStandardNumeric(ch).toInt, count) }
         (enc, math.abs(x.mean() - q))
       }.sortBy(_._2).map(_._1)
     }

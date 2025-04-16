@@ -24,10 +24,10 @@
 
 package com.fulcrumgenomics.umi
 
+import com.fulcrumgenomics.sopt.cmdline.ValidationException
 import com.fulcrumgenomics.testing.{SamBuilder, UnitSpec}
 import com.fulcrumgenomics.umi.CorrectUmis.{UmiCorrectionMetrics, UmiMatch}
 import com.fulcrumgenomics.util.{Io, Metric}
-import com.fulcrumgenomics.sopt.cmdline.ValidationException
 
 class CorrectUmisTest extends UnitSpec {
   private val FixedUmis = Seq("AAAAAA", "CCCCCC", "GGGGGG", "TTTTTT")

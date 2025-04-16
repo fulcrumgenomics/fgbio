@@ -23,11 +23,11 @@
  */
 package com.fulcrumgenomics.bam
 
-import java.nio.file.Paths
-
 import com.fulcrumgenomics.bam.api.SamSource
 import com.fulcrumgenomics.sopt.cmdline.ValidationException
 import com.fulcrumgenomics.testing.UnitSpec
+
+import java.nio.file.Paths
 
 /**
   * Tests running SetMateInformation on a few different input files. Does not exhaustively

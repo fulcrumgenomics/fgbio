@@ -191,7 +191,7 @@ class SampleSheetTest extends UnitSpec {
   "SampleSheet.get" should "get the ith sample" in {
     val sampleSheet = SampleSheet(testDir.resolve("SampleSheet.csv"))
     val samples = sampleSheet.toList
-    samples.zipWithIndex.foreach { case (sample, i) =>
+    samples.zipWithIndex.foreach { case (_, i) =>
         sampleSheet.get(i) shouldBe samples(i)
     }
   }

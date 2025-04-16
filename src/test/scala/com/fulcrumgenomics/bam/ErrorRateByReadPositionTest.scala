@@ -25,18 +25,19 @@
 
 package com.fulcrumgenomics.bam
 
-import java.nio.file.{Files, Path}
-
 import com.fulcrumgenomics.bam.api.SamOrder
 import com.fulcrumgenomics.commons.io.PathUtil
 import com.fulcrumgenomics.fasta.Converters.ToSAMSequenceDictionary
 import com.fulcrumgenomics.fasta.SequenceDictionary
 import com.fulcrumgenomics.testing.SamBuilder.{Minus, Plus}
 import com.fulcrumgenomics.testing.{ReferenceSetBuilder, SamBuilder, UnitSpec, VariantContextSetBuilder}
+import com.fulcrumgenomics.util.Metric.Count
 import com.fulcrumgenomics.util.{Metric, Rscript}
 import htsjdk.samtools.util.{Interval, IntervalList}
-import com.fulcrumgenomics.util.Metric.Count
 import org.scalatest.OptionValues
+
+import java.nio.file.{Files, Path}
+import scala.annotation.nowarn
 
 
 // Old-style metrics that did not include the optional non-collapsed substitution types
@@ -74,6 +75,7 @@ class ErrorRateByReadPositionTest extends UnitSpec with OptionValues {
   private val dict = SequenceDictionary.extract(ref)
 
   private val vcf = {
+    @nowarn("msg=class VariantContextSetBuilder in package testing is deprecated")
     val builder = new VariantContextSetBuilder().setSequenceDictionary(dict)
     builder.addVariant(1, 500, variantAlleles=List("A", "C"), genotypeAlleles=List("A", "C"))
     builder.addVariant(2, 500, variantAlleles=List("C", "T"), genotypeAlleles=List("C", "T"))
@@ -97,15 +99,15 @@ class ErrorRateByReadPositionTest extends UnitSpec with OptionValues {
 
   "ErrorRateByReadPosition" should "work on an empty BAM" in {
     val builder = newSamBuilder
-    val (out, pre) = outputAndPrefix
+    val (_, pre) = outputAndPrefix
     val metrics = new ErrorRateByReadPosition(input=builder.toTempFile(), output=Some(pre), ref=ref).computeMetrics()
     metrics.size shouldBe 0
   }
 
   it should "work on a file with all unmapped reads" in {
     val builder = newSamBuilder
-    Range.inclusive(1, 20).foreach { i => builder.addFrag(unmapped=true) }
-    val (out, pre) = outputAndPrefix
+    Range.inclusive(1, 20).foreach { _ => builder.addFrag(unmapped=true) }
+    val (_, pre) = outputAndPrefix
     val metrics = new ErrorRateByReadPosition(input=builder.toTempFile(), output=Some(pre), ref=ref).computeMetrics()
     metrics.size shouldBe 0
   }
@@ -118,7 +120,7 @@ class ErrorRateByReadPositionTest extends UnitSpec with OptionValues {
       else rec.bases = "AAAAAAAAAAAAAAAAACGT"
     }
 
-    val (out, pre) = outputAndPrefix
+    val (_, pre) = outputAndPrefix
     val metrics = new ErrorRateByReadPosition(input=builder.toTempFile(), output=Some(pre), ref=ref).computeMetrics()
     metrics.size shouldBe 40
     metrics.foreach { m =>
@@ -149,7 +151,7 @@ class ErrorRateByReadPositionTest extends UnitSpec with OptionValues {
     val builder = newSamBuilder
     builder.addPair(contig=0, start1=100, start2=100, bases1="A"*20  , bases2="A"*20   )
     builder.addPair(contig=1, start1=100, start2=200, bases1="AANA"*5, bases2="AANA"*5 )
-    val (out, pre) = outputAndPrefix
+    val (_, pre) = outputAndPrefix
     val metrics = new ErrorRateByReadPosition(input=builder.toTempFile(), output=Some(pre), ref=ref).computeMetrics()
     metrics.size shouldBe 40
     metrics.map(_.bases_total).sum shouldBe 30 // nothing on contig 0, and 3/4 on contig 1
@@ -169,7 +171,7 @@ class ErrorRateByReadPositionTest extends UnitSpec with OptionValues {
     val intervalPath = makeTempFile("regions.", ".interval_list")
     intervals.write(intervalPath.toFile)
 
-    val (out, pre) = outputAndPrefix
+    val (_, pre) = outputAndPrefix
     val metrics = new ErrorRateByReadPosition(input=builder.toTempFile(), output=Some(pre), ref=ref, intervals=Some(intervalPath)).computeMetrics()
     metrics.forall(_.error_rate == 0.0) shouldBe true
     metrics.map(_.bases_total).sum shouldBe (3 * 2 * 20)

@@ -24,8 +24,6 @@
 
 package com.fulcrumgenomics.personal.nhomer
 
-import java.nio.file.Path
-
 import com.fulcrumgenomics.FgBioDef._
 import com.fulcrumgenomics.cmdline.ClpGroups.Personal
 import com.fulcrumgenomics.cmdline.FgBioTool
@@ -34,6 +32,8 @@ import com.fulcrumgenomics.commons.io.Io
 import com.fulcrumgenomics.commons.util.LazyLogging
 import com.fulcrumgenomics.sopt._
 import htsjdk.samtools.reference.ReferenceSequenceFileFactory
+
+import java.nio.file.Path
 
 @clp(
   description="Generates a list of `freebayes`/`bamtools` region specifiers.",

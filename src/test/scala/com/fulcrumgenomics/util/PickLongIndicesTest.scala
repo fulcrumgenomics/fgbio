@@ -24,9 +24,8 @@
 
 package com.fulcrumgenomics.util
 
-import com.fulcrumgenomics.FgBioDef._
-import com.fulcrumgenomics.testing.UnitSpec
 import com.fulcrumgenomics.sopt.cmdline.ValidationException
+import com.fulcrumgenomics.testing.UnitSpec
 
 class PickLongIndicesTest extends UnitSpec {
 

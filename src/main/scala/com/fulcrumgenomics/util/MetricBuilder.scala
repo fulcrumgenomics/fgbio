@@ -25,7 +25,7 @@
 
 package com.fulcrumgenomics.util
 
-import com.fulcrumgenomics.commons.CommonsDef.{forloop, unreachable}
+import com.fulcrumgenomics.commons.CommonsDef.forloop
 import com.fulcrumgenomics.commons.reflect.{ReflectionUtil, ReflectiveBuilder}
 import com.fulcrumgenomics.commons.util.{LazyLogging, Row}
 

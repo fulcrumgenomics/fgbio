@@ -1,20 +1,19 @@
 package com.fulcrumgenomics.vcf
 
 import com.fulcrumgenomics.FgBioDef._
+import com.fulcrumgenomics.cmdline.{ClpGroups, FgBioTool}
 import com.fulcrumgenomics.commons.io.Io
 import com.fulcrumgenomics.commons.util.LazyLogging
 import com.fulcrumgenomics.fasta.SequenceDictionary
-import com.fulcrumgenomics.sopt.{arg, clp}
 import com.fulcrumgenomics.sopt.cmdline.ValidationException
+import com.fulcrumgenomics.sopt.{arg, clp}
 import com.fulcrumgenomics.util.{Metric, ProgressLogger}
-import com.fulcrumgenomics.vcf.api.Allele.NoCallAllele
-import com.fulcrumgenomics.vcf.api.{Allele, Genotype, Variant, VcfCount, VcfFieldType, VcfFormatHeader, VcfHeader, VcfSource, VcfWriter}
-import com.fulcrumgenomics.cmdline.{ClpGroups, FgBioTool}
 import com.fulcrumgenomics.vcf.DownsampleVcf.{downsampleAndRegenotype, winnowVariants}
+import com.fulcrumgenomics.vcf.api.Allele.NoCallAllele
+import com.fulcrumgenomics.vcf.api._
 
 import scala.math.log10
 import scala.util.Random
-import scala.tools.nsc.doc.html.HtmlTags
 
 object DownsampleVcf extends LazyLogging {
   /** Removes variants that are within a specified distance from a previous variant.
@@ -99,7 +98,7 @@ object DownsampleVcf extends LazyLogging {
   def downsampleAndRegenotype(gt: Genotype, proportion: Double, random: Random, epsilon: Double): Genotype = {
     val oldAds = gt.getOrElse[IndexedSeq[Int]]("AD", throw new Exception(s"AD tag not found for sample ${gt.sample}"))
     val newAds = downsampleADs(oldAds, proportion, random)
-    val likelihoods = Likelihoods(newAds)
+    val likelihoods = Likelihoods(newAds, epsilon = epsilon)
     val pls = likelihoods.pls
     val calls = likelihoods.mostLikelyCall(gt.alleles.toSeq)
     gt.copy(attrs=Map("PL" -> pls, "AD" -> newAds, "DP" -> newAds.sum), calls=calls)

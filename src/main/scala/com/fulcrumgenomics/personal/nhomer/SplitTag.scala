@@ -31,8 +31,6 @@ import com.fulcrumgenomics.commons.io.Io
 import com.fulcrumgenomics.sopt._
 import htsjdk.samtools.util.CloserUtil
 
-import scala.collection.compat._
-
 @clp(
   description = "Splits an optional tag in a SAM or BAM into multiple optional tags.",
   group = ClpGroups.Personal

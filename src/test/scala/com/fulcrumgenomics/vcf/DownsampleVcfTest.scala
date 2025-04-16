@@ -1,13 +1,12 @@
 package com.fulcrumgenomics.vcf
 
 import com.fulcrumgenomics.sopt.cmdline.ValidationException
-import com.fulcrumgenomics.testing.VcfBuilder
 import com.fulcrumgenomics.testing.VcfBuilder.Gt
+import com.fulcrumgenomics.testing.{UnitSpec, VcfBuilder}
 import com.fulcrumgenomics.util.Metric
+import com.fulcrumgenomics.vcf.DownsampleVcf.{Likelihoods, downsampleAndRegenotype}
 import com.fulcrumgenomics.vcf.api.Allele.SimpleAllele
 import com.fulcrumgenomics.vcf.api.{Allele, AlleleSet, Genotype, Variant}
-import com.fulcrumgenomics.testing.UnitSpec
-import com.fulcrumgenomics.vcf.DownsampleVcf.{Likelihoods, downsampleAndRegenotype}
 
 import scala.util.Random
 
@@ -15,7 +14,7 @@ class DownsampleVcfTest extends UnitSpec {
 
   private val dict = VcfBuilder(Seq.empty).header.dict
   
-  private def winnow(variants: Iterator[Variant], window: Int = 10): Iterator[Variant] = {
+  private def winnow(variants: Iterator[Variant], window: Int): Iterator[Variant] = {
     DownsampleVcf.winnowVariants(variants, window, dict)
   }
   
@@ -222,15 +221,17 @@ class DownsampleVcfTest extends UnitSpec {
 
   it should "return the same results for biallelic and generalized algorithm" in {
     val e = 0.01
+    // TODO: figure out what the second item in the collection was meant for.
     val cases: IndexedSeq[(IndexedSeq[Int], IndexedSeq[Double])] = IndexedSeq(
       (IndexedSeq(1, 0), IndexedSeq(1 - e, 0.5, e)),
       (IndexedSeq(0, 1), IndexedSeq(e, 0.5, 1 - e)),
       (IndexedSeq(1, 1), IndexedSeq((1 - e) * e, 0.25, (1 - e) * e)),
       (IndexedSeq(2, 0), IndexedSeq(math.pow((1 - e), 2), 0.25, math.pow(e, 2))),
     )
-    cases.foreach { case (input, output) =>
+    cases.foreach { case (input, _) =>
       val biallelic = Likelihoods(2, DownsampleVcf.Likelihoods.biallelic(input(0), input(1), e))
       val generalized = Likelihoods(2, DownsampleVcf.Likelihoods.generalized(input, e))
+      biallelic.pls should contain theSameElementsInOrderAs biallelic.pls
       biallelic.pls should contain theSameElementsInOrderAs generalized.pls
     }
   }
@@ -412,7 +413,6 @@ class DownsampleVcfTest extends UnitSpec {
   testing DownsampleVcf.downsampleAndRegenotype on downsampleAndRegenotypes
    */
   private def makeTriallelicVariant(ref: String, alt1: String, alt2: String, ads: IndexedSeq[Int], sample: String ="test"): Variant = {
-    val likelihoods = Likelihoods(ads)
     val alleles = AlleleSet(ref=SimpleAllele(ref), alts=IndexedSeq(Allele(alt1), Allele(alt2)))
     Variant(chrom="1",
             pos=10,
@@ -485,7 +485,7 @@ class DownsampleVcfTest extends UnitSpec {
 
         val vs = readVcfRecs(outVcf)
         val expectedLength = if (winnow) { 5 } else { 6 }
-        vs should have length expectedLength
+        vs should have length expectedLength.toLong
 
         val ad0 = vs(0).genotypes("test1")[IndexedSeq[Int]]("AD")
         ad0(0) < 110 shouldBe true

@@ -206,7 +206,7 @@ class ReadMateAndRefPosIterator(rec: SamRecord,
 
   private var nextItem: Option[ReadMateAndRefPos] = None
 
-  override def hasNext(): Boolean = {
+  override def hasNext: Boolean = {
     while (nextItem.isEmpty && recIter.hasNext && mateIter.hasNext) {
       val nextRec  = recIter.head
       val nextMate = mateIter.head
@@ -222,7 +222,7 @@ class ReadMateAndRefPosIterator(rec: SamRecord,
   }
 
   def next(): ReadMateAndRefPos = {
-   if (!hasNext()) throw new NoSuchElementException()
+   if (!hasNext) throw new NoSuchElementException()
    val retval = this.nextItem.get
    this.nextItem = None
    retval

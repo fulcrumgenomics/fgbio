@@ -45,7 +45,7 @@ import scala.collection.mutable
   */
 class GroupReadsByUmiTest extends UnitSpec with OptionValues with PrivateMethodTester {
   // Returns a List of the element 't' repeated 'n' times
-  private def n[T](t: T, n:Int =1): List[T] = List.tabulate(n)(x => t)
+  private def n[T](t: T, n: Int): List[T] = List.tabulate(n)(_ => t)
 
   /**
     * Converts a mapping of umi->id to a Set of Sets of Umis that are assigned the same ID.

@@ -24,21 +24,20 @@
 
 package com.fulcrumgenomics.vcf
 
-import java.text.DecimalFormat
-import java.util
-import java.util.Collections
-
 import com.fulcrumgenomics.FgBioDef._
 import com.fulcrumgenomics.cmdline.{ClpGroups, FgBioTool}
-import com.fulcrumgenomics.util.{Io, ProgressLogger}
-import com.fulcrumgenomics.vcf.MakeMixtureVcf.Sample
 import com.fulcrumgenomics.commons.util.LazyLogging
 import com.fulcrumgenomics.sopt.{arg, clp}
+import com.fulcrumgenomics.util.{Io, ProgressLogger}
+import com.fulcrumgenomics.vcf.MakeMixtureVcf.Sample
 import htsjdk.samtools.util.CollectionUtil
 import htsjdk.variant.variantcontext._
 import htsjdk.variant.variantcontext.writer.{Options, VariantContextWriter, VariantContextWriterBuilder}
 import htsjdk.variant.vcf._
 
+import java.text.DecimalFormat
+import java.util
+import java.util.Collections
 import scala.collection.mutable
 import scala.jdk.CollectionConverters._
 
@@ -210,7 +209,7 @@ class MakeMixtureVcf
       }
 
       // Finally make the variant context and genotype objects
-      val builder = new VariantContextBuilder(ctx.getSource, ctx.getContig, ctx.getStart(), ctx.getEnd(), ctx.getAlleles)
+      val builder = new VariantContextBuilder(ctx.getSource, ctx.getContig, ctx.getStart.toLong, ctx.getEnd.toLong, ctx.getAlleles)
       builder.id(ctx.getID)
       builder.genotypes(outputGt)
       builder.filters(new util.HashSet[String](ctx.getFilters))

@@ -34,7 +34,6 @@ import com.fulcrumgenomics.sopt._
 import com.fulcrumgenomics.util.Io
 import enumeratum.EnumEntry
 
-import scala.collection.immutable.IndexedSeq
 import scala.collection.mutable.ListBuffer
 
 /** Trait that entries in AssemblyReportColumn will extend. */

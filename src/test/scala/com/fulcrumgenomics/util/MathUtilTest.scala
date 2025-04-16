@@ -24,9 +24,8 @@
 
 package com.fulcrumgenomics.util
 
-import com.fulcrumgenomics.FgBioDef._
 import com.fulcrumgenomics.testing.UnitSpec
-import MathUtil._
+import com.fulcrumgenomics.util.MathUtil._
 
 /** Tests for the MathUtil class. */
 class MathUtilTest extends UnitSpec {

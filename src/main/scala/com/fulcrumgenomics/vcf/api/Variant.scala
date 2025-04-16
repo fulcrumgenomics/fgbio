@@ -42,7 +42,7 @@ object Variant {
     * will always return false.
     */
   val MissingFloat: Float = {
-    import java.lang.{Long => JLong, Float => JFloat}
+    import java.lang.{Float => JFloat, Long => JLong}
     val l = JLong.parseLong("7F800001", 16)
     JFloat.intBitsToFloat(l.intValue())
   }

@@ -24,14 +24,13 @@
 
 package com.fulcrumgenomics.util
 
-import java.lang.Integer.{parseInt => int}
-
 import com.fulcrumgenomics.FgBioDef._
 import com.fulcrumgenomics.commons.collection.BetterBufferedIterator
 import com.fulcrumgenomics.commons.util.LazyLogging
 import com.fulcrumgenomics.fasta.SequenceDictionary
 import com.fulcrumgenomics.util.GeneAnnotations._
 
+import java.lang.Integer.{parseInt => int}
 import scala.collection.mutable
 
 /**

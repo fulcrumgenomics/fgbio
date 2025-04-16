@@ -28,7 +28,6 @@ import com.fulcrumgenomics.FgBioDef._
 import com.fulcrumgenomics.bam.OverlappingBasesConsensusCaller
 import com.fulcrumgenomics.bam.api.{SamOrder, SamSource, SamWriter}
 import com.fulcrumgenomics.cmdline.{ClpGroups, FgBioTool}
-import com.fulcrumgenomics.sopt.clp
 import com.fulcrumgenomics.commons.io.Io
 import com.fulcrumgenomics.commons.util.LazyLogging
 import com.fulcrumgenomics.sopt._

@@ -26,7 +26,7 @@
 package com.fulcrumgenomics.umi
 
 import com.fulcrumgenomics.bam.api.SamRecord
-import com.fulcrumgenomics.umi.ConsensusTags.PerRead.{RawReadCount, AbRawReadCount, BaRawReadCount}
+import com.fulcrumgenomics.umi.ConsensusTags.PerRead.{AbRawReadCount, BaRawReadCount, RawReadCount}
 import com.fulcrumgenomics.util.Sequences
 
 object Umis {
@@ -63,7 +63,7 @@ object Umis {
     umi.foreach(u => rec(ConsensusTags.UmiBases) = u)
 
     // Remove the UMI from the read name if requested
-    if (removeUmi) rec.name = rec.name.substring(0, rec.name.lastIndexOf(fieldDelimiter))
+    if (removeUmi) rec.name = rec.name.substring(0, rec.name.lastIndexOf(fieldDelimiter.toString))
 
     rec
   }
@@ -91,10 +91,10 @@ object Umis {
     val rawUmi = if (strict) {
       val colons = name.count(_ == fieldDelimiter)
       if (colons == 6) None
-      else if (colons == 7) Some(name.substring(name.lastIndexOf(fieldDelimiter) + 1, name.length))
+      else if (colons == 7) Some(name.substring(name.lastIndexOf(fieldDelimiter.toString) + 1, name.length))
       else throw new IllegalArgumentException(s"Trying to extract UMI from read with ${colons + 1} parts (7-8 expected): ${name}")
     } else {
-      val idx = name.lastIndexOf(fieldDelimiter)
+      val idx = name.lastIndexOf(fieldDelimiter.toString)
       require(idx != -1, s"Read did not have multiple '${fieldDelimiter}'-separated fields: ${name}")
       Some(name.substring(idx + 1, name.length))
     }
@@ -102,8 +102,8 @@ object Umis {
     // Remove 'r' prefixes, optionally reverse-complementing the prefixed UMIs if 
     // reverseComplementPrefixedUmis = true, replace the delimiter (if any) with '-',
     // and make sure the sequence is upper-case.
-    var umi = rawUmi.map(raw => 
-      (raw.indexOf(RevcompPrefix) >= 0, raw.indexOf(umiDelimiter) > 0) match {
+    val umi = rawUmi.map(raw =>
+      (raw.indexOf(RevcompPrefix) >= 0, raw.indexOf(umiDelimiter.toString) > 0) match {
         case (true, true) if reverseComplementPrefixedUmis => 
           raw.split(umiDelimiter).map(seq => 
             if (seq.startsWith(RevcompPrefix)) Sequences.revcomp(seq.stripPrefix(RevcompPrefix))

@@ -24,8 +24,8 @@
 
 package com.fulcrumgenomics.bam
 
-import com.fulcrumgenomics.bam.api.{SamOrder, SamSource}
 import com.fulcrumgenomics.FgBioDef._
+import com.fulcrumgenomics.bam.api.{SamOrder, SamSource}
 import com.fulcrumgenomics.bam.pileup.PileupBuilder
 import com.fulcrumgenomics.fasta.{SequenceDictionary, SequenceMetadata}
 import com.fulcrumgenomics.testing.{SamBuilder, UnitSpec}
@@ -64,7 +64,7 @@ class DownsampleAndNormalizeBamTest extends UnitSpec {
     builder.dict.foreach { chrom =>
       Range.inclusive(1, chrom.length - 125).foreach { start =>
         forloop (from=0, until=5) { _ =>
-          builder.addPair(contig=chrom.index, start1=start , start2=start+75)
+          val _ = builder.addPair(contig=chrom.index, start1=start , start2=start+75)
         }
       }
     }

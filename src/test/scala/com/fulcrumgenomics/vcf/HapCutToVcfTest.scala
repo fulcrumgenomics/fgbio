@@ -66,7 +66,6 @@ class HapCutToVcfTest extends UnitSpec with ParallelTestExecution {
   // For testing HapCutToVcf with IUPAC codes
   private val withIupacIn     = dir.resolve("with_iupac.vcf")
   private val withIupacOut    = dir.resolve("with_iupac.hapcut")
-  private val withIupacOutVcf = dir.resolve("with_iupac.hapcut.vcf")
 
   private def countVcfRecords(vcf: PathToVcf): Int = {
     val vcfReader = new VCFFileReader(vcf.toFile, false)
@@ -108,7 +107,7 @@ class HapCutToVcfTest extends UnitSpec with ParallelTestExecution {
     hasPhasingSetTag
   }
 
-  private def checkHapCutReader(path: FilePath, hapCutType: HapCutType): Unit = {
+  private def checkHapCutReader(path: FilePath, hapCutType: HapCutType) = {
     val reader = HapCutReader(path)
     reader.hapCutType shouldBe hapCutType
     val allCalls = reader.toSeq

@@ -25,14 +25,14 @@
 
 package com.fulcrumgenomics.util
 
-import java.io.{ByteArrayOutputStream, PrintStream}
-import java.nio.charset.StandardCharsets
-
 import com.fulcrumgenomics.bam.api.SamRecord
 import com.fulcrumgenomics.commons.util.Logger
 import com.fulcrumgenomics.testing.UnitSpec
 import com.fulcrumgenomics.vcf.api.Variant
 import org.scalatest.concurrent.PatienceConfiguration.Interval
+
+import java.io.{ByteArrayOutputStream, PrintStream}
+import java.nio.charset.StandardCharsets
 
 class ProgressLoggerTest extends UnitSpec {
 

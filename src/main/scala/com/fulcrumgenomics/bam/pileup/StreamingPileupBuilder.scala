@@ -27,7 +27,6 @@ package com.fulcrumgenomics.bam.pileup
 import com.fulcrumgenomics.bam.api.SamOrder.Coordinate
 import com.fulcrumgenomics.bam.api.{SamOrder, SamRecord, SamSource}
 import com.fulcrumgenomics.bam.pileup.PileupBuilder._
-import com.fulcrumgenomics.bam.pileup.StreamingPileupBuilder.DefaultInitialCacheSize
 import com.fulcrumgenomics.commons.CommonsDef._
 import com.fulcrumgenomics.coord.LocatableOrdering
 import com.fulcrumgenomics.fasta.SequenceDictionary
@@ -104,15 +103,15 @@ object StreamingPileupBuilder {
 class StreamingPileupBuilder private(
   records: => Iterator[SamRecord],
   override val dict: SequenceDictionary,
-  override val minMapQ: Int                                = PileupDefaults.minMapQ,
-  override val minBaseQ: Int                               = PileupDefaults.minBaseQ,
-  override val mappedPairsOnly: Boolean                    = PileupDefaults.mappedPairsOnly,
-  override val includeDuplicates: Boolean                  = PileupDefaults.includeDuplicates,
-  override val includeSecondaryAlignments: Boolean         = PileupDefaults.includeSecondaryAlignments,
-  override val includeSupplementalAlignments: Boolean      = PileupDefaults.includeSupplementalAlignments,
-  override val includeMapPositionsOutsideFrInsert: Boolean = PileupDefaults.includeMapPositionsOutsideFrInsert,
-  initialCacheSize: Int                                    = DefaultInitialCacheSize,
-  source: => Option[{ def close(): Unit }]                 = None,
+  override val minMapQ: Int,
+  override val minBaseQ: Int,
+  override val mappedPairsOnly: Boolean,
+  override val includeDuplicates: Boolean,
+  override val includeSecondaryAlignments: Boolean,
+  override val includeSupplementalAlignments: Boolean,
+  override val includeMapPositionsOutsideFrInsert: Boolean,
+  initialCacheSize: Int,
+  source: => Option[{ def close(): Unit }],
 ) extends PileupBuilder with Closeable {
   import com.fulcrumgenomics.bam.pileup.StreamingPileupBuilder.LocatablePileup
 

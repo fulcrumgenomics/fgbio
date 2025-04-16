@@ -24,8 +24,6 @@
 
 package com.fulcrumgenomics.fasta
 
-import java.io.BufferedWriter
-
 import com.fulcrumgenomics.FgBioDef.PathToSequenceDictionary
 import com.fulcrumgenomics.cmdline.{ClpGroups, FgBioTool}
 import com.fulcrumgenomics.commons.CommonsDef._
@@ -33,6 +31,8 @@ import com.fulcrumgenomics.commons.util.LazyLogging
 import com.fulcrumgenomics.sopt.{arg, clp}
 import com.fulcrumgenomics.util.{Io, ProgressLogger}
 import htsjdk.samtools.reference.{FastaSequenceIndex, ReferenceSequence, ReferenceSequenceFile, ReferenceSequenceFileFactory}
+
+import java.io.BufferedWriter
 
 @clp(description =
   """
@@ -83,7 +83,7 @@ class UpdateFastaContigNames
       val bases = ref.getBases
       var baseCounter = 0
       forloop(from = 0, until = bases.length) { baseIdx =>
-        writer.write(bases(baseIdx))
+        writer.write(bases(baseIdx).toInt)
         progress.record(info.name, baseIdx + 1)
         baseCounter += 1
         if (baseCounter >= lineLength) {

@@ -25,9 +25,9 @@
 
 package com.fulcrumgenomics.util
 
-import htsjdk.samtools.util.{CoordMath, Locatable}
 import com.fulcrumgenomics.FgBioDef._
 import enumeratum.EnumEntry
+import htsjdk.samtools.util.{CoordMath, Locatable}
 
 /** Stores classes useful for storing annotation information for genes and their transcripts and exons. */
 object GeneAnnotations {

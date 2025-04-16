@@ -26,8 +26,6 @@
 package com.fulcrumgenomics.util
 
 
-import java.io.{Closeable, File, InputStream}
-
 import com.fulcrumgenomics.FgBioDef.{PathToIntervals, yieldAndThen}
 import com.fulcrumgenomics.commons.CommonsDef.BetterBufferedIteratorScalaWrapper
 import com.fulcrumgenomics.commons.util.StringUtil
@@ -35,7 +33,9 @@ import com.fulcrumgenomics.fasta.SequenceDictionary
 import htsjdk.samtools.util.{BufferedLineReader, Interval, IntervalList}
 import htsjdk.samtools.{SAMFileHeader, SAMTextHeaderCodec}
 
+import java.io.{Closeable, File, InputStream}
 import scala.io.Source
+import scala.language.reflectiveCalls
 
 object IntervalListSource {
 

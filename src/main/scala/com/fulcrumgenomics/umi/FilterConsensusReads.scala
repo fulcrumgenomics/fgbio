@@ -28,16 +28,12 @@ import com.fulcrumgenomics.FgBioDef._
 import com.fulcrumgenomics.bam.Bams
 import com.fulcrumgenomics.bam.api.{SamOrder, SamRecord, SamSource, SamWriter}
 import com.fulcrumgenomics.cmdline.{ClpGroups, FgBioTool}
-import com.fulcrumgenomics.commons.io.Writer
 import com.fulcrumgenomics.commons.util.LazyLogging
 import com.fulcrumgenomics.sopt.{arg, clp}
 import com.fulcrumgenomics.util.Io
 import com.fulcrumgenomics.util.NumericTypes.PhredScore
-import htsjdk.samtools.SAMFileHeader
-import htsjdk.samtools.SAMFileHeader.{GroupOrder, SortOrder}
 import htsjdk.samtools.util.SequenceUtil
 
-import java.io.Closeable
 import java.lang.Math.{max, min}
 
 /** Filter values for filtering consensus reads */
@@ -413,8 +409,8 @@ object DuplexConsensusPerBaseValues {
   /** Returns true if the base at the given index should be masked. */
   def maskBaseAt(abValues: DuplexConsensusPerBaseValues, baValues: DuplexConsensusPerBaseValues, idx: Int,
                  ccFilters: ConsensusReadFilter, abFilters: ConsensusReadFilter, baFilters: ConsensusReadFilter): Boolean = {
-    val abDepth    = max(abValues.depths(idx), baValues.depths(idx))
-    val baDepth    = min(abValues.depths(idx), baValues.depths(idx))
+    val abDepth    = max(abValues.depths(idx).toInt, baValues.depths(idx).toInt)
+    val baDepth    = min(abValues.depths(idx).toInt, baValues.depths(idx).toInt)
     val abError    = min(abValues.errors(idx)/abValues.depths(idx).toDouble, baValues.errors(idx) / baValues.depths(idx).toDouble)
     val baError    = max(abValues.errors(idx)/abValues.depths(idx).toDouble, baValues.errors(idx) / baValues.depths(idx).toDouble)
     val totalDepth = abDepth + baDepth

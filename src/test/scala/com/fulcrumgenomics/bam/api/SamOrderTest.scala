@@ -24,26 +24,25 @@
 
 package com.fulcrumgenomics.bam.api
 
-import java.util.Random
-
 import com.fulcrumgenomics.FgBioDef._
 import com.fulcrumgenomics.commons.util.SimpleCounter
 import com.fulcrumgenomics.testing.SamBuilder.{Minus, Plus}
 import com.fulcrumgenomics.testing.{SamBuilder, UnitSpec}
-import htsjdk.samtools.{SAMFileHeader, SAMRecordCoordinateComparator, SAMRecordQueryNameComparator}
 import htsjdk.samtools.SAMFileHeader.{GroupOrder, SortOrder}
 import htsjdk.samtools.util.Murmur3
+import htsjdk.samtools.{SAMFileHeader, SAMRecordCoordinateComparator, SAMRecordQueryNameComparator}
 
+import java.util.Random
 import scala.collection.mutable.ListBuffer
 
 object SamOrderTest {
   // Builder to for a set of records to be used in testing sorting
   val builder = new SamBuilder(sort=None)
   val random  = new Random(42)
-  Range.inclusive(1, 1000).foreach { i =>
+  Range.inclusive(1, 1000).foreach { _ =>
     builder.addPair(name="q"+random.nextInt(), contig=random.nextInt(23), start1=random.nextInt(1e7.toInt)+1, start2=random.nextInt(1e7.toInt)+1)
   }
-  Range.inclusive(1, 10).foreach { i => builder.addPair(name="q"+random.nextInt(), unmapped1=true, unmapped2=true)}
+  Range.inclusive(1, 10).foreach { _ => builder.addPair(name="q"+random.nextInt(), unmapped1=true, unmapped2=true)}
 }
 
 class SamOrderTest extends UnitSpec {
@@ -133,11 +132,11 @@ class SamOrderTest extends UnitSpec {
     val iter = recs.iterator.bufferBetter
     while (iter.hasNext) {
       val name = iter.head.name
-      val remaining = iter.takeWhile(_.name == name).foreach { r => () }
+      val _ = iter.takeWhile(_.name == name).foreach { _ => () }
       counts.count(name)
     }
 
-    counts.foreach { case (name, count) => count shouldBe 1}
+    counts.foreach { case (_, count) => count shouldBe 1}
   }
 
   it should "keep querynames together even when there are has collisions" in {
@@ -160,23 +159,23 @@ class SamOrderTest extends UnitSpec {
     val iter   = recs.iterator.bufferBetter
     while (iter.hasNext) {
       val name = iter.head.name
-      iter.takeWhile(_.name == name).foreach { r => () }
+      iter.takeWhile(_.name == name).foreach { _ => () }
       counts.count(name)
     }
 
-    counts.foreach { case (name, count) => count shouldBe 1 }
+    counts.foreach { case (_, count) => count shouldBe 1 }
   }
 
   "SamOrder.TemplateCoordinate" should "sort by molecular identifier then name" in {
     val addFuncs: Seq[SamBuilder => Unit] = Seq(
-      b => b.addPair(name="ab0", start1=200, start2=200, attrs=Map("MI" -> "0/A"), bases1="AAAAAAAAAA", bases2="AAAAAAAAAA"),
-      b => b.addPair(name="ab1", start1=100, start2=100, attrs=Map("MI" -> "1/A"), bases1="AAAAAAAAAA", bases2="AAAAAAAAAA"),
-      b => b.addPair(name="ab2", start1=100, start2=100, attrs=Map("MI" -> "1/A"), bases1="AAAAAAAAAA", bases2="AAAAAAAAAA"),
-      b => b.addPair(name="ab3", start1=100, start2=100, attrs=Map("MI" -> "2/A"), bases1="AAAAAAAAAA", bases2="AAAAAAAAAA"),
-      b => b.addPair(name="ba0", start1=200, start2=200, strand1=Minus, strand2=Plus, attrs=Map("MI" -> "0/B"), bases1="AAAAAAAAAA", bases2="AAAAAAAAAA"),
-      b => b.addPair(name="ba1", start1=100, start2=100, strand1=Minus, strand2=Plus, attrs=Map("MI" -> "1/B"), bases1="AAAAAAAAAA", bases2="AAAAAAAAAA"),
-      b => b.addPair(name="ba2", start1=100, start2=100, strand1=Minus, strand2=Plus, attrs=Map("MI" -> "1/B"), bases1="AAAAAAAAAA", bases2="AAAAAAAAAA"),
-      b => b.addPair(name="ba3", start1=100, start2=100, strand1=Minus, strand2=Plus, attrs=Map("MI" -> "2/B"), bases1="AAAAAAAAAA", bases2="AAAAAAAAAA")
+      b => { val _ = b.addPair(name="ab0", start1=200, start2=200, attrs=Map("MI" -> "0/A"), bases1="AAAAAAAAAA", bases2="AAAAAAAAAA") },
+      b => { val _ = b.addPair(name="ab1", start1=100, start2=100, attrs=Map("MI" -> "1/A"), bases1="AAAAAAAAAA", bases2="AAAAAAAAAA") },
+      b => { val _ = b.addPair(name="ab2", start1=100, start2=100, attrs=Map("MI" -> "1/A"), bases1="AAAAAAAAAA", bases2="AAAAAAAAAA") },
+      b => { val _ = b.addPair(name="ab3", start1=100, start2=100, attrs=Map("MI" -> "2/A"), bases1="AAAAAAAAAA", bases2="AAAAAAAAAA") },
+      b => { val _ = b.addPair(name="ba0", start1=200, start2=200, strand1=Minus, strand2=Plus, attrs=Map("MI" -> "0/B"), bases1="AAAAAAAAAA", bases2="AAAAAAAAAA") },
+      b => { val _ = b.addPair(name="ba1", start1=100, start2=100, strand1=Minus, strand2=Plus, attrs=Map("MI" -> "1/B"), bases1="AAAAAAAAAA", bases2="AAAAAAAAAA") },
+      b => { val _ = b.addPair(name="ba2", start1=100, start2=100, strand1=Minus, strand2=Plus, attrs=Map("MI" -> "1/B"), bases1="AAAAAAAAAA", bases2="AAAAAAAAAA") },
+      b => { val _ = b.addPair(name="ba3", start1=100, start2=100, strand1=Minus, strand2=Plus, attrs=Map("MI" -> "2/B"), bases1="AAAAAAAAAA", bases2="AAAAAAAAAA") },
     )
 
     def seq(n: Int, str: String): Seq[String] = IndexedSeq.fill[String](n)(str)

@@ -23,13 +23,13 @@
  */
 package com.fulcrumgenomics.fasta
 
-import java.nio.file.Files
-
-import com.fulcrumgenomics.testing.UnitSpec
-import com.fulcrumgenomics.util.Io
 import com.fulcrumgenomics.commons.CommonsDef._
 import com.fulcrumgenomics.commons.io.PathUtil
+import com.fulcrumgenomics.testing.UnitSpec
+import com.fulcrumgenomics.util.Io
 import htsjdk.samtools.reference.ReferenceSequenceFileFactory
+
+import java.nio.file.Files
 
 /**
   * Tests for HardMaskFasta

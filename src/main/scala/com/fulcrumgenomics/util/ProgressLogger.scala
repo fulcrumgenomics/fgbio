@@ -75,14 +75,20 @@ object ProgressLogger {
   /** Wraps an [[Iterator]] and provides a method to record progress as items are consumed. */
   implicit class ProgressLoggingIterator[ItemType: TypeTag](iterator: Iterator[ItemType]) extends ProgressLoggingHelper[ItemType] {
     def progress(progressLogger: ProgressLogger): Iterator[ItemType] = {
-      new SelfClosingIterator(iterator.map { item => this.record(progressLogger, item); item }, () => progressLogger.logLast())
+      new SelfClosingIterator(
+        iterator.map { item => this.record(progressLogger, item); item },
+        closer = { () => val _ = progressLogger.logLast() },
+      )
     }
   }
 
   /** Wraps an [[Iterator]] over [[ItemType]]s and provides a method to transform them into the [[ResultType]] to record progress as items are consumed. */
   implicit class TransformedProgressLoggingIterator[ItemType, ResultType: TypeTag](iterator: Iterator[ItemType]) extends ProgressLoggingHelper[ResultType] {
     def progress(progressLogger: ProgressLogger, transform: ItemType => ResultType): Iterator[ItemType] = {
-      new SelfClosingIterator(iterator.map { item => this.record(progressLogger, transform(item)); item }, () => progressLogger.logLast())
+      new SelfClosingIterator(
+        iterator.map { item => this.record(progressLogger, transform(item)); item },
+        closer = () => { val _ = progressLogger.logLast() }
+      )
     }
   }
 }

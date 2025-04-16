@@ -25,14 +25,14 @@
 
 package com.fulcrumgenomics.util
 
-import com.fulcrumgenomics.bam.api.{SamOrder, SamRecord}
+import com.fulcrumgenomics.bam.api.SamRecord
 import com.fulcrumgenomics.testing.SamBuilder.Minus
 import com.fulcrumgenomics.testing.{SamBuilder, UnitSpec}
 import htsjdk.samtools.SamPairUtil
 import org.scalatest.OptionValues
 
 class AssignPrimersTest extends UnitSpec with OptionValues {
-  private def checkMatch(rec: SamRecord, amplicon: Option[Amplicon] = None, mateAmplicon: Option[Amplicon] = None): Unit = {
+  private def checkMatch(rec: SamRecord, amplicon: Option[Amplicon] = None, mateAmplicon: Option[Amplicon] = None) = {
     amplicon match {
       case None =>
         rec.contains(AssignPrimers.PrimerCoordinateTag) shouldBe false
@@ -67,9 +67,11 @@ class AssignPrimersTest extends UnitSpec with OptionValues {
         }
     }
   }
-  private def checkMatch(rec: SamRecord, amplicon: Amplicon): Unit = checkMatch(rec=rec, amplicon=Some(amplicon))
+  private def checkMatch(rec: SamRecord, amplicon: Amplicon): Unit = {
+    val _ = checkMatch(rec=rec, amplicon=Some(amplicon))
+  }
   private def checkMatch(rec: SamRecord, amplicon: Amplicon, mateAmplicon: Amplicon): Unit = {
-    checkMatch(rec=rec, amplicon=Some(amplicon), mateAmplicon=Some(mateAmplicon))
+    val _ = checkMatch(rec=rec, amplicon=Some(amplicon), mateAmplicon=Some(mateAmplicon))
   }
 
   {
@@ -165,7 +167,7 @@ class AssignPrimersTest extends UnitSpec with OptionValues {
           AssignPrimersMetric(identifier=amplicons(1).identifier, left=2, right=4, r1s=2, r2s=4, pairs=2),
           AssignPrimersMetric(identifier=amplicons(2).identifier, left=1, right=1, r1s=1, r2s=1, pairs=1),
           AssignPrimersMetric(identifier=allIdentifier,           left=7, right=5, r1s=7, r2s=5, pairs=3)
-        ).map(_.finalize(total=outputRecs.length))
+        ).map(_.finalize(total=outputRecs.length.toLong))
 
         metrics.length shouldBe amplicons.length + 1
         metrics.zip(expected).foreach { case (act, exp) =>

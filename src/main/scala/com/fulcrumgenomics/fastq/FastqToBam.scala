@@ -24,7 +24,6 @@
 
 package com.fulcrumgenomics.fastq
 
-import java.util
 import com.fulcrumgenomics.FgBioDef._
 import com.fulcrumgenomics.bam.api.{SamOrder, SamRecord, SamWriter}
 import com.fulcrumgenomics.cmdline.{ClpGroups, FgBioTool}
@@ -33,10 +32,12 @@ import com.fulcrumgenomics.commons.util.LazyLogging
 import com.fulcrumgenomics.sopt.{arg, clp}
 import com.fulcrumgenomics.umi.{ConsensusTags, Umis}
 import com.fulcrumgenomics.util.SegmentType._
-import com.fulcrumgenomics.util.{Io, ProgressLogger, ReadStructure}
+import com.fulcrumgenomics.util.{Io, ReadStructure}
 import htsjdk.samtools.SAMFileHeader.{GroupOrder, SortOrder}
 import htsjdk.samtools.util.Iso8601Date
 import htsjdk.samtools.{ReservedTagConstants, SAMFileHeader, SAMReadGroupRecord}
+
+import java.util
 
 @clp(group=ClpGroups.Fastq, description=
   """

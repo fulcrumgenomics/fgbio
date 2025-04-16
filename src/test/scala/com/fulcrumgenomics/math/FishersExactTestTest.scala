@@ -26,9 +26,6 @@ package com.fulcrumgenomics.math
 
 import com.fulcrumgenomics.math.FishersExactTest.Alternative._
 import com.fulcrumgenomics.testing.UnitSpec
-import com.fulcrumgenomics.util.NumericTypes.LogProbability
-
-import scala.util.Random
 
 class FishersExactTestTest extends UnitSpec {
   "FishersExactTest" should "calculate values the same as R within specified precision" in {

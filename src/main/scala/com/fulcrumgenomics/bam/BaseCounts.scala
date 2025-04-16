@@ -26,6 +26,7 @@ package com.fulcrumgenomics.bam
 
 import htsjdk.samtools.util.SamLocusIterator
 import htsjdk.samtools.util.SamLocusIterator.LocusInfo
+
 import scala.jdk.CollectionConverters._
 
 object BaseCounts {

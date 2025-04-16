@@ -27,14 +27,17 @@ package com.fulcrumgenomics.vcf
 import com.fulcrumgenomics.testing.{UnitSpec, VariantContextSetBuilder}
 import htsjdk.variant.variantcontext.VariantContext
 
+import scala.annotation.nowarn
+
 /**
   * Tests for JointVariantContextIterator.
   */
+@nowarn("msg=class VariantContextSetBuilder in package testing is deprecated")
 class JointVariantContextIteratorTest extends UnitSpec {
   import com.fulcrumgenomics.fasta.Converters.FromSAMSequenceDictionary
   private val dict = new VariantContextSetBuilder().header.getSequenceDictionary.fromSam
 
-  private def compareVariantContexts(actual: VariantContext, expected: VariantContext): Unit = {
+  private def compareVariantContexts(actual: VariantContext, expected: VariantContext) = {
     actual.getContig shouldBe expected.getContig
     actual.getStart shouldBe expected.getStart
     actual.getEnd shouldBe expected.getEnd
@@ -62,6 +65,7 @@ class JointVariantContextIteratorTest extends UnitSpec {
   }
 
   it should "return a None for an iterator that doesn't have a variant context for a given covered site" in {
+    import scala.language.existentials
     val builderLeft = new VariantContextSetBuilder()
       .addVariant(refIdx=0, start=10, variantAlleles=List("A"))
       .addVariant(refIdx=0, start=30, variantAlleles=List("A"))

@@ -24,11 +24,11 @@
 
 package com.fulcrumgenomics.umi
 
-import java.nio.file.Paths
-
 import com.fulcrumgenomics.bam.api.{SamOrder, SamSource}
 import com.fulcrumgenomics.testing.SamBuilder.{Minus, Plus}
 import com.fulcrumgenomics.testing.{SamBuilder, UnitSpec}
+
+import java.nio.file.Paths
 
 class CallDuplexConsensusReadsTest extends UnitSpec {
   private val MI = ConsensusTags.MolecularId

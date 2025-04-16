@@ -72,13 +72,13 @@ object RandomAccessPileupBuilder {
   */
 class RandomAccessPileupBuilder private(
   source: SamSource,
-  override val minMapQ: Int                                = PileupDefaults.minMapQ,
-  override val minBaseQ: Int                               = PileupDefaults.minBaseQ,
-  override val mappedPairsOnly: Boolean                    = PileupDefaults.mappedPairsOnly,
-  override val includeDuplicates: Boolean                  = PileupDefaults.includeDuplicates,
-  override val includeSecondaryAlignments: Boolean         = PileupDefaults.includeSecondaryAlignments,
-  override val includeSupplementalAlignments: Boolean      = PileupDefaults.includeSupplementalAlignments,
-  override val includeMapPositionsOutsideFrInsert: Boolean = PileupDefaults.includeMapPositionsOutsideFrInsert,
+  override val minMapQ: Int,
+  override val minBaseQ: Int,
+  override val mappedPairsOnly: Boolean,
+  override val includeDuplicates: Boolean,
+  override val includeSecondaryAlignments: Boolean,
+  override val includeSupplementalAlignments: Boolean,
+  override val includeMapPositionsOutsideFrInsert: Boolean,
 ) extends PileupBuilder with Closeable {
 
   /** The sequence dictionary associated with the records we will pileup. */

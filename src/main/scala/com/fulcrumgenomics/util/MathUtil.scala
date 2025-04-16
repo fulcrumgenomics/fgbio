@@ -24,8 +24,6 @@
 
 package com.fulcrumgenomics.util
 
-import java.util.NoSuchElementException
-
 /**
   * Some simple utility methods for various mathematical operations that are implemented
   * in efficient albeit non-idiomatic scala.

@@ -26,13 +26,9 @@ package com.fulcrumgenomics.fasta
 
 import com.fulcrumgenomics.FgBioDef.PathToSequenceDictionary
 import com.fulcrumgenomics.cmdline.{ClpGroups, FgBioTool}
-import com.fulcrumgenomics.commons.CommonsDef._
 import com.fulcrumgenomics.commons.util.LazyLogging
 import com.fulcrumgenomics.sopt._
 import com.fulcrumgenomics.util.Io
-
-import scala.collection.immutable.IndexedSeq
-import scala.collection.mutable.{ListBuffer, Builder}
 
 @clp(description =
   """

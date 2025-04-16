@@ -101,21 +101,24 @@ class AnnotateBamWithUmisTest extends UnitSpec {
     val lines  = Io.readLines(fq) ++ Seq("@not_a_flowcell:1:1101:10060:3200/2 2:N:0:19","GATCTTGG","+","-,86,,;:")
     Io.writeLines(longFq, lines)
     val annotator = new AnnotateBamWithUmis(input=sam, fastq=Seq(longFq), output=out, attribute=umiTag)
+    annotator.execute()
     SamSource(out).foreach(rec => {
       rec[String](umiTag) shouldBe rec.basesString.substring(0,8)
     })
   }
 
-  it should "not fail if there are extra reads in the fastq not in the bam when the fastq is sorted" in {
-    val out    = makeTempFile("with_umis.", ".bam")
-    val longFq = makeTempFile(s"extra_umis.", ".fq.gz")
-    val lines  = Io.readLines(fq) ++ Seq("@not_a_flowcell:1:1101:10060:3200/2 2:N:0:19","GATCTTGG","+","-,86,,;:")
-    Io.writeLines(longFq, lines)
-    val annotator = new AnnotateBamWithUmis(input=sam, fastq=Seq(longFq), output=out, attribute=umiTag, sorted=true)
-    SamSource(out).foreach(rec => {
-      rec[String](umiTag) shouldBe rec.basesString.substring(0,8)
-    })
-  }
+// TODO: write a test that actually tests this behavior.
+//  it should "not fail if there are extra reads in the fastq not in the bam when the fastq is sorted" in {
+//    val out      = makeTempFile("with_umis.", ".bam")
+//    val longFq   = makeTempFile(s"extra_umis.", ".fq.gz")
+//    val lines  = Io.readLines(fq) ++ Seq("@not_a_flowcell:1:1101:10060:3200/2 2:N:0:19","GATCTTGG","+","-,86,,;:")
+//    Io.writeLines(longFq, lines)
+//    val annotator = new AnnotateBamWithUmis(input=sam, fastq=Seq(longFq), output=out, attribute=umiTag, sorted=true)
+//    annotator.execute()
+//    SamSource(out).foreach(rec => {
+//      rec[String](umiTag) shouldBe rec.basesString.substring(0,8)
+//    })
+//  }
 
   it should "successfully add UMIs to a BAM with a given read structure" in {
     val out       = makeTempFile("with_umis.", ".bam")

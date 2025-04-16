@@ -23,9 +23,6 @@
  */
 package com.fulcrumgenomics.testing
 
-import java.io.PrintStream
-import java.nio.file.{Files, Path}
-
 import com.fulcrumgenomics.FgBioDef._
 import com.fulcrumgenomics.bam.api.{SamRecord, SamSource}
 import com.fulcrumgenomics.cmdline.FgBioTool
@@ -35,10 +32,13 @@ import com.fulcrumgenomics.sopt.cmdline.CommandLineProgramParser
 import com.fulcrumgenomics.sopt.util.ParsingUtil
 import com.fulcrumgenomics.util.Io
 import com.fulcrumgenomics.vcf.api.{Variant, VcfSource}
-import org.scalatest.{BeforeAndAfterAll, OptionValues}
 import org.scalatest.flatspec.AnyFlatSpec
 import org.scalatest.matchers.should.Matchers
+import org.scalatest.{BeforeAndAfterAll, OptionValues}
 
+import java.io.PrintStream
+import java.nio.file.{Files, Path}
+import scala.annotation.unused
 import scala.reflect.ClassTag
 import scala.reflect.runtime.universe._
 
@@ -64,12 +64,12 @@ trait UnitSpec extends AnyFlatSpec with Matchers with OptionValues {
   }
 
   /** Generates a command line parser for a class to check that the argument annotations are valid. */
-  protected def checkClpAnnotations[T <: FgBioTool](implicit ct: ClassTag[T], tt: TypeTag[T]): Unit = {
+  protected def checkClpAnnotations[T <: FgBioTool](implicit @unused ct: ClassTag[T], @unused tt: TypeTag[T]): Unit = {
     val cl   = ReflectionUtil.typeTagToClass[T]
     val name = cl.getName
 
     ParsingUtil.findClpAnnotation(cl).getOrElse(fail(s"${name} is missing the clp annotation."))
-    new CommandLineProgramParser(cl)
+    val _ = new CommandLineProgramParser(cl)
   }
 
   /**

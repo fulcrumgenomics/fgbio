@@ -44,7 +44,7 @@ import htsjdk.samtools.util.SequenceUtil
 
 import java.util.concurrent.Executors
 import java.util.concurrent.atomic.AtomicLong
-import scala.collection.immutable.IndexedSeq
+import scala.annotation.nowarn
 import scala.collection.mutable.ListBuffer
 import scala.collection.parallel.ExecutionContextTaskSupport
 import scala.collection.{BufferedIterator, Iterator, mutable}
@@ -341,7 +341,7 @@ object GroupReadsByUmi {
       val iter = nodes.iterator.zipWithIndex.bufferBetter
 
       while (iter.hasNext) {
-        val (currNode, currIdx) = iter.next
+        val (currNode, currIdx) = iter.next()
         builder += ((currNode.count, currIdx))
         iter.dropWhile { case (node, _) => node.count == currNode.count}
       }
@@ -658,6 +658,7 @@ class GroupReadsByUmi
 
     // Filter and sort the input BAM file
     logger.info("Filtering the input.")
+    @nowarn("msg=value allowInterContig in class GroupReadsByUmi is deprecated")
     val filteredIterator = in.iterator
       .filter(r => this._includeSecondaryReads || !r.secondary  )
       .filter(r => this._includeSupplementaryReads || !r.supplementary )
@@ -843,6 +844,7 @@ class GroupReadsByUmi
     * or later read on the genome.  This is necessary to ensure that, when the two paired UMIs are the same
     * or highly similar, that the A vs. B groups are constructed correctly.
     */
+  @nowarn("msg=value allowInterContig in class GroupReadsByUmi is deprecated")
   private def umiForRead(t: Template): Umi = {
     // Check that all the primary reads have the UMI defined
     t.primaryReads.foreach { rec =>
@@ -863,10 +865,11 @@ class GroupReadsByUmi
 
         if (r1Lower) paired.lowerReadUmiPrefix  + ":" + umis(0) + "-" + paired.higherReadUmiPrefix + ":" + umis(1)
         else         paired.higherReadUmiPrefix + ":" + umis(0) + "-" + paired.lowerReadUmiPrefix  + ":" + umis(1)
-      case (_, _,  _: PairedUmiAssigner) =>
+      case (_, _, _: PairedUmiAssigner) =>
         fail(s"Template ${t.name} has only one read, paired-reads required for paired strategy.")
       case (Some(r1), _, _) =>
         r1[String](this.rawTag)
+      case (_, _, _) => unreachable("This combination of R1, R2, and an assigner is impossible!")
     }
   }
 

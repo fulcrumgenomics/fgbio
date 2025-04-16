@@ -24,11 +24,10 @@
 
 package com.fulcrumgenomics.util
 
-import com.fulcrumgenomics.util.ReadStructure.{SubReadWithQuals, SubReadWithoutQuals}
 import com.fulcrumgenomics.FgBioDef._
+import com.fulcrumgenomics.util.ReadStructure.{SubReadWithQuals, SubReadWithoutQuals}
 
 import scala.collection.immutable
-import scala.collection.mutable.ArrayBuffer
 
 /**
   * Companion object for ReadStructure that provides factory methods.
@@ -55,13 +54,13 @@ object ReadStructure {
     require(segments.dropRight(1).forall(_.hasFixedLength), s"Variable length ($AnyLengthChar) can only be used in the last segment: ${segments.mkString}")
 
     val segs = if (!resetOffsets) segments else {
-      var idx, off = 0
+      var off = 0
       segments.map { s => yieldAndThen(s.copy(offset=off)) { off += s.length.getOrElse(0) } }
     }
 
     segments.filter(_.length.exists(_ <= 0)) match {
       case Seq() => new ReadStructure(segs)
-      case zeros => throw new IllegalArgumentException(s"Read structure contained zero length segments: ${segments.mkString}")
+      case _ => throw new IllegalArgumentException(s"Read structure contained zero length segments: ${segments.mkString}")
     }
   }
 
@@ -88,7 +87,7 @@ object ReadStructure {
           var len = 0
           while (i < rs.length && rs.charAt(i).isDigit) { len = (len*10) + rs.charAt(i) - DigitOffset; i += 1 }
           Some(len)
-        case x =>
+        case _ =>
           invalid("Read structure missing length information", rs, parsePosition, parsePosition+1)
       }
 
@@ -100,7 +99,7 @@ object ReadStructure {
         val code = rs.charAt(i)
         i += 1
         try   { segs += ReadSegment(0, segLength, SegmentType(code)) }
-        catch { case ex: Exception => invalid("Read structure segment had unknown type", rs, parsePosition, i) }
+        catch { case _: Exception => invalid("Read structure segment had unknown type", rs, parsePosition, i) }
       }
     }
 

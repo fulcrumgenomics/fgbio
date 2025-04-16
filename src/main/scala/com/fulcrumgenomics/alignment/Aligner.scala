@@ -25,15 +25,14 @@
 package com.fulcrumgenomics.alignment
 
 import com.fulcrumgenomics.FgBioDef._
-import com.fulcrumgenomics.alignment.Mode.{Global, Glocal, Local}
 import com.fulcrumgenomics.alignment.Aligner._
+import com.fulcrumgenomics.alignment.Mode.{Global, Glocal, Local}
 import com.fulcrumgenomics.util.Sequences
 import enumeratum.EnumEntry
 import htsjdk.samtools.CigarOperator
 
-import scala.collection.{immutable, mutable}
 import scala.annotation.switch
-import scala.collection.mutable.ArrayBuffer
+import scala.collection.immutable
 
 /** Trait that entries in Mode will extend. */
 sealed trait Mode extends EnumEntry

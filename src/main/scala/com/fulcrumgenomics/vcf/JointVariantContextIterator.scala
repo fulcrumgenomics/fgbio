@@ -73,7 +73,7 @@ extends Iterator[Seq[Option[VariantContext]]] {
     }.head
     // TODO: could use a TreeSet to store the iterators, examine the head of each iterator, then pop the iterator with the min,
     // and add that iterator back in.
-    iterators.zipWithIndex.map { case(iter, idx) =>
+    iterators.map { iter =>
       if (iter.isEmpty || this.comparator.compare(minCtx, iter.head) != 0) None
       else Some(iter.next())
     }

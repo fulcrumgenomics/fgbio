@@ -23,11 +23,10 @@
  */
 package com.fulcrumgenomics.util
 
-import java.io.{BufferedInputStream, BufferedReader, FileInputStream, InputStreamReader}
-import java.util.zip.GZIPInputStream
-
 import com.fulcrumgenomics.testing.UnitSpec
 import htsjdk.samtools.util.BlockCompressedInputStream
+
+import java.io.{BufferedInputStream, FileInputStream}
 
 /**
   * Tests for the Io utility class.

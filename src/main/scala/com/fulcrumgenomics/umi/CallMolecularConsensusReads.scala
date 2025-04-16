@@ -26,10 +26,9 @@
 package com.fulcrumgenomics.umi
 
 import com.fulcrumgenomics.FgBioDef._
-import com.fulcrumgenomics.bam.{Bams, CallOverlappingConsensusBasesMetric, CountKind, OverlappingBasesConsensusCaller}
+import com.fulcrumgenomics.bam.OverlappingBasesConsensusCaller
 import com.fulcrumgenomics.bam.api.{SamOrder, SamSource, SamWriter}
-import com.fulcrumgenomics.cmdline.{ClpGroups, FgBioMain, FgBioTool}
-import com.fulcrumgenomics.commons.collection.SelfClosingIterator
+import com.fulcrumgenomics.cmdline.{ClpGroups, FgBioTool}
 import com.fulcrumgenomics.commons.io.Io
 import com.fulcrumgenomics.commons.util.{LazyLogging, LogLevel, Logger}
 import com.fulcrumgenomics.sopt._
@@ -37,7 +36,6 @@ import com.fulcrumgenomics.sopt.cmdline.ValidationException
 import com.fulcrumgenomics.umi.VanillaUmiConsensusCallerOptions._
 import com.fulcrumgenomics.util.NumericTypes.PhredScore
 import com.fulcrumgenomics.util.ProgressLogger
-import htsjdk.samtools.SAMFileHeader.{GroupOrder, SortOrder}
 
 @clp(description =
   """

@@ -24,7 +24,6 @@
 
 package com.fulcrumgenomics.bam
 
-import java.util
 import com.fulcrumgenomics.FgBioDef._
 import com.fulcrumgenomics.alignment.Cigar
 import com.fulcrumgenomics.bam.api.{SamOrder, SamRecord}
@@ -32,11 +31,11 @@ import com.fulcrumgenomics.testing.SamBuilder.{Minus, Plus}
 import com.fulcrumgenomics.testing.{SamBuilder, UnitSpec}
 import com.fulcrumgenomics.util.{Io, Sequences}
 import htsjdk.samtools.SAMFileHeader.GroupOrder
-import htsjdk.samtools.{SAMFileHeader, SamPairUtil}
 import htsjdk.samtools.SamPairUtil.PairOrientation
 import htsjdk.samtools.reference.{ReferenceSequence, ReferenceSequenceFile, ReferenceSequenceFileWalker}
+import htsjdk.samtools.{SAMFileHeader, SamPairUtil}
 
-import scala.collection.Iterator
+import java.util
 
 class BamsTest extends UnitSpec {
   /* Dummy implementation of a reference sequence file walker that always returns chr1 w/2000 As. */
@@ -275,7 +274,7 @@ class BamsTest extends UnitSpec {
 
   it should "calculate insert coordinates correctly" in {
     val builder = new SamBuilder(sort=Some(SamOrder.Coordinate), readLength=10, baseQuality=20)
-    val recs = builder.addPair(start1=100, start2=191).foreach { r => Bams.insertCoordinates(r) shouldBe (100, 200) }
+    builder.addPair(start1=100, start2=191).foreach { r => Bams.insertCoordinates(r) shouldBe (100, 200) }
   }
 
 

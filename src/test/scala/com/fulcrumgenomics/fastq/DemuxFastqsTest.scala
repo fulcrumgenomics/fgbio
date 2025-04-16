@@ -25,21 +25,17 @@
 
 package com.fulcrumgenomics.fastq
 
-import java.nio.file.Files
-import com.fulcrumgenomics.FgBioDef.{DirPath, FilePath, PathToFastq}
-import com.fulcrumgenomics.bam.api.SamSource
+import com.fulcrumgenomics.FgBioDef.{DirPath, FilePath, PathToFastq, unreachable}
+import com.fulcrumgenomics.commons.io.PathUtil
 import com.fulcrumgenomics.fastq.FastqDemultiplexer.{DemuxRecord, DemuxResult}
 import com.fulcrumgenomics.illumina.{Sample, SampleSheet}
+import com.fulcrumgenomics.sopt.cmdline.ValidationException
 import com.fulcrumgenomics.testing.{ErrorLogLevel, UnitSpec}
 import com.fulcrumgenomics.util.{Io, Metric, ReadStructure, SampleBarcodeMetric}
-import com.fulcrumgenomics.commons.io.PathUtil
-import com.fulcrumgenomics.sopt.cmdline.ValidationException
-import com.fulcrumgenomics.util.NumericTypes.PhredScore
-import org.scalatest.OptionValues
+import org.scalatest.{Assertion, OptionValues}
 
+import java.nio.file.Files
 import scala.collection.mutable.ListBuffer
-import scala.io.Source
-import scala.reflect.io.Path
 import scala.util.Try
 
 class DemuxFastqsTest extends UnitSpec with OptionValues with ErrorLogLevel {
@@ -115,7 +111,7 @@ class DemuxFastqsTest extends UnitSpec with OptionValues with ErrorLogLevel {
   private def fq(name: String, bases: String, quals: Option[String]=None, comment: Option[String] = None, readNumber: Option[Int]=None): FastqRecord =
     FastqRecord(name=name, bases=bases, quals=quals.getOrElse("I"*bases.length), comment=comment, readNumber=readNumber)
 
-  private def verifyFragUnmatchedSample(demuxRecord: DemuxResult): Unit = {
+  private def verifyFragUnmatchedSample(demuxRecord: DemuxResult): Assertion = {
     demuxRecord.records.length shouldBe 1
     val record = demuxRecord.records.headOption.value
 
@@ -439,13 +435,12 @@ class DemuxFastqsTest extends UnitSpec with OptionValues with ErrorLogLevel {
     val qualities = "?????" + Range.inclusive(2, 40).map(q => (q + 33).toChar).mkString
     val bases = Seq("GGGGG", "A"*39)
     val expectedBases = "GGGGG" + "N"*8 + "A"*31
-    val metricsQualityThreshold = QualityEncoding.Standard.toStandardAscii(PhredScore.cap(30 + QualityEncoding.Standard.asciiOffset).toChar).toByte // can add command line to adjust this if needed
 
     qualities.foreach(q => detector.add(q))
     detector.compatibleEncodings(0).toString shouldBe "Standard"
 
     val demuxResult = makeDemuxRecord(bases = bases.mkString, quals = qualities)
-    val output = demuxResult.maskLowQualityBases(minBaseQualityForMasking = '+', qualityEncoding = detector.compatibleEncodings(0), omitFailingReads = false).records(0).bases
+    val output = demuxResult.maskLowQualityBases(minBaseQualityForMasking = '+', qualityEncoding = detector.compatibleEncodings(0)).records(0).bases
 
     output.length shouldEqual qualities.length
     output shouldEqual expectedBases.mkString
@@ -455,13 +450,12 @@ class DemuxFastqsTest extends UnitSpec with OptionValues with ErrorLogLevel {
     val detector = new QualityEncodingDetector()
     val qualities = "?????" + Range.inclusive(2, 40).map(q => (q + 33).toChar).mkString
     val bases = Seq("GGGGG", "A"*39)
-    val metricsQualityThreshold = QualityEncoding.Standard.toStandardAscii(PhredScore.cap(30 + QualityEncoding.Standard.asciiOffset).toChar).toByte // can add command line to adjust this if needed
 
     qualities.foreach(q => detector.add(q))
     detector.compatibleEncodings(0).toString shouldBe "Standard"
 
     val demuxResult = makeDemuxRecord(bases = bases.mkString, quals = qualities)
-    val output = demuxResult.maskLowQualityBases(minBaseQualityForMasking = '!', qualityEncoding = detector.compatibleEncodings(0), omitFailingReads = false).records(0).bases
+    val output = demuxResult.maskLowQualityBases(minBaseQualityForMasking = '!', qualityEncoding = detector.compatibleEncodings(0)).records(0).bases
 
     output.length shouldEqual qualities.length
     output shouldEqual bases.mkString
@@ -535,7 +529,7 @@ class DemuxFastqsTest extends UnitSpec with OptionValues with ErrorLogLevel {
     records(0).bases shouldEqual "N"*39
   }
 
-  private def throwableMessageShouldInclude(msg: String)(r: => Unit): Unit = {
+  private def throwableMessageShouldInclude(msg: String)(r: => Unit) = {
     val result = Try(r)
     result.isFailure shouldBe true
     val failure   = result.failed
@@ -552,7 +546,6 @@ class DemuxFastqsTest extends UnitSpec with OptionValues with ErrorLogLevel {
   private val fastqPath = {
     val fastqs = new ListBuffer[FastqRecord]()
 
-    val namePrefix = "RunID:FlowCellID:Lane:Tile:X"
     fastqs += fq(name="frag1", comment=Some(f"1:Y:0:SampleNumber"), bases=sampleBarcode1 + "A"*100) // matches the first sample -> first sample
     fastqs += fq(name="frag2", comment=Some("2:Y:0:SampleNumber"), bases="AAAAAAAAGATTACAGT" + "A"*100) // matches the first sample, one mismatch -> first sample
     fastqs += fq(name="frag3", comment=Some(f"3:Y:0:SampleNumber"), bases="AAAAAAAAGATTACTTT" + "A"*100) // matches the first sample, three mismatches -> unmatched
@@ -581,7 +574,7 @@ class DemuxFastqsTest extends UnitSpec with OptionValues with ErrorLogLevel {
     val output     = PathUtil.pathTo("/path/to/nowhere", "output")
     val metrics    = PathUtil.pathTo("/path/to/nowhere", "metrics")
     throwableMessageShouldInclude("same number of read structures should be given as FASTQs") {
-      new DemuxFastqs(inputs=Seq(fastq), output=output, metadata=sampleSheetPath,
+      val _ = new DemuxFastqs(inputs=Seq(fastq), output=output, metadata=sampleSheetPath,
         readStructures=structures, metrics=Some(metrics), maxMismatches=2, minMismatchDelta=3)
     }
   }
@@ -592,7 +585,7 @@ class DemuxFastqsTest extends UnitSpec with OptionValues with ErrorLogLevel {
     val output     = PathUtil.pathTo("/path/to/nowhere", "output")
     val metrics    = PathUtil.pathTo("/path/to/nowhere", "metrics")
     throwableMessageShouldInclude("No sample barcodes found in read structures") {
-      new DemuxFastqs(inputs=Seq(fastq), output=output, metadata=sampleSheetPath,
+      val _ = new DemuxFastqs(inputs=Seq(fastq), output=output, metadata=sampleSheetPath,
         readStructures=structures, metrics=Some(metrics), maxMismatches=2, minMismatchDelta=3)
     }
   }
@@ -605,7 +598,7 @@ class DemuxFastqsTest extends UnitSpec with OptionValues with ErrorLogLevel {
       val output     = PathUtil.pathTo("/path/to/nowhere", "output")
       val metrics    = PathUtil.pathTo("/path/to/nowhere", "metrics")
       throwableMessageShouldInclude("with template bases but expected 1 or 2.") {
-        new DemuxFastqs(inputs=Seq(fastq), output=output, metadata=sampleSheetPath,
+        val _ = new DemuxFastqs(inputs=Seq(fastq), output=output, metadata=sampleSheetPath,
           readStructures=structures, metrics=Some(metrics), maxMismatches=2, minMismatchDelta=3)
       }
     }
@@ -617,7 +610,7 @@ class DemuxFastqsTest extends UnitSpec with OptionValues with ErrorLogLevel {
       val output     = PathUtil.pathTo("/path/to/nowhere", "output")
       val metrics    = PathUtil.pathTo("/path/to/nowhere", "metrics")
       throwableMessageShouldInclude("with template bases but expected 1 or 2.") {
-        new DemuxFastqs(inputs=Seq(fastq, fastq, fastq), output=output, metadata=sampleSheetPath,
+        val _ = new DemuxFastqs(inputs=Seq(fastq, fastq, fastq), output=output, metadata=sampleSheetPath,
           readStructures=structures, metrics=Some(metrics), maxMismatches=2, minMismatchDelta=3)
       }
     }
@@ -676,7 +669,7 @@ class DemuxFastqsTest extends UnitSpec with OptionValues with ErrorLogLevel {
             val sample = sampleInfo.sample
             val prefix = toSampleOutputPrefix(sample, sampleInfo.isUnmatched, false, output, UnmatchedSampleId)
 
-            def checkOutput(names: Seq[String], sampleBarcodes: Seq[String]): Unit = {
+            def checkOutput(names: Seq[String], sampleBarcodes: Seq[String]) = {
               if (sample.sampleOrdinal == 1) {
                 names.length shouldBe 2
                 names should contain theSameElementsInOrderAs Seq("frag1", "frag2")
@@ -744,7 +737,7 @@ class DemuxFastqsTest extends UnitSpec with OptionValues with ErrorLogLevel {
     }
   }
 
-  def testEndToEndWithFastqStandards(fastqStandards: FastqStandards, omitFailingReads: Boolean = false, omitControlReads: Boolean = false): Unit = {
+  private def testEndToEndWithFastqStandards(fastqStandards: FastqStandards, omitFailingReads: Boolean = false, omitControlReads: Boolean = false): Unit = {
     // Build the FASTQ
     val fastqs = new ListBuffer[FastqRecord]()
     val namePrefix = "Instrument:RunID:FlowCellID:Lane:Tile:X"
@@ -755,20 +748,6 @@ class DemuxFastqsTest extends UnitSpec with OptionValues with ErrorLogLevel {
     fastqs += fq(name = f"$namePrefix:3", comment = Some(f"3:N:$controlFlag:SampleNumber"), bases = "AAAAAAAAGATTACTTT" + "A" * 100) // matches the first sample, three mismatches -> unmatched
     fastqs += fq(name = f"$namePrefix:4", comment = Some("4:N:0:SampleNumber"), bases = sampleBarcode4 + "A" * 100) // matches the 4th barcode perfectly and the 3rd barcode with two mismatches, delta too small -> unmatched
     fastqs += fq(name = f"$namePrefix:5", comment = Some("5:N:0:SampleNumber"), bases = "AAAAAAAAGANNNNNNN" + "A" * 100) // matches the first sample, too many Ns -> unmatched
-    val barcodesPerSample = Seq(
-      if (omitFailingReads) Seq(sampleBarcode1) else if (omitControlReads) Seq("AAAAAAAAGATTACAGT") else Seq(sampleBarcode1, "AAAAAAAAGATTACAGT"), // sample 1
-      Seq.empty, // sample 2
-      Seq.empty, // sample 3
-      Seq.empty, // sample 4
-      if (omitFailingReads) Seq.empty else if (omitControlReads) Seq(sampleBarcode4, "AAAAAAAAGANNNNNNN") else Seq("AAAAAAAAGATTACTTT", sampleBarcode4, "AAAAAAAAGANNNNNNN")
-    )
-    val assignmentsPerSample = Seq(
-      if (omitFailingReads) Seq("1") else if (omitControlReads) Seq("2") else Seq("1", "2"), // sample 1
-      Seq.empty, // sample 2
-      Seq.empty, // sample 3
-      Seq.empty, // sample 4
-      if (omitFailingReads) Seq.empty else if (omitControlReads) Seq("4", "5") else Seq("3", "4", "5") // unmatched
-    )
     val illuminaReadNamesFastqPath = makeTempFile("test", ".fastq")
     Io.writeLines(illuminaReadNamesFastqPath, fastqs.map(_.toString))
 
@@ -791,9 +770,7 @@ class DemuxFastqsTest extends UnitSpec with OptionValues with ErrorLogLevel {
       omitControlReads = omitControlReads).execute()
 
     // Check the output FASTQs
-    toSampleInfos(structures).zipWithIndex.foreach { case (sampleInfo, index) =>
-      val barcodes = barcodesPerSample(index)
-      val assignments = assignmentsPerSample(index)
+    toSampleInfos(structures).zipWithIndex.foreach { case (sampleInfo, _) =>
       val sample = sampleInfo.sample
       val prefix = toSampleOutputPrefix(sample, isUnmatched = sampleInfo.isUnmatched, illuminaFileNames = fastqStandards.illuminaFileNames, output, UnmatchedSampleId)
       val extensions = FastqRecordWriter.extensions(pairedEnd = true, illuminaFileNames = fastqStandards.illuminaFileNames)
@@ -1065,7 +1042,7 @@ class DemuxFastqsTest extends UnitSpec with OptionValues with ErrorLogLevel {
   }
 
 
-  def testEndToEndBarcodeMetrics(fastqStandards: FastqStandards, omitFailingReads: Boolean = false, omitControlReads: Boolean = false): Unit = {
+  private def testEndToEndBarcodeMetrics(fastqStandards: FastqStandards, omitFailingReads: Boolean, omitControlReads: Boolean): Unit = {
     // Build the FASTQ
     val fastqs = new ListBuffer[FastqRecord]()
     val namePrefix = "Instrument:RunID:FlowCellID:Lane:Tile:X"
@@ -1100,14 +1077,15 @@ class DemuxFastqsTest extends UnitSpec with OptionValues with ErrorLogLevel {
 
 
     // Check the output metrics
-    toSampleInfos(structures).zipWithIndex.foreach { case (sampleInfo, _) =>
+    toSampleInfos(structures).zipWithIndex.foreach { case (_, _) =>
       val metricsFile = Metric.read[SampleBarcodeMetric](metricsFilename)
 
-      val Seq(totNumBases, q30above, q20above) = {
+      val Seq(totNumBases, q30above, q20above): Seq[Int] = {
         if (omitFailingReads && omitControlReads) Seq(39, 11, 21)
         else if (omitFailingReads && !omitControlReads) Seq(78, 22, 42)
         else if (!omitFailingReads && omitControlReads) Seq(78, 22, 42)
         else if (!omitFailingReads && !omitControlReads) Seq(156, 44, 84)
+        else unreachable("This condition is utterly impossible!")
       }
 
       val pfTemplates = if (omitControlReads) 1 else 2

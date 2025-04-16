@@ -31,7 +31,6 @@ import enumeratum.EnumEntry
 import htsjdk.samtools.{SAMUtils, CigarOperator => Op}
 
 import scala.collection.mutable.ArrayBuffer
-import scala.math.abs
 
 /** The base trait for all clipping modes. */
 sealed trait ClippingMode extends EnumEntry

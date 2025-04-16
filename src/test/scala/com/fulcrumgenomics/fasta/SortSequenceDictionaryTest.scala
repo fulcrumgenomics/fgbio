@@ -24,11 +24,9 @@
 
 package com.fulcrumgenomics.fasta
 
-import com.fulcrumgenomics.commons.io.PathUtil
 import com.fulcrumgenomics.testing.UnitSpec
 
 class SortSequenceDictionaryTest extends UnitSpec {
-  private val dir        = PathUtil.pathTo("src/test/resources/com/fulcrumgenomics/fasta")
   private val chr1 = SequenceMetadata(
     name             = "chr1",
     length           = 100,

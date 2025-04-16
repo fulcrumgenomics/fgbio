@@ -68,7 +68,7 @@ class SamBuilder(val readLength: Int=100,
 
   { // Build the default dictionary
     val dict: SequenceDictionary = sd.getOrElse {
-      val seqs = (Range.inclusive(1, 22) ++ Seq("X", "Y", "M")).map { chr =>
+      val seqs = (Range.inclusive(1, 22).map(_.toString) ++ Seq("X", "Y", "M")).map { chr =>
         SequenceMetadata(name="chr" + chr, length=200e6.toInt)
       }
       SequenceDictionary(seqs:_*)

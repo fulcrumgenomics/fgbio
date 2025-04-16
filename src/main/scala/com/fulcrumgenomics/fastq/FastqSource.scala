@@ -23,11 +23,10 @@
  */
 package com.fulcrumgenomics.fastq
 
-import java.io._
-
-import com.fulcrumgenomics.util.Io
 import com.fulcrumgenomics.commons.CommonsDef.{PathToFastq, yieldAndThen}
+import com.fulcrumgenomics.util.Io
 
+import java.io._
 import scala.io.Source
 
 /**
@@ -84,6 +83,7 @@ object FastqSource {
 class FastqSource private(val lines: Iterator[String],
                           private[this] val source: Option[{ def close(): Unit }] = None)
   extends Iterator[FastqRecord] with Closeable {
+  import scala.language.reflectiveCalls
   
   private var nextRecord: Option[FastqRecord] = fetchNextRecord()
 

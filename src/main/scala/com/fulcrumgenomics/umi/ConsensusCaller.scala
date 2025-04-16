@@ -24,11 +24,11 @@
 
 package com.fulcrumgenomics.umi
 
-import java.util
-
 import com.fulcrumgenomics.util.MathUtil
 import com.fulcrumgenomics.util.NumericTypes._
 import htsjdk.samtools.util.SequenceUtil
+
+import java.util
 
 object ConsensusCaller {
   type Base = Byte
@@ -91,7 +91,7 @@ class ConsensusCaller(errorRatePreLabeling:  PhredScore,
 
     /** Adds a base and un-adjusted base quality to the consensus likelihoods. */
     def add(base: Base, qual: PhredScore): Unit =
-      add(base, pErrorPerBase=phredToOneThirdAdjustedLogProbError(qual), pTruth=phredToAdjustedLogProbCorrect(qual))
+      add(base, pErrorPerBase=phredToOneThirdAdjustedLogProbError(qual.toInt), pTruth=phredToAdjustedLogProbCorrect(qual.toInt))
 
     /**
       * Adds a base with adjusted error and truth probabilities to the consensus likelihoods.
@@ -199,7 +199,7 @@ class ConsensusCaller(errorRatePreLabeling:  PhredScore,
     */
   def adjustedErrorProbability(qual: PhredScore): LogProbability = {
     if (qual < PhredScore.MinValue) throw new IllegalArgumentException(s"Cannot adjust score lower than ${PhredScore.MinValue}")
-    else this.phredToAdjustedLogProbError(qual)
+    else this.phredToAdjustedLogProbError(qual.toInt)
   }
 
   /**
@@ -210,7 +210,7 @@ class ConsensusCaller(errorRatePreLabeling:  PhredScore,
     */
   def adjustedTruthProbability(qual: PhredScore): LogProbability = {
     if (qual < PhredScore.MinValue) throw new IllegalArgumentException(s"Cannot adjust score lower than ${PhredScore.MinValue}")
-    else this.phredToAdjustedLogProbCorrect(qual)
+    else this.phredToAdjustedLogProbCorrect(qual.toInt)
   }
 
   /** Returns a new builder that can be used to call the consensus at one or more sites serially. */

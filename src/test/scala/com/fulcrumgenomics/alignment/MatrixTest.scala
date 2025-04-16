@@ -24,8 +24,8 @@
 
 package com.fulcrumgenomics.alignment
 
-import com.fulcrumgenomics.testing.UnitSpec
 import com.fulcrumgenomics.FgBioDef._
+import com.fulcrumgenomics.testing.UnitSpec
 
 class MatrixTest extends UnitSpec {
   "Matrix.apply" should "build a matrix of appropriate size" in {
@@ -38,13 +38,13 @@ class MatrixTest extends UnitSpec {
     val m = Matrix[Int](2,10)
     forloop(from=0, until=2) { i =>
       forloop(from=0, until=10) { j =>
-        m(i, j) = i * j
+        val _ = m(i, j) = i * j
       }
     }
 
     forloop(from=0, until=2) { i =>
       forloop(from=0, until=10) { j =>
-        m(i, j) shouldBe i * j
+        val _ = m(i, j) shouldBe i * j
       }
     }
   }
@@ -72,12 +72,12 @@ class MatrixTest extends UnitSpec {
       }
     }
 
-    val table = m.toString
     val expected =
       """
-        |0  1
-        |0  2
-        |0  3
-      """.stripMargin.trim.replaceAll(" +", "\t")
+        |0 0
+        |0 1
+        |0 2
+      """.stripMargin.trim.replaceAll(" ", "\t")
+    m.toString shouldBe expected
   }
 }

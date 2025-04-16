@@ -33,8 +33,6 @@ import com.fulcrumgenomics.sopt.{arg, clp}
 import com.fulcrumgenomics.util.Sorter.Codec
 import enumeratum.EnumEntry
 
-import scala.collection.immutable.IndexedSeq
-
 @clp(description =
   """
     |Updates the contig names in columns of a delimited data file (e.g. CSV, TSV).

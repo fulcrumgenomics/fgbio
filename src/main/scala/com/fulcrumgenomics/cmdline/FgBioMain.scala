@@ -24,11 +24,6 @@
 
 package com.fulcrumgenomics.cmdline
 
-import java.io.IOException
-import java.net.InetAddress
-import java.nio.file.Paths
-import java.text.DecimalFormat
-
 import com.fulcrumgenomics.bam.api.{SamSource, SamWriter}
 import com.fulcrumgenomics.cmdline.FgBioMain.FailureException
 import com.fulcrumgenomics.commons.CommonsDef._
@@ -41,6 +36,12 @@ import com.fulcrumgenomics.vcf.api.VcfWriter
 import com.intel.gkl.compression.{IntelDeflaterFactory, IntelInflaterFactory}
 import htsjdk.samtools.ValidationStringency
 import htsjdk.samtools.util.{BlockCompressedOutputStream, BlockGunzipper, IOUtil, SnappyLoader}
+
+import java.io.IOException
+import java.net.InetAddress
+import java.nio.file.Paths
+import java.text.DecimalFormat
+import scala.annotation.unused
 
 /**
   * Main program for fgbio that loads everything up and runs the appropriate sub-command
@@ -114,7 +115,7 @@ class FgBioMain extends LazyLogging {
       case Sopt.Failure(usage) =>
         System.err.print(usage())
         1
-      case Sopt.CommandSuccess(cmd) =>
+      case Sopt.CommandSuccess(_) =>
         unreachable("CommandSuccess should never be returned by parseCommandAndSubCommand.")
       case Sopt.SubcommandSuccess(commonArgs, subcommand) =>
         FgBioCommonArgs.args = commonArgs
@@ -151,7 +152,7 @@ class FgBioMain extends LazyLogging {
   protected def name: String = "fgbio"
 
   /** Prints a line of useful information when a tool starts executing. */
-  protected def printStartupLines(tool: String, args: Array[String], commonArgs: FgBioCommonArgs): Unit = {
+  protected def printStartupLines(tool: String, @unused args: Array[String], @unused commonArgs: FgBioCommonArgs): Unit = {
     val version    = CommandLineProgramParserStrings.version(getClass, color=false).replace("Version: ", "")
     val host       = try { InetAddress.getLocalHost.getHostName } catch { case _: Exception => "unknown-host" }
     val user       = System.getProperty("user.name")

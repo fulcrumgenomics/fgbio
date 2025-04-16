@@ -25,9 +25,6 @@
 
 package com.fulcrumgenomics.fasta
 
-import java.io.StringWriter
-
-import com.fulcrumgenomics.FgBioDef
 import com.fulcrumgenomics.FgBioDef._
 import com.fulcrumgenomics.fasta.SequenceMetadata.Keys
 import com.fulcrumgenomics.util.Io
@@ -36,6 +33,7 @@ import htsjdk.samtools.util.BufferedLineReader
 import htsjdk.samtools.{SAMSequenceDictionary, SAMSequenceDictionaryCodec, SAMSequenceRecord, SAMTextHeaderCodec}
 import htsjdk.variant.utils.SAMSequenceDictionaryExtractor
 
+import java.io.StringWriter
 import scala.collection.mutable
 import scala.collection.mutable.ListBuffer
 
@@ -182,7 +180,7 @@ case class SequenceMetadata private[fasta]
     this.get(Keys.AlternateLocus).flatMap {
       case "*"   => None
       case range =>
-        val locus = FgBioDef.parseRange(range) match {
+        val locus = GenomicRange(range) match {
           case GenomicRange("=", start, end) => AlternateLocus(refName=this.name, start=start.toInt, end=end.toInt)
           case _locus                        => _locus
         }
@@ -325,7 +323,7 @@ object Converters {
     * Converter from a [[SequenceMetadata]] to a [[SAMSequenceRecord]]
     * @deprecated use [[SequenceMetadata.toSam]] instead.
     */
-  @Deprecated
+  @deprecated
   implicit class ToSAMSequenceRecord(info: SequenceMetadata) {
     def asSam: SAMSequenceRecord = info.toSam
   }
@@ -339,7 +337,7 @@ object Converters {
   /** Converter from a [[SequenceDictionary]] to a [[SAMSequenceDictionary]]
     * @deprecated use [[SequenceDictionary.toSam]] instead.
     */
-  @Deprecated
+  @deprecated
   implicit class ToSAMSequenceDictionary(dict: SequenceDictionary) {
     def asSam: SAMSequenceDictionary = dict.toSam
   }

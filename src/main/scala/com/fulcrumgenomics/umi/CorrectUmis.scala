@@ -32,7 +32,7 @@ import com.fulcrumgenomics.commons.util.LazyLogging
 import com.fulcrumgenomics.sopt.{arg, clp}
 import com.fulcrumgenomics.umi.CorrectUmis._
 import com.fulcrumgenomics.util.Metric.{Count, Proportion}
-import com.fulcrumgenomics.util.{Metric, _}
+import com.fulcrumgenomics.util._
 
 import scala.collection.mutable
 
@@ -219,7 +219,7 @@ class CorrectUmis
             if (matches.forall(_.matched)) {
               // Store the original UMI if enabled and there are mismatches
               if (!dontStoreOriginalUmis && !matches.forall(_.mismatches == 0)) {
-                rec(ConsensusTags.OriginalUmiBases) = rec(this.umiTag)
+                rec(ConsensusTags.OriginalUmiBases) = rec[String](this.umiTag)
               }
 
               val correctedUmi = matches.map(_.umi).mkString("-")

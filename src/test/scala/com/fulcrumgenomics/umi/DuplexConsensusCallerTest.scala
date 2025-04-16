@@ -32,7 +32,7 @@ import org.scalatest.OptionValues
 
 class DuplexConsensusCallerTest extends UnitSpec with OptionValues {
   // Function to create a caller without so much writing
-  def caller(q: Int = 10, pre: Int = DuplexConsensusCaller.ErrorRatePreUmi, post: Int = DuplexConsensusCaller.ErrorRatePostUmi, minReads: Seq[Int] = Seq(1)) =
+  def caller(q: Int = 10, pre: Int = DuplexConsensusCaller.ErrorRatePreUmi.toInt, post: Int = DuplexConsensusCaller.ErrorRatePostUmi.toInt, minReads: Seq[Int] = Seq(1)) =
     new DuplexConsensusCaller(readNamePrefix="test", minInputBaseQuality=q.toByte, errorRatePreUmi=pre.toByte, errorRatePostUmi=post.toByte,
       minReads=minReads)
 
@@ -217,7 +217,7 @@ class DuplexConsensusCallerTest extends UnitSpec with OptionValues {
     // Single BA read
     builder.addPair(name=s"b1", start1=200, start2=100, strand1=Minus, strand2=Plus, bases1="CCCCCCCCCC", bases2="AAAAAAAAAA", attrs=Map(MI -> "foo/B"))
 
-    val recs = caller(post=45.toByte).consensusReadsFromSamRecords(builder.toSeq)
+    val recs = caller(post=45).consensusReadsFromSamRecords(builder.toSeq)
     recs should have size 2
     val r1 = recs.find(_.firstOfPair).getOrElse(fail("No first of pair."))
     val r2 = recs.find(_.secondOfPair).getOrElse(fail("No second of pair."))

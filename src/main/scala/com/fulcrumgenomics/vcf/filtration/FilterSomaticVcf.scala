@@ -206,6 +206,6 @@ import scala.collection.mutable.ListBuffer
     records.safelyClose()
     source.safelyClose()
     writer.close()
-    progress.logLast()
+    val _ = progress.logLast()
   }
 }

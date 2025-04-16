@@ -24,16 +24,15 @@
 
 package com.fulcrumgenomics.util
 
-import java.io._
-import java.nio.file.{Files, Path}
-import java.util
-
 import com.fulcrumgenomics.FgBioDef._
-import com.fulcrumgenomics.commons.io.Writer
 import com.fulcrumgenomics.commons.collection.SelfClosingIterator
+import com.fulcrumgenomics.commons.io.Writer
 import com.fulcrumgenomics.util.Sorter.{Codec, SortEntry}
 import htsjdk.samtools.util.TempStreamFactory
 
+import java.io._
+import java.nio.file.{Files, Path}
+import java.util
 import scala.collection.mutable.ArrayBuffer
 
 /**
@@ -103,14 +102,14 @@ class Sorter[A,B <: Ordered[B]](val maxObjectsInRam: Int,
         clear()
       }
       else {
-        val length = try { this.dataStream.readInt() } catch { case ex: EOFException => -1 }
+        val length = try { this.dataStream.readInt() } catch { case _: EOFException => -1 }
         if (length <= 0) {
           close()
           clear()
         }
         else {
           if (this.bytes.length < length) this.bytes = new Array[Byte](length)
-          val read  = dataStream.read(bytes, 0, length)
+          val _ = dataStream.read(bytes, 0, length)
           this.nextValue = this.codec.decode(bytes, 0, length)
           this.nextKey   = keyfunc(this.nextValue)
         }

@@ -24,9 +24,6 @@
 
 package com.fulcrumgenomics.umi
 
-import java.nio.file.{Path, Paths}
-import java.util.Random
-
 import com.fulcrumgenomics.FgBioDef._
 import com.fulcrumgenomics.bam.api.SamOrder
 import com.fulcrumgenomics.commons.util.SimpleCounter
@@ -36,6 +33,8 @@ import com.fulcrumgenomics.util.{Io, Metric, Rscript}
 import htsjdk.samtools.util.{Interval, IntervalList}
 import org.apache.commons.math3.distribution.NormalDistribution
 
+import java.nio.file.{Path, Paths}
+import java.util.Random
 import scala.math.{max, min}
 
 class CollectDuplexSeqMetricsTest extends UnitSpec {
@@ -68,7 +67,7 @@ class CollectDuplexSeqMetricsTest extends UnitSpec {
   }
 
   // Returns a collector as an option for easy mapping over
-  private def collector(duplex: Boolean = false) = Some(new CollectDuplexSeqMetrics(input=Io.DevNull, output=Io.DevNull, duplexUmiCounts=duplex))
+  private def collector(duplex: Boolean) = Some(new CollectDuplexSeqMetrics(input=Io.DevNull, output=Io.DevNull, duplexUmiCounts=duplex))
 
   "CollectDuplexSeqMetrics" should "have acceptable CLP annotations" in {
     checkClpAnnotations[CollectDuplexSeqMetrics]

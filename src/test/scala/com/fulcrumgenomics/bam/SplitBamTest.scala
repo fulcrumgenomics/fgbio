@@ -25,13 +25,13 @@
 
 package com.fulcrumgenomics.bam
 
-import java.nio.file.Files
-
-import com.fulcrumgenomics.commons.CommonsDef._
-import com.fulcrumgenomics.testing.{SamBuilder, UnitSpec}
-import htsjdk.samtools.{SAMReadGroupRecord, SAMRecordSetBuilder}
 import com.fulcrumgenomics.bam.SplitType._
 import com.fulcrumgenomics.bam.api.SamOrder
+import com.fulcrumgenomics.commons.CommonsDef._
+import com.fulcrumgenomics.testing.{SamBuilder, UnitSpec}
+import htsjdk.samtools.SAMReadGroupRecord
+
+import java.nio.file.Files
 
 class SplitBamTest extends UnitSpec {
 

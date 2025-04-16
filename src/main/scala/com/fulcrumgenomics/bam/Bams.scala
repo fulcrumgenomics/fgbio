@@ -90,7 +90,7 @@ case class Template(r1: Option[SamRecord],
     val x2 = r2.map(_.clone())
     Seq(x1, x2).flatten.foreach { r =>
       if (r.mapped) {
-        val nm = r.get[Int]("NM").getOrElse("")
+        val nm = r.get[Int]("NM").map(_.toString).getOrElse("")
         r("OA") = s"${r.refName},${r.start},${if (r.positiveStrand) "+" else "-"},${r.cigar},${r.mapq},$nm"
       }
       SAMUtils.makeReadUnmapped(r.asSam)
