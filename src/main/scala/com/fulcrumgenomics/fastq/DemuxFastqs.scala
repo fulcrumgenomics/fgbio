@@ -385,7 +385,7 @@ class DemuxFastqs
 
   @annotation.nowarn("msg=value illuminaStandards in class DemuxFastqs is deprecated")
   private val fastqStandards: FastqStandards = {
-  if (illuminaStandards) {
+    if (illuminaStandards) {
       logger.warning("The `--illumina-standards` option will be removed in a future version, please use `--output-standards=Illumina`")
       // NB: include read numbers
       FastqStandards(
