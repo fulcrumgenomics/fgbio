@@ -190,7 +190,7 @@ object Sequences {
     new String(bs)
   }
 
-  /** Reverse complements an array of bases in place. See [[complement()]] for how bases are complemented. */
+  /** Reverse complements an array of bases in place. See [[complement(b:Byte):Byte*]] for how bases are complemented. */
   def revcomp(bs: Array[Byte]): Unit = {
     var (i, j) = (0, bs.length - 1)
     while (i < j) {
@@ -205,7 +205,7 @@ object Sequences {
   }
 
   /**
-    * Complements the bases in the array in place. See [[complement()]] for how complementing is performed.
+    * Complements the bases in the array in place. See [[complement(b:Byte):Byte*]] for how complementing is performed.
     *
     * @param bs an array of bases as bytes to be complemented in place
     */

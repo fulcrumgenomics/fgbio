@@ -365,7 +365,7 @@ trait UmiConsensusCaller[ConsensusRead <: SimpleRead] {
     * to allow for differential read length (either due to sequencing or untracked hard-clipping
     * of adapters) and for differential soft-clipping at the starts and ends of reads.
     *
-    * NOTE: filtered out reads are sent to the [[rejectRecords]] method and do not need further handling
+    * NOTE: filtered out reads are sent to the `rejectsMethod` method and do not need further handling
     */
   protected[umi] def filterToMostCommonAlignment(recs: Seq[SourceRead]): Seq[SourceRead] = if (recs.size < 2) recs else {
     val groups = new ArrayBuffer[AlignmentGroup]

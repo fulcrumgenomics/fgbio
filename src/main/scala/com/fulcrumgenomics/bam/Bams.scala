@@ -325,11 +325,10 @@ object Bams extends LazyLogging {
 
   /** Return an iterator over records sorted and grouped into [[Template]] objects. Although a queryname sort is
     * guaranteed, the sort order may not be consistent with other queryname sorting implementations, especially in other
-    * tool kits. See [[templateIterator]] for a [[Template]] iterator which emits templates in a non-guaranteed sort
-    * order.
+    * tool kits.
     *
-    * @see [[templateIterator]]
-    *
+    * @see [[templateIterator(in:com\.fulcrumgenomics\.bam\.api\.SamSource,maxInMemory:Int,tmpDir:com\.fulcrumgenomics\.FgBioDef\.DirPath):com\.fulcrumgenomics\.commons\.collection\.SelfClosingIterator[com\.fulcrumgenomics\.bam\.Template]*]]
+    *      for a [[Template]] iterator which emits templates in a non-guaranteed sort order.
     * @param in a SamReader from which to consume records
     * @param maxInMemory the maximum number of records to keep and sort in memory, if sorting is needed
     * @param tmpDir a temp directory to use for temporary sorting files if sorting is needed
@@ -343,11 +342,10 @@ object Bams extends LazyLogging {
 
   /** Return an iterator over records sorted and grouped into [[Template]] objects. Although a queryname sort is
     * guaranteed, the sort order may not be consistent with other queryname sorting implementations, especially in other
-    * tool kits. See [[templateIterator]] for a [[Template]] iterator which emits templates in a non-guaranteed sort
-    * order.
+    * tool kits.
     *
-    * @see [[templateIterator]]
-    *
+    * @see [[templateIterator(in:com\.fulcrumgenomics\.bam\.api\.SamSource,maxInMemory:Int,tmpDir:com\.fulcrumgenomics\.FgBioDef\.DirPath):com\.fulcrumgenomics\.commons\.collection\.SelfClosingIterator[com\.fulcrumgenomics\.bam\.Template]*]]
+    *      for a [[Template]] iterator which emits templates in a non-guaranteed sort order.
     * @param iterator an iterator from which to consume records
     * @param header the header associated with the records
     * @param maxInMemory the maximum number of records to keep and sort in memory, if sorting is needed
@@ -375,7 +373,7 @@ object Bams extends LazyLogging {
     * sorted based on a hash of their read name in order to randomize the order while collating by read name.
     * The randomized reads are then iterated and grouped into [[Template]] objects.
     *
-    * @param in the [[SamSource]] from which to pull reads and the SAM header
+    * @param in the [[com.fulcrumgenomics.bam.api.SamSource]] from which to pull reads and the SAM header
     * @param randomSeed a seed used to generate the hashes that drive the random sorting.  Different seeds will produce
     *                   different randomizations of the reads.  Using the same seed will result in the same ordering
     *                   of the data across invocations.
@@ -414,9 +412,9 @@ object Bams extends LazyLogging {
     * @param tag the SAM tag (two-letter key) to sort by
     * @param defaultValue the default value, if any, otherwise require all records to have the SAM tag.
     * @param transform the transform to apply to the value of the SAM tags (default is the identity)
-    * @param ordering the ordering of [[B]].
+    * @param ordering the ordering of `B`.
     * @tparam A the type of the SAM tag
-    * @tparam B the type of the SAM tag after any transformation, or just [[A]] if no transform is given.
+    * @tparam B the type of the SAM tag after any transformation, or just `A` if no transform is given.
     * @return an Iterator over records sorted by the given SAM tag, optionally transformed.
     */
   def sortByTransformedTag[A, B](iterator: Iterator[SamRecord],
@@ -448,7 +446,7 @@ object Bams extends LazyLogging {
     * @param tmpDir the temporary directory to use when spilling to disk
     * @param tag the SAM tag (two-letter key) to sort by
     * @param defaultValue the default value, if any, otherwise require all records to have the SAM tag.
-    * @param ordering the ordering of [[A]].
+    * @param ordering the ordering of `A`.
     * @tparam A the type of the SAM tag
     * @return an Iterator over records sorted by the given SAM tag.
     */
@@ -547,7 +545,7 @@ object Bams extends LazyLogging {
     )
   }
 
-  /** Builds a [[Writer]] of [[SamRecord]]s that regenerates the NM, UQ, and MD tags using the given map of reference
+  /** Builds a [[Writer]] of [[com.fulcrumgenomics.bam.api.SamRecord]]s that regenerates the NM, UQ, and MD tags using the given map of reference
     * sequences.
     *
     * @param writer the writer to write to

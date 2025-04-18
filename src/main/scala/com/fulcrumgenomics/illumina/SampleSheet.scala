@@ -164,7 +164,7 @@ object SampleSheet {
   private def validateSamplesFromTheSameLane(samples: Seq[Sample]): Unit = {
     // All samples should either be from the same lane or have no lane
     require(samples.flatMap(_.lane).distinct.lengthCompare(1) <= 0)
-    /** We include the lane if present in the sample key for debugging purposes*/
+    // We include the lane if present in the sample key for debugging purposes
     def sampleKey(s: Sample): String = s"${s.sampleName} ${s.libraryId}" + s.lane.map(" " + _).getOrElse("")
 
     // Validate some properties for a sample sheet

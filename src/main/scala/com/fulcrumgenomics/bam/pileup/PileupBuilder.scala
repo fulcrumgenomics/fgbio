@@ -90,7 +90,7 @@ object PileupBuilder {
     case object Streaming extends BamAccessPattern
   }
 
-  /** Build a [[PileupBuilder]] from a [[SamSource]]. */
+  /** Build a [[PileupBuilder]] from a [[com.fulcrumgenomics.bam.api.SamSource]]. */
   def apply(
     source: SamSource,
     accessPattern: BamAccessPattern             = RandomAccess,

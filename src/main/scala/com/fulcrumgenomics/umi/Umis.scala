@@ -70,7 +70,7 @@ object Umis {
 
   /**
     * Extracts the UMI from an Illumina fastq style read name.  Illumina documents their FASTQ read names as:
-    *   @<instrument>:<run number>:<flowcell ID>:<lane>:<tile>:<x-pos>:<y-pos>:<UMI> <read>:<is filtered>:<control number>:<index>
+    *   `@<instrument>:<run number>:<flowcell ID>:<lane>:<tile>:<x-pos>:<y-pos>:<UMI> <read>:<is filtered>:<control number>:<index>`
     *
     *  See https://support.illumina.com/help/BaseSpace_OLH_009008/Content/Source/Informatics/BS/FileFormat_FASTQ-files_swBS.htm
     *  The UMI field is optional, so read names may or may not contain it.  Illumina also specifies that the UMI

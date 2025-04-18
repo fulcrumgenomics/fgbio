@@ -88,7 +88,7 @@ class IntervalListSource private(lines: Iterator[String],
 
   require(this.dict.nonEmpty, "No reference sequences found in the header.")
 
-  /** The [[SequenceDictionary]] associated with the source. */
+  /** The [[com.fulcrumgenomics.fasta.SequenceDictionary]] associated with the source. */
   lazy val dict: SequenceDictionary = {
     import com.fulcrumgenomics.fasta.Converters.FromSAMSequenceDictionary
     this.header.getSequenceDictionary.fromSam

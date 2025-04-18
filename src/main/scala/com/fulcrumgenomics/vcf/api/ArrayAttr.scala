@@ -42,7 +42,7 @@ object ArrayAttr {
 
 
 /**
-  * Class that is used to store multi-valued attributes from a VCF (e.g. `AD=10,20`) and correctly
+  * Class that is used to store multivalued attributes from a VCF (e.g. `AD=10,20`) and correctly
   * handle missing values.
   *
   * It is possible for one or all values in the collection to be missing. If accessed directly, e.g. by index
@@ -52,7 +52,7 @@ object ArrayAttr {
   *   - [[Variant.MissingFloat]] for Floating point numbers
   *
   * If you need to deal with the possibility of missing values it is strongly recommended that you use
-  * the [[isMissing()]] and/or [[isDefined()]] methods or use the [[get()]] which returns an option type.
+  * the [[isMissing]] and/or [[isDefined]] methods or use the [[get]] which returns an option type.
   *
   * @param values the values stored in the collection
   * @tparam A the type of values stored in the collection
@@ -71,8 +71,8 @@ class ArrayAttr[A] private(private val values: Array[A]) extends IndexedSeq[A] {
   override def length: Int = values.length
 
   /** Accesses the value at the specified index. May return a Missing value if no value is defined at the index.
-    * To avoid dealing with Missing values use [[isMissing(idx)]] or [[isDefined(idx)]] prior to accessing the
-    * element, or use [[get()]] instead.
+    * To avoid dealing with Missing values use [[isMissing]] or [[isDefined]] prior to accessing the
+    * element, or use [[get]] instead.
     */
   override def apply(idx: Int): A = this.values(idx)
 

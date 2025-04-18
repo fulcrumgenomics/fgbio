@@ -102,9 +102,9 @@ class FixVcfPhaseSet
     }
   }
 
-  /** Returns a modified [[VcfHeader]] to use when reading the input.  The input VCF header will be modified such
-    * that the PS FORMAT field is read as a single fixed value of type [[String]].  This is important, for example, when
-    * the header has type [[VcfFieldType.Integer]] but the records have type [[VcfFieldType.String]].
+  /** Returns a modified [[com.fulcrumgenomics.vcf.api.VcfHeader]] to use when reading the input.  The input VCF header will be modified such
+    * that the PS FORMAT field is read as a single fixed value of type [[java.lang.String]].  This is important, for example, when
+    * the header has type [[com.fulcrumgenomics.vcf.api.VcfFieldType.Integer]] but the records have type [[com.fulcrumgenomics.vcf.api.VcfFieldType.String]].
     * */
   def headerForReader(header: VcfHeader): VcfHeader = {
     val formats = header.formats.filterNot(_.id == "PS")
@@ -121,7 +121,7 @@ class FixVcfPhaseSet
     header.copy(formats=formats :+ ps)
   }
 
-  /** Builds the header for the [[VcfWriter]] from the input reader [[VcfHeader]].  If `keepOriginal` is `true`, then
+  /** Builds the header for the [[com.fulcrumgenomics.vcf.api.VcfWriter]] from the input reader [[com.fulcrumgenomics.vcf.api.VcfHeader]].  If `keepOriginal` is `true`, then
     * the `OPS` FORMAT header line is added to store the original phase set, which will be a single fixed count of type
     * `String`.  The output phase set will always be a single fixed count of type `Integer`. */
   def headerForWriter(header: VcfHeader):  VcfHeader = {
