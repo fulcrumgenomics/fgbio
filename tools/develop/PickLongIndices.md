@@ -48,7 +48,7 @@ satisfy all constraints.  Existing indices are included in the generated output 
 |min-gc|g|Double|The minimum GC fraction for an index to be accepted.|Optional|1|0.2|
 |max-gc|G|Double|The maximum GC fraction for an index to be accepted.|Optional|1|0.8|
 |existing||FilePath|File of existing index sequences to integrate, one per line.|Optional|1||
-|seed|s|Int|Random seed value.|Optional|1|1|
+|seed|s|Long|Random seed value.|Optional|1|1|
 |attempts|a|Int|Attempts to pick the next index before quitting.|Optional|1|100000|
 |vienna-rna-dir||DirPath|The installation directory for `ViennaRNA`.|Optional|1||
 |temperature|t|Double|The temperature at which to predict secondary structure.|Optional|1|25.0|
