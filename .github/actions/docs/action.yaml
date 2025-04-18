@@ -122,4 +122,4 @@ runs:
       id: version-output
       shell: bash -l {0}
       run: |
-        echo "version=${FGBIO_VERSION}" >> GITHUB_OUTPUT
+        echo "version=${FGBIO_VERSION}" >> "${GITHUB_OUTPUT}"
