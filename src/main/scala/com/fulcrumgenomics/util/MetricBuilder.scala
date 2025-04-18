@@ -28,16 +28,45 @@ package com.fulcrumgenomics.util
 import com.fulcrumgenomics.commons.CommonsDef.forloop
 import com.fulcrumgenomics.commons.reflect.{ReflectionUtil, ReflectiveBuilder}
 import com.fulcrumgenomics.commons.util.{LazyLogging, Row}
+import com.fulcrumgenomics.util.Metric.DefaultCollectionDelimiter
 
 import java.io.{PrintWriter, StringWriter}
 import scala.reflect.runtime.{universe => ru}
 import scala.util.{Failure, Success}
-
+import scala.reflect.runtime.universe.{NoSymbol, TermName}
 
 /** Exception for errors building metrics. */
 case class MetricBuilderException
 (private val message: Option[String] = None, private val cause: Option[Throwable] = None)
 extends Exception(message.getOrElse(""), cause.orNull)
+
+
+object MetricBuilder {
+  /** Gets the collection delimiter for the Metric class.  Looks for a value in the
+   * companion object with name `CollectionDelimiter` and return type `Char`. */
+  private[util] def findCollectionDelimiter(clazz: Class[_]): Char = {
+    val clazzMirror = ru.runtimeMirror(clazz.getClassLoader)
+    val clazzSymbol = clazzMirror.classSymbol(clazz)
+    if (clazzSymbol.companion == NoSymbol) {
+      DefaultCollectionDelimiter
+    } else {
+      val companionObject = clazzSymbol.companion.asModule
+      val instanceMirror  = clazzMirror reflect (clazzMirror reflectModule companionObject).instance
+      val typeSignature   = instanceMirror.symbol.typeSignature
+      val fieldSymbol     = typeSignature.member(TermName("CollectionDelimiter"))
+      if (fieldSymbol == NoSymbol) {
+        DefaultCollectionDelimiter
+      } else {
+        try {
+          instanceMirror.reflectField(fieldSymbol.asMethod).get.asInstanceOf[Char]
+        } catch {
+          case ex: ClassCastException =>
+            throw new ClassCastException(f"`CollectionDelimiter ` in the `${companionObject.name}` companion object must be of type `Char`: $ex")
+        }
+      }
+    }
+  }
+}
 
 
 /** Class for building metrics of type [[T]].
@@ -53,6 +82,7 @@ class MetricBuilder[T <: Metric](source: Option[String] = None)(implicit tt: ru.
   private val reflectiveBuilder = new ReflectiveBuilder(clazz)
   private val names             = Metric.names[T]
   private val namesSet          = names.toSet
+  private lazy val delim        = MetricBuilder.findCollectionDelimiter(clazz)
 
   /** Builds a metric from a [[com.fulcrumgenomics.commons.util.Row]] produced from a
     * [[com.fulcrumgenomics.commons.util.DelimitedDataParser]].
@@ -117,8 +147,20 @@ class MetricBuilder[T <: Metric](source: Option[String] = None)(implicit tt: ru.
             val tmp = argMap(names(i))
             if (tmp.isEmpty && arg.argumentType == classOf[Option[_]]) ReflectionUtil.SpecialEmptyOrNoneToken else tmp
           }
+          val values: Seq[String] = {
+            // If we have a collection, then we need to check for the delimiter to rebuild it
+            if (value != ReflectionUtil.SpecialEmptyOrNoneToken &&
+              ReflectionUtil.isCollectionClass(arg.argumentType)) {
+              // If the argument type is equal to the unit type, then we need to return a single string value,
+              // otherwise, one value per unit
+              if (arg.argumentType == arg.unitType) Seq(value) else value.split(delim).toIndexedSeq
+            }
+            else {
+              Seq(value)
+            }
+          }
 
-          val argumentValue = ReflectionUtil.constructFromString(arg.argumentType, arg.unitType, value) match {
+          val argumentValue = ReflectionUtil.constructFromString(arg.argumentType, arg.unitType, values:_*) match {
             case Success(v) => v
             case Failure(thr) =>
               fail(

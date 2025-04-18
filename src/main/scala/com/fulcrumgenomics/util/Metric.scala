@@ -25,6 +25,7 @@
 
 package com.fulcrumgenomics.util
 
+import com.fulcrumgenomics.commons.CommonsDef._
 import com.fulcrumgenomics.commons.io.{Writer => CommonsWriter}
 import com.fulcrumgenomics.commons.reflect.{ReflectionUtil, ReflectiveBuilder}
 import com.fulcrumgenomics.commons.util.DelimitedDataParser
@@ -42,6 +43,7 @@ import scala.reflect.runtime.{universe => ru}
 object Metric {
   val Delimiter: Char = '\t'
   val DelimiterAsString: String = s"$Delimiter"
+  val DefaultCollectionDelimiter: Char = ','
 
   /** A typedef for [[scala.Long]] to be used when representing counts. */
   type Count = Long
@@ -163,9 +165,12 @@ object Metric {
 /**
   * Base trait for metrics.
   *
-  * All classes extending this class should be a case class.  By convention, all fields should be lower case with
+  * All classes extending this class should be a case class.  By convention, all fields should be lowercase with
   * words separated by underscores.
-  */
+ *
+ * To use a custom delimiter for collection values, define a value named `CollectionDelimiter` in the
+ * companion object of the Metric that gives a `Char` delimiter.
+ */
 trait Metric extends Product with Iterable[(String,String)] {
   /** Get the names of the arguments in the order they were defined. */
   def names: Seq[String] = Metric.names(getClass)
@@ -189,23 +194,48 @@ trait Metric extends Product with Iterable[(String,String)] {
   /** Gets an iterator over the fields of this metric in the order they were defined.  Returns tuples of names and values */
   override def iterator: Iterator[(String,String)] = this.names.zip(this.values).iterator
 
+  /** The delimiter for collection types. */
+  private lazy val collectionDelimiter: Char = MetricBuilder.findCollectionDelimiter(this.getClass)
+
   /** @deprecated use [[formatValue]] instead. */
   @deprecated(message="Use formatValue instead.", since="0.5.0")
   protected def formatValues(value: Any): String = formatValue(value)
 
   /** Override this method to customize how values are formatted. */
   protected def formatValue(value: Any): String = value match {
-    case null           => ""
-    case None           => ""
-    case Some(x)        => formatValue(x)
-    case d: Iso8601Date => d.toString
-    case d: Date        => Metric.DateFormat.synchronized { Metric.DateFormat.format(d) }
-    case f: Float       => formatValue(f.toDouble)
+    case null              => ""
+    case None              => ""
+    case Some(x)           => formatValue(x)
+    case d: Iso8601Date    => d.toString
+    case d: Date           => Metric.DateFormat.synchronized { Metric.DateFormat.format(d) }
+    case f: Float          => formatValue(f.toDouble)
     case d: Double if d != 0.0 && d < 0.00001 && d > -0.00001 =>
       Metric.SmallDoubleFormat.synchronized { Metric.SmallDoubleFormat.format(d) }
     case d: Double if d.isNaN || d.isInfinity => d.toString
-    case d: Double      => Metric.BigDoubleFormat.synchronized { Metric.BigDoubleFormat.format(d) }
-    case e: EnumEntry   => e.entryName
+    case d: Double         => Metric.BigDoubleFormat.synchronized { Metric.BigDoubleFormat.format(d) }
+    case e: EnumEntry      => e.entryName
+    case rs: ReadStructure => rs.toString  // we do not want segments in read structures delimited
+    case other if ReflectionUtil.isCollectionClass(other.getClass) =>
+      val resultType = other.getClass
+      // Condition for the collection type
+      val collection: Seq[String] = if (ReflectionUtil.isJavaCollectionClass(resultType)) {
+        other.asInstanceOf[java.util.Collection[AnyRef]].map(formatValue).toSeq
+      }
+      else if (ReflectionUtil.isSeqClass(resultType) || ReflectionUtil.isSetClass(resultType)) {
+        other.asInstanceOf[Iterable[_]].map(formatValue).toList
+      }
+      else {
+        throw new IllegalArgumentException(s"Unknown collection type '${resultType.getSimpleName}'")
+      }
+      // No commas in the values allowed.
+      if (collection.exists(_.contains(collectionDelimiter))) {
+        throw new IllegalArgumentException(s"Metric collection value contained a comma: $value")
+      }
+      if (collection.isEmpty) {
+        ReflectionUtil.SpecialEmptyOrNoneToken
+      } else {
+        collection.mkString(collectionDelimiter.toString)
+      }
     case other          => other.toString
   }
 
