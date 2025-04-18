@@ -29,12 +29,12 @@ import com.fulcrumgenomics.testing.{UnitSpec, VariantContextSetBuilder}
 import htsjdk.variant.variantcontext.Allele
 import htsjdk.variant.vcf.VCFFileReader
 
-import scala.annotation.nowarn
+import scala.annotation.{nowarn, unused}
 
 @nowarn("msg=class VariantContextSetBuilder in package testing is deprecated")
 class MakeTwoSampleMixtureVcfTest extends UnitSpec {
   private val builder = new VariantContextSetBuilder(sampleNames = List("s1", "s2"))
-  private val (_A, _C,  _T, _N) = ("A", "C", "T", Allele.NO_CALL_STRING)
+  @unused private val (_A, _C,  _G, _T, _N) = ("A", "C", "G", "T", Allele.NO_CALL_STRING)
 
   def addVariant(pos: Int, refAllele: String, s1Allele1: String, s1Allele2: String, s2Allele1: String, s2Allele2: String) = {
     val alleles = List(refAllele) ++ Set(s1Allele1, s1Allele2, s2Allele1, s2Allele2).filterNot(_ == refAllele).filterNot(_ == _N)
