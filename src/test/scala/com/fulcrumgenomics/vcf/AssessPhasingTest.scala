@@ -116,7 +116,7 @@ object AssessPhasingTest {
     }.toSeq
   }
 
-  val Header = builderCall.header
+  val Header: VCFHeader = builderCall.header
 }
 
 /**
@@ -563,13 +563,11 @@ class PhaseCigarTest extends ErrorLogLevel {
       iters = Seq(truth.iterator, call.iterator),
       dict  = dict
     ).map { case Seq(left, right) => (left, right) }
-    val truthPhaseBlockDetector  = PhaseBlock.buildOverlapDetector(truth.iterator)
     val calledPhaseBlockDetector = PhaseBlock.buildOverlapDetector(call.iterator)
     val metric                   = AssessPhasingMetric()
 
     val cigar = PhaseCigar(
       pairedIterator           = pairedIterator,
-      truthPhaseBlockDetector  = truthPhaseBlockDetector,
       calledPhaseBlockDetector = calledPhaseBlockDetector,
       metric                   = metric,
       skipMismatchingAlleles   = skipMismatchingAlleles,

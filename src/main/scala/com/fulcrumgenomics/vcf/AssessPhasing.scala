@@ -40,7 +40,7 @@ import htsjdk.variant.vcf._
 import java.nio.file.Paths
 import java.util
 import java.util.Comparator
-import scala.annotation.{tailrec, unused}
+import scala.annotation.tailrec
 import scala.collection.mutable.ListBuffer
 import scala.jdk.CollectionConverters._
 
@@ -239,7 +239,6 @@ class AssessPhasing
     logger.info("Creating the phasing CIGAR")
     val cigar = PhaseCigar(
       pairedIterator           = pairedIterator,
-      truthPhaseBlockDetector  = truthPhaseBlockDetector,
       calledPhaseBlockDetector = calledPhaseBlockDetector,
       metric                   = metric,
       skipMismatchingAlleles   = skipMismatchingAlleles,
@@ -626,7 +625,6 @@ private[vcf] object PhaseCigar {
     * shows one known block split
     */
   def apply(pairedIterator: Iterator[(Option[VariantContext], Option[VariantContext])],
-            truthPhaseBlockDetector: OverlapDetector[PhaseBlock],
             calledPhaseBlockDetector: OverlapDetector[PhaseBlock],
             metric: AssessPhasingMetric,
             skipMismatchingAlleles: Boolean,
@@ -639,8 +637,6 @@ private[vcf] object PhaseCigar {
       case _ => true
     }.flatMap { case (t, c) => // collect metrics but only keep sites where either variant context (i.e. truth or call) is phased.
       val ctxs                  = Seq(t, c).flatten // NB: can be 1 or 2 contexts here
-      @unused // TODO: should this be unused or should it be used to set something upon the metric?
-      val inTruthPhaseBlock     = ctxs.headOption.exists(truthPhaseBlockDetector.overlapsAny)
       val inCalledPhaseBlock    = ctxs.headOption.exists(calledPhaseBlockDetector.overlapsAny)
       val isTruthVariant        = t.isDefined
       val isCalledVariant       = c.isDefined
