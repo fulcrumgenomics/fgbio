@@ -19,7 +19,10 @@ concurrency:
 jobs:
   test:
     name: Unit Tests
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        java-version: [ 8, 11, 17, 21, 22 ]
     environment: github-actions
     steps:
       - name: Checkout
@@ -28,21 +31,13 @@ jobs:
           fetch-depth: 0
           lfs: true
       - name: Checkout LFS objects
-        run: git lfs checkout        
-      - name: Setup Scala
-        uses: olafurpg/setup-scala@v12
+        run: git lfs checkout
+      - uses: actions/setup-java@v4
         with:
-          java-version: adopt-openj9@1.8.0-292
-      - name: Cache .ivy2
-        uses: actions/cache@v4
-        with:
-          path: ~/.ivy2
-          key: ${{ runner.os }}-ivy2-${{ hashFiles('**/build.sbt') }}
-      - name: Cache .sbt
-        uses: actions/cache@v4
-        with:
-          path: ~/.sbt
-          key: ${{ runner.os }}-sbt-${{ hashFiles('**/build.properties') }}
+          distribution: 'temurin'
+          java-version: ${{ matrix.java-version }}
+          cache: sbt
+      - uses: sbt/setup-sbt@v1
       - name: Unit Tests
         run: |
           set -e
@@ -60,7 +55,7 @@ jobs:
   release:
     if: ${{ github.repository == 'fulcrumgenomics/fgbio' && github.ref == 'refs/heads/main' && github.event_name != 'workflow_call' }}
     needs: test
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-latest
     environment: github-actions
     env:
       SONATYPE_USER: ${{ secrets.SONATYPE_USER }}
@@ -79,7 +74,7 @@ jobs:
   docs:
     name: Generate tool and metric markdown docs
     needs: test
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-latest
     if: ${{ github.event_name != 'workflow_call' && (github.event_name == 'pull_request' || (github.repository == 'fulcrumgenomics/fgbio' && github.ref == 'refs/heads/main')) }}
     steps:
       - name: Checkout
