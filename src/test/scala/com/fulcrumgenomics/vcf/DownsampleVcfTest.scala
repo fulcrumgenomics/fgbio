@@ -221,17 +221,16 @@ class DownsampleVcfTest extends UnitSpec {
 
   it should "return the same results for biallelic and generalized algorithm" in {
     val e = 0.01
-    // TODO: figure out what the second item in the collection was meant for.
     val cases: IndexedSeq[(IndexedSeq[Int], IndexedSeq[Double])] = IndexedSeq(
       (IndexedSeq(1, 0), IndexedSeq(1 - e, 0.5, e)),
       (IndexedSeq(0, 1), IndexedSeq(e, 0.5, 1 - e)),
       (IndexedSeq(1, 1), IndexedSeq((1 - e) * e, 0.25, (1 - e) * e)),
       (IndexedSeq(2, 0), IndexedSeq(math.pow((1 - e), 2), 0.25, math.pow(e, 2))),
     )
-    cases.foreach { case (input, _) =>
+    // TODO: figure out what the second item in the collection was meant for!!
+    cases.foreach { case (input, output@_) =>
       val biallelic = Likelihoods(2, DownsampleVcf.Likelihoods.biallelic(input(0), input(1), e))
       val generalized = Likelihoods(2, DownsampleVcf.Likelihoods.generalized(input, e))
-      biallelic.pls should contain theSameElementsInOrderAs biallelic.pls
       biallelic.pls should contain theSameElementsInOrderAs generalized.pls
     }
   }
