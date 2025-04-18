@@ -948,8 +948,8 @@ private[vcf] class PhaseCigar private(val cigar: Seq[PhaseCigarOp]) {
 
     /** Computes the # of long switch errors in the HMM output phased list. */
     def numLongSwitchErrors(states: List[Int]): Int = {
-      if (states.length == 1) 0
-      else states.sliding(2).filter(_.length == 2).count(seq => seq.head != seq(1))
+      if (states.isEmpty | states.length == 1) 0
+      else states.sliding(2).count(seq => seq.head != seq(1))
     }
 
     /** Backtracks to find the haplotype states, in reverse order. */
