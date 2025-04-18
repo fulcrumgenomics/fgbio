@@ -676,7 +676,7 @@ private[vcf] class HapCutReader(iterator: Iterator[String],
     else {
       lineIterator.head match {
         case HapCutReader.HapCut1BlockLinePattern(offset@_, len@_, phased@_, span@_, mecScore@_, fragments@_) => HapCut1
-        case HapCutReader.HapCut2BlockLinePattern(offset@_, len@_, phased@_, span@_, fragments@_)           => HapCut2
+        case HapCutReader.HapCut2BlockLinePattern(offset@_, len@_, phased@_, span@_, fragments@_)             => HapCut2
         case blockLine => throw new IllegalStateException("Could not parse block line: " + blockLine)
       }
     }
