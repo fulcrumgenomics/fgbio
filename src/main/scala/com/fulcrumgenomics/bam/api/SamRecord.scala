@@ -57,10 +57,7 @@ private[api] trait SamRecordIntermediate extends SAMRecord {
 /** Class that is used to provide a nice API to transient attributes in the SamRecord. */
 class TransientAttrs(private val rec: SamRecord) {
   def apply[A](key: Any): A = rec.asSam.getTransientAttribute(key).asInstanceOf[A]
-  def update(key: Any, value: Any): Unit = {
-    if (value == null) { val _ = rec.asSam.removeTransientAttribute(key) }
-    else { val _ = rec.asSam.setTransientAttribute(key, value) }
-  }
+  def update(key: Any, value: Any): Any = if (value == null) rec.asSam.removeTransientAttribute(key) else rec.asSam.setTransientAttribute(key, value)
   def get[A](key: Any): Option[A] = Option[A](apply[A](key))
   def getOrElse[A](key: Any, default: => A): A = rec.asSam.getTransientAttribute(key) match {
     case null => default
@@ -69,7 +66,7 @@ class TransientAttrs(private val rec: SamRecord) {
   def getOrElseUpdate[A](key: Any, default: => A): A = rec.asSam.getTransientAttribute(key) match {
     case null  =>
       val value: A = default
-      update(key, value)
+      val _ = update(key, value)
       value
     case value => value.asInstanceOf[A]
   }
