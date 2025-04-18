@@ -226,12 +226,15 @@ class DownsampleVcfTest extends UnitSpec {
       (IndexedSeq(0, 1), IndexedSeq(e, 0.5, 1 - e)),
       (IndexedSeq(1, 1), IndexedSeq((1 - e) * e, 0.25, (1 - e) * e)),
       (IndexedSeq(2, 0), IndexedSeq(math.pow((1 - e), 2), 0.25, math.pow(e, 2))),
-    )
-    // TODO: figure out what the second item in the collection was meant for!!
-    cases.foreach { case (input, output@_) =>
-      val biallelic = Likelihoods(2, DownsampleVcf.Likelihoods.biallelic(input(0), input(1), e))
-      val generalized = Likelihoods(2, DownsampleVcf.Likelihoods.generalized(input, e))
-      biallelic.pls should contain theSameElementsInOrderAs generalized.pls
+    ).map { case (input, output) =>
+      (input, output.map(Math.log10))
+    }
+    cases.foreach { case (input, output) =>
+      val biallelic               = DownsampleVcf.Likelihoods.biallelic(input(0), input(1), e)
+      val biallelicLikelihoods    = Likelihoods(2, biallelic)
+      val generalizedLikelihoods  = Likelihoods(2, DownsampleVcf.Likelihoods.generalized(input, e))
+      biallelic.zip(output).foreach { case (actual, expected) => (actual-expected).abs should be <= e }
+      biallelicLikelihoods.pls should contain theSameElementsInOrderAs generalizedLikelihoods.pls
     }
   }
 
