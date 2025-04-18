@@ -23,8 +23,8 @@
  */
 package com.fulcrumgenomics.fastq
 
-import com.fulcrumgenomics.testing.UnitSpec
 import com.fulcrumgenomics.commons.CommonsDef.PathToFastq
+import com.fulcrumgenomics.testing.UnitSpec
 
 object TrimFastqTest {
   private def fq(name:String, r1: String, r2:String): (FastqRecord, FastqRecord) = {

@@ -24,16 +24,17 @@
 
 package com.fulcrumgenomics.bam
 
-import java.nio.file.Paths
 import com.fulcrumgenomics.FgBioDef._
 import com.fulcrumgenomics.bam.api.{SamRecord, SamSource, SamWriter}
 import com.fulcrumgenomics.testing.UnitSpec
 import com.fulcrumgenomics.util.Metric
 import com.fulcrumgenomics.vcf.api
-import com.fulcrumgenomics.vcf.api.{Genotype, VcfCount, VcfFieldType, VcfFormatHeader, VcfSource, VcfWriter}
+import com.fulcrumgenomics.vcf.api._
 import htsjdk.samtools.SAMFileHeader.SortOrder
 import htsjdk.samtools.{MergingSamRecordIterator, SamFileHeaderMerger}
 import org.scalatest.ParallelTestExecution
+
+import java.nio.file.Paths
 
 class EstimatePoolingFractionsTest extends UnitSpec with ParallelTestExecution {
   private val Samples = Seq("HG01879", "HG01112", "HG01583", "HG01500", "HG03742", "HG03052")
@@ -80,7 +81,7 @@ class EstimatePoolingFractionsTest extends UnitSpec with ParallelTestExecution {
         val out = makeTempFile("pooling_metrics.", ".txt")
         new EstimatePoolingFractions(vcf=Vcf, bam=bam, output=out, samples=Samples.take(n)).execute()
         val metrics = Metric.read[PoolingFractionMetric](out)
-        metrics should have size n
+        metrics should have size n.toLong
         metrics.foreach(m => (1/n.toDouble) should (be >= m.ci99_low and be <= m.ci99_high))
     }
   }
@@ -90,7 +91,7 @@ class EstimatePoolingFractionsTest extends UnitSpec with ParallelTestExecution {
     val out = makeTempFile("pooling_metrics.", ".txt")
     new EstimatePoolingFractions(vcf=Vcf, bam=bam, output=out, intervals=Seq(Regions)).execute()
     val metrics = Metric.read[PoolingFractionMetric](out)
-    metrics should have size Samples.size
+    metrics should have size Samples.size.toLong
     metrics.foreach(m => (1/Samples.size.toDouble) should (be >= m.ci99_low and be <= m.ci99_high))
   }
 
@@ -109,10 +110,10 @@ class EstimatePoolingFractionsTest extends UnitSpec with ParallelTestExecution {
   }
 
   it should "accurately estimate a three sample mixture using the AF genotype field" in {
-    val samples         = Samples.take(3)
-    val Seq(s1, s2, s3) = samples
-    val bams            = Bams.take(3)
-    val bam             = merge(bams)
+    val samples       = Samples.take(3)
+    val Seq(s1, _, _) = samples
+    val bams          = Bams.take(3)
+    val bam           = merge(bams)
 
     val vcf = {
       val vcf = makeTempFile("mixture.", ".vcf.gz")

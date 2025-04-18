@@ -117,7 +117,7 @@ class BuildToolDocs
     tool.args.foreach { a => 
       val cols = Seq(
         a.name,
-        a.flag.getOrElse(""),
+        a.flag.map(_.toString).getOrElse(""),
         a.kind,
         a.description.linesIterator.mkString(" "),
         if (a.minValues == 0) "Optional" else "Required",

@@ -24,7 +24,6 @@
 
 package com.fulcrumgenomics.cmdline
 
-import java.nio.file.Paths
 import com.fulcrumgenomics.FgBioDef.SafelyClosable
 import com.fulcrumgenomics.bam.api.SamSource
 import com.fulcrumgenomics.commons.util.SystemUtil.IntelCompressionLibrarySupported
@@ -35,6 +34,8 @@ import htsjdk.samtools.util._
 import htsjdk.samtools.util.zip.{DeflaterFactory, InflaterFactory}
 import org.scalatest.Retries
 import org.scalatest.tagobjects.Retryable
+
+import java.nio.file.Paths
 
 
 class IntelCompressionTest extends UnitSpec with Retries {
@@ -114,7 +115,7 @@ class IntelCompressionTest extends UnitSpec with Retries {
       // a little method to inflate given an inflater factory
       def run(factory: InflaterFactory): Long = {
         val startTime = System.currentTimeMillis()
-        Range.inclusive(1, 25).foreach { i =>
+        Range.inclusive(1, 25).foreach { _ =>
           val is    = new BlockCompressedInputStream(output.toFile, factory)
           val codec = new BAMRecordCodec(header)
           codec.setInputStream(is, testBam.toFile.toString)

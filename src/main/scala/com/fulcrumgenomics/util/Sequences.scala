@@ -84,7 +84,7 @@ object Sequences {
     * @param base2 the second base to be compared
     * @return true if the bases share at least one concrete base in common, false otherwise
     */
-  final def compatible(base1: Byte, base2: Byte): Boolean = base1 == base2 || (IupacMasks(base1) & IupacMasks(base2)) > 0
+  final def compatible(base1: Byte, base2: Byte): Boolean = base1 == base2 || (IupacMasks(base1.toInt) & IupacMasks(base2.toInt)) > 0
 
   /**
     * Calculates GC content for a DNA sequence as a fraction (between 0 and 1).
@@ -277,7 +277,7 @@ object Sequences {
 
   /** Returns the IUPAC code for the set of bases given. */
   def iupacCode(bases: Iterable[Byte]): Byte = {
-    val mask: Int = bases.foldLeft(0) { case (code, next) => code | IupacMasks(next) }
+    val mask: Int = bases.foldLeft(0) { case (code, next) => code | IupacMasks(next.toInt) }
     IupacMasks.indexOf(mask).toByte
   }
 }

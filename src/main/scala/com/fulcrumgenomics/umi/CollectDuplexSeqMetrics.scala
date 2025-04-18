@@ -316,7 +316,7 @@ class CollectDuplexSeqMetrics
         val exceptionString = s"Input BAM file to CollectDuplexSeqMetrics ($input) appears to contain consensus sequences. " +
           "CollectDuplexSeqMetrics cannot run on consensus BAMs, and instead requires the UMI-grouped BAM generated " +
           "by GroupReadsByUmi which is run prior to consensus calling." +
-          "\nFirst record in $input has consensus SAM tags present:\n$rec"
+          s"\nFirst record in $input has consensus SAM tags present:\n$rec"
 
         if (Umis.isFgbioStyleConsensus(rec)) throw new IllegalArgumentException(exceptionString)
     }
@@ -500,7 +500,7 @@ class CollectDuplexSeqMetrics
       val startStopCounter = this.startStopFamilyCounter(fraction)
       val duplexCounter    = this.duplexFamilyCounter(fraction)
 
-      val dsFamilies       = duplexCounter.map { case (Pair(a,b), count) => count }.sum
+      val dsFamilies       = duplexCounter.map { case (Pair(_, _), count) => count }.sum
       val countOfDuplexes  = duplexCounter.map {
         case (Pair(a,b), count) if a >= this.minAbReads && b >= this.minBaReads => count
         case _                                                                  => 0
@@ -512,7 +512,7 @@ class CollectDuplexSeqMetrics
         fraction                   = fraction,
         read_pairs                 = startStopCounter.totalMass.toLong,
         cs_families                = startStopCounter.total,
-        ss_families                = duplexCounter.map { case (Pair(a,b), count) => if (b>0) count*2 else count }.sum,
+        ss_families                = duplexCounter.map { case (Pair(_, b), count) => if (b>0) count*2 else count }.sum,
         ds_families                = dsFamilies,
         ds_duplexes                = countOfDuplexes,
         ds_fraction_duplexes       = countOfDuplexes / dsFamilies.toDouble,

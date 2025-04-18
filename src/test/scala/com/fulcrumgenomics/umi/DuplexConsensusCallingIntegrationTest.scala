@@ -25,11 +25,11 @@
 
 package com.fulcrumgenomics.umi
 
+import com.fulcrumgenomics.FgBioDef.{FilePath, PathToBam}
 import com.fulcrumgenomics.bam.api.{SamOrder, SamRecord}
+import com.fulcrumgenomics.commons.util.CaptureSystemStreams
 import com.fulcrumgenomics.testing.SamBuilder.{Minus, Plus, Strand}
 import com.fulcrumgenomics.testing.{ReferenceSetBuilder, SamBuilder, UnitSpec}
-import com.fulcrumgenomics.FgBioDef.{FilePath, PathToBam}
-import com.fulcrumgenomics.commons.util.CaptureSystemStreams
 
 /** Integration tests for calling duplex consensus reads.
   *
@@ -48,7 +48,7 @@ class DuplexConsensusCallingIntegrationTest extends UnitSpec with CaptureSystemS
   }
 
   /** Creates a read pair where the bases are all As and sets the RX tag to "AAAAAAAA"*/
-  private def addPair(builder: SamBuilder, name: String, start1: Int, start2: Int, strand1: Strand=Plus, strand2: Strand=Minus, base: Char = 'A', umiBases: String = ""): Seq[SamRecord] = {
+  private def addPair(builder: SamBuilder, name: String, start1: Int, start2: Int, strand1: Strand, strand2: Strand, base: Char = 'A', umiBases: String = ""): Seq[SamRecord] = {
     val rxValue = if (umiBases.nonEmpty) umiBases else {
       if (strand1 == Plus) "ACG-GCT" else "GCT-ACG"
     }

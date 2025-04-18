@@ -25,15 +25,14 @@
 
 package com.fulcrumgenomics.testing
 
-import java.nio.file.Files
-import java.util.Collections
-
 import com.fulcrumgenomics.FgBioDef._
 import com.fulcrumgenomics.fasta.SequenceDictionary
 import htsjdk.variant.variantcontext._
 import htsjdk.variant.variantcontext.writer.{Options, VariantContextWriterBuilder}
 import htsjdk.variant.vcf.{VCFFileReader, VCFHeader, VCFHeaderLine}
 
+import java.nio.file.Files
+import java.util.Collections
 import scala.collection.JavaConverters._
 import scala.collection.compat._
 import scala.collection.mutable.ListBuffer
@@ -129,7 +128,7 @@ class VariantContextSetBuilder(sampleNames: Seq[String] = List("Sample")) extend
     }
     val contig  = this.dict(refIdx).name
     val alleles = toAlleles(variantAlleles)
-    val stop    = VariantContextUtils.computeEndFromAlleles(alleles.asJava, start.toInt, -1)
+    val stop    = VariantContextUtils.computeEndFromAlleles(alleles.asJava, start.toInt, -1).toLong
     // check to see if there are already genotypes for this variant
     val (ctxBuilder, prevGenotypes) = this.variants.find { ctx =>
       ctx.getContig == contig &&

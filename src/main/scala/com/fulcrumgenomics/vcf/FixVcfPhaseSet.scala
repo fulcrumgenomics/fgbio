@@ -187,8 +187,8 @@ object FixVcfPhaseSet {
     * @param phaseGenotypesWithPhaseSet set unphased genotypes with a PS FORMAT value to be phased
     */
   private[vcf] class VcfPhaseSetUpdater(header: VcfHeader, keepOriginal: Boolean, phaseGenotypesWithPhaseSet: Boolean) extends LazyLogging {
-    import VcfPhaseSetUpdater._
     import VcfPhaseSetUpdater.Result._
+    import VcfPhaseSetUpdater._
 
     private val phaseSetToPositionBySample: Map[String, mutable.HashMap[String, Int]] = {
       header.samples.map { sample => (sample, scala.collection.mutable.HashMap[String, Int]()) }.toMap
@@ -219,7 +219,7 @@ object FixVcfPhaseSet {
             case NotPhasedWithPhaseSetValue(_)   =>
               logger.debug(
                 "Genotype had a phase set but was unphased:" +
-                  f"${variant.chrom}:${variant.pos}:${variant.id.getOrElse(".")} sample=$sampleName PS=${genotype("PS")}" +
+                  f"${variant.chrom}:${variant.pos}:${variant.id.getOrElse(".")} sample=$sampleName PS=${genotype["String"]("PS")}" +
                   "; consider r-running using `-x/--phase-genotypes-with-phase-set`"
               )
             case PhasedMissingPhaseSetValue(_) =>
@@ -250,7 +250,7 @@ object FixVcfPhaseSet {
           val phaseSetToValue = this.phaseSetToPositionBySample(genotype.sample)
           val newValue        = phaseSetToValue.getOrElseUpdate(oldValue, variant.pos)
           // Build the new set of attributes
-          val phaseSetAttrs = {
+          val phaseSetAttrs: Map[String, Any] = {
             if (keepOriginal) Map("PS" -> newValue, "OPS" -> oldValue)
             else Map("PS" -> newValue)
           }

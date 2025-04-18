@@ -25,12 +25,12 @@
 
 package com.fulcrumgenomics.testing
 
-import java.nio.file.Files
-
 import com.fulcrumgenomics.fasta.Converters.FromSAMSequenceDictionary
 import com.fulcrumgenomics.fasta.SequenceDictionary
 import htsjdk.samtools.reference.ReferenceSequenceFileFactory
 import org.scalatest.OptionValues
+
+import java.nio.file.Files
 
 class ReferenceSetBuilderTest extends UnitSpec with OptionValues {
   "ReferenceSetBuilder" should "write a simple FASTA file, with accompanying .dict and .fai files" in {

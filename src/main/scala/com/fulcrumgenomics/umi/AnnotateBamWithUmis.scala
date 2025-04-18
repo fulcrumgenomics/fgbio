@@ -24,16 +24,15 @@
  */
 package com.fulcrumgenomics.umi
 
-import com.fulcrumgenomics.FgBioDef._
+import com.fulcrumgenomics.FgBioDef.{BetterBufferedIteratorScalaWrapper, _}
 import com.fulcrumgenomics.bam.api.{SamSource, SamWriter}
 import com.fulcrumgenomics.cmdline.{ClpGroups, FgBioTool}
 import com.fulcrumgenomics.commons.io.Io
 import com.fulcrumgenomics.commons.util.LazyLogging
-import com.fulcrumgenomics.fastq.{FastqSource, FastqRecord}
+import com.fulcrumgenomics.fastq.{FastqRecord, FastqSource}
 import com.fulcrumgenomics.sopt._
-import com.fulcrumgenomics.util.{ProgressLogger, ReadStructure, SegmentType}
 import com.fulcrumgenomics.util.ReadStructure.SubReadWithQuals
-import com.fulcrumgenomics.FgBioDef.BetterBufferedIteratorScalaWrapper
+import com.fulcrumgenomics.util.{ProgressLogger, ReadStructure, SegmentType}
 
 @clp(description =
   """

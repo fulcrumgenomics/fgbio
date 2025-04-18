@@ -105,7 +105,7 @@ class EstimateRnaSeqInsertSize
     recordIterator.foreach { rec =>
       calculateInsertSize(rec=rec) match {
         case None             => () // ignore
-        case Some(insertSize) => counters(rec.pairOrientation).count(insertSize)
+        case Some(insertSize) => counters(rec.pairOrientation).count(insertSize.toLong)
       }
     }
 

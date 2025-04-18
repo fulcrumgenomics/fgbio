@@ -25,10 +25,10 @@
 package com.fulcrumgenomics.bam
 
 import com.fulcrumgenomics.bam.api.{SamOrder, SamSource}
-import com.fulcrumgenomics.testing.{SamBuilder, UnitSpec}
-import htsjdk.samtools.util.{Interval, IntervalList}
 import com.fulcrumgenomics.commons.CommonsDef._
 import com.fulcrumgenomics.testing.SamBuilder.{Minus, Plus}
+import com.fulcrumgenomics.testing.{SamBuilder, UnitSpec}
+import htsjdk.samtools.util.{Interval, IntervalList}
 
 class FilterBamTest extends UnitSpec {
   def newBam: PathToBam = makeTempFile("filter_bam_test.", ".bam")

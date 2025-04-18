@@ -28,7 +28,6 @@
 package com.fulcrumgenomics.illumina
 
 import java.nio.file.Path
-
 import scala.collection.Set
 import scala.io.Source
 
@@ -105,7 +104,7 @@ object SampleSheet {
       .zipWithIndex // add the row #
       .map { case (line, rowNumber) => (line.split(SplitRegex, -1), rowNumber) } // just split the values
       .reverse // to skip empty lines, and lines with all empty values, at the end of the sample
-      .dropWhile { case (values, rowNumber) => values.isEmpty || values.forall(_.trim.isEmpty) } // no values, regardless of number, so drop/skip it
+      .dropWhile { case (values, _) => values.isEmpty || values.forall(_.trim.isEmpty) } // no values, regardless of number, so drop/skip it
       .reverse // put back in the correct order
       .map { case (values, rowNumber) =>
         if (values.isEmpty || values.forall(_.trim.isEmpty)) { // empty line, or all values are empty
@@ -132,7 +131,7 @@ object SampleSheet {
     val libraryId: String           = SampleSheet.getStringField(sampleDatum, LibraryId)     getOrElse sampleId
     val project: Option[String]     = SampleSheet.getStringField(sampleDatum, SampleProject)
     val description: Option[String] = SampleSheet.getStringField(sampleDatum, Description)
-    val extendedAttributes          = sampleDatum.filterNot { case (columnName, value) =>  HeaderNames.contains(columnName) }
+    val extendedAttributes          = sampleDatum.filterNot { case (columnName, _) =>  HeaderNames.contains(columnName) }
     new Sample(
       sampleOrdinal        = sampleOrdinal,
       sampleId             = sampleId,

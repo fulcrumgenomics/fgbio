@@ -63,7 +63,7 @@ class ConsensusCallerTest extends UnitSpec {
   it should "calculate consensus base and quality, and observation counts, given a massive pileup" in {
     val caller = new ConsensusCaller(errorRatePreLabeling=50.toByte, errorRatePostLabeling=50.toByte)
     val builder = caller.builder()
-    (0 to 999).foreach(i => builder.add('C'.toByte, 20.toByte))
+    (0 to 999).foreach(_ => builder.add('C'.toByte, 20.toByte))
     builder.call() shouldBe ('C', 50)
     builder.contributions shouldBe 1000
     builder.observations('A'.toByte) shouldBe 0
@@ -71,7 +71,7 @@ class ConsensusCallerTest extends UnitSpec {
     builder.observations('G'.toByte) shouldBe 0
     builder.observations('T'.toByte) shouldBe 0
 
-    (0 to 9).foreach(i => builder.add('T'.toByte, 20.toByte))
+    (0 to 9).foreach(_ => builder.add('T'.toByte, 20.toByte))
     builder.call() shouldBe ('C', 50)
     builder.contributions shouldBe 1010
     builder.observations('A'.toByte) shouldBe 0

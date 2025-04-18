@@ -59,7 +59,6 @@ class VariantMask(variants: Iterator[VariantContext], val dict: SequenceDictiona
   private val iterator                    = variants.bufferBetter
   private var currentMask: mutable.BitSet = new mutable.BitSet(0)
   private var currentIndex: Int           = -1
-  private var currentContig: String       = "n/a"
   private var currentRefLength: Int       = -1
   advanceTo(0)
 
@@ -81,7 +80,6 @@ class VariantMask(variants: Iterator[VariantContext], val dict: SequenceDictiona
 
     this.currentMask   = bits
     this.currentIndex  = refIndex
-    this.currentContig = dict(refIndex).name
     this.currentRefLength = dict(refIndex).length
   }
 

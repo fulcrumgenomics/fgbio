@@ -25,11 +25,11 @@
 
 package com.fulcrumgenomics.util
 
-import java.lang.Math.abs
-
 import com.fulcrumgenomics.FgBioDef._
 import com.fulcrumgenomics.bam.api.SamRecord
 import htsjdk.samtools.util.{Interval, OverlapDetector}
+
+import java.lang.Math.abs
 import scala.collection.compat._
 
 

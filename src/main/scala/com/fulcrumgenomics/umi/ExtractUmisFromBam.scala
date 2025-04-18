@@ -175,7 +175,7 @@ class ExtractUmisFromBam
 
         // If we have a single-tag, then also output values there
         singleTag.foreach { tag =>
-          val value = tagAndValues.map { case (t,v) => v }.mkString(ExtractUmisFromBam.UmiDelimiter)
+          val value = tagAndValues.map { case (_, v) => v }.mkString(ExtractUmisFromBam.UmiDelimiter)
           r1(tag) = value
           r2(tag) = value
         }
@@ -264,7 +264,7 @@ object ExtractUmisFromBam {
                                              readStructure: ReadStructure): Unit = {
     clippingAttribute.map(tag => (tag, record.get[Int](tag))) match {
       case None => ()
-      case Some((tag, None)) => ()
+      case Some((_, None)) => ()
       case Some((tag, Some(clippingPosition))) =>
         val newClippingPosition = readStructure.takeWhile(_.offset < clippingPosition).filter(_.kind == SegmentType.Template).map { t =>
           if (t.length.exists(l => t.offset + l < clippingPosition)) t.length.get

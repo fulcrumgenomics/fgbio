@@ -25,8 +25,8 @@
 package com.fulcrumgenomics.fasta
 
 import com.fulcrumgenomics.commons.io.PathUtil
-import com.fulcrumgenomics.fasta.{AssemblyReportColumn => Column}
 import com.fulcrumgenomics.fasta.SequenceRole._
+import com.fulcrumgenomics.fasta.{AssemblyReportColumn => Column}
 import com.fulcrumgenomics.testing.UnitSpec
 
 class CollectAlternateContigNamesTest extends UnitSpec {

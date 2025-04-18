@@ -24,14 +24,15 @@
 
 package com.fulcrumgenomics.bam.api
 
-import java.io.Closeable
-
 import com.fulcrumgenomics.FgBioDef._
 import com.fulcrumgenomics.commons.io.Writer
 import com.fulcrumgenomics.commons.util.LazyLogging
 import com.fulcrumgenomics.util.{ProgressLogger, Sorter}
 import htsjdk.samtools.SAMFileHeader.SortOrder
 import htsjdk.samtools._
+
+import java.io.Closeable
+import scala.language.existentials
 
 object SamWriter extends LazyLogging {
   var DefaultCompressionLevel: Int = 5

@@ -23,9 +23,8 @@
  */
 package com.fulcrumgenomics.fasta
 
-import htsjdk.samtools.reference.{ReferenceSequence, ReferenceSequenceFile, ReferenceSequenceFileFactory}
 import com.fulcrumgenomics.commons.CommonsDef._
-import com.fulcrumgenomics.commons.collection.SelfClosingIterator
+import htsjdk.samtools.reference.{ReferenceSequence, ReferenceSequenceFile, ReferenceSequenceFileFactory}
 
 object ReferenceSequenceIterator {
   /** Constructs an iterator over a reference sequence from a Path to the FASTA file. */

@@ -26,7 +26,6 @@
 package com.fulcrumgenomics.util
 
 import com.fulcrumgenomics.testing.UnitSpec
-import scala.collection.mutable
 
 /**
   * Tests for SampleBarcodeMetric.

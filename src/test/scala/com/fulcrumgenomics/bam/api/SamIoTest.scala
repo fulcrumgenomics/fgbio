@@ -24,16 +24,14 @@
 
 package com.fulcrumgenomics.bam.api
 
-import java.nio.file.Files
-import java.util.concurrent.{Callable, Executors, TimeUnit}
-
 import com.fulcrumgenomics.FgBioDef._
-import com.fulcrumgenomics.bam.api.QueryType.QueryType
 import com.fulcrumgenomics.fasta.{SequenceDictionary, SequenceMetadata}
 import com.fulcrumgenomics.testing.{SamBuilder, UnitSpec}
 import com.fulcrumgenomics.util.Io
 import htsjdk.samtools.GenomicIndexUtil
 
+import java.nio.file.Files
+import java.util.concurrent.{Callable, Executors, TimeUnit}
 import scala.util.Random
 
 class SamIoTest extends UnitSpec {
@@ -74,7 +72,7 @@ class SamIoTest extends UnitSpec {
   it should "sort to disk and read records back" in {
     val builder = new SamBuilder(sort=None)
     val random  = new Random(42)
-    Range.inclusive(1, 1000).foreach { i =>
+    Range.inclusive(1, 1000).foreach { _ =>
       builder.addPair(contig=random.nextInt(23), start1=random.nextInt(1000000), start2=random.nextInt(1000000))
     }
 
@@ -96,7 +94,7 @@ class SamIoTest extends UnitSpec {
     mkfifo.exitValue() shouldBe 0
 
     val builder = new SamBuilder(readLength=100)
-    forloop (from=1, until=5001) { i => builder.addFrag(name=s"q$i", contig=0, start=i) }
+    val _ = forloop (from=1, until=5001) { i => val _ = builder.addFrag(name=s"q$i", contig=0, start=i) }
 
     // Figure up an executor to pump data into the pipe
     val exec = Executors.newSingleThreadExecutor()
@@ -151,7 +149,7 @@ class SamIoTest extends UnitSpec {
     var filterCount: Int = 0
     var mapCount: Int = 0
 
-    val xs = source.filter { r =>
+    val xs = source.filter { _ =>
       filterCount += 1
       true
     }.map { r =>

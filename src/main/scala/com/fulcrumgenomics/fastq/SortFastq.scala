@@ -29,6 +29,8 @@ import com.fulcrumgenomics.cmdline.{ClpGroups, FgBioTool}
 import com.fulcrumgenomics.sopt.{arg, clp}
 import com.fulcrumgenomics.util.{Io, Sorter}
 
+import scala.annotation.unused
+
 /** Companion object for the SortFastq tool. */
 object SortFastq {
   private class FastqCodec extends Sorter.Codec[FastqRecord] {
@@ -40,6 +42,7 @@ object SortFastq {
       val lines = new String(bs, start, length).linesIterator
       val name       = lines.next().substring(1)
       val bases      = lines.next()
+      @unused
       val qualHeader = lines.next()
       val quals      = lines.next()
 

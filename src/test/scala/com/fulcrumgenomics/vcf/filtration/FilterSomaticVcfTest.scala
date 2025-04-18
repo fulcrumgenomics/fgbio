@@ -62,7 +62,7 @@ class FilterSomaticVcfTest extends UnitSpec {
       * ATailingArtifactFilter should apply and output low p-value
       * EndRepairArtifactFilter should apply and output low p-value
       */
-    for (pos <- 61 to 100; i <- 1 to 3) {
+    for (pos <- 61 to 100; _ <- 1 to 3) {
       builder.addPair(start1=pos,      start2=pos+rlen, bases1="C"*rlen, bases2="C"*rlen)
       builder.addPair(start1=pos-rlen, start2=pos     , bases1="C"*rlen, bases2="C"*rlen)
     }
@@ -91,7 +91,7 @@ class FilterSomaticVcfTest extends UnitSpec {
       * ATailingArtifactFilter should apply and output low p-value
       * EndRepairArtifactFilter should apply and output low p-value
       */
-    for (pos <- 361 to 400; i <- 1 to 3) {
+    for (pos <- 361 to 400; _ <- 1 to 3) {
       builder.addPair(start1=pos,      start2=pos+rlen, bases1="A"*rlen, bases2="A"*rlen)
       builder.addPair(start1=pos-rlen, start2=pos     , bases1="A"*rlen, bases2="A"*rlen)
     }
@@ -106,7 +106,7 @@ class FilterSomaticVcfTest extends UnitSpec {
       * ATailingArtifactFilter should not apply
       * EndRepairArtifactFilter should apply and output low p-value
       */
-    for (pos <- 461 to 500; i <- 1 to 3) {
+    for (pos <- 461 to 500; _ <- 1 to 3) {
       builder.addPair(start1=pos,      start2=pos+rlen, bases1="C"*rlen, bases2="C"*rlen)
       builder.addPair(start1=pos-rlen, start2=pos     , bases1="C"*rlen, bases2="C"*rlen)
     }

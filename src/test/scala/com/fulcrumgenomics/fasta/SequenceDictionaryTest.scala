@@ -25,13 +25,13 @@
 
 package com.fulcrumgenomics.fasta
 
-import com.fulcrumgenomics.fasta.Converters.{FromSAMSequenceDictionary, FromSAMSequenceRecord, ToSAMSequenceDictionary, ToSAMSequenceRecord}
-import com.fulcrumgenomics.testing.UnitSpec
-import org.scalatest.OptionValues
-import com.fulcrumgenomics.fasta.SequenceMetadata.{AlternateLocus, Keys}
-import com.fulcrumgenomics.fasta.Topology.{Circular, Linear}
-import htsjdk.samtools.{SAMSequenceDictionary, SAMSequenceRecord}
 import com.fulcrumgenomics.FgBioDef._
+import com.fulcrumgenomics.fasta.Converters.{FromSAMSequenceDictionary, FromSAMSequenceRecord, ToSAMSequenceDictionary, ToSAMSequenceRecord}
+import com.fulcrumgenomics.fasta.SequenceMetadata.AlternateLocus
+import com.fulcrumgenomics.fasta.Topology.{Circular, Linear}
+import com.fulcrumgenomics.testing.UnitSpec
+import htsjdk.samtools.{SAMSequenceDictionary, SAMSequenceRecord}
+import org.scalatest.OptionValues
 
 class SequenceDictionaryTest extends UnitSpec with OptionValues {
 

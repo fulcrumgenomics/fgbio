@@ -24,17 +24,17 @@
 
 package com.fulcrumgenomics.util
 
-import java.lang.Math.exp
-
 import htsjdk.samtools.SAMUtils
 import org.apache.commons.math3.util.FastMath._
+
+import java.lang.Math.exp
 
 /**
   * Container object for a set of numeric types for working with common probability scalings.
   */
 object NumericTypes {
   /** The value of toLogProbability(x) for [0, 1, ..., 10] */
-  private val LnValues: Array[Double] = Array(Double.NegativeInfinity, 0.0) ++ Array.range(2, 11, 1).map(x => log(x))
+  private val LnValues: Array[Double] = Array(Double.NegativeInfinity, 0.0) ++ Array.range(2, 11, 1).map(x => log(x.toDouble))
   val LnZero   = LnValues(0)
   val LnOne    = LnValues(1)
   val LnTwo    = LnValues(2)
@@ -89,7 +89,7 @@ object NumericTypes {
     def fromLinearProbability(p: Double): PhredScore = Math.floor(-10.0 * log10(p)).toByte
 
     /** Converts a numeric phred score to a one-byte character with a +33 offset. */
-    def toFastq(score: PhredScore): Byte = SAMUtils.phredToFastq(score).toByte
+    def toFastq(score: PhredScore): Byte = SAMUtils.phredToFastq(score.toInt).toByte
   }
 
 
@@ -202,7 +202,7 @@ object NumericTypes {
     /** Normalizes a probability. */
     def normalizeByScalar(p: LogProbability, divideBy: Int): LogProbability = {
       if (0 <= divideBy && divideBy < LnValues.length) div(p, LnValues(divideBy))
-      else div(p, toLogProbability(divideBy))
+      else div(p, toLogProbability(divideBy.toDouble))
     }
 
     /** Normalizes a probability. */

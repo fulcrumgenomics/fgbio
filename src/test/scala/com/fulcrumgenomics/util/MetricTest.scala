@@ -25,15 +25,16 @@
 
 package com.fulcrumgenomics.util
 
-import java.io.StringWriter
-import java.nio.file.Path
-
 import com.fulcrumgenomics.testing.UnitSpec
 import enumeratum.EnumEntry.Uppercase
 import enumeratum.{Enum, EnumEntry}
 import org.scalatest.OptionValues
 import org.scalatest.concurrent.TimeLimits
 import org.scalatest.time.SpanSugar._
+
+import java.io.StringWriter
+import java.nio.file.Path
+import scala.language.postfixOps
 
 /** Mixin to provide access to field formatting for [[Metric]] classes. */
 trait Formatted { self: Metric => def formatted(x: Any): String = formatValue(x) }
@@ -169,7 +170,7 @@ class MetricTest extends UnitSpec with OptionValues with TimeLimits {
     val n = 1000
     val lines = Seq("foo\tbar\tcar") ++ Range(0,n).map(_ => "fooey\t273\tvroomvroom")
     val metrics = failAfter(1 second) { Metric.read[TestMetric](lines.iterator) }
-    metrics should have size n
+    metrics should have size n.toLong
   }
 
   //////////////////////////////////////////////////////////////////////////////

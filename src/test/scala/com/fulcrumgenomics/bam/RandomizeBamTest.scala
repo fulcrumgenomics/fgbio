@@ -24,12 +24,11 @@
 
 package com.fulcrumgenomics.bam
 
-import java.nio.file.Paths
-
 import com.fulcrumgenomics.FgBioDef._
 import com.fulcrumgenomics.testing.UnitSpec
 import org.apache.commons.math3.stat.regression.SimpleRegression
 
+import java.nio.file.Paths
 import scala.util.Random
 
 /**
@@ -57,7 +56,7 @@ class RandomizeBamTest extends UnitSpec {
 
     Seq((inPos, o1Pos), (inPos, o2Pos), (o1Pos, o2Pos)).foreach { case (is1, is2) => {
       val regression = new SimpleRegression()
-      is1.zip(is2).foreach(pair => regression.addData(pair._1, pair._2))
+      is1.zip(is2).foreach(pair => regression.addData(pair._1.toDouble, pair._2.toDouble))
       regression.regress().getRSquared should be < 0.05
     }}
   }
@@ -78,7 +77,7 @@ class RandomizeBamTest extends UnitSpec {
 
     Seq((inPos, o1Pos), (inPos, o2Pos), (o1Pos, o2Pos)).foreach { case (is1, is2) => {
       val regression = new SimpleRegression()
-      is1.zip(is2).foreach(pair => regression.addData(pair._1, pair._2))
+      is1.zip(is2).foreach(pair => regression.addData(pair._1.toDouble, pair._2.toDouble))
       regression.regress().getRSquared should be < 0.05
     }}
 

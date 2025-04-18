@@ -24,8 +24,6 @@
 
 package com.fulcrumgenomics.vcf.api
 
-import java.io.Closeable
-
 import com.fulcrumgenomics.FgBioDef._
 import com.fulcrumgenomics.commons.collection.SelfClosingIterator
 import com.fulcrumgenomics.commons.io.PathUtil
@@ -33,7 +31,9 @@ import htsjdk.samtools.util.CloseableIterator
 import htsjdk.tribble.AbstractFeatureReader
 import htsjdk.variant.bcf2.BCF2Codec
 import htsjdk.variant.variantcontext.VariantContext
-import htsjdk.variant.vcf.{VCFCodec, VCFFileReader, VCFHeader}
+import htsjdk.variant.vcf.{VCFCodec, VCFHeader}
+
+import java.io.Closeable
 
 /**
   * Provides a reader over a source of VCF-like data that could be a VCF file or a BCF file. Has facilities

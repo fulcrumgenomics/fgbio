@@ -255,8 +255,8 @@ class TrimPrimers
       val plusTrim  = plus.end   - minus.end
       val minusTrim = plus.start - minus.start
 
-      if (plusTrim  > 0) this.clipper.clip3PrimeEndOfAlignment(plus, plusTrim)
-      if (minusTrim > 0) this.clipper.clip3PrimeEndOfAlignment(minus, minusTrim)
+      if (plusTrim  > 0) { val _ = this.clipper.clip3PrimeEndOfAlignment(plus, plusTrim) }
+      if (minusTrim > 0) { val _ = this.clipper.clip3PrimeEndOfAlignment(minus, minusTrim) }
     }
   }
 }

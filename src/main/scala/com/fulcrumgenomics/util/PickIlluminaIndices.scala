@@ -1,9 +1,10 @@
 package com.fulcrumgenomics.util
 
-import com.fulcrumgenomics.cmdline.{ClpGroups, FgBioTool}
 import com.fulcrumgenomics.FgBioDef._
-import scala.jdk.CollectionConverters._
+import com.fulcrumgenomics.cmdline.{ClpGroups, FgBioTool}
 import com.fulcrumgenomics.sopt.{arg, clp}
+
+import scala.jdk.CollectionConverters._
 
 /**
   * Program for picking sets of indices of arbitrary length that meet certain constraints
@@ -71,6 +72,6 @@ class PickIlluminaIndices
     cmd.INDEX_ADAPTER             = adapters.asJava
     cmd.AVOID_SEQUENCE            = avoidSequence.asJava
     cmd.CANDIDATES                = candidates.asJava
-    cmd.execute()
+    val _ = cmd.execute()
   }
 }

@@ -24,10 +24,10 @@
 
 package com.fulcrumgenomics.bam.api
 
-import java.io.{ByteArrayInputStream, ByteArrayOutputStream}
-
 import com.fulcrumgenomics.util.Sorter
 import htsjdk.samtools.{BAMRecordCodec, SAMFileHeader}
+
+import java.io.{ByteArrayInputStream, ByteArrayOutputStream}
 
 /** Sorter.Codec implementation that wraps HTSJDK's BAMRecordCodec to read/write records to bytes. */
 class SamRecordCodec(header: SAMFileHeader, maxRecordSize: Int = 128 * 1024) extends Sorter.Codec[SamRecord] {

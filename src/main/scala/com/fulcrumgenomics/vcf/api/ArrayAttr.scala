@@ -24,8 +24,6 @@
 
 package com.fulcrumgenomics.vcf.api
 
-import com.fulcrumgenomics.FgBioDef._
-
 import scala.collection.compat._
 import scala.reflect.ClassTag
 

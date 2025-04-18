@@ -24,14 +24,14 @@
 
 package com.fulcrumgenomics.bam
 
+import com.fulcrumgenomics.FgBioDef._
 import com.fulcrumgenomics.bam.api.{SamOrder, SamSource}
+import com.fulcrumgenomics.testing.SamBuilder.{Minus, Plus}
 import com.fulcrumgenomics.testing.{SamBuilder, UnitSpec}
+import com.fulcrumgenomics.umi.ConsensusTags
 import com.fulcrumgenomics.util.Io
 import htsjdk.samtools.SAMFileHeader.GroupOrder
 import htsjdk.samtools.{SAMProgramRecord, SAMSequenceDictionary}
-import com.fulcrumgenomics.FgBioDef._
-import com.fulcrumgenomics.testing.SamBuilder.{Minus, Plus}
-import com.fulcrumgenomics.umi.ConsensusTags
 
 class ZipperBamsTest extends UnitSpec {
   private val dict = new SamBuilder().dict
@@ -141,10 +141,10 @@ class ZipperBamsTest extends UnitSpec {
       val m = mapped.find(m => m.name == z.name && m.flags == z.flags).value
 
       // All the attributes from the unmapped BAM should be there
-      u.attributes.foreach { case (tag, value) => z(tag) == value shouldBe true }
+      u.attributes.foreach { case (tag, value) => z[Any](tag) == value shouldBe true }
 
       // And all the attributes from the mapped BAM
-      m.attributes.foreach { case (tag, value) => z(tag) == value shouldBe true }
+      m.attributes.foreach { case (tag, value) => z[Any](tag) == value shouldBe true }
 
       // And we shouldn't have broken any of the alignment info
       z.basesString shouldBe m.basesString
@@ -175,10 +175,10 @@ class ZipperBamsTest extends UnitSpec {
       val m = mapped.find(m => m.name == z.name).value
 
       // All the attributes from the unmapped BAM should be there
-      u.attributes.foreach { case (tag, value) => z(tag) == value shouldBe true }
+      u.attributes.foreach { case (tag, value) => z[Any](tag) == value shouldBe true }
 
       // And all the attributes from the mapped BAM
-      m.attributes.foreach { case (tag, value) => z(tag) == value shouldBe true }
+      m.attributes.foreach { case (tag, value) => z[Any](tag) == value shouldBe true }
 
       // And we shouldn't have broken any of the alignment info
       z.basesString shouldBe m.basesString

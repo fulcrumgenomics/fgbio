@@ -24,7 +24,6 @@
 
 package com.fulcrumgenomics.vcf.api
 
-import com.fulcrumgenomics.FgBioDef._
 import com.fulcrumgenomics.testing.UnitSpec
 import com.fulcrumgenomics.vcf.api.Allele.{NoCallAllele, SimpleAllele, SpannedAllele, SymbolicAllele}
 

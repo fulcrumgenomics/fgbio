@@ -101,7 +101,7 @@ class FindSwitchbackReadsTest extends UnitSpec with OptionValues {
     noClipHit shouldBe None
 
     val fourClip = Template(builder.addFrag(contig=0, start=71, cigar="4S46M", bases="ccagCTGGACTCCTTCCACTCGCGGGTCGTCTCCAGAGCTCAGAAAATGA").iterator)
-    val fourClipHit = FindSwitchbackReads.findReadBasedSwitchback(refMap, noClip, minLength=5, maxOffset=20, maxErrorRate=0.1)
+    val fourClipHit = FindSwitchbackReads.findReadBasedSwitchback(refMap, fourClip, minLength=5, maxOffset=20, maxErrorRate=0.1)
     fourClipHit shouldBe None
   }
 

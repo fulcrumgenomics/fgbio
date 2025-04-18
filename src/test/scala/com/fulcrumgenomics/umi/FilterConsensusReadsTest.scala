@@ -24,13 +24,14 @@
 
 package com.fulcrumgenomics.umi
 
-import java.nio.file.Files
 import com.fulcrumgenomics.FgBioDef._
 import com.fulcrumgenomics.bam.api.SamOrder.Queryname
 import com.fulcrumgenomics.bam.api.{SamOrder, SamRecord, SamSource, SamWriter}
 import com.fulcrumgenomics.testing.{ReferenceSetBuilder, SamBuilder, UnitSpec}
 import com.fulcrumgenomics.util.NumericTypes.PhredScore
 import htsjdk.samtools.SamPairUtil
+
+import java.nio.file.Files
 
 class FilterConsensusReadsTest extends UnitSpec {
   private val temp = makeTempFile("meh.", ".bam")
@@ -57,7 +58,7 @@ class FilterConsensusReadsTest extends UnitSpec {
       maxReadErrorRate=readErr, maxBaseErrorRate=baseErr, maxNoCallFraction=nf, requireSingleStrandAgreement=ss)
 
   /** Tags up a SAMRecord for filtering. */
-  private def tag(rec: SamRecord, minDepth: Int, depth: Int, readErr: Float, depths: Array[Short]=null, errors: Array[Short]=null): SamRecord = {
+  private def tag(rec: SamRecord, minDepth: Int, depth: Int, readErr: Float, depths: Array[Short], errors: Array[Short]): SamRecord = {
     rec.bases = "A" * rec.length
     rec(ConsensusTags.PerRead.RawReadCount)     = depth
     rec(ConsensusTags.PerRead.MinRawReadCount)  = minDepth
@@ -69,7 +70,7 @@ class FilterConsensusReadsTest extends UnitSpec {
 
   /** Makes a SAMRecord with which to test filtering. */
   private def r(len: Int=10, q: Int=40, minDepth: Int, depth: Int, readErr: Float, depths: Array[Short]=null, errors: Array[Short]=null) : SamRecord = {
-    val builder = new SamBuilder(readLength=len, baseQuality=q.toByte)
+    val builder = new SamBuilder(readLength=len, baseQuality=q)
     tag(builder.addFrag(start=100).get, minDepth=minDepth, depth=depth, readErr=readErr, depths=depths, errors=errors)
   }
 

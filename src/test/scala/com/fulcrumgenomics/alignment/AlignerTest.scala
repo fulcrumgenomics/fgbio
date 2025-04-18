@@ -34,7 +34,7 @@ class AlignerTest extends UnitSpec {
   def s(str: String): String = str.filterNot(ch => ch == '-').toUpperCase
 
   /** Asserts a couple of things about an alignment that should be constant for global alignments. */
-  def assertValidGlobalAlignment(alignment: Alignment): Unit = {
+  private def assertValidGlobalAlignment(alignment: Alignment) = {
     alignment.queryStart  shouldBe 1
     alignment.queryEnd    shouldBe alignment.query.length
     alignment.targetStart shouldBe 1
@@ -42,7 +42,7 @@ class AlignerTest extends UnitSpec {
   }
 
   /** Asserts a couple of things about an alignment that should be constant for glocal alignments. */
-  def assertValidGlocalAlignment(alignment: Alignment): Unit = {
+  private def assertValidGlocalAlignment(alignment: Alignment) = {
     alignment.queryStart  shouldBe 1
     alignment.queryEnd    shouldBe alignment.query.length
     alignment.targetStart should be >= 1
@@ -50,7 +50,7 @@ class AlignerTest extends UnitSpec {
   }
 
   /** Asserts a couple of things about an alignment that should be constant for local alignments. */
-  def assertValidLocalAlignment(alignment: Alignment): Unit = {
+  private def assertValidLocalAlignment(alignment: Alignment) = {
     alignment.queryStart  should be >= 1
     alignment.queryEnd    should be <= alignment.query.length
     alignment.targetStart should be >= 1
@@ -485,7 +485,7 @@ class AlignerTest extends UnitSpec {
     val result = Aligner(5, -3, -2, -4, mode=Global).align(query, target)
     result.cigar.toString() shouldBe "3=1X17="
 
-    val Seq(q, aln, t) = result.paddedString()
+    val Seq(_, aln, _) = result.paddedString()
     aln shouldBe "|||.|||||||||||||||||"
   }
 
@@ -541,7 +541,7 @@ class AlignerTest extends UnitSpec {
 
     Range(0, 10).foreach { _ =>
       val startTime = System.currentTimeMillis()
-      Range(0, count).foreach { _ => val aln = aligner.align(query, target) }
+      Range(0, count).foreach { _ => aligner.align(query, target) }
       val endTime = System.currentTimeMillis()
       val total = (endTime - startTime) / 1000.0
       System.out.println(s"Total time: $total.  Average time: ${total / count}")

@@ -193,7 +193,7 @@ class VcfBuilder private (initialHeader: VcfHeader) extends Iterable[Variant] {
       pos       = pos,
       id        = if (id == ".") None else Some(id),
       alleles   = alleleSet,
-      qual      = if (qual < 0) None else Some(qual),
+      qual      = if (qual < 0) None else Some(qual.toDouble),
       attrs     = ListMap(info.toSeq:_*),
       filters   = filters.toSet,
       genotypes = (calledGenotypes ++ noCalls).map(gt => gt.sample -> gt).toMap

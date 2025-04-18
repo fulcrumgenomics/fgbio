@@ -24,13 +24,13 @@
 
 package com.fulcrumgenomics.illumina
 
-import java.text.SimpleDateFormat
-import java.util.{Calendar, TimeZone}
-
 import com.fulcrumgenomics.FgBioDef.FilePath
 import com.fulcrumgenomics.testing.UnitSpec
 import com.fulcrumgenomics.util.{Io, ReadStructure, SegmentType}
 import htsjdk.samtools.util.Iso8601Date
+
+import java.text.SimpleDateFormat
+import java.util.TimeZone
 
 object RunInfoTest extends UnitSpec {
   /** Creates the RunInfo.xml text and writes it to a file.

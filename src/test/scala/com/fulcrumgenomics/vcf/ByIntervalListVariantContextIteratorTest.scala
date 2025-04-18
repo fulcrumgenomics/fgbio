@@ -31,9 +31,12 @@ import htsjdk.samtools.util.{Interval, IntervalList}
 import htsjdk.variant.variantcontext.VariantContext
 import htsjdk.variant.vcf.VCFFileReader
 
+import scala.annotation.nowarn
+
 /**
   * Tests for ByIntervalListVariantContextIterator.
   */
+@nowarn("msg=class VariantContextSetBuilder in package testing is deprecated")
 class ByIntervalListVariantContextIteratorTest extends UnitSpec {
 
   private val dict = new VariantContextSetBuilder().header.getSequenceDictionary
@@ -154,9 +157,9 @@ class ByIntervalListVariantContextIteratorTest extends UnitSpec {
   }
 
   it should "throw an exception when intervals are given out of order when using the VCF index" in {
-    val builder = new VariantContextSetBuilder()
-      .addVariant(refIdx=0, start=495, variantAlleles=List("AAAAA", "A"), genotypeAlleles=List("A"))
-      .addVariant(refIdx=0, start=595, variantAlleles=List("AAAAA", "A"), genotypeAlleles=List("A"))
+    val builder: VariantContextSetBuilder = new VariantContextSetBuilder()
+      .addVariant(refIdx = 0, start = 495.toLong, variantAlleles = List("AAAAA", "A"), genotypeAlleles = List("A"))
+      .addVariant(refIdx = 0, start = 595.toLong, variantAlleles = List("AAAAA", "A"), genotypeAlleles = List("A"))
     val intervalList = emtpyIntervalList()
     intervalList.add(new Interval(dict.getSequence(0).getSequenceName, 494, 500, false, "foo"))
     intervalList.add(new Interval(dict.getSequence(0).getSequenceName, 500, 500, false, "foo"))
@@ -169,7 +172,7 @@ class ByIntervalListVariantContextIteratorTest extends UnitSpec {
 
   it should "ignore a variant context if does not overlap an interval" in {
     Iterator(true, false).foreach { useIndex =>
-      val builder = new VariantContextSetBuilder().addVariant(refIdx=0, start=495, variantAlleles=List("A", "C"), genotypeAlleles=List("C"))
+      val builder = new VariantContextSetBuilder().addVariant(refIdx=0, start=495.toLong, variantAlleles=List("A", "C"), genotypeAlleles=List("C"))
       val intervalList = emtpyIntervalList()
       intervalList.add(new Interval(dict.getSequence(0).getSequenceName, 500, 500, false, "foo"))
       val iterator = toIterator(reader=builder.toVcfFileReader(), intervalList=intervalList, useIndex=useIndex)

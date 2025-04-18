@@ -112,9 +112,9 @@ class VanillaUmiConsensusCaller(override val readNamePrefix: String,
                                            errorRatePostLabeling = options.errorRatePostUmi)
 
   /** Map from input qual score to output qual score in the case where there is only one read going into the consensus. */
-  private val SingleInputConsensusQuals: Array[Byte] = Range.inclusive(0, PhredScore.MaxValue).map { q =>
+  private val SingleInputConsensusQuals: Array[Byte] = Range.inclusive(0, PhredScore.MaxValue.toInt).map { q =>
     val lnProbOne = LogProbability.fromPhredScore(q)
-    val lnProbTwo = LogProbability.fromPhredScore(Math.min(this.options.errorRatePreUmi, this.options.errorRatePostUmi))
+    val lnProbTwo = LogProbability.fromPhredScore(Math.min(this.options.errorRatePreUmi.toInt, this.options.errorRatePostUmi.toInt))
     PhredScore.fromLogProbability(LogProbability.probabilityOfErrorTwoTrials(lnProbOne, lnProbTwo))
   }.toArray
 
@@ -209,7 +209,7 @@ class VanillaUmiConsensusCaller(override val readNamePrefix: String,
 
         forloop (from=0, until=consensusLength) { i =>
           val rawBase      = inBases(i)
-          val rawQual      = SingleInputConsensusQuals(inQuals(i))
+          val rawQual      = SingleInputConsensusQuals(inQuals(i).toInt)
           val (base, qual) = if (rawQual < this.options.minConsensusBaseQuality) (NoCall, TooLowQualityQual) else (rawBase, rawQual)
 
           consensusBases(i)  = base

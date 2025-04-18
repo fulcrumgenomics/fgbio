@@ -102,7 +102,6 @@ class AssignPrimers
           else if (order == SamOrder.Unsorted) None
           else Some(Bams.sorter(order, reader.header))
       }
-      val writer = SamWriter(output, reader.header)
       // All alignments will be assigned a primer independently, and then grouped by read end. An primer assignment will
       // be made on a given read end only if there is one and only one unique primer assignment.
       Bams.templateIterator(reader).foreach { template =>
@@ -135,8 +134,6 @@ class AssignPrimers
       writer.close()
     }
     else {
-      val writer = SamWriter(output, reader.header)
-
       reader.foreach { rec =>
         val recAmplicon = detector.findPrimer(rec=rec)
         labeller.label(

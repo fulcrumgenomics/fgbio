@@ -25,13 +25,11 @@
 
 package com.fulcrumgenomics.bam
 
-import java.util
-
 import com.fulcrumgenomics.FgBioDef._
 import com.fulcrumgenomics.bam.api.SamSource
 import com.fulcrumgenomics.cmdline.{ClpGroups, FgBioTool}
 import com.fulcrumgenomics.commons.io.{Io, PathUtil}
-import com.fulcrumgenomics.commons.util.{LazyLogging, SimpleCounter}
+import com.fulcrumgenomics.commons.util.LazyLogging
 import com.fulcrumgenomics.fasta.SequenceDictionary
 import com.fulcrumgenomics.sopt._
 import com.fulcrumgenomics.util.Metric.Count
@@ -43,6 +41,7 @@ import htsjdk.samtools.reference.ReferenceSequenceFileWalker
 import htsjdk.samtools.util.{IntervalList, SamLocusIterator, SequenceUtil}
 import htsjdk.variant.vcf.VCFFileReader
 
+import java.util
 import scala.annotation.switch
 import scala.collection.mutable
 import scala.util.Failure
@@ -135,7 +134,7 @@ class ErrorRateByReadPosition
 
     val refWalker     = new ReferenceSequenceFileWalker(this.ref.toFile)
     val locusIterator = buildSamLocusIterator(in, ilist).iterator()
-    val variantMask   = buildVariantMask(variants, ilist, refWalker.getSequenceDictionary.fromSam)
+    val variantMask   = buildVariantMask(ilist, refWalker.getSequenceDictionary.fromSam)
 
     val counters = List.tabulate(3)(_ => mutable.Map[Int, ObsCounter]())
 
@@ -192,7 +191,7 @@ class ErrorRateByReadPosition
   }
 
   /** Generates a variant mask object. */
-  private def buildVariantMask(variants: Option[PathToVcf], intervals: Option[IntervalList], dict: SequenceDictionary): VariantMask = {
+  private def buildVariantMask(intervals: Option[IntervalList], dict: SequenceDictionary): VariantMask = {
     this.variants match {
       case None =>
         new VariantMask(Iterator.empty, dict)
@@ -220,7 +219,7 @@ private class ObsCounter(readNumber: Int, position: Int, collapse: Boolean) {
   private val counts: Array[Array[Long]] = new Array[Long](4).map(_ => new Array[Long](4))
 
   /** Maps A/C/G/T to an index 0-3 and throws an exception for any other base. */
-  @inline private def index(base: Byte): Int = (base: @switch) match {
+  @inline private final def index(base: Byte): Int = (base: @switch) match {
     case 'A' => 0
     case 'C' => 1
     case 'G' => 2
@@ -228,21 +227,21 @@ private class ObsCounter(readNumber: Int, position: Int, collapse: Boolean) {
     case _   => throw new IllegalArgumentException(s"Invalid base: $base")
   }
 
-  @inline def count(ref: Byte, read: Byte): Unit =
+  @inline final def count(ref: Byte, read: Byte): Unit =
     try { this.counts(index(ref))(index(read)) += 1 } catch { case _: IllegalArgumentException => () }
 
-  @inline def countOf(ref: Char, read: Char): Long =
+  final def countOf(ref: Char, read: Char): Long =
     try { this.counts(index(ref.toByte))(index(read.toByte)) } catch { case _: IllegalArgumentException => 0 }
 
-  @inline private def total(ref: Char): Long    = this.counts(index(ref.toByte)).sum
-  @inline private def totalRef(ref: Char): Long = countOf(ref, ref)
+  @inline private final def total(ref: Char): Long    = this.counts(index(ref.toByte)).sum
+  @inline private final def totalRef(ref: Char): Long = countOf(ref, ref)
 
-  @inline private def errorRate(ref: Char, read: Char): Double = {
+  private final def errorRate(ref: Char, read: Char): Double = {
     val totalRef = this.total(ref)
     if (totalRef == 0) 0 else countOf(ref=ref, read=read) / totalRef.toDouble
   }
 
-  @inline private def getErrorRate(ref: Char, read: Char): Option[Double] = {
+  private final def getErrorRate(ref: Char, read: Char): Option[Double] = {
     if (!collapse || ref == 'A' || ref == 'C') Some(errorRate(ref=ref, read=read))
     else None
   }

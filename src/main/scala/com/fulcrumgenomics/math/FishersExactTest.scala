@@ -24,11 +24,11 @@
 
 package com.fulcrumgenomics.math
 
-import java.lang.Math.{log, exp, max, min}
-
 import com.fulcrumgenomics.FgBioDef._
 import com.fulcrumgenomics.util.MathUtil
 import org.apache.commons.math3.distribution.HypergeometricDistribution
+
+import java.lang.Math.{exp, log, max, min}
 
 /**
   * Implementation of Fisher's Exact Test for 2x2 contingency tables. Follow's the

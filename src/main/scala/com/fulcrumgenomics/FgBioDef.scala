@@ -29,8 +29,6 @@ import com.fulcrumgenomics.commons.CommonsDef
 import com.fulcrumgenomics.commons.io.PathUtil
 import enumeratum.{Enum, EnumEntry}
 
-import scala.math.Ordering
-
 /** FgBioDef that is just an extension of the commons CommonsDef. Here in case
   * there's a need for FgBio specific defs later.
   */

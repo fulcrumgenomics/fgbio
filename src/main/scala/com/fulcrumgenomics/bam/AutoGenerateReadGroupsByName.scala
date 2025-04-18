@@ -25,8 +25,6 @@
 
 package com.fulcrumgenomics.bam
 
-import java.util.concurrent.atomic.AtomicInteger
-
 import com.fulcrumgenomics.FgBioDef._
 import com.fulcrumgenomics.bam.api.{SamOrder, SamSource, SamWriter}
 import com.fulcrumgenomics.cmdline.{ClpGroups, FgBioTool}
@@ -36,6 +34,7 @@ import com.fulcrumgenomics.util.{Io, ProgressLogger}
 import htsjdk.samtools._
 import htsjdk.samtools.util.Iso8601Date
 
+import java.util.concurrent.atomic.AtomicInteger
 import scala.collection.mutable
 
 @clp(group = ClpGroups.SamOrBam, description =

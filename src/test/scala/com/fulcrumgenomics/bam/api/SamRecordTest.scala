@@ -283,7 +283,8 @@ class SamRecordTest extends UnitSpec with OptionValues {
   }
 
   it should "return true when mates overlap and we know the start of the mate, and None for when we don't know the end of the mate" in {
-    val List(rec1, rec2) = new SamBuilder(readLength = 100).addPair(start1 = 10, start2 = 1, contig = 0, contig2 = Some(0))
+    val builder = new SamBuilder(readLength = 100)
+    val Seq(rec1, rec2) = builder.addPair(start1 = 10, start2 = 1, contig = 0, contig2 = Some(0))
     rec1.remove("MC")
     rec2.remove("MC")
     rec1.matesOverlap shouldBe None // Mate's start is not enclosed by rec, and mate's end cannot be determined

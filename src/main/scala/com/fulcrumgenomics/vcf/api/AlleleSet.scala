@@ -24,7 +24,6 @@
 
 package com.fulcrumgenomics.vcf.api
 
-import com.fulcrumgenomics.FgBioDef._
 import com.fulcrumgenomics.vcf.api.Allele.SimpleAllele
 
 /**
@@ -55,7 +54,6 @@ case class AlleleSet(ref: SimpleAllele, alts: IndexedSeq[Allele]) extends Iterab
 }
 
 object AlleleSet {
-  private val NoAlts: IndexedSeq[Allele] = IndexedSeq.empty
 
   /**
     * Generates an AlleleSet from a reference allele and zero or more alternative alleles.

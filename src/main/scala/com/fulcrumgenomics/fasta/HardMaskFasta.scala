@@ -24,11 +24,10 @@
 package com.fulcrumgenomics.fasta
 
 import com.fulcrumgenomics.cmdline.{ClpGroups, FgBioTool}
-import com.fulcrumgenomics.util.{Io, ProgressLogger}
 import com.fulcrumgenomics.commons.CommonsDef._
 import com.fulcrumgenomics.commons.util.LazyLogging
 import com.fulcrumgenomics.sopt._
-import htsjdk.samtools.reference.{ReferenceSequenceFileFactory, ReferenceSequenceFileWalker}
+import com.fulcrumgenomics.util.{Io, ProgressLogger}
 
 /**
   * Tool to take in a FASTA file and convert soft-masked (i.e. lower-case) sequence to hard-masked
@@ -60,7 +59,7 @@ class HardMaskFasta
       out.append('>').append(seq.getName).append('\n')
       seq.getBases.grouped(lineLength).foreach(bs => {
         bs.indices.foreach(i => if (bs(i).toChar.isLower) bs(i) = 'N')
-        bs.foreach(out.write(_))
+        bs.foreach(_bs => out.write(_bs.toInt))
         out.newLine()
       })
 

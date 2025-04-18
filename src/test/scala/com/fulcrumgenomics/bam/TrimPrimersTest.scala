@@ -24,14 +24,15 @@
 
 package com.fulcrumgenomics.bam
 
-import java.nio.file.Paths
 import com.fulcrumgenomics.FgBioDef._
 import com.fulcrumgenomics.bam.api.{SamOrder, SamRecord}
 import com.fulcrumgenomics.testing.SamBuilder.{Minus, Plus}
 import com.fulcrumgenomics.testing.{SamBuilder, UnitSpec}
 import com.fulcrumgenomics.util.{Amplicon, Io, Metric}
-import htsjdk.samtools.util.{CoordMath, SequenceUtil}
+import htsjdk.samtools.util.CoordMath
 import htsjdk.samtools.{CigarOperator => Op}
+
+import java.nio.file.Paths
 
 class TrimPrimersTest extends UnitSpec {
   val amplicons: Seq[Amplicon] = Seq(
@@ -143,7 +144,6 @@ class TrimPrimersTest extends UnitSpec {
     val oneErrors    = "AAAAAGAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
     val twoErrors    = "AAAAAGAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAGAAAAA"
     val threeErrors  = "AAAAAGAAAAAAAAAAAAAAAAAAGAAAAAAAAAAAAAAAAAAAGAAAAA"
-    def rc(s: String) = SequenceUtil.reverseComplement(s)
 
     val orders = Seq(Some(Queryname), Some(Coordinate), None)
     for (inOrder <- orders; outOrder <- orders) {
@@ -193,7 +193,7 @@ class TrimPrimersTest extends UnitSpec {
   it should "fail if the headers are missing from the primer file" in {
     val primerFile = makeTempFile("primers.", ".txt")
     val bam = new SamBuilder().toTempFile()
-    Io.writeLines(primerFile, Seq(Seq("chr1", 1000, 1020, 1200, 1220).mkString("\t")))
+    Io.writeLines(primerFile, Seq(Seq("chr1", 1000.toString, 1020.toString, 1200.toString, 1220.toString).mkString("\t")))
     an[Exception] shouldBe thrownBy {
       new TrimPrimers(input=bam, output=bam, primers=primerFile, hardClip=false).execute()
     }
@@ -234,7 +234,7 @@ class TrimPrimersTest extends UnitSpec {
     val reads = readBamRecs(newBam).sortBy(rec => (rec.name, rec.secondOfPair))
     reads should have size 12
 
-    def validate(rec: SamRecord, name: String, firstOfPair: Boolean, fivePrimeSoftClipLength: Int = 0): Unit = {
+    def validate(rec: SamRecord, name: String, firstOfPair: Boolean, fivePrimeSoftClipLength: Int = 0) = {
       rec.name shouldBe name
       rec.firstOfPair shouldBe firstOfPair
       val elem = if (rec.negativeStrand) rec.cigar.elems.last else rec.cigar.elems.head

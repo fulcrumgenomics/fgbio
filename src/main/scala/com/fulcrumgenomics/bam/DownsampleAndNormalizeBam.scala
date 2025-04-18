@@ -30,9 +30,9 @@ import com.fulcrumgenomics.bam.api._
 import com.fulcrumgenomics.cmdline.{ClpGroups, FgBioTool}
 import com.fulcrumgenomics.commons.util.LazyLogging
 import com.fulcrumgenomics.sopt.{arg, clp}
-import com.fulcrumgenomics.util.{Io, ProgressLogger, Sorter}
+import com.fulcrumgenomics.util.Io
 import htsjdk.samtools.util.IntervalList.IntervalMergerIterator
-import htsjdk.samtools.util.{CoordMath, Interval, IntervalList, Murmur3, OverlapDetector}
+import htsjdk.samtools.util.{CoordMath, Interval, IntervalList, OverlapDetector}
 
 /**
   * Companion object with helper classes.

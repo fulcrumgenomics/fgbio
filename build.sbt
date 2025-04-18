@@ -57,7 +57,6 @@ publishTo := {
 }
 Test / publishArtifact := false
 pomIncludeRepository := { _ => false }
-// For Travis CI - see http://www.cakesolutions.net/teamblogs/publishing-artefacts-to-oss-sonatype-nexus-using-sbt-and-travis-ci
 credentials ++= (for {
   username <- Option(System.getenv().get("SONATYPE_USER"))
   password <- Option(System.getenv().get("SONATYPE_PASS"))
@@ -78,7 +77,7 @@ val docScalacOptions = Seq("-groups", "-implicits")
 // Common settings 
 ////////////////////////////////////////////////////////////////////////////////////////////////
 
-val primaryScalaVersion = "2.13.8"
+val primaryScalaVersion = "2.13.14"
 
 lazy val commonSettings = Seq(
   organization         := "com.fulcrumgenomics",
@@ -89,7 +88,48 @@ lazy val commonSettings = Seq(
   startYear            := Some(2015),
   scalaVersion         := primaryScalaVersion,
   crossScalaVersions   :=  Seq(primaryScalaVersion),
-  scalacOptions        ++= Seq("-target:jvm-1.8", "-deprecation", "-unchecked"),
+  scalacOptions        ++= Seq(
+    "-release:8", // Target the Java 1.8 release
+    "-deprecation", // Emit warning and location for usages of deprecated APIs.
+    "-explaintypes", // Explain type errors in more detail.
+    "-feature", // Emit warning and location for usages of features that should be imported explicitly.
+    "-opt-inline-from:com.fulcrumgenomics.**", // Tells the inliner that it is allowed to inline things from these classes.
+    "-opt-warnings:at-inline-failed", // Tells you if methods marked with `@inline` cannot be inlined, so you can remove the tag.
+    "-opt:inline:com.fulcrumgenomics.**", // Turn on the inliner.
+    "-unchecked", // Enable additional warnings where generated code depends on assumptions.
+    "-Xcheckinit", // Wrap field accessors to throw an exception on uninitialized access.
+    "-Xfatal-warnings", // Fail the compilation if there are any warnings.
+    "-Xlint:adapted-args", // Warn if an argument list is modified to match the receiver.
+    "-Xlint:constant", // Evaluation of a constant arithmetic expression results in an error.
+    "-Xlint:delayedinit-select", // Selecting member of DelayedInit.
+    "-Xlint:doc-detached", // A Scaladoc comment appears to be detached from its element.
+    "-Xlint:inaccessible", // Warn about inaccessible types in method signatures.
+    "-Xlint:infer-any", // Warn when a type argument is inferred to be `Any`.
+    "-Xlint:missing-interpolator", // A string literal appears to be missing an interpolator id.
+    "-Xlint:nullary-unit", // Warn when nullary methods return Unit.
+    "-Xlint:option-implicit", // Option.apply used implicit view.
+    "-Xlint:package-object-classes", // Class or object defined in package object.
+    "-Xlint:poly-implicit-overload", // Parameterized overloaded implicit methods are not visible as view bounds.
+    "-Xlint:private-shadow", // A private field (or class parameter) shadows a superclass field.
+    "-Xlint:stars-align", // Pattern sequence wildcard must align with sequence component.
+    "-Xlint:type-parameter-shadow", // A local type parameter shadows a type already in scope.
+    "-Xlint:unused", // Warn when anything is unused.
+    "-Ycache-macro-class-loader:last-modified", // and macro definitions. This can lead to performance improvements.
+    "-Ycache-plugin-class-loader:last-modified", // Enables caching of classloaders for compiler plugins
+    "-Yopt-inline-heuristics:at-inline-annotated", // Tells the inliner to use your `@inliner` tags.
+    "-Yopt-log-inline", "_", // Optional, logs the inliner activity so you know it is doing something.
+    "-Ywarn-dead-code", // Warn when dead code is identified.
+    "-Ywarn-extra-implicit", // Warn when more than one implicit parameter section is defined.
+    "-Ywarn-numeric-widen", // Warn on obsolete octal syntax.
+    "-Ywarn-numeric-widen", // Warn when numerics are widened.
+    "-Ywarn-unused:implicits", // Warn if an implicit parameter is unused.
+    "-Ywarn-unused:imports", // Warn if an import selector is not referenced.
+    "-Ywarn-unused:locals", // Warn if a local definition is unused.
+    "-Ywarn-unused:params", // Warn if a value parameter is unused.
+    "-Ywarn-unused:patvars", // Warn if a variable bound in a pattern is unused.
+    "-Ywarn-unused:privates", // Warn if a private member is unused.
+    "-Ywarn-value-discard", // Warn when non-Unit expression results are unused.
+  ),
   Compile / doc / scalacOptions ++= docScalacOptions,
   Test / doc / scalacOptions    ++= docScalacOptions,
   useCoursier          :=  false,
@@ -97,7 +137,7 @@ lazy val commonSettings = Seq(
   // uncomment for full stack traces
   // Test / testOptions   += Tests.Argument("-oDF"),
   Test / fork          := true,
-  resolvers            += Resolver.sonatypeRepo("public"),
+  resolvers            ++= Resolver.sonatypeOssRepos("public"),
   resolvers            += Resolver.mavenLocal,
   resolvers            += "broad-snapshots" at "https://broadinstitute.jfrog.io/artifactory/libs-snapshot/",
   shellPrompt          := { state => "%s| %s> ".format(GitCommand.prompt.apply(state), version.value) },

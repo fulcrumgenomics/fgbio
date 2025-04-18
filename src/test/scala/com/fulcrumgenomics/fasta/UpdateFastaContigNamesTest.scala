@@ -39,7 +39,7 @@ import scala.collection.mutable.ListBuffer
     SequenceMetadata(name=name, length=0, aliases=alias)
   }
 
-  private def dict(skipLast: Boolean = false): SequenceDictionary = {
+  private def dict(skipLast: Boolean): SequenceDictionary = {
     val infos = ListBuffer[SequenceMetadata](
       toSequenceMetadata(name="1", "gi|7|emb|X51700.1|"),
       toSequenceMetadata(name="2", "gi|20|emb|X52703.1|")

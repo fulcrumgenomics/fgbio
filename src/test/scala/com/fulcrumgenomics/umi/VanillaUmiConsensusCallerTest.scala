@@ -34,8 +34,8 @@ import com.fulcrumgenomics.umi.VanillaUmiConsensusCallerOptions._
 import com.fulcrumgenomics.util.NumericTypes._
 import htsjdk.samtools.SAMUtils
 import htsjdk.samtools.util.CloserUtil
-import org.scalatest.OptionValues
 import org.apache.commons.math3.util.FastMath._
+import org.scalatest.OptionValues
 
 /**
   * Tests for ConsensusCaller.
@@ -96,7 +96,7 @@ class VanillaUmiConsensusCallerTest extends UnitSpec with OptionValues {
     val sources   = Seq(source, source)
 
     val expectedQual = expectedConsensusQuality(10, 2)
-    val expectedQuals = source.quals.map(q => expectedQual)
+    val expectedQuals = source.quals.map(_ => expectedQual)
 
     val consensus = cc(cco(minReads=1, minConsensusBaseQuality=0.toByte)).consensusCall(sources)
     consensus.isDefined shouldBe true
@@ -152,8 +152,8 @@ class VanillaUmiConsensusCallerTest extends UnitSpec with OptionValues {
     * instead produce a shortened read.
     */
   it should "produce a consensus even when most of the bases have < minReads" in {
-    val src1 = src("A" * 10, (1 to 10).map(q => 30))
-    val src2 = src("A" * 20, (1 to 20).map(q => 30))
+    val src1 = src("A" * 10, (1 to 10).map(_ => 30))
+    val src2 = src("A" * 20, (1 to 20).map(_ => 30))
 
     val caller = cc(cco(minReads=2, minConsensusBaseQuality=10.toByte))
     val consensus = caller.consensusCall(Seq(src1, src2))
@@ -228,7 +228,7 @@ class VanillaUmiConsensusCallerTest extends UnitSpec with OptionValues {
     val inputQuals = Seq(10, 10, 10, 10, 10, 10, 10)
     val lnProbError = LogProbability.fromPhredScore(10)
     val outputQual  = PhredScore.fromLogProbability(LogProbability.probabilityOfErrorTwoTrials(lnProbError, lnProbError))
-    val outputQuals = inputQuals.map(q => outputQual)
+    val outputQuals = inputQuals.map(_ => outputQual)
     caller.consensusCall(Seq(src("GATTACA", inputQuals))) match {
       case None => fail()
       case Some(consensus) =>
@@ -248,7 +248,7 @@ class VanillaUmiConsensusCallerTest extends UnitSpec with OptionValues {
     val inputQuals = Seq(10, 10, 10, 10, 10, 10, 10)
     val lnProbError = LogProbability.fromPhredScore(10)
     val outputQual  = PhredScore.fromLogProbability(LogProbability.probabilityOfErrorTwoTrials(lnProbError, lnProbError))
-    val outputQuals = inputQuals.map(q => outputQual)
+    val outputQuals = inputQuals.map(_ => outputQual)
 
     caller.consensusCall(Seq(src("GATTACA", inputQuals))) match {
       case None => fail()
@@ -432,22 +432,22 @@ class VanillaUmiConsensusCallerTest extends UnitSpec with OptionValues {
   }
 
   "VanillaUmiConsensusCaller.filterToMostCommonAlignment" should "return all reads when all cigars are 50M" in {
-    val srcs = (1 to 10).map { i => src(cigar="50M") }
+    val srcs = (1 to 10).map { _ => src(cigar="50M") }
     val recs = cc().filterToMostCommonAlignment(srcs)
     recs should have size 10
   }
 
   it should "return all reads when all cigars are complicated but the same" in {
-    val srcs = (1 to 10).map { i => src(cigar="10M5D10M5I20M5S") }
+    val srcs = (1 to 10).map { _ => src(cigar="10M5D10M5I20M5S") }
     val recs = cc().filterToMostCommonAlignment(srcs)
     recs should have size 10
   }
 
   it should "return only the 50M reads (i.e. the most common alignment)" in {
     val buffer = Seq.newBuilder[SourceRead]
-    (1 to  3).foreach { i => buffer += src(cigar="25M1D25M") }
-    (1 to 10).foreach { i => buffer += src(cigar="50M") }
-    (1 to  3).foreach { i => buffer += src(cigar="25M2I23M") }
+    (1 to  3).foreach { _ => buffer += src(cigar="25M1D25M") }
+    (1 to 10).foreach { _ => buffer += src(cigar="50M") }
+    (1 to  3).foreach { _ => buffer += src(cigar="25M2I23M") }
 
     val recs = cc().filterToMostCommonAlignment(buffer.result())
     recs should have size 10
@@ -457,15 +457,15 @@ class VanillaUmiConsensusCallerTest extends UnitSpec with OptionValues {
   it should "return only the reads with a single base deletion at base 25" in {
     val buffer = Seq.newBuilder[SourceRead]
     // These should all be returned
-    (1 to  5).foreach { i => buffer += src(cigar="25M1D25M") }
-    (1 to  2).foreach { i => buffer += src(cigar="5S20M1D25M") }
-    (1 to  2).foreach { i => buffer += src(cigar="5S20M1D20M5H") }
-    (1 to  2).foreach { i => buffer += src(cigar="25M1D20M5S") }
+    (1 to  5).foreach { _ => buffer += src(cigar="25M1D25M") }
+    (1 to  2).foreach { _ => buffer += src(cigar="5S20M1D25M") }
+    (1 to  2).foreach { _ => buffer += src(cigar="5S20M1D20M5H") }
+    (1 to  2).foreach { _ => buffer += src(cigar="25M1D20M5S") }
 
     // These should not be!
-    (1 to  2).foreach { i => buffer += src(cigar="25M2D25M") }
-    (1 to  2).foreach { i => buffer += src(cigar="25M1I24M") }
-    (1 to  2).foreach { i => buffer += src(cigar="20M1D5M1D25M") }
+    (1 to  2).foreach { _ => buffer += src(cigar="25M2D25M") }
+    (1 to  2).foreach { _ => buffer += src(cigar="25M1I24M") }
+    (1 to  2).foreach { _ => buffer += src(cigar="20M1D5M1D25M") }
 
     val recs = cc().filterToMostCommonAlignment(buffer.result())
     recs should have size 11

@@ -35,6 +35,7 @@ import org.scalatest.OptionValues
   * Tests for ExtractUmisFromBam.
   */
 class ExtractUmisFromBamTest extends UnitSpec with OptionValues {
+  import scala.language.implicitConversions
 
   def newBam = makeTempFile("extract_umis_from_bam_test.", ".bam")
 
@@ -107,7 +108,6 @@ class ExtractUmisFromBamTest extends UnitSpec with OptionValues {
   }
 
   it should "should annotate a two molecular index" in {
-    val builder = new SamBuilder(readLength=100)
     val frag = annotateRecordFragment
     ExtractUmisFromBam.annotateRecord(record=frag, ReadStructure("90T5M5M"), Seq("R1", "R2")) shouldBe "A" * 10
     frag.length shouldBe 90
@@ -139,7 +139,7 @@ class ExtractUmisFromBamTest extends UnitSpec with OptionValues {
   it should "not accept read pairs when only one read structure is given" in {
     val output  = newBam
     val builder = new SamBuilder(readLength=100)
-    val records = builder.addPair(name="Pair", start1=1, start2=1)
+    val _ = builder.addPair(name="Pair", start1=1, start2=1)
     an[Exception] should be thrownBy new ExtractUmisFromBam(input=builder.toTempFile(), output=output, readStructure=Seq("10M90T")).execute()
   }
 
@@ -385,7 +385,7 @@ class ExtractUmisFromBamTest extends UnitSpec with OptionValues {
 
   it should "extract a single UMI from read one and leave read two untouched" in {
     val builder = new SamBuilder(readLength=50)
-    val Seq(r1In, r2In) = builder.addPair(name="q1", unmapped1=true, unmapped2=true, start1=0, start2=0)
+    val Seq(r1In, _) = builder.addPair(name="q1", unmapped1=true, unmapped2=true, start1=0, start2=0)
     val output = newBam
     val umi = r1In.basesString.substring(0, 8)
 

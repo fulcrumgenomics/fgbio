@@ -25,11 +25,11 @@
 
 package com.fulcrumgenomics.basecalling
 
-import java.nio.file.Files
-
 import com.fulcrumgenomics.illumina.{Sample, SampleSheet}
 import com.fulcrumgenomics.testing.{ErrorLogLevel, UnitSpec}
 import com.fulcrumgenomics.util.Io
+
+import java.nio.file.Files
 
 class ExtractBasecallingParamsForPicardTest extends UnitSpec with ErrorLogLevel {
 
@@ -97,24 +97,6 @@ class ExtractBasecallingParamsForPicardTest extends UnitSpec with ErrorLogLevel 
       |Sample_ID,Sample_Name,Sample_Plate,Sample_Well,R1_Barcode_Bases,R2_Barcode_Bases,I7_Index_ID,index,I5_Index_ID,index2,Sample_Project,Description
       |20000101-EXPID-1,Sample_Name_1,,,GATTACAG,GATTACAGA,I7_1,GATTACAACGT,I5_1,GATTACA,,"""
   .stripMargin.split("\n").toIndexedSeq
-
-  private val duplicateNamesSampleSheet =
-    """[Data],,,,,,,,,
-      |Sample_ID,Sample_Name,Sample_Plate,Sample_Well,R1_Barcode_Bases,R2_Barcode_Bases,I7_Index_ID,index,Sample_Project,Description
-      |20000101-EXPID-1,Sample_Name_1,,,GATTACAG,GATTACAGA,I7_1,GATTACAACGT,Sample_Project_1,Description_1
-      |20000101-EXPID-2,Sample_Name_1,,,GATTACAG,GATTACAGA,I7_2,GATTACAACGT,Sample_Project_2,Description_2
-      |20000101-EXPID-3,Sample_Name_3,,,GATTACAG,GATTACAGA,I7_3,GATTACAACGT,Sample_Project_3,Description_3
-      |20000101-EXPID-4,Sample_Name_4,,,GATTACAG,GATTACAGA,I7_4,GATTACAACGT,Sample_Project_4,Description_4
-      |20000101-EXPID-5,Sample_Name_5,,,GATTACAG,GATTACAGA,I7_5,GATTACAACGT,Sample_Project_5,Description_5
-      |20000101-EXPID-6,Sample_Name_6,,,GATTACAG,GATTACAGA,I7_6,GATTACAACGT,Sample_Project_6,Description_6
-      |20000101-EXPID-7,Sample_Name_7,,,GATTACAG,GATTACAGA,I7_7,GATTACAACGT,Sample_Project_7,Description_7
-      |20000101-EXPID-8,Sample_Name_8,,,GATTACAG,GATTACAGA,I7_8,GATTACAACGT,Sample_Project_8,Description_8
-      |20000101-EXPID-9,Sample_Name_9,,,GATTACAG,GATTACAGA,I7_9,GATTACAACGT,Sample_Project_9,Description_9
-      |20000101-EXPID-10,Sample_Name_10,,,GATTACAG,GATTACAGA,I7_10,GATTACAACGT,Sample_Project_10,Description_10
-      |20000101-EXPID-11,Sample_Name_11,,,GATTACAG,GATTACAGA,I7_11,GATTACAACGT,Sample_Project_11,Description_11
-      |20000101-EXPID-12,Sample_Name_12,,,GATTACAG,GATTACAGA,I7_12,GATTACAACGT,Sample_Project_12,Description_12"""
-      .stripMargin.split("\n").toIndexedSeq
-
 
   "BasecallingParams.from" should "extract params from a single-index sequencing run" in {
     val sampleSheet = SampleSheet(singleIndexSampleSheet.iterator, lane=None)

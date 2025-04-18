@@ -26,13 +26,13 @@
 package com.fulcrumgenomics.util
 
 
-import java.io.BufferedWriter
-
 import com.fulcrumgenomics.FgBioDef.PathToIntervals
 import com.fulcrumgenomics.commons.io.Writer
 import com.fulcrumgenomics.fasta.SequenceDictionary
 import htsjdk.samtools.util.Interval
 import htsjdk.samtools.{SAMFileHeader, SAMTextHeaderCodec}
+
+import java.io.BufferedWriter
 
 
 object IntervalListWriter {

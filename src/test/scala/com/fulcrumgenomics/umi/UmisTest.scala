@@ -27,7 +27,7 @@ package com.fulcrumgenomics.umi
 
 import com.fulcrumgenomics.bam.api.{SamOrder, SamRecord}
 import com.fulcrumgenomics.testing.{SamBuilder, UnitSpec}
-import com.fulcrumgenomics.umi.ConsensusTags.PerRead.{RawReadCount, AbRawReadCount, BaRawReadCount}
+import com.fulcrumgenomics.umi.ConsensusTags.PerRead.{AbRawReadCount, BaRawReadCount, RawReadCount}
 import org.scalatest.OptionValues
 
 class UmisTest extends UnitSpec with OptionValues {

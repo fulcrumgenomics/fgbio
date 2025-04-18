@@ -24,7 +24,6 @@
 
 package com.fulcrumgenomics.fastq
 
-import com.fulcrumgenomics.FgBioDef._
 import com.fulcrumgenomics.testing.UnitSpec
 
 class QualityEncodingTest extends UnitSpec {

@@ -24,8 +24,6 @@
 
 package com.fulcrumgenomics.testing
 
-import java.nio.file.{Files, Path}
-
 import com.fulcrumgenomics.FgBioDef._
 import com.fulcrumgenomics.commons.io.PathUtil
 import com.fulcrumgenomics.fasta.{SequenceDictionary, SequenceMetadata}
@@ -34,6 +32,7 @@ import htsjdk.samtools.reference.{FastaSequenceIndexCreator, ReferenceSequenceFi
 import htsjdk.samtools.util.SequenceUtil
 import htsjdk.samtools.{SAMFileHeader, SAMTextHeaderCodec}
 
+import java.nio.file.{Files, Path}
 import scala.collection.mutable.ListBuffer
 
 /** Class to programatically build up a reference sequence. */

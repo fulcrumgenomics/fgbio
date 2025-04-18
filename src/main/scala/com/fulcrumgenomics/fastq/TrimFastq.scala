@@ -23,11 +23,11 @@
  */
 package com.fulcrumgenomics.fastq
 
-import com.fulcrumgenomics.cmdline.{FgBioTool, ClpGroups}
-import com.fulcrumgenomics.util.ProgressLogger
+import com.fulcrumgenomics.cmdline.{ClpGroups, FgBioTool}
 import com.fulcrumgenomics.commons.CommonsDef._
 import com.fulcrumgenomics.commons.util.LazyLogging
 import com.fulcrumgenomics.sopt._
+import com.fulcrumgenomics.util.ProgressLogger
 
 @clp(
   description =

@@ -31,15 +31,13 @@ import com.fulcrumgenomics.fasta.SequenceDictionary
 import com.fulcrumgenomics.sopt.{arg, clp}
 import com.fulcrumgenomics.util.GeneAnnotations.GeneBiotype
 import com.fulcrumgenomics.util.NcbiRefSeqGffSource
-import htsjdk.samtools.reference.ReferenceSequenceFileFactory
 
 @clp(group=ClpGroups.Personal, description=
   """
     |Takes in a RefSeq GFF and produces some summary statistics.
   """)
 class SummarizeGff(@arg(flag='i', doc="Input RefSeq GFF") input: FilePath,
-                   @arg(flag='r', doc="Reference sequence fasta.") ref: PathToFasta,
-                   @arg(flag='o', doc="Output summary file.") output: FilePath) extends FgBioTool with LazyLogging {
+                   @arg(flag='r', doc="Reference sequence fasta.") ref: PathToFasta) extends FgBioTool with LazyLogging {
 
   override def execute(): Unit = {
     val dict = SequenceDictionary.extract(ref)

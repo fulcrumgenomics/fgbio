@@ -70,7 +70,7 @@ object Cigar {
       require(i > expectedNumberAtPosition, s"Malformed CIGAR string $cigar, found non-digit ${chars(i)} where number expected.")
 
       // Grab the operator (characterToEnum will throw an exception if the operator is invalid)
-      val operator = CigarOperator.characterToEnum(chars(i))
+      val operator = CigarOperator.characterToEnum(chars(i).toInt)
       elements += CigarElem(operator, length)
       i += 1
     }

@@ -30,10 +30,7 @@ import com.fulcrumgenomics.bam.api.SamRecord
 import com.fulcrumgenomics.testing.SamBuilder.{Minus, Plus, Strand}
 import com.fulcrumgenomics.testing.{SamBuilder, UnitSpec}
 import com.fulcrumgenomics.util.NumericTypes.PhredScore
-import htsjdk.samtools.TextCigarCodec
 import org.scalatest.OptionValues
-
-import scala.math.abs
 
 class SamRecordClipperTest extends UnitSpec with OptionValues {
   /** Returns a fragment SAM record with the start / cigar / strand requested. */
@@ -873,7 +870,6 @@ class SamRecordClipperTest extends UnitSpec with OptionValues {
   }
 
   it should "not clip when the reads do not extend past each other with insertions" in {
-    val builder = new SamBuilder(readLength=100)
     val (rec, mate) = pair(start1=1, start2=1, strand1=Plus, strand2=Minus, cigar1="40M20I40M", cigar2="40M20I40M")
     clipper(Soft).clipExtendingPastMateEnds(rec=rec, mate=mate) shouldBe (0, 0)
     rec.start shouldBe 1

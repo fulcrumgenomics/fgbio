@@ -74,8 +74,8 @@ object DemuxFastqs {
 
   /** Gets the quality format of the FASTQs. If a format is given, checks that the given format is compatible. */
   private def determineQualityFormat(fastqs: Seq[PathToFastq],
-                                     format: Option[QualityEncoding] = None,
-                                     logger: Option[Logger] = None): QualityEncoding = {
+                                     format: Option[QualityEncoding],
+                                     logger: Option[Logger]): QualityEncoding = {
     val detector = new QualityEncodingDetector
     detector.sample(fastqs.iterator.flatMap(FastqSource(_)).map(_.quals))
 
@@ -167,7 +167,7 @@ object DemuxFastqs {
             .parWith(pool=pool)
             .map { readRecords =>
                 demultiplexer.demultiplex(readRecords: _*)
-                    .maskLowQualityBases(minBaseQualityForMasking=maskingThresholdToByte, qualityEncoding=qualityEncoding, omitFailingReads=omitFailingReads)
+                    .maskLowQualityBases(minBaseQualityForMasking=maskingThresholdToByte, qualityEncoding=qualityEncoding)
             }
             .seq
         }
@@ -175,7 +175,7 @@ object DemuxFastqs {
     else {
       zippedIterator
         .map { readRecords => demultiplexer.demultiplex(readRecords: _*)
-          .maskLowQualityBases(minBaseQualityForMasking=maskingThresholdToByte, qualityEncoding=qualityEncoding, omitFailingReads=omitFailingReads) }
+          .maskLowQualityBases(minBaseQualityForMasking=maskingThresholdToByte, qualityEncoding=qualityEncoding) }
     }
 
     resultIterator.map { res =>
@@ -383,7 +383,7 @@ class DemuxFastqs
  @arg(doc="Mask bases with a quality score below the specified threshold as Ns") val maskBasesBelowQuality: Int = 0,
 ) extends FgBioTool with LazyLogging {
 
-  // Support the deprecated --illumina-standards option
+  @annotation.nowarn("msg=value illuminaStandards in class DemuxFastqs is deprecated")
   private val fastqStandards: FastqStandards = {
     if (illuminaStandards) {
       logger.warning("The `--illumina-standards` option will be removed in a future version, please use `--output-standards=Illumina`")
@@ -714,8 +714,7 @@ private[fastq] object FastqDemultiplexer {
       * @return a new DemuxResult with updated bases
       */
     def maskLowQualityBases(minBaseQualityForMasking: Byte,
-                            qualityEncoding: QualityEncoding,
-                            omitFailingReads: Boolean): DemuxResult = { // using this.type here causes a mismatch error
+                            qualityEncoding: QualityEncoding): DemuxResult = { // using this.type here causes a mismatch error
       val records = if (minBaseQualityForMasking <= 0) this.records else {
         this.records.map(_.maskLowQualityBases(minBaseQualityForMasking = minBaseQualityForMasking,
                                                qualityEncoding          = qualityEncoding)
@@ -819,6 +818,7 @@ private class FastqDemultiplexer(val sampleInfos: Seq[SampleInfo],
         case Nil                              => (this.unmatchedSample, Int.MaxValue, Int.MaxValue)
         case List(bestTuple)                  => (bestTuple._1, bestTuple._2, Int.MaxValue)
         case List(bestTuple, secondBestTuple) => (bestTuple._1, bestTuple._2, secondBestTuple._2)
+        case _ => unreachable("Only up to two elements must exist in the above expression!")
       }
     }
     else {
@@ -963,7 +963,7 @@ object ReadInfo {
   * @param includeSampleBarcodes update the sample barcode in the comment of the FASTQ header
   * @param illuminaFileNames the output FASTQ file names should follow Illumina standards
   */
-private case class FastqStandards
+private[fastq] case class FastqStandards
 ( includeReadNumbers: Boolean    = false,
   includeSampleBarcodes: Boolean = false,
   illuminaFileNames: Boolean     = false

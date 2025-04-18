@@ -26,8 +26,8 @@ package com.fulcrumgenomics.umi
 
 import com.fulcrumgenomics.FgBioDef._
 import com.fulcrumgenomics.alignment.{Cigar, CigarElem}
-import com.fulcrumgenomics.bam.{ClippingMode, SamRecordClipper}
 import com.fulcrumgenomics.bam.api.{SamOrder, SamRecord}
+import com.fulcrumgenomics.bam.{ClippingMode, SamRecordClipper}
 import com.fulcrumgenomics.commons.util.{Logger, SimpleCounter}
 import com.fulcrumgenomics.umi.UmiConsensusCaller._
 import com.fulcrumgenomics.util.NumericTypes.PhredScore
@@ -198,7 +198,7 @@ trait UmiConsensusCaller[ConsensusRead <: SimpleRead] {
   def consensusReadsConstructed: Long = _consensusReadsConstructed
 
   /** Records that the supplied records were rejected, and not used to build a consensus read. */
-  protected def rejectRecords(recs: Iterable[SamRecord], reason: String) : Unit = this._filteredReads.count(reason, recs.size)
+  protected def rejectRecords(recs: Iterable[SamRecord], reason: String) : Unit = this._filteredReads.count(reason, recs.size.toLong)
 
   /** Records that the supplied records were rejected, and not used to build a consensus read. */
   protected def rejectRecords(reason: String, rec: SamRecord*) : Unit = rejectRecords(rec, reason)
@@ -240,7 +240,7 @@ trait UmiConsensusCaller[ConsensusRead <: SimpleRead] {
     }
 
     // Quality trim the reads if requested.
-    val trimToLength = if (qualityTrim) TrimmingUtil.findQualityTrimPoint(quals, minBaseQuality) else bases.length
+    val trimToLength = if (qualityTrim) TrimmingUtil.findQualityTrimPoint(quals, minBaseQuality.toInt) else bases.length
 
     // Mask remaining low quality bases to Ns
     forloop (from=0, until=trimToLength) { i =>
@@ -343,7 +343,7 @@ trait UmiConsensusCaller[ConsensusRead <: SimpleRead] {
   }
 
   /** Used it [[filterToMostCommonAlignment()]] to store a cigar string and a set of flags for which reads match. */
-  private final case class AlignmentGroup(cigar: Cigar, flags: mutable.BitSet, var size: Int = 0) {
+  private final class AlignmentGroup(val cigar: Cigar, val flags: mutable.BitSet, var size: Int = 0) {
     /** Adds the read at `idx` to the set included. */
     @inline def add(idx: Int): Unit = {
       flags(idx) = true
@@ -377,7 +377,7 @@ trait UmiConsensusCaller[ConsensusRead <: SimpleRead] {
       groups.foreach { g => if (simpleCigar.isPrefixOf(g.cigar)) { g.add(i); found = true } }
 
       if (!found) {
-        val newGroup = AlignmentGroup(simpleCigar, new mutable.BitSet(sorted.size))
+        val newGroup = new AlignmentGroup(simpleCigar, new mutable.BitSet(sorted.size))
         newGroup.add(i)
         groups += newGroup
       }
