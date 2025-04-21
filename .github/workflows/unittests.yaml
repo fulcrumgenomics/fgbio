@@ -22,7 +22,7 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        java-version: [ 8, 11, 17, 21, 22 ]
+        jvm: [ "temurin:1.8.0-442", "temurin:1.11.0.27", "temurin:1.17.0.15", "temurin:1.21.0.7", "temurin:1.22.0.2"]
     environment: github-actions
     steps:
       - name: Checkout
@@ -32,12 +32,13 @@ jobs:
           lfs: true
       - name: Checkout LFS objects
         run: git lfs checkout
-      - uses: actions/setup-java@v4
+      - name: Setup cache
+        uses: coursier/cache-action@v6
+      - name: setup Scala
+        uses: coursier/setup-action@v1
         with:
-          distribution: 'temurin'
-          java-version: ${{ matrix.java-version }}
-          cache: sbt
-      - uses: sbt/setup-sbt@v1
+          apps: scala scalac scaladoc sbt
+          jvm: ${{ matrix.jvm }}
       - name: Unit Tests
         run: |
           set -e
@@ -62,10 +63,13 @@ jobs:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
-      - name: Setup Scala
-        uses: olafurpg/setup-scala@v12
+      - name: Setup cache
+        uses: coursier/cache-action@v6
+      - name: setup Scala
+        uses: coursier/setup-action@v1
         with:
-          java-version: adopt-openj9@1.8.0-292
+          apps: scala scalac scaladoc sbt
+          jvm: "temurin:1.8.0-442"
       - name: Upload to Sonatype
         run: |
           sbt +publish
