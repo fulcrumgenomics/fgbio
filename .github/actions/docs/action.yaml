@@ -26,12 +26,21 @@ runs:
     - name: Checkout gh-pages
       uses: actions/checkout@v4
       with:
-        fetch-depth: 0
-        lfs: true
         ref: gh-pages
+        fetch-depth: 1
         path: ${{ inputs.build-dir }}
+        # Note: it is import that we **do not** clone the pr-preview directory here since
+        # we don't need to include this sub-directory when releasing or previewing docs.  This
+        # speeds up the checkout time significantly, and stops the pr-preview directory from
+        # bloating up (otherwise we'll keep a recursive copy).
+        sparse-checkout-cone-mode: false
+        sparse-checkout: |
+          /*
+          !/pr-preview/
     # Note: we use sdkman to install java and scala as other actions do not provide support for
     # Java 8 and scaladoc
+    # Note: we could use coursier/setup-action, but we could not get it working with scaladoc
+    # (generated a ClassNotFoundException)
     - name: Setup sdkman
       shell: bash -l {0}
       run: |
@@ -43,7 +52,7 @@ runs:
       shell: bash -l {0}
       run: |
         sdk install java 8.312.07.1-amzn
-        sdk install scala 2.13.0
+        sdk install scala 2.13.14
         sdk install sbt 1.10.4
     - name: Cache .ivy2
       uses: actions/cache@v4
@@ -68,7 +77,7 @@ runs:
     - name: Build assembly JAR
       shell: bash -l {0}
       run: |
-        sbt +assembly
+        sbt assembly
     - name: Build tool docs
       shell: bash -l {0}
       env:
