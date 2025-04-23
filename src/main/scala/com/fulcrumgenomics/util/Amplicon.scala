@@ -30,14 +30,14 @@ import htsjdk.samtools.util.{CoordMath, OverlapDetector}
 
 /** Convenience methods for [[Amplicon]] */
 object Amplicon {
-  /** Builds a [[OverlapDetector]] for the given amplicons. */
+  /** Builds a [[htsjdk.samtools.util.OverlapDetector]] for the given amplicons. */
   def overlapDetector(amplicons: Iterator[Amplicon]): OverlapDetector[Amplicon] = {
     val detector = new OverlapDetector[Amplicon](0,0)
     amplicons.foreach(amp => detector.addLhs(amp, amp))
     detector
   }
 
-  /** Builds a [[OverlapDetector]] for the given file of amplicons. */
+  /** Builds a [[htsjdk.samtools.util.OverlapDetector]] for the given file of amplicons. */
   def overlapDetector(path: FilePath): OverlapDetector[Amplicon] = {
     Amplicon.overlapDetector(amplicons=Metric.iterator[Amplicon](path))
   }

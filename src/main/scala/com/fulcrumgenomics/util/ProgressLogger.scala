@@ -58,8 +58,8 @@ case class ProgressLogger(logger: Logger,
 
 object ProgressLogger {
 
-  /** Provides a method to record items of the given type.  If [[ItemType]] is not one of [[SamRecord]],
-    * `(String, Int)`, [[Variant]], or [[Locatable], [[ProgressLogger.record()]] will be used. */
+  /** Provides a method to record items of the given type.  If `ItemType` is not one of [[com.fulcrumgenomics.bam.api.SamRecord]],
+    * `(String, Int)`, [[com.fulcrumgenomics.vcf.api.Variant]], or [[htsjdk.samtools.util.Locatable]], [[ProgressLogger.record():Boolean*]] will be used. */
   sealed abstract class ProgressLoggingHelper[ItemType: TypeTag] {
     protected val record: (ProgressLogger, ItemType) => Boolean = {
       typeOf[ItemType] match {
@@ -72,7 +72,7 @@ object ProgressLogger {
     }
   }
 
-  /** Wraps an [[Iterator]] and provides a method to record progress as items are consumed. */
+  /** Wraps an [[scala.collection.Iterator]]and provides a method to record progress as items are consumed. */
   implicit class ProgressLoggingIterator[ItemType: TypeTag](iterator: Iterator[ItemType]) extends ProgressLoggingHelper[ItemType] {
     def progress(progressLogger: ProgressLogger): Iterator[ItemType] = {
       new SelfClosingIterator(
@@ -82,7 +82,7 @@ object ProgressLogger {
     }
   }
 
-  /** Wraps an [[Iterator]] over [[ItemType]]s and provides a method to transform them into the [[ResultType]] to record progress as items are consumed. */
+  /** Wraps an [[scala.collection.Iterator]] over `ItemType`s and provides a method to transform them into the `ResultType` to record progress as items are consumed. */
   implicit class TransformedProgressLoggingIterator[ItemType, ResultType: TypeTag](iterator: Iterator[ItemType]) extends ProgressLoggingHelper[ResultType] {
     def progress(progressLogger: ProgressLogger, transform: ItemType => ResultType): Iterator[ItemType] = {
       new SelfClosingIterator(

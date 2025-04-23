@@ -114,9 +114,9 @@ object NcbiRefSeqGffSource {
   * records use common contig names.  The `dict` parameter is the preferred way to do this.  Ideally a dictionary
   * should be provided with accessions as sequence aliases, e.g.:
   *
-  *   @SQ     SN:chr1 LN:248956422    M5:2648ae1bacce4ec4b6cf337dcae37816     AS:hg38 AN:NC_000001.11
+  *   `@SQ     SN:chr1 LN:248956422    M5:2648ae1bacce4ec4b6cf337dcae37816     AS:hg38 AN:NC_000001.11`
   *
-  * This will allow the chromosome to be looked up by accession and resolved to it's common name without any
+  * This will allow the chromosome to be looked up by accession and resolved to its common name without any
   * other assumptions.  If an accession in the GFF is not found in the sequence dictionary it will be handled as
   * follows:
   *
@@ -126,7 +126,7 @@ object NcbiRefSeqGffSource {
   *
   * The set of features that are extracted from the GFF are all `gene` features that contain one or more
   * transcript-like features - i.e. that contain an entry below gene which contains one or more exon entries below
-  * it.  While most such features are bonafide transcripts with transcript IDs, some are not - for example
+  * it.  While most such features are bona fide transcripts with transcript IDs, some are not - for example
   * tRNAs.  For transcript-like features without a transcript-id, the ID field is used as the transcript id/name
   * _after_ removing the leading `rna-` or similar prefix.
   *

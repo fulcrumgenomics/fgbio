@@ -34,7 +34,7 @@ import scala.reflect.runtime.{universe => ru}
   * @param maxObjectsInRam the maximum number of metrics to keep in memory before spilling to disk
   * @param keyfunc method to convert a metric to an ordered key
   * @param tmpDir the temporary directory in which to spill to disk
-  * @param tt the type tag for [[T]]
+  * @param tt the type tag for `T`
   * @tparam Key the key to use for sorting metrics
   * @tparam T the metric type
   */

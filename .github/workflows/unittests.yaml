@@ -57,6 +57,12 @@ jobs:
           flags: unittests # optional
           fail_ci_if_error: true # optional (default = false)
           verbose: true # optional (default = false)
+      # while the "docs" job below tests building the online docs, this is added here
+      # to fail-fast when docs are not correctly written.
+      - name: Ensure docs will compile (fast-fail)
+        run: |
+          set -e
+          sbt doc
   release:
     if: ${{ github.repository == 'fulcrumgenomics/fgbio' && github.ref == 'refs/heads/main' && github.event_name != 'workflow_call' }}
     needs: test
@@ -86,7 +92,6 @@ jobs:
         id: checkout
         uses: actions/checkout@v4
         with:
-          fetch-depth: 0
           # To work with the `pull_request` or any other non-`push` even with git-auto-commit
           ref: ${{ github.head_ref }}
       - name: Generate the docs
@@ -95,7 +100,7 @@ jobs:
           build-dir: ./build
           latest: false
       - name: Generate gh-pages preview (pull request only)
-        uses: rossjrw/pr-preview-action@df22037db54ab6ee34d3c1e2b8810ac040a530c6 # v1.6.0
+        uses: rossjrw/pr-preview-action@2fb559e4766555e23d07b73d313fe97c4f8c3cfe # v1.6.1
         if: ${{ github.event_name == 'pull_request' }}
         with:
           source-dir: ./build

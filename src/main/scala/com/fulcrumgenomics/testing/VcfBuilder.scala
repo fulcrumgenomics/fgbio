@@ -139,7 +139,8 @@ class VcfBuilder private (initialHeader: VcfHeader) extends Iterable[Variant] {
     * possible to update a variant once added. If a variant already exists at the given position an exception
     * will be thrown.
     *
-    * The genotypes are specified using instance of the [[Gt]] helper class.  The genotype strings within the [[Gt]]
+    * The genotypes are specified using instance of the [[com.fulcrumgenomics.testing.VcfBuilder.Gt]] helper class.
+    * The genotype strings within the [[com.fulcrumgenomics.testing.VcfBuilder.Gt]]
     * objects may be either numeric like in a VCF (e.g. `0/1`) or use allele strings (e.g. `A/T`.)
     *
     * The variant must also be valid, e.g. not reference INFO, FILTER or FORMAT fields that are no in the header,

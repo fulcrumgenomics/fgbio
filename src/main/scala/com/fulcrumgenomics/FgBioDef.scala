@@ -111,7 +111,7 @@ object FgBioDef extends CommonsDef {
       * @param    cmp An ordering to be used for comparing elements.
       * @tparam   B The result type of the function f.
       * @param    f The measuring function.
-      * @return an option value containing the first element of this $coll
+      * @return an option value containing the first element of this iterator
       *         with the smallest value measured by function f
       *         with respect to the ordering `cmp`.
       */

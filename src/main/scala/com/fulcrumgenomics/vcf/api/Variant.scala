@@ -72,7 +72,7 @@ object Variant {
   private[api] val EmptyGenotypes:  Map[String, Genotype] = Map.empty
 
   /**
-    * Little container class for a [[Variant]] to make it locatable (see [[Locatable]]).
+    * Little container class for a [[Variant]] to make it locatable (see [[htsjdk.samtools.util.Locatable]]).
     */
   implicit class LocatableVariant(variant: Variant) extends Locatable {
     override def getContig: String = variant.chrom
@@ -85,10 +85,10 @@ object Variant {
 /**
   * Represents a variant from a VCF or similar source.
   *
-  * Attributes from the INFO field are available via the [[apply()]], [[get()]], and [[getOrElse()]] methods.
-  * Attribute that are defined but missing in the VCF (e.g. DP=.) are not stored.  All multi-valued attributes
-  * are stored as instances of [[ArrayAttr]] which is a custom subclass of [[IndexedSeq]] which provides methods
-  * to help in dealing with missing values in cases where a subset of values are missing (e.g. AD=10,.,20).
+  * Attributes from the INFO field are available via the [[apply]], [[get]], and [[getOrElse]] methods.
+  * Attribute that are defined but missing in the VCF (e.g. DP=.) are not stored.  All multivalued attributes
+  * are stored as instances of [[ArrayAttr]] which is a custom subclass of [[scala.collection.immutable.IndexedSeq]] which provides methods
+  * to help in dealing with missing values in cases where a subset of values is missing (e.g. AD=10,.,20).
   *
   * @param chrom the chromosome on which a variant resides.
   * @param pos the start position of the variant
@@ -118,7 +118,7 @@ final case class Variant(chrom: String,
   /** Retrieves a value from the INFO map.  Will throw an exception if the key does not exist. */
   def apply[A](key: String): A = attrs(key).asInstanceOf[A]
 
-  /** Retrieves an optional value from the INFO map.  Will return [[None]] if the key does not exist. */
+  /** Retrieves an optional value from the INFO map.  Will return [[scala.None]] if the key does not exist. */
   def get[A](key: String): Option[A] = attrs.get(key).asInstanceOf[Option[A]]
 
   /** Retrieves an optional value from the INFO map.  Will return `default` if the key does not exist. */

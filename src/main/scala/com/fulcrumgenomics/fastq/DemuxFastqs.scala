@@ -136,7 +136,7 @@ object DemuxFastqs {
   /** Creates a demultiplexing iterator that performs demultiplexing in parallel.
     *
     * @param sources the FASTQ sources, one per read.
-    * @param demultiplexer the demultiplexer to use.  The demultiplexer's [[com.fulcrumgenomics.fastq.FastqDemultiplexer.demultiplex()]]
+    * @param demultiplexer the demultiplexer to use.  The demultiplexer's `demultiplex`
     *                      method expects the same number of reads as sources.
     */
   def demultiplexingIterator(sources: Seq[FastqSource],
@@ -926,7 +926,7 @@ object ReadInfo {
   /** Builds the [[ReadInfo]] by parsing a [[FastqRecord]]. */
   def apply(rec: FastqRecord): ReadInfo = this(rec.name, rec.comment.getOrElse(reject(rec.name)))
 
-  /** Builds the [[ReadInfo]] by parsing a [[DemuxRecord]]. */
+  /** Builds the [[ReadInfo]] by parsing a `DemuxRecord`. */
   def apply(rec: DemuxRecord): ReadInfo = this(rec.name, rec.comment.getOrElse(reject(rec.name)))
 
   /** Builds the [[ReadInfo]] by parsing a standard input FASTQ. */

@@ -73,11 +73,11 @@ class TransientAttrs(private val rec: SamRecord) {
 }
 
 /**
-  * A trait that fgbio uses as a replacement for [[SAMRecord]].  The trait is self-typed as a
-  * [[SamRecordIntermediate]] which is a sub-class of SAMRecord.  It is done this wasy so that
-  * a) we can access superclass methods via [[SamRecordIntermediate]] but that self-typing here
-  * instead of extending hides the [[SAMRecord]] API from users of the class.  The result is
-  * always a [[SAMRecord]] but isn't seen as such without casting.
+  * A trait that fgbio uses as a replacement for [[htsjdk.samtools.SAMRecord]].  The trait is self-typed as a
+  * `SamRecordIntermediate` which is a subclass of SAMRecord.  It is done this wasy so that
+  * a) we can access superclass methods via `SamRecordIntermediate` but that self-typing here
+  * instead of extending hides the [[htsjdk.samtools.SAMRecord]] API from users of the class.  The result is
+  * always a [[htsjdk.samtools.SAMRecord]] but isn't seen as such without casting.
   */
 trait SamRecord {
   this: SamRecordIntermediate =>

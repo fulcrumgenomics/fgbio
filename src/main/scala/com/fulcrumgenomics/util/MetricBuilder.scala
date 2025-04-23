@@ -68,8 +68,7 @@ object MetricBuilder {
   }
 }
 
-
-/** Class for building metrics of type [[T]].
+/** Class for building metrics of type `T`.
   *
   * This is not thread-safe.
   *
@@ -92,7 +91,7 @@ class MetricBuilder[T <: Metric](source: Option[String] = None)(implicit tt: ru.
     *                   row itself.  Providing this may be faster than using the value from the provided row.
     * @param lineNumber optionally, the line number when building a metric from a line in a file
     * @param ignoreExtra ignore extra fields (that are not in the metric)
-    * @return a new instance of type [[T]]
+    * @return a new instance of type `T`
     */
   def fromRow(row: Row, headers: Option[Iterable[String]] = None, lineNumber: Option[Int] = None, ignoreExtra: Boolean = true): T = {
     val argMap = headers.getOrElse(row.header) // NB: filter after map so the row lookup is faster

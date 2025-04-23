@@ -125,7 +125,7 @@ object OverlappingBasesConsensusCaller {
     * are consensus called.  The input will be re-sorted if not already query sorted or grouped.  Statistics for how
     * may bases and templates had overlaps and were modified are logged to the given logger.
     *
-    * @param in the input [[SamSource]] from which to read
+    * @param in the input [[com.fulcrumgenomics.bam.api.SamSource]] from which to read
     * @param logger the logger, to which output statistics are written
     * @param agreementStrategy the strategy to use when the two bases agree.  This only affects the base qualities.
     * @param disagreementStrategy the disagreement strategy to use when the two bases disagree.  This will affect both the
