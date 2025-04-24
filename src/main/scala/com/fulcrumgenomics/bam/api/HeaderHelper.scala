@@ -33,7 +33,7 @@ import htsjdk.samtools.{SAMFileHeader, SAMProgramRecord, SAMReadGroupRecord, SAM
   * order to provide some useful methods for more direct access.
   */
 private[api] trait HeaderHelper {
-  /** The associated [[SAMFileHeader]]. */
+  /** The associated [[htsjdk.samtools.SAMFileHeader]]. */
   def header: SAMFileHeader
 
   /** The sequence dictionary. */

@@ -156,11 +156,11 @@ object Aligner {
   * implementation is supplied via the companion [[Aligner]] object which uses a fixed match
   * score and mismatch penalty.
   *
-  * When generating CIGARs for alignments the aligner uses the [[isMatch()]] method to determine
+  * When generating CIGARs for alignments the aligner uses the [[isMatch]] method to determine
   * whether to treat an aligned pair of bases as a match or mismatch.  The default implementation
   * of this method treats U bases as T bases to allow DNA/RNA alignments.  It also will identify
   * as matches any pair of bases (including IUPAC ambiguity codes) that share at least one base
-  * in common.  This behaviour can be modified by overriding the [[isMatch()]] method.
+  * in common.  This behaviour can be modified by overriding the [[isMatch]] method.
   *
   * @param scorer the AlignmentScorer to use to score base pairings and gaps
   * @param useEqualsAndX if true use the = and X cigar operators for matches and mismatches,

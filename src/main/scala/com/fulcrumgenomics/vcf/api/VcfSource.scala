@@ -49,13 +49,13 @@ class VcfSource private(private val reader: AbstractFeatureReader[VariantContext
   val header: VcfHeader = headerTransformer(VcfConversions.toScalaHeader(reader.getHeader.asInstanceOf[VCFHeader]))
 
   /**
-    * The type of iterator returned by both the [[iterator]] method as well as the [[query()]] method. Note that
-    * [[SelfClosingIterator]] both self-closes when it hits the end of the iterator, _and_ extends
+    * The type of iterator returned by both the [[iterator]] method as well as the [[query]] method. Note that
+    * [[com.fulcrumgenomics.commons.collection.SelfClosingIterator]] both self-closes when it hits the end of the iterator, _and_ extends
     * [[com.fulcrumgenomics.commons.collection.BetterBufferedIterator]].
     */
   type VariantIterator = SelfClosingIterator[Variant]
 
-  /** Wraps an iterator provided by HTSJDK into a SelfClosingIterator that transforms VariantContexts into Variants. */
+  /** Wraps an iterator provided by HTSJDK into a [[com.fulcrumgenomics.commons.collection.SelfClosingIterator]] that transforms VariantContexts into Variants. */
   private def wrap(it: CloseableIterator[VariantContext]): VariantIterator = {
     new SelfClosingIterator(
       iter   = it.map(vc => VcfConversions.toScalaVariant(vc, header)),
@@ -63,9 +63,9 @@ class VcfSource private(private val reader: AbstractFeatureReader[VariantContext
   }
 
   /**
-    * Returns an iterator over the entire stream of variants. The returned iterator may be be closed by invoking
+    * Returns an iterator over the entire stream of variants. The returned iterator may be closed by invoking
     * `close()` on it, and will automatically close itself when exhausted.  Only a single iterator at a time
-    * is supported per [[VcfSource]], including iterators returned from [[query()]].
+    * is supported per [[VcfSource]], including iterators returned from [[query]].
     */
   override def iterator: VariantIterator = wrap(reader.iterator())
 
@@ -75,9 +75,9 @@ class VcfSource private(private val reader: AbstractFeatureReader[VariantContext
   /**
     * Returns an iterator over variants overlapping the specified genomic region.
     *
-    * The returned iterator may be be closed by invoking `close()` on it, and will automatically close itself
+    * The returned iterator may be closed by invoking `close()` on it, and will automatically close itself
     * when exhausted.  Only a single iterator at a time is supported per [[com.fulcrumgenomics.vcf.api.VcfSource]], including iterators
-    * returned from [[iterator()]].
+    * returned from [[iterator]].
     */
   def query(chrom: String, start: Int, end: Int): Iterator[Variant] = wrap(reader.query(chrom, start, end))
 

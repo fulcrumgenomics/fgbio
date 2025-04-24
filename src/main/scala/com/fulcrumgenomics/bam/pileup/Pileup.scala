@@ -62,7 +62,7 @@ case class Pileup[A <: PileupEntry](refName: String, refIndex: Int, pos: Int, pi
   def baseIterator: Iterator[BaseEntry] = this.iterator.collect { case x: BaseEntry => x }
 }
 
-/** Base trait for pileup entries that exposes the [[SamRecord]] and the 0-based offset into the record's bases and
+/** Base trait for pileup entries that exposes the [[com.fulcrumgenomics.bam.api.SamRecord]] and the 0-based offset into the record's bases and
   * qualities that is relevant to the pileup.
   */
 sealed trait PileupEntry {
@@ -70,7 +70,7 @@ sealed trait PileupEntry {
   /** The SamRecord that the pileup entry represents. */
   val rec: SamRecord
 
-  /** The zero-based offset within the [[SamRecord]] that is represented.
+  /** The zero-based offset within the [[com.fulcrumgenomics.bam.api.SamRecord]] that is represented.
     *
     *   - For matches and mismatches this is the offset of the base in question.
     *   - For deletions it is the base prior to the deleted sequence.

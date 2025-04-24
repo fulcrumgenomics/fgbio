@@ -320,7 +320,7 @@ case class SequenceDictionary(infos: IndexedSeq[SequenceMetadata]) extends Itera
 object Converters {
 
   /**
-    * Converter from a [[SequenceMetadata]] to a [[SAMSequenceRecord]]
+    * Converter from a [[SequenceMetadata]] to a [[htsjdk.samtools.SAMSequenceRecord]]
     * @deprecated use [[SequenceMetadata.toSam]] instead.
     */
   @deprecated
@@ -328,13 +328,13 @@ object Converters {
     def asSam: SAMSequenceRecord = info.toSam
   }
 
-  /** Converter from a [[SAMSequenceRecord]] to a [[SequenceMetadata]] */
+  /** Converter from a [[htsjdk.samtools.SAMSequenceRecord]] to a [[SequenceMetadata]] */
   implicit class FromSAMSequenceRecord(rec: SAMSequenceRecord) {
     def fromSam: SequenceMetadata = SequenceMetadata(rec)
     def toScala: SequenceMetadata = SequenceMetadata(rec)
   }
 
-  /** Converter from a [[SequenceDictionary]] to a [[SAMSequenceDictionary]]
+  /** Converter from a [[SequenceDictionary]] to a [[htsjdk.samtools.SAMSequenceDictionary]]
     * @deprecated use [[SequenceDictionary.toSam]] instead.
     */
   @deprecated
@@ -342,7 +342,7 @@ object Converters {
     def asSam: SAMSequenceDictionary = dict.toSam
   }
 
-  /** Converter from a [[SAMSequenceDictionary]] to a [[SequenceDictionary]] */
+  /** Converter from a [[htsjdk.samtools.SAMSequenceDictionary]] to a [[SequenceDictionary]] */
   implicit class FromSAMSequenceDictionary(dict: SAMSequenceDictionary) {
     require(dict != null, "The reference provided does not have a sequence dictionary (.dict)")
     def fromSam: SequenceDictionary = SequenceDictionary(dict)

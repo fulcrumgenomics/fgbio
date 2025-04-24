@@ -364,7 +364,7 @@ object DuplexConsensusPerBaseValues {
     * strand, the record should have values for only the ab-strand.  In this case, the values for the ba strand are set
     * as follows: the bases are set to "N", the depths and errors are set to 0. */
   def getPerBaseValues(rec: SamRecord): (DuplexConsensusPerBaseValues, DuplexConsensusPerBaseValues) = {
-    /** Gets the value of the given tag, ensuring that it exists. */
+    // Gets the value of the given tag, ensuring that it exists.
     def getAndRequire[A](tag: String): A = rec.get[A](tag).getOrElse {
       throw new IllegalStateException(s"Expected tag '$tag' to exists for record: $rec")
     }

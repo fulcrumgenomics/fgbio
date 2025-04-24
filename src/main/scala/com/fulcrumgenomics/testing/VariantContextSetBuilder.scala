@@ -96,8 +96,8 @@ class VariantContextSetBuilder(sampleNames: Seq[String] = List("Sample")) extend
     * be a genotype for this variant with the given sample name, and the sample name must be present in the header.
     *
     * Genotype attributes may be given with the `genotypeAttributes` parameter.  The value for the `GQ` and `DP`
-    * attributes must have type [[Int]].  The value for the `AD` and `PL` attributes must have either type
-    * [[IterableOnce]] or [[Array]], with each item having type [[Int]].  For example:
+    * attributes must have type [[scala.Int]].  The value for the `AD` and `PL` attributes must have either type
+    * [[scala.collection.IterableOnce]] or [[scala.Array]], with each item having type [[scala.Int]].  For example:
     * {{{
     *   val builder = new VariantContextSetBuilder()
     *   builder.addVariant(

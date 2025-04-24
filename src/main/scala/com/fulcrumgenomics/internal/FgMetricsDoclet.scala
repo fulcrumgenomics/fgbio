@@ -28,6 +28,8 @@ import com.fulcrumgenomics.util.Metric
 
 import java.io.PrintStream
 import java.nio.file.Paths
+import scala.annotation.unused
+import scala.reflect.internal.Reporter
 import scala.tools.nsc.Settings
 import scala.tools.nsc.doc.base.comment._
 import scala.tools.nsc.doc.html.Doclet
@@ -46,7 +48,7 @@ case class MetricDescription(name: String, description: String, columns: Seq[Col
   * Custom scaladoc Doclet for rendering the documentation for [[com.fulcrumgenomics.util.Metric]] classes into
   * MarkDown for display on the fgbio website.
   */
-class FgMetricsDoclet extends Doclet(reporter = new ConsoleReporter(new Settings())) {
+class FgMetricsDoclet(@unused reporter: Reporter)  extends Doclet(reporter = new ConsoleReporter(new Settings())) {
   /**
     * Main entry point for the doclet.  Scans for documentation for the metrics classes and
     * renders it into MarkDown.

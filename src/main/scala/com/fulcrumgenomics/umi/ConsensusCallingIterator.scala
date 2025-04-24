@@ -33,10 +33,10 @@ import com.fulcrumgenomics.umi.UmiConsensusCaller.SimpleRead
 import com.fulcrumgenomics.util.ProgressLogger
 
 /**
-  * An iterator that consumes from an incoming iterator of [[SamRecord]]s and generates consensus
-  * read [[SamRecord]]s using the supplied consensus caller.
+  * An iterator that consumes from an incoming iterator of [[com.fulcrumgenomics.bam.api.SamRecord]]s and generates consensus
+  * read [[com.fulcrumgenomics.bam.api.SamRecord]]s using the supplied consensus caller.
   *
-  * @param sourceIterator the iterator over input [[SamRecord]]s.
+  * @param sourceIterator the iterator over input [[com.fulcrumgenomics.bam.api.SamRecord]]s.
   * @param caller the consensus caller to use to call consensus reads
   * @param progress an optional progress logger to which to log progress in input reads
   * @param threads the number of threads to use.

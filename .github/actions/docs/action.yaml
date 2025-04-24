@@ -83,6 +83,7 @@ runs:
       env:
         LATEST: ${{ inputs.latest }}
       run: |
+        set -euo pipefail
         if [[ "${{ env.LATEST }}" == "true" ]]; then
           OUTDIR="${{ inputs.build-dir }}/tools/${FGBIO_VERSION}";
         else
@@ -95,7 +96,7 @@ runs:
         java -cp target/scala-2.13/fgbio-*.jar com.fulcrumgenomics.internal.InternalTools BuildToolDocs -o "${OUTDIR}"
         if [[ "${{ env.LATEST }}" == "true" ]]; then
           pushd "${{ inputs.build-dir }}"/tools
-          rm latest 
+          rm latest
           ln -s ${FGBIO_VERSION} latest
           popd
         fi
@@ -104,6 +105,7 @@ runs:
       env:
         LATEST: ${{ inputs.latest }}
       run: |
+        set -euo pipefail
         if [[ "${{ env.LATEST }}" == "true" ]]; then
           OUTDIR="${{ inputs.build-dir }}/metrics/${FGBIO_VERSION}";
         else
@@ -117,7 +119,7 @@ runs:
         mv -v target/metrics.md ${OUTDIR}/index.md
         if [[ "${{ env.LATEST }}" == "true" ]]; then
           pushd ${{ inputs.build-dir }}/metrics
-          rm latest 
+          rm latest
           ln -s ${FGBIO_VERSION} latest
           popd
         fi
@@ -129,4 +131,4 @@ runs:
       id: version-output
       shell: bash -l {0}
       run: |
-        echo "version=${FGBIO_VERSION}" >> GITHUB_OUTPUT
+        echo "version=${FGBIO_VERSION}" >> "${GITHUB_OUTPUT}"
