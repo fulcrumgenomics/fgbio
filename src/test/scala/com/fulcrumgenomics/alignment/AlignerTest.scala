@@ -552,30 +552,36 @@ class AlignerTest extends UnitSpec {
     System.out.println(s"Run median=${counter.median()}, mean=${counter.mean()}")
   }
 
-  "CachedAligner.align(Global)" should "align two identical sequences with all matches" in {
-    val aligner = CachedAligner(1, -1, -3, -1)
+  Seq(true, false).foreach { useDefault =>
+    "CachedAligner.align(Global)" should f"align two identical sequences with all matches (default constructor: $useDefault)" in {
 
-    val result0 = aligner.align(s("ACGTAACC"), s("ACGTAACC"))
-    assertValidGlobalAlignment(result0)
-    result0.cigar.toString() shouldBe "8="
-    result0.score shouldBe 8
+      val aligner = if (useDefault) CachedAligner(1, -1, -3, -1) else {
+        val aligner = Aligner(1, -1, -3, -1)
+        new CachedAligner(scorer=aligner.scorer, mode=aligner.mode, initQueryLength=8, initTargetLength=8)
+      }
 
-    // same sequence
-    val result1 = aligner.align(s("ACGTAACC"), s("ACGTAACC"))
-    assertValidGlobalAlignment(result1)
-    result1.cigar.toString() shouldBe "8="
-    result1.score shouldBe 8
+      val result0 = aligner.align(s("ACGTAACC"), s("ACGTAACC"))
+      assertValidGlobalAlignment(result0)
+      result0.cigar.toString() shouldBe "8="
+      result0.score shouldBe 8
 
-    // longer
-    val result2 = aligner.align(s("ACGTAACCACGTAACC"), s("ACGTAACCACGTAACC"))
-    assertValidGlobalAlignment(result2)
-    result2.cigar.toString() shouldBe "16="
-    result2.score shouldBe 16
+      // same sequence
+      val result1 = aligner.align(s("ACGTAACC"), s("ACGTAACC"))
+      assertValidGlobalAlignment(result1)
+      result1.cigar.toString() shouldBe "8="
+      result1.score shouldBe 8
 
-    // shorter
-    val result3 = aligner.align(s("ACGT"), s("ACGT"))
-    assertValidGlobalAlignment(result3)
-    result3.cigar.toString() shouldBe "4="
-    result3.score shouldBe 4
+      // longer
+      val result2 = aligner.align(s("ACGTAACCACGTAACC"), s("ACGTAACCACGTAACC"))
+      assertValidGlobalAlignment(result2)
+      result2.cigar.toString() shouldBe "16="
+      result2.score shouldBe 16
+
+      // shorter
+      val result3 = aligner.align(s("ACGT"), s("ACGT"))
+      assertValidGlobalAlignment(result3)
+      result3.cigar.toString() shouldBe "4="
+      result3.score shouldBe 4
+    }
   }
 }
