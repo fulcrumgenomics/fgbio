@@ -6,7 +6,7 @@ on:
 
 jobs:
   on-main-branch-check:
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-latest
     outputs:
       on_main: ${{ steps.contains_tag.outputs.retval }}
     steps:
@@ -133,7 +133,7 @@ jobs:
           path: fgbio-${{ env.FGBIO_VERSION }}.jar
 
   make-changelog:
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-latest
     needs: release
     outputs:
       release_body: ${{ steps.git-cliff.outputs.content }}
@@ -154,7 +154,7 @@ jobs:
           GITHUB_REPO: ${{ github.repository }}
 
   make-github-release:
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-latest
     environment: github-actions
     permissions:
       contents: write

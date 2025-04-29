@@ -19,8 +19,10 @@ concurrency:
 jobs:
   test:
     name: Unit Tests
-    runs-on: ubuntu-24.04
-    environment: github-actions
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        jvm: ["temurin:1.8.0-442", "temurin:1.11.0.27", "temurin:1.17.0.15", "temurin:1.21.0.7", "temurin:1.22.0.2"]
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -29,27 +31,18 @@ jobs:
           lfs: true
       - name: Checkout LFS objects
         run: git lfs checkout        
-      - name: Setup Scala
-        uses: olafurpg/setup-scala@v12
+      - name: Setup cache
+        uses: coursier/cache-action@v6
+      - name: setup Scala
+        uses: coursier/setup-action@v1
         with:
-          java-version: adopt-openj9@1.8.0-292
-      - name: Cache .ivy2
-        uses: actions/cache@v4
-        with:
-          path: ~/.ivy2
-          key: ${{ runner.os }}-ivy2-${{ hashFiles('**/build.sbt') }}
-      - name: Cache .sbt
-        uses: actions/cache@v4
-        with:
-          path: ~/.sbt
-          key: ${{ runner.os }}-sbt-${{ hashFiles('**/build.properties') }}
+          apps: scala:2.13.14 scalac:2.13.14 scaladoc:2.13.14 sbt:1.10.1
+          jvm: ${{ matrix.jvm }}
       - name: Unit Tests
         run: |
           set -e
           sbt +clean coverage +test
-          sbt coverageReport coverageAggregate 
-          (find "$HOME/.sbt" -name "*.lock" -print0 | xargs -0 rm) || echo "No sbt lock files found in $HOME/.sbt"
-          (find "$HOME/.ivy2" -name "ivydata-*.properties" -print0 | xargs -0 rm) || echo "No ivy properties found in $HOME/.ivy2"
+          sbt coverageReport coverageAggregate
       - name: Code Coverage
         uses: codecov/codecov-action@v5.1.1
         with:
@@ -66,7 +59,7 @@ jobs:
   release:
     if: ${{ github.repository == 'fulcrumgenomics/fgbio' && github.ref == 'refs/heads/main' && github.event_name != 'workflow_call' }}
     needs: test
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-latest
     environment: github-actions
     env:
       SONATYPE_USER: ${{ secrets.SONATYPE_USER }}
@@ -85,7 +78,7 @@ jobs:
   docs:
     name: Generate tool and metric markdown docs
     needs: test
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-latest
     if: ${{ github.event_name != 'workflow_call' && (github.event_name == 'pull_request' || (github.repository == 'fulcrumgenomics/fgbio' && github.ref == 'refs/heads/main')) }}
     steps:
       - name: Checkout

@@ -1,10 +1,12 @@
 [![Build Status](https://github.com/fulcrumgenomics/fgbio/actions/workflows/unittests.yaml/badge.svg?branch=main)](https://github.com/fulcrumgenomics/fgbio/actions/workflows/unittests.yaml)
 [![codecov](https://codecov.io/gh/fulcrumgenomics/fgbio/branch/main/graph/badge.svg)](https://codecov.io/gh/fulcrumgenomics/fgbio)
-[![Maven Central](https://maven-badges.herokuapp.com/maven-central/com.fulcrumgenomics/fgbio_2.13/badge.svg)](https://maven-badges.herokuapp.com/maven-central/com.fulcrumgenomics/fgbio_2.13)
-[![Bioconda](https://img.shields.io/conda/dn/bioconda/fgbio.svg?label=Bioconda)](http://bioconda.github.io/recipes/fgbio/README.html)
-[![Javadocs](http://javadoc.io/badge/com.fulcrumgenomics/fgbio_2.13.svg)](http://javadoc.io/doc/com.fulcrumgenomics/fgbio_2.13)
+[![Language](https://img.shields.io/badge/language-scala-c22d40.svg)](https://www.scala-lang.org/)
+[![Java Version](https://img.shields.io/badge/java-8,11,17,21,22-c22d40.svg)](https://github.com/AdoptOpenJDK/homebrew-openjdk)
 [![License](http://img.shields.io/badge/license-MIT-blue.svg)](https://github.com/fulcrumgenomics/fgbio/blob/main/LICENSE)
-[![Language](http://img.shields.io/badge/language-scala-brightgreen.svg)](http://www.scala-lang.org/)
+
+[![Bioconda](https://img.shields.io/conda/dn/bioconda/fgbio.svg?label=Bioconda)](http://bioconda.github.io/recipes/fgbio/README.html)
+[![Maven Central](https://maven-badges.herokuapp.com/maven-central/com.fulcrumgenomics/fgbio_2.13/badge.svg)](https://maven-badges.herokuapp.com/maven-central/com.fulcrumgenomics/fgbio_2.13)
+[![Javadocs](http://javadoc.io/badge/com.fulcrumgenomics/fgbio_2.13.svg)](http://javadoc.io/doc/com.fulcrumgenomics/fgbio_2.13)
 [![DOI](https://zenodo.org/badge/53011104.svg)](https://zenodo.org/doi/10.5281/zenodo.10456900)
 
 fgbio
@@ -13,7 +15,7 @@ fgbio
 A set of tools to analyze genomic data with a focus on Next Generation Sequencing.
 
 <p>
-<a href float="left"="https://fulcrumgenomics.com"><img src=".github/logos/fulcrumgenomics.svg" alt="Fulcrum Genomics" height="100"/></a>
+<a href="https://fulcrumgenomics.com"><img src=".github/logos/fulcrumgenomics.svg" alt="Fulcrum Genomics" height="100"/></a>
 </p>
 
 
@@ -69,7 +71,7 @@ There are many toolkits available for analyzing genomic data; fgbio does not aim
 
 ## Overview
 
-Fgbio is a set of command line tools to perform bioinformatic/genomic data analysis. 
+Fgbio is a set of command line tools to perform bioinformatic/genomic data analysis.
 The collection of tools within `fgbio` are used by our customers and others both for ad-hoc data analysis and within production pipelines.
 These tools typically operate on read-level data (ex. FASTQ, SAM, or BAM) or variant-level data (ex. VCF or BCF).
 They range from simple tools to filter reads in a BAM file, to tools to compute consensus reads from reads with the same molecular index/tag.
@@ -136,7 +138,7 @@ Below we highlight a few tools that you may find useful.
 [fgbio-maketwosamplemixturevcf-link]: https://fulcrumgenomics.github.io/fgbio/tools/latest/MakeTwoSampleMixtureVcf.html
 [fgbio-findswitchbackreads-link]: https://fulcrumgenomics.github.io/fgbio/tools/latest/FindSwitchbackReads.html
 
-## Building 
+## Building
 ### Cloning the Repository
 
 [Git LFS](https://git-lfs.github.com/) is used to store large files used in testing fgbio.  In order to compile and run tests it is necessary to [install git lfs](https://git-lfs.github.com/).  To retrieve the large files either:
@@ -154,9 +156,6 @@ fgbio is built using [sbt](http://www.scala-sbt.org/).
 Use ```sbt assembly``` to build an executable jar in ```target/scala-2.13/```.
 
 Tests may be run with ```sbt test```.
-
-Java SE 8 is required.
-
 
 ## Command line
 
@@ -229,4 +228,3 @@ Public sponsors include:
 </p>
 
 The full list of sponsors supporting `fgbio` is available in the [sponsor](https://github.com/sponsors/fulcrumgenomics) page.
-
