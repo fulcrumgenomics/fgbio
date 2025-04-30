@@ -25,16 +25,16 @@ jobs:
         jvm: ["temurin:1.8.0-442", "temurin:1.11.0.27", "temurin:1.17.0.15", "temurin:1.21.0.7", "temurin:1.22.0.2"]
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
         with:
           fetch-depth: 0
           lfs: true
       - name: Checkout LFS objects
         run: git lfs checkout        
       - name: Setup cache
-        uses: coursier/cache-action@v6
+        uses: coursier/cache-action@4e2615869d13561d626ed48655e1a39e5b192b3c # v6.4.7
       - name: setup Scala
-        uses: coursier/setup-action@v1
+        uses: coursier/setup-action@039f736548afa5411c1382f40a5bd9c2d30e0383 # v1.3.9
         with:
           apps: scala:2.13.14 scalac:2.13.14 scaladoc:2.13.14 sbt:1.10.1
           jvm: ${{ matrix.jvm }}
@@ -44,7 +44,7 @@ jobs:
           sbt clean coverage test
           sbt coverageReport coverageAggregate
       - name: Code Coverage
-        uses: codecov/codecov-action@v5.1.1
+        uses: codecov/codecov-action@ad3126e916f78f00edff4ed0317cf185271ccc2d # v5.4.2
         with:
           token: ${{ secrets.CODECOV_TOKEN }}
           flags: unittests # optional
@@ -65,11 +65,12 @@ jobs:
       SONATYPE_USER: ${{ secrets.SONATYPE_USER }}
       SONATYPE_PASS: ${{ secrets.SONATYPE_PASS }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
         with:
           fetch-depth: 0
+      # TODO: The setup-scala action is deprecated and should be migrated to actions/setup-java or coursier/setup-action!
       - name: Setup Scala
-        uses: olafurpg/setup-scala@v12
+        uses: olafurpg/setup-scala@32ffa16635ff8f19cc21ea253a987f0fdf29844c # v14
         with:
           java-version: adopt-openj9@1.8.0-292
       - name: Upload to Sonatype
@@ -83,7 +84,7 @@ jobs:
     steps:
       - name: Checkout
         id: checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
         with:
           # To work with the `pull_request` or any other non-`push` even with git-auto-commit
           ref: ${{ github.head_ref }}
@@ -98,7 +99,7 @@ jobs:
         with:
           source-dir: ./build
       - name: Commit generated docs (main only)
-        uses: nick-fields/retry@v3
+        uses: nick-fields/retry@ce71cc2ab81d554ebbe88c79ab5975992d79ba08 # v3.0.2
         #i.e. if: ${{ github.event_name != 'pull_request' }}
         if: ${{ github.repository == 'fulcrumgenomics/fgbio' && github.ref == 'refs/heads/main' }}
         with:
