@@ -1,7 +1,7 @@
 [![Build Status](https://github.com/fulcrumgenomics/fgbio/actions/workflows/unittests.yaml/badge.svg?branch=main)](https://github.com/fulcrumgenomics/fgbio/actions/workflows/unittests.yaml)
 [![codecov](https://codecov.io/gh/fulcrumgenomics/fgbio/branch/main/graph/badge.svg)](https://codecov.io/gh/fulcrumgenomics/fgbio)
 [![Language](https://img.shields.io/badge/language-scala-c22d40.svg)](https://www.scala-lang.org/)
-[![Java Version](https://img.shields.io/badge/java-8,11,17,21,22-c22d40.svg)](https://github.com/AdoptOpenJDK/homebrew-openjdk)
+[![Java Version](https://img.shields.io/badge/java-8,11,17,21,22-a77805.svg)](https://github.com/AdoptOpenJDK/homebrew-openjdk)
 [![License](http://img.shields.io/badge/license-MIT-blue.svg)](https://github.com/fulcrumgenomics/fgbio/blob/main/LICENSE)
 
 [![Bioconda](https://img.shields.io/conda/dn/bioconda/fgbio.svg?label=Bioconda)](http://bioconda.github.io/recipes/fgbio/README.html)
