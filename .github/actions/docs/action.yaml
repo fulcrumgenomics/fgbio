@@ -24,7 +24,7 @@ runs:
   using: "composite"
   steps:
     - name: Checkout gh-pages
-      uses: actions/checkout@v4
+      uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
       with:
         ref: gh-pages
         fetch-depth: 1
@@ -55,12 +55,12 @@ runs:
         sdk install scala 2.13.14
         sdk install sbt 1.10.4
     - name: Cache .ivy2
-      uses: actions/cache@v4
+      uses: actions/cache@5a3ec84eff668545956fd18022155c47e93e2684 # v4.2.3
       with:
         path: ~/.ivy2
         key: ${{ runner.os }}-ivy2-${{ hashFiles('**/build.sbt') }}
     - name: Cache .sbt
-      uses: actions/cache@v4
+      uses: actions/cache@5a3ec84eff668545956fd18022155c47e93e2684 # v4.2.3
       with:
         path: ~/.sbt
         key: ${{ runner.os }}-sbt-${{ hashFiles('**/build.properties') }}
