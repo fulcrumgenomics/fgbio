@@ -41,7 +41,7 @@ jobs:
       - name: Unit Tests
         run: |
           set -e
-          sbt +clean coverage +test
+          sbt clean coverage test
           sbt coverageReport coverageAggregate
       - name: Code Coverage
         uses: codecov/codecov-action@v5.1.1
