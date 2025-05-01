@@ -38,13 +38,16 @@ import htsjdk.samtools.util.Interval
     |
     |The name of each sequence must match one of the names (including aliases) in the given sequence dictionary.  The
     |new name will be the primary (non-alias) name in the sequence dictionary.
+    |
+    |Use `--skip-missing` to ignore intervals where a contig name could not be updated (i.e. missing from the sequence dictionary).
+
   """,
   group = ClpGroups.Fasta)
 class UpdateIntervalListContigNames
 (@arg(flag='i', doc="Input interval list.") val input: PathToIntervals,
  @arg(flag='d', doc="The path to the sequence dictionary with contig aliases.") val dict: PathToSequenceDictionary,
  @arg(flag='o', doc="Output interval list.") val output: PathToIntervals,
- @arg(doc="Skip missing source contigs.") val skipMissing: Boolean = false
+ @arg(doc="Skip contigs in the interval list that are not found in the sequence dictionary.") val skipMissing: Boolean = false
 ) extends FgBioTool with LazyLogging {
 
   Io.assertReadable(input)
