@@ -46,7 +46,7 @@ class UpdateGffContigNames
 (@arg(flag='i', doc="Input GFF.") val input: FilePath,
  @arg(flag='d', doc="The path to the sequence dictionary with contig aliases.") val dict: PathToSequenceDictionary,
  @arg(flag='o', doc="Output GFF.") val output: FilePath,
- @arg(doc="Skip missing contigs.") val skipMissing: Boolean = false
+ @arg(doc="Skip contigs in the GFF that are not found in the sequence dictionary.") val skipMissing: Boolean = false
 ) extends FgBioTool with LazyLogging {
 
   Io.assertReadable(input)

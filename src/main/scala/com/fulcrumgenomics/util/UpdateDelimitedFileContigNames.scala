@@ -50,7 +50,7 @@ class UpdateDelimitedFileContigNames
  @arg(flag='H', doc="Treat lines with this starting string as comments (always printed)") val comment: String = "#",
  @arg(flag='o', doc="Output delimited data file.") val output: FilePath,
  @arg(flag='n', doc="Output the first `N` lines as-is (always printed).") val outputFirstNumLines: Int = 0,
- @arg(doc="Skip lines where a contig name could not be updated (i.e. missing from the sequence dictionary).") skipMissing: Boolean = false,
+ @arg(doc="Skip contigs in the delimited file that are not found in the sequence dictionary.") skipMissing: Boolean = false,
  @arg(flag='s', doc="Sort the output based on the following order.") sortOrder: SortOrder = SortOrder.Unsorted,
  @arg(doc="The column index for the contig (0-based) for sorting. Use the first column if not given.") val contig: Option[Int] = None,
  @arg(doc="The column index for the genomic position (0-based) for sorting by coordinate.") val position: Option[Int] = None,
