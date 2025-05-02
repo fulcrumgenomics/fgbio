@@ -21,5 +21,5 @@ Please note: the output GFF will be in the same order as the input GFF.
 |input|i|FilePath|Input GFF.|Required|1||
 |dict|d|PathToSequenceDictionary|The path to the sequence dictionary with contig aliases.|Required|1||
 |output|o|FilePath|Output GFF.|Required|1||
-|skip-missing||Boolean|Skip missing contigs.|Optional|1|false|
+|skip-missing||Boolean|Skip contigs in the GFF that are not found in the sequence dictionary.|Optional|1|false|
 

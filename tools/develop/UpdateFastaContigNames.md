@@ -29,7 +29,7 @@ the input FASTA but present in the sequence dictionary.
 |dict|d|PathToSequenceDictionary|The path to the sequence dictionary with contig aliases.|Required|1||
 |output|o|PathToFasta|Output FASTA.|Required|1||
 |line-length|l|Int|Line length or sequence lines.|Optional|1|100|
-|skip-missing||Boolean|Skip missing source contigs (will not be outputted).|Optional|1|false|
+|skip-missing||Boolean|Skip contigs in the FASTA that are not found in the sequence dictionary.|Optional|1|false|
 |sort-by-dict||Boolean|Sort the contigs based on the input sequence dictionary.|Optional|1|false|
 |default-contigs||PathToFasta|Add sequences from this FASTA when contigs in the sequence dictionary are missing from the input FASTA.|Optional|1||
 

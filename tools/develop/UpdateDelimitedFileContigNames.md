@@ -24,7 +24,7 @@ where a contig name could not be updated (i.e. missing from the sequence diction
 |comment|H|String|Treat lines with this starting string as comments (always printed)|Optional|1|#|
 |output|o|FilePath|Output delimited data file.|Required|1||
 |output-first-num-lines|n|Int|Output the first `N` lines as-is (always printed).|Optional|1|0|
-|skip-missing||Boolean|Skip lines where a contig name could not be updated (i.e. missing from the sequence dictionary).|Optional|1|false|
+|skip-missing||Boolean|Skip contigs in the delimited file that are not found in the sequence dictionary.|Optional|1|false|
 |sort-order|s|SortOrder|Sort the output based on the following order.|Optional|1|Unsorted|
 |contig||Int|The column index for the contig (0-based) for sorting. Use the first column if not given.|Optional|1||
 |position||Int|The column index for the genomic position (0-based) for sorting by coordinate.|Optional|1||
