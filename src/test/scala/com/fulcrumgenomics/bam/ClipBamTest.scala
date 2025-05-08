@@ -27,6 +27,7 @@ package com.fulcrumgenomics.bam
 import com.fulcrumgenomics.FgBioDef.unreachable
 import com.fulcrumgenomics.bam.ClippingMode.{Hard, Soft, SoftWithMask}
 import com.fulcrumgenomics.bam.api.SamOrder.Queryname
+import com.fulcrumgenomics.bam.api.SamRecord.UnmappedStart
 import com.fulcrumgenomics.bam.api.{SamRecord, SamSource}
 import com.fulcrumgenomics.testing.SamBuilder._
 import com.fulcrumgenomics.testing.{ErrorLogLevel, ReferenceSetBuilder, SamBuilder, UnitSpec}
@@ -615,5 +616,32 @@ class ClipBamTest extends UnitSpec with ErrorLogLevel with OptionValues {
     r1.end shouldBe 90 + 175 - 1 // the original start of R2 +175bp of hard clipping 3-prime end of R2 minus one
     r2.start shouldBe 90 + 175 // the original start of R2 +175bp of hard clipping 3-prime end of R2
     r2.end shouldBe 90 + 200 - 1 // 289: the original end of R2
+  }
+
+  it should "unmap reads when the hard clipping length requested is greater than the length of the reads" in {
+    val builder = new SamBuilder(readLength = 100, sort = Some(Queryname))
+    val clipper = new ClipBam(
+      input                = dummyBam,
+      output               = dummyBam,
+      ref                  = ref,
+      // NB: it shouldn't matter what these values are set to since 5-prime hard-clipping should consume both reads
+      clipBasesPastMate    = true,
+      clipOverlappingReads = true,
+      // NB: it is important to note that 3 and 5 prime hard clippings occurs first, then clipping bases past/overlapping mates
+      readOneFivePrime    = 101,
+      readTwoFivePrime    = 101,
+    )
+
+    val Seq(r1, r2) = builder.addPair(start1 = 100, start2 = 300)
+
+    r1.end shouldBe 100 + 100 - 1 // 201
+    r2.end shouldBe 300 + 100 - 1 // 401
+    clipper.clipPair(r1, r2)
+    r1.unmapped shouldBe true
+    r2.unmapped shouldBe true
+    r1.start shouldBe UnmappedStart
+    r1.end shouldBe UnmappedStart
+    r2.start shouldBe UnmappedStart
+    r2.end shouldBe UnmappedStart
   }
 }
