@@ -251,6 +251,42 @@ class SamRecordTest extends UnitSpec with OptionValues {
     r1.mateUnclippedEnd.value shouldBe r2.unclippedEnd
   }
 
+  "SamRecord.mateUnSoftClippedStart/End" should "return None if no mate cigar set" in {
+    val builder = new SamBuilder(readLength=50)
+    val recs = builder.addPair(start1=10, start2=50)
+
+    recs.foreach { r =>
+      r("MC") = null // Clear mate cigar
+      r.mateUnSoftClippedStart.isEmpty shouldBe true
+      r.mateUnSoftClippedEnd.isEmpty shouldBe true
+    }
+  }
+
+  it should "return the mate's un-soft-clipped start/end" in {
+    val builder = new SamBuilder(readLength=50)
+    val Seq(r1, r2) = builder.addPair(start1=10, start2=50, cigar1="10H5S45M10H", cigar2="10H10S40M5H")
+
+    r1.start shouldBe 10
+    r2.mateStart shouldBe r1.start
+    r2.start shouldBe 50
+    r1.mateStart shouldBe r2.start
+
+    r1.end shouldBe 54
+    r2.mateEnd.value shouldBe r1.end
+    r2.end shouldBe 89
+    r1.mateEnd.value shouldBe r2.end
+
+    r1.unSoftClippedStart shouldBe 5
+    r2.mateUnSoftClippedStart.value shouldBe r1.unSoftClippedStart
+    r2.unSoftClippedStart shouldBe 40
+    r1.mateUnSoftClippedStart.value shouldBe r2.unSoftClippedStart
+
+    r1.unSoftClippedEnd shouldBe 54
+    r2.mateUnSoftClippedEnd.value shouldBe r1.unSoftClippedEnd
+    r2.unSoftClippedEnd shouldBe 89
+    r1.mateUnSoftClippedEnd.value shouldBe r2.unSoftClippedEnd
+  }
+
   "SamRecord.matesOverlap" should "raise exceptions if any pre-requisite check isn't true" in {
     an[IllegalArgumentException] shouldBe thrownBy { new SamBuilder(readLength = 100).addFrag(start = 1).value.matesOverlap }
     an[IllegalArgumentException] shouldBe thrownBy { new SamBuilder(readLength = 100).addPair(start1 = 1, unmapped2 = true).foreach(_.matesOverlap) }
