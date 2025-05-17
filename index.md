@@ -63,7 +63,7 @@ Each tool has detailed usage and argument documentation that can be viewed at th
 Documentation is also available online:
 * Tool usage documentation is available [here](tools/latest)
 * Documentation of the various metrics files is available [here](metrics/latest)
-* API documentation for developers is available through [javadoc.io](http://www.javadoc.io/doc/com.fulcrumgenomics/fgbio_2.12).
+* API documentation for developers is available through [javadoc.io](http://www.javadoc.io/doc/com.fulcrumgenomics/fgbio_2.13).
 * Web utility for validating [Read Structures](https://github.com/fulcrumgenomics/fgbio/wiki/Read-Structures) is available [here](validate-read-structure.html)
 * Web utility for validating a Sample Sheet for [DemuxFastqs](http://fulcrumgenomics.github.io/fgbio/tools/latest/DemuxFastqs.html) is available [here](validate-sample-sheet.html)
 
