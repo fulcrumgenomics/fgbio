@@ -139,6 +139,12 @@
 				return null;
 		}
 	};
+
+	function error(message) {
+		console.log(`Error: ${message}`);
+		alert(`Error: ${message}`);
+		return False;
+	}
 	
 
 	/**
@@ -164,8 +170,7 @@
 			}
 		}
 		if (header_i == lines.length) {
-			alert(`Error: malformed assembly report (no header)`);
-			return false;
+			return error(`Error: malformed assembly report (no header)`);
 		}
 		let header = lines[header_i].slice(1).trim().split('\t');
 
@@ -177,8 +182,7 @@
 			}
 			let fields = lines[i].split('\t');
 			if (header.length != fields.length) {
-				alert(`Error: malformed line #${i+1}: ${lines[i]}`);
-				return false;
+				return error(`Error: malformed line #${i+1}: ${lines[i]}`);
 			}
 			const dict = new Map()
 			for (var j = 0; j < header.length; j++) {
@@ -305,14 +309,6 @@
 
 		selector.addEventListener('change', function(event) {
 			event.preventDefault();
-
-			// Get the roles that have been selected
-			let selectedValues = [];
-			for (let i = 0; i < this.selectedOptions.length; i++) {
-				selectedValues.push(this.selectedOptions[i].value);
-			}
-			alert(selectedValues);
-
 			drawTableFromSelectors();
 		});
 		
@@ -428,16 +424,16 @@
 			let obj = assemblyReport[i];
 			let role = obj.get(AssemblyReportColumn.SequenceRole);
 
-			// only keep contigs with one of the specified roles
-			if (roles.length > 0 && !roles.includes(role)) {
-				// TODO: log to console
-				continue;
-			}
-
 			// skip contigs missing the primary name
 			const primaryName = obj.get(primaryColumn);
 			if (primaryName === MissingColumnValue) {
-				// TODO: log to console
+				console.log(`Info: skipping contig with missing value for column: ${primayColumn.key}`)
+				continue;
+			}
+
+			// only keep contigs with one of the specified roles
+			if (roles.length > 0 && !roles.includes(role)) {
+				console.log(`Info: skipping contig '${primaryName}' with role: '${role.key}'`)
 				continue;
 			}
 
@@ -626,8 +622,7 @@
 				];
 				return drawTable(AssemblyReportColumn.UcscName, alternates, roles);
 			} else {
-				console.log(`Error: ${xhr.status}`);
-				alert(`Error: ${xhr.status}`);
+				return error(`Error: ${xhr.status}`);
 			}
 		};
 	});
