@@ -878,6 +878,18 @@ class SamRecordClipperTest extends UnitSpec with OptionValues {
     mate.cigar.toString shouldBe "40M20I40M"
   }
 
+  it should "clip the reverse read when it doesn't extend past the mate, is soft-clipped, but has more clipping than bases exist in the mate" in {
+    // In this case R1 does not need to be clipped ... but:
+    // R2:
+    //   - doesn't extend past the start of R1
+    //   - has 25 bases of soft-clipping at the start which "unclipped" only bring it back to 105
+    //   - except R1 has a 10bp deletion in the region between r2.start and r2.unclipped start
+    //   - so there are only 20bp of R1 to the left of R2 start, but 25bp of R2
+    //   - so ideally we'd hard clip off 5bp at the start of R2
+    val (rec, mate) = pair(start1=100, start2=130, strand1=Plus, strand2=Minus, cigar1="10M10D90M", cigar2="25S75M")
+
+  }
+
   "SamRecordClipper.numBasesExtendingPastMate" should "return zero when reads do not extend past the end or are not FR pairs" in {
     val builder = new SamBuilder()
     val Seq(r1, r2) = builder.addPair(start1=100, start2=200, cigar1="20S80M", cigar2="10S90M")
