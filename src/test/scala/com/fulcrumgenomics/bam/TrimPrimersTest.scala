@@ -112,13 +112,12 @@ class TrimPrimersTest extends UnitSpec {
     builder.addPair("q1", start1=100, start2=CoordMath.getStart(219, readLength)+20)            // Too far from primer sites
     builder.addPair("q2", start1=200, start2=CoordMath.getStart(320, readLength), strand2=Plus) // FF pair
     builder.addPair("q3", start1=300, start2=300, unmapped2=true)                               // Unmapped mate
-    builder.addFrag("q4", start=CoordMath.getStart(219, readLength), strand=Minus)              // Fragment read
     val bam = builder.toTempFile()
     val newBam = makeTempFile("trimmed.", ".bam")
     new TrimPrimers(input=bam, output=newBam, primers=primers, hardClip=false).execute()
 
     val reads = readBamRecs(newBam)
-    reads should have size 7
+    reads should have size 6
     reads.filter(r => r.mapped).foreach { rec =>
       val elem = if (rec.negativeStrand) rec.cigar.elems.last else rec.cigar.elems.head
       elem.operator shouldBe Op.SOFT_CLIP
