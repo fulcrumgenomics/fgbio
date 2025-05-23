@@ -82,7 +82,7 @@ class TrimPrimers
   @arg(flag='s', doc="Sort order of output BAM file (defaults to input sort order).") val sortOrder: Option[SamOrder] = None,
   @arg(flag='r', doc="Optional reference fasta for recalculating NM, MD and UQ tags.") val ref: Option[PathToFasta] = None,
   @arg(flag='a', doc="Automatically trim extended attributes that are the same length as bases.") val autoTrimAttributes: Boolean = false,
-  @arg(doc="Trim only first of pair reads (R1s), otherwise both ends of a pair") val firstOfPair: Boolean = false
+  @arg(doc="Trim only first of pair reads (R1s) or fragment reads, otherwise both ends of a pair.") val firstOfPair: Boolean = false
 
 )extends FgBioTool with LazyLogging {
   private val clipper = new SamRecordClipper(mode=if (hardClip) ClippingMode.Hard else ClippingMode.Soft, autoClipAttributes=autoTrimAttributes)
@@ -179,10 +179,10 @@ class TrimPrimers
 
   /** Trims all the reads for a given template. */
   def trimReadsForTemplate(detector: AmpliconDetector, reads: Seq[SamRecord]): Unit = {
-    val rec1 = reads.find(r => r.paired && r.firstOfPair  && !r.secondary && !r.supplementary)
+    val rec1 = reads.find(r => (!r.paired || r.firstOfPair) && !r.secondary && !r.supplementary)
     val rec2 = reads.find(r => r.paired && r.secondOfPair && !r.secondary && !r.supplementary)
 
-    val readsToClip = if (firstOfPair) reads.filter(_.firstOfPair) else reads
+    val readsToClip = if (firstOfPair) reads.filter(r => !r.paired || r.firstOfPair) else reads
 
     (rec1, rec2) match {
       case (Some(r1), Some(r2)) =>
@@ -212,6 +212,18 @@ class TrimPrimers
         reads.filter(_.supplementary).foreach { rec =>
           val mate = if (rec.firstOfPair) r2 else r1
           SamPairUtil.setMateInformationOnSupplementalAlignment(rec.asSam, mate.asSam, true);
+        }
+      case (Some(r1), _) =>
+        detector.findPrimer(rec=r1) match {
+          case Some(amplicon) =>
+            val leftClip  = amplicon.leftPrimerLength
+            val rightClip = amplicon.rightPrimerLength
+            readsToClip.foreach { rec =>
+              val toClip = if (r1.positiveStrand) leftClip else rightClip
+              this.clipper.clip5PrimeEndOfRead(rec, toClip)
+            }
+          case None =>
+            readsToClip.foreach(r => this.clipper.clip5PrimeEndOfRead(r, detector.maxPrimerLength))
         }
       case _ =>
         // Just trim each read independently

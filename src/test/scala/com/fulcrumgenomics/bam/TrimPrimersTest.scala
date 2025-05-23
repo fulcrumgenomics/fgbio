@@ -260,4 +260,55 @@ class TrimPrimersTest extends UnitSpec {
     validate(rec=reads(10), name="q6", firstOfPair=true, fivePrimeSoftClipLength=19) // amplicon 2
     validate(rec=reads(11), name="q6", firstOfPair=false)
   }
+
+  it should "trim fragment reads" in {
+    val amplicons: Seq[Amplicon] = Seq(
+      Amplicon("chr1", 100, 119, -1, -1),
+      Amplicon("chr1", -1, -1, 300, 320),
+      Amplicon("chr1", -1, -1, 601, 619),
+    )
+    val primers: FilePath = {
+      val tmp = makeTempFile("primers.", ".txt")
+      Metric.write(path=tmp, amplicons)
+      tmp
+    }
+
+    val builder = new SamBuilder(readLength=readLength, sort=Some(SamOrder.Coordinate))
+
+    // amplicon 1 - should be trimmed (matches left primer)
+    builder.addFrag("q1", start=100, strand=Plus)
+    // amplicon 1 - should be trimmed the maximum, since it matches the right primer (0-length)
+    builder.addFrag("q2", start=CoordMath.getStart(200, readLength), strand=Minus)
+    // amplicon 1 - should be trimmed (matches left primer)
+    builder.addFrag("q3", start=100, strand=Plus)
+
+    // amplicon 2 - should be trimmed (matches right primer)
+    builder.addFrag("q4", start=CoordMath.getStart(619, readLength), strand=Minus)
+    // amplicon 2 - should be trimmed the maximum, since it matches the left primer (0-length)
+    builder.addFrag("q5", start=500, strand=Plus)
+    // amplicon 2 - should be trimmed (matches right primer)
+    builder.addFrag("q6", start=CoordMath.getStart(619, readLength), strand=Minus)
+
+    val bam = builder.toTempFile()
+    val newBam = makeTempFile("trimmed.", ".bam")
+    new TrimPrimers(input=bam, output=newBam, primers=primers, hardClip=false, firstOfPair=true).execute()
+
+    val reads = readBamRecs(newBam).sortBy(rec => (rec.name, rec.paired && rec.secondOfPair))
+    reads should have size 6
+
+    def validate(rec: SamRecord, name: String,  fivePrimeSoftClipLength: Int) = {
+      rec.name shouldBe name
+      rec.paired shouldBe false
+      val elem = if (rec.negativeStrand) rec.cigar.elems.last else rec.cigar.elems.head
+      elem.operator shouldBe Op.SOFT_CLIP
+      elem.length shouldBe fivePrimeSoftClipLength
+    }
+
+    validate(rec=reads(0), name="q1", fivePrimeSoftClipLength=20) // amplicon 1
+    validate(rec=reads(1), name="q2", fivePrimeSoftClipLength=21) // maximum
+    validate(rec=reads(2), name="q3", fivePrimeSoftClipLength=20) // amplicon 1
+    validate(rec=reads(3), name="q4", fivePrimeSoftClipLength=19) // amplicon 2
+    validate(rec=reads(4), name="q5", fivePrimeSoftClipLength=21) // maximum
+    validate(rec=reads(5), name="q6", fivePrimeSoftClipLength=19) // amplicon 2
+  }
 }
