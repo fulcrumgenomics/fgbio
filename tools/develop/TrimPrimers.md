@@ -17,9 +17,10 @@ chrom  left_start  left_end  right_start right_end
 chr1   1010873     1010894   1011118     1011137
 ```
 
-Paired end reads that map to a given amplicon position are trimmed so that the
-alignment no-longer includes the primer sequences. All other aligned reads have the
-_maximum primer length trimmed_!
+Both paired end reads and fragment reads that map to a given amplicon position
+are trimmed so that the alignment no-longer includes the primer sequences.  This includes
+both the 5' and 3' ends of each read.  All other aligned reads have the
+_maximum primer length trimmed_ from the 5' end only!
 
 Reads that are trimmed will have the `NM`, `UQ` and `MD` tags cleared as they are no longer
 guaranteed to be accurate.  If a reference is provided the reads will be re-sorted
@@ -31,9 +32,9 @@ information between paired-end reads can be corrected before writing the output 
 The `--first-of-pair` option will cause only the first of pair (R1) reads to be trimmed
 based solely on the primer location of R1.  This is useful when there is a target
 specific primer on the 5' end of R1 but no primer sequenced on R2 (eg. single gene-specific
-primer target enrichment).  In this case, the location of each target specific primer should
-be specified in an amplicons left or right primer exclusively.  The coordinates of the
-non-specific-target primer should be `-1` for both start and end, e.g:
+primer target enrichment), as well as fragment reads.  In this case, the location of each
+target specific primer should be specified in an amplicons left or right primer exclusively.
+The coordinates of the non-specific-target primer should be `-1` for both start and end, e.g:
 
 ```
 chrom  left_start  left_end  right_start right_end
@@ -53,5 +54,5 @@ chr2   -1          -1        1011118     1011137
 |sort-order|s|SamOrder|Sort order of output BAM file (defaults to input sort order).|Optional|1||
 |ref|r|PathToFasta|Optional reference fasta for recalculating NM, MD and UQ tags.|Optional|1||
 |auto-trim-attributes|a|Boolean|Automatically trim extended attributes that are the same length as bases.|Optional|1|false|
-|first-of-pair||Boolean|Trim only first of pair reads (R1s), otherwise both ends of a pair|Optional|1|false|
+|first-of-pair||Boolean|Trim only first of pair reads (R1s) or fragment reads, otherwise both ends of a pair.|Optional|1|false|
 
