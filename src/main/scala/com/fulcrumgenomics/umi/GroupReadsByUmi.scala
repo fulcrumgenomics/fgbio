@@ -529,8 +529,7 @@ object Strategy extends FgBioEnum[Strategy] {
     |3. Templates are filtered if R1 and R2 are mapped to different chromosomes and `--allow-inter-contig` is false
     |4. Templates are filtered if any UMI sequence contains one or more `N` bases
     |5. Templates are filtered if `--min-umi-length` is specified and the UMI does not meet the length requirement
-    |6. Reads are filtered out if flagged as secondary and `--include-secondary` is false
-    |7. Reads are filtered out if flagged as supplementary and `--include-supplementary` is false
+    |6. Reads are filtered out if flagged as either secondary or supplementary
     |
     |Grouping of UMIs is performed by one of four strategies:
     |
@@ -562,15 +561,13 @@ object Strategy extends FgBioEnum[Strategy] {
     |If the `--mark-duplicates` option is given, reads will also have their duplicate flag set in the BAM file.
     |Each tag-family is treated separately, and a single template within the tag family is chosen to be the "unique"
     |template and marked as non-duplicate, while all other templates in the tag family are then marked as duplicate.
-    |One limitation of duplicate-marking mode, vs. e.g. Picard MarkDuplicates, is that read pairs with one unmapped read
-    |are duplicate-marked independently from read pairs with both reads mapped.
+    |There are a few limitations of duplicate-marking mode (vs. e.g. Picard MarkDuplicates):
     |
-    |Several parameters have different defaults depending on whether duplicates are being marked or not (all are
-    |directly settable on the command line):
+    |1. read pairs with one unmapped read are duplicate-marked independently from read pairs with both reads mapped
+    |2. secondary and supplementary records are discarded
     |
-    |  1. `--min-map-q` defaults to 0 in duplicate marking mode and 1 otherwise
-    |  2. `--include-secondary` defaults to true in duplicate marking mode and false otherwise
-    |  3. `--include-supplementary` defaults to true in duplicate marking mode and false otherwise
+    |Note: the `--min-map-q` parameter defaults to 0 in duplicate marking mode and 1 otherwise, and is directly settable
+    |on the command line.
     |
     |Multi-threaded operation is supported via the `--threads/-@` option. This only applies to the Adjacency and Paired
     |strategies. Additionally the only operation that is multi-threaded is the comparisons of UMIs at the same genomic
@@ -586,8 +583,6 @@ class GroupReadsByUmi
  @arg(flag='t', doc="The tag containing the raw UMI.")  val rawTag: String    = ConsensusTags.UmiBases,
  @arg(flag='T', doc="The output tag for UMI grouping.") val assignTag: String = ConsensusTags.MolecularId,
  @arg(flag='d', doc="Turn on duplicate marking mode.") val markDuplicates: Boolean = false,
- @arg(flag='S', doc="Include secondary reads.")         val includeSecondary: Option[Boolean] = None,
- @arg(flag='U', doc="Include supplementary reads.")     val includeSupplementary: Option[Boolean] = None,
  @arg(flag='m', doc="Minimum mapping quality for mapped reads.") val minMapQ: Option[Int] = None,
  @arg(flag='n', doc="Include non-PF reads.")            val includeNonPfReads: Boolean = false,
  @arg(flag='s', doc="The UMI assignment strategy.")     val strategy: Strategy,
@@ -610,8 +605,6 @@ class GroupReadsByUmi
 
   // Give values to unset parameters that are different in duplicate marking mode
   private val _minMapQ = this.minMapQ.getOrElse(if (this.markDuplicates) 0 else 1)
-  private val _includeSecondaryReads = this.includeSecondary.getOrElse(this.markDuplicates)
-  private val _includeSupplementaryReads = this.includeSupplementary.getOrElse(this.markDuplicates)
 
   /** Checks that the read's mapq is over a minimum, and if the read is paired, that the mate mapq is also over the min. */
   private def mapqOk(rec: SamRecord, minMapQ: Int): Boolean = {
@@ -660,8 +653,7 @@ class GroupReadsByUmi
     logger.info("Filtering the input.")
     @nowarn("msg=value allowInterContig in class GroupReadsByUmi is deprecated")
     val filteredIterator = in.iterator
-      .filter(r => this._includeSecondaryReads || !r.secondary  )
-      .filter(r => this._includeSupplementaryReads || !r.supplementary )
+      .filterNot(r => r.secondary || r.supplementary)
       .filter(r => (includeNonPfReads || r.pf)                                      || { filteredNonPf += 1; false })
       .filter(r => (r.mapped || (r.paired && r.mateMapped))                         || { filteredPoorAlignment += 1; false })
       .filter(r => (allowInterContig || r.unpaired || r.refIndex == r.mateRefIndex) || { filteredPoorAlignment += 1; false })
