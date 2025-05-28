@@ -113,12 +113,6 @@ class CallMolecularConsensusReads
  @arg(flag='1', doc="The Phred-scaled error rate for an error prior to the UMIs being integrated.") val errorRatePreUmi: PhredScore = DefaultErrorRatePreUmi,
  @arg(flag='2', doc="The Phred-scaled error rate for an error post the UMIs have been integrated.") val errorRatePostUmi: PhredScore = DefaultErrorRatePostUmi,
  @arg(flag='m', doc="Ignore bases in raw reads that have Q below this value.") val minInputBaseQuality: PhredScore = DefaultMinInputBaseQuality,
- @arg(flag='N', doc=
-   """
-     |Deprecated: will be removed in future versions; use FilterConsensusReads to filter consensus bases on
-     |quality instead. Mask (make 'N') consensus bases with quality less than this threshold.
-   """)
- val minConsensusBaseQuality: PhredScore = 2.toByte,
  @arg(flag='M', doc="The minimum number of reads to produce a consensus base.") val minReads: Int,
  @arg(doc="""
             |The maximum number of reads to use when building a consensus. If more than this many reads are
@@ -130,7 +124,6 @@ class CallMolecularConsensusReads
  @arg(flag='D', doc="Turn on debug logging.") val debug: Boolean = false,
  @arg(doc="The number of threads to use while consensus calling.") val threads: Int = 1,
  @arg(doc="Consensus call overlapping bases in mapped paired end reads") val consensusCallOverlappingBases: Boolean = true,
- val maxQualOnAgreement: Boolean = false
 ) extends FgBioTool with LazyLogging {
 
   if (debug) Logger.level = LogLevel.Debug
@@ -167,7 +160,7 @@ class CallMolecularConsensusReads
       errorRatePreUmi              = errorRatePreUmi,
       errorRatePostUmi             = errorRatePostUmi,
       minInputBaseQuality          = minInputBaseQuality,
-      minConsensusBaseQuality      = minConsensusBaseQuality,
+      minConsensusBaseQuality      = PhredScore.MinValue,
       minReads                     = minReads,
       maxReads                     = maxReads.getOrElse(VanillaUmiConsensusCallerOptions.DefaultMaxReads),
       producePerBaseTags           = outputPerBaseTags

@@ -218,10 +218,7 @@ case class SequenceMetadata private[fasta]
     rec
   }
 
-  override def toString: FilenameSuffix = {
-    import com.fulcrumgenomics.fasta.Converters.ToSAMSequenceRecord
-    this.asSam.getSAMString
-  }
+  override def toString: String = this.toSam.getSAMString
 }
 
 object SequenceDictionary {
@@ -300,11 +297,10 @@ case class SequenceDictionary(infos: IndexedSeq[SequenceMetadata]) extends Itera
 
   /** Writes the sequence dictionary to the given writer */
   def write(writer: java.io.Writer): Unit = {
-    import Converters.ToSAMSequenceRecord
     val codec  = new SAMSequenceDictionaryCodec(writer)
     codec.encodeHeaderLine(false)
     this.foreach { metadata: SequenceMetadata =>
-      codec.encodeSequenceRecord(metadata.asSam)
+      codec.encodeSequenceRecord(metadata.toSam)
     }
   }
 
@@ -319,27 +315,10 @@ case class SequenceDictionary(infos: IndexedSeq[SequenceMetadata]) extends Itera
 /** Contains useful converters to and from HTSJDK objects. */
 object Converters {
 
-  /**
-    * Converter from a [[SequenceMetadata]] to a [[htsjdk.samtools.SAMSequenceRecord]]
-    * @deprecated use [[SequenceMetadata.toSam]] instead.
-    */
-  @deprecated
-  implicit class ToSAMSequenceRecord(info: SequenceMetadata) {
-    def asSam: SAMSequenceRecord = info.toSam
-  }
-
   /** Converter from a [[htsjdk.samtools.SAMSequenceRecord]] to a [[SequenceMetadata]] */
   implicit class FromSAMSequenceRecord(rec: SAMSequenceRecord) {
     def fromSam: SequenceMetadata = SequenceMetadata(rec)
     def toScala: SequenceMetadata = SequenceMetadata(rec)
-  }
-
-  /** Converter from a [[SequenceDictionary]] to a [[htsjdk.samtools.SAMSequenceDictionary]]
-    * @deprecated use [[SequenceDictionary.toSam]] instead.
-    */
-  @deprecated
-  implicit class ToSAMSequenceDictionary(dict: SequenceDictionary) {
-    def asSam: SAMSequenceDictionary = dict.toSam
   }
 
   /** Converter from a [[htsjdk.samtools.SAMSequenceDictionary]] to a [[SequenceDictionary]] */

@@ -197,10 +197,6 @@ trait Metric extends Product with Iterable[(String,String)] {
   /** The delimiter for collection types. */
   private lazy val collectionDelimiter: Char = MetricBuilder.findCollectionDelimiter(this.getClass)
 
-  /** @deprecated use [[formatValue]] instead. */
-  @deprecated(message="Use formatValue instead.", since="0.5.0")
-  protected def formatValues(value: Any): String = formatValue(value)
-
   /** Override this method to customize how values are formatted. */
   protected def formatValue(value: Any): String = value match {
     case null              => ""
