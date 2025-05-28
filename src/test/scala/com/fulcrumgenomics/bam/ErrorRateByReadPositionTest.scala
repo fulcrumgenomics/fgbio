@@ -27,7 +27,6 @@ package com.fulcrumgenomics.bam
 
 import com.fulcrumgenomics.bam.api.SamOrder
 import com.fulcrumgenomics.commons.io.PathUtil
-import com.fulcrumgenomics.fasta.Converters.ToSAMSequenceDictionary
 import com.fulcrumgenomics.fasta.SequenceDictionary
 import com.fulcrumgenomics.testing.SamBuilder.{Minus, Plus}
 import com.fulcrumgenomics.testing.{ReferenceSetBuilder, SamBuilder, UnitSpec, VariantContextSetBuilder}
@@ -93,7 +92,7 @@ class ErrorRateByReadPositionTest extends UnitSpec with OptionValues {
 
   private def newSamBuilder = {
     val builder = new SamBuilder(readLength=20, sort=Some(SamOrder.Coordinate))
-    builder.header.setSequenceDictionary(dict.asSam)
+    builder.header.setSequenceDictionary(dict.toSam)
     builder
   }
 
@@ -165,7 +164,7 @@ class ErrorRateByReadPositionTest extends UnitSpec with OptionValues {
     builder.addPair(contig=1, start1=300, start2=350, bases1="ACGA"*5, bases2="ACGA"*5)
     builder.addPair(contig=1, start1=400, start2=450, bases1="AAAA"*5, bases2="AAAA"*5)
 
-    val intervals = new IntervalList(dict.asSam)
+    val intervals = new IntervalList(dict.toSam)
     intervals.add(new Interval("chr1", 100, 275))
     intervals.add(new Interval("chr1", 400, 500))
     val intervalPath = makeTempFile("regions.", ".interval_list")
@@ -267,7 +266,7 @@ class ErrorRateByReadPositionTest extends UnitSpec with OptionValues {
     builder.addPair(contig=1, start1=100, start2=200, bases1="AAAAAAAAATTAAAAAAAAA", bases2="AAAAAAAAATTAAAAAAAAA")
 
     val dict = builder.dict
-    val intervals = new IntervalList(dict.asSam)
+    val intervals = new IntervalList(dict.toSam)
     intervals.add(new Interval(dict(1).name, 200, 300))
     intervals.add(new Interval(dict(1).name, 100, 150))
     intervals.add(new Interval(dict(1).name, 100, 200))

@@ -545,8 +545,8 @@ object Bams extends LazyLogging {
     )
   }
 
-  /** Builds a [[Writer]] of [[com.fulcrumgenomics.bam.api.SamRecord]]s that regenerates the NM, UQ, and MD tags using the given map of reference
-    * sequences.
+  /** Builds a [[com.fulcrumgenomics.commons.io.Writer]] of [[com.fulcrumgenomics.bam.api.SamRecord]]s that regenerates
+    * the NM, UQ, and MD tags using the given map of reference sequences.
     *
     * @param writer the writer to write to
     * @param ref the path to the reference FASTA

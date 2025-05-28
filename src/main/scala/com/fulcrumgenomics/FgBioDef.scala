@@ -93,17 +93,6 @@ object FgBioDef extends CommonsDef {
     }
   }
 
-  /** Parses a genomic range of the form `<chr>:<start>-<end>` or `<chr>:<start>`, assuming the range is 1-based
-    * inclusive (closed-ended).  If only a start position is included the range includes just the single base.
-    * Coordinates may include commas in the numbers.
-    *
-    * @param range the string to parse.
-    * @deprecated use GenomicRange(string) instead
-    */
-  @deprecated(message="Use GenomicRange() instead", since="1.3.0") def parseRange(range: String): GenomicRange = {
-    GenomicRange(range)
-  }
-
   // Developer note: move this to commons as scala 2.12 does not have this method on an [[IterableOnce]]/[[Iterator]]
   implicit class IterableOnceMinByOption[A](iter: Iterator[A]) {
     /** Finds the first element which yields the smallest value measured by function f.
