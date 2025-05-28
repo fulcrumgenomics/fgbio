@@ -561,10 +561,10 @@ object Strategy extends FgBioEnum[Strategy] {
     |If the `--mark-duplicates` option is given, reads will also have their duplicate flag set in the BAM file.
     |Each tag-family is treated separately, and a single template within the tag family is chosen to be the "unique"
     |template and marked as non-duplicate, while all other templates in the tag family are then marked as duplicate.
-    |Ther are a few limitations of duplicate-marking mode (vs. e.g. Picard MarkDuplicates):
+    |There are a few limitations of duplicate-marking mode (vs. e.g. Picard MarkDuplicates):
     |
     |1. read pairs with one unmapped read are duplicate-marked independently from read pairs with both reads mapped
-    |2. secondary and supplementary reads are discarded
+    |2. secondary and supplementary records are discarded
     |
     |Note: the `--min-map-q` parameter defaults to 0 in duplicate marking mode and 1 otherwise, and is directly settable
     |on the command line.
@@ -653,7 +653,7 @@ class GroupReadsByUmi
     logger.info("Filtering the input.")
     @nowarn("msg=value allowInterContig in class GroupReadsByUmi is deprecated")
     val filteredIterator = in.iterator
-      .filter(r => !r.secondary && !r.supplementary)
+      .filterNot(r => r.secondary || r.supplementary)
       .filter(r => (includeNonPfReads || r.pf)                                      || { filteredNonPf += 1; false })
       .filter(r => (r.mapped || (r.paired && r.mateMapped))                         || { filteredPoorAlignment += 1; false })
       .filter(r => (allowInterContig || r.unpaired || r.refIndex == r.mateRefIndex) || { filteredPoorAlignment += 1; false })
