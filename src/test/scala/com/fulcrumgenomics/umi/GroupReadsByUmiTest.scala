@@ -281,7 +281,7 @@ class GroupReadsByUmiTest extends UnitSpec with OptionValues with PrivateMethodT
 
   it should "correctly mark duplicates on duplicate reads in group, when flag is passed" in {
     val builder = new SamBuilder(readLength = 100, sort = Some(SamOrder.Coordinate))
-    // Mapping Quality is a tie breaker, so use that to our advantage here.
+    // Mapping Quality is a tiebreaker, so use that to our advantage here.
     builder.addPair(mapq1 = 10, mapq2 = 10, name = "a01", start1 = 100, start2 = 300, strand1 = Plus, strand2 = Minus, attrs = Map("RX" -> "ACT-ACT"))
     builder.addPair(mapq1 = 30, mapq2 = 30, name = "a02", start1 = 100, start2 = 300, strand1 = Plus, strand2 = Minus, attrs = Map("RX" -> "ACT-ACT"))
     builder.addPair(mapq1 = 100, mapq2 = 10, name = "a03", start1 = 100, start2 = 300, strand1 = Plus, strand2 = Minus, attrs = Map("RX" -> "ACT-ACT"))
@@ -305,7 +305,7 @@ class GroupReadsByUmiTest extends UnitSpec with OptionValues with PrivateMethodT
 
   it should "does not mark duplicates on reads in group, when flag is not passed" in {
     val builder = new SamBuilder(readLength = 100, sort = Some(SamOrder.Coordinate))
-    // Mapping Quality is a tie breaker, so use that to our advantage here.
+    // Mapping Quality is a tiebreaker, so use that to our advantage here.
     builder.addPair(mapq1 = 10, mapq2 = 10, name = "a01", start1 = 100, start2 = 300, strand1 = Plus, strand2 = Minus, attrs = Map("RX" -> "ACT-ACT"))
     builder.addPair(mapq1 = 30, mapq2 = 30, name = "a02", start1 = 100, start2 = 300, strand1 = Plus, strand2 = Minus, attrs = Map("RX" -> "ACT-ACT"))
     builder.addPair(mapq1 = 100, mapq2 = 10, name = "a03", start1 = 100, start2 = 300, strand1 = Plus, strand2 = Minus, attrs = Map("RX" -> "ACT-ACT"))
@@ -342,6 +342,30 @@ class GroupReadsByUmiTest extends UnitSpec with OptionValues with PrivateMethodT
     recs.filter(_.name.equals("a02")).forall(_.duplicate == true) shouldBe true
     recs.filter(_.name.equals("a03")).forall(_.duplicate == false) shouldBe true
     recs.filter(_.name.equals("a04")).forall(_.duplicate == true) shouldBe true
+  }
+
+  it should "mark duplicates and discard secondary and supplementary reads" in {
+    // Mapping Quality is a tiebreaker, so use that to our advantage here.
+    val builder = new SamBuilder(readLength = 100, sort = Some(SamOrder.Coordinate))
+    Range.inclusive(start=1, end=3).foreach { i =>
+      val rec = builder.addFrag(mapq = 100, name = "a01", start = 100, attrs = Map("RX" -> "AAAAAAAA")).value
+      rec.secondary = i == 2
+      rec.supplementary = i == 3
+      rec
+    }
+    builder.addFrag(mapq = 10, name = "a02", start = 100, attrs = Map("RX" -> "AAAAAAAA")).value
+
+    val in = builder.toTempFile()
+    val out = Files.createTempFile("umi_grouped.", ".sam")
+    val hist = Files.createTempFile("umi_grouped.", ".histogram.txt")
+    new GroupReadsByUmi(input = in, output = out, familySizeHistogram = Some(hist), rawTag = "RX", assignTag = "MI", strategy = Strategy.Edit, edits = 1, markDuplicates = true).execute()
+
+    val recs = readBamRecs(out)
+    recs.length shouldBe 2
+    recs.filter(_.name.equals("a01")).forall(_.duplicate == false) shouldBe true
+    recs.filter(_.name.equals("a02")).forall(_.duplicate == true) shouldBe true
+    recs.forall(_.secondary) shouldBe false
+    recs.forall(_.supplementary) shouldBe false
   }
 
   it should "correctly group reads with the paired assigner when the two UMIs are the same" in {
