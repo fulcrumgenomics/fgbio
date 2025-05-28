@@ -28,8 +28,7 @@ During grouping, reads and templates are filtered out as follows:
 2. Templates are filtered if any non-secondary, non-supplementary read has mapping quality < `min-map-q`
 3. Templates are filtered if any UMI sequence contains one or more `N` bases
 4. Templates are filtered if `--min-umi-length` is specified and the UMI does not meet the length requirement
-5. Reads are filtered out if flagged as secondary and `--include-secondary` is false
-6. Reads are filtered out if flagged as supplementary and `--include-supplementary` is false
+5. Records are filtered out if flagged as either secondary or supplementary
 
 Grouping of UMIs is performed by one of four strategies:
 
@@ -61,15 +60,13 @@ compared, where `len` is the length of the shortest UMI. The UMI length is the n
 If the `--mark-duplicates` option is given, reads will also have their duplicate flag set in the BAM file.
 Each tag-family is treated separately, and a single template within the tag family is chosen to be the "unique"
 template and marked as non-duplicate, while all other templates in the tag family are then marked as duplicate.
-One limitation of duplicate-marking mode, vs. e.g. Picard MarkDuplicates, is that read pairs with one unmapped read
-are duplicate-marked independently from read pairs with both reads mapped.
+There are a few limitations of duplicate-marking mode (vs. e.g. Picard MarkDuplicates):
 
-Several parameters have different defaults depending on whether duplicates are being marked or not (all are
-directly settable on the command line):
+1. read pairs with one unmapped read are duplicate-marked independently from read pairs with both reads mapped
+2. secondary and supplementary records are discarded
 
-  1. `--min-map-q` defaults to 0 in duplicate marking mode and 1 otherwise
-  2. `--include-secondary` defaults to true in duplicate marking mode and false otherwise
-  3. `--include-supplementary` defaults to true in duplicate marking mode and false otherwise
+Note: the `--min-map-q` parameter defaults to 0 in duplicate marking mode and 1 otherwise, and is directly settable
+on the command line.
 
 Multi-threaded operation is supported via the `--threads/-@` option. This only applies to the Adjacency and Paired
 strategies. Additionally the only operation that is multi-threaded is the comparisons of UMIs at the same genomic
@@ -87,8 +84,6 @@ UMIs observed at the same genomic location, such as can occur in amplicon sequen
 |raw-tag|t|String|The tag containing the raw UMI.|Optional|1|RX|
 |assign-tag|T|String|The output tag for UMI grouping.|Optional|1|MI|
 |mark-duplicates|d|Boolean|Turn on duplicate marking mode.|Optional|1|false|
-|include-secondary|S|Boolean|Include secondary reads.|Optional|1||
-|include-supplementary|U|Boolean|Include supplementary reads.|Optional|1||
 |min-map-q|m|Int|Minimum mapping quality for mapped reads.|Optional|1||
 |include-non-pf-reads|n|Boolean|Include non-PF reads.|Optional|1|false|
 |strategy|s|Strategy|The UMI assignment strategy.|Required|1||

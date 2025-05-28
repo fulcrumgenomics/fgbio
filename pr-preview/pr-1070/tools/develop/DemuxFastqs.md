@@ -119,11 +119,11 @@ Options (1) and (2) require the input FASTQ read names to contain the following 
 
 [See the Illumina FASTQ conventions for more details.](https://support.illumina.com/help/BaseSpace_OLH_009008/Content/Source/Informatics/BS/FASTQFiles_Intro_swBS.htm)
 
-Use the following optiosn to upload to Illumina BaseSpace:
+Use the following options to upload to Illumina BaseSpace:
 
 `--omit-fastq-read-numbers=true --include-sample-barcodes-in-fastq=false --illumina-file-names=true`
 
-[See the Illumina Basespace standards described here](https://help.basespace.illumina.com/articles/tutorials/upload-data-using-web-uploader/).
+[See the Illumina BaseSpace standards described here](https://help.basespace.illumina.com/articles/tutorials/upload-data-using-web-uploader/).
 
 To output with recent Illumina conventions (circa 2021) that match `bcl2fastq` and `BCLconvert`, use:
 
