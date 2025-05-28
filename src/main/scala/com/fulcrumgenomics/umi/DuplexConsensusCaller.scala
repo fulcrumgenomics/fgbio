@@ -364,6 +364,7 @@ class DuplexConsensusCaller(override val readNamePrefix: String,
     val len = min(ab.map(_.length).getOrElse(Int.MaxValue), ba.map(_.length).getOrElse(Int.MaxValue))
     val abX = ab.filter(_.depths.iterator.take(len).exists(_ > 0))
     val baX = ba.filter(_.depths.iterator.take(len).exists(_ > 0))
+    val sourceReadsArray = sourceReads.toArray
 
     (abX, baX) match {
       case (Some(a), None)    => Some(DuplexConsensusRead(id=a.id, a.bases, a.quals, a.errors, a, None))
@@ -398,7 +399,6 @@ class DuplexConsensusCaller(override val readNamePrefix: String,
           // NB: optimized based on profiling; was previously:
           // sourceReads.count(s => s.length > i && isError(s.bases(i), rawBase))
           var numErrors = 0
-          val sourceReadsArray = sourceReads.toArray
           forloop(from=0, until=sourceReadsArray.length) { j =>
             val sourceRead = sourceReadsArray(j)
             if (sourceRead.length > i && isError(sourceRead.bases(i), rawBase)) {
