@@ -113,8 +113,8 @@ class FilterConsensusReads
   val maxBaseErrorRate: Seq[Double] = Seq(0.1),
   @arg(flag='N', doc="Mask (make `N`) consensus bases with quality less than this threshold.")
   val minBaseQuality: PhredScore,
-  @arg(flag='n', doc="Maximum fraction of no-calls in the read after filtering.")
-  val maxNoCallFraction: Double = 0.2,
+  @arg(flag='n', doc="Maximum fraction (if < 1.0) or number (if >= 1.0) of no-calls in the read after filtering.")
+  val maxNoCalls: Double = 0.2,
   @arg(flag='q', doc="The minimum mean base quality across the consensus read.")
   val minMeanBaseQuality: Option[PhredScore] = None,
   @arg(flag='s', doc="Mask (make `N`) consensus bases where the AB and BA consensus reads disagree (for duplex-sequencing only).")
@@ -128,7 +128,7 @@ class FilterConsensusReads
   Io.assertCanWriteFile(output)
   if (maxReadErrorRate.exists(e => e < 0 || e > 1)) fail("max-read-error-rate must be between 0 and 1.")
   if (maxBaseErrorRate.exists(e => e < 0 || e > 1)) fail("max-base-error-rate must be between 0 and 1.")
-  if (maxNoCallFraction < 0 || maxNoCallFraction > 1) fail("max-no-call-fraction must be between 0 and 1.")
+  if (maxNoCalls < 0) fail("max-no-calls must be greater than or equal to 0.")
 
   private val NoCall     = 'N'.toByte
   private val NoCallQual = PhredScore.MinValue
@@ -247,16 +247,27 @@ class FilterConsensusReads
     }
     else {
       val result = if (Umis.isFgbioDuplexConsensus(rec)) filterDuplexConsensusRead(rec) else filterVanillaConsensusRead(rec)
-      result.copy(keepRead = result.keepRead && fractionNoCalls(rec) <= this.maxNoCallFraction)
+      result.copy(keepRead = result.keepRead && passesNoCallThreshold(rec, this.maxNoCalls))
     }
   }
 
-  /** Computes the fraction of the read that are no-calls. */
-  private def fractionNoCalls(rec: SamRecord): Double = {
+  /**
+    * Takes a threshold that can be a fraction (< 1) or a count (>= 1) limit on the no-calls
+    * in the read.
+    *
+    * @return true if the read does not have too many no-calls, false otherwise
+    * */
+  private def passesNoCallThreshold(rec: SamRecord, threshold: Double): Boolean = {
     val bases = rec.bases
     var ns = 0
     forloop(from = 0, until = bases.length) { i => if (bases(i) == NoCall) ns += 1 }
-    ns / bases.length.toDouble
+
+    if (threshold < 1) {
+      ns / bases.length.toDouble <= threshold
+    }
+    else {
+      ns <= threshold
+    }
   }
 
   /** Performs filtering that is specific to Vanilla (single-umi/non-duplex) consensus reads. */
