@@ -127,8 +127,7 @@ class IntervalListSource private(lines: Iterator[String],
 
   /** Reads in the intervals into an [[htsjdk.samtools.util.IntervalList]] */
   def toIntervalList: IntervalList = {
-    import com.fulcrumgenomics.fasta.Converters.ToSAMSequenceDictionary
-    val list = new IntervalList(dict.asSam)
+    val list = new IntervalList(dict.toSam)
     this.foreach { list.add }
     list
   }

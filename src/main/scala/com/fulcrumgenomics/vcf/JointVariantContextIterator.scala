@@ -55,13 +55,12 @@ class JointVariantContextIterator private(iters: Seq[Iterator[VariantContext]],
                                           dictOrComp: Either[SequenceDictionary, VariantContextComparator]
                                          )
 extends Iterator[Seq[Option[VariantContext]]] {
-  import com.fulcrumgenomics.fasta.Converters.ToSAMSequenceDictionary
 
   if (iters.isEmpty) throw new IllegalArgumentException("No iterators given")
 
   private val iterators = iters.map(_.buffered)
   private val comparator = dictOrComp match {
-    case Left(dict)  => new VariantContextComparator(dict.asSam)
+    case Left(dict)  => new VariantContextComparator(dict.toSam)
     case Right(comp) => comp
   }
 
