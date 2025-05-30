@@ -253,44 +253,32 @@ trait SamRecord {
     require(1 <= pos, s"position given '$pos' was less than one: ${this}")
     require(pos <= cigar.lengthOnQuery , s"position given '$pos' was longer than the # of read bases '${cigar.lengthOnQuery}': ${this}")
 
-    var readPos      = 1
-    var refPos       = this.start
-    var elementIndex = 0
-    val elems        = this.cigar.elems
+    val elems   = this.cigar.elems.iterator
+    var readPos = 1
+    var refPos  = this.start
+    var result: Option[Int] = None
 
-    // skip leading clipping, ignoring hard-clipping
-    while (elems(elementIndex).operator.isClipping && readPos <= pos) {
-      val elem = elems(elementIndex)
-      if (elem.operator == CigarOperator.SOFT_CLIP) readPos += elem.lengthOnQuery
-      elementIndex += 1
-    }
-
-    // return None if the read was in a leading soft-clip
-    if (pos < readPos) None else {
-      def continue(): Boolean = if (elementIndex >= elems.length) false else {
-        val elem = elems(elementIndex)
-        if (pos > CoordMath.getEnd(readPos, elem.lengthOnQuery)) true // current cigar element is before the desired position
-        else {
-          if (elem.operator == CigarOperator.INSERTION) {
-            if (!returnLastBaseIfInserted) refPos = 0 // this cause us to return None later for the position
-            else refPos -= 1  // in an insertion, no reference position, so use the previous reference position
+    while (elems.hasNext && readPos <= pos) {
+      val elem = elems.next()
+      if (elem.operator.consumesReadBases()) {
+        val end = readPos + elem.length - 1
+        if (pos <= end) {
+          if (!elem.operator.consumesReferenceBases()) {
+            if (returnLastBaseIfInserted) {
+              result = Some(refPos - 1)
+            }
           }
           else {
-            refPos += pos - readPos // get the offset, for soft-clipping this will move refPos past this.end, and so return None
+            result = Some(refPos + (pos - readPos))
           }
-          false
         }
       }
 
-      while (continue()) {
-        val elem      = elems(elementIndex)
-        refPos       += elem.lengthOnTarget
-        readPos      += elem.lengthOnQuery
-        elementIndex += 1
-      }
-
-      if (this.start <= refPos && refPos <= this.end) Some(refPos) else None
+      readPos += elem.lengthOnQuery
+      refPos += elem.lengthOnTarget
     }
+
+    result
   }
 
   /** Returns the 1-based position into the read's bases where the position is mapped either as a match or mismatch,
