@@ -476,6 +476,23 @@ class GroupReadsByUmiTest extends UnitSpec with OptionValues with PrivateMethodT
     an[Exception] should be thrownBy tool.execute()
   }
 
+  it should "not consider read-pairs with the same coordinates but different pair orientations as being from the same molecule" in {
+    val builder = new SamBuilder(readLength=100, sort=Some(SamOrder.Coordinate))
+    builder.addPair(name="f1r2", start1=100, start2=300, strand1=Plus,  strand2=Minus, attrs=Map("RX" -> "ACGT-TTGA"))
+    builder.addPair(name="f2r1", start1=300, start2=100, strand1=Minus, strand2=Plus,  attrs=Map("RX" -> "ACGT-TTGA"))
+    builder.addPair(name="ff",   start1=100, start2=300, strand1=Plus,  strand2=Plus,  attrs=Map("RX" -> "ACGT-TTGA"))
+    builder.addPair(name="rr",   start1=  1, start2=201, strand1=Minus, strand2=Minus, attrs=Map("RX" -> "ACGT-TTGA"))
+    builder.addPair(name="r1f2", start1=100, start2=300, strand1=Minus, strand2=Plus,  attrs=Map("RX" -> "ACGT-TTGA"))
+    builder.addPair(name="r2f1", start1=300, start2=100, strand1=Plus,  strand2=Minus, attrs=Map("RX" -> "ACGT-TTGA"))
+
+    val in   = builder.toTempFile()
+    val out  = Files.createTempFile("umi_grouped.", ".sam")
+    new GroupReadsByUmi(input=in, output=out, familySizeHistogram=None, rawTag="RX", assignTag="MI", strategy=Strategy.Adjacency, edits=1).execute()
+
+    val recs = readBamRecs(out)
+    recs.map(r => r[String]("MI")).distinct.size shouldBe 6  // each pair is a separate MI
+  }
+
   Seq(
     Seq("right", "ACT-", "-ACT"),
     Seq("left", "-ACT", "ACT-"),
