@@ -167,10 +167,10 @@ class CodecConsensusCaller(readNamePrefix: String,
     */
   private def computeConsensusLength(pos: SamRecord, neg: SamRecord): Int = {
     val refOverlapEnd = pos.end
-
-    val negReadPos = neg.readPosAtRefPos(refOverlapEnd, returnLastBaseIfDeleted = false)
-    if (negReadPos == 0) -1 else {
-      pos.length + neg.length - negReadPos
+    val posReadPos = pos.readPosAtRefPos(refOverlapEnd, returnLastBaseIfDeleted=false)
+    val negReadPos = neg.readPosAtRefPos(refOverlapEnd, returnLastBaseIfDeleted=false)
+    if (posReadPos == 0 || negReadPos == 0) -1 else {
+      posReadPos + neg.length - negReadPos
     }
   }
 
