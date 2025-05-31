@@ -166,4 +166,71 @@ class CodecConsensusCallerTest extends UnitSpec with OptionValues {
     cons.head.basesString shouldBe Sequences.revcomp(RefBases.substring(0, 40))
     cons.head[String](ConsensusTags.UmiBases) shouldBe "ACC-TGA"
   }
+
+  //////////////////////////////////////////////////////////////////////////////
+  // Some negative / filtering tests
+  //////////////////////////////////////////////////////////////////////////////
+
+  it should "not emit a consensus when the reads are an RF pair" in {
+    val builder = new SamBuilder(readLength=30, baseQuality=35)
+    val caller = new CodecConsensusCaller(readNamePrefix="codec", minReadsPerStrand=1, minDuplexLength=1)
+    val rfPair = builder.addPair(
+      contig=0, start1=100, start2=135, strand1=Minus, strand2=Plus, attrs=Map(("RX", "ACC-TGA"), ("MI", "hi"))
+    ).tapEach(setReadSequence)
+    caller.consensusReadsFromSamRecords(rfPair) shouldBe Seq()
+  }
+
+  it should "not emit a consensus when the reads are a cross-chromosomal chimeric pair" in {
+    val builder = new SamBuilder(readLength=30, baseQuality=35)
+    val caller = new CodecConsensusCaller(readNamePrefix="codec", minReadsPerStrand=1, minDuplexLength=1)
+    val crossChromPair = builder.addPair(
+      contig=0, start1=100, start2=135, attrs=Map(("RX", "ACC-TGA"), ("MI", "hi"))
+    ).tapEach(setReadSequence)
+    crossChromPair.head.refIndex = 2
+    crossChromPair.last.mateRefIndex = 2
+    caller.consensusReadsFromSamRecords(crossChromPair) shouldBe Seq()
+  }
+
+  it should "not emit a consensus when the read pair has one mate unmapped" in {
+    val builder = new SamBuilder(readLength=30, baseQuality=35)
+    val caller = new CodecConsensusCaller(readNamePrefix="codec", minReadsPerStrand=1, minDuplexLength=1)
+    val unmappedMate = builder.addPair(
+      contig=0, start1=100, start2=100, unmapped2=true, attrs=Map(("RX", "ACC-TGA"), ("MI", "hi"))
+    ).tapEach(setReadSequence)
+    caller.consensusReadsFromSamRecords(unmappedMate) shouldBe Seq()
+  }
+
+  it should "not emit a consensus when there are insufficient reads" in {
+    val builder = new SamBuilder(readLength=30, baseQuality=35)
+    builder.addPair(contig=0, start1=1, start2=11, attrs=Map(("RX", "ACC-TGA"), ("MI", "hi"))).tapEach(setReadSequence)
+    builder.addPair(contig=0, start1=1, start2=11, attrs=Map(("RX", "ACC-TGA"), ("MI", "hi"))).tapEach(setReadSequence)
+    val raw = builder.toSeq
+
+    new CodecConsensusCaller(readNamePrefix="codec", minReadsPerStrand=2, minDuplexLength=1)
+      .consensusReadsFromSamRecords(raw) should have length 1
+
+    new CodecConsensusCaller(readNamePrefix="codec", minReadsPerStrand=3, minDuplexLength=1)
+      .consensusReadsFromSamRecords(raw) shouldBe Seq()
+  }
+
+  it should "not emit a consensus when there is insufficient overlap between R1 and R2" in {
+    val builder = new SamBuilder(readLength=30, baseQuality=35)
+    val raw = builder.addPair(contig=0, start1=1, start2=11, attrs=Map(("RX", "ACC-TGA"), ("MI", "hi"))).tapEach(setReadSequence)
+
+    new CodecConsensusCaller(readNamePrefix="codec", minReadsPerStrand=1, minDuplexLength=20)
+      .consensusReadsFromSamRecords(raw) should have length 1
+
+    new CodecConsensusCaller(readNamePrefix="codec", minReadsPerStrand=1, minDuplexLength=21)
+      .consensusReadsFromSamRecords(raw) shouldBe Seq()
+  }
+
+  it should "not emit a consensus when R1's end lands in an indel in R2" in {
+    val builder = new SamBuilder(readLength=30, baseQuality=35)
+    val raw = builder.addPair(
+      contig=0, start1=1, start2=11, cigar1="30M", cigar2="19M2D11M", attrs=Map(("RX", "ACC-TGA"), ("MI", "hi"))
+    ).tapEach(setReadSequence)
+
+    new CodecConsensusCaller(readNamePrefix="codec", minReadsPerStrand=1, minDuplexLength=1)
+      .consensusReadsFromSamRecords(raw) shouldBe Seq()
+  }
 }
