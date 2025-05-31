@@ -130,6 +130,7 @@ class FilterConsensusReads
   if (maxReadErrorRate.exists(e => e < 0 || e > 1)) fail("max-read-error-rate must be between 0 and 1.")
   if (maxBaseErrorRate.exists(e => e < 0 || e > 1)) fail("max-base-error-rate must be between 0 and 1.")
   if (maxNoCalls < 0) fail("max-no-calls must be greater than or equal to 0.")
+  if (maxNoCalls >= 1 && maxNoCalls != maxNoCalls.toInt.toFloat) fail("max-no-calls must be an integer when greater than or equal to 1.")
 
   private val NoCall     = 'N'.toByte
   private val NoCallQual = PhredScore.MinValue
