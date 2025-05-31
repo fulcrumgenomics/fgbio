@@ -33,7 +33,9 @@ import com.fulcrumgenomics.umi.UmiConsensusCaller.ReadType._
 import com.fulcrumgenomics.umi.UmiConsensusCaller._
 import com.fulcrumgenomics.umi.VanillaUmiConsensusCallerOptions._
 import com.fulcrumgenomics.util.NumericTypes._
+import com.fulcrumgenomics.util.Sequences
 
+import java.util
 import scala.util.Random
 
 /**
@@ -89,6 +91,58 @@ case class VanillaConsensusRead(id: String, bases: Array[Byte], quals: Array[Byt
   def truncate(len: Int): VanillaConsensusRead = {
     if (len >= this.length) this
     else this.copy(bases=bases.take(len), quals=quals.take(len), depths=depths.take(len), errors=errors.take(len))
+  }
+
+  /**
+    * Modifies all of the bases, quals, depths and errors arrays *in place* to reverse complement the sequence
+    * and related information in the consensus read instance.
+    *
+    * WARNING: modifies the record in place!
+    */
+  def revcomp(): Unit = {
+    Sequences.revcomp(this.bases)
+    Sequences.reverse(quals)
+    Sequences.reverse(depths)
+    Sequences.reverse(errors)
+  }
+
+  /**
+    * Pads a consensus reads by adding bases to the either the left or right of the existing sequence.
+    *
+    * @param newLength the new total length of the consensus read - must be at least the existing length
+    * @param left if true pad to the left of the existing sequence, else pad to the right of the existing sequence
+    * @param base the base to use to fill in the padded sequence
+    * @param qual the qual to use to fill in the qualities
+    */
+  def padded(newLength: Int, left: Boolean, base: Byte = 'n', qual: Byte = 2): VanillaConsensusRead = {
+    require(newLength >= this.bases.length, "Cannot pad to a length shorter than current length.")
+    if (newLength == this.bases.length) this else {
+      val newBases  = new Array[Byte](newLength)
+      val newQuals  = new Array[Byte](newLength)
+      val newDepths = new Array[Short](newLength)
+      val newErrors = new Array[Short](newLength)
+
+      val oldLength = this.bases.length
+      val addedLength = newLength - oldLength
+
+      val destPos = if (left) addedLength else 0
+      System.arraycopy(this.bases, 0,  newBases,  destPos, oldLength)
+      System.arraycopy(this.quals, 0,  newQuals,  destPos, oldLength)
+      System.arraycopy(this.depths, 0, newDepths, destPos, oldLength)
+      System.arraycopy(this.errors, 0, newErrors, destPos, oldLength)
+
+      val startIndex = if (left) 0 else oldLength
+      util.Arrays.fill(newBases, startIndex, startIndex + addedLength, base)
+      util.Arrays.fill(newQuals, startIndex, startIndex + addedLength, qual)
+
+      VanillaConsensusRead(
+        id     = this.id,
+        bases  = newBases,
+        quals  = newQuals,
+        depths = newDepths,
+        errors = newErrors,
+      )
+    }
   }
 }
 
