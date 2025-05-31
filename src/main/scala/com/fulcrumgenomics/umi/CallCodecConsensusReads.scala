@@ -36,11 +36,14 @@ import com.fulcrumgenomics.util.ProgressLogger
 
 @clp(description =
   """
-    |Calls consensus sequences from reads generated from the the CODEC protocol[1]. Prior to running this tool, reads
-    |must have been grouped with `GroupReadsByUmi` using the `adjacency` or `identity` strategy (NOT `paired`).
+    |Calls consensus sequences from reads generated from the the CODEC protocol. For more information on the CODEC
+    |sequencing protocol and the resulting data please refer to Bae et al 2023[1].
+    |
+    |Prior to running this tool, reads must have been grouped with `GroupReadsByUmi` using the `adjacency` or `identity`
+    |strategy (NOT `paired`).
     |
     |Reads from the same original duplex are collected, and the R1s and R2s assembled into single strand consensus
-    |reads as described by CallMolecularConsensusReads.  Subsequently a single consensus read is generated including
+    |reads as described by `CallMolecularConsensusReads`.  Subsequently, a single consensus read is generated including
     |both any single-strand regions as well as the double-stranded region of the template.
     |
     |The consensus reads produced are unaligned, due to the difficulty and error-prone nature of inferring the consensus
@@ -86,12 +89,12 @@ class CallCodecConsensusReads
  @arg(flag='2', doc="The Phred-scaled error rate for an error post the UMIs have been integrated.") val errorRatePostUmi: PhredScore = DefaultErrorRatePostUmi,
  @arg(flag='m', doc="Ignore bases in raw reads that have Q below this value.") val minInputBaseQuality: PhredScore = DefaultMinInputBaseQuality,
  @arg(flag='S', doc="The sort order of the output, the same as the input if not given.") val sortOrder: Option[SamOrder] = None,
- @arg(flag='M', minElements=1, maxElements=3, doc="The minimum number of codec read pairs to form a consensus read.") val minReadsPerStrand: Int = 1,
+ @arg(flag='M', doc="The minimum number of codec read pairs to form a consensus read.") val minReadPairs: Int = 1,
  @arg(doc="""
             |The maximum number of reads to use when building a single-strand consensus. If more than this many reads are
-            |present in a tag family, the family is randomly downsampled to exactly max-reads reads.
+            |present in a tag family, the family is randomly downsampled to exactly max-reads-pairs reads.
           """)
- val maxReadsPerStrand: Option[Int] = None,
+ val maxReadPairs: Option[Int] = None,
  @arg(flag='d', doc="Minimum length of the duplex region (where R1 and R2 overlap).") val minDuplexLength: Int = 1,
  @arg(doc="The number of threads to use while consensus calling.") val threads: Int = 1,
 ) extends FgBioTool with LazyLogging {
@@ -100,6 +103,9 @@ class CallCodecConsensusReads
   Io.assertCanWriteFile(output)
   validate(errorRatePreUmi  > 0, "Phred-scaled error rate pre UMI must be > 0")
   validate(errorRatePostUmi > 0, "Phred-scaled error rate post UMI must be > 0")
+  validate(minReadPairs >= 1, "min-read-pairs must be >= 1")
+  validate(maxReadPairs.forall(_ >= minReadPairs), "max-read-pairs must be >= min-read-pairs")
+  validate(minDuplexLength >= 1, "min-duplex-length must be >= 1")
 
   override def execute(): Unit = {
     val in = SamSource(input)
@@ -115,8 +121,8 @@ class CallCodecConsensusReads
       minInputBaseQuality = minInputBaseQuality,
       errorRatePreUmi     = errorRatePreUmi,
       errorRatePostUmi    = errorRatePostUmi,
-      minReadsPerStrand   = minReadsPerStrand,
-      maxReadsPerStrand   = maxReadsPerStrand.getOrElse(VanillaUmiConsensusCallerOptions.DefaultMaxReads),
+      minReadsPerStrand   = minReadPairs,
+      maxReadsPerStrand   = maxReadPairs.getOrElse(VanillaUmiConsensusCallerOptions.DefaultMaxReads),
       minDuplexLength     = minDuplexLength
     )
     val progress = ProgressLogger(logger, unit=1000000)

@@ -33,16 +33,41 @@ import com.fulcrumgenomics.util.NumericTypes.PhredScore
 import com.fulcrumgenomics.util.Sequences
 
 /**
-  * TODO: write docs
+  * Consensus caller for CODEC sequencing[1].  In CODEC each read-pair has an R1 which is generated from one
+  * strand of the original duplex and an R2 which is generated from the opposite strand of the original duplex.
+  * Therefore, even a single read-pair can generate a duplex consensus.  However, consensus yield is significantly
+  * affected by how much the reads overlap as the overlapping region is the only place where information from
+  * both strands is available.
+  *
+  * The result of consensus calling CODEC data is a single fragment read per duplex!
+  *
+  * The caller works approximately as follows (with checks at many points to see if sufficient data remains to
+  * generate a duplex within the given parameters):
+  *   - Read pairs are trimmed to remove any bases that extend past the beginning of their mates
+  *   - Read 1s and Read 2s are _separately_ filtered for compatible CIGARs
+  *   - Single strand consensus reads are formed from R1 and R2 separately
+  *   - One of the SS reads is reverse complemented to bring both reads into the same orientation
+  *   - The single strand reads are padded out with `n`s at Q0 if they do not fully overlap
+  *   - A _single_ duplex consensus read is generated from the pair of single strand consensus reads
+  *   - If the incoming R1s were on the negative strand of the genome, the duplex consensus is reverse complemented
+  *
+  * The CODEC consensus caller relies heavily on information about how the reads align to the genome in order to
+  * synchronize the reads for duplex calling.  At this time read pairs whose alignments do not overlap on the genome,
+  * including unmapped pairs, pairs with only one read mapped, chimeric pairs and read pairs whose insert size prevents
+  * the reads from overlapping, are rejected by the CODEC caller.
+  *
+  * [1] https://doi.org/10.1038/s41588-023-01376-0
   *
   * @param readNamePrefix the prefix to apply to all consensus read names
   * @param readGroupId    the read group ID to apply to all created consensus reads
-  * @param minInputBaseQuality the minimum input base quality score to use a raw read's base
+  * @param minInputBaseQuality the minimum base quality for the consensus caller to use a base in a raw read
   * @param errorRatePreUmi the estimated rate of errors in the DNA prior to attaching UMIs
   * @param errorRatePostUmi the estimated rate of errors in the DNA post attaching UMIs
-  * @param minReadsPerStrand
-  * @param maxReads
-  * @param minDuplexLength
+  * @param minReadsPerStrand the minimum number of reads to form a single strand consensus from R1 or R2
+  * @param maxReadsPerStrand the maximum number of reads to use when building a single strand consensus read before
+  *                          triggering random downsampling
+  * @param minDuplexLength the minimum length of the duplex region of a consensus read for the consensus read to be
+  *                        built and emitted
   */
 class CodecConsensusCaller(readNamePrefix: String,
                            readGroupId: String = "A",
@@ -59,6 +84,10 @@ class CodecConsensusCaller(readNamePrefix: String,
   qualityTrim         = false,
   errorRatePreUmi     = errorRatePreUmi,
   errorRatePostUmi    = errorRatePostUmi,
+  // We set minReads to all 1s here because the CODEC caller will do all the necessary filtering/limiting
+  // ahead of calling the ss consensus calling process, and we absolutely don't want the SS caller to
+  // trim off any regions that drop below the `minReadsPerStrand` threshold as that would significantly
+  // complicate the logic of stitching R1 and R2 together.
   minReads            = Seq(1, 1, 1),
   maxReadsPerStrand   = maxReadsPerStrand
 ) {
@@ -69,7 +98,7 @@ class CodecConsensusCaller(readNamePrefix: String,
   private val clipper = new SamRecordClipper(ClippingMode.Hard, autoClipAttributes = false)
 
   /** Returns the MI tag as is because in CODEC there is no /A or /B unlike classic duplex-seq */
-  override protected[umi] def sourceMoleculeId(rec: SamRecord): String = rec[String]("MI")
+  override protected[umi] def sourceMoleculeId(rec: SamRecord): String = rec[String](ConsensusTags.MolecularId)
 
   /**
     * Takes in all the reads for a source molecule and, if possible, generates one or more
@@ -99,13 +128,15 @@ class CodecConsensusCaller(readNamePrefix: String,
       }
       else {
         // Calculate the max overlap between R1 and R2, and if it's too short then filter those reads
-        val longestR1Alignment = r1s.flatMap(_.sam).maxBy(_.cigar.lengthOnTarget)
-        val longestR2Alignment = r2s.flatMap(_.sam).maxBy(_.cigar.lengthOnTarget)
+        val longestR1Alignment = r1s.iterator.flatMap(_.sam).maxBy(_.cigar.lengthOnTarget)
+        val longestR2Alignment = r2s.iterator.flatMap(_.sam).maxBy(_.cigar.lengthOnTarget)
 
         val (longestPosAln, longestNegAln) =
           if (longestR1Alignment.positiveStrand) (longestR1Alignment, longestR2Alignment)
           else (longestR2Alignment, longestR1Alignment)
 
+        // Calculate the overlapping region in reference space; this calculation only works because we
+        // can assert from checks above that we have an FR pair that sequences towards each other.
         val (overlapStart, overlapEnd) = (longestNegAln.start, longestPosAln.end)
 
         // If the overlap isn't long enough then reject the records and return no consensus reads
