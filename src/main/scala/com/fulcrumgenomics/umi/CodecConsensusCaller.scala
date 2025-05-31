@@ -100,6 +100,21 @@ class CodecConsensusCaller(readNamePrefix: String,
   /** Returns the MI tag as is because in CODEC there is no /A or /B unlike classic duplex-seq */
   override protected[umi] def sourceMoleculeId(rec: SamRecord): String = rec[String](ConsensusTags.MolecularId)
 
+  /** Returns a clone of this consensus caller in a state where no previous reads were processed.  I.e. all counters
+    * are set to zero.  */
+  override def emptyClone(): CodecConsensusCaller = {
+    new CodecConsensusCaller(
+      readNamePrefix      = this.readNamePrefix,
+      readGroupId         = this.readGroupId,
+      minInputBaseQuality = this.minInputBaseQuality,
+      errorRatePreUmi     = this.errorRatePreUmi,
+      errorRatePostUmi    = this.errorRatePostUmi,
+      minReadsPerStrand   = this.minReadsPerStrand,
+      maxReadsPerStrand   = this.maxReadsPerStrand,
+      minDuplexLength     = this.minDuplexLength
+    )
+  }
+
   /**
     * Takes in all the reads for a source molecule and, if possible, generates one or more
     * output consensus reads as SAM records.
