@@ -158,6 +158,9 @@ object GroupReadsByUmi {
     /** Returns a canonical form of the UMI that is the same for all reads with the same UMI. */
     def canonicalize(u: Umi): Umi = u
 
+    /** If true, templates at the same coordinates will be split up by R1+R2 orientation prior to grouping. */
+    val splitTemplatesByPairOrientation: Boolean = true
+
     /** Default implementation of a method to retrieve the next ID based on a counter. */
     protected def nextId: MoleculeId = this.counter.getAndIncrement().toString
 
@@ -381,6 +384,9 @@ object GroupReadsByUmi {
       val (a, b) = split(u)
       if (a < b) u else s"${b}-${a}"
     }
+
+    /** If true, templates at the same coordinates will be split up by R1+R2 orientation prior to grouping. */
+    override val splitTemplatesByPairOrientation: Boolean = false
 
     /** Splits the paired UMI into its two parts. */
     @inline private def split(umi: Umi): (Umi, Umi) = {
@@ -798,18 +804,29 @@ class GroupReadsByUmi
     */
   def assignUmiGroups(templates: Seq[Template]): Unit = {
     val startMs = System.currentTimeMillis
-    val umis    = truncateUmis(templates.map { t => umiForRead(t) })
-    val rawToId = this.assigner.assign(umis)
 
-    templates.iterator.zip(umis.iterator).foreach { case (template, umi) =>
-      val id  = rawToId(umi)
-      template.primaryReads.foreach(r => r(this.assignTag) = id)
+    // Split reads back out so we don't accidentally group F1R2 pairs with F2R1 pairs _unless_ the assigner
+    // wants it that way (e.g. the paired assigner)
+    val subgroups = if (!this.assigner.splitTemplatesByPairOrientation) Seq(templates) else {
+      templates.groupBy { t => (t.r1.forall(_.positiveStrand), t.r2.forall(_.positiveStrand)) }.values
+    }
+
+    val umisGrouped = subgroups.sumBy { ts =>
+      val umis    = truncateUmis(ts.map { t => umiForRead(t) })
+      val rawToId = this.assigner.assign(umis)
+
+      ts.iterator.zip(umis.iterator).foreach { case (template, umi) =>
+        val id  = rawToId(umi)
+        template.primaryReads.foreach(r => r(this.assignTag) = id)
+      }
+
+      rawToId.size
     }
 
     val endMs = System.currentTimeMillis()
     val durationMs = endMs - startMs
     if (durationMs >= 2500) {
-      logger.debug(f"Grouped ${rawToId.size}%,d UMIs from ${templates.size}%,d templates in ${durationMs}%,d ms." )
+      logger.debug(f"Grouped ${umisGrouped}%,d UMIs from ${templates.size}%,d templates in ${durationMs}%,d ms." )
     }
   }
 
