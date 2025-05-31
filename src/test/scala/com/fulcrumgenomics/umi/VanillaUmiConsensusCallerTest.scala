@@ -636,4 +636,56 @@ class VanillaUmiConsensusCallerTest extends UnitSpec with OptionValues {
     val consensuses = consensusCaller.consensusReadsFromSamRecords(builder.toSeq)
     consensuses.length shouldBe 2
   }
+
+  "VanillaUmiConsensusRead.padded" should "pad reads to the left of the existing sequence" in {
+    val bases = "AACCGGTT"
+    val read = VanillaConsensusRead(
+      id="test",
+      bases=bases.getBytes,
+      quals=Array.fill(bases.length)(45.toByte),
+      depths=Array.fill(bases.length)(3.toShort),
+      errors=Array.fill(bases.length)(1.toShort)
+    )
+
+    an[Exception] should be thrownBy read.padded(newLength=7, left=true)
+    read.padded(newLength=8, left=true) shouldBe read
+
+    val padded = read.padded(newLength=12, left=true)
+    padded.baseString shouldBe s"nnnn${read.baseString}"
+    padded.quals  shouldBe Array(2, 2, 2, 2, 45, 45, 45, 45, 45, 45, 45, 45)
+    padded.depths shouldBe Array(0, 0, 0, 0, 3, 3, 3, 3, 3, 3, 3, 3)
+    padded.errors shouldBe Array(0, 0, 0, 0, 1, 1, 1, 1, 1, 1, 1, 1)
+
+    val padded2 = read.padded(newLength=12, left=true, base='N'.toByte, qual=0)
+    padded2.baseString shouldBe s"NNNN${read.baseString}"
+    padded2.quals  shouldBe Array(0, 0, 0, 0, 45, 45, 45, 45, 45, 45, 45, 45)
+    padded2.depths shouldBe Array(0, 0, 0, 0, 3, 3, 3, 3, 3, 3, 3, 3)
+    padded2.errors shouldBe Array(0, 0, 0, 0, 1, 1, 1, 1, 1, 1, 1, 1)
+  }
+
+  it should "pad reads to the right of the existing sequence" in {
+    val bases = "AACCGGTT"
+    val read = VanillaConsensusRead(
+      id="test",
+      bases=bases.getBytes,
+      quals=Array.fill(bases.length)(45.toByte),
+      depths=Array.fill(bases.length)(3.toShort),
+      errors=Array.fill(bases.length)(1.toShort)
+    )
+
+    an[Exception] should be thrownBy read.padded(newLength=7, left=true)
+    read.padded(newLength=8, left=false) shouldBe read
+
+    val padded = read.padded(newLength=12, left=false)
+    padded.baseString shouldBe s"${read.baseString}nnnn"
+    padded.quals  shouldBe Array(45, 45, 45, 45, 45, 45, 45, 45, 2, 2, 2, 2)
+    padded.depths shouldBe Array(3, 3, 3, 3, 3, 3, 3, 3, 0, 0, 0, 0)
+    padded.errors shouldBe Array(1, 1, 1, 1, 1, 1, 1, 1, 0, 0, 0, 0)
+
+    val padded2 = read.padded(newLength=12, left=false, base='N'.toByte, qual=0)
+    padded2.baseString shouldBe s"${read.baseString}NNNN"
+    padded2.quals  shouldBe Array(45, 45, 45, 45, 45, 45, 45, 45, 0, 0, 0, 0)
+    padded2.depths shouldBe Array(3, 3, 3, 3, 3, 3, 3, 3, 0, 0, 0, 0)
+    padded2.errors shouldBe Array(1, 1, 1, 1, 1, 1, 1, 1, 0, 0, 0, 0)
+  }
 }

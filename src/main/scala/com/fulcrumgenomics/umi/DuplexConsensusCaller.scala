@@ -25,12 +25,13 @@
 package com.fulcrumgenomics.umi
 
 import com.fulcrumgenomics.FgBioDef._
-import com.fulcrumgenomics.bam.api.SamRecord
+import com.fulcrumgenomics.bam.api.{SamRecord, SamWriter}
 import com.fulcrumgenomics.commons.util.LazyLogging
 import com.fulcrumgenomics.umi.DuplexConsensusCaller._
 import com.fulcrumgenomics.umi.UmiConsensusCaller.ReadType.{ReadType, _}
-import com.fulcrumgenomics.umi.UmiConsensusCaller.{SimpleRead, SourceRead}
+import com.fulcrumgenomics.umi.UmiConsensusCaller.{RejectionReason, SimpleRead, SourceRead}
 import com.fulcrumgenomics.util.NumericTypes.PhredScore
+import com.fulcrumgenomics.util.Sequences
 
 import java.lang.Math.min
 
@@ -44,12 +45,6 @@ object DuplexConsensusCaller {
   val MinInputBaseQuality: PhredScore     = 15.toByte
   val NoCall: Byte = 'N'.toByte
   val NoCallQual: PhredScore = PhredScore.MinValue
-
-  /** Additional filter strings used when rejecting reads. */
-  val FilterMinReads    = "Not Enough Reads (Either Total, AB, or BA)"
-  val FilterFragments   = "Being Fragment/Non-Paired Reads"
-  val FilterSsConsensus = "Only Generating One Strand Consensus"
-  val FilterCollision   = "Potential collision between independent duplex molecules"
 
   /**
     * Stores information about a consensus read.  Bases, arrays, and the two single
@@ -72,6 +67,20 @@ object DuplexConsensusCaller {
     require(bases.length == errors.length, "Bases and errors are not the same length.")
     require(abConsensus.length == bases.length, "Bases and AB consensus are not the same length.")
     require(baConsensus.forall(_.length == bases.length), "Bases and BA consensus are not the same length.")
+
+    /**
+      * Modifies all of the bases, quals, depths and errors arrays *in place* to reverse complement the sequence
+      * and related information in the consensus read instance.
+      *
+      * WARNING: modifies the record in place!
+      */
+    def revcomp(): Unit = {
+      Sequences.revcomp(this.bases)
+      Sequences.reverse(quals)
+      Sequences.reverse(errors)
+      this.abConsensus.revcomp()
+      this.baConsensus.foreach(_.revcomp())
+    }
   }
 }
 
@@ -96,24 +105,32 @@ object DuplexConsensusCaller {
   * @param errorRatePreUmi the estimated rate of errors in the DNA prior to attaching UMIs
   * @param errorRatePostUmi the estimated rate of errors in the DNA post attaching UMIs
   * @param minReads the minimum number of input reads to a consensus read (see [[CallDuplexConsensusReads]]).
+  * @param maxReadsPerStrand the maximum number of reads to use when calling consensus on a single strand
+  * @param rejectsWriter an optional writer to write _incoming_ SamRecords to if they are not used to generate
+  *                      a consensus read
   * */
 class DuplexConsensusCaller(override val readNamePrefix: String,
-                            override val readGroupId: String    = "A",
-                            val minInputBaseQuality: PhredScore = DuplexConsensusCaller.MinInputBaseQuality,
-                            val qualityTrim: Boolean            = false,
-                            val errorRatePreUmi: PhredScore     = DuplexConsensusCaller.ErrorRatePreUmi,
-                            val errorRatePostUmi: PhredScore    = DuplexConsensusCaller.ErrorRatePostUmi,
-                            val minReads: Seq[Int]              = Seq(1),
-                            val maxReadsPerStrand: Int          = VanillaUmiConsensusCallerOptions.DefaultMaxReads
+                            override val readGroupId: String              = "A",
+                            val minInputBaseQuality: PhredScore           = DuplexConsensusCaller.MinInputBaseQuality,
+                            val qualityTrim: Boolean                      = false,
+                            val errorRatePreUmi: PhredScore               = DuplexConsensusCaller.ErrorRatePreUmi,
+                            val errorRatePostUmi: PhredScore              = DuplexConsensusCaller.ErrorRatePostUmi,
+                            val minReads: Seq[Int]                        = Seq(1),
+                            val maxReadsPerStrand: Int                    = VanillaUmiConsensusCallerOptions.DefaultMaxReads,
+                            override val rejectsWriter: Option[SamWriter] = None
                            ) extends UmiConsensusCaller[DuplexConsensusRead] with LazyLogging {
 
   private val Seq(minTotalReads, minXyReads, minYxReads) = this.minReads.padTo(3, this.minReads.last)
+  initializeRejectCounts(r => r.usedByVanilla || r.usedByDuplex)
 
   // For depth thresholds it's required that ba <= ab <= cc
   require(minXyReads <= minTotalReads, "min-reads values must be specified high to low.")
   require(minYxReads <= minXyReads, "min-reads values must be specified high to low.")
 
-  private val ssCaller = new VanillaUmiConsensusCaller(readNamePrefix="x", options=new VanillaUmiConsensusCallerOptions(
+  protected val ssCaller = new VanillaUmiConsensusCaller(
+    readNamePrefix = "x",
+    rejectsWriter  = this.rejectsWriter,
+    options        = new VanillaUmiConsensusCallerOptions(
       errorRatePreUmi         = this.errorRatePreUmi,
       errorRatePostUmi        = this.errorRatePostUmi,
       minReads                = 1,
@@ -149,7 +166,8 @@ class DuplexConsensusCaller(override val readNamePrefix: String,
       errorRatePreUmi     = errorRatePreUmi,
       errorRatePostUmi    = errorRatePostUmi,
       minReads            = minReads,
-      maxReadsPerStrand   = maxReadsPerStrand
+      maxReadsPerStrand   = maxReadsPerStrand,
+      rejectsWriter       = this.rejectsWriter
     )
   }
 
@@ -180,7 +198,7 @@ class DuplexConsensusCaller(override val readNamePrefix: String,
     */
   override protected def consensusSamRecordsFromSamRecords(recs: Seq[SamRecord]): Seq[SamRecord] = {
     val (pairs, frags) = recs.partition(_.paired)
-    rejectRecords(frags, FilterFragments)
+    rejectRecords(frags, RejectionReason.NonPairedReads)
 
     if (pairs.isEmpty) {
       Nil
@@ -202,12 +220,12 @@ class DuplexConsensusCaller(override val readNamePrefix: String,
           // Even though we had enough reads going into consensus calling, we can
           // lose some in the process (e.g. to CIGAR filtering), and end up with 
           // consensus reads that will than fail the min-reads check
-          rejectRecords(groups.flatten, FilterMinReads)
+          rejectRecords(groups.flatten, RejectionReason.InsufficientSupport)
           Nil
         }
       }
       else {
-        rejectRecords(groups.flatten, FilterMinReads)
+        rejectRecords(groups.flatten, RejectionReason.InsufficientSupport)
         Nil
       }
     }
@@ -280,12 +298,12 @@ class DuplexConsensusCaller(override val readNamePrefix: String,
     (areAllSameStrand(singleStrand1), areAllSameStrand(singleStrand2)) match {
       case (false, _)   =>
         val ss1Mi = sourceMoleculeId(singleStrand1.head)
-        rejectRecords(ab ++ ba, FilterCollision)
+        rejectRecords(ab ++ ba, RejectionReason.PotentialCollision)
         logger.debug(s"Not all AB-R1s and BA-R2s were on the same strand for molecule with id: $ss1Mi")
         Nil
       case (_, false)   =>
         val ss2Mi = sourceMoleculeId(singleStrand2.head)
-        rejectRecords(ab ++ ba, FilterCollision)
+        rejectRecords(ab ++ ba, RejectionReason.PotentialCollision)
         logger.debug(s"Not all AB-R2s and BA-R1s were on the same strand for molecule with id: $ss2Mi")
         Nil
       case (true, true) =>
@@ -308,8 +326,8 @@ class DuplexConsensusCaller(override val readNamePrefix: String,
         // Call the duplex reads
         val duplexR1Sources = filteredAbR1s ++ filteredBaR2s
         val duplexR2Sources = filteredAbR2s ++ filteredBaR1s
-        val duplexR1 = duplexConsensus(abR1Consensus, baR2Consensus, duplexR1Sources)
-        val duplexR2 = duplexConsensus(abR2Consensus, baR1Consensus, duplexR2Sources)
+        val duplexR1 = duplexConsensus(abR1Consensus, baR2Consensus, Some(duplexR1Sources))
+        val duplexR2 = duplexConsensus(abR2Consensus, baR1Consensus, Some(duplexR2Sources))
 
         // Convert to SamRecords and return
         (duplexR1, duplexR2) match {
@@ -322,7 +340,7 @@ class DuplexConsensusCaller(override val readNamePrefix: String,
             // NB: some reads may have been rejected already in filterToMostCommonAlignment, so just
             //     reject those records that survived the initial filtering.
             val remainingRecs = filteredXs ++ filteredYs
-            rejectRecords(remainingRecs.flatMap(_.sam), FilterSsConsensus)
+            rejectRecords(remainingRecs.flatMap(_.sam), RejectionReason.SingleStrandOnly)
             Nil
         }
     }
@@ -358,12 +376,13 @@ class DuplexConsensusCaller(override val readNamePrefix: String,
     */
   private[umi] def duplexConsensus(ab: Option[VanillaConsensusRead],
                                    ba: Option[VanillaConsensusRead],
-                                   sourceReads: Seq[SourceRead]): Option[DuplexConsensusRead] = {
+                                   sourceReads: Option[Seq[SourceRead]]): Option[DuplexConsensusRead] = {
     // Calculate the length that we'll create a duplex read as "the shorter of the available reads",
     // and then filter each read to make sure it has some coverage in that section of the read
     val len = min(ab.map(_.length).getOrElse(Int.MaxValue), ba.map(_.length).getOrElse(Int.MaxValue))
     val abX = ab.filter(_.depths.iterator.take(len).exists(_ > 0))
     val baX = ba.filter(_.depths.iterator.take(len).exists(_ > 0))
+    val sourceReadsArray = sourceReads.map(_.toArray).getOrElse(Array())
 
     (abX, baX) match {
       case (Some(a), None)    => Some(DuplexConsensusRead(id=a.id, a.bases, a.quals, a.errors, a, None))
@@ -395,17 +414,27 @@ class DuplexConsensusCaller(override val readNamePrefix: String,
           bases(i) = base
           quals(i) = qual
 
-          // NB: optimized based on profiling; was previously:
-          // sourceReads.count(s => s.length > i && isError(s.bases(i), rawBase))
-          var numErrors = 0
-          val sourceReadsArray = sourceReads.toArray
-          forloop(from=0, until=sourceReadsArray.length) { j =>
-            val sourceRead = sourceReadsArray(j)
-            if (sourceRead.length > i && isError(sourceRead.bases(i), rawBase)) {
-              numErrors += 1
+          if (sourceReads.isDefined) {
+            // NB: optimized based on profiling; was previously:
+            // sourceReads.count(s => s.length > i && isError(s.bases(i), rawBase))
+            var numErrors = 0
+            forloop(from=0, until=sourceReadsArray.length) { j =>
+              val sourceRead = sourceReadsArray(j)
+              if (sourceRead.length > i && isError(sourceRead.bases(i), rawBase)) {
+                numErrors += 1
+              }
             }
+            errors(i) = min(numErrors, Short.MaxValue).toShort
           }
-          errors(i) = min(numErrors, Short.MaxValue).toShort
+          else {
+            // If we don't have source reads, we approximate the errors; this should be accurate when the
+            // two single strand bases agree, and approximate when they disagree
+            errors(i) = min({
+              if (aBase == bBase) a.errors(i) + b.errors(i)
+              else if (aBase == rawBase) a.errors(i) + (b.depths(i) - b.errors(i))
+              else b.errors(i) + (a.depths(i) - a.errors(i))
+            }, Short.MaxValue).toShort
+          }
         }
 
         Some(DuplexConsensusRead(id=id, bases, quals, errors, a.truncate(bases.length), Some(b.truncate(bases.length))))
