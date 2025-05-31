@@ -159,7 +159,7 @@ object GroupReadsByUmi {
     def canonicalize(u: Umi): Umi = u
 
     /** If true, templates at the same coordinates will be split up by R1+R2 orientation prior to grouping. */
-    def splitTemplatesByPairOrientation: Boolean = true
+    val splitTemplatesByPairOrientation: Boolean = true
 
     /** Default implementation of a method to retrieve the next ID based on a counter. */
     protected def nextId: MoleculeId = this.counter.getAndIncrement().toString
@@ -386,7 +386,7 @@ object GroupReadsByUmi {
     }
 
     /** If true, templates at the same coordinates will be split up by R1+R2 orientation prior to grouping. */
-    override def splitTemplatesByPairOrientation: Boolean = false
+    override val splitTemplatesByPairOrientation: Boolean = false
 
     /** Splits the paired UMI into its two parts. */
     @inline private def split(umi: Umi): (Umi, Umi) = {
@@ -811,20 +811,22 @@ class GroupReadsByUmi
       templates.groupBy { t => (t.r1.forall(_.positiveStrand), t.r2.forall(_.positiveStrand)) }.values
     }
 
-    subgroups.foreach { ts =>
-        val umis    = truncateUmis(ts.map { t => umiForRead(t) })
-        val rawToId = this.assigner.assign(umis)
+    val umisGrouped = subgroups.sumBy { ts =>
+      val umis    = truncateUmis(ts.map { t => umiForRead(t) })
+      val rawToId = this.assigner.assign(umis)
 
-        ts.iterator.zip(umis.iterator).foreach { case (template, umi) =>
-          val id  = rawToId(umi)
-          template.primaryReads.foreach(r => r(this.assignTag) = id)
-        }
+      ts.iterator.zip(umis.iterator).foreach { case (template, umi) =>
+        val id  = rawToId(umi)
+        template.primaryReads.foreach(r => r(this.assignTag) = id)
       }
+
+      rawToId.size
+    }
 
     val endMs = System.currentTimeMillis()
     val durationMs = endMs - startMs
     if (durationMs >= 2500) {
-      logger.debug(f"Grouped UMIs from ${templates.size}%,d templates in ${durationMs}%,d ms." )
+      logger.debug(f"Grouped ${umisGrouped}%,d UMIs from ${templates.size}%,d templates in ${durationMs}%,d ms." )
     }
   }
 

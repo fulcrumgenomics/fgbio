@@ -484,13 +484,15 @@ class GroupReadsByUmiTest extends UnitSpec with OptionValues with PrivateMethodT
     builder.addPair(name="rr",   start1=  1, start2=201, strand1=Minus, strand2=Minus, attrs=Map("RX" -> "ACGT-TTGA"))
     builder.addPair(name="r1f2", start1=100, start2=300, strand1=Minus, strand2=Plus,  attrs=Map("RX" -> "ACGT-TTGA"))
     builder.addPair(name="r2f1", start1=300, start2=100, strand1=Plus,  strand2=Minus, attrs=Map("RX" -> "ACGT-TTGA"))
+    builder.addFrag(name="Frag", start=100, strand=Minus, attrs=Map("RX" -> "ACGT-TTGA"))
+    builder.addFrag(name="fRag", start=1,   strand=Plus,  attrs=Map("RX" -> "ACGT-TTGA"))
 
     val in   = builder.toTempFile()
     val out  = Files.createTempFile("umi_grouped.", ".sam")
     new GroupReadsByUmi(input=in, output=out, familySizeHistogram=None, rawTag="RX", assignTag="MI", strategy=Strategy.Adjacency, edits=1).execute()
 
     val recs = readBamRecs(out)
-    recs.map(r => r[String]("MI")).distinct.size shouldBe 6  // each pair is a separate MI
+    recs.map(r => r[String]("MI")).distinct.size shouldBe 8  // each template is a separate MI
   }
 
   Seq(
