@@ -524,6 +524,8 @@ object Strategy extends FgBioEnum[Strategy] {
     |`samtools sort --template-coordinate --threads $(nrpoc)` for the pre-sorting.
     |The output will always be written in template-coordinate order.
     |
+    |During grouping, reads and templates are filtered out as follows:
+    |
     |1. Templates are filtered if all reads for the template are unmapped
     |2. Templates are filtered if any non-secondary, non-supplementary read has mapping quality < `min-map-q`
     |3. Templates are filtered if R1 and R2 are mapped to different chromosomes and `--allow-inter-contig` is false
