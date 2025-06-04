@@ -512,15 +512,17 @@ object Strategy extends FgBioEnum[Strategy] {
     |the reads from the template, used from earliest mapping position to latest. Reads that
     |have the same end positions are then sub-grouped by UMI sequence.
     |
-    |Accepts reads in any order (including unsorted) and outputs them sorted by template-coordinate order
-    |(SO:unsorted GO:query SS:unsorted:template-coordinate), defined as:
+    |Accepts reads in any order (including `unsorted`) and outputs reads sorted by:
     |
     |   1. The lower genome coordinate of the two outer ends of the templates (strand-aware)
     |   2. The sequencing library
     |   3. The assigned UMI tag
     |   4. Read Name
     |
-    |During grouping, reads and templates are filtered out as follows:
+    |It is recommended to sort the reads into template-coordinate (i.e. `SO:unsorted GO:query SS:unsorted:template-coordinate`)
+    |prior to running this tool to avoid this tool re-sorting the input.  It is recommended to use
+    |`samtools sort --template-coordinate --threads $(nrpoc)` for the pre-sorting.
+    |The output will always be written in template-coordinate order.
     |
     |1. Templates are filtered if all reads for the template are unmapped
     |2. Templates are filtered if any non-secondary, non-supplementary read has mapping quality < `min-map-q`
