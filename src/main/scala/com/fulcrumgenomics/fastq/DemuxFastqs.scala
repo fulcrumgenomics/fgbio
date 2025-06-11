@@ -312,12 +312,11 @@ object DemuxFastqs {
       |
       |[See the Illumina FASTQ conventions for more details.](https://support.illumina.com/help/BaseSpace_OLH_009008/Content/Source/Informatics/BS/FASTQFiles_Intro_swBS.htm)
       |
-      |The `--illumina-standards` option may not be specified with the three options above.  Use this option if you
-      |intend to upload to Illumina BaseSpace.  This option implies:
+      |Use the following options to upload to Illumina BaseSpace:
       |
       |`--omit-fastq-read-numbers=true --include-sample-barcodes-in-fastq=false --illumina-file-names=true`
       |
-      |[See the Illumina Basespace standards described here](https://help.basespace.illumina.com/articles/tutorials/upload-data-using-web-uploader/).
+      |[See the Illumina BaseSpace standards described here](https://help.basespace.illumina.com/articles/tutorials/upload-data-using-web-uploader/).
       |
       |To output with recent Illumina conventions (circa 2021) that match `bcl2fastq` and `BCLconvert`, use:
       |
@@ -366,15 +365,11 @@ class DemuxFastqs
         and read two) as defined by the corresponding read structure(s).
      """)
  val includeAllBasesInFastqs: Boolean = false,
- @deprecated(message="Use outputStandards instead", since="1.3.0")
- @arg(doc="Output FASTQs according to Illumina BaseSpace Sequence Hub naming standards.  This is differfent than Illumina naming standards.",
-   mutex=Array("omitFastqReadNumbers", "includeSampleBarcodesInFastq", "illuminaFileNames"))
- val illuminaStandards: Boolean = false,
- @arg(doc="Do not include trailing /1 or /2 for R1 and R2 in the FASTQ read name.", mutex=Array("illuminaStandards"))
+ @arg(doc="Do not include trailing /1 or /2 for R1 and R2 in the FASTQ read name.")
  val omitFastqReadNumbers: Boolean = false,
- @arg(doc="Insert the sample barcode into the FASTQ header.", mutex=Array("illuminaStandards"))
+ @arg(doc="Insert the sample barcode into the FASTQ header.")
  val includeSampleBarcodesInFastq: Boolean = false,
- @arg(doc="Name the output files according to the Illumina file name standards.", mutex=Array("illuminaStandards"))
+ @arg(doc="Name the output files according to the Illumina file name standards.")
  val illuminaFileNames: Boolean = false,
  @arg(doc="Keep only passing filter reads if true, otherwise keep all reads. Passing filter reads are determined from the comment in the FASTQ header.")
  val omitFailingReads: Boolean = false,
@@ -383,21 +378,12 @@ class DemuxFastqs
  @arg(doc="Mask bases with a quality score below the specified threshold as Ns") val maskBasesBelowQuality: Int = 0,
 ) extends FgBioTool with LazyLogging {
 
-  @annotation.nowarn("msg=value illuminaStandards in class DemuxFastqs is deprecated")
   private val fastqStandards: FastqStandards = {
-    if (illuminaStandards) {
-      logger.warning("The `--illumina-standards` option will be removed in a future version, please use `--output-standards=Illumina`")
-      // NB: include read numbers
-      FastqStandards(
-        illuminaFileNames     = true
-      )
-    } else {
-      FastqStandards(
-        includeReadNumbers    = !omitFastqReadNumbers,
-        includeSampleBarcodes = includeSampleBarcodesInFastq,
-        illuminaFileNames     = illuminaFileNames
-      )
-    }
+    FastqStandards(
+      includeReadNumbers    = !omitFastqReadNumbers,
+      includeSampleBarcodes = includeSampleBarcodesInFastq,
+      illuminaFileNames     = illuminaFileNames
+    )
   }
 
   import DemuxFastqs._

@@ -93,10 +93,7 @@ class ReferenceSetBuilder(val assembly: Option[String] = Some("testassembly"),
     out.close()
 
     val dict = SequenceDictionary(infos.toSeq:_*)
-    val header = {
-      import com.fulcrumgenomics.fasta.Converters.ToSAMSequenceDictionary
-      new SAMFileHeader(dict.asSam)
-    }
+    val header = new SAMFileHeader(dict.toSam)
 
     // Create the sequence dictionary
     val dictOut    = PathUtil.replaceExtension(path, ".dict")

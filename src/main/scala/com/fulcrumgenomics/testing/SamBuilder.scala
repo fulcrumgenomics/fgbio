@@ -73,7 +73,7 @@ class SamBuilder(val readLength: Int=100,
       }
       SequenceDictionary(seqs:_*)
     }
-    header.setSequenceDictionary(dict.asSam)
+    header.setSequenceDictionary(dict.toSam)
   }
 
   /** Shorter accessor for the sequence dictionary. */

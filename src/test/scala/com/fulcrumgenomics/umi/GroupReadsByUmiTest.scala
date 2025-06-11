@@ -174,7 +174,7 @@ class GroupReadsByUmiTest extends UnitSpec with OptionValues with PrivateMethodT
   }
 
   "GroupReadsByUmi.umiForRead" should "correctly assign a/b for paired UMI prefixes" in {
-    val tool = new GroupReadsByUmi(rawTag="RX", assignTag="MI", strategy=Strategy.Paired, edits = 0, allowInterContig=true)
+    val tool = new GroupReadsByUmi(rawTag="RX", assignTag="MI", strategy=Strategy.Paired, edits = 0)
     val builder = new SamBuilder(readLength=100)
     val templates = Seq(
       // These 4 should be a::AAA-b::TTT since contig1 is lower
@@ -202,7 +202,7 @@ class GroupReadsByUmiTest extends UnitSpec with OptionValues with PrivateMethodT
   }
 
   it should "correctly assign a/b for paired UMI prefixes when the UMI for one end of the source molecule is absent" in {
-    val tool = new GroupReadsByUmi(rawTag = "RX", assignTag = "MI", strategy = Strategy.Paired, edits = 0, allowInterContig = true)
+    val tool = new GroupReadsByUmi(rawTag = "RX", assignTag = "MI", strategy = Strategy.Paired, edits = 0)
     val builder = new SamBuilder(readLength = 100)
     val templates = Seq(
       // This should be a::AAA-b:: since contig1 is lower
@@ -410,7 +410,7 @@ class GroupReadsByUmiTest extends UnitSpec with OptionValues with PrivateMethodT
     val in   = builder.toTempFile()
     val out  = Files.createTempFile("umi_grouped.", ".sam")
     val hist = Files.createTempFile("umi_grouped.", ".histogram.txt")
-    new GroupReadsByUmi(input=in, output=out, familySizeHistogram=Some(hist), rawTag="RX", assignTag="MI", strategy=Strategy.Paired, edits=1, allowInterContig=true).execute()
+    new GroupReadsByUmi(input=in, output=out, familySizeHistogram=Some(hist), rawTag="RX", assignTag="MI", strategy=Strategy.Paired, edits=1).execute()
 
     val recs = readBamRecs(out)
     val aIds = recs.filter(_.name.startsWith("a")).map(r => r[String]("MI")).distinct

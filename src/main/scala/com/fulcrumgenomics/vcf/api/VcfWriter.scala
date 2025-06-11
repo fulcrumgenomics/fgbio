@@ -65,13 +65,12 @@ object VcfWriter {
     * @return a VCF writer to write to the given path
     */
   def apply(path: PathToVcf, header: VcfHeader, async: Boolean = DefaultUseAsyncIo): VcfWriter = {
-    import com.fulcrumgenomics.fasta.Converters.ToSAMSequenceDictionary
     val javaHeader = VcfConversions.toJavaHeader(header)
     require(!Files.isDirectory(path), s"Path cannot be a directory! Found $path")
 
     val builder = new VariantContextWriterBuilder()
       .setOutputPath(path)
-      .setReferenceDictionary(header.dict.asSam)
+      .setReferenceDictionary(header.dict.toSam)
       .setOption(Options.ALLOW_MISSING_FIELDS_IN_HEADER)
       .setBuffer(Io.bufferSize)
 
