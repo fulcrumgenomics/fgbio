@@ -24,10 +24,10 @@
 
 package com.fulcrumgenomics.umi
 
-import com.fulcrumgenomics.FgBioDef.unreachable
+import com.fulcrumgenomics.FgBioDef._
 import com.fulcrumgenomics.bam.api.SamRecord
 import com.fulcrumgenomics.bam.{ClippingMode, SamRecordClipper}
-import com.fulcrumgenomics.umi.DuplexConsensusCaller.{FilterFragments, FilterMinReads}
+import com.fulcrumgenomics.umi.DuplexConsensusCaller.{DuplexConsensusRead, FilterFragments, FilterMinReads}
 import com.fulcrumgenomics.umi.UmiConsensusCaller.{ReadType, SourceRead}
 import com.fulcrumgenomics.util.NumericTypes.PhredScore
 import com.fulcrumgenomics.util.Sequences
@@ -68,6 +68,10 @@ import com.fulcrumgenomics.util.Sequences
   *                          triggering random downsampling
   * @param minDuplexLength the minimum length of the duplex region of a consensus read for the consensus read to be
   *                        built and emitted
+  * @param singleStrandQual Reduce quality scores in single stranded regions of the consensus read to the given quality
+  * @param outerBasesQual Reduce the first and last `outer-base-length` bases to the given quality
+  * @param outerBasesLength The number of bases at the start and end of the read to reduce quality over *if*
+  *                        outerBasesQual is specified
   */
 class CodecConsensusCaller(readNamePrefix: String,
                            readGroupId: String = "A",
@@ -76,7 +80,10 @@ class CodecConsensusCaller(readNamePrefix: String,
                            errorRatePostUmi: PhredScore = DuplexConsensusCaller.ErrorRatePostUmi,
                            val minReadsPerStrand: Int = 1,
                            maxReadsPerStrand: Int = VanillaUmiConsensusCallerOptions.DefaultMaxReads,
-                           minDuplexLength: Int = 1
+                           minDuplexLength: Int = 1,
+                           val singleStrandQual: Option[PhredScore] = None,
+                           val outerBasesQual: Option[PhredScore] = None,
+                           val outerBasesLength: Int = 5,
                           ) extends DuplexConsensusCaller(
   readNamePrefix      = readNamePrefix,
   readGroupId         = readGroupId,
@@ -193,6 +200,7 @@ class CodecConsensusCaller(readNamePrefix: String,
 
               val consensus = duplexConsensus(Some(paddedR1), Some(paddedR2), sourceReads = None)
               if (longestR1Alignment.negativeStrand) consensus.foreach(_.revcomp())
+              consensus.foreach(maskCodecConsensusQuals)
 
               val umis = recs.iterator.map(r => r[String](ConsensusTags.UmiBases)).toSeq
               consensus
@@ -238,5 +246,33 @@ class CodecConsensusCaller(readNamePrefix: String,
       cigar = cigar,
       sam   = Some(rec)
     )
+  }
+
+  /** Applies quality masking to the consensus read based on the singleStrandQual and outerBasesQual parameters. */
+  private[umi] def maskCodecConsensusQuals(rec: DuplexConsensusRead): Unit = {
+    val quals   = rec.quals
+
+    // Mask the ends of the reads if desired
+    if (this.outerBasesLength > 0) {
+      val lastIdx = quals.length - 1
+      this.outerBasesQual.foreach { q =>
+        forloop (from=0, until=Math.min(this.outerBasesLength, quals.length)) { i =>
+          quals(i) = q
+          quals(lastIdx - i) = q
+        }
+      }
+    }
+
+    // Mask single-stranded regions of the consensus
+    this.singleStrandQual.foreach { q =>
+      val a = rec.abConsensus.bases
+      val b = rec.baConsensus.getOrElse(unreachable("Codec consensus found without a second strand consensus.")).bases
+
+      forloop (from=0, until=quals.length) { i =>
+        if (a(i) == 'N' || b(i) == 'N') {
+          quals(i) = q
+        }
+      }
+    }
   }
 }

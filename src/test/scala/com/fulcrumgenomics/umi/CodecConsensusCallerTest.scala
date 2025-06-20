@@ -28,6 +28,7 @@ import com.fulcrumgenomics.FgBioDef._
 import com.fulcrumgenomics.bam.api.SamRecord
 import com.fulcrumgenomics.testing.SamBuilder.{Minus, Plus}
 import com.fulcrumgenomics.testing.{SamBuilder, UnitSpec}
+import com.fulcrumgenomics.umi.DuplexConsensusCaller.DuplexConsensusRead
 import com.fulcrumgenomics.util.Sequences
 import org.scalatest.OptionValues
 
@@ -85,6 +86,32 @@ class CodecConsensusCallerTest extends UnitSpec with OptionValues {
     rec.bases = sb.toString()
   }
 
+  /** Create a duplex consensus read for testing purposes. */
+  private def duplex(length: Int): DuplexConsensusRead = {
+    val bases   = ("A" * length).getBytes
+    val quals   = Array.fill(length)(90.toByte)
+    val ssQuals = Array.fill(length)(45.toByte)
+    DuplexConsensusRead(
+      id="codec-read",
+      bases = bases,
+      quals = quals,
+      errors = Array.fill(length)(0),
+      abConsensus = VanillaConsensusRead(
+        id="codec-read/A",
+        bases=bases.clone(),
+        quals=ssQuals.clone(),
+        depths=Array.fill(length)(2),
+        errors=Array.fill(length)(0)
+      ),
+      baConsensus = Some(VanillaConsensusRead(
+        id="codec-read/B",
+        bases=bases.clone(),
+        quals=ssQuals.clone(),
+        depths=Array.fill(length)(2),
+        errors=Array.fill(length)(0)
+      ))
+    )
+  }
 
   "CodecConsensusCaller.consensusSamRecordsFromSamRecords" should "make a consensus from two simple reads" in {
     val builder = new SamBuilder(readLength=30, baseQuality=35)
@@ -232,5 +259,38 @@ class CodecConsensusCallerTest extends UnitSpec with OptionValues {
 
     new CodecConsensusCaller(readNamePrefix="codec", minReadsPerStrand=1, minDuplexLength=1)
       .consensusReadsFromSamRecords(raw) shouldBe Seq()
+  }
+
+  //////////////////////////////////////////////////////////////////////////////
+  // Tests for quality masking
+  //////////////////////////////////////////////////////////////////////////////
+
+  "CodecConsensusCaller.maskCodecConsensusQuals" should "mask end qualities" in {
+    val caller = new CodecConsensusCaller(readNamePrefix="c", outerBasesLength=7, outerBasesQual=Some(5))
+    val read   = duplex(50)
+    caller.maskCodecConsensusQuals(read)
+    read.quals shouldBe (Array.fill(7)(5) ++ Array.fill(50-7-7)(90) ++ Array.fill(7)(5))
+  }
+
+  it should "mask single stranded regions _and_ bases" in {
+    val caller = new CodecConsensusCaller(readNamePrefix="c", singleStrandQual=Some(4))
+
+    // By default everything is double-stranded, so go in and add some single-stranded bits
+    val read   = duplex(50)
+    val ssBases = Set(0, 1, 2, 3, 12, 33, 46, 47, 48, 49)
+    ssBases.foreach { idx =>
+      read.abConsensus.bases(idx) = 'N'
+      read.abConsensus.quals(idx) = 2
+    }
+    caller.maskCodecConsensusQuals(read)
+
+    read.quals.zipWithIndex.foreach { case (qual, idx) =>
+      if (ssBases.contains(idx)) {
+        qual shouldBe 4
+      }
+      else {
+        qual shouldBe 90
+      }
+    }
   }
 }
