@@ -96,6 +96,9 @@ class CallCodecConsensusReads
           """)
  val maxReadPairs: Option[Int] = None,
  @arg(flag='d', doc="Minimum length of the duplex region (where R1 and R2 overlap).") val minDuplexLength: Int = 1,
+ @arg(flag='q', doc="Reduce quality scores in single stranded regions of the consensus read to the given quality.") val singleStrandQual: Option[PhredScore] = None,
+ @arg(flag='Q', doc="Reduce the first and last `outer-bases-length` bases to the given quality.") val outerBasesQual: Option[PhredScore] = None,
+ @arg(flag='O', doc="The number of bases at the start and end of the read to reduce quality over *if* `outer-bases-qual` is specified.") val outerBasesLength: Int = 5,
  @arg(doc="The number of threads to use while consensus calling.") val threads: Int = 1,
 ) extends FgBioTool with LazyLogging {
 
@@ -106,6 +109,9 @@ class CallCodecConsensusReads
   validate(minReadPairs >= 1, "min-read-pairs must be >= 1")
   validate(maxReadPairs.forall(_ >= minReadPairs), "max-read-pairs must be >= min-read-pairs")
   validate(minDuplexLength >= 1, "min-duplex-length must be >= 1")
+  validate(outerBasesLength >= 0, "outer-bases-length must be >= 0")
+  validate(outerBasesQual.forall(_ >= PhredScore.MinValue), s"outer-bases-qual must be >= ${PhredScore.MinValue}")
+  validate(singleStrandQual.forall(_ >= PhredScore.MinValue), s"single-strand-qual must be >= ${PhredScore.MinValue}")
 
   override def execute(): Unit = {
     val in = SamSource(input)
@@ -123,7 +129,10 @@ class CallCodecConsensusReads
       errorRatePostUmi    = errorRatePostUmi,
       minReadsPerStrand   = minReadPairs,
       maxReadsPerStrand   = maxReadPairs.getOrElse(VanillaUmiConsensusCallerOptions.DefaultMaxReads),
-      minDuplexLength     = minDuplexLength
+      minDuplexLength     = minDuplexLength,
+      singleStrandQual    = singleStrandQual,
+      outerBasesQual      = outerBasesQual,
+      outerBasesLength    = outerBasesLength
     )
     val progress = ProgressLogger(logger, unit=1000000)
     val iterator = new ConsensusCallingIterator(in.iterator, caller, Some(progress), threads)
