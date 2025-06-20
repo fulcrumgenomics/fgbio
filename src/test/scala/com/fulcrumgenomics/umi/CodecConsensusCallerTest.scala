@@ -261,6 +261,35 @@ class CodecConsensusCallerTest extends UnitSpec with OptionValues {
       .consensusReadsFromSamRecords(raw) shouldBe Seq()
   }
 
+  it should "not emit a consensus when there are a lot of disagreements between strands of the duplex" in {
+    val builder = new SamBuilder(readLength=100, baseQuality=35)
+    val raw = builder.addPair(
+      contig=0, start1=100, start2=100, cigar1="100M", cigar2="100M", attrs=Map(("RX", "ACC-TGA"), ("MI", "hi"))
+    ).tapEach(setReadSequence)
+
+    // First that we should get a consensus without modifying the reads
+    new CodecConsensusCaller(readNamePrefix="codec", minReadsPerStrand=1, minDuplexLength=1, maxDuplexDisagreements=1, maxDuplexDisagreementRate=0.05)
+      .consensusReadsFromSamRecords(raw) should have length 1
+
+    // Now mess up the reads so they disagree a whole bunch
+    Seq(5, 16, 27, 33, 67, 98).foreach { i =>
+      raw.head.bases(i) = 'A'
+      raw.last.bases(i) = 'C'
+    }
+
+    // Tests using counts
+    new CodecConsensusCaller(readNamePrefix="codec", minReadsPerStrand=1, minDuplexLength=1, maxDuplexDisagreements=6)
+      .consensusReadsFromSamRecords(raw) should have length 1
+    new CodecConsensusCaller(readNamePrefix="codec", minReadsPerStrand=1, minDuplexLength=1, maxDuplexDisagreements=5)
+      .consensusReadsFromSamRecords(raw) should have length 0
+
+    // Tests using rate
+    new CodecConsensusCaller(readNamePrefix="codec", minReadsPerStrand=1, minDuplexLength=1, maxDuplexDisagreementRate=0.06)
+      .consensusReadsFromSamRecords(raw) should have length 1
+    new CodecConsensusCaller(readNamePrefix="codec", minReadsPerStrand=1, minDuplexLength=1, maxDuplexDisagreementRate=0.05999)
+      .consensusReadsFromSamRecords(raw) should have length 0
+  }
+
   //////////////////////////////////////////////////////////////////////////////
   // Tests for quality masking
   //////////////////////////////////////////////////////////////////////////////

@@ -99,6 +99,8 @@ class CallCodecConsensusReads
  @arg(flag='q', doc="Reduce quality scores in single stranded regions of the consensus read to the given quality.") val singleStrandQual: Option[PhredScore] = None,
  @arg(flag='Q', doc="Reduce the first and last `outer-bases-length` bases to the given quality.") val outerBasesQual: Option[PhredScore] = None,
  @arg(flag='O', doc="The number of bases at the start and end of the read to reduce quality over *if* `outer-bases-qual` is specified.") val outerBasesLength: Int = 5,
+ @arg(flag='x', doc="Discard consensus reads where greater than this fraction of duplex bases disagree.") val maxDuplexDisagreementRate: Double = 1.0,
+ @arg(flag='X', doc="Discard consensus reads where greater than this number of duplex bases disagree.") val maxDuplexDisagreements: Int = Int.MaxValue,
  @arg(doc="The number of threads to use while consensus calling.") val threads: Int = 1,
 ) extends FgBioTool with LazyLogging {
 
@@ -122,17 +124,19 @@ class CallCodecConsensusReads
     val out = SamWriter(output, outHeader, sort=sortOrder)
 
     val caller = new CodecConsensusCaller(
-      readNamePrefix      = readNamePrefix.getOrElse(UmiConsensusCaller.makePrefixFromSamHeader(in.header)),
-      readGroupId         = readGroupId,
-      minInputBaseQuality = minInputBaseQuality,
-      errorRatePreUmi     = errorRatePreUmi,
-      errorRatePostUmi    = errorRatePostUmi,
-      minReadsPerStrand   = minReadPairs,
-      maxReadsPerStrand   = maxReadPairs.getOrElse(VanillaUmiConsensusCallerOptions.DefaultMaxReads),
-      minDuplexLength     = minDuplexLength,
-      singleStrandQual    = singleStrandQual,
-      outerBasesQual      = outerBasesQual,
-      outerBasesLength    = outerBasesLength
+      readNamePrefix            = readNamePrefix.getOrElse(UmiConsensusCaller.makePrefixFromSamHeader(in.header)),
+      readGroupId               = readGroupId,
+      minInputBaseQuality       = minInputBaseQuality,
+      errorRatePreUmi           = errorRatePreUmi,
+      errorRatePostUmi          = errorRatePostUmi,
+      minReadsPerStrand         = minReadPairs,
+      maxReadsPerStrand         = maxReadPairs.getOrElse(VanillaUmiConsensusCallerOptions.DefaultMaxReads),
+      minDuplexLength           = minDuplexLength,
+      singleStrandQual          = singleStrandQual,
+      outerBasesQual            = outerBasesQual,
+      outerBasesLength          = outerBasesLength,
+      maxDuplexDisagreements    = this.maxDuplexDisagreements,
+      maxDuplexDisagreementRate = this.maxDuplexDisagreementRate,
     )
     val progress = ProgressLogger(logger, unit=1000000)
     val iterator = new ConsensusCallingIterator(in.iterator, caller, Some(progress), threads)
