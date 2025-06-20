@@ -208,7 +208,7 @@ class CodecConsensusCaller(readNamePrefix: String,
 
               // Calculate number and rate of duplex errors ... but don't really if the thresholds won't need them
               val (duplexErrors, duplexErrorRate) = {
-                if (this.maxDuplexDisagreementRate < 1 && this.maxDuplexDisagreements < overlapLength) (0, 0.0)
+                if (this.maxDuplexDisagreementRate >= 1 && this.maxDuplexDisagreements >= overlapLength) (0, 0.0)
                 else {
                   val (duplexBases, duplexErrors) = computeDuplexCounts(paddedR1, paddedR2)
                   val duplexErrorRate = if (duplexBases > 0) duplexErrors.toDouble / duplexBases.toDouble else 0
