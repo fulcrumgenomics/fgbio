@@ -72,6 +72,10 @@ import com.fulcrumgenomics.util.Sequences
   * @param outerBasesQual Reduce the first and last `outer-base-length` bases to the given quality
   * @param outerBasesLength The number of bases at the start and end of the read to reduce quality over *if*
   *                        outerBasesQual is specified
+  * @param maxDuplexDisagreements filter out reads with more than this number of disagreements between the two single
+  *                               strand consensus reads (only counting where both consensus reads make a call)
+  * @param maxDuplexDisagreementRate filter out reads with more than this rate of disagreements between the two single
+  *                                  strand consensus reads (only counting where both consensus reads make a call)
   */
 class CodecConsensusCaller(readNamePrefix: String,
                            readGroupId: String = "A",
@@ -84,6 +88,8 @@ class CodecConsensusCaller(readNamePrefix: String,
                            val singleStrandQual: Option[PhredScore] = None,
                            val outerBasesQual: Option[PhredScore] = None,
                            val outerBasesLength: Int = 5,
+                           maxDuplexDisagreements: Int = Int.MaxValue,
+                           maxDuplexDisagreementRate: Double = 1.0
                           ) extends DuplexConsensusCaller(
   readNamePrefix      = readNamePrefix,
   readGroupId         = readGroupId,
@@ -102,6 +108,7 @@ class CodecConsensusCaller(readNamePrefix: String,
 
   private val FilterDuplexTooShort = s"Top/Bottom Strand Overlap < ${minDuplexLength} bases."
   private val FilterIndelError = "Indel error between strands in duplex overlap."
+  private val FilterHighDuplexDisagreement = "Duplex had too many disagreements between strands."
   private val clipper = new SamRecordClipper(ClippingMode.Hard, autoClipAttributes = false)
 
   /** Returns the MI tag as is because in CODEC there is no /A or /B unlike classic duplex-seq */
@@ -160,9 +167,10 @@ class CodecConsensusCaller(readNamePrefix: String,
         // Calculate the overlapping region in reference space; this calculation only works because we
         // can assert from checks above that we have an FR pair that sequences towards each other.
         val (overlapStart, overlapEnd) = (longestNegAln.start, longestPosAln.end)
+        val overlapLength = overlapEnd - overlapStart + 1
 
         // If the overlap isn't long enough then reject the records and return no consensus reads
-        if (overlapEnd - overlapStart + 1 < minDuplexLength) {
+        if (overlapLength < minDuplexLength) {
           rejectRecords((r1s.view ++ r2s.view).flatMap(_.sam), FilterDuplexTooShort)
           Nil
         }
@@ -198,15 +206,31 @@ class CodecConsensusCaller(readNamePrefix: String,
               val paddedR1 = r1Consensus.padded(newLength = consensusLength, left = longestR1Alignment.negativeStrand, qual = 0)
               val paddedR2 = r2Consensus.padded(newLength = consensusLength, left = longestR2Alignment.negativeStrand, qual = 0)
 
-              val consensus = duplexConsensus(Some(paddedR1), Some(paddedR2), sourceReads = None)
-              if (longestR1Alignment.negativeStrand) consensus.foreach(_.revcomp())
-              consensus.foreach(maskCodecConsensusQuals)
+              // Calculate number and rate of duplex errors ... but don't really if the thresholds won't need them
+              val (duplexErrors, duplexErrorRate) = {
+                if (this.maxDuplexDisagreementRate < 1 && this.maxDuplexDisagreements < overlapLength) (0, 0.0)
+                else {
+                  val (duplexBases, duplexErrors) = computeDuplexCounts(paddedR1, paddedR2)
+                  val duplexErrorRate = if (duplexBases > 0) duplexErrors.toDouble / duplexBases.toDouble else 0
+                  (duplexErrors, duplexErrorRate)
+                }
+              }
 
-              val umis = recs.iterator.map(r => r[String](ConsensusTags.UmiBases)).toSeq
-              consensus
-                .iterator
-                .map(c => createSamRecord(c, ReadType.Fragment, umis))
-                .toSeq
+              if (duplexErrors > this.maxDuplexDisagreements || duplexErrorRate > this.maxDuplexDisagreementRate) {
+                rejectRecords((r1s.view ++ r2s.view).flatMap(_.sam), FilterHighDuplexDisagreement)
+                Nil
+              }
+              else {
+                val consensus = duplexConsensus(Some(paddedR1), Some(paddedR2), sourceReads = None)
+                if (longestR1Alignment.negativeStrand) consensus.foreach(_.revcomp())
+                consensus.foreach(maskCodecConsensusQuals)
+
+                val umis = recs.iterator.map(r => r[String](ConsensusTags.UmiBases)).toSeq
+                consensus
+                  .iterator
+                  .map(c => createSamRecord(c, ReadType.Fragment, umis))
+                  .toSeq
+              }
           }
         }
       }
@@ -274,5 +298,31 @@ class CodecConsensusCaller(readNamePrefix: String,
         }
       }
     }
+  }
+
+  /**
+    * Calculates and returns two counts.  The first is the number of bases that have non-N coverage in both the
+    * a and b consensus reads.  The second is the subset of those bases that do not agree between the a and b reads.
+    *
+    * @param a one of the two single stranded consensus reads
+    * @param b the other single strand consensus reads
+    * @return a tuple of (duplexBases, duplexDisagreements)
+    */
+  private[umi] def computeDuplexCounts(a: VanillaConsensusRead, b: VanillaConsensusRead): (Int, Int) = {
+    var duplexBases  = 0
+    var duplexErrors = 0
+
+    forloop (from=0, until=a.length) { i =>
+      val aBase = a.bases(i)
+      val bBase = b.bases(i)
+
+      if (aBase != 'n' && aBase != 'N' && bBase != 'n' && bBase != 'N') {
+        duplexBases += 1
+
+        if (aBase != bBase) duplexErrors += 1
+      }
+    }
+
+    (duplexBases, duplexErrors)
   }
 }
