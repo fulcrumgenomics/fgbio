@@ -88,8 +88,8 @@ class CodecConsensusCaller(readNamePrefix: String,
                            val singleStrandQual: Option[PhredScore] = None,
                            val outerBasesQual: Option[PhredScore] = None,
                            val outerBasesLength: Int = 5,
-                           maxDuplexDisagreements: Int = Int.MaxValue,
-                           maxDuplexDisagreementRate: Double = 1.0
+                           val maxDuplexDisagreements: Int = Int.MaxValue,
+                           val maxDuplexDisagreementRate: Double = 1.0
                           ) extends DuplexConsensusCaller(
   readNamePrefix      = readNamePrefix,
   readGroupId         = readGroupId,
@@ -125,7 +125,12 @@ class CodecConsensusCaller(readNamePrefix: String,
       errorRatePostUmi    = this.errorRatePostUmi,
       minReadsPerStrand   = this.minReadsPerStrand,
       maxReadsPerStrand   = this.maxReadsPerStrand,
-      minDuplexLength     = this.minDuplexLength
+      minDuplexLength     = this.minDuplexLength,
+      singleStrandQual    = this.singleStrandQual,
+      outerBasesQual      = this.outerBasesQual,
+      outerBasesLength    = this.outerBasesLength,
+      maxDuplexDisagreements    = this.maxDuplexDisagreements,
+      maxDuplexDisagreementRate = this.maxDuplexDisagreementRate
     )
   }
 
@@ -293,7 +298,7 @@ class CodecConsensusCaller(readNamePrefix: String,
       val b = rec.baConsensus.getOrElse(unreachable("Codec consensus found without a second strand consensus.")).bases
 
       forloop (from=0, until=quals.length) { i =>
-        if (a(i) == 'N' || b(i) == 'N') {
+        if (a(i) == 'n' || a(i) == 'N' || b(i) == 'N' || b(i) == 'n') {
           quals(i) = q
         }
       }
