@@ -120,7 +120,7 @@ object DownsampleVcf extends LazyLogging {
     }
   }
 
-  trait HasLikelihoods {
+  sealed trait HasLikelihoods {
     def pls: IndexedSeq[Int]
 
     def mostLikelyCall(alleles: Seq[Allele]): IndexedSeq[Allele]
