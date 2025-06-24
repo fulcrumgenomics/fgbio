@@ -409,8 +409,14 @@ class DownsampleVcf
     val progress = ProgressLogger(logger, noun="variants written")
     val random = new Random(seed)
     winnowed.foreach { v =>
-      val ds = downsampleAndRegenotype(v, proportions=proportions, random=random, epsilon=epsilon,
-                                       minAdHomvar=minAdHomvar, minAdHomref=minAdHomref)
+      val ds = downsampleAndRegenotype(
+          gt          = v,
+          proportions = proportions,
+          random      = random,
+          epsilon     = epsilon,
+          minAdHomvar = minAdHomvar,
+          minAdHomref = minAdHomref
+       )
       if (writeNoCall || !ds.gts.forall(g => g.isNoCall)) {
         outputVcf += ds
         progress.record(ds)
