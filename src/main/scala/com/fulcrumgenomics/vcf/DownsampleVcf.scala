@@ -304,7 +304,7 @@ object DownsampleVcf extends LazyLogging {
   
     def mostLikelyCall(alleles: Seq[Allele]): IndexedSeq[Allele] = {
       mostLikelyGenotype match {
-        case None => IndexedSeq(NoCallAllele)
+        case None    => IndexedSeq(NoCallAllele)
         case Some(a) => IndexedSeq(alleles(a))
       }
     }
