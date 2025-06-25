@@ -410,7 +410,7 @@ class DownsampleVcf
     val random = new Random(seed)
     winnowed.foreach { v =>
       val ds = downsampleAndRegenotype(
-          gt          = v,
+          variant     = v,
           proportions = proportions,
           random      = random,
           epsilon     = epsilon,
