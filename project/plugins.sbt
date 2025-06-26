@@ -9,7 +9,3 @@ addSbtPlugin("org.scoverage"     % "sbt-scoverage" % "1.6.1")
 addSbtPlugin("org.xerial.sbt"    % "sbt-sonatype"  % "3.12.2")
 addSbtPlugin("com.github.sbt"    % "sbt-pgp"       % "2.3.1")
 addSbtPlugin("com.thoughtworks.sbt-api-mappings" % "sbt-api-mappings" % "3.0.0")
-
-ThisBuild / libraryDependencySchemes ++= Seq(
-  "org.scala-lang.modules" %% "scala-xml" % VersionScheme.Always
-)
