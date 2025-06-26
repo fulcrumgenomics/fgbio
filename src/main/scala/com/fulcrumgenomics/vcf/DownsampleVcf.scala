@@ -95,6 +95,8 @@ object DownsampleVcf extends LazyLogging {
    * @param proportion proportion to downsample the allele count prior to re-genotyping
    * @param random random number generator for downsampling
    * @param epsilon the sequencing error rate for genotyping
+   * @param minAdHomvar the minimum allele depth to call HOMVAR (otherwise return NOCALL)
+   * @param minAdHomref the minimum allele depth to call HOMREF (otherwise return NOCALL)
    * @return a new Genotype with updated allele depths, PLs, and genotype
    */
   def downsampleAndRegenotype(
@@ -105,7 +107,7 @@ object DownsampleVcf extends LazyLogging {
     val likelihoods = gt.ploidy match {
       case 1 => HaploidLikelihoods(newAds, epsilon = epsilon)
       case 2 => Likelihoods(newAds, epsilon = epsilon)
-      case _ => throw new RuntimeException(s"Got ploidy ${gt.ploidy}")
+      case _ => throw new IllegalArgumentException(s"Got ploidy ${gt.ploidy}, but only capable of regenotyping ploidies of 1 or 2.")
     }
     val pls = likelihoods.pls
     val calls = likelihoods.mostLikelyCall(gt.alleles.toSeq)
@@ -120,9 +122,17 @@ object DownsampleVcf extends LazyLogging {
     }
   }
 
+  /** Trait for classes that implement calling genotypes by selecting from array of PLs  */
   sealed trait HasLikelihoods {
+    /** IndexedSeq of phred-scaled PL values */
     def pls: IndexedSeq[Int]
 
+    /**
+      * Select the most likely genotype from the best PL in pls.
+      *
+      * @param alleles the Seq of Allele corresponding to pls
+      * @return a genotype (as an IndexedSeq[Allele])
+      */
     def mostLikelyCall(alleles: Seq[Allele]): IndexedSeq[Allele]
   }
 
@@ -200,11 +210,15 @@ object DownsampleVcf extends LazyLogging {
       Likelihoods.logToPhredLikelihoods(genotypeLikelihoods)
     }
 
+    /**
+    * Returns the allele indices of the most likely genotype by finding a signle PL that equals 0.
+    * If multiple PLs equal zero then return None (NOCALL)
+    */
     private def mostLikelyGenotype: Option[(Int, Int)] = {
       val minIndexes = pls.zipWithIndex.filter(pair => pair._1 == 0)
-      minIndexes.length match {
-        case 0 => throw new RuntimeException("expected the most likely PL to have a value of 0.0")
-        case 1 => {
+      minIndexes match {
+        case Nil => throw new IllegalArgumentException("expected the most likely PL to have a value of 0.0")
+        case _ +: Nil => {
           val genotypes = 
             for (b <- 0 until numAlleles; a <- 0 to b)
             yield (a, b)
@@ -291,11 +305,15 @@ object DownsampleVcf extends LazyLogging {
       HaploidLikelihoods.logToPhredLikelihoods(genotypeLikelihoods)
     }
   
+    /**
+    * Returns the allele indices of the most likely genotype by finding a signle PL that equals 0.
+    * If multiple PLs equal zero then return None (NOCALL)
+    */
     private def mostLikelyGenotype: Option[Int] = {
       val minIndexes = pls.zipWithIndex.filter(pair => pair._1 == 0)
-      minIndexes.length match {
-        case 0 => throw new RuntimeException("expected the most likely PL to have a value of 0.0")
-        case 1 => {
+      minIndexes match {
+        case Nil => throw new IllegalArgumentException("expected the most likely PL to have a value of 0.0")
+        case _ +: Nil => {
           Some(minIndexes.head._2)
         }
         case _ => None  // if multiple genotypes are most likely, don't make a call
@@ -332,7 +350,11 @@ object DownsampleVcf extends LazyLogging {
     |other specified by `--window-size` (the default value of `0` disables winnowing). Next, each
     |sample at each variant is examined independently. The allele depths per-genotype are randoml
     |downsampled given the proportion. The downsampled allele depths are then used to re-compute
-    |allele likelhoods and produce a new genotype.
+    |allele likelhoods and produce a new genotype. In the event that the downsampled allele depth
+    |is below minAdHomref (for HOMREF calls) or minAdHomvar (for HOMVAR calls), the new genotype
+    |will be set to NOCALL. minAdHomvar has a default value of 3 to prevent downsampled VCFs from
+    |having an excess proportion of HOMVAR calls (that a variant caller would likely not call on
+    |such weak evidence). minAdHomref has a default value of 1 (i.e. no HOMREF calls are rejected).
     |
     |The tool outputs a downsampled VCF file with the winnowed variants removed, and with the
     |genotype calls and `DP`, `AD`, and `PL` tags updated for each sample at each retained variant.
