@@ -26,7 +26,11 @@ The tool first (optionally) winnows the VCF file to remove variants within a dis
 other specified by `--window-size` (the default value of `0` disables winnowing). Next, each
 sample at each variant is examined independently. The allele depths per-genotype are randoml
 downsampled given the proportion. The downsampled allele depths are then used to re-compute
-allele likelhoods and produce a new genotype.
+allele likelhoods and produce a new genotype. In the event that the downsampled allele depth
+is below minAdHomref (for HOMREF calls) or minAdHomvar (for HOMVAR calls), the new genotype
+will be set to NOCALL. minAdHomvar has a default value of 3 to prevent downsampled VCFs from
+having an excess proportion of HOMVAR calls (that a variant caller would likely not call on
+such weak evidence). minAdHomref has a default value of 1 (i.e. no HOMREF calls are rejected).
 
 The tool outputs a downsampled VCF file with the winnowed variants removed, and with the
 genotype calls and `DP`, `AD`, and `PL` tags updated for each sample at each retained variant.
