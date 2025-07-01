@@ -310,13 +310,10 @@ object DownsampleVcf extends LazyLogging {
     * If multiple PLs equal zero then return None (NOCALL)
     */
     private def mostLikelyGenotype: Option[Int] = {
-      val minIndexes = pls.zipWithIndex.filter(pair => pair._1 == 0)
-      minIndexes match {
-        case Nil => throw new IllegalArgumentException("expected the most likely PL to have a value of 0.0")
-        case _ +: Nil => {
-          Some(minIndexes.head._2)
-        }
-        case _ => None  // if multiple genotypes are most likely, don't make a call
+      pls.zipWithIndex.collect { case (0, index) => index } match {
+        case Seq(singleIndex) => Some(singleIndex)
+        case Seq() => throw new IllegalArgumentException("expected the most likely PL to have a value of 0.0")
+        case _ => None
       }
     }
   
