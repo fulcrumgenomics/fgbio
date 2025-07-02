@@ -26,7 +26,11 @@ The tool first (optionally) winnows the VCF file to remove variants within a dis
 other specified by `--window-size` (the default value of `0` disables winnowing). Next, each
 sample at each variant is examined independently. The allele depths per-genotype are randoml
 downsampled given the proportion. The downsampled allele depths are then used to re-compute
-allele likelhoods and produce a new genotype.
+allele likelhoods and produce a new genotype. In the event that the downsampled allele depth
+is below minAdHomref (for HOMREF calls) or minAdHomvar (for HOMVAR calls), the new genotype
+will be set to NOCALL. minAdHomvar has a default value of 3 to prevent downsampled VCFs from
+having an excess proportion of HOMVAR calls (that a variant caller would likely not call on
+such weak evidence). minAdHomref has a default value of 1 (i.e. no HOMREF calls are rejected).
 
 The tool outputs a downsampled VCF file with the winnowed variants removed, and with the
 genotype calls and `DP`, `AD`, and `PL` tags updated for each sample at each retained variant.
@@ -43,6 +47,8 @@ genotype calls and `DP`, `AD`, and `PL` tags updated for each sample at each ret
 |output|o|PathToVcf|Output file name.|Required|1||
 |window-size|w|Int|Winnowing window size.|Optional|1|0|
 |epsilon|e|Double|Sequencing Error rate for genotyping.|Optional|1|0.01|
+|min-ad-homvar|v|Int|Minimum allele depth to call HOMVAR (otherwise NO-CALL)|Optional|1|3|
+|min-ad-homref|r|Int|Minimum allele depth to call HOMREF (otherwise NO-CALL)|Optional|1|1|
 |write-no-call|c|Boolean|True to write out no-calls.|Optional|1|false|
 |seed|s|Int|Random seed value.|Optional|1|42|
 
