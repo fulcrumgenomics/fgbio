@@ -8,9 +8,9 @@ import com.fulcrumgenomics.fasta.SequenceDictionary
 import com.fulcrumgenomics.sopt.cmdline.ValidationException
 import com.fulcrumgenomics.sopt.{arg, clp}
 import com.fulcrumgenomics.util.{Metric, ProgressLogger}
-import com.fulcrumgenomics.vcf.DownsampleVcf.{downsampleAndRegenotype, winnowVariants}
 import com.fulcrumgenomics.vcf.api.Allele.NoCallAllele
-import com.fulcrumgenomics.vcf.api._
+import com.fulcrumgenomics.vcf.api.{Allele, Genotype, Variant, VcfCount, VcfFieldType, VcfFormatHeader, VcfHeader, VcfSource, VcfWriter}
+import com.fulcrumgenomics.vcf.DownsampleVcf.{downsampleAndRegenotype, winnowVariants}
 
 import scala.math.log10
 import scala.util.Random
@@ -74,11 +74,13 @@ object DownsampleVcf extends LazyLogging {
    */
   def downsampleAndRegenotype(variant: Variant,
                               proportions: Map[String, Double],
-                              random: Random, epsilon: Double=0.01): Variant = {
+                              random: Random, epsilon: Double=0.01,
+                              minAdHomvar: Int = 4, minAdHomref: Int = 2): Variant = {
     try {
       variant.copy(genotypes=variant.genotypes.map { case (sample, gt) =>
         val proportion = proportions(sample)
-        sample -> downsampleAndRegenotype(gt=gt, proportion=proportion, random=random, epsilon=epsilon)
+        sample -> downsampleAndRegenotype(gt=gt, proportion=proportion, random=random, epsilon=epsilon,
+                                          minAdHomvar=minAdHomvar, minAdHomref=minAdHomref)
       })
     } catch {
       case e: MatchError => throw new Exception(
@@ -93,15 +95,45 @@ object DownsampleVcf extends LazyLogging {
    * @param proportion proportion to downsample the allele count prior to re-genotyping
    * @param random random number generator for downsampling
    * @param epsilon the sequencing error rate for genotyping
+   * @param minAdHomvar the minimum allele depth to call HOMVAR (otherwise return NOCALL)
+   * @param minAdHomref the minimum allele depth to call HOMREF (otherwise return NOCALL)
    * @return a new Genotype with updated allele depths, PLs, and genotype
    */
-  def downsampleAndRegenotype(gt: Genotype, proportion: Double, random: Random, epsilon: Double): Genotype = {
+  def downsampleAndRegenotype(
+      gt: Genotype, proportion: Double, random: Random, epsilon: Double, minAdHomvar: Int, minAdHomref: Int
+    ): Genotype = {
     val oldAds = gt.getOrElse[IndexedSeq[Int]]("AD", throw new Exception(s"AD tag not found for sample ${gt.sample}"))
     val newAds = downsampleADs(oldAds, proportion, random)
-    val likelihoods = Likelihoods(newAds, epsilon = epsilon)
+    val likelihoods = gt.ploidy match {
+      case 1 => HaploidLikelihoods(newAds, epsilon = epsilon)
+      case 2 => Likelihoods(newAds, epsilon = epsilon)
+      case _ => throw new IllegalArgumentException(s"Got ploidy ${gt.ploidy}, but only capable of regenotyping ploidies of 1 or 2.")
+    }
     val pls = likelihoods.pls
     val calls = likelihoods.mostLikelyCall(gt.alleles.toSeq)
-    gt.copy(attrs=Map("PL" -> pls, "AD" -> newAds, "DP" -> newAds.sum), calls=calls)
+    val totalAd = newAds.sum
+    val new_gt = gt.copy(attrs=Map("PL" -> pls, "AD" -> newAds, "DP" -> totalAd), calls=calls)
+    if (new_gt.isHomVar && totalAd < minAdHomvar) {
+      new_gt.copy(calls = calls.map(_ => Allele.NoCallAllele))
+    } else if(new_gt.isHomRef && totalAd < minAdHomref) {
+      new_gt.copy(calls = calls.map(_ => Allele.NoCallAllele))
+    } else {
+      new_gt
+    }
+  }
+
+  /** Trait for classes that implement calling genotypes by selecting from array of PLs  */
+  sealed trait HasLikelihoods {
+    /** IndexedSeq of phred-scaled PL values */
+    def pls: IndexedSeq[Int]
+
+    /**
+      * Select the most likely genotype from the best PL in pls.
+      *
+      * @param alleles the Seq of Allele corresponding to pls
+      * @return a genotype (as an IndexedSeq[Allele])
+      */
+    def mostLikelyCall(alleles: Seq[Allele]): IndexedSeq[Allele]
   }
 
   object Likelihoods {
@@ -148,7 +180,7 @@ object DownsampleVcf extends LazyLogging {
         math.log10((1 - epsilon) / 2),
         math.log10(1 - epsilon)
       )
-      // compute genotype log-likelihoods      
+      // compute genotype log-likelihoods
       (0 until numAlleles).flatMap(b =>
         (0 to b).map(a =>
           (0 until numAlleles).map(allele =>
@@ -169,7 +201,7 @@ object DownsampleVcf extends LazyLogging {
    * @param numAlleles the number of alleles the variant has
    * @param genotypeLikelihoods sequence of GLs in the order specified in the VCF spec
    */
-  case class Likelihoods(numAlleles: Int, genotypeLikelihoods: IndexedSeq[Double]) {
+  case class Likelihoods(numAlleles: Int, genotypeLikelihoods: IndexedSeq[Double]) extends HasLikelihoods {
     /**
       * Returns the likelihoods as a list of phred-scaled integers (i.e, the value of the PL tag).
       * @return a list of phred-scaled likelihooodS for AA, AB, BB.
@@ -178,11 +210,15 @@ object DownsampleVcf extends LazyLogging {
       Likelihoods.logToPhredLikelihoods(genotypeLikelihoods)
     }
 
-    def mostLikelyGenotype: Option[(Int, Int)] = {
+    /**
+    * Returns the allele indices of the most likely genotype by finding a signle PL that equals 0.
+    * If multiple PLs equal zero then return None (NOCALL)
+    */
+    private def mostLikelyGenotype: Option[(Int, Int)] = {
       val minIndexes = pls.zipWithIndex.filter(pair => pair._1 == 0)
-      minIndexes.length match {
-        case 0 => throw new RuntimeException("expected the most likely PL to have a value of 0.0")
-        case 1 => {
+      minIndexes match {
+        case Nil => throw new IllegalArgumentException("expected the most likely PL to have a value of 0.0")
+        case _ +: Nil => {
           val genotypes = 
             for (b <- 0 until numAlleles; a <- 0 to b)
             yield (a, b)
@@ -196,6 +232,95 @@ object DownsampleVcf extends LazyLogging {
       mostLikelyGenotype match {
         case None => IndexedSeq(NoCallAllele, NoCallAllele)
         case Some((a, b)) => IndexedSeq(alleles(a), alleles(b))
+      }
+    }
+  }
+  
+  object HaploidLikelihoods {
+    /**Converts a sequence of log-likelihoods to phred-scale by 1) multiplying each by -10, 2)
+      * subtracting from each the min value so the smallest value is 0, and 3) rounding to the
+      * nearest integer.
+      */
+    def logToPhredLikelihoods(logLikelihoods: IndexedSeq[Double]): IndexedSeq[Int] = {
+      val rawPL = logLikelihoods.map(gl => gl * -10)
+      val minPL = rawPL.min
+      rawPL.map(pl => (pl - minPL).round.toInt)
+    }
+  
+    /** Computes the likelihoods for each possible biallelic genotype.
+      * @param alleleDepthA the reference allele depth
+      * @param alleleDepthB the alternate allele depth
+      * @param epsilon      the error rate for genotyping
+      * @return a new `Likelihood` that has the likelihoods of AA, AB, and BB
+      */
+    def biallelic(alleleDepthA: Int, alleleDepthB: Int, epsilon: Double = 0.01): IndexedSeq[Double] = {
+      val aGivenA = log10(1 - epsilon)
+      val aGivenB = log10(epsilon)
+  
+      val rawGlA = (alleleDepthA * aGivenA) + (alleleDepthB * aGivenB)
+      val rawGlB = (alleleDepthA * aGivenB) + (alleleDepthB * aGivenA)
+  
+      IndexedSeq(rawGlA, rawGlB)
+    }
+  
+    /** Computes the likelihoods for each possible genotype given a sequence of read depths for any
+      * number of alleles.
+      * @param alleleDepths the sequence of allele depths in the order specified in the VCF
+      * @param epsilon      the error rate for genotyping
+      * @return a new `Likelihood` that has the log likelihoods of all possible genotypes in the
+      * order specified in VFC spec for the GL/PL tags.
+      */
+    def generalized(alleleDepths: IndexedSeq[Int], epsilon: Double = 0.01): IndexedSeq[Double] = {
+      val numAlleles = alleleDepths.length
+      // probabilities associated with each possible genotype for a pair of alleles
+      val logProbs: Array[Double] = Array(
+        math.log10(epsilon),
+        math.log10(1 - epsilon)
+      )
+      // compute genotype log-likelihoods
+      (0 until numAlleles).map(a =>
+        (0 until numAlleles).map(allele =>
+          logProbs(if(a == allele) 1 else 0) * alleleDepths(allele)
+        ).sum
+      )
+    }
+  
+    def apply(alleleDepths: IndexedSeq[Int], epsilon: Double = 0.01): HaploidLikelihoods = {
+      val numAlleles = alleleDepths.length
+      require(numAlleles >= 2, "at least two alleles are required to calculate genotype likelihoods")
+      HaploidLikelihoods(numAlleles, generalized(alleleDepths, epsilon))
+    }
+  }
+  
+  /** Stores the log10(likelihoods) for all possible genotypes.
+    * @param numAlleles the number of alleles the variant has
+    * @param genotypeLikelihoods sequence of GLs in the order specified in the VCF spec
+    */
+  case class HaploidLikelihoods(numAlleles: Int, genotypeLikelihoods: IndexedSeq[Double]) extends HasLikelihoods {
+    /**
+      * Returns the likelihoods as a list of phred-scaled integers (i.e, the value of the PL tag).
+      * @return a list of phred-scaled likelihooodS for AA, AB, BB.
+      */
+    def pls: IndexedSeq[Int] = {
+      HaploidLikelihoods.logToPhredLikelihoods(genotypeLikelihoods)
+    }
+  
+    /**
+    * Returns the allele indices of the most likely genotype by finding a signle PL that equals 0.
+    * If multiple PLs equal zero then return None (NOCALL)
+    */
+    private def mostLikelyGenotype: Option[Int] = {
+      pls.zipWithIndex.collect { case (0, index) => index } match {
+        case Seq(singleIndex) => Some(singleIndex)
+        case Seq() => throw new IllegalArgumentException("expected the most likely PL to have a value of 0.0")
+        case _ => None
+      }
+    }
+  
+    def mostLikelyCall(alleles: Seq[Allele]): IndexedSeq[Allele] = {
+      mostLikelyGenotype match {
+        case None    => IndexedSeq(NoCallAllele)
+        case Some(a) => IndexedSeq(alleles(a))
       }
     }
   }
@@ -222,7 +347,11 @@ object DownsampleVcf extends LazyLogging {
     |other specified by `--window-size` (the default value of `0` disables winnowing). Next, each
     |sample at each variant is examined independently. The allele depths per-genotype are randoml
     |downsampled given the proportion. The downsampled allele depths are then used to re-compute
-    |allele likelhoods and produce a new genotype.
+    |allele likelhoods and produce a new genotype. In the event that the downsampled allele depth
+    |is below minAdHomref (for HOMREF calls) or minAdHomvar (for HOMVAR calls), the new genotype
+    |will be set to NOCALL. minAdHomvar has a default value of 3 to prevent downsampled VCFs from
+    |having an excess proportion of HOMVAR calls (that a variant caller would likely not call on
+    |such weak evidence). minAdHomref has a default value of 1 (i.e. no HOMREF calls are rejected).
     |
     |The tool outputs a downsampled VCF file with the winnowed variants removed, and with the
     |genotype calls and `DP`, `AD`, and `PL` tags updated for each sample at each retained variant.
@@ -236,6 +365,8 @@ class DownsampleVcf
   @arg(flag='o', doc="Output file name.") val output: PathToVcf,
   @arg(flag='w', doc="Winnowing window size.") val windowSize: Int = 0,
   @arg(flag='e', doc="Sequencing Error rate for genotyping.") val epsilon: Double = 0.01,
+  @arg(flag='v', doc="Minimum allele depth to call HOMVAR (otherwise NO-CALL)") val minAdHomvar: Int = 3,
+  @arg(flag='r', doc="Minimum allele depth to call HOMREF (otherwise NO-CALL)") val minAdHomref: Int = 1,
   @arg(flag='c', doc="True to write out no-calls.") val writeNoCall: Boolean = false,
   @arg(flag='s', doc="Random seed value.") val seed: Int = 42,
   ) extends FgBioTool {
@@ -297,7 +428,14 @@ class DownsampleVcf
     val progress = ProgressLogger(logger, noun="variants written")
     val random = new Random(seed)
     winnowed.foreach { v =>
-      val ds = downsampleAndRegenotype(v, proportions=proportions, random=random, epsilon=epsilon)
+      val ds = downsampleAndRegenotype(
+          variant     = v,
+          proportions = proportions,
+          random      = random,
+          epsilon     = epsilon,
+          minAdHomvar = minAdHomvar,
+          minAdHomref = minAdHomref
+       )
       if (writeNoCall || !ds.gts.forall(g => g.isNoCall)) {
         outputVcf += ds
         progress.record(ds)
