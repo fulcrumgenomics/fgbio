@@ -129,7 +129,7 @@ class CorrectUmis
  @arg(flag='r', doc="Reject BAM file to save unassigned reads.") val rejects: Option[PathToBam] = None,
  @arg(flag='M', doc="Metrics file to write.") val metrics: Option[FilePath] = None,
  @arg(flag='m', doc="Maximum number of mismatches between a UMI and an expected UMI.") val maxMismatches: Int,
- @arg(flag='d', name="minDistance", doc="Minimum difference (of mismatch distance) to next-best UMI.") val minDistanceDiff: Int,
+ @arg(flag='d', name="min-distance", doc="Minimum difference (of mismatch distance) to next-best UMI.") val minDistanceDiff: Int,
  @arg(flag='u', doc="Expected UMI sequences.", minElements=0) val umis: Seq[String] = Seq.empty,
  @arg(flag='U', doc="File of UMI sequences, one per line.", minElements=0) val umiFiles: Seq[FilePath] = Seq.empty,
  @arg(flag='t', doc="Tag in which UMIs are stored.") val umiTag: String = ConsensusTags.UmiBases,
