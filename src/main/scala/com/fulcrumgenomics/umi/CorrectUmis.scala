@@ -102,7 +102,7 @@ object CorrectUmis {
     |
     |  1. _--max-mismatches_ controls how many mismatches (no-calls are counted as mismatches) are tolerated
     |         between a UMI as read and a fixed UMI.
-    |  2. _--min-distance_ controls how many more mismatches the next best hit must have
+    |  2. _--min-distance_ controls how many *more* mismatches the next best hit must have
     |
     |For example, with two fixed UMIs `AAAAA` and `CCCCC` and `--max-mismatches=3` and `--min-distance=2` the
     |following would happen:
@@ -124,18 +124,18 @@ object CorrectUmis {
     |using a cache, set the value to `0`.
   """)
 class CorrectUmis
-( @arg(flag='i', doc="Input SAM or BAM file.")  val input: PathToBam,
-  @arg(flag='o', doc="Output SAM or BAM file.") val output: PathToBam,
-  @arg(flag='r', doc="Reject BAM file to save unassigned reads.") val rejects: Option[PathToBam] = None,
-  @arg(flag='M', doc="Metrics file to write.") val metrics: Option[FilePath] = None,
-  @arg(flag='m', doc="Maximum number of mismatches between a UMI and an expected UMI.") val maxMismatches: Int,
-  @arg(flag='d', doc="Minimum distance (in mismatches) to next best UMI.") val minDistance: Int,
-  @arg(flag='u', doc="Expected UMI sequences.", minElements=0) val umis: Seq[String] = Seq.empty,
-  @arg(flag='U', doc="File of UMI sequences, one per line.", minElements=0) val umiFiles: Seq[FilePath] = Seq.empty,
-  @arg(flag='t', doc="Tag in which UMIs are stored.") val umiTag: String = ConsensusTags.UmiBases,
-  @arg(flag='x', doc="Don't store original UMIs upon correction.") val dontStoreOriginalUmis: Boolean = false,
-  @arg(doc="The number of uncorrected UMIs to cache; zero will disable the cache.") val cacheSize: Int = 100000,
-  @arg(doc="The minimum ratio of kept UMIs to accept. A ratio below this will cause a failure (but all files will still be written).") val minCorrected: Option[Double] = None
+(@arg(flag='i', doc="Input SAM or BAM file.")  val input: PathToBam,
+ @arg(flag='o', doc="Output SAM or BAM file.") val output: PathToBam,
+ @arg(flag='r', doc="Reject BAM file to save unassigned reads.") val rejects: Option[PathToBam] = None,
+ @arg(flag='M', doc="Metrics file to write.") val metrics: Option[FilePath] = None,
+ @arg(flag='m', doc="Maximum number of mismatches between a UMI and an expected UMI.") val maxMismatches: Int,
+ @arg(flag='d', name="min-distance", doc="Minimum difference (of mismatch distance) to next-best UMI.") val minDistanceDiff: Int,
+ @arg(flag='u', doc="Expected UMI sequences.", minElements=0) val umis: Seq[String] = Seq.empty,
+ @arg(flag='U', doc="File of UMI sequences, one per line.", minElements=0) val umiFiles: Seq[FilePath] = Seq.empty,
+ @arg(flag='t', doc="Tag in which UMIs are stored.") val umiTag: String = ConsensusTags.UmiBases,
+ @arg(flag='x', doc="Don't store original UMIs upon correction.") val dontStoreOriginalUmis: Boolean = false,
+ @arg(doc="The number of uncorrected UMIs to cache; zero will disable the cache.") val cacheSize: Int = 100000,
+ @arg(doc="The minimum ratio of kept UMIs to accept. A ratio below this will cause a failure (but all files will still be written).") val minCorrected: Option[Double] = None
 ) extends FgBioTool with LazyLogging {
 
   validate(umis.nonEmpty || umiFiles.nonEmpty, "At least one UMI or UMI file must be provided.")
@@ -161,8 +161,8 @@ class CorrectUmis
     }
 
     // Warn if any of the UMIs are too close together
-    CorrectUmis.findUmiPairsWithinDistance(umiSequences.toSeq, minDistance-1).foreach { case (umi1, umi2, distance) =>
-        logger.warning(s"Umis $umi1 and $umi2 are $distance edits apart which is less than the min distance: $minDistance")
+    CorrectUmis.findUmiPairsWithinDistance(umiSequences.toSeq, minDistanceDiff-1).foreach { case (umi1, umi2, distance) =>
+        logger.warning(s"Umis $umi1 and $umi2 are $distance edits apart which is less than the min distance diff: $minDistanceDiff")
     }
 
     // Construct the UMI metrics objects
@@ -280,7 +280,7 @@ class CorrectUmis
       case None         =>
         val mismatches = umis.map(umi => Sequences.countMismatches(bases, umi))
         val min        = mismatches.min
-        val matched    = (min <= maxMismatches) && (mismatches.count(m => m < min + this.minDistance) == 1)
+        val matched    = (min <= maxMismatches) && (mismatches.count(m => m < min + this.minDistanceDiff) == 1)
         val umiMatch   = UmiMatch(matched, umis(mismatches.indexOf(min)), min)
         if (cacheSize > 0) cache.put(bases, umiMatch)
         umiMatch
