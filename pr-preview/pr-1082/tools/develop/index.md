@@ -4,7 +4,7 @@ title: fgbio tools
 
 # fgbio tools
 
-The following tools are available in fgbio version 2.5.22-e91f611-SNAPSHOT.
+The following tools are available in fgbio version 2.5.22-bfae009-SNAPSHOT.
 ## Basecalling
 
 Tools for manipulating basecalling data.
