@@ -24,7 +24,7 @@ Correction is controlled by two parameters that are applied per-UMI:
 
   1. _--max-mismatches_ controls how many mismatches (no-calls are counted as mismatches) are tolerated
          between a UMI as read and a fixed UMI.
-  2. _--min-distance_ controls how many more mismatches the next best hit must have
+  2. _--min-distance_ controls how many *more* mismatches the next best hit must have
 
 For example, with two fixed UMIs `AAAAA` and `CCCCC` and `--max-mismatches=3` and `--min-distance=2` the
 following would happen:
@@ -54,7 +54,7 @@ using a cache, set the value to `0`.
 |rejects|r|PathToBam|Reject BAM file to save unassigned reads.|Optional|1||
 |metrics|M|FilePath|Metrics file to write.|Optional|1||
 |max-mismatches|m|Int|Maximum number of mismatches between a UMI and an expected UMI.|Required|1||
-|min-distance|d|Int|Minimum distance (in mismatches) to next best UMI.|Required|1||
+|min-distance|d|Int|Minimum difference (of mismatch distance) to next-best UMI.|Required|1||
 |umis|u|String|Expected UMI sequences.|Optional|Unlimited||
 |umi-files|U|FilePath|File of UMI sequences, one per line.|Optional|Unlimited||
 |umi-tag|t|String|Tag in which UMIs are stored.|Optional|1|RX|
