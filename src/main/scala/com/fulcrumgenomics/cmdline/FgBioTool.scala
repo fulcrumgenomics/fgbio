@@ -26,9 +26,51 @@ package com.fulcrumgenomics.cmdline
 import com.fulcrumgenomics.cmdline.FgBioMain.FailureException
 import com.fulcrumgenomics.commons.util.LazyLogging
 import com.fulcrumgenomics.sopt.cmdline.ValidationException
+import com.fulcrumgenomics.util.Metric
+import htsjdk.samtools.{SAMFileHeader, SAMProgramRecord}
+
+import scala.annotation.tailrec
+
+/** Stores meta information about the command line use to invoke a tool.
+  *
+  * @param name the name of the tool.
+  * @param args the list of arguments as given on the command line; this will contain any arguments also given to
+  *             [[FgBioMain]] in [[FgBioCommonArgs]].
+  * @param commandLineWithDefaults the command line as given to the tool, along with the defaults for all other
+  *              arguments.  This will include arguments given to [[FgBioMain]] in [[FgBioCommonArgs]].
+  * @param description the description of the tool
+  * @param version the version of the tool.
+  */
+case class FgBioToolInfo(name: String, args: Seq[String], commandLineWithDefaults: String, description: String, version: String) extends Metric {
+
+  /** The command line as given to the tool, without any defaults added.  This will include arguments given to
+    * [[FgBioMain]] in [[FgBioCommonArgs]].*/
+  def commandLineWithoutDefaults: String = args.mkString(" ")
+
+  /** Adds a program group to the SAMFileHeader returning the ID. */
+  def addProgramGroupTo(header: SAMFileHeader, id: Option[String]=None): SAMProgramRecord = {
+    // Get the id
+    val pgId = id.getOrElse {
+      @tailrec
+      def getPgId(intId: Int): String = if (header.getProgramRecord(intId.toString) == null) intId.toString else getPgId(intId + 1)
+      getPgId(1)
+    }
+    val pg = new SAMProgramRecord(pgId)
+    pg.setProgramName(name)
+    pg.setCommandLine(commandLineWithDefaults)
+    pg.setProgramVersion(version)
+    header.addProgramRecord(pg)
+    pg
+  }
+}
+
 
 /** All fgbio tools should extend this. */
 trait FgBioTool extends LazyLogging {
+  /** Meta information about the command line use to invoke this tool, or [[None]] if unset. */
+  private var _toolInfo: Option[FgBioToolInfo] = None
+
+  /** All tools should implement this method. */
   def execute(): Unit
 
   /** Fail with just an exit code. */
@@ -45,4 +87,10 @@ trait FgBioTool extends LazyLogging {
 
   /** Generates a validation exception if the test value is false. */
   def validate(test: Boolean, message: => String) = if (!test) throw new ValidationException(message)
+
+  /** Meta information about the command line use to invoke this tool, or [[None]] if unset. */
+  def toolInfo: Option[FgBioToolInfo] = _toolInfo
+
+  /** Sets the command line used to invoke this tool. */
+  private[cmdline] def toolInfo_=(commandLine: FgBioToolInfo): Unit = this._toolInfo = Some(commandLine)
 }

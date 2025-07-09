@@ -29,7 +29,7 @@ import com.fulcrumgenomics.cmdline.FgBioMain.FailureException
 import com.fulcrumgenomics.commons.CommonsDef._
 import com.fulcrumgenomics.commons.util.SystemUtil.IntelCompressionLibrarySupported
 import com.fulcrumgenomics.commons.util.{LazyLogging, LogLevel, Logger}
-import com.fulcrumgenomics.sopt.cmdline.CommandLineProgramParserStrings
+import com.fulcrumgenomics.sopt.cmdline.{CommandLineParser, CommandLineProgramParserStrings}
 import com.fulcrumgenomics.sopt.{Sopt, arg}
 import com.fulcrumgenomics.util.Io
 import com.fulcrumgenomics.vcf.api.VcfWriter
@@ -111,7 +111,8 @@ class FgBioMain extends LazyLogging {
     }
 
     val startTime = System.currentTimeMillis()
-    val exit      = Sopt.parseCommandAndSubCommand[FgBioCommonArgs,FgBioTool](name, args.toIndexedSeq, Sopt.find[FgBioTool](packageList)) match {
+    val parser    = new CommandLineParser[FgBioTool](name)  // Keep a reference to the parser so we can get the command line
+    val exit      = parser.parseCommandAndSubCommand[FgBioCommonArgs](args.toIndexedSeq, Sopt.find[FgBioTool](packageList)) match {
       case Sopt.Failure(usage) =>
         System.err.print(usage())
         1
@@ -121,6 +122,16 @@ class FgBioMain extends LazyLogging {
         FgBioCommonArgs.args = commonArgs
         val name = subcommand.getClass.getSimpleName
         try {
+          parser.commandLine.foreach { commandLine =>
+            parser.genericClpNameOnCommandLine
+            subcommand.toolInfo = FgBioToolInfo(
+              name                    = name,
+              args                    = this.name +: args.toIndexedSeq, // make sure to include the tool set name
+              commandLineWithDefaults = commandLine,
+              description             = parser.formatShortDescription(Sopt.inspect(subcommand.getClass).description),
+              version                 = subcommand.getClass.getPackage.getImplementationVersion
+            )
+          }
           printStartupLines(name, args, commonArgs)
           subcommand.execute()
           printEndingLines(startTime, name, true)
@@ -173,4 +184,6 @@ class FgBioMain extends LazyLogging {
 
   /** The packages we wish to include in our command line **/
   protected def packageList: List[String] = List[String]("com.fulcrumgenomics")
+
+  private def version: String = CommandLineProgramParserStrings.version(getClass, color=false).replace("Version: ", "")
 }
