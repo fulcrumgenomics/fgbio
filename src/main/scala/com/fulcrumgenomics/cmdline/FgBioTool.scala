@@ -47,7 +47,7 @@ case class FgBioToolInfo(name: String, args: Seq[String], commandLineWithDefault
     * [[FgBioMain]] in [[FgBioCommonArgs]].*/
   def commandLineWithoutDefaults: String = args.mkString(" ")
 
-  /** Adds a program group to the SAMFileHeader returning the ID. */
+  /** Adds a program group to the SAMFileHeader and returns the newly created program group. */
   def addProgramGroupTo(header: SAMFileHeader, id: Option[String]=None): SAMProgramRecord = {
     // Get the id
     val pgId = id.getOrElse {
