@@ -38,7 +38,7 @@ import scala.annotation.tailrec
   *             [[FgBioMain]] in [[FgBioCommonArgs]].
   * @param commandLineWithDefaults the command line as given to the tool, along with the defaults for all other
   *              arguments.  This will include arguments given to [[FgBioMain]] in [[FgBioCommonArgs]].
-  * @param description the description of the tool
+  * @param description the _short_ description of the tool
   * @param version the version of the tool.
   */
 case class FgBioToolInfo(name: String, args: Seq[String], commandLineWithDefaults: String, description: String, version: String) extends Metric {

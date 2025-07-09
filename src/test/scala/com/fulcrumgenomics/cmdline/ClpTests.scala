@@ -30,7 +30,7 @@ import com.fulcrumgenomics.util.Metric
 
 import java.nio.file.Path
 
-/* Tis a silly CLP. */
+/* This a silly CLP. */
 @clp(group=ClpGroups.Utilities, description="A test class")
 class TestClp
 (
@@ -82,6 +82,7 @@ class ClpTests extends UnitSpec {
     metric.commandLineWithoutDefaults should include ("TestClp")
     metric.commandLineWithoutDefaults should include (s"-i $tmpPath")
     metric.commandLineWithoutDefaults should not include ("--print-me :none:") // a default argument
+    metric.commandLineWithoutDefaults shouldBe s"fgbio --async-io true TestClp -i $tmpPath"
 
     // commandLineWithDefaults
     metric.commandLineWithDefaults should include ("fgbio --async-io true") // argument set _prior_ to the tool name
@@ -89,11 +90,13 @@ class ClpTests extends UnitSpec {
     metric.commandLineWithDefaults should include ("TestClp")
     metric.commandLineWithDefaults should include (s"--info-path $tmpPath")
     metric.commandLineWithDefaults should include ("--print-me :none:") // a default argument
+    metric.commandLineWithDefaults shouldBe f"fgbio --async-io true --compression 5 --tmp-dir ${FgBioCommonArgs.args.tmpDir} --log-level Info --sam-validation-stringency SILENT TestClp --info-path ${tmpPath} --exit-code :none: --message :none: --print-me :none:"
 
     // description
     metric.description shouldBe "A test class"
 
     // version
-    //metric.version shouldBe "null" // not set in scalatest
+    // Since the JAR has not been backaged yet, we cannot get the implementation version.
+    metric.version shouldBe "null" // not set in scalatest, so unable to test
   }
 }

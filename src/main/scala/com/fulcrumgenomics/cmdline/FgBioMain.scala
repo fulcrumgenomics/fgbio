@@ -123,13 +123,12 @@ class FgBioMain extends LazyLogging {
         val name = subcommand.getClass.getSimpleName
         try {
           parser.commandLine.foreach { commandLine =>
-            parser.genericClpNameOnCommandLine
             subcommand.toolInfo = FgBioToolInfo(
               name                    = name,
               args                    = this.name +: args.toIndexedSeq, // make sure to include the tool set name
               commandLineWithDefaults = commandLine,
               description             = parser.formatShortDescription(Sopt.inspect(subcommand.getClass).description),
-              version                 = subcommand.getClass.getPackage.getImplementationVersion
+              version                 = CommandLineProgramParserStrings.version(subcommand.getClass, color=false).replace("Version: ", "")
             )
           }
           printStartupLines(name, args, commonArgs)
@@ -184,6 +183,4 @@ class FgBioMain extends LazyLogging {
 
   /** The packages we wish to include in our command line **/
   protected def packageList: List[String] = List[String]("com.fulcrumgenomics")
-
-  private def version: String = CommandLineProgramParserStrings.version(getClass, color=false).replace("Version: ", "")
 }
