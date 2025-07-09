@@ -25,6 +25,7 @@ the type of each field/column is given, including two commonly used types:
 |[ErccSummaryMetrics](#erccsummarymetrics)|Metrics produced by `CollectErccMetrics` describing various summary metrics related to the spike-in of ERCC (External RNA Controls Consortium) into an RNA-Seq experiment|
 |[ErrorRateByReadPositionMetric](#errorratebyreadpositionmetric)|Metrics produced by `ErrorRateByReadPosition` describing the number of base observations and substitution errors at each position within each sequencing read|
 |[FamilySizeMetric](#familysizemetric)|Metrics produced by `CollectDuplexSeqMetrics` to quantify the distribution of different kinds of read family sizes|
+|[FgBioToolInfo](#fgbiotoolinfo)|Stores meta information about the command line use to invoke a tool|
 |[InsertSizeMetric](#insertsizemetric)|Metrics produced by `EstimateRnaSeqInsertSize` to describe the distribution of insert sizes within an RNA-seq experiment|
 |[PhaseBlockLengthMetric](#phaseblocklengthmetric)|Metrics produced by `AssessPhasing` describing the number of phased blocks of a given length|
 |[PoolingFractionMetric](#poolingfractionmetric)|Metrics produced by `EstimatePoolingFractions` to quantify the estimated proportion of a sample mixture that is attributable to a specific sample with a known set of genotypes|
@@ -347,6 +348,20 @@ sizes.  Three kinds of families are described:1. _CS_ or _Coordinate & Strand_: 
 |ds_count|Count|The count of families with `size == family_size`when also grouping by UMI and merging single-strand                 families from opposite strands of the same source molecule.|
 |ds_fraction|Proportion|The fraction of all _DS_ families where `size == family_size`.|
 |ds_fraction_gt_or_eq_size|Proportion|The fraction of all _DS_ families where `size >= family_size`.|
+
+
+### FgBioToolInfo
+
+Stores meta information about the command line use to invoke a tool.
+
+
+|Column|Type|Description|
+|------|----|-----------|
+|name|String|The name of the tool.|
+|args|Seq[String]|The list of arguments as given on the command line; this will contain any arguments also given to             FgBioMain in FgBioCommonArgs.|
+|commandLineWithDefaults|String|The command line as given to the tool, along with the defaults for all other              arguments.  This will include arguments given to FgBioMain in FgBioCommonArgs.|
+|description|String|The _short_ description of the tool|
+|version|String|The version of the tool.|
 
 
 ### InsertSizeMetric
