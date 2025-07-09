@@ -67,7 +67,7 @@ case class FgBioToolInfo(name: String, args: Seq[String], commandLineWithDefault
 
 /** All fgbio tools should extend this. */
 trait FgBioTool extends LazyLogging {
-  /** Meta information about the command line use to invoke this tool, or [[None]] if unset. */
+  /** Meta information about the command line use to invoke this tool, or `None` if unset. */
   private var _toolInfo: Option[FgBioToolInfo] = None
 
   /** All tools should implement this method. */
@@ -88,7 +88,7 @@ trait FgBioTool extends LazyLogging {
   /** Generates a validation exception if the test value is false. */
   def validate(test: Boolean, message: => String) = if (!test) throw new ValidationException(message)
 
-  /** Meta information about the command line use to invoke this tool, or [[None]] if unset. */
+  /** Meta information about the command line use to invoke this tool, or `None` if unset. */
   def toolInfo: Option[FgBioToolInfo] = _toolInfo
 
   /** Sets the command line used to invoke this tool. */
