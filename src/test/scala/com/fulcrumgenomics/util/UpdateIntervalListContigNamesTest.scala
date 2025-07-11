@@ -34,7 +34,6 @@ import scala.collection.mutable.ListBuffer
 class UpdateIntervalListContigNamesTest extends UpdateContigNamesSpec {
 
   private def inIntervalList: IntervalList = {
-    import com.fulcrumgenomics.fasta.Converters.ToSAMSequenceDictionary
     val intervals = ListBuffer[Interval]()
     intervals += new Interval("NC_000001.10", 123, 500)
     intervals += new Interval("NC_000002.10", 444, 888, true, null)
@@ -44,7 +43,7 @@ class UpdateIntervalListContigNamesTest extends UpdateContigNamesSpec {
     val dict = SequenceDictionary(
       intervals.map(i => SequenceMetadata(name=i.getContig, length=100000000)).toSeq:_*
     )
-    val intervalList = new IntervalList(dict.asSam)
+    val intervalList = new IntervalList(dict.toSam)
     intervals.foreach(intervalList.add)
     intervalList
   }
