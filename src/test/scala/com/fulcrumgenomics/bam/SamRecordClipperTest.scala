@@ -892,9 +892,13 @@ class SamRecordClipperTest extends UnitSpec with OptionValues {
 
   /** Convenience method for testing numBasesExtendingPastMate */
   def numBasesExtendingPastMate(clipper: SamRecordClipper, rec: SamRecord): Int = {
-    val mateUnclippedStart = rec.mateUnclippedStart.getOrElse(throw new IllegalStateException(f"Mate cigar (MC SAM tag) needed for read: ${rec.name}"))
-    val mateUnclippedEnd   = rec.mateUnclippedEnd.getOrElse(throw new IllegalStateException(f"Mate cigar (MC SAM tag) needed for read: ${rec.name}"))
-    clipper.numBasesExtendingPastMate(rec=rec, mateUnclippedStart=mateUnclippedStart, mateUnclippedEnd=mateUnclippedEnd)
+    val mateUnSoftClippedStart = rec.mateUnSoftClippedStart.getOrElse(throw new IllegalStateException(f"Mate cigar (MC SAM tag) needed for read: ${rec.name}"))
+    val mateUnSoftClippedEnd   = rec.mateUnSoftClippedEnd.getOrElse(throw new IllegalStateException(f"Mate cigar (MC SAM tag) needed for read: ${rec.name}"))
+    clipper.numBasesExtendingPastMate(
+      rec                    = rec,
+      mateUnSoftClippedStart = mateUnSoftClippedStart,
+      mateUnSoftClippedEnd   = mateUnSoftClippedEnd,
+    )
   }
 
   it should "return a return a positive value when reads extend past its mate" in {

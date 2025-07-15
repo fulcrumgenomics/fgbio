@@ -27,6 +27,7 @@ package com.fulcrumgenomics.bam
 import com.fulcrumgenomics.FgBioDef.unreachable
 import com.fulcrumgenomics.bam.ClippingMode.{Hard, Soft, SoftWithMask}
 import com.fulcrumgenomics.bam.api.SamOrder.Queryname
+import com.fulcrumgenomics.bam.api.SamRecord.UnmappedStart
 import com.fulcrumgenomics.bam.api.{SamRecord, SamSource}
 import com.fulcrumgenomics.testing.SamBuilder._
 import com.fulcrumgenomics.testing.{ErrorLogLevel, ReferenceSetBuilder, SamBuilder, UnitSpec}
@@ -524,5 +525,123 @@ class ClipBamTest extends UnitSpec with ErrorLogLevel with OptionValues {
     clipper.clipPair(r1, r2)
     r1.start shouldBe r2.start
     r1.end shouldBe r2.end
+  }
+
+  it should "clip FR reads that extend past their mate and remove overlap" in {
+    val builder = new SamBuilder(readLength = 100, sort = Some(Queryname))
+    val clipper = new ClipBam(
+      input                = dummyBam,
+      output               = dummyBam,
+      ref                  = ref,
+      clipBasesPastMate    = true,
+      clipOverlappingReads = true
+    )
+
+    val Seq(r1, r2) = builder.addPair(start1 = 100, start2 = 90)
+
+    r1.end shouldBe 100 + 100 - 1 // 199
+    r2.end shouldBe 90 + 100 - 1 // 189
+    clipper.clipPair(r1, r2)
+    r1.start shouldBe 100 // the original start of R1
+    r1.end shouldBe 144 // lower halfway point between 100 and 189
+    r2.start shouldBe 145 // upper halfway point between 100 and 189
+    r2.end shouldBe 90 + 100 - 1 // 189: the original end of R2
+  }
+
+  it should "clip FR reads that extend past their mate with asymmetrical five prime hard clipping" in {
+    val builder = new SamBuilder(readLength = 200, sort = Some(Queryname))
+    val clipper = new ClipBam(
+      input             = dummyBam,
+      output            = dummyBam,
+      ref               = ref,
+      clipBasesPastMate = true,
+      // NB: it is important to note that 3 and 5 prime hard clippings occur first, then clipping bases past mates
+      readOneFivePrime  = 10,
+      readTwoFivePrime  = 50,
+    )
+
+    val Seq(r1, r2) = builder.addPair(start1 = 100, start2 = 90)
+
+    r1.end shouldBe 100 + 200 - 1 // 299
+    r2.end shouldBe 90 + 200 - 1 // 289
+    clipper.clipPair(r1, r2)
+    r1.start shouldBe 100 + 10 // 110: the original start +10bp hard clipping of R1
+    r1.end shouldBe 90 + 200 - 50 - 1 // 239: R1's end is now the same as R2's end since we are not clipping overlap
+    r2.start shouldBe 100 + 10 // 110: R2's start is now the same as R1's start since we are not clipping overlap
+    r2.end shouldBe 90 + 200 - 50 - 1 // 239: the original end -50bp of hard clipping of R2
+  }
+
+  it should "clip FR reads that extend past their mate with some irrelevant three prime clipping and removal of overlap" in {
+    val builder = new SamBuilder(readLength = 200, sort = Some(Queryname))
+    val clipper = new ClipBam(
+      input                = dummyBam,
+      output               = dummyBam,
+      ref                  = ref,
+      clipBasesPastMate    = true,
+      clipOverlappingReads = true,
+      // NB: it is important to note that 3 and 5 prime hard clippings occurs first, then clipping bases past/overlapping mates
+      readTwoThreePrime    = 50
+    )
+
+    val Seq(r1, r2) = builder.addPair(start1 = 100, start2 = 90)
+
+    r1.end shouldBe 100 + 200 - 1 // 299
+    r2.end shouldBe 90 + 200 - 1 // 289
+    clipper.clipPair(r1, r2)
+    r1.start shouldBe 100 // the original start of R1
+    r1.end shouldBe 194 // the lower halfway point between the original R1 start and original R2 end
+    r2.start shouldBe 195 // the upper halfway point between the original R1 start and original R2 end
+    r2.end shouldBe 90 + 200 - 1 // 289: the original end of R2
+  }
+
+  it should "clip FR reads that extend past their mate, overlap, and have clipping on the 3-prime side of one and the 5-prime side of another" in {
+    val builder = new SamBuilder(readLength = 200, sort = Some(Queryname))
+    val clipper = new ClipBam(
+      input                = dummyBam,
+      output               = dummyBam,
+      ref                  = ref,
+      clipBasesPastMate    = true,
+      clipOverlappingReads = true,
+      // NB: it is important to note that 3 and 5 prime hard clippings occurs first, then clipping bases past/overlapping mates
+      readTwoThreePrime    = 175,
+      readOneFivePrime     = 25,
+    )
+
+    val Seq(r1, r2) = builder.addPair(start1 = 140, start2 = 90)
+
+    r1.end shouldBe 140 + 200 - 1 // 339
+    r2.end shouldBe 90 + 200 - 1 // 289
+    clipper.clipPair(r1, r2)
+    r1.start shouldBe 140 + 25 // the original start of R1 +25bp of hard clipping
+    r1.end shouldBe 90 + 175 - 1 // the original start of R2 +175bp of hard clipping 3-prime end of R2 minus one
+    r2.start shouldBe 90 + 175 // the original start of R2 +175bp of hard clipping 3-prime end of R2
+    r2.end shouldBe 90 + 200 - 1 // 289: the original end of R2
+  }
+
+  it should "unmap reads when the hard clipping length requested is greater than the length of the reads" in {
+    val builder = new SamBuilder(readLength = 100, sort = Some(Queryname))
+    val clipper = new ClipBam(
+      input                = dummyBam,
+      output               = dummyBam,
+      ref                  = ref,
+      // NB: it shouldn't matter what these values are set to since 5-prime hard-clipping should consume both reads
+      clipBasesPastMate    = true,
+      clipOverlappingReads = true,
+      // NB: it is important to note that 3 and 5 prime hard clippings occurs first, then clipping bases past/overlapping mates
+      readOneFivePrime    = 101,
+      readTwoFivePrime    = 101,
+    )
+
+    val Seq(r1, r2) = builder.addPair(start1 = 100, start2 = 300)
+
+    r1.end shouldBe 100 + 100 - 1 // 201
+    r2.end shouldBe 300 + 100 - 1 // 401
+    clipper.clipPair(r1, r2)
+    r1.unmapped shouldBe true
+    r2.unmapped shouldBe true
+    r1.start shouldBe UnmappedStart
+    r1.end shouldBe UnmappedStart
+    r2.start shouldBe UnmappedStart
+    r2.end shouldBe UnmappedStart
   }
 }
