@@ -26,7 +26,7 @@ package com.fulcrumgenomics.umi
 
 import com.fulcrumgenomics.FgBioDef._
 import com.fulcrumgenomics.alignment.{Cigar, CigarElem}
-import com.fulcrumgenomics.bam.api.{SamOrder, SamRecord}
+import com.fulcrumgenomics.bam.api.{SamOrder, SamRecord, SamWriter}
 import com.fulcrumgenomics.bam.{ClippingMode, SamRecordClipper}
 import com.fulcrumgenomics.commons.util.{Logger, SimpleCounter}
 import com.fulcrumgenomics.umi.UmiConsensusCaller._
@@ -173,6 +173,9 @@ trait UmiConsensusCaller[ConsensusRead <: SimpleRead] {
   /** Clipper utility used to _calculate_ clipping, but not do the actual clipping */
   private val clipper = new SamRecordClipper(mode=ClippingMode.Soft, autoClipAttributes=true)
 
+  /** Returns an optional write to write rejected source records to. */
+  protected def rejectsWriter: Option[SamWriter] = None
+
   /** Returns a clone of this consensus caller in a state where no previous reads were processed.  I.e. all counters
     * are set to zero.*/
   def emptyClone(): UmiConsensusCaller[ConsensusRead]
@@ -198,7 +201,14 @@ trait UmiConsensusCaller[ConsensusRead <: SimpleRead] {
   def consensusReadsConstructed: Long = _consensusReadsConstructed
 
   /** Records that the supplied records were rejected, and not used to build a consensus read. */
-  protected def rejectRecords(recs: Iterable[SamRecord], reason: String) : Unit = this._filteredReads.count(reason, recs.size.toLong)
+  protected def rejectRecords(recs: Iterable[SamRecord], reason: String) : Unit = {
+    this._filteredReads.count(reason, recs.size.toLong)
+    this.rejectsWriter.foreach { writer =>
+      writer.synchronized {
+        writer ++= recs
+      }
+    }
+  }
 
   /** Records that the supplied records were rejected, and not used to build a consensus read. */
   protected def rejectRecords(reason: String, rec: SamRecord*) : Unit = rejectRecords(rec, reason)

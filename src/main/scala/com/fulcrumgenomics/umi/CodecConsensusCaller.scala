@@ -25,7 +25,7 @@
 package com.fulcrumgenomics.umi
 
 import com.fulcrumgenomics.FgBioDef._
-import com.fulcrumgenomics.bam.api.SamRecord
+import com.fulcrumgenomics.bam.api.{SamRecord, SamWriter}
 import com.fulcrumgenomics.bam.{ClippingMode, SamRecordClipper}
 import com.fulcrumgenomics.umi.DuplexConsensusCaller.{DuplexConsensusRead, FilterFragments, FilterMinReads}
 import com.fulcrumgenomics.umi.UmiConsensusCaller.{ReadType, SourceRead}
@@ -89,7 +89,8 @@ class CodecConsensusCaller(readNamePrefix: String,
                            val outerBasesQual: Option[PhredScore] = None,
                            val outerBasesLength: Int = 5,
                            val maxDuplexDisagreements: Int = Int.MaxValue,
-                           val maxDuplexDisagreementRate: Double = 1.0
+                           val maxDuplexDisagreementRate: Double = 1.0,
+                           rejectsWriter: Option[SamWriter] = None
                           ) extends DuplexConsensusCaller(
   readNamePrefix      = readNamePrefix,
   readGroupId         = readGroupId,
@@ -102,7 +103,8 @@ class CodecConsensusCaller(readNamePrefix: String,
   // trim off any regions that drop below the `minReadsPerStrand` threshold as that would significantly
   // complicate the logic of stitching R1 and R2 together.
   minReads            = Seq(1, 1, 1),
-  maxReadsPerStrand   = maxReadsPerStrand
+  maxReadsPerStrand   = maxReadsPerStrand,
+  rejectsWriter       = rejectsWriter
 ) {
   require(this.minReadsPerStrand >= 1, "minReadsPerStrand must be at least 1.")
 
@@ -130,7 +132,8 @@ class CodecConsensusCaller(readNamePrefix: String,
       outerBasesQual      = this.outerBasesQual,
       outerBasesLength    = this.outerBasesLength,
       maxDuplexDisagreements    = this.maxDuplexDisagreements,
-      maxDuplexDisagreementRate = this.maxDuplexDisagreementRate
+      maxDuplexDisagreementRate = this.maxDuplexDisagreementRate,
+      rejectsWriter             = this.rejectsWriter
     )
   }
 

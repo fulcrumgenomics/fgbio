@@ -83,6 +83,7 @@ import com.fulcrumgenomics.util.ProgressLogger
 class CallCodecConsensusReads
 (@arg(flag='i', doc="The input SAM or BAM file.") val input: PathToBam,
  @arg(flag='o', doc="Output SAM or BAM file to write consensus reads.") val output: PathToBam,
+ @arg(flag='r', doc="Optional output SAM or BAM file to write reads not used.") val rejects: Option[PathToBam] = None,
  @arg(flag='p', doc="The prefix all consensus read names") val readNamePrefix: Option[String] = None,
  @arg(flag='R', doc="The new read group ID for all the consensus reads.") val readGroupId: String = "A",
  @arg(flag='1', doc="The Phred-scaled error rate for an error prior to the UMIs being integrated.") val errorRatePreUmi: PhredScore = DefaultErrorRatePreUmi,
@@ -106,6 +107,7 @@ class CallCodecConsensusReads
 
   Io.assertReadable(input)
   Io.assertCanWriteFile(output)
+  rejects.foreach(Io.assertCanWriteFile(_))
   validate(errorRatePreUmi  > 0, "Phred-scaled error rate pre UMI must be > 0")
   validate(errorRatePostUmi > 0, "Phred-scaled error rate post UMI must be > 0")
   validate(minReadPairs >= 1, "min-read-pairs must be >= 1")
@@ -118,6 +120,7 @@ class CallCodecConsensusReads
   override def execute(): Unit = {
     val in = SamSource(input)
     UmiConsensusCaller.checkSortOrder(in.header, input, logger.warning, fail)
+    val rejectsWriter = rejects.map(r => SamWriter(r, in.header))
 
     // The output file is unmapped, so clear out the sequence dictionary & PGs
     val outHeader = UmiConsensusCaller.outputHeader(in.header, readGroupId, sortOrder)
@@ -137,6 +140,7 @@ class CallCodecConsensusReads
       outerBasesLength          = outerBasesLength,
       maxDuplexDisagreements    = this.maxDuplexDisagreements,
       maxDuplexDisagreementRate = this.maxDuplexDisagreementRate,
+      rejectsWriter             = rejectsWriter
     )
     val progress = ProgressLogger(logger, unit=1000000)
     val iterator = new ConsensusCallingIterator(in.iterator, caller, Some(progress), threads)
@@ -145,6 +149,7 @@ class CallCodecConsensusReads
 
     in.safelyClose()
     out.close()
+    rejectsWriter.foreach(_.close())
     caller.logStatistics(logger)
   }
 }

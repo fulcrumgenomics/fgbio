@@ -156,7 +156,7 @@ case class VanillaConsensusRead(id: String, bases: Array[Byte], quals: Array[Byt
 class VanillaUmiConsensusCaller(override val readNamePrefix: String,
                                 override val readGroupId: String = "A",
                                 val options: VanillaUmiConsensusCallerOptions = new VanillaUmiConsensusCallerOptions(),
-                                val rejects: Option[SamWriter] = None
+                                override val rejectsWriter: Option[SamWriter] = None
                                ) extends UmiConsensusCaller[VanillaConsensusRead] with LazyLogging {
 
   private val NotEnoughReadsQual: PhredScore = 0.toByte // Score output when masking to N due to insufficient input reads
@@ -181,7 +181,7 @@ class VanillaUmiConsensusCaller(override val readNamePrefix: String,
       readNamePrefix = readNamePrefix,
       readGroupId    = readGroupId,
       options        = options,
-      rejects        = rejects
+      rejectsWriter  = this.rejectsWriter
     )
   }
 
@@ -324,12 +324,6 @@ class VanillaUmiConsensusCaller(override val readNamePrefix: String,
   protected def consensusReadLength(reads: Seq[SourceRead], minReads: Int): Int = {
     require(reads.size >= minReads, "Too few reads to create a consensus.")
     reads.map(_.length).sortBy(len => -len).drop(minReads-1).head
-  }
-
-  /** If a reject writer was provided, emit the reads to that writer. */
-  override protected def rejectRecords(recs: Iterable[SamRecord], reason: String): Unit = {
-    super.rejectRecords(recs, reason)
-    this.rejects.foreach(rej => rej ++= recs)
   }
 
   /** Creates a `SamRecord` from the called consensus base and qualities. */
