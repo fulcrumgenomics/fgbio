@@ -111,6 +111,9 @@ object DuplexConsensusCaller {
   * @param errorRatePreUmi the estimated rate of errors in the DNA prior to attaching UMIs
   * @param errorRatePostUmi the estimated rate of errors in the DNA post attaching UMIs
   * @param minReads the minimum number of input reads to a consensus read (see [[CallDuplexConsensusReads]]).
+  * @param maxReadsPerStrand the maximum number of reads to use when calling consensus on a single strand
+  * @param rejectsWriter an optional writer to write _incoming_ SamRecords to if they are not used to generate
+  *                      a consensus read
   * */
 class DuplexConsensusCaller(override val readNamePrefix: String,
                             override val readGroupId: String    = "A",

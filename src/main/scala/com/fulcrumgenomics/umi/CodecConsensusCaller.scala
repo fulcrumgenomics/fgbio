@@ -76,6 +76,8 @@ import com.fulcrumgenomics.util.Sequences
   *                               strand consensus reads (only counting where both consensus reads make a call)
   * @param maxDuplexDisagreementRate filter out reads with more than this rate of disagreements between the two single
   *                                  strand consensus reads (only counting where both consensus reads make a call)
+  * @param rejectsWriter an optional writer to write _incoming_ SamRecords to if they are not used to generate
+  *                      a consensus read
   */
 class CodecConsensusCaller(readNamePrefix: String,
                            readGroupId: String = "A",
