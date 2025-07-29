@@ -148,7 +148,7 @@ class CallMolecularConsensusReads
   override def execute(): Unit = {
     val in  = SamSource(input)
     UmiConsensusCaller.checkSortOrder(in.header, input, logger.warning, fail)
-    val rej = rejects.map(r => SamWriter(r, in.header))
+    val rejectsWriter = rejects.map(r => SamWriter(r, in.header))
 
     // Build an iterator for the input reads, which only really matters if calling consensus in overlapping read pairs.
     val inIter = if (!consensusCallOverlappingBases) in.iterator else {
@@ -177,7 +177,7 @@ class CallMolecularConsensusReads
       readNamePrefix = readNamePrefix.getOrElse(UmiConsensusCaller.makePrefixFromSamHeader(in.header)),
       readGroupId    = readGroupId,
       options        = options,
-      rejects        = rej
+      rejectsWriter  = rejectsWriter
     )
 
     val progress = ProgressLogger(logger, unit=1e6.toInt)
@@ -187,7 +187,7 @@ class CallMolecularConsensusReads
     progress.logLast()
     in.safelyClose()
     out.close()
-    rej.foreach(_.close())
+    rejectsWriter.foreach(_.close())
     caller.logStatistics(logger)
   }
 }

@@ -25,7 +25,7 @@
 package com.fulcrumgenomics.umi
 
 import com.fulcrumgenomics.FgBioDef._
-import com.fulcrumgenomics.bam.api.SamRecord
+import com.fulcrumgenomics.bam.api.{SamRecord, SamWriter}
 import com.fulcrumgenomics.commons.util.LazyLogging
 import com.fulcrumgenomics.umi.DuplexConsensusCaller._
 import com.fulcrumgenomics.umi.UmiConsensusCaller.ReadType.{ReadType, _}
@@ -111,6 +111,9 @@ object DuplexConsensusCaller {
   * @param errorRatePreUmi the estimated rate of errors in the DNA prior to attaching UMIs
   * @param errorRatePostUmi the estimated rate of errors in the DNA post attaching UMIs
   * @param minReads the minimum number of input reads to a consensus read (see [[CallDuplexConsensusReads]]).
+  * @param maxReadsPerStrand the maximum number of reads to use when calling consensus on a single strand
+  * @param rejectsWriter an optional writer to write _incoming_ SamRecords to if they are not used to generate
+  *                      a consensus read
   * */
 class DuplexConsensusCaller(override val readNamePrefix: String,
                             override val readGroupId: String    = "A",
@@ -119,7 +122,8 @@ class DuplexConsensusCaller(override val readNamePrefix: String,
                             val errorRatePreUmi: PhredScore     = DuplexConsensusCaller.ErrorRatePreUmi,
                             val errorRatePostUmi: PhredScore    = DuplexConsensusCaller.ErrorRatePostUmi,
                             val minReads: Seq[Int]              = Seq(1),
-                            val maxReadsPerStrand: Int          = VanillaUmiConsensusCallerOptions.DefaultMaxReads
+                            val maxReadsPerStrand: Int          = VanillaUmiConsensusCallerOptions.DefaultMaxReads,
+                            override val rejectsWriter: Option[SamWriter] = None
                            ) extends UmiConsensusCaller[DuplexConsensusRead] with LazyLogging {
 
   private val Seq(minTotalReads, minXyReads, minYxReads) = this.minReads.padTo(3, this.minReads.last)
@@ -128,7 +132,10 @@ class DuplexConsensusCaller(override val readNamePrefix: String,
   require(minXyReads <= minTotalReads, "min-reads values must be specified high to low.")
   require(minYxReads <= minXyReads, "min-reads values must be specified high to low.")
 
-  protected val ssCaller = new VanillaUmiConsensusCaller(readNamePrefix="x", options=new VanillaUmiConsensusCallerOptions(
+  protected val ssCaller = new VanillaUmiConsensusCaller(
+    readNamePrefix = "x",
+    rejectsWriter  = this.rejectsWriter,
+    options = new VanillaUmiConsensusCallerOptions(
       errorRatePreUmi         = this.errorRatePreUmi,
       errorRatePostUmi        = this.errorRatePostUmi,
       minReads                = 1,
@@ -164,7 +171,8 @@ class DuplexConsensusCaller(override val readNamePrefix: String,
       errorRatePreUmi     = errorRatePreUmi,
       errorRatePostUmi    = errorRatePostUmi,
       minReads            = minReads,
-      maxReadsPerStrand   = maxReadsPerStrand
+      maxReadsPerStrand   = maxReadsPerStrand,
+      rejectsWriter       = this.rejectsWriter
     )
   }
 
