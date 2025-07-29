@@ -35,6 +35,7 @@ import htsjdk.samtools.SAMFileHeader.{GroupOrder, SortOrder}
 import htsjdk.samtools._
 import htsjdk.samtools.util.{Murmur3, SequenceUtil, TrimmingUtil}
 
+import scala.collection.immutable.ListMap
 import scala.collection.mutable
 import scala.collection.mutable.ArrayBuffer
 import scala.math.min
@@ -476,5 +477,22 @@ trait UmiConsensusCaller[ConsensusRead <: SimpleRead] {
       logger.info(f"Raw Reads Filtered Due to $filter: $count%,d (${count/totalReads.toDouble}%.4f).")
     }
     logger.info(f"Consensus reads emitted: $consensusReadsConstructed%,d.")
+  }
+
+  /** Generates a map of statistics collected by the caller. */
+  def statistics: ListMap[String, Any] = {
+    val usedFraction = if (totalReads == 0) 0 else (1.0 - (this.totalFiltered / this.totalReads.toDouble))
+
+    val builder = ListMap.newBuilder[String, Any]
+    builder += ("Total Raw Reads Considered" -> this.totalReads)
+    builder += ("Total Raw Reads Rejected" -> this.totalFiltered)
+    builder += ("Fraction Of Raw Reads Used" -> usedFraction)
+
+    this._filteredReads.foreach { case (reason, count) =>
+      builder += (s"Rejected Raw Reads: $reason" -> count)
+    }
+
+    builder += ("Consensus Reads Emitted" -> this.consensusReadsConstructed)
+    builder.result()
   }
 }
