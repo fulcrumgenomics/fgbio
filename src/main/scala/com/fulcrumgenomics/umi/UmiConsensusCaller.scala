@@ -173,7 +173,7 @@ trait UmiConsensusCaller[ConsensusRead <: SimpleRead] {
   /** Clipper utility used to _calculate_ clipping, but not do the actual clipping */
   private val clipper = new SamRecordClipper(mode=ClippingMode.Soft, autoClipAttributes=true)
 
-  /** Returns an optional write to write rejected source records to. */
+  /** Returns an optional writer to write rejected source records to. */
   protected def rejectsWriter: Option[SamWriter] = None
 
   /** Returns a clone of this consensus caller in a state where no previous reads were processed.  I.e. all counters

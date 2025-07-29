@@ -177,7 +177,7 @@ class CallMolecularConsensusReads
       readNamePrefix = readNamePrefix.getOrElse(UmiConsensusCaller.makePrefixFromSamHeader(in.header)),
       readGroupId    = readGroupId,
       options        = options,
-      rejects        = rejectsWriter
+      rejectsWriter  = rejectsWriter
     )
 
     val progress = ProgressLogger(logger, unit=1e6.toInt)
