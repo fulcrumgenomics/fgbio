@@ -112,14 +112,18 @@ class CodecConsensusCaller(readNamePrefix: String,
 ) {
   require(this.minReadsPerStrand >= 1, "minReadsPerStrand must be at least 1.")
 
-  private val FilterDuplexTooShort = s"Top/Bottom strand overlap too short"
+  private val FilterDuplexTooShort = "Top/Bottom strand overlap too short"
   private val FilterIndelError = "Indel error between strands in duplex overlap"
   private val FilterHighDuplexDisagreement = "Too many duplex disagreements"
+  private val CodecFilterStrings = Seq(FilterDuplexTooShort, FilterIndelError, FilterHighDuplexDisagreement)
+  CodecFilterStrings.foreach(rejectRecords(_))
+
   private val clipper = new SamRecordClipper(ClippingMode.Hard, autoClipAttributes = false)
 
   private var totalConsensusBases: Long = 0
   private var totalDuplexBases: Long = 0
   private var duplexErrorBases: Long = 0
+  private var consensusReadsFilteredHighDisagreement: Long = 0
 
   /** Returns the MI tag as is because in CODEC there is no /A or /B unlike classic duplex-seq */
   override protected[umi] def sourceMoleculeId(rec: SamRecord): String = rec[String](ConsensusTags.MolecularId)
@@ -228,6 +232,7 @@ class CodecConsensusCaller(readNamePrefix: String,
 
               if (duplexErrors > this.maxDuplexDisagreements || duplexErrorRate > this.maxDuplexDisagreementRate) {
                 rejectRecords((r1s.view ++ r2s.view).flatMap(_.sam), FilterHighDuplexDisagreement)
+                this.consensusReadsFilteredHighDisagreement += 1
                 Nil
               }
               else {
@@ -347,6 +352,7 @@ class CodecConsensusCaller(readNamePrefix: String,
         this.totalConsensusBases += sub.totalConsensusBases
         this.totalDuplexBases += sub.totalDuplexBases
         this.duplexErrorBases += sub.duplexErrorBases
+        this.consensusReadsFilteredHighDisagreement += sub.consensusReadsFilteredHighDisagreement
     }
   }
 
@@ -355,6 +361,7 @@ class CodecConsensusCaller(readNamePrefix: String,
     val duplexErrorRate = if (this.totalDuplexBases == 0) 0 else this.duplexErrorBases / this.totalDuplexBases.toDouble
 
     super.statistics +
+      ("Consensus Reads Rejected: High Duplex Disagreement" -> this.consensusReadsFilteredHighDisagreement) +
       ("Consensus Bases Emitted" -> this.totalConsensusBases) +
       ("Duplex Consensus Bases Emitted" -> this.totalDuplexBases) +
       ("Duplex Strand Disagreements" -> this.duplexErrorBases) +

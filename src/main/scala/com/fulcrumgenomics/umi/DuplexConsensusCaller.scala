@@ -47,10 +47,12 @@ object DuplexConsensusCaller {
   val NoCallQual: PhredScore = PhredScore.MinValue
 
   /** Additional filter strings used when rejecting reads. */
-  val FilterMinReads    = "Not Enough Reads (Either Total, AB, or BA)"
-  val FilterFragments   = "Being Fragment/Non-Paired Reads"
+  val FilterMinReads    = "Minimum Read Limit(s) Not Met"
+  val FilterFragments   = "Fragment/Non-Paired Reads"
   val FilterSsConsensus = "Only Generating One Strand Consensus"
   val FilterCollision   = "Potential collision between independent duplex molecules"
+
+  private val DuplexFilterStrings = Seq(FilterMinReads, FilterFragments, FilterSsConsensus, FilterCollision)
 
   /**
     * Stores information about a consensus read.  Bases, arrays, and the two single
@@ -127,7 +129,7 @@ class DuplexConsensusCaller(override val readNamePrefix: String,
                            ) extends UmiConsensusCaller[DuplexConsensusRead] with LazyLogging {
 
   private val Seq(minTotalReads, minXyReads, minYxReads) = this.minReads.padTo(3, this.minReads.last)
-
+  DuplexFilterStrings.foreach(rejectRecords(_))
   // For depth thresholds it's required that ba <= ab <= cc
   require(minXyReads <= minTotalReads, "min-reads values must be specified high to low.")
   require(minYxReads <= minXyReads, "min-reads values must be specified high to low.")

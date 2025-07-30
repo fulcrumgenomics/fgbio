@@ -64,6 +64,8 @@ object UmiConsensusCaller {
   /** Filter reason for when reads are rejected due creation of orphaned consensus (i.e. R1 or R2 failed). */
   val FilterOrphan = "Orphan Consensus Created"
 
+  val FilterStrings: Seq[String] = Seq(FilterInsufficientSupport, FilterMinorityAlignment, FilterLowQuality, FilterOrphan)
+
   /** A trait that consensus reads must implement. */
   trait SimpleRead {
     /** The ID of the molecule that generated the consensus read. */
