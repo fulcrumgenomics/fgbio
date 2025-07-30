@@ -159,6 +159,9 @@ class VanillaUmiConsensusCaller(override val readNamePrefix: String,
                                 override val rejectsWriter: Option[SamWriter] = None
                                ) extends UmiConsensusCaller[VanillaConsensusRead] with LazyLogging {
 
+  UmiConsensusCaller.FilterStrings.foreach(rejectRecords(_))
+
+
   private val NotEnoughReadsQual: PhredScore = 0.toByte // Score output when masking to N due to insufficient input reads
   private val TooLowQualityQual: PhredScore = 2.toByte  // Score output when masking to N due to too low consensus quality
 
