@@ -87,37 +87,39 @@ class CallCodecConsensusReadsTest extends UnitSpec {
   }
 
   it should "emit statistics and a reject BAM" in {
-    val builder = new SamBuilder(readLength=30, sort=Some(SamOrder.TemplateCoordinate))
-    builder.addPair( // Should form a consensus
-      start1=100, start2=100, bases1="AC" * 15, bases2="AC" * 15, attrs=Map(("RX", "ACC-TGA"), ("MI", "hi"))
-    )
-    builder.addPair( // Too far apart to form a consensus
-      name="x", start1=200, start2=500, bases1="AC" * 15, bases2="AC" * 15, attrs=Map(("RX", "ACC-TGA"), ("MI", "bye"))
-    )
-    val in  = builder.toTempFile()
+    for (threads <- Seq(1, 4)) {
+      val builder = new SamBuilder(readLength=30, sort=Some(SamOrder.TemplateCoordinate))
+      builder.addPair( // Should form a consensus
+        start1=100, start2=100, bases1="AC" * 15, bases2="AC" * 15, attrs=Map(("RX", "ACC-TGA"), ("MI", "hi"))
+      )
+      builder.addPair( // Too far apart to form a consensus
+        name="x", start1=200, start2=500, bases1="AC" * 15, bases2="AC" * 15, attrs=Map(("RX", "ACC-TGA"), ("MI", "bye"))
+      )
+      val in  = builder.toTempFile()
 
-    val out = makeTempFile("codec.", ".bam")
-    val rej = makeTempFile("rejects.", ".bam")
-    val statsPath = makeTempFile("stats.", ".txt")
-    val caller = new CallCodecConsensusReads(input=in, output=out, readGroupId="ZZ", rejects=Some(rej), stats=Some(statsPath))
-    caller.execute()
+      val out = makeTempFile("codec.", ".bam")
+      val rej = makeTempFile("rejects.", ".bam")
+      val statsPath = makeTempFile("stats.", ".txt")
+      val caller = new CallCodecConsensusReads(input=in, output=out, readGroupId="ZZ", threads=threads, rejects=Some(rej), stats=Some(statsPath))
+      caller.execute()
 
-    val recs = readBamRecs(out)
-    recs should have size 1
+      val recs = readBamRecs(out)
+      recs should have size 1
 
-    val rejectedRecs = readBamRecs(rej)
-    rejectedRecs should have size 2
-    rejectedRecs.foreach(_.name shouldBe "x")
+      val rejectedRecs = readBamRecs(rej)
+      rejectedRecs should have size 2
+      rejectedRecs.foreach(_.name shouldBe "x")
 
-    val stats: Map[String, String] = Io.readLines(statsPath).drop(1)
-      .map { line =>
-        val tabIdx = line.indexOf('\t')
-        (line.substring(0, tabIdx), line.substring(tabIdx + 1))
-      }
-      .toMap
+      val stats: Map[String, String] = Io.readLines(statsPath).drop(1)
+        .map { line =>
+          val tabIdx = line.indexOf('\t')
+          (line.substring(0, tabIdx), line.substring(tabIdx + 1))
+        }
+        .toMap
 
-    val key = stats.keys.find(_.contains("overlap too short")).getOrElse(fail("Couldn't find key in stats."))
-    val count = stats(key).toInt
-    count shouldBe 2
+      val key = stats.keys.find(_.contains("overlap too short")).getOrElse(fail("Couldn't find key in stats."))
+      val count = stats(key).toInt
+      count shouldBe 2
+    }
   }
 }
