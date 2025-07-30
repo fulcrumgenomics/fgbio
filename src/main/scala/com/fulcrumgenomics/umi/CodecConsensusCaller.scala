@@ -32,6 +32,8 @@ import com.fulcrumgenomics.umi.UmiConsensusCaller.{ReadType, SourceRead}
 import com.fulcrumgenomics.util.NumericTypes.PhredScore
 import com.fulcrumgenomics.util.Sequences
 
+import scala.collection.immutable.ListMap
+
 /**
   * Consensus caller for CODEC sequencing[1].  In CODEC each read-pair has an R1 which is generated from one
   * strand of the original duplex and an R2 which is generated from the opposite strand of the original duplex.
@@ -110,10 +112,18 @@ class CodecConsensusCaller(readNamePrefix: String,
 ) {
   require(this.minReadsPerStrand >= 1, "minReadsPerStrand must be at least 1.")
 
-  private val FilterDuplexTooShort = s"Top/Bottom Strand Overlap < ${minDuplexLength} bases."
-  private val FilterIndelError = "Indel error between strands in duplex overlap."
-  private val FilterHighDuplexDisagreement = "Duplex had too many disagreements between strands."
+  private val FilterDuplexTooShort = "Top/Bottom strand overlap too short"
+  private val FilterIndelError = "Indel error between strands in duplex overlap"
+  private val FilterHighDuplexDisagreement = "Too many duplex disagreements"
+  private val CodecFilterStrings = Seq(FilterDuplexTooShort, FilterIndelError, FilterHighDuplexDisagreement)
+  CodecFilterStrings.foreach(rejectRecords(_))
+
   private val clipper = new SamRecordClipper(ClippingMode.Hard, autoClipAttributes = false)
+
+  private var totalConsensusBases: Long = 0
+  private var totalDuplexBases: Long = 0
+  private var duplexErrorBases: Long = 0
+  private var consensusReadsFilteredHighDisagreement: Long = 0
 
   /** Returns the MI tag as is because in CODEC there is no /A or /B unlike classic duplex-seq */
   override protected[umi] def sourceMoleculeId(rec: SamRecord): String = rec[String](ConsensusTags.MolecularId)
@@ -216,30 +226,28 @@ class CodecConsensusCaller(readNamePrefix: String,
               val paddedR1 = r1Consensus.padded(newLength = consensusLength, left = longestR1Alignment.negativeStrand, qual = 0)
               val paddedR2 = r2Consensus.padded(newLength = consensusLength, left = longestR2Alignment.negativeStrand, qual = 0)
 
-              // Calculate number and rate of duplex errors ... but don't really if the thresholds won't need them
-              val (duplexErrors, duplexErrorRate) = {
-                if (this.maxDuplexDisagreementRate >= 1 && this.maxDuplexDisagreements >= overlapLength) (0, 0.0)
-                else {
-                  val (duplexBases, duplexErrors) = computeDuplexCounts(paddedR1, paddedR2)
-                  val duplexErrorRate = if (duplexBases > 0) duplexErrors.toDouble / duplexBases.toDouble else 0
-                  (duplexErrors, duplexErrorRate)
-                }
-              }
+              // Calculate number and rate of duplex errors
+              val (duplexBases, duplexErrors) = computeDuplexCounts(paddedR1, paddedR2)
+              val duplexErrorRate = if (duplexBases > 0) duplexErrors.toDouble / duplexBases.toDouble else 0
 
               if (duplexErrors > this.maxDuplexDisagreements || duplexErrorRate > this.maxDuplexDisagreementRate) {
                 rejectRecords((r1s.view ++ r2s.view).flatMap(_.sam), FilterHighDuplexDisagreement)
+                this.consensusReadsFilteredHighDisagreement += 1
                 Nil
               }
               else {
-                val consensus = duplexConsensus(Some(paddedR1), Some(paddedR2), sourceReads = None)
-                if (longestR1Alignment.negativeStrand) consensus.foreach(_.revcomp())
-                consensus.foreach(maskCodecConsensusQuals)
+                duplexConsensus(Some(paddedR1), Some(paddedR2), sourceReads = None).map { c =>
+                  // Update statistics
+                  this.totalConsensusBases += c.length
+                  this.totalDuplexBases += duplexBases
+                  this.duplexErrorBases += duplexErrors
 
-                val umis = recs.iterator.map(r => r[String](ConsensusTags.UmiBases)).toSeq
-                consensus
-                  .iterator
-                  .map(c => createSamRecord(c, ReadType.Fragment, umis))
-                  .toSeq
+                  // Generate the output SamRecord
+                  if (longestR1Alignment.negativeStrand) c.revcomp()
+                  maskCodecConsensusQuals(c)
+                  val umis = recs.iterator.map(r => r[String](ConsensusTags.UmiBases)).toSeq
+                  createSamRecord(c, ReadType.Fragment, umis)
+                }.toSeq
               }
           }
         }
@@ -334,5 +342,29 @@ class CodecConsensusCaller(readNamePrefix: String,
     }
 
     (duplexBases, duplexErrors)
+  }
+
+  /** Adds the given caller's statistics (counts) to this caller. */
+  override def addStatistics(caller: UmiConsensusCaller[DuplexConsensusRead]): Unit = {
+    super.addStatistics(caller)
+    caller match {
+      case sub: CodecConsensusCaller =>
+        this.totalConsensusBases += sub.totalConsensusBases
+        this.totalDuplexBases += sub.totalDuplexBases
+        this.duplexErrorBases += sub.duplexErrorBases
+        this.consensusReadsFilteredHighDisagreement += sub.consensusReadsFilteredHighDisagreement
+    }
+  }
+
+  /** Generates a map of statistics collected by the caller. */
+  override def statistics: ListMap[FilenameSuffix, Any] = {
+    val duplexErrorRate = if (this.totalDuplexBases == 0) 0 else this.duplexErrorBases / this.totalDuplexBases.toDouble
+
+    super.statistics +
+      ("Consensus Reads Rejected: High Duplex Disagreement" -> this.consensusReadsFilteredHighDisagreement) +
+      ("Consensus Bases Emitted" -> this.totalConsensusBases) +
+      ("Duplex Consensus Bases Emitted" -> this.totalDuplexBases) +
+      ("Duplex Strand Disagreements" -> this.duplexErrorBases) +
+      ("Duplex Disagreement Rate" -> duplexErrorRate)
   }
 }

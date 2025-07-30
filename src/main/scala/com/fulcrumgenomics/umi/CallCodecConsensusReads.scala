@@ -84,6 +84,7 @@ class CallCodecConsensusReads
 (@arg(flag='i', doc="The input SAM or BAM file.") val input: PathToBam,
  @arg(flag='o', doc="Output SAM or BAM file to write consensus reads.") val output: PathToBam,
  @arg(flag='r', doc="Optional output SAM or BAM file to write reads not used.") val rejects: Option[PathToBam] = None,
+ @arg(flag='s', doc="Optional output text file of key consensus calling statistics.") val stats: Option[FilePath] = None,
  @arg(flag='p', doc="The prefix all consensus read names") val readNamePrefix: Option[String] = None,
  @arg(flag='R', doc="The new read group ID for all the consensus reads.") val readGroupId: String = "A",
  @arg(flag='1', doc="The Phred-scaled error rate for an error prior to the UMIs being integrated.") val errorRatePreUmi: PhredScore = DefaultErrorRatePreUmi,
@@ -150,6 +151,13 @@ class CallCodecConsensusReads
     in.safelyClose()
     out.close()
     rejectsWriter.foreach(_.close())
+
     caller.logStatistics(logger)
+    stats.foreach { path =>
+      val lines = Seq("statistic\tvalue") ++ caller.statistics.map {
+        case (key, value) => s"${key}\t${value}"
+      }
+      Io.writeLines(path, lines)
+    }
   }
 }

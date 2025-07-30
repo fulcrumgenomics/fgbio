@@ -26,6 +26,7 @@ package com.fulcrumgenomics.umi
 
 import com.fulcrumgenomics.bam.api.{SamOrder, SamSource}
 import com.fulcrumgenomics.testing.{SamBuilder, UnitSpec}
+import com.fulcrumgenomics.util.Io
 
 import java.nio.file.Paths
 
@@ -83,5 +84,42 @@ class CallCodecConsensusReadsTest extends UnitSpec {
     val reader = SamSource(out)
     val recs = reader.toSeq
     recs should have size 1
+  }
+
+  it should "emit statistics and a reject BAM" in {
+    for (threads <- Seq(1, 4)) {
+      val builder = new SamBuilder(readLength=30, sort=Some(SamOrder.TemplateCoordinate))
+      builder.addPair( // Should form a consensus
+        start1=100, start2=100, bases1="AC" * 15, bases2="AC" * 15, attrs=Map(("RX", "ACC-TGA"), ("MI", "hi"))
+      )
+      builder.addPair( // Too far apart to form a consensus
+        name="x", start1=200, start2=500, bases1="AC" * 15, bases2="AC" * 15, attrs=Map(("RX", "ACC-TGA"), ("MI", "bye"))
+      )
+      val in  = builder.toTempFile()
+
+      val out = makeTempFile("codec.", ".bam")
+      val rej = makeTempFile("rejects.", ".bam")
+      val statsPath = makeTempFile("stats.", ".txt")
+      val caller = new CallCodecConsensusReads(input=in, output=out, readGroupId="ZZ", threads=threads, rejects=Some(rej), stats=Some(statsPath))
+      caller.execute()
+
+      val recs = readBamRecs(out)
+      recs should have size 1
+
+      val rejectedRecs = readBamRecs(rej)
+      rejectedRecs should have size 2
+      rejectedRecs.foreach(_.name shouldBe "x")
+
+      val stats: Map[String, String] = Io.readLines(statsPath).drop(1)
+        .map { line =>
+          val tabIdx = line.indexOf('\t')
+          (line.substring(0, tabIdx), line.substring(tabIdx + 1))
+        }
+        .toMap
+
+      val key = stats.keys.find(_.contains("overlap too short")).getOrElse(fail("Couldn't find key in stats."))
+      val count = stats(key).toInt
+      count shouldBe 2
+    }
   }
 }
