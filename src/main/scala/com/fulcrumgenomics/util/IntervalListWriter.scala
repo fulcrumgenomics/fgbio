@@ -50,9 +50,8 @@ object IntervalListWriter {
 
   /** Constructs an [[IntervalListWriter]] from a Writer. */
   def apply(writer: java.io.Writer, dict: SequenceDictionary): IntervalListWriter = {
-    import com.fulcrumgenomics.fasta.Converters.ToSAMSequenceDictionary
     val header = new SAMFileHeader()
-    header.setSequenceDictionary(dict.asSam)
+    header.setSequenceDictionary(dict.toSam)
     this.apply(writer, header)
   }
 }
