@@ -26,7 +26,7 @@
 package com.fulcrumgenomics.fasta
 
 import com.fulcrumgenomics.FgBioDef._
-import com.fulcrumgenomics.fasta.Converters.{FromSAMSequenceDictionary, FromSAMSequenceRecord, ToSAMSequenceDictionary, ToSAMSequenceRecord}
+import com.fulcrumgenomics.fasta.Converters.{FromSAMSequenceDictionary, FromSAMSequenceRecord}
 import com.fulcrumgenomics.fasta.SequenceMetadata.AlternateLocus
 import com.fulcrumgenomics.fasta.Topology.{Circular, Linear}
 import com.fulcrumgenomics.testing.UnitSpec
@@ -172,6 +172,10 @@ class SequenceDictionaryTest extends UnitSpec with OptionValues {
     SequenceMetadata(name="chr1", length=0, md5=Some("1")) sameAs SequenceMetadata(name="chr1", length=0, md5=Some("1")) shouldBe true
   }
 
+  "SequenceMetadata.toString" should "return the SAM string" in {
+    SequenceMetadata(name="chr1", length=0, md5=Some("1")).toString shouldBe "@SQ\tSN:chr1\tLN:0\tM5:1"
+  }
+
   "SequenceDictionary" should "fail to build two sequence metadatas share a name (including aliases)" in {
     val one   = SequenceMetadata(name="chr1", length=0)
     val two   = SequenceMetadata(name="chr2", length=0, aliases=Seq("chr1"))
@@ -210,8 +214,8 @@ class SequenceDictionaryTest extends UnitSpec with OptionValues {
     dict.contains("4") shouldBe false
   }
 
-  "Converters.ToSequenceRecord" should "convert from a [[SequenceMetadata]] to a [[SAMSequenceRecord]]" in {
-    val record: SAMSequenceRecord = new ToSAMSequenceRecord(validSequence).asSam
+  "SequenceMetadata.toSam" should "convert from a [[SequenceMetadata]] to a [[SAMSequenceRecord]]" in {
+    val record: SAMSequenceRecord = validSequence.toSam
     record.getSequenceName shouldBe validSequence.name
     record.getSequenceLength shouldBe validSequence.length
     record.getSequenceIndex shouldBe validSequence.index
@@ -225,18 +229,18 @@ class SequenceDictionaryTest extends UnitSpec with OptionValues {
 
   "Converters.FromSequenceRecord" should "convert from a [[SAMSequenceRecord]] to a [[SequenceMetadata]]" in {
     // Note: relies on the above test that converts from a [[SequenceMetadata]] to a [[SAMSequenceRecord]]
-    val record: SequenceMetadata = new FromSAMSequenceRecord(new ToSAMSequenceRecord(validSequence).asSam).fromSam
+    val record: SequenceMetadata = new FromSAMSequenceRecord(validSequence.toSam).fromSam
     record shouldBe validSequence
     validSequence.attributes.foreach { case (key, value) => record(key) shouldBe value }
   }
 
-  "Converters.ToSequenceDictionary" should "convert from a [[SequenceDictionary]] to a [[SAMSequenceDictionary]]" in {
+  "SequenceDictionary.toSam" should "convert from a [[SequenceDictionary]] to a [[SAMSequenceDictionary]]" in {
     val scalaDict: SequenceDictionary = SequenceDictionary(
       validSequence,
       SequenceMetadata(name="chrX", length=234),
       SequenceMetadata(name="chrY", length=345)
     )
-    val javaDict: SAMSequenceDictionary = new ToSAMSequenceDictionary(scalaDict).asSam
+    val javaDict: SAMSequenceDictionary = scalaDict.toSam
 
     javaDict.getReferenceLength shouldBe scalaDict.infos.map(_.length).sum
     javaDict.getSequences.length shouldBe scalaDict.length
@@ -254,7 +258,7 @@ class SequenceDictionaryTest extends UnitSpec with OptionValues {
       SequenceMetadata(name="chrX", length=234),
       SequenceMetadata(name="chrY", length=345)
     )
-    val targetDict: SequenceDictionary = new FromSAMSequenceDictionary(new ToSAMSequenceDictionary(sourceDict).asSam).fromSam
+    val targetDict: SequenceDictionary = new FromSAMSequenceDictionary(sourceDict.toSam).fromSam
 
     sourceDict shouldBe targetDict
   }

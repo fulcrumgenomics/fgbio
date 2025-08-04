@@ -59,9 +59,8 @@ class UpdateVcfContigNames
     val dict   = SequenceDictionary(this.dict)
     val reader = new VCFFileReader(this.input)
     val header = {
-      import com.fulcrumgenomics.fasta.Converters.ToSAMSequenceDictionary
       val h: VCFHeader = new VCFHeader(reader.getFileHeader)
-      h.setSequenceDictionary(dict.asSam)
+      h.setSequenceDictionary(dict.toSam)
       h
     }
     val writer = {

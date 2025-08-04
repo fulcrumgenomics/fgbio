@@ -97,9 +97,6 @@ class ExtractUmisFromBam
     case _     => invalid("More than two read structures given")
   }
 
-  // This can be removed once the @deprecated molecularBarcodeTags is removed
-  if (molecularIndexTags.isEmpty) invalid("At least one molecular-index-tag must be specified.")
-
   // validate the read structure versus the molecular index tags
   {
     // create a read structure for the entire template
@@ -232,8 +229,6 @@ object ExtractUmisFromBam {
     val molecularIndexBases = readStructureBases.filter(_.kind == SegmentType.MolecularBarcode).map(_.bases)
 
     // set the index tags
-    // TODO: when we remove the deprecated molecularBarcodeTags option, consider whether or not we still
-    //       need to have support for specifying a single tag via molecularIndexTags.
     molecularIndexTags match {
       case Seq(tag) => record(tag) = molecularIndexBases.mkString(UmiDelimiter)
       case _ =>

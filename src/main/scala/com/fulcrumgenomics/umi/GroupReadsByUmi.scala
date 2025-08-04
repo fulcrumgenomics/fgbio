@@ -44,7 +44,6 @@ import htsjdk.samtools.util.SequenceUtil
 
 import java.util.concurrent.Executors
 import java.util.concurrent.atomic.AtomicLong
-import scala.annotation.nowarn
 import scala.collection.mutable.ListBuffer
 import scala.collection.parallel.ExecutionContextTaskSupport
 import scala.collection.{BufferedIterator, Iterator, mutable}
@@ -528,10 +527,9 @@ object Strategy extends FgBioEnum[Strategy] {
     |
     |1. Templates are filtered if all reads for the template are unmapped
     |2. Templates are filtered if any non-secondary, non-supplementary read has mapping quality < `min-map-q`
-    |3. Templates are filtered if R1 and R2 are mapped to different chromosomes and `--allow-inter-contig` is false
-    |4. Templates are filtered if any UMI sequence contains one or more `N` bases
-    |5. Templates are filtered if `--min-umi-length` is specified and the UMI does not meet the length requirement
-    |6. Reads are filtered out if flagged as either secondary or supplementary
+    |3. Templates are filtered if any UMI sequence contains one or more `N` bases
+    |4. Templates are filtered if `--min-umi-length` is specified and the UMI does not meet the length requirement
+    |5. Records are filtered out if flagged as either secondary or supplementary
     |
     |Grouping of UMIs is performed by one of four strategies:
     |
@@ -593,10 +591,6 @@ class GroupReadsByUmi
                          |otherwise discard reads with UMIs shorter than this length and allow for differing UMI lengths.
                          |""")
     val minUmiLength: Option[Int] = None,
- @arg(flag='x', doc= """
-                         |DEPRECATED: this option will be removed in future versions and inter-contig reads will be
-                         |automatically processed.""")
- @deprecated val allowInterContig: Boolean = true,
  @arg(flag='@', doc="Number of threads to use when comparing UMIs. Only recommended for amplicon or similar data.") val threads: Int = 1,
 )extends FgBioTool with LazyLogging {
   import GroupReadsByUmi._
@@ -653,12 +647,10 @@ class GroupReadsByUmi
 
     // Filter and sort the input BAM file
     logger.info("Filtering the input.")
-    @nowarn("msg=value allowInterContig in class GroupReadsByUmi is deprecated")
     val filteredIterator = in.iterator
       .filterNot(r => r.secondary || r.supplementary)
       .filter(r => (includeNonPfReads || r.pf)                                      || { filteredNonPf += 1; false })
       .filter(r => (r.mapped || (r.paired && r.mateMapped))                         || { filteredPoorAlignment += 1; false })
-      .filter(r => (allowInterContig || r.unpaired || r.refIndex == r.mateRefIndex) || { filteredPoorAlignment += 1; false })
       .filter(r => mapqOk(r, this._minMapQ)                                         || { filteredPoorAlignment += 1; false })
       .filter(r => !r.get[String](rawTag).exists(_.contains('N'))                   || { filteredNsInUmi += 1; false })
       .filter { r =>
@@ -838,7 +830,6 @@ class GroupReadsByUmi
     * or later read on the genome.  This is necessary to ensure that, when the two paired UMIs are the same
     * or highly similar, that the A vs. B groups are constructed correctly.
     */
-  @nowarn("msg=value allowInterContig in class GroupReadsByUmi is deprecated")
   private def umiForRead(t: Template): Umi = {
     // Check that all the primary reads have the UMI defined
     t.primaryReads.foreach { rec =>
@@ -850,7 +841,6 @@ class GroupReadsByUmi
 
     (t.r1, t.r2, this.assigner) match {
       case (Some(r1), Some(r2), paired: PairedUmiAssigner) =>
-        if (!this.allowInterContig) require(r1.refIndex == r2.refIndex, s"Mates on different references not supported: ${r1.name}")
         val pos1 = if (r1.positiveStrand) r1.unclippedStart else r1.unclippedEnd
         val pos2 = if (r2.positiveStrand) r2.unclippedStart else r2.unclippedEnd
         val r1Lower = r1.refIndex < r2.refIndex || (r1.refIndex == r2.refIndex && (pos1 < pos2 || (pos1 == pos2 && r1.positiveStrand)))

@@ -75,8 +75,7 @@ class VariantContextSetBuilder(sampleNames: Seq[String] = List("Sample")) extend
 
   /** Sets the sequence dictionary for this builder.  This should be set before adding variants. */
   def setSequenceDictionary(dict: SequenceDictionary): this.type = {
-    import com.fulcrumgenomics.fasta.Converters.ToSAMSequenceDictionary
-    yieldingThis(this._header.setSequenceDictionary(dict.asSam))
+    yieldingThis(this._header.setSequenceDictionary(dict.toSam))
   }
 
   /** Adds the header line to the header for this builder.  This should be set before adding variants. */
