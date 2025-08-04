@@ -204,6 +204,18 @@ object Sequences {
     if (i == j) bs(i) = complement(bs(i))
   }
 
+  /** Reverse an array of arbitrary type.  */
+  @inline @specialized def reverse[T](xs: Array[T]): Unit = {
+    var (i, j) = (0, xs.length - 1)
+    while (i < j) {
+      val tmp = xs(i)
+      xs(i) = xs(j)
+      xs(j) = tmp
+      i += 1
+      j -= 1
+    }
+  }
+
   /**
     * Complements the bases in the array in place. See [[complement(b:Byte):Byte*]] for how complementing is performed.
     *
