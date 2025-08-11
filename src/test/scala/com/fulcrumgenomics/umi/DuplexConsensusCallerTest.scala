@@ -529,14 +529,14 @@ class DuplexConsensusCallerTest extends UnitSpec with OptionValues {
 
     // ab has zero depth, so it should be swapped with BA
     {
-      val read = cc.duplexConsensus(ab=Some(ab), ba=Some(ba), sourceReads=Seq.empty).value
+      val read = cc.duplexConsensus(ab=Some(ab), ba=Some(ba), sourceReads=Some(Seq.empty)).value
       read.abConsensus shouldBe ba
       read.baConsensus.isEmpty shouldBe true
     }
 
     // ba has zero depth, so it should be undefined.
     {
-      val read = cc.duplexConsensus(ab=Some(ba), ba=Some(ab), sourceReads=Seq.empty).value
+      val read = cc.duplexConsensus(ab=Some(ba), ba=Some(ab), sourceReads=Some(Seq.empty)).value
       read.abConsensus shouldBe ba
       read.baConsensus.isEmpty shouldBe true
     }

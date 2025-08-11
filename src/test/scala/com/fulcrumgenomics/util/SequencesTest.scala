@@ -124,6 +124,19 @@ class SequencesTest extends UnitSpec {
     Sequences.revcomp("NRG")        shouldBe "CYN"
   }
 
+  "Sequences.reverse" should "reverse arrays of various lengths and types" in {
+    def r[T](xs: Array[T]): Array[T] = {
+      Sequences.reverse(xs)
+      xs
+    }
+
+    r(Array()) shouldBe Array()
+    r(Array(1)) shouldBe Array(1)
+    r(Array(1, 2)) shouldBe Array(2, 1)
+    r(Array(1, 2, 3)) shouldBe Array(3, 2, 1)
+    r(Array("foo", "bar", "splat", "whee", "bonk", "kaboom")) shouldBe Array("kaboom", "bonk", "whee", "splat", "bar", "foo")
+  }
+
   "Sequences.compatible" should "do the right thing for pairs of bases" in {
     val bases: Seq[Byte] = Seq('A', 'C', 'G', 'T', 'a', 'c', 'g', 't')
     for (b1 <- bases; b2 <- bases) {
