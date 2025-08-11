@@ -118,13 +118,13 @@ object DuplexConsensusCaller {
   *                      a consensus read
   * */
 class DuplexConsensusCaller(override val readNamePrefix: String,
-                            override val readGroupId: String    = "A",
-                            val minInputBaseQuality: PhredScore = DuplexConsensusCaller.MinInputBaseQuality,
-                            val qualityTrim: Boolean            = false,
-                            val errorRatePreUmi: PhredScore     = DuplexConsensusCaller.ErrorRatePreUmi,
-                            val errorRatePostUmi: PhredScore    = DuplexConsensusCaller.ErrorRatePostUmi,
-                            val minReads: Seq[Int]              = Seq(1),
-                            val maxReadsPerStrand: Int          = VanillaUmiConsensusCallerOptions.DefaultMaxReads,
+                            override val readGroupId: String              = "A",
+                            val minInputBaseQuality: PhredScore           = DuplexConsensusCaller.MinInputBaseQuality,
+                            val qualityTrim: Boolean                      = false,
+                            val errorRatePreUmi: PhredScore               = DuplexConsensusCaller.ErrorRatePreUmi,
+                            val errorRatePostUmi: PhredScore              = DuplexConsensusCaller.ErrorRatePostUmi,
+                            val minReads: Seq[Int]                        = Seq(1),
+                            val maxReadsPerStrand: Int                    = VanillaUmiConsensusCallerOptions.DefaultMaxReads,
                             override val rejectsWriter: Option[SamWriter] = None
                            ) extends UmiConsensusCaller[DuplexConsensusRead] with LazyLogging {
 
@@ -137,7 +137,7 @@ class DuplexConsensusCaller(override val readNamePrefix: String,
   protected val ssCaller = new VanillaUmiConsensusCaller(
     readNamePrefix = "x",
     rejectsWriter  = this.rejectsWriter,
-    options = new VanillaUmiConsensusCallerOptions(
+    options        = new VanillaUmiConsensusCallerOptions(
       errorRatePreUmi         = this.errorRatePreUmi,
       errorRatePostUmi        = this.errorRatePostUmi,
       minReads                = 1,

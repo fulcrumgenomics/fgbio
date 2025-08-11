@@ -195,7 +195,8 @@ class CodecConsensusCaller(readNamePrefix: String,
           Nil
         }
         else if (
-        // Check that the start and end of the overlap are in phase with one another in the longest alignments
+          // Check that the start and end of the overlap are in phase with one another in the longest alignments -
+          // i.e. that the length of the overlapping region, in query bases, is the same in both R1 and R2
           longestR1Alignment.readPosAtRefPos(overlapStart, returnLastBaseIfDeleted = true)
             - longestR2Alignment.readPosAtRefPos(overlapStart, returnLastBaseIfDeleted = true)
             !=
@@ -219,7 +220,7 @@ class CodecConsensusCaller(readNamePrefix: String,
               Nil
             case n if n < r1Consensus.length || n < r2Consensus.length =>
               // TODO remove this branch once SamRecordClipper has been updated
-              rejectRecords((r1s.view ++ r2s.view).flatMap(_.sam), "Temporary Issue: Fix Clipping Issue")
+              rejectRecords((r1s.view ++ r2s.view).flatMap(_.sam), "FGBIO Clipping Issue #1090")
               Nil
             case consensusLength =>
               // Pad out the vanilla consensus reads to the full length
@@ -236,17 +237,17 @@ class CodecConsensusCaller(readNamePrefix: String,
                 Nil
               }
               else {
-                duplexConsensus(Some(paddedR1), Some(paddedR2), sourceReads = None).map { c =>
+                duplexConsensus(Some(paddedR1), Some(paddedR2), sourceReads = None).map { consensus =>
                   // Update statistics
-                  this.totalConsensusBases += c.length
+                  this.totalConsensusBases += consensus.length
                   this.totalDuplexBases += duplexBases
                   this.duplexErrorBases += duplexErrors
 
                   // Generate the output SamRecord
-                  if (longestR1Alignment.negativeStrand) c.revcomp()
-                  maskCodecConsensusQuals(c)
+                  if (longestR1Alignment.negativeStrand) consensus.revcomp()
+                  maskCodecConsensusQuals(consensus)
                   val umis = recs.iterator.map(r => r[String](ConsensusTags.UmiBases)).toSeq
-                  createSamRecord(c, ReadType.Fragment, umis)
+                  createSamRecord(consensus, ReadType.Fragment, umis)
                 }.toSeq
               }
           }
@@ -271,7 +272,6 @@ class CodecConsensusCaller(readNamePrefix: String,
   }
 
   private def toSourceReadForCodec(rec: SamRecord): SourceRead = {
-    // TODO: handle reads that map beyond the end of their mate
     val bases = rec.bases.clone()
     val quals = rec.quals.clone()
     val cigar = if (rec.positiveStrand) rec.cigar else rec.cigar.reverse

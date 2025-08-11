@@ -31,9 +31,6 @@ import com.fulcrumgenomics.util.Io
 import java.nio.file.Paths
 
 class CallCodecConsensusReadsTest extends UnitSpec {
-//  private val MI = ConsensusTags.MolecularId
-//  private val RX = ConsensusTags.UmiBases
-
   "CallCodecConsensusReads" should "throw an exception if the input file doesn't exist" in {
     an[Throwable] should be thrownBy {
       new CallCodecConsensusReads(input=Paths.get("/tmp/path/to/no/where/foo.bam"), output=Paths.get("/tmp")).execute()

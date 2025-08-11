@@ -207,6 +207,7 @@ trait UmiConsensusCaller[ConsensusRead <: SimpleRead] {
   protected def rejectRecords(recs: Iterable[SamRecord], reason: String) : Unit = {
     this._filteredReads.count(reason, recs.size.toLong)
     this.rejectsWriter.foreach { writer =>
+      recs.foreach(_("rr") = reason)
       writer.synchronized {
         writer ++= recs
       }
