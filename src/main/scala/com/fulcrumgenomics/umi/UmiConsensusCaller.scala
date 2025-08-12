@@ -62,7 +62,8 @@ object UmiConsensusCaller {
     val usedByCodec: Boolean
   }
 
-  class _RejectionReason(
+  /** Base class for [[RejectionReason]] to make them easier to enumerate. */
+  protected class _RejectionReason(
     val code: String, val description: String, val usedByVanilla: Boolean, val usedByDuplex: Boolean, val usedByCodec: Boolean
   ) extends RejectionReason
 
@@ -509,7 +510,7 @@ trait UmiConsensusCaller[ConsensusRead <: SimpleRead] {
       builder += ConsensusKvMetric(s"raw_reads_rejected_for_${reason.code}", count, reason.description)
     }
 
-    builder += ConsensusKvMetric("consensus_reads_emitted", this.consensusReadsConstructed, "Total number of consensus reads (R1+r2=2) emitted.")
+    builder += ConsensusKvMetric("consensus_reads_emitted", this.consensusReadsConstructed, "Total number of consensus reads (R1+R2=2) emitted.")
     builder.result()
   }
 }
