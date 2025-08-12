@@ -26,11 +26,13 @@ package com.fulcrumgenomics.umi
 
 import com.fulcrumgenomics.bam.api.{SamOrder, SamSource}
 import com.fulcrumgenomics.testing.{SamBuilder, UnitSpec}
-import com.fulcrumgenomics.util.Io
+import com.fulcrumgenomics.umi.UmiConsensusCaller.{ConsensusKvMetric, RejectionReason}
+import com.fulcrumgenomics.util.Metric
+import org.scalatest.OptionValues
 
 import java.nio.file.Paths
 
-class CallCodecConsensusReadsTest extends UnitSpec {
+class CallCodecConsensusReadsTest extends UnitSpec with OptionValues {
   "CallCodecConsensusReads" should "throw an exception if the input file doesn't exist" in {
     an[Throwable] should be thrownBy {
       new CallCodecConsensusReads(input=Paths.get("/tmp/path/to/no/where/foo.bam"), output=Paths.get("/tmp")).execute()
@@ -107,16 +109,9 @@ class CallCodecConsensusReadsTest extends UnitSpec {
       rejectedRecs should have size 2
       rejectedRecs.foreach(_.name shouldBe "x")
 
-      val stats: Map[String, String] = Io.readLines(statsPath).drop(1)
-        .map { line =>
-          val tabIdx = line.indexOf('\t')
-          (line.substring(0, tabIdx), line.substring(tabIdx + 1))
-        }
-        .toMap
-
-      val key = stats.keys.find(_.contains("overlap too short")).getOrElse(fail("Couldn't find key in stats."))
-      val count = stats(key).toInt
-      count shouldBe 2
+      val metrics = Metric.read[ConsensusKvMetric](statsPath).toIndexedSeq
+      val metric = metrics.find(_.key.contains(RejectionReason.R1R2OverlapTooShort.code)).value
+      metric.value.toString.toInt shouldBe 2
     }
   }
 }

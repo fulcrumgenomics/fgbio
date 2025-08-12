@@ -29,7 +29,7 @@ import com.fulcrumgenomics.bam.api.{SamRecord, SamWriter}
 import com.fulcrumgenomics.commons.util.LazyLogging
 import com.fulcrumgenomics.umi.DuplexConsensusCaller._
 import com.fulcrumgenomics.umi.UmiConsensusCaller.ReadType.{ReadType, _}
-import com.fulcrumgenomics.umi.UmiConsensusCaller.{SimpleRead, SourceRead}
+import com.fulcrumgenomics.umi.UmiConsensusCaller.{RejectionReason, SimpleRead, SourceRead}
 import com.fulcrumgenomics.util.NumericTypes.PhredScore
 import com.fulcrumgenomics.util.Sequences
 
@@ -45,14 +45,6 @@ object DuplexConsensusCaller {
   val MinInputBaseQuality: PhredScore     = 15.toByte
   val NoCall: Byte = 'N'.toByte
   val NoCallQual: PhredScore = PhredScore.MinValue
-
-  /** Additional filter strings used when rejecting reads. */
-  val FilterMinReads    = "Minimum Read Limit(s) Not Met"
-  val FilterFragments   = "Fragment/Non-Paired Reads"
-  val FilterSsConsensus = "Only Generating One Strand Consensus"
-  val FilterCollision   = "Potential collision between independent duplex molecules"
-
-  private val DuplexFilterStrings = Seq(FilterMinReads, FilterFragments, FilterSsConsensus, FilterCollision)
 
   /**
     * Stores information about a consensus read.  Bases, arrays, and the two single
@@ -129,7 +121,8 @@ class DuplexConsensusCaller(override val readNamePrefix: String,
                            ) extends UmiConsensusCaller[DuplexConsensusRead] with LazyLogging {
 
   private val Seq(minTotalReads, minXyReads, minYxReads) = this.minReads.padTo(3, this.minReads.last)
-  DuplexFilterStrings.foreach(rejectRecords(_))
+  initializeRejectCounts(r => r.usedByVanilla || r.usedByDuplex)
+
   // For depth thresholds it's required that ba <= ab <= cc
   require(minXyReads <= minTotalReads, "min-reads values must be specified high to low.")
   require(minYxReads <= minXyReads, "min-reads values must be specified high to low.")
@@ -205,7 +198,7 @@ class DuplexConsensusCaller(override val readNamePrefix: String,
     */
   override protected def consensusSamRecordsFromSamRecords(recs: Seq[SamRecord]): Seq[SamRecord] = {
     val (pairs, frags) = recs.partition(_.paired)
-    rejectRecords(frags, FilterFragments)
+    rejectRecords(frags, RejectionReason.NonPairedReads)
 
     if (pairs.isEmpty) {
       Nil
@@ -227,12 +220,12 @@ class DuplexConsensusCaller(override val readNamePrefix: String,
           // Even though we had enough reads going into consensus calling, we can
           // lose some in the process (e.g. to CIGAR filtering), and end up with 
           // consensus reads that will than fail the min-reads check
-          rejectRecords(groups.flatten, FilterMinReads)
+          rejectRecords(groups.flatten, RejectionReason.InsufficientSupport)
           Nil
         }
       }
       else {
-        rejectRecords(groups.flatten, FilterMinReads)
+        rejectRecords(groups.flatten, RejectionReason.InsufficientSupport)
         Nil
       }
     }
@@ -305,12 +298,12 @@ class DuplexConsensusCaller(override val readNamePrefix: String,
     (areAllSameStrand(singleStrand1), areAllSameStrand(singleStrand2)) match {
       case (false, _)   =>
         val ss1Mi = sourceMoleculeId(singleStrand1.head)
-        rejectRecords(ab ++ ba, FilterCollision)
+        rejectRecords(ab ++ ba, RejectionReason.PotentialCollision)
         logger.debug(s"Not all AB-R1s and BA-R2s were on the same strand for molecule with id: $ss1Mi")
         Nil
       case (_, false)   =>
         val ss2Mi = sourceMoleculeId(singleStrand2.head)
-        rejectRecords(ab ++ ba, FilterCollision)
+        rejectRecords(ab ++ ba, RejectionReason.PotentialCollision)
         logger.debug(s"Not all AB-R2s and BA-R1s were on the same strand for molecule with id: $ss2Mi")
         Nil
       case (true, true) =>
@@ -347,7 +340,7 @@ class DuplexConsensusCaller(override val readNamePrefix: String,
             // NB: some reads may have been rejected already in filterToMostCommonAlignment, so just
             //     reject those records that survived the initial filtering.
             val remainingRecs = filteredXs ++ filteredYs
-            rejectRecords(remainingRecs.flatMap(_.sam), FilterSsConsensus)
+            rejectRecords(remainingRecs.flatMap(_.sam), RejectionReason.SingleStrandOnly)
             Nil
         }
     }

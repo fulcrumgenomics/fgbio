@@ -32,7 +32,7 @@ import com.fulcrumgenomics.commons.util.LazyLogging
 import com.fulcrumgenomics.sopt._
 import com.fulcrumgenomics.umi.VanillaUmiConsensusCallerOptions._
 import com.fulcrumgenomics.util.NumericTypes.PhredScore
-import com.fulcrumgenomics.util.ProgressLogger
+import com.fulcrumgenomics.util.{Metric, ProgressLogger}
 
 @clp(description =
   """
@@ -153,11 +153,6 @@ class CallCodecConsensusReads
     rejectsWriter.foreach(_.close())
 
     caller.logStatistics(logger)
-    stats.foreach { path =>
-      val lines = Seq("statistic\tvalue") ++ caller.statistics.map {
-        case (key, value) => s"${key}\t${value}"
-      }
-      Io.writeLines(path, lines)
-    }
+    stats.foreach { path => Metric.write(path, caller.statistics) }
   }
 }

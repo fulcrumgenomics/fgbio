@@ -159,8 +159,7 @@ class VanillaUmiConsensusCaller(override val readNamePrefix: String,
                                 override val rejectsWriter: Option[SamWriter] = None
                                ) extends UmiConsensusCaller[VanillaConsensusRead] with LazyLogging {
 
-  UmiConsensusCaller.FilterStrings.foreach(rejectRecords(_))
-
+  initializeRejectCounts(_.usedByVanilla)
 
   private val NotEnoughReadsQual: PhredScore = 0.toByte // Score output when masking to N due to insufficient input reads
   private val TooLowQualityQual: PhredScore = 2.toByte  // Score output when masking to N due to too low consensus quality
@@ -204,9 +203,9 @@ class VanillaUmiConsensusCaller(override val readNamePrefix: String,
 
     // pairs
     (consensusFromSamRecords(firstOfPair), consensusFromSamRecords(secondOfPair)) match {
-      case (None, Some(_))     => rejectRecords(secondOfPair, UmiConsensusCaller.FilterOrphan)
-      case (Some(_), None)     => rejectRecords(firstOfPair,  UmiConsensusCaller.FilterOrphan)
-      case (None, None)         => rejectRecords(firstOfPair ++ secondOfPair, UmiConsensusCaller.FilterOrphan)
+      case (None, Some(_))     => rejectRecords(secondOfPair, RejectionReason.OrphanConsensus)
+      case (Some(_), None)     => rejectRecords(firstOfPair,  RejectionReason.OrphanConsensus)
+      case (None, None)         => rejectRecords(firstOfPair ++ secondOfPair, RejectionReason.OrphanConsensus)
       case (Some(r1), Some(r2)) =>
         builder += createSamRecord(r1, FirstOfPair, firstOfPair.flatMap(_.get[String](ConsensusTags.UmiBases)))
         builder += createSamRecord(r2, SecondOfPair, secondOfPair.flatMap(_.get[String](ConsensusTags.UmiBases)))
@@ -218,7 +217,7 @@ class VanillaUmiConsensusCaller(override val readNamePrefix: String,
   /** Creates a consensus read from the given records.  If no consensus read was created, None is returned. */
   protected[umi] def consensusFromSamRecords(records: Seq[SamRecord]): Option[VanillaConsensusRead] = {
     if (records.size < this.options.minReads) {
-      rejectRecords(records, UmiConsensusCaller.FilterInsufficientSupport)
+      rejectRecords(records, RejectionReason.InsufficientSupport)
       None
     }
     else {
@@ -234,7 +233,7 @@ class VanillaUmiConsensusCaller(override val readNamePrefix: String,
       }
 
       if (filteredRecords.size >= this.options.minReads) consensusCall(filteredRecords) else {
-        rejectRecords(filteredRecords.flatMap(_.sam), UmiConsensusCaller.FilterInsufficientSupport)
+        rejectRecords(filteredRecords.flatMap(_.sam), RejectionReason.InsufficientSupport)
         None
       }
     }

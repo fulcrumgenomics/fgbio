@@ -27,12 +27,10 @@ package com.fulcrumgenomics.umi
 import com.fulcrumgenomics.FgBioDef._
 import com.fulcrumgenomics.bam.api.{SamRecord, SamWriter}
 import com.fulcrumgenomics.bam.{ClippingMode, SamRecordClipper}
-import com.fulcrumgenomics.umi.DuplexConsensusCaller.{DuplexConsensusRead, FilterFragments, FilterMinReads}
-import com.fulcrumgenomics.umi.UmiConsensusCaller.{ReadType, SourceRead}
+import com.fulcrumgenomics.umi.DuplexConsensusCaller.DuplexConsensusRead
+import com.fulcrumgenomics.umi.UmiConsensusCaller.{ConsensusKvMetric, ReadType, RejectionReason, SourceRead}
 import com.fulcrumgenomics.util.NumericTypes.PhredScore
 import com.fulcrumgenomics.util.Sequences
-
-import scala.collection.immutable.ListMap
 
 /**
   * Consensus caller for CODEC sequencing[1].  In CODEC each read-pair has an R1 which is generated from one
@@ -112,11 +110,7 @@ class CodecConsensusCaller(readNamePrefix: String,
 ) {
   require(this.minReadsPerStrand >= 1, "minReadsPerStrand must be at least 1.")
 
-  private val FilterDuplexTooShort = "Top/Bottom strand overlap too short"
-  private val FilterIndelError = "Indel error between strands in duplex overlap"
-  private val FilterHighDuplexDisagreement = "Too many duplex disagreements"
-  private val CodecFilterStrings = Seq(FilterDuplexTooShort, FilterIndelError, FilterHighDuplexDisagreement)
-  CodecFilterStrings.foreach(rejectRecords(_))
+  initializeRejectCounts(r => r.usedByVanilla || r.usedByDuplex || r.usedByCodec)
 
   private val clipper = new SamRecordClipper(ClippingMode.Hard, autoClipAttributes = false)
 
@@ -158,7 +152,7 @@ class CodecConsensusCaller(readNamePrefix: String,
     */
   override protected def consensusSamRecordsFromSamRecords(recs: Seq[SamRecord]): Seq[SamRecord] = {
     val (pairs, frags) = recs.partition(_.paired)
-    rejectRecords(frags, FilterFragments)
+    rejectRecords(frags, RejectionReason.NonPairedReads)
 
     if (pairs.isEmpty) {
       Nil
@@ -172,7 +166,7 @@ class CodecConsensusCaller(readNamePrefix: String,
       val r1s = filterToMostCommonAlignment(primaries.filter(_.firstOfPair).map(toSourceReadForCodec))
       val r2s = filterToMostCommonAlignment(primaries.filter(_.secondOfPair).map(toSourceReadForCodec))
       if (r1s.length < this.minReadsPerStrand || r2s.length < this.minReadsPerStrand) {
-        rejectRecords((r1s.view ++ r2s.view).flatMap(_.sam), FilterMinReads)
+        rejectRecords((r1s.view ++ r2s.view).flatMap(_.sam), RejectionReason.InsufficientSupport)
         Nil
       }
       else {
@@ -191,7 +185,7 @@ class CodecConsensusCaller(readNamePrefix: String,
 
         // If the overlap isn't long enough then reject the records and return no consensus reads
         if (overlapLength < minDuplexLength) {
-          rejectRecords((r1s.view ++ r2s.view).flatMap(_.sam), FilterDuplexTooShort)
+          rejectRecords((r1s.view ++ r2s.view).flatMap(_.sam), RejectionReason.R1R2OverlapTooShort)
           Nil
         }
         else if (
@@ -202,7 +196,7 @@ class CodecConsensusCaller(readNamePrefix: String,
             !=
             longestR1Alignment.readPosAtRefPos(overlapEnd, returnLastBaseIfDeleted = true)
               - longestR2Alignment.readPosAtRefPos(overlapEnd, returnLastBaseIfDeleted = true)) {
-          rejectRecords((r1s.view ++ r2s.view).flatMap(_.sam), FilterIndelError)
+          rejectRecords((r1s.view ++ r2s.view).flatMap(_.sam), RejectionReason.IndelErrorBetweenStrands)
           Nil
         }
         else {
@@ -216,11 +210,11 @@ class CodecConsensusCaller(readNamePrefix: String,
           // Calculate the length of the consensus
           computeConsensusLength(longestPosAln, longestNegAln) match {
             case -1 =>
-              rejectRecords((r1s.view ++ r2s.view).flatMap(_.sam), FilterIndelError)
+              rejectRecords((r1s.view ++ r2s.view).flatMap(_.sam), RejectionReason.IndelErrorBetweenStrands)
               Nil
             case n if n < r1Consensus.length || n < r2Consensus.length =>
               // TODO remove this branch once SamRecordClipper has been updated
-              rejectRecords((r1s.view ++ r2s.view).flatMap(_.sam), "FGBIO Clipping Issue #1090")
+              rejectRecords((r1s.view ++ r2s.view).flatMap(_.sam), RejectionReason.ClipOverlapFailed)
               Nil
             case consensusLength =>
               // Pad out the vanilla consensus reads to the full length
@@ -232,7 +226,7 @@ class CodecConsensusCaller(readNamePrefix: String,
               val duplexErrorRate = if (duplexBases > 0) duplexErrors.toDouble / duplexBases.toDouble else 0
 
               if (duplexErrors > this.maxDuplexDisagreements || duplexErrorRate > this.maxDuplexDisagreementRate) {
-                rejectRecords((r1s.view ++ r2s.view).flatMap(_.sam), FilterHighDuplexDisagreement)
+                rejectRecords((r1s.view ++ r2s.view).flatMap(_.sam), RejectionReason.HighDuplexDisagreement)
                 this.consensusReadsFilteredHighDisagreement += 1
                 Nil
               }
@@ -357,14 +351,15 @@ class CodecConsensusCaller(readNamePrefix: String,
   }
 
   /** Generates a map of statistics collected by the caller. */
-  override def statistics: ListMap[FilenameSuffix, Any] = {
+  override def statistics: Seq[ConsensusKvMetric] = {
     val duplexErrorRate = if (this.totalDuplexBases == 0) 0 else this.duplexErrorBases / this.totalDuplexBases.toDouble
 
-    super.statistics +
-      ("Consensus Reads Rejected: High Duplex Disagreement" -> this.consensusReadsFilteredHighDisagreement) +
-      ("Consensus Bases Emitted" -> this.totalConsensusBases) +
-      ("Duplex Consensus Bases Emitted" -> this.totalDuplexBases) +
-      ("Duplex Strand Disagreements" -> this.duplexErrorBases) +
-      ("Duplex Disagreement Rate" -> duplexErrorRate)
+    super.statistics ++ IndexedSeq(
+      ConsensusKvMetric("consensus_reads_rejected_hdd", this.consensusReadsFilteredHighDisagreement, "Consensus Reads Rejected: High Duplex Disagreement"),
+      ConsensusKvMetric("consensus_bases_emitted", this.totalConsensusBases, "Total consensus bases emitted in consensus reads"),
+      ConsensusKvMetric("consensus_duplex_bases_emitted", this.totalDuplexBases, "Consensus bases emitted with support from both strands of the duplex"),
+      ConsensusKvMetric("duplex_disagreement_base_count", this.duplexErrorBases, "Number of consensus bases at which the top and bottom strands disagreed"),
+      ConsensusKvMetric("duplex_disagreement_rate", duplexErrorRate, "Rate of top/bottom strand disagreement within duplex regions of consensus reads")
+    )
   }
 }
