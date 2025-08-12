@@ -33,7 +33,7 @@ import com.fulcrumgenomics.commons.util.LazyLogging
 import com.fulcrumgenomics.sopt._
 import com.fulcrumgenomics.umi.VanillaUmiConsensusCallerOptions._
 import com.fulcrumgenomics.util.NumericTypes.PhredScore
-import com.fulcrumgenomics.util.ProgressLogger
+import com.fulcrumgenomics.util.{Metric, ProgressLogger}
 
 @clp(description =
   """
@@ -98,6 +98,7 @@ class CallDuplexConsensusReads
 (@arg(flag='i', doc="The input SAM or BAM file.") val input: PathToBam,
  @arg(flag='o', doc="Output SAM or BAM file to write consensus reads.") val output: PathToBam,
  @arg(flag='r', doc="Optional output SAM or BAM file to write reads not used.") val rejects: Option[PathToBam] = None,
+ @arg(flag='s', doc="Optional output text file of key consensus calling statistics.") val stats: Option[FilePath] = None,
  @arg(flag='p', doc="The prefix all consensus read names") val readNamePrefix: Option[String] = None,
  @arg(flag='R', doc="The new read group ID for all the consensus reads.") val readGroupId: String = "A",
  @arg(flag='1', doc="The Phred-scaled error rate for an error prior to the UMIs being integrated.") val errorRatePreUmi: PhredScore = DefaultErrorRatePreUmi,
@@ -118,6 +119,7 @@ class CallDuplexConsensusReads
   Io.assertReadable(input)
   Io.assertCanWriteFile(output)
   rejects.foreach(Io.assertCanWriteFile(_))
+  stats.foreach(Io.assertCanWriteFile(_))
   validate(errorRatePreUmi  > 0, "Phred-scaled error rate pre UMI must be > 0")
   validate(errorRatePostUmi > 0, "Phred-scaled error rate post UMI must be > 0")
 
@@ -158,5 +160,6 @@ class CallDuplexConsensusReads
     out.close()
     rejectsWriter.foreach(_.close())
     caller.logStatistics(logger)
+    stats.foreach { path => Metric.write(path, caller.statistics) }
   }
 }

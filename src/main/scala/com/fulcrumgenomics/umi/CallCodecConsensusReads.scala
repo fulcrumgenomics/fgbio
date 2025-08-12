@@ -109,6 +109,7 @@ class CallCodecConsensusReads
   Io.assertReadable(input)
   Io.assertCanWriteFile(output)
   rejects.foreach(Io.assertCanWriteFile(_))
+  stats.foreach(Io.assertCanWriteFile(_))
   validate(errorRatePreUmi  > 0, "Phred-scaled error rate pre UMI must be > 0")
   validate(errorRatePostUmi > 0, "Phred-scaled error rate post UMI must be > 0")
   validate(minReadPairs >= 1, "min-read-pairs must be >= 1")
