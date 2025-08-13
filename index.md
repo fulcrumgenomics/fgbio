@@ -41,8 +41,8 @@ If the reported version on the first line starts with `1.8` or higher, you are a
 
 Once you have Java installed and a release downloaded you can run:
 
-* Run `java -jar fgbio-2.5.22-a3e2ab5-SNAPSHOT.jar` to get a list of available tools
-* Run `java -jar fgbio-2.5.22-a3e2ab5-SNAPSHOT.jar <Tool Name>` to see detailed usage instructions on any tool
+* Run `java -jar fgbio-2.5.22-3113df2-SNAPSHOT.jar` to get a list of available tools
+* Run `java -jar fgbio-2.5.22-3113df2-SNAPSHOT.jar <Tool Name>` to see detailed usage instructions on any tool
 
 When running tools we recommend the following set of Java options as a starting point though individual tools may need more or less memory depending on the input data:
 

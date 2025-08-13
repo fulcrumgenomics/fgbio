@@ -17,6 +17,7 @@ the type of each field/column is given, including two commonly used types:
 |[AssignPrimersMetric](#assignprimersmetric)|Metrics produced by `AssignPrimers` that detail how many reads were assigned to a given primer and/or amplicon|
 |[CallOverlappingConsensusBasesMetric](#calloverlappingconsensusbasesmetric)|Collects the the number of reads or bases that were examined, had overlap, and were corrected as part of the CallOverlappingConsensusBases tool|
 |[ClippingMetrics](#clippingmetrics)|Metrics produced by ClipBam that detail how many reads and bases are clipped respectively|
+|[ConsensusKvMetric](#consensuskvmetric)|Metric class for outputting consensus calling statistics|
 |[ConsensusVariantReviewInfo](#consensusvariantreviewinfo)|Detailed information produced by `ReviewConsensusVariants` on variants called in consensus reads|
 |[DuplexFamilySizeMetric](#duplexfamilysizemetric)|Metrics produced by `CollectDuplexSeqMetrics` to describe the distribution of double-stranded (duplex) tag families in terms of the number of reads observed on each strand|
 |[DuplexUmiMetric](#duplexumimetric)|Metrics produced by `CollectDuplexSeqMetrics` describing the set of observed duplex UMI sequences and the frequency of their observations|
@@ -162,6 +163,17 @@ Metrics produced by ClipBam that detail how many reads and bases are clipped res
 |bases_clipped_three_prime|Long|The number of bases clipped on the 3 end of the read.|
 |bases_clipped_overlapping|Long|The number of bases clipped due to overlapping reads.|
 |bases_clipped_extending|Long|The number of bases clipped due to a read extending past its mate.|
+
+
+### ConsensusKvMetric
+
+Metric class for outputting consensus calling statistics.
+
+|Column|Type|Description|
+|------|----|-----------|
+|key|String||
+|value|Any||
+|description|String||
 
 
 ### ConsensusVariantReviewInfo

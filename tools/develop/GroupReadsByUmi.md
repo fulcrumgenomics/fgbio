@@ -28,10 +28,9 @@ During grouping, reads and templates are filtered out as follows:
 
 1. Templates are filtered if all reads for the template are unmapped
 2. Templates are filtered if any non-secondary, non-supplementary read has mapping quality < `min-map-q`
-3. Templates are filtered if R1 and R2 are mapped to different chromosomes and `--allow-inter-contig` is false
-4. Templates are filtered if any UMI sequence contains one or more `N` bases
-5. Templates are filtered if `--min-umi-length` is specified and the UMI does not meet the length requirement
-6. Reads are filtered out if flagged as either secondary or supplementary
+3. Templates are filtered if any UMI sequence contains one or more `N` bases
+4. Templates are filtered if `--min-umi-length` is specified and the UMI does not meet the length requirement
+5. Records are filtered out if flagged as either secondary or supplementary
 
 Grouping of UMIs is performed by one of four strategies:
 
@@ -92,6 +91,5 @@ UMIs observed at the same genomic location, such as can occur in amplicon sequen
 |strategy|s|Strategy|The UMI assignment strategy.|Required|1||
 |edits|e|Int|The allowable number of edits between UMIs.|Optional|1|1|
 |min-umi-length|l|Int|The minimum UMI length. If not specified then all UMIs must have the same length, otherwise discard reads with UMIs shorter than this length and allow for differing UMI lengths.|Optional|1||
-|allow-inter-contig|x|Boolean|DEPRECATED: this option will be removed in future versions and inter-contig reads will be automatically processed.|Optional|1|true|
 |threads|@|Int|Number of threads to use when comparing UMIs. Only recommended for amplicon or similar data.|Optional|1|1|
 

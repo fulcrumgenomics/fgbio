@@ -119,12 +119,11 @@ Options (1) and (2) require the input FASTQ read names to contain the following 
 
 [See the Illumina FASTQ conventions for more details.](https://support.illumina.com/help/BaseSpace_OLH_009008/Content/Source/Informatics/BS/FASTQFiles_Intro_swBS.htm)
 
-The `--illumina-standards` option may not be specified with the three options above.  Use this option if you
-intend to upload to Illumina BaseSpace.  This option implies:
+Use the following options to upload to Illumina BaseSpace:
 
 `--omit-fastq-read-numbers=true --include-sample-barcodes-in-fastq=false --illumina-file-names=true`
 
-[See the Illumina Basespace standards described here](https://help.basespace.illumina.com/articles/tutorials/upload-data-using-web-uploader/).
+[See the Illumina BaseSpace standards described here](https://help.basespace.illumina.com/articles/tutorials/upload-data-using-web-uploader/).
 
 To output with recent Illumina conventions (circa 2021) that match `bcl2fastq` and `BCLconvert`, use:
 
@@ -161,7 +160,6 @@ To output only reads that are not control reads, as encoded in the `<control num
 |run-date||Iso8601Date|Date the run was produced, to insert into the read group header|Optional|1||
 |output-type||OutputType|The type of outputs to produce.|Optional|1||
 |include-all-bases-in-fastqs||Boolean|Output all bases (i.e. all sample barcode, molecular barcode, skipped,         and template bases) for every read with template bases (ex. read one         and read two) as defined by the corresponding read structure(s).|Optional|1|false|
-|illumina-standards||Boolean|Output FASTQs according to Illumina BaseSpace Sequence Hub naming standards.  This is differfent than Illumina naming standards.|Optional|1|false|
 |omit-fastq-read-numbers||Boolean|Do not include trailing /1 or /2 for R1 and R2 in the FASTQ read name.|Optional|1|false|
 |include-sample-barcodes-in-fastq||Boolean|Insert the sample barcode into the FASTQ header.|Optional|1|false|
 |illumina-file-names||Boolean|Name the output files according to the Illumina file name standards.|Optional|1|false|

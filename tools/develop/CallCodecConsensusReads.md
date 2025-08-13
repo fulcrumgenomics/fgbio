@@ -1,30 +1,26 @@
 ---
-title: CallDuplexConsensusReads
+title: CallCodecConsensusReads
 ---
 
-# CallDuplexConsensusReads
+# CallCodecConsensusReads
 
 ## Overview
 **Group:** Unique Molecular Identifiers (UMIs)
 
-Calls duplex consensus sequences from reads generated from the same _double-stranded_ source molecule. Prior
-to running this tool, read must have been grouped with `GroupReadsByUmi` using the `paired` strategy. Doing
-so will apply (by default) MI tags to all reads of the form `*/A` and `*/B` where the /A and /B suffixes
-with the same identifier denote reads that are derived from opposite strands of the same source duplex molecule.
+Calls consensus sequences from reads generated from the the CODEC protocol. For more information on the CODEC
+sequencing protocol and the resulting data please refer to Bae et al 2023[1].
 
-Reads from the same unique molecule are first partitioned by source strand and assembled into single
-strand consensus molecules as described by CallMolecularConsensusReads.  Subsequently, for molecules that
-have at least one observation of each strand, duplex consensus reads are assembled by combining the evidence
-from the two single strand consensus reads.
+Prior to running this tool, reads must have been grouped with `GroupReadsByUmi` using the `adjacency` or `identity`
+strategy (NOT `paired`).
 
-Because of the nature of duplex sequencing, this tool does not support fragment reads - if found in the
-input they are _ignored_.  Similarly, read pairs for which consensus reads cannot be generated for one or
-other read (R1 or R2) are omitted from the output.
+Reads from the same original duplex are collected, and the R1s and R2s assembled into single strand consensus
+reads as described by `CallMolecularConsensusReads`.  Subsequently, a single consensus read is generated including
+both any single-strand regions as well as the double-stranded region of the template.
 
-The consensus reads produced are unaligned, due to the difficulty and error-prone nature of inferring the conesensus
+The consensus reads produced are unaligned, due to the difficulty and error-prone nature of inferring the consensus
 alignment.  Consensus reads should therefore be aligned after, which should not be too expensive as likely there
-are far fewer consensus reads than input raw raws.  Please see how best to use this tool within the best-practice
-pipeline: https://github.com/fulcrumgenomics/fgbio/blob/main/docs/best-practice-consensus-pipeline.md
+are significantly fewer consensus reads than input raw reads.  Please see how best to use this tool within the
+best-practice pipeline: https://github.com/fulcrumgenomics/fgbio/blob/main/docs/best-practice-consensus-pipeline.md
 
 Consensus reads have a number of additional optional tags set in the resulting BAM file.  The tag names follow
 a pattern where the first letter (a, b or c) denotes that the tag applies to the first single strand consensus (a),
@@ -49,19 +45,10 @@ consensus errors [ac,bc] (string): the single-strand consensus bases
 consensus errors [aq,bq] (string): the single-strand consensus qualities
 ```
 
-The per base depths and errors are both capped at 32,767. In all cases no-calls (Ns) and bases below the
+The per base depths and error counts are both capped at 32,767. In all cases no-calls (Ns) and bases below the
 min-input-base-quality are not counted in tag value calculations.
 
-The --min-reads option can take 1-3 values similar to `FilterConsensusReads`. For example:
-
-```
-CallDuplexConsensusReads ... --min-reads 10 5 3
-```
-
-If fewer than three values are supplied, the last value is repeated (i.e. `5 4` -> `5 4 4` and `1` -> `1 1 1`.  The
-first value applies to the final consensus read, the second value to one single-strand consensus, and the last
-value to the other single-strand consensus. It is required that if values two and three differ,
-the _more stringent value comes earlier_.
+[1] https://doi.org/10.1038/s41588-023-01376-0
 
 ## Arguments
 
@@ -76,10 +63,14 @@ the _more stringent value comes earlier_.
 |error-rate-pre-umi|1|PhredScore|The Phred-scaled error rate for an error prior to the UMIs being integrated.|Optional|1|45|
 |error-rate-post-umi|2|PhredScore|The Phred-scaled error rate for an error post the UMIs have been integrated.|Optional|1|40|
 |min-input-base-quality|m|PhredScore|Ignore bases in raw reads that have Q below this value.|Optional|1|10|
-|trim|t|Boolean|If true, quality trim input reads in addition to masking low Q bases.|Optional|1|false|
 |sort-order|S|SamOrder|The sort order of the output, the same as the input if not given.|Optional|1||
-|min-reads|M|Int|The minimum number of input reads to a consensus read.|Required|3|1|
-|max-reads-per-strand||Int|The maximum number of reads to use when building a single-strand consensus. If more than this many reads are present in a tag family, the family is randomly downsampled to exactly max-reads reads.|Optional|1||
+|min-read-pairs|M|Int|The minimum number of codec read pairs to form a consensus read.|Optional|1|1|
+|max-read-pairs||Int|The maximum number of reads to use when building a single-strand consensus. If more than this many reads are present in a tag family, the family is randomly downsampled to exactly max-reads-pairs reads.|Optional|1||
+|min-duplex-length|d|Int|Minimum length of the duplex region (where R1 and R2 overlap).|Optional|1|1|
+|single-strand-qual|q|PhredScore|Reduce quality scores in single stranded regions of the consensus read to the given quality.|Optional|1||
+|outer-bases-qual|Q|PhredScore|Reduce the first and last `outer-bases-length` bases to the given quality.|Optional|1||
+|outer-bases-length|O|Int|The number of bases at the start and end of the read to reduce quality over *if* `outer-bases-qual` is specified.|Optional|1|5|
+|max-duplex-disagreement-rate|x|Double|Discard consensus reads where greater than this fraction of duplex bases disagree.|Optional|1|1.0|
+|max-duplex-disagreements|X|Int|Discard consensus reads where greater than this number of duplex bases disagree.|Optional|1|2147483647|
 |threads||Int|The number of threads to use while consensus calling.|Optional|1|1|
-|consensus-call-overlapping-bases||Boolean|Consensus call overlapping bases in mapped paired end reads|Optional|1|true|
 

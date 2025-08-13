@@ -77,13 +77,13 @@ The per base depths and errors are both capped at 32,767. In all cases no-calls 
 |input|i|PathToBam|The input SAM or BAM file.|Required|1||
 |output|o|PathToBam|Output SAM or BAM file to write consensus reads.|Required|1||
 |rejects|r|PathToBam|Optional output SAM or BAM file to write reads not used.|Optional|1||
+|stats|s|FilePath|Optional output text file of key consensus calling statistics.|Optional|1||
 |tag|t|String|The SAM attribute with the unique molecule tag.|Optional|1|MI|
 |read-name-prefix|p|String|The Prefix all consensus read names|Optional|1||
 |read-group-id|R|String|The new read group ID for all the consensus reads.|Optional|1|A|
 |error-rate-pre-umi|1|PhredScore|The Phred-scaled error rate for an error prior to the UMIs being integrated.|Optional|1|45|
 |error-rate-post-umi|2|PhredScore|The Phred-scaled error rate for an error post the UMIs have been integrated.|Optional|1|40|
 |min-input-base-quality|m|PhredScore|Ignore bases in raw reads that have Q below this value.|Optional|1|10|
-|min-consensus-base-quality|N|PhredScore|Deprecated: will be removed in future versions; use FilterConsensusReads to filter consensus bases on quality instead. Mask (make 'N') consensus bases with quality less than this threshold.|Optional|1|2|
 |min-reads|M|Int|The minimum number of reads to produce a consensus base.|Required|1||
 |max-reads||Int|The maximum number of reads to use when building a consensus. If more than this many reads are present in a tag family, the family is randomly downsampled to exactly max-reads reads.|Optional|1||
 |output-per-base-tags|B|Boolean|If true produce tags on consensus reads that contain per-base information.|Optional|1|true|
