@@ -141,8 +141,7 @@ lazy val commonSettings = Seq(
   resolvers            += "broad-snapshots" at "https://broadinstitute.jfrog.io/artifactory/libs-snapshot/",
   shellPrompt          := { state => "%s| %s> ".format(GitCommand.prompt.apply(state), version.value) },
   updateOptions        := updateOptions.value.withCachedResolution(true),
-  pomExtra             := <url>https://github.com/fulcrumgenomics/fgbio</url>
-    <licenses>
+  pomExtra             := <licenses>
       <license>
         <name>MIT License</name>
         <url>https://www.opensource.org/licenses/mit-license.html</url>
