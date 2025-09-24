@@ -29,6 +29,7 @@ import com.fulcrumgenomics.bam.api.{SamOrder, SamRecord, SamWriter}
 import com.fulcrumgenomics.cmdline.{ClpGroups, FgBioTool}
 import com.fulcrumgenomics.commons.CommonsDef.PathToFastq
 import com.fulcrumgenomics.commons.util.LazyLogging
+import com.fulcrumgenomics.fastq.QualityEncodingDetector.DefaultSampleCount
 import com.fulcrumgenomics.sopt.{arg, clp}
 import com.fulcrumgenomics.umi.{ConsensusTags, Umis}
 import com.fulcrumgenomics.util.SegmentType._
@@ -36,6 +37,8 @@ import com.fulcrumgenomics.util.{Io, ReadStructure}
 import htsjdk.samtools.SAMFileHeader.{GroupOrder, SortOrder}
 import htsjdk.samtools.util.Iso8601Date
 import htsjdk.samtools.{ReservedTagConstants, SAMFileHeader, SAMReadGroupRecord}
+import io.cvbio.collection.FullyPeekableIterator
+import io.cvbio.collection.FullyPeekableIterator.FullyPeekableIteratorImpl
 
 import java.util
 
@@ -55,7 +58,7 @@ import java.util
     |4. `S` identifies a set of bases that should be skipped or ignored
     |
     |The last `<number><operator>` pair may be specified using a `+` sign instead of number to denote "all remaining
-    |bases". This is useful if, e.g., fastqs have been trimmed and contain reads of varying length.  For example
+    |bases". This is useful if, e.g., FASTQs have been trimmed and contain reads of varying length.  For example
     |to convert a paired-end run with an index read and where the first 5 bases of R1 are a UMI and the second
     |five bases are monotemplate you might specify:
     |
@@ -120,9 +123,10 @@ class FastqToBam
   validate(!extractUmisFromReadNames || umiQualTag.isEmpty, "Cannot extract UMI qualities when also extracting UMI from read names.")
 
   override def execute(): Unit = {
-    val encoding = qualityEncoding
+    val sources  = this.input.map(FastqSource.apply).map(_.fullyPeekable)
+    val encoding = qualityEncoding(sources)
     val writer   = makeSamWriter()
-    val iterator = FastqSource.zipped(this.input.map(FastqSource(_)))
+    val iterator = FastqSource.zipped(sources)
 
     iterator.foreach { fqs => writer ++= makeSamRecords(fqs, actualReadStructures, writer.header, encoding) }
     writer.close()
@@ -207,12 +211,9 @@ class FastqToBam
   }
 
   /** Determine the quality encoding of the incoming fastq files. */
-  protected def qualityEncoding: QualityEncoding = {
-    val readers  = input.map { fastq => FastqSource(fastq) }
-    val iterator = readers.tail.foldLeft(readers.head.iterator) {(a,b) => a ++ b }.map(_.quals)
+  protected def qualityEncoding(readers: Seq[FullyPeekableIterator[FastqRecord]]): QualityEncoding = {
     val detector = new QualityEncodingDetector
-    detector.sample(iterator)
-    readers.foreach(_.safelyClose())
+    readers.foreach(reader => reader.liftMany(0, DefaultSampleCount).flatten.map(_.quals).foreach(detector.add))
     detector.rankedCompatibleEncodings(q=30) match {
       case Nil        => fail("Quality scores in FASTQ file do not match any known encoding.")
       case enc :: Nil => yieldAndThen(enc) { logger.info("Detected fastq quality encoding: ", enc) }

@@ -51,14 +51,15 @@ object FastqSource {
   /** Creates a new fastq source from a Path. */
   def apply(path: PathToFastq): FastqSource = apply(Io.readLines(path))
 
-  /** Returns an iterator over multiple fastq files that ensures:
+  /** Returns an iterator over multiple FASTQ iterators that ensures:
+    *
     *   1. Either all sources or no sources have more records
     *   2. That the next records from each of the sources have the same read name
     *
-    * @param sources a Seq of one or more FastqSource objects
+    * @param sources a Seq of one or more FASTQ record iterators
     * @return an Iterator that returns a Seq of FastqRecord, one per source
     */
-  def zipped(sources: Seq[FastqSource]): Iterator[Seq[FastqRecord]] = new Iterator[Seq[FastqRecord]] {
+  def zipped(sources: Seq[Iterator[FastqRecord]]): Iterator[Seq[FastqRecord]] = new Iterator[Seq[FastqRecord]] {
     require(sources.nonEmpty, "No sources provided")
 
     def hasNext: Boolean = sources.exists(_.hasNext)
@@ -68,7 +69,7 @@ object FastqSource {
       require(sources.forall(_.hasNext) == sources.head.hasNext, "Sources are out of sync.")
       val records = sources.map(_.next())
       // Check that the FASTQ records all have the same name
-      require(records.forall(_.name == records.head.name), "Fastqs are out of sync, found read names: " + records.map(_.name).mkString(", "))
+      require(records.forall(_.name == records.head.name), "FASTQs are out of sync, found read names: " + records.map(_.name).mkString(", "))
       records
     }
   }

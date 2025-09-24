@@ -25,8 +25,11 @@
 package com.fulcrumgenomics.fastq
 
 import com.fulcrumgenomics.FgBioDef._
+import com.fulcrumgenomics.commons.collection.BetterBufferedIterator
 import com.fulcrumgenomics.commons.util.{NumericCounter, SimpleCounter}
+import com.fulcrumgenomics.fastq.QualityEncodingDetector.DefaultSampleCount
 import enumeratum.EnumEntry
+import io.cvbio.collection.FullyPeekableIterator
 
 import scala.collection.immutable
 
@@ -110,12 +113,22 @@ class QualityEncodingDetector {
 
   /**
     * Samples strings from the iterator until at least `count` qualities have been sampled.
+    *
+    * This method tries to avoid advancing the iterator for buffered iterators, but if the number of items requested
+    * with <count> exceeds the buffering capability of the iterator, then the iterator will be advanced.
+    *
     * @param ss an iterator of Strings where each string is an ascii string of quality scores
     * @param count the number of quality scores (not strings!) to attempt to sample
     */
-  def sample(ss: Iterator[String], count: Int = 100000): Unit = {
-    val goal = counter.total + count
-    while (counter.total < goal && ss.hasNext) add(ss.next())
+  def sample(ss: Iterator[String], count: Int = DefaultSampleCount): Unit = {
+    ss match {
+      case iter: BetterBufferedIterator[String] if count == 1 =>
+        iter.nextOption().foreach(add)
+      case iter: FullyPeekableIterator[String] =>
+        iter.liftMany(0, count).flatten.foreach(add)
+      case iter: Iterator[String] =>
+        iter.take(count).foreach(add)
+    }
   }
 
   /** Returns the set of quality formats that are compatible with the qualities seen thus far. */
@@ -143,4 +156,11 @@ class QualityEncodingDetector {
       }.sortBy(_._2).map(_._1)
     }
   }
+}
+
+/** Companion object for [[QualityEncodingDetector]] */
+object QualityEncodingDetector {
+
+  /** The default number of characters to sample when detecting the quality encoding of a string. */
+  val DefaultSampleCount: Int = 100_000
 }

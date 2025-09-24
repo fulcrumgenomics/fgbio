@@ -138,6 +138,7 @@ lazy val commonSettings = Seq(
   resolvers            += Resolver.sonatypeCentralSnapshots,
   resolvers            += Resolver.sonatypeCentralRepo("releases"),
   resolvers            += Resolver.mavenLocal,
+  resolvers            += Resolver.mavenCentral,
   resolvers            += "broad-snapshots" at "https://broadinstitute.jfrog.io/artifactory/libs-snapshot/",
   shellPrompt          := { state => "%s| %s> ".format(GitCommand.prompt.apply(state), version.value) },
   updateOptions        := updateOptions.value.withCachedResolution(true),
@@ -199,6 +200,7 @@ lazy val root = Project(id="fgbio", base=file("."))
       "org.apache.commons"        %  "commons-math3"  % "3.6.1",
       "com.beachape"              %% "enumeratum"     % "1.7.0",
       "com.intel.gkl"             %  "gkl"            % "0.8.10",
+      "io.cvbio.collection"       %% "fullypeekable"  % "1.0.0",
 
       //---------- Test libraries -------------------//
       "org.scalatest"             %% "scalatest"     % "3.1.3"  % "test->*" excludeAll ExclusionRule(organization="org.junit", name="junit")
