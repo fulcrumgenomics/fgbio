@@ -124,7 +124,7 @@ class FastqToBam
     val sources  = this.input.map(FastqSource.apply)
     val heads    = sources.map(_.take(100).toSeq) // Use the first 100 records of each FASTQ for encoding detection
 
-    val encoding: QualityEncoding = heads.flatMap(recs => QualityEncodingDetector.encodingsOf(recs)).toSet.toList match {
+    val encoding: QualityEncoding = QualityEncodingDetector.encodingsOf(heads.transpose.flatten) match {
       case Nil        => fail("Quality scores in FASTQ files do not match any known encoding.")
       case enc :: Nil => yieldAndThen(enc)(logger.info("Detected FASTQ quality encoding: ", enc))
       case enc :: xs  =>
