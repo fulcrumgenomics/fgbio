@@ -30,8 +30,8 @@ import com.fulcrumgenomics.util.ReadStructure.{SubReadWithQuals, SubReadWithoutQ
 import scala.collection.immutable
 
 /**
-  * Companion object for ReadStructure that provides factory methods.
-  */
+ * Companion object for ReadStructure that provides factory methods.
+ */
 object ReadStructure {
   /** A character that can be put in place of a number in a read structure to mean "0 or more bases". */
   val AnyLengthChar: Char = '+'
@@ -107,12 +107,12 @@ object ReadStructure {
   }
 
   /**
-    * Inserts square brackets around the characters in the read structure that are causing the error.
-    *
-    * @param rs the read structure string
-    * @param start the start of the error in the string (inclusive)
-    * @param end the ned of the error in the string (exclusive)
-    */
+   * Inserts square brackets around the characters in the read structure that are causing the error.
+   *
+   * @param rs the read structure string
+   * @param start the start of the error in the string (inclusive)
+   * @param end the ned of the error in the string (exclusive)
+   */
   private def invalid(msg: String, rs: String, start: Int, end: Int): Nothing = {
     val prefix = rs.substring(0, start)
     val error  = rs.substring(start, end)
@@ -122,12 +122,12 @@ object ReadStructure {
 }
 
 /**
-  * Describes the structure of a give read.  A read contains one or more read segments. A read segment describes
-  * a contiguous stretch of bases of the same type (ex. template bases) of some length and some offset from the start
-  * of the read.
-  *
-  * @param segments the segments composing this read structure.
-  */
+ * Describes the structure of a give read.  A read contains one or more read segments. A read segment describes
+ * a contiguous stretch of bases of the same type (ex. template bases) of some length and some offset from the start
+ * of the read.
+ *
+ * @param segments the segments composing this read structure.
+ */
 class ReadStructure private(val segments: Seq[ReadSegment]) extends immutable.Seq[ReadSegment] {
   require(segments.nonEmpty, "Can't create a read structure with zero segments.")
 
@@ -160,13 +160,13 @@ class ReadStructure private(val segments: Seq[ReadSegment]) extends immutable.Se
     if (this.segments.last.hasFixedLength) new ReadStructure(segments.dropRight(1) :+ segments.last.copy(length=None)) else this
 
   /** Splits the given bases into tuples with its associated read segment.  If strict is false then only return
-    * tuples for which we have bases in `bases`, otherwise throw an exception.
-    **/
+   * tuples for which we have bases in `bases`, otherwise throw an exception.
+   **/
   def extract(bases: String): Seq[SubReadWithoutQuals] = segments.map(_.extract(bases))
 
   /** Splits the given bases and qualities into triples with its associated read segment.  If strict is false then only
-    * return tuples for which we have bases in `bases`, otherwise throw an exception.
-    **/
+   * return tuples for which we have bases in `bases`, otherwise throw an exception.
+   **/
   def extract(bases: String, quals: String): Seq[SubReadWithQuals] = {
     assert(bases.length == quals.length)
     segments.map(s => s.extract(bases, quals))
@@ -178,6 +178,7 @@ class ReadStructure private(val segments: Seq[ReadSegment]) extends immutable.Se
   def templateSegments:         Seq[ReadSegment] = segments(SegmentType.Template)
   def sampleBarcodeSegments:    Seq[ReadSegment] = segments(SegmentType.SampleBarcode)
   def molecularBarcodeSegments: Seq[ReadSegment] = segments(SegmentType.MolecularBarcode)
+  def cellBarcodeSegments:      Seq[ReadSegment] = segments(SegmentType.CellBarcode)
   def skipSegments:             Seq[ReadSegment] = segments(SegmentType.Skip)
 }
 
@@ -187,23 +188,25 @@ object SegmentType {
   case object Template extends SegmentType('T')
   case object SampleBarcode extends SegmentType('B')
   case object MolecularBarcode extends SegmentType('M')
+  case object CellBarcode extends SegmentType('C')
   case object Skip extends SegmentType('S')
 
   /** All the possible types. */
-  val values: Seq[SegmentType] = Seq(Template, SampleBarcode, MolecularBarcode, Skip)
+  val values: Seq[SegmentType] = Seq(Template, SampleBarcode, MolecularBarcode, CellBarcode, Skip)
 
   /** Returns the [[SegmentType]] for the given code/letter. */
   def apply(code: Char): SegmentType = code match {
     case 'T' => Template
     case 'B' => SampleBarcode
     case 'M' => MolecularBarcode
+    case 'C' => CellBarcode
     case 'S' => Skip
     case _   => throw new IllegalArgumentException(s"Invalid read segment type: $code")
   }
 }
 
 object ReadSegment {
-  val Types = Seq('T', 'B', 'M', 'S')
+  val Types: Seq[Char] = Seq('T', 'B', 'M', 'C', 'S') // TODO: this is never used, can we delete it?
 
   /** Creates a new ReadSegment with undefined length (i.e. length=0 or more). */
   def apply(offset: Int, c: Char): ReadSegment = new ReadSegment(offset, None, kind=SegmentType(c))
@@ -213,10 +216,10 @@ object ReadSegment {
 }
 
 /**
-  * Encapsulates all the information about a segment within a read structure. A segment can either
-  * have a definite length, in which case length must be Some(Int), or an indefinite length (can be
-  * any length, 0 or more) in which case length must be None.
-  */
+ * Encapsulates all the information about a segment within a read structure. A segment can either
+ * have a definite length, in which case length must be Some(Int), or an indefinite length (can be
+ * any length, 0 or more) in which case length must be None.
+ */
 case class ReadSegment (offset: Int, length: Option[Int], kind: SegmentType) {
   /** Checks some requirements and then calculates the end position for the segment for the given read. */
   private def calculateEnd(bases: String): Int = {
@@ -228,16 +231,16 @@ case class ReadSegment (offset: Int, length: Option[Int], kind: SegmentType) {
   }
 
   /** Gets the bases associated with this read segment.  If strict is false then only return
-    * the sub-sequence for which we have bases in `bases`, otherwise throw an exception.
-    **/
+   * the sub-sequence for which we have bases in `bases`, otherwise throw an exception.
+   **/
   private[util] def extract(bases: String): SubReadWithoutQuals = {
     val end = calculateEnd(bases)
     SubReadWithoutQuals(bases=bases.substring(offset, end), segment=resized(end))
   }
 
   /** Gets the bases and qualities associated with this read segment.  If strict is false then only return
-    * the sub-sequence for which we have bases in `bases`, otherwise throw an exception.
-    **/
+   * the sub-sequence for which we have bases in `bases`, otherwise throw an exception.
+   **/
   private[util] def extract(bases: String, quals: String): SubReadWithQuals = {
     require(bases.length == quals.length, s"Bases and quals differ in length: $bases $quals")
     val end = calculateEnd(bases)
