@@ -377,6 +377,10 @@ class DemuxFastqs
  val omitControlReads: Boolean = false,
  @arg(doc="Mask bases with a quality score below the specified threshold as Ns") val maskBasesBelowQuality: Int = 0,
 ) extends FgBioTool with LazyLogging {
+  validate(
+    !readStructures.exists(_.cellBarcodeSegments.nonEmpty),
+    "DemuxFastqs does not support cell barcodes in read structures!",
+  )
 
   private val fastqStandards: FastqStandards = {
     FastqStandards(
