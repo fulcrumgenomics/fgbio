@@ -122,7 +122,7 @@ class FastqToBam
   override def execute(): Unit = {
     val writer   = this.makeSamWriter()
     val sources  = this.input.map(FastqSource.apply)
-    val heads    = sources.map(_.take(100).toSeq) // Use the first 100 records of each FASTQ for encoding detection
+    val heads    = sources.map(_.take(400).toSeq) // Use the first 400 records of each FASTQ for encoding detection
 
     val encoding: QualityEncoding = QualityEncodingDetector.encodingsOf(heads.transpose.flatten) match {
       case Nil        => fail("Quality scores in FASTQ files do not match any known encoding.")
