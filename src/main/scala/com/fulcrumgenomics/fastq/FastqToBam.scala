@@ -120,11 +120,23 @@ class FastqToBam
   validate(!extractUmisFromReadNames || umiQualTag.isEmpty, "Cannot extract UMI qualities when also extracting UMI from read names.")
 
   override def execute(): Unit = {
-    val encoding = qualityEncoding
-    val writer   = makeSamWriter()
-    val iterator = FastqSource.zipped(this.input.map(FastqSource(_)))
+    val writer   = this.makeSamWriter()
+    val sources  = this.input.map(FastqSource.apply)
+    val heads    = sources.map(_.take(100).toSeq) // Use the first 100 records of each FASTQ for encoding detection
 
-    iterator.foreach { fqs => writer ++= makeSamRecords(fqs, actualReadStructures, writer.header, encoding) }
+    val encoding: QualityEncoding = heads.flatMap(recs => QualityEncodingDetector.encodingsOf(recs)).toSet.toList match {
+      case Nil        => fail("Quality scores in FASTQ files do not match any known encoding.")
+      case enc :: Nil => yieldAndThen(enc)(logger.info("Detected FASTQ quality encoding: ", enc))
+      case enc :: xs  =>
+        logger.info(s"Could not uniquely determine quality encoding. Using $enc, other valid encodings: ${xs.mkString(", ")}")
+        enc
+    }
+
+    FastqSource
+      .zipped(heads.zip(sources).map { case (head, tail) => head.iterator ++ tail })
+      .foreach { fqs => writer ++= makeSamRecords(fqs, actualReadStructures, writer.header, encoding) }
+
+    sources.foreach(_.safelyClose())
     writer.close()
   }
 
@@ -203,22 +215,6 @@ class FastqToBam
     }
     catch {
       case ex: Exception => fail(s"Failed to process record(s) with name ${fqs.map(_.name).head} due to: ${ex.getMessage}")
-    }
-  }
-
-  /** Determine the quality encoding of the incoming fastq files. */
-  protected def qualityEncoding: QualityEncoding = {
-    val readers  = input.map { fastq => FastqSource(fastq) }
-    val iterator = readers.tail.foldLeft(readers.head.iterator) {(a,b) => a ++ b }.map(_.quals)
-    val detector = new QualityEncodingDetector
-    detector.sample(iterator)
-    readers.foreach(_.safelyClose())
-    detector.rankedCompatibleEncodings(q=30) match {
-      case Nil        => fail("Quality scores in FASTQ file do not match any known encoding.")
-      case enc :: Nil => yieldAndThen(enc) { logger.info("Detected fastq quality encoding: ", enc) }
-      case enc :: xs  =>
-        logger.info(s"Could not uniquely determine quality encoding. Using $enc, other valid encodings: ${xs.mkString(", ")}")
-        enc
     }
   }
 }
