@@ -59,7 +59,7 @@ class UpdateDelimitedFileContigNamesTest extends UnitSpec {
                       sortOrder: SortOrder = SortOrder.Unsorted,
                       contig: Option[Int] = None,
                       position: Option[Int] = None,
-                      maxObjectsInRam: Int = 1e6.toInt): Unit = {
+                      maxObjectsInRam: Int = 1e6.toInt) = {
     val input    = makeTempFile("test.", "in.txt")
     val output   = makeTempFile("test.", "out.txt")
 
@@ -138,18 +138,20 @@ class UpdateDelimitedFileContigNamesTest extends UnitSpec {
         "$2-old,na",
         "3-old,na"
       )
-      val expected = Seq(
+      val allModified = Seq(
         "$1-old,na",
         "2-new,na",
         "$2-old,na",
         "3-new,na"
       )
+      val expected = actual.take(outputFirstNumLines) ++ allModified.drop(outputFirstNumLines)
       runTest(
         delimiter = ',',
         columns   = Seq(0),
         actual    = actual,
         expected  = expected,
-        comment   = "$"
+        comment   = "$",
+        outputFirstNumLines = outputFirstNumLines,
       )
     }
   }

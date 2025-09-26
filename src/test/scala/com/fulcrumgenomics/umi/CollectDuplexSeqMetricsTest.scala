@@ -24,9 +24,6 @@
 
 package com.fulcrumgenomics.umi
 
-import java.nio.file.{Path, Paths}
-import java.util.Random
-
 import com.fulcrumgenomics.FgBioDef._
 import com.fulcrumgenomics.bam.api.SamOrder
 import com.fulcrumgenomics.commons.util.SimpleCounter
@@ -36,6 +33,8 @@ import com.fulcrumgenomics.util.{Io, Metric, Rscript}
 import htsjdk.samtools.util.{Interval, IntervalList}
 import org.apache.commons.math3.distribution.NormalDistribution
 
+import java.nio.file.{Path, Paths}
+import java.util.Random
 import scala.math.{max, min}
 
 class CollectDuplexSeqMetricsTest extends UnitSpec {
@@ -68,7 +67,7 @@ class CollectDuplexSeqMetricsTest extends UnitSpec {
   }
 
   // Returns a collector as an option for easy mapping over
-  private def collector(duplex: Boolean = false) = Some(new CollectDuplexSeqMetrics(input=Io.DevNull, output=Io.DevNull, duplexUmiCounts=duplex))
+  private def collector(duplex: Boolean) = Some(new CollectDuplexSeqMetrics(input=Io.DevNull, output=Io.DevNull, duplexUmiCounts=duplex))
 
   "CollectDuplexSeqMetrics" should "have acceptable CLP annotations" in {
     checkClpAnnotations[CollectDuplexSeqMetrics]
@@ -312,6 +311,22 @@ class CollectDuplexSeqMetricsTest extends UnitSpec {
     duplexFamilies.find(f => f.ab_size == 6 && f.ba_size == 0).get.count shouldBe 1
   }
 
+  it should "raise an exception if duplex consensus records are provided" in {
+    val builder = new SamBuilder(readLength=100, sort=Some(SamOrder.TemplateCoordinate))
+    builder.addPair(
+      contig=1,
+      start1=1000,
+      start2=1100,
+      attrs=Map(
+        RX -> "AAA-GGG",
+        MI -> "1/A",
+        ConsensusTags.PerRead.AbRawReadCount -> 10,
+        ConsensusTags.PerRead.BaRawReadCount -> 10
+      )
+    )
+    an[IllegalArgumentException] shouldBe thrownBy { exec(builder) }
+  }
+
   "CollectDuplexSeqMetrics.updateUmiMetrics" should "not count duplex umis" in collector(duplex=false).foreach { c =>
     val builder = new SamBuilder(readLength=10)
     builder.addPair(start1=100, start2=200, attrs=Map(RX -> "AAA-CCC", MI -> "1/A"))
@@ -342,5 +357,42 @@ class CollectDuplexSeqMetricsTest extends UnitSpec {
 
     metrics.find(_.umi == "AAA-TTT") shouldBe defined
     metrics.find(_.umi == "AAA-TTT").foreach(m => m.unique_observations shouldBe 1)
+  }
+
+  it should "count UMIs even if one of the UMIs on a 'molecule end' is an empty sequence" in collector(duplex = true).foreach { c =>
+    val builder = new SamBuilder(readLength = 10)
+    builder.addPair(start1 = 100, start2 = 200, strand1 = Plus, strand2 = Minus, attrs = Map(RX -> "-CCC", MI -> "1/A"))
+    builder.addPair(start1 = 200, start2 = 100, strand1 = Minus, strand2 = Plus, attrs = Map(RX -> "CCC-", MI -> "1/B"))
+    builder.addPair(start1 = 100, start2 = 200, strand1 = Plus, strand2 = Minus, attrs = Map(RX -> "AAA-", MI -> "2/A"))
+    builder.addPair(start1 = 200, start2 = 100, strand1 = Minus, strand2 = Plus, attrs = Map(RX -> "-AAA", MI -> "2/B"))
+    builder.addPair(start1 = 300, start2 = 400, strand1 = Plus, strand2 = Minus, attrs = Map(RX -> "-GGG", MI -> "3/A"))
+    builder.addPair(start1 = 900, start2 = 800, strand1 = Plus, strand2 = Minus, attrs = Map(RX -> "TTT-", MI -> "4/A"))
+    builder.addPair(start1 = 300, start2 = 400, strand1 = Minus, strand2 = Plus, attrs = Map(RX -> "-CGC", MI -> "5/A"))
+    builder.addPair(start1 = 900, start2 = 800, strand1 = Minus, strand2 = Plus, attrs = Map(RX -> "TAT-", MI -> "6/A"))
+
+    builder.toSeq.groupBy(r => r[String](MI).takeWhile(_ != '/')).values
+      .map(rs => rs.groupBy(r => r[String](MI)).values.toSeq).toSeq
+      .foreach(group => c.updateUmiMetrics(group))
+
+    val metrics = c.duplexUmiMetrics(c.umiMetrics)
+    metrics should have size 6
+
+    metrics.find(_.umi == "-CCC") shouldBe defined
+    metrics.find(_.umi == "-CCC").foreach(m => m.unique_observations shouldBe 1)
+
+    metrics.find(_.umi == "AAA-") shouldBe defined
+    metrics.find(_.umi == "AAA-").foreach(m => m.unique_observations shouldBe 1)
+
+    metrics.find(_.umi == "-GGG") shouldBe defined
+    metrics.find(_.umi == "-GGG").foreach(m => m.unique_observations shouldBe 1)
+
+    metrics.find(_.umi == "TTT-") shouldBe defined
+    metrics.find(_.umi == "TTT-").foreach(m => m.unique_observations shouldBe 1)
+
+    metrics.find(_.umi == "CGC-") shouldBe defined
+    metrics.find(_.umi == "CGC-").foreach(m => m.unique_observations shouldBe 1)
+
+    metrics.find(_.umi == "-TAT") shouldBe defined
+    metrics.find(_.umi == "-TAT").foreach(m => m.unique_observations shouldBe 1)
   }
 }

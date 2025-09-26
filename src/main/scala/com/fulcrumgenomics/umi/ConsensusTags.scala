@@ -28,8 +28,11 @@ package com.fulcrumgenomics.umi
   * Object that encapsulates the various consensus related tags that are added to consensus reads
   * at both the per-read and per-base level.
   *
-  * Currently only contains tags for single-strand consensus reads, but with a view to using the following
-  * names for consistency if/when we add duplex calling:
+  * Contains tags for both single-strand and duplex consensus reads.  The first letter in the tag is `c` if
+  * it relates to the final consensus read, `a` if it relates to the top-strand of a duplex consensus read,
+  * and `b` if it relates to the bottom-strand of a duplex consensus read. The second letter in the tag is
+  * lower case if it is per-base, upper case if it is per-read.
+  *
   *   Value                 AB  BA  Final
   *   --------------------- --  --  -----
   *   per-read-depth        aD  bD  cD
@@ -39,7 +42,6 @@ package com.fulcrumgenomics.umi
   *   per-base-error-count  ae  be  ce
   *   per-base-bases        ac  bc  bases
   *   per-base-quals        aq  bq  quals
-  * The second letter in the tag is lower case if it is per-base, upper case if it is per-read.
   */
 object ConsensusTags {
   /** The default field in which to look for UMI sequences and qualities. */

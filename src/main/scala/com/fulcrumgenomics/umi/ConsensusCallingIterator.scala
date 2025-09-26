@@ -33,10 +33,10 @@ import com.fulcrumgenomics.umi.UmiConsensusCaller.SimpleRead
 import com.fulcrumgenomics.util.ProgressLogger
 
 /**
-  * An iterator that consumes from an incoming iterator of [[SamRecord]]s and generates consensus
-  * read [[SamRecord]]s using the supplied consensus caller.
+  * An iterator that consumes from an incoming iterator of [[com.fulcrumgenomics.bam.api.SamRecord]]s and generates consensus
+  * read [[com.fulcrumgenomics.bam.api.SamRecord]]s using the supplied consensus caller.
   *
-  * @param sourceIterator the iterator over input [[SamRecord]]s.
+  * @param sourceIterator the iterator over input [[com.fulcrumgenomics.bam.api.SamRecord]]s.
   * @param caller the consensus caller to use to call consensus reads
   * @param progress an optional progress logger to which to log progress in input reads
   * @param threads the number of threads to use.
@@ -53,10 +53,14 @@ class ConsensusCallingIterator[ConsensusRead <: SimpleRead](sourceIterator: Iter
   private var collectedStats: Boolean = false
 
   protected val iter: Iterator[SamRecord] = {
+    val filteredIterator = sourceIterator
+      .filterNot (r => r.secondary || r.supplementary)
+      .filter(r => r.mapped || (r.paired && r.mateMapped))
+
     // Wrap our input iterator in a progress logging iterator if we have a progress logger
     val progressIterator = progress match {
-      case Some(p) => sourceIterator.tapEach { r => p.record(r) }
-      case None    => sourceIterator
+      case Some(p) => filteredIterator.tapEach { r => p.record(r) }
+      case None    => filteredIterator
     }
 
     // Then turn it into a grouping iterator
@@ -67,7 +71,7 @@ class ConsensusCallingIterator[ConsensusRead <: SimpleRead](sourceIterator: Iter
       groupingIterator.flatMap(caller.consensusReadsFromSamRecords)
     }
     else {
-      ParIterator(groupingIterator, threads=threads).flatMap { rs =>
+      ParIterator(groupingIterator, threads=threads, chunkSize=threads * 16, chunkBuffer=1).flatMap { rs =>
         val caller = callers.get()
         caller.synchronized { caller.consensusReadsFromSamRecords(rs) }
       }.toAsync(chunkSize * 8)

@@ -1,58 +1,164 @@
 name: unit tests
 
-on: [push, pull_request]
+on:
+  push:
+  pull_request:
+  workflow_call:
+    secrets:
+      CODECOV_TOKEN:
+        required: true
+      SONATYPE_USER:
+        required: false
+      SONATYPE_PASS:
+        required: false
+
+concurrency:
+  group: unittest-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   test:
+    name: Unit Tests
     runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        jvm: ["temurin:1.8.0-442", "temurin:1.11.0.27", "temurin:1.17.0.15", "temurin:1.21.0.7", "temurin:1.22.0.2"]
     steps:
       - name: Checkout
-        uses: actions/checkout@v2
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
         with:
           fetch-depth: 0
           lfs: true
       - name: Checkout LFS objects
         run: git lfs checkout        
-      - name: Setup Scala
-        uses: olafurpg/setup-scala@v12
+      - name: Setup cache
+        uses: coursier/cache-action@4e2615869d13561d626ed48655e1a39e5b192b3c # v6.4.7
+      - name: setup Scala
+        uses: coursier/setup-action@039f736548afa5411c1382f40a5bd9c2d30e0383 # v1.3.9
         with:
-          java-version: adopt-openj9@1.8.0-292
+          apps: scala:2.13.14 scalac:2.13.14 scaladoc:2.13.14 sbt:1.11.2
+          jvm: ${{ matrix.jvm }}
       - name: Unit Tests
         run: |
           set -e
-          sbt +clean coverage +test && sbt coverageReport coverageAggregate && (find $HOME/.sbt -name "*.lock" | xargs rm) && (find $HOME/.ivy2 -name "ivydata-*.properties" | xargs rm)
+          sbt clean coverage test
+          sbt coverageReport coverageAggregate
       - name: Code Coverage
-        uses: codecov/codecov-action@v1
+        uses: codecov/codecov-action@ad3126e916f78f00edff4ed0317cf185271ccc2d # v5.4.2
         with:
+          token: ${{ secrets.CODECOV_TOKEN }}
           flags: unittests # optional
           fail_ci_if_error: true # optional (default = false)
           verbose: true # optional (default = false)
-      - name: Cache .ivy2
-        uses: actions/cache@v2
-        with:
-          path: ~/.ivy2
-          key: ${{ runner.os }}-ivy2-${{ hashFiles('**/build.sbt') }}
-      - name: Cache .sbt
-        uses: actions/cache@v2
-        with:
-          path: ~/.sbt
-          key: ${{ runner.os }}-sbt-${{ hashFiles('**/build.properties') }}
+      # while the "docs" job below tests building the online docs, this is added here
+      # to fail-fast when docs are not correctly written.
+      - name: Ensure docs will compile (fast-fail)
+        run: |
+          set -e
+          sbt doc
   release:
-    if: github.repository == 'fulcrumgenomics/fgbio' && github.ref == 'refs/heads/main'
-    
+    if: ${{ github.repository == 'fulcrumgenomics/fgbio' && github.ref == 'refs/heads/main' && github.event_name != 'workflow_call' }}
     needs: test
     runs-on: ubuntu-latest
+    environment: github-actions
     env:
       SONATYPE_USER: ${{ secrets.SONATYPE_USER }}
       SONATYPE_PASS: ${{ secrets.SONATYPE_PASS }}
+      PGP_PASSPHRASE: ${{ secrets.PGP_PASSPHRASE }}
+      PGP_SECRET: ${{ secrets.PGP_SECRET }}
     steps:
-      - uses: actions/checkout@v2
+      - name: Check for secrets.SONATYPE_USER
+        if: ${{ env.SONATYPE_USER == '' }}
+        run: |
+          echo '"SONATYPE_USER" secret not set'
+          echo 'please go to "settings > secrets > actions" to create it'
+      - name: Check for secrets.SONATYPE_PASS
+        if: ${{ env.SONATYPE_PASS == '' }}
+        run: |
+          echo '"SONATYPE_PASS" secret not set'
+          echo 'please go to "settings > secrets > actions" to create it'
+      - name: Check for secrets.PGP_PASSPHRASE
+        if: ${{ env.PGP_PASSPHRASE== '' }}
+        run: |
+          echo '"PGP_PASSPHRASE" secret not set'
+          echo 'please go to "settings > secrets > actions" to create it'
+      - name: Check for secrets.PGP_SECRET
+        if: ${{ env.PGP_SECRET== '' }}
+        run: |
+          echo '"PGP_SECRET" secret not set'
+          echo 'please go to "settings > secrets > actions" to create it'
+      - name: Export tty
+        run: |
+          echo "GPG_TTY=$(tty)" >> $GITHUB_ENV
+      - name: Setup GPG
+        shell: bash -l {0}
+        run: |
+          echo "$PGP_SECRET" | base64 --decode | gpg --import --batch --yes
+      - name: Checkout
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
         with:
           fetch-depth: 0
-      - name: Setup Scala
-        uses: olafurpg/setup-scala@v12
+          # To work with the `pull_request` or any other non-`push` even with git-auto-commit
+          ref: ${{ github.head_ref }}
+      - name: Setup cache
+        uses: coursier/cache-action@4e2615869d13561d626ed48655e1a39e5b192b3c # v6.4.7
+      - name: setup Scala
+        uses: coursier/setup-action@039f736548afa5411c1382f40a5bd9c2d30e0383 # v1.3.9
         with:
-          java-version: adopt-openj9@1.8.0-292
-      - name: Upload to Sonatype
+          apps: scala:2.13.14 scalac:2.13.14 scaladoc:2.13.14 sbt:1.11.2
+          jvm: "temurin:1.8.0-442"
+      - name: Build and sign artifacts
+        shell: bash -l {0}
         run: |
-          sbt +publish
+          sbt +publishSigned
+
+  docs:
+    name: Generate tool and metric markdown docs
+    needs: test
+    runs-on: ubuntu-latest
+    if: ${{ github.event_name != 'workflow_call' && (github.event_name == 'pull_request' || (github.repository == 'fulcrumgenomics/fgbio' && github.ref == 'refs/heads/main')) }}
+    steps:
+      - name: Checkout
+        id: checkout
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          # To work with the `pull_request` or any other non-`push` even with git-auto-commit
+          ref: ${{ github.head_ref }}
+      - name: Generate the docs
+        uses: ./.github/actions/docs/
+        with:
+          build-dir: ./build
+          latest: false
+      - name: Generate gh-pages preview (pull request only)
+        uses: rossjrw/pr-preview-action@2fb559e4766555e23d07b73d313fe97c4f8c3cfe # v1.6.1
+        if: ${{ github.event_name == 'pull_request' }}
+        with:
+          source-dir: ./build
+      - name: Commit generated docs (main only)
+        uses: nick-fields/retry@ce71cc2ab81d554ebbe88c79ab5975992d79ba08 # v3.0.2
+        #i.e. if: ${{ github.event_name != 'pull_request' }}
+        if: ${{ github.repository == 'fulcrumgenomics/fgbio' && github.ref == 'refs/heads/main' }}
+        with:
+          max_attempts: 5
+          retry_on: error
+          polling_interval_seconds: 5
+          timeout_minutes: 5
+          command: |
+            set -euo pipefail
+            pushd ./build
+            git add tools metrics index.md
+            git config --global user.name "Github Actions"
+            git config --global user.email "nobody@fulcrumgenomics.com"
+            git commit --all --message "devel: ${{ steps.checkout.outputs.ref }}" --author "Nobody <nobody@fulcrumgenomics.com>" || echo "nothing to commit"
+            git fetch origin gh-pages
+            git rebase -X ours origin/gh-pages
+            git push --atomic --set-upstream origin gh-pages
+            popd
+          new_command_on_retry: |
+            set -euo pipefail
+            pushd ./build
+            git fetch origin gh-pages
+            git rebase --abort
+            git rebase -X ours origin/gh-pages
+            git push --atomic --set-upstream origin gh-pages
+            popd

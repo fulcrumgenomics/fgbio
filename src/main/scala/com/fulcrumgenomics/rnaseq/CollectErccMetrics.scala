@@ -38,7 +38,6 @@ import org.apache.commons.math3.exception.MathIllegalArgumentException
 import org.apache.commons.math3.stat.correlation.{PearsonsCorrelation, SpearmansCorrelation}
 import org.apache.commons.math3.stat.regression.SimpleRegression
 
-import scala.collection.immutable.IndexedSeq
 import scala.collection.mutable.ArrayBuffer
 import scala.io.Source
 import scala.util.Failure

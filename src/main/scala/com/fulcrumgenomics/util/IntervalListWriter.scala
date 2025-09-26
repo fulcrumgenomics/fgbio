@@ -26,13 +26,13 @@
 package com.fulcrumgenomics.util
 
 
-import java.io.BufferedWriter
-
 import com.fulcrumgenomics.FgBioDef.PathToIntervals
 import com.fulcrumgenomics.commons.io.Writer
 import com.fulcrumgenomics.fasta.SequenceDictionary
 import htsjdk.samtools.util.Interval
 import htsjdk.samtools.{SAMFileHeader, SAMTextHeaderCodec}
+
+import java.io.BufferedWriter
 
 
 object IntervalListWriter {
@@ -50,9 +50,8 @@ object IntervalListWriter {
 
   /** Constructs an [[IntervalListWriter]] from a Writer. */
   def apply(writer: java.io.Writer, dict: SequenceDictionary): IntervalListWriter = {
-    import com.fulcrumgenomics.fasta.Converters.ToSAMSequenceDictionary
     val header = new SAMFileHeader()
-    header.setSequenceDictionary(dict.asSam)
+    header.setSequenceDictionary(dict.toSam)
     this.apply(writer, header)
   }
 }

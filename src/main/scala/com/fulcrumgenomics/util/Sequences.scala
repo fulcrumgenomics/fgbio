@@ -84,7 +84,7 @@ object Sequences {
     * @param base2 the second base to be compared
     * @return true if the bases share at least one concrete base in common, false otherwise
     */
-  final def compatible(base1: Byte, base2: Byte): Boolean = base1 == base2 || (IupacMasks(base1) & IupacMasks(base2)) > 0
+  final def compatible(base1: Byte, base2: Byte): Boolean = base1 == base2 || (IupacMasks(base1.toInt) & IupacMasks(base2.toInt)) > 0
 
   /**
     * Calculates GC content for a DNA sequence as a fraction (between 0 and 1).
@@ -190,7 +190,7 @@ object Sequences {
     new String(bs)
   }
 
-  /** Reverse complements an array of bases in place. See [[complement()]] for how bases are complemented. */
+  /** Reverse complements an array of bases in place. See [[complement(b:Byte):Byte*]] for how bases are complemented. */
   def revcomp(bs: Array[Byte]): Unit = {
     var (i, j) = (0, bs.length - 1)
     while (i < j) {
@@ -204,8 +204,20 @@ object Sequences {
     if (i == j) bs(i) = complement(bs(i))
   }
 
+  /** Reverse an array of arbitrary type.  */
+  @inline @specialized def reverse[T](xs: Array[T]): Unit = {
+    var (i, j) = (0, xs.length - 1)
+    while (i < j) {
+      val tmp = xs(i)
+      xs(i) = xs(j)
+      xs(j) = tmp
+      i += 1
+      j -= 1
+    }
+  }
+
   /**
-    * Complements the bases in the array in place. See [[complement()]] for how complementing is performed.
+    * Complements the bases in the array in place. See [[complement(b:Byte):Byte*]] for how complementing is performed.
     *
     * @param bs an array of bases as bytes to be complemented in place
     */
@@ -233,8 +245,8 @@ object Sequences {
     case 'K' => 'M'
     case 'R' => 'Y'
     case 'Y' => 'R'
-    case 'W' => 'S'
-    case 'S' => 'W'
+    case 'W' => 'W'
+    case 'S' => 'S'
     // IUPAC codes that represent three bases
     case 'B' => 'V'
     case 'V' => 'B'
@@ -254,8 +266,8 @@ object Sequences {
     case 'k' => 'm'
     case 'r' => 'y'
     case 'y' => 'r'
-    case 'w' => 's'
-    case 's' => 'w'
+    case 'w' => 'w'
+    case 's' => 's'
     // IUPAC codes that represent three bases
     case 'b' => 'v'
     case 'v' => 'b'
@@ -277,7 +289,7 @@ object Sequences {
 
   /** Returns the IUPAC code for the set of bases given. */
   def iupacCode(bases: Iterable[Byte]): Byte = {
-    val mask: Int = bases.foldLeft(0) { case (code, next) => code | IupacMasks(next) }
+    val mask: Int = bases.foldLeft(0) { case (code, next) => code | IupacMasks(next.toInt) }
     IupacMasks.indexOf(mask).toByte
   }
 }

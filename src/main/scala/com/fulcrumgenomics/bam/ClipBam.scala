@@ -29,12 +29,9 @@ import com.fulcrumgenomics.bam.api.{SamOrder, SamRecord, SamSource, SamWriter}
 import com.fulcrumgenomics.cmdline.{ClpGroups, FgBioTool}
 import com.fulcrumgenomics.commons.util.LazyLogging
 import com.fulcrumgenomics.sopt.{arg, clp}
-import com.fulcrumgenomics.util.{Io, Metric, ProgressLogger}
+import com.fulcrumgenomics.util.{Io, Metric}
 import enumeratum.EnumEntry
-import htsjdk.samtools.SAMFileHeader.{GroupOrder, SortOrder}
 import htsjdk.samtools.SamPairUtil
-
-import scala.collection.immutable.IndexedSeq
 
 @clp(group = ClpGroups.SamOrBam, description=
   """
@@ -188,9 +185,7 @@ class ClipBam
 
     val (numExtendingPastMateStartReadOne, numExtendingPastMateStartReadTwo) = {
       if (clipBasesPastMate && r1.isFrPair) {
-        val clip1 = this.clipper.clipExtendingPastMateEnd(rec=r1, mateEnd=r2.end)
-        val clip2 = this.clipper.clipExtendingPastMateEnd(rec=r2, mateEnd=r1.end)
-        (clip1, clip2)
+        this.clipper.clipExtendingPastMateEnds(rec=r1, mate=r2)
       }
       else (0, 0)
     }

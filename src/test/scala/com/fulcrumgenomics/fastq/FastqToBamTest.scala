@@ -270,6 +270,7 @@ class FastqToBamTest extends UnitSpec {
       output=bam,
       sample="foo",
       library="bar",
+      barcode=Some("TATA-GAGA"), //note that when passed a single string with a - separator like this, htsjdk prouduces two barcodes via getBarcodes()
       readGroupId="MyRG",
       platform="Illumina",
       platformUnit=Some("pee-eww"),
@@ -291,6 +292,9 @@ class FastqToBamTest extends UnitSpec {
     rg.getSample shouldBe "foo"
     rg.getLibrary shouldBe "bar"
     rg.getReadGroupId shouldBe "MyRG"
+    rg.getBarcodes() should have size 2
+    rg.getBarcodes().get(0) shouldBe "TATA"
+    rg.getBarcodes().get(1) shouldBe "GAGA"
     rg.getPlatform shouldBe "Illumina"
     rg.getPlatformUnit shouldBe "pee-eww"
     rg.getPlatformModel shouldBe "hiseq2500"
@@ -320,6 +324,34 @@ class FastqToBamTest extends UnitSpec {
     recs(1).basesString shouldBe "N"
     recs(2).basesString shouldBe "N"
     recs(3).basesString shouldBe "CCCCCCCCCC"
+  }
+
+  it should "extract sample barcode qualities when requested" in {
+    val r1 = fq(
+      FastqRecord("q1:2:3:4:5:6:7", "AAACCCAAAA", "ABCDEFGHIJ"),
+      FastqRecord("q2:2:3:4:5:6:7", "TAANNNAAAA", "BCDEFGHIJK"),
+      FastqRecord("q3:2:3:4:5:6:7", "GAACCCTCGA", "CDEFGHIJKL"),
+    )
+    val bam = makeTempFile("fastqToBamTest.", ".bam")
+
+    Seq(true, false).foreach { storeSampleBarcodeQualities =>
+      new FastqToBam(input = Seq(r1), output = bam, sample = "s", library = "l", readStructures = Seq(rs("3B3M3B+T")), storeSampleBarcodeQualities = storeSampleBarcodeQualities).execute()
+      val recs = readBamRecs(bam)
+      recs should have size 3
+      recs(0).apply[String]("BC") shouldBe "AAA-AAA"
+      recs(1).apply[String]("BC") shouldBe "TAA-AAA"
+      recs(2).apply[String]("BC") shouldBe "GAA-TCG"
+
+      if (storeSampleBarcodeQualities) {
+        recs(0).apply[String]("QT") shouldBe "ABC GHI"
+        recs(1).apply[String]("QT") shouldBe "BCD HIJ"
+        recs(2).apply[String]("QT") shouldBe "CDE IJK"
+      } else {
+        Range.inclusive(0, 2).foreach { index =>
+          recs(index).contains("QT") shouldBe false
+        }
+      }
+    }
   }
 
   it should "extract UMIs from read names when requested" in {

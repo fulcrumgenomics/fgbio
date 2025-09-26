@@ -33,8 +33,8 @@ import htsjdk.variant.vcf._
 
 import java.util
 import java.util.{List => JavaList}
-import scala.jdk.CollectionConverters.MapHasAsJava
 import scala.collection.immutable.ListMap
+import scala.jdk.CollectionConverters.MapHasAsJava
 
 /**
   * Object that provides methods for converting from fgbio's scala VCF classes to HTSJDK's
@@ -318,7 +318,7 @@ private[api] object VcfConversions {
     */
   def toJavaVariant(in: Variant, header: VcfHeader): VariantContext = {
     val alleles   = in.alleles.iterator.map { a => JavaAllele.create(a.toString, a eq in.alleles.ref) }.toJavaList
-    val builder = new VariantContextBuilder(null, in.chrom, in.pos, in.end, alleles)
+    val builder = new VariantContextBuilder(null, in.chrom, in.pos.toLong, in.end.toLong, alleles)
     in.id.foreach(i => builder.id(i))
     in.qual.foreach(q => builder.log10PError(q / -10 ))
     if (in.filters.isEmpty) builder.unfiltered() else builder.filters(in.filters.iterator.toJavaSet)

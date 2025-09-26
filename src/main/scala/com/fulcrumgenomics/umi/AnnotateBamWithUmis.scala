@@ -24,16 +24,15 @@
  */
 package com.fulcrumgenomics.umi
 
-import com.fulcrumgenomics.FgBioDef._
+import com.fulcrumgenomics.FgBioDef.{BetterBufferedIteratorScalaWrapper, _}
 import com.fulcrumgenomics.bam.api.{SamSource, SamWriter}
 import com.fulcrumgenomics.cmdline.{ClpGroups, FgBioTool}
 import com.fulcrumgenomics.commons.io.Io
 import com.fulcrumgenomics.commons.util.LazyLogging
-import com.fulcrumgenomics.fastq.{FastqSource, FastqRecord}
+import com.fulcrumgenomics.fastq.{FastqRecord, FastqSource}
 import com.fulcrumgenomics.sopt._
-import com.fulcrumgenomics.util.{ProgressLogger, ReadStructure, SegmentType}
 import com.fulcrumgenomics.util.ReadStructure.SubReadWithQuals
-import com.fulcrumgenomics.FgBioDef.BetterBufferedIteratorScalaWrapper
+import com.fulcrumgenomics.util.{ProgressLogger, ReadStructure, SegmentType}
 
 @clp(description =
   """
@@ -122,8 +121,12 @@ class AnnotateBamWithUmis(
 
     if (sorted) {
       // Loop through fastq and annotate corresponding BAM entries
-      val samIter = in.iterator.bufferBetter
-      FastqSource.zipped(sources=fqSources).foreach { fqRecs =>
+      val fastqIter = FastqSource.zipped(sources=fqSources)
+      val samIter   = in.iterator.bufferBetter
+
+      while (samIter.hasNext) {
+        if (fastqIter.isEmpty) fail(s"No more FASTQ records but more SAM records. Next SAM record: ${samIter.next().name}")
+        val fqRecs  = fastqIter.next()
         val records = samIter.takeWhile(_.name == fqRecs.head.name).toIndexedSeq
         if (records.isEmpty) logMissingUmi(fqRecs.head.name) else {
           val umis = fqRecs.zip(structures).flatMap { case (rec, structure) =>
@@ -151,7 +154,7 @@ class AnnotateBamWithUmis(
         (records.head.name, umis)
       }.toMap
       fqSources.foreach(_.close())
-      // Loop through the BAM file an annotate it
+      // Loop through the BAM file and annotate it
       in.foreach { rec =>
         val name = rec.name
         nameToUmi.get(name) match {

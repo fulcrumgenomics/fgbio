@@ -40,13 +40,15 @@ import htsjdk.variant.vcf.{VCFFileReader, VCFHeader}
     |
     |The name of each sequence must match one of the names (including aliases) in the given sequence dictionary.  The
     |new name will be the primary (non-alias) name in the sequence dictionary.
+    |
+    |Use `--skip-missing` to ignore variants where a contig name could not be updated (i.e. missing from the sequence dictionary).
   """,
   group = ClpGroups.VcfOrBcf)
 class UpdateVcfContigNames
 (@arg(flag='i', doc="Input VCF.") val input: PathToVcf,
  @arg(flag='d', doc="The path to the sequence dictionary with contig aliases.") val dict: PathToSequenceDictionary,
  @arg(flag='o', doc="Output VCF.") val output: PathToVcf,
- @arg(doc="Skip missing contigs.") val skipMissing: Boolean = false
+ @arg(doc="Skip contigs in the VCF that are not found in the sequence dictionary.") val skipMissing: Boolean = false
 ) extends FgBioTool with LazyLogging {
 
   Io.assertReadable(input)
@@ -57,9 +59,8 @@ class UpdateVcfContigNames
     val dict   = SequenceDictionary(this.dict)
     val reader = new VCFFileReader(this.input)
     val header = {
-      import com.fulcrumgenomics.fasta.Converters.ToSAMSequenceDictionary
       val h: VCFHeader = new VCFHeader(reader.getFileHeader)
-      h.setSequenceDictionary(dict.asSam)
+      h.setSequenceDictionary(dict.toSam)
       h
     }
     val writer = {

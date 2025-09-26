@@ -77,7 +77,7 @@ final case class Genotype(alleles: AlleleSet,
   /** Retrieves a value from the INFO map.  Will throw an exception if the key does not exist. */
   def apply[A](key: String): A = attrs(key).asInstanceOf[A]
 
-  /** Retrieves an optional value from the INFO map.  Will return [[None]] if the key does not exist. */
+  /** Retrieves an optional value from the INFO map.  Will return [[scala.None]] if the key does not exist. */
   def get[A](key: String): Option[A] = attrs.get(key).asInstanceOf[Option[A]]
 
   /** Retrieves an optional attribute.  Will return `default` if the key does not exist. */

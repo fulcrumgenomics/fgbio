@@ -28,10 +28,11 @@ import com.fulcrumgenomics.testing.SamBuilder.{Minus, Plus}
 import com.fulcrumgenomics.testing.{SamBuilder, UnitSpec}
 import com.fulcrumgenomics.umi.ConsensusTags.PerRead.{AbRawReadErrorRate, BaRawReadErrorRate, RawReadErrorRate}
 import com.fulcrumgenomics.util.NumericTypes.PhredScore
+import org.scalatest.OptionValues
 
-class DuplexConsensusCallerTest extends UnitSpec {
+class DuplexConsensusCallerTest extends UnitSpec with OptionValues {
   // Function to create a caller without so much writing
-  def caller(q: Int = 10, pre: Int = DuplexConsensusCaller.ErrorRatePreUmi, post: Int = DuplexConsensusCaller.ErrorRatePostUmi, minReads: Seq[Int] = Seq(1)) =
+  def caller(q: Int = 10, pre: Int = DuplexConsensusCaller.ErrorRatePreUmi.toInt, post: Int = DuplexConsensusCaller.ErrorRatePostUmi.toInt, minReads: Seq[Int] = Seq(1)) =
     new DuplexConsensusCaller(readNamePrefix="test", minInputBaseQuality=q.toByte, errorRatePreUmi=pre.toByte, errorRatePostUmi=post.toByte,
       minReads=minReads)
 
@@ -87,6 +88,29 @@ class DuplexConsensusCallerTest extends UnitSpec {
     r2.quals(0) > 30 shouldBe true
   }
 
+  Seq(
+    Seq("right", "ACT-", "-ACT"),
+    Seq("left", "-ACT", "ACT-"),
+  ).foreach { case Seq(orientation, leftUmi, rightUmi) =>
+    it should s"create a simple double stranded consensus for a pair of A and a pair of B reads in which the $orientation UMI is absent" in {
+      val builder = new SamBuilder(readLength = 10, baseQuality = 20)
+      builder.addPair(name = "q1", start1 = 100, start2 = 200, strand1 = Plus, strand2 = Minus, bases1 = "AAAAAAAAAA", bases2 = "CCCCCCCCCC", attrs = Map(MI -> "foo/A", RX -> leftUmi))
+      builder.addPair(name = "q2", start1 = 200, start2 = 100, strand1 = Minus, strand2 = Plus, bases1 = "CCCCCCCCCC", bases2 = "AAAAAAAAAA", attrs = Map(MI -> "foo/B", RX -> rightUmi))
+
+      val recs = c.consensusReadsFromSamRecords(builder.toSeq)
+      recs should have size 2
+      val r1 = recs.find(_.firstOfPair).getOrElse(fail("No first of pair."))
+      val r2 = recs.find(_.secondOfPair).getOrElse(fail("No second of pair."))
+      r1.basesString shouldBe "AAAAAAAAAA"
+      r2.basesString shouldBe "GGGGGGGGGG" // after un-revcomping
+      r1.quals(0) > 30 shouldBe true
+      r2.quals(0) > 30 shouldBe true
+      // Both R1 and R2 inherit the RX pattern of the "A" family which is the left-oriented read pair in this test.
+      r1.get[String](RX) shouldBe Some(leftUmi)
+      r2.get[String](RX) shouldBe Some(leftUmi)
+    }
+  }
+
   Seq(true).foreach { allowSingleStrand =>
     val extraName: String = if (allowSingleStrand) "" else "not "
     Seq("A", "B").foreach { duplexStrand =>
@@ -136,7 +160,7 @@ class DuplexConsensusCallerTest extends UnitSpec {
   }
 
   /** A builder where we have one duplex, with five total reads, three on one strand and two on the other. */
-  private val builderForMinReads: SamBuilder = {
+  private def builderForMinReads(): SamBuilder = {
     val builder = new SamBuilder(readLength=10, baseQuality=20)
     builder.addPair(name="q1", start1=100, start2=200, strand1=Plus, strand2=Minus, bases1="AAAAAAAAAA", bases2="CCCCCCCCCC", attrs=Map(MI -> "foo/A"))
     builder.addPair(name="q2", start1=100, start2=200, strand1=Plus, strand2=Minus, bases1="AAAAAAAAAA", bases2="CCCCCCCCCC", attrs=Map(MI -> "foo/A"))
@@ -147,18 +171,42 @@ class DuplexConsensusCallerTest extends UnitSpec {
   }
 
   it should "support the --min-reads option when one value is provided" in {
-    caller(minReads=Seq(3)).consensusReadsFromSamRecords(builderForMinReads.toSeq) shouldBe empty
-    caller(minReads=Seq(2)).consensusReadsFromSamRecords(builderForMinReads.toSeq) should have size 2
+    val builder = builderForMinReads()
+    caller(minReads=Seq(3)).consensusReadsFromSamRecords(builder.toSeq) shouldBe empty
+    caller(minReads=Seq(2)).consensusReadsFromSamRecords(builder.toSeq) should have size 2
   }
 
   it should "support the --min-reads option when two values are provided" in {
-    caller(minReads=Seq(5, 3)).consensusReadsFromSamRecords(builderForMinReads.toSeq) shouldBe empty
-    caller(minReads=Seq(5, 2)).consensusReadsFromSamRecords(builderForMinReads.toSeq) should have size 2
+    val builder = builderForMinReads()
+    caller(minReads=Seq(5, 3)).consensusReadsFromSamRecords(builder.toSeq) shouldBe empty
+    caller(minReads=Seq(5, 2)).consensusReadsFromSamRecords(builder.toSeq) should have size 2
   }
 
   it should "support the --min-reads option when three values are provided" in {
-    caller(minReads=Seq(5, 3, 3)).consensusReadsFromSamRecords(builderForMinReads.toSeq) shouldBe empty
-    caller(minReads=Seq(5, 3, 2)).consensusReadsFromSamRecords(builderForMinReads.toSeq) should have size 2
+    val builder = builderForMinReads()
+    caller(minReads=Seq(5, 3, 3)).consensusReadsFromSamRecords(builder.toSeq) shouldBe empty
+    caller(minReads=Seq(5, 3, 2)).consensusReadsFromSamRecords(builder.toSeq) should have size 2
+  }
+
+  it should "support the --min-reads option as a hard filter if some records are removed during consensus calling for not having the most common structural alignment" in {
+    val builder = builderForMinReads()
+    val records = builder.toSeq
+    caller(minReads=Seq(3)).consensusReadsFromSamRecords(records) shouldBe empty
+    caller(minReads=Seq(2)).consensusReadsFromSamRecords(records) should have size 2
+
+    // Test for a coalesced and simplified cigar
+    val similar1 = builder.addPair(name="q6", start1=200, start2=100, strand1=Minus, strand2=Plus, bases1="CCCCCCCCCC", bases2="AAAAAAAAAA", attrs=Map(MI -> "foo/B"), cigar1 = "10M")
+    caller(minReads=Seq(3)).consensusReadsFromSamRecords(records ++ similar1) should have size 2 // the new read pair is considered in the final consensus
+    caller(minReads=Seq(2)).consensusReadsFromSamRecords(records ++ similar1) should have size 2
+
+    // Test for a non-coalesced but simplified cigar
+    val similar2 = builder.addPair(name="q6", start1=200, start2=100, strand1=Minus, strand2=Plus, bases1="CCCCCCCCCC", bases2="AAAAAAAAAA", attrs=Map(MI -> "foo/B"), cigar1 = "5M5M")
+    caller(minReads=Seq(3)).consensusReadsFromSamRecords(records ++ similar2) should have size 2 // the new read pair is considered in the final consensus
+    caller(minReads=Seq(2)).consensusReadsFromSamRecords(records ++ similar2) should have size 2
+
+    val dissimilar = builder.addPair(name="q6", start1=200, start2=100, strand1=Minus, strand2=Plus, bases1="CCCCCCCCCC", bases2="AAAAAAAAAA", attrs=Map(MI -> "foo/B"), cigar1 = "5M1D5M")
+    caller(minReads=Seq(3)).consensusReadsFromSamRecords(records ++ dissimilar) shouldBe empty // the new read pair is *not* considered in the final consensus
+    caller(minReads=Seq(2)).consensusReadsFromSamRecords(records ++ dissimilar) should have size 2
   }
 
   it should "not saturate the qualities with deep AB and light BA coverage" in {
@@ -169,7 +217,7 @@ class DuplexConsensusCallerTest extends UnitSpec {
     // Single BA read
     builder.addPair(name=s"b1", start1=200, start2=100, strand1=Minus, strand2=Plus, bases1="CCCCCCCCCC", bases2="AAAAAAAAAA", attrs=Map(MI -> "foo/B"))
 
-    val recs = caller(post=45.toByte).consensusReadsFromSamRecords(builder.toSeq)
+    val recs = caller(post=45).consensusReadsFromSamRecords(builder.toSeq)
     recs should have size 2
     val r1 = recs.find(_.firstOfPair).getOrElse(fail("No first of pair."))
     val r2 = recs.find(_.secondOfPair).getOrElse(fail("No second of pair."))
@@ -466,6 +514,31 @@ class DuplexConsensusCallerTest extends UnitSpec {
         r2.get[String](BaConsensusBases).isEmpty shouldBe true
         r2.get[String](BaConsensusQuals).isEmpty shouldBe true
       }
+    }
+  }
+  "DuplexConsensusCaller.duplexConsensus" should "swap AB and BA reads when AB reads have zero depth across the minimum length" in {
+    val cc = caller(minReads=Seq(1, 1, 0))
+    val ab = VanillaConsensusRead(
+      id     = "ab",
+      bases  = "NNN".getBytes,
+      quals  = "III".getBytes,
+      depths = Array(0, 0, 0),
+      errors = Array(0, 0, 0)
+    )
+    val ba   = ab.copy(depths=Array(1, 1, 1))
+
+    // ab has zero depth, so it should be swapped with BA
+    {
+      val read = cc.duplexConsensus(ab=Some(ab), ba=Some(ba), sourceReads=Some(Seq.empty)).value
+      read.abConsensus shouldBe ba
+      read.baConsensus.isEmpty shouldBe true
+    }
+
+    // ba has zero depth, so it should be undefined.
+    {
+      val read = cc.duplexConsensus(ab=Some(ba), ba=Some(ab), sourceReads=Some(Seq.empty)).value
+      read.abConsensus shouldBe ba
+      read.baConsensus.isEmpty shouldBe true
     }
   }
 }

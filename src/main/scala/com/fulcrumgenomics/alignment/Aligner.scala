@@ -25,15 +25,14 @@
 package com.fulcrumgenomics.alignment
 
 import com.fulcrumgenomics.FgBioDef._
-import com.fulcrumgenomics.alignment.Mode.{Global, Glocal, Local}
 import com.fulcrumgenomics.alignment.Aligner._
+import com.fulcrumgenomics.alignment.Mode.{Global, Glocal, Local}
 import com.fulcrumgenomics.util.Sequences
 import enumeratum.EnumEntry
 import htsjdk.samtools.CigarOperator
 
-import scala.collection.{immutable, mutable}
 import scala.annotation.switch
-import scala.collection.mutable.ArrayBuffer
+import scala.collection.immutable
 
 /** Trait that entries in Mode will extend. */
 sealed trait Mode extends EnumEntry
@@ -132,7 +131,7 @@ object Aligner {
       *
       * scoreGap(query, target, qOffset=4, tOffset=3, gapIsinQuery=false, extend=false)
       * scoreGap(query, target, qOffset=5, tOffset=3, gapIsinQuery=false, extend=true)
-      * scoreGap(query, target, qOffset=9, tOffset=8, gapIsinQuery=true, extend=true)
+      * scoreGap(query, target, qOffset=9, tOffset=8, gapIsinQuery=true, extend=false)
       *
       * Offsets of -1, query.length and target.length may be passed to indicate that the gap is occurring
       * before the start of one of the sequences, or after the end of the query or target sequence respectively.
@@ -157,11 +156,11 @@ object Aligner {
   * implementation is supplied via the companion [[Aligner]] object which uses a fixed match
   * score and mismatch penalty.
   *
-  * When generating CIGARs for alignments the aligner uses the [[isMatch()]] method to determine
+  * When generating CIGARs for alignments the aligner uses the [[isMatch]] method to determine
   * whether to treat an aligned pair of bases as a match or mismatch.  The default implementation
   * of this method treats U bases as T bases to allow DNA/RNA alignments.  It also will identify
   * as matches any pair of bases (including IUPAC ambiguity codes) that share at least one base
-  * in common.  This behaviour can be modified by overriding the [[isMatch()]] method.
+  * in common.  This behaviour can be modified by overriding the [[isMatch]] method.
   *
   * @param scorer the AlignmentScorer to use to score base pairings and gaps
   * @param useEqualsAndX if true use the = and X cigar operators for matches and mismatches,

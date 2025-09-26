@@ -25,8 +25,6 @@
 
 package com.fulcrumgenomics.vcf
 
-import java.util.NoSuchElementException
-
 import com.fulcrumgenomics.FgBioDef._
 import com.fulcrumgenomics.fasta.SequenceDictionary
 import htsjdk.samtools.util._

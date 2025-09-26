@@ -24,8 +24,6 @@
 
 package com.fulcrumgenomics.vcf.api
 
-import com.fulcrumgenomics.FgBioDef._
-
 /**
   * Map used to store genotypes and ensure that they are stored in the order they were read in the VCF. This class
   * is immutable.  To avoid copying of the gts array, once passed to this class no other references to the gts

@@ -102,9 +102,9 @@ class FixVcfPhaseSet
     }
   }
 
-  /** Returns a modified [[VcfHeader]] to use when reading the input.  The input VCF header will be modified such
-    * that the PS FORMAT field is read as a single fixed value of type [[String]].  This is important, for example, when
-    * the header has type [[VcfFieldType.Integer]] but the records have type [[VcfFieldType.String]].
+  /** Returns a modified [[com.fulcrumgenomics.vcf.api.VcfHeader]] to use when reading the input.  The input VCF header will be modified such
+    * that the PS FORMAT field is read as a single fixed value of type [[java.lang.String]].  This is important, for example, when
+    * the header has type [[com.fulcrumgenomics.vcf.api.VcfFieldType.Integer]] but the records have type [[com.fulcrumgenomics.vcf.api.VcfFieldType.String]].
     * */
   def headerForReader(header: VcfHeader): VcfHeader = {
     val formats = header.formats.filterNot(_.id == "PS")
@@ -121,7 +121,7 @@ class FixVcfPhaseSet
     header.copy(formats=formats :+ ps)
   }
 
-  /** Builds the header for the [[VcfWriter]] from the input reader [[VcfHeader]].  If `keepOriginal` is `true`, then
+  /** Builds the header for the [[com.fulcrumgenomics.vcf.api.VcfWriter]] from the input reader [[com.fulcrumgenomics.vcf.api.VcfHeader]].  If `keepOriginal` is `true`, then
     * the `OPS` FORMAT header line is added to store the original phase set, which will be a single fixed count of type
     * `String`.  The output phase set will always be a single fixed count of type `Integer`. */
   def headerForWriter(header: VcfHeader):  VcfHeader = {
@@ -187,8 +187,8 @@ object FixVcfPhaseSet {
     * @param phaseGenotypesWithPhaseSet set unphased genotypes with a PS FORMAT value to be phased
     */
   private[vcf] class VcfPhaseSetUpdater(header: VcfHeader, keepOriginal: Boolean, phaseGenotypesWithPhaseSet: Boolean) extends LazyLogging {
-    import VcfPhaseSetUpdater._
     import VcfPhaseSetUpdater.Result._
+    import VcfPhaseSetUpdater._
 
     private val phaseSetToPositionBySample: Map[String, mutable.HashMap[String, Int]] = {
       header.samples.map { sample => (sample, scala.collection.mutable.HashMap[String, Int]()) }.toMap
@@ -219,7 +219,7 @@ object FixVcfPhaseSet {
             case NotPhasedWithPhaseSetValue(_)   =>
               logger.debug(
                 "Genotype had a phase set but was unphased:" +
-                  f"${variant.chrom}:${variant.pos}:${variant.id.getOrElse(".")} sample=$sampleName PS=${genotype("PS")}" +
+                  f"${variant.chrom}:${variant.pos}:${variant.id.getOrElse(".")} sample=$sampleName PS=${genotype["String"]("PS")}" +
                   "; consider r-running using `-x/--phase-genotypes-with-phase-set`"
               )
             case PhasedMissingPhaseSetValue(_) =>
@@ -250,7 +250,7 @@ object FixVcfPhaseSet {
           val phaseSetToValue = this.phaseSetToPositionBySample(genotype.sample)
           val newValue        = phaseSetToValue.getOrElseUpdate(oldValue, variant.pos)
           // Build the new set of attributes
-          val phaseSetAttrs = {
+          val phaseSetAttrs: Map[String, Any] = {
             if (keepOriginal) Map("PS" -> newValue, "OPS" -> oldValue)
             else Map("PS" -> newValue)
           }

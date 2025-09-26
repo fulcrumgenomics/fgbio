@@ -24,9 +24,6 @@
 
 package com.fulcrumgenomics.bam
 
-import java.nio.file.Path
-import java.text.DecimalFormat
-
 import com.fulcrumgenomics.FgBioDef._
 import com.fulcrumgenomics.bam.api.{SamRecord, SamSource, SamWriter}
 import com.fulcrumgenomics.cmdline.{ClpGroups, FgBioTool}
@@ -34,9 +31,11 @@ import com.fulcrumgenomics.commons.CommonsDef.{PathToBam, PathToIntervals}
 import com.fulcrumgenomics.commons.io.Io
 import com.fulcrumgenomics.commons.util.LazyLogging
 import com.fulcrumgenomics.sopt._
-import com.fulcrumgenomics.util.ProgressLogger
 import htsjdk.samtools.util.IntervalList
-import math.abs
+
+import java.nio.file.Path
+import java.text.DecimalFormat
+import scala.math.abs
 
 /**
   * Program which takes in a BAM file and filters out all reads for templates that match one or more
@@ -62,6 +61,7 @@ import math.abs
 class FilterBam
 ( @arg(flag='i', doc="Input BAM file.")                                           val input: PathToBam,
   @arg(flag='o', doc="Output BAM file.")                                          val output: PathToBam,
+  @arg(flag='r', doc="Optional output SAM or BAM file to write reads not kept.")  val rejects: Option[PathToBam] = None,
   @arg(flag='l', doc="Optionally remove reads not overlapping intervals.")        val intervals: Option[PathToIntervals] = None,
   @arg(flag='D', doc="If true remove all reads that are marked as duplicates.")   val removeDuplicates: Boolean = true,
   @arg(flag='U', doc="Remove all unmapped reads.")                                val removeUnmappedReads: Boolean = true,
@@ -75,6 +75,7 @@ class FilterBam
 
   Io.assertReadable(input)
   Io.assertCanWriteFile(output)
+  rejects.foreach(Io.assertCanWriteFile(_))
   intervals.foreach(Io.assertReadable)
 
   if (!removeUnmappedReads && (minInsertSize.isDefined || minMappedBases.isDefined)) {
@@ -83,10 +84,10 @@ class FilterBam
   }
 
   override def execute(): Unit = {
-    val progress = ProgressLogger(logger, verb="written", unit=5e6.toInt)
     val in       = SamSource(input)
     val iterator = buildInputIterator(in, intervals)
     val out      = SamWriter(output, in.header)
+    val rejects  = this.rejects.map(path => SamWriter(path, in.header))
     val kept = iterator.count { rec => {
         val throwOut = (removeDuplicates && rec.duplicate) ||
           (removeUnmappedReads && rec.unmapped) ||
@@ -98,6 +99,7 @@ class FilterBam
           minMappedBases.exists(count => countMappedBases(rec) < count)
 
         if (throwOut) {
+          rejects.foreach(_.write(rec))
           false
         }
         else {
@@ -107,8 +109,9 @@ class FilterBam
       }
     }
 
-    logger.info("Kept " + new DecimalFormat("#,##0").format(kept) + " records.")
+    logger.info("Kept " + new DecimalFormat("#,##0").format(kept.toLong) + " records.")
     out.close()
+    rejects.foreach(_.close())
     in.safelyClose()
   }
 

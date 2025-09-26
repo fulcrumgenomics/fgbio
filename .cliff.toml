@@ -1,0 +1,29 @@
+[changelog]
+header = ""
+trim = true
+body = """
+{% for group, commits in commits | group_by(attribute="group") %}
+    ## {{ group | upper_first }}
+    {% for commit in commits %}
+        - {{ commit.message | upper_first }} ({{ commit.id | truncate(length=8, end="") }})\
+    {% endfor %}
+{% endfor %}\n
+"""
+
+[git]
+conventional_commits = true
+commit_parsers = [
+    { message = "^.+!:*", group = "Breaking"},
+    { message = "^security*", group = "Security"},
+    { message = "^feat*", group = "Features"},
+    { message = "^fix*", group = "Bug Fixes"},
+    { message = "^docs*", group = "Documentation"},
+    { message = "^perf*", group = "Performance"},
+    { message = "^refactor*", group = "Refactor"},
+    { message = "^style*", group = "Styling"},
+    { message = "^test*", group = "Testing"},
+    { message = "^chore\\(release\\):*", skip = true},
+    { message = "^chore*", group = "Miscellaneous Tasks"},
+    { body = ".*security", group = "Security"}
+]
+filter_commits = false

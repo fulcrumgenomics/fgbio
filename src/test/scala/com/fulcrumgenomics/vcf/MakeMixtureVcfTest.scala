@@ -30,8 +30,10 @@ import com.fulcrumgenomics.vcf.MakeMixtureVcf.Sample
 import htsjdk.variant.variantcontext.Allele
 import htsjdk.variant.vcf.VCFFileReader
 
+import scala.annotation.nowarn
 import scala.collection.mutable
 
+@nowarn("msg=class VariantContextSetBuilder in package testing is deprecated")
 class MakeMixtureVcfTest extends UnitSpec {
   private val dummyVcf = makeTempFile("dummy.", ".vcf")
 

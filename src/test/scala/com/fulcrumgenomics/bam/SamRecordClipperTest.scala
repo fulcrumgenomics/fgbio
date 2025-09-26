@@ -30,7 +30,6 @@ import com.fulcrumgenomics.bam.api.SamRecord
 import com.fulcrumgenomics.testing.SamBuilder.{Minus, Plus, Strand}
 import com.fulcrumgenomics.testing.{SamBuilder, UnitSpec}
 import com.fulcrumgenomics.util.NumericTypes.PhredScore
-import htsjdk.samtools.TextCigarCodec
 import org.scalatest.OptionValues
 
 class SamRecordClipperTest extends UnitSpec with OptionValues {
@@ -588,6 +587,91 @@ class SamRecordClipperTest extends UnitSpec with OptionValues {
     mate.cigar.toString shouldBe "1S99M"
   }
 
+  it should "clip reads that overlap with a deletion" in {
+    val (rec, mate) = pair(2, "80M10D10M", Plus, 70, "10M10D80M", Minus)
+    clipper(Soft).clipOverlappingReads(rec=rec, mate=mate) shouldBe (10, 10)
+    rec.start shouldBe 2
+    rec.end shouldBe 81
+    rec.cigar.toString shouldBe "80M10S"
+    mate.start shouldBe 90
+    mate.end shouldBe 169
+    mate.cigar.toString shouldBe "10S80M"
+  }
+
+  it should "clip reads that overlap with soft-clipping on the forward read after the midpoint" in {
+    val (rec, mate) = pair(1, "95M5S", Plus, 50, "100M", Minus)
+    clipper(Hard).clipOverlappingReads(rec=rec, mate=mate) shouldBe (20, 26)
+    rec.start shouldBe 1
+    rec.end shouldBe 75
+    rec.cigar.toString shouldBe "75M25H"
+    mate.start shouldBe 76
+    mate.cigar.toString shouldBe "26H74M"
+  }
+
+  it should "clip reads that overlap with soft-clipping on the reverse read before the midpoint" in {
+    val (rec, mate) = pair(1, "100M", Plus, 55, "5S95M", Minus)
+    clipper(Hard).clipOverlappingReads(rec=rec, mate=mate) shouldBe (25, 21)
+    rec.start shouldBe 1
+    rec.end shouldBe 75
+    rec.cigar.toString shouldBe "75M25H"
+    mate.start shouldBe 76
+    mate.cigar.toString shouldBe "26H74M"
+  }
+
+  it should "clip reads that overlap 1 bp directly in the middle of the pair" in {
+    val (rec, mate) = pair(1, "99M1S", Plus, 99, "1S99M", Minus)
+    clipper(Hard).clipOverlappingReads(rec=rec, mate=mate) shouldBe (0, 1)
+    rec.start shouldBe 1
+    rec.end shouldBe 99
+    rec.cigar.toString shouldBe "99M1H"
+    mate.start shouldBe 100
+    mate.cigar.toString shouldBe "2H98M"
+  }
+
+  // Template spans chr1:1-169, with mid-point=85
+  // Second read doesn't overlap the mid-point so all clipping should be done to the first read
+  it should "clip reads that overlap in the first half of the pair, not over the middle" in {
+    val (rec, mate) = pair(1, "95M5S", Plus, 90, "20S80M", Minus)
+    clipper(Hard).clipOverlappingReads(rec=rec, mate=mate) shouldBe (6, 0)
+    rec.start shouldBe 1
+    rec.end shouldBe 89
+    rec.cigar.toString shouldBe "89M11H"
+    mate.start shouldBe 90
+    mate.cigar.toString shouldBe "20H80M"
+  }
+
+  // Template spans chr1:1-164, with mid-point=82
+  // First read doesn't overlap the mid-point so all clipping should be done to the first read
+  it should "clip reads that overlap in the second half of the pair, not over the middle" in {
+    val (rec, mate) = pair(1, "80M20S", Plus, 70, "5S95M", Minus)
+    clipper(Hard).clipOverlappingReads(rec=rec, mate=mate) shouldBe (0, 11)
+    rec.start shouldBe 1
+    rec.end shouldBe 80
+    rec.cigar.toString shouldBe "80M20H"
+    mate.start shouldBe 81
+    mate.cigar.toString shouldBe "16H84M"
+  }
+
+  it should "clip reads when the forward read is much longer" in {
+    val (rec, mate) = pair(1, "100M", Plus, 30, "80S20M", Minus)
+    clipper(Hard).clipOverlappingReads(rec=rec, mate=mate) shouldBe (71, 0)
+    rec.start shouldBe 1
+    rec.end shouldBe 29
+    rec.cigar.toString shouldBe "29M71H"
+    mate.start shouldBe 30
+    mate.cigar.toString shouldBe "80H20M"
+  }
+
+  it should "clip reads when the reverse read is much longer" in {
+    val (rec, mate) = pair(50, "20M80S", Plus, 1, "100M", Minus)
+    clipper(Hard).clipOverlappingReads(rec=rec, mate=mate) shouldBe (0, 69)
+    rec.start shouldBe 50
+    rec.end shouldBe 69
+    rec.cigar.toString shouldBe "20M80H"
+    mate.start shouldBe 70
+    mate.cigar.toString shouldBe "69H31M"
+  }
+
   it should "clip reads that overlap with one end having a deletion" in {
     val (rec, mate) = pair(1, "60M10D40M", Plus, 50, "10M10D80M10D10M", Minus)
     clipper(Soft).clipOverlappingReads(rec=rec, mate=mate) shouldBe (25, 26)
@@ -731,13 +815,49 @@ class SamRecordClipperTest extends UnitSpec with OptionValues {
     mate.cigar.toString shouldBe "50S50M" // clipping remains
   }
 
-  it should "clip reads that where only one end extends their mate's start that has insertions" in {
+  it should "clip reads where only one end extends their mate's start that has insertions" in {
     val (rec, mate) = pair(1, "40M10I50M", Plus, 1, "50S50M", Minus)
     clipper(Soft).clipExtendingPastMateEnds(rec=rec, mate=mate) shouldBe (40, 0)
     rec.start shouldBe 1
     rec.cigar.toString shouldBe "40M10I10M40S" // added clipping
     mate.start shouldBe 1
     mate.cigar.toString shouldBe "50S50M" // clipping remains
+  }
+
+  it should "clip the forward read when it ends before the mate's start but soft-clipped bases extend past" in {
+    val (rec, mate) = pair(20, "30M20S", Plus, 20, "10S40M", Minus)
+    clipper(Hard).clipExtendingPastMateEnds(rec=rec, mate=mate) shouldBe (0, 0) // No aligned bases clipped
+    rec.start shouldBe 20
+    rec.cigar.toString shouldBe "30M10S10H" // 10 of 20 bases extending past are hard-clipped, 10 remain soft-clipped
+    mate.start shouldBe 20
+    mate.cigar.toString shouldBe "10H40M" // hard-clip the 10S that extend past
+  }
+
+  it should "clip the forward read when it ends before the mate's start but soft-clipped bases extend past while there is a deletion" in {
+    val (rec, mate) = pair(20, "15M1D15M20S", Plus, 20, "10S15M1D25M", Minus)
+    clipper(Hard).clipExtendingPastMateEnds(rec=rec, mate=mate) shouldBe (0, 0) // No aligned bases clipped
+    rec.start shouldBe 20
+    rec.cigar.toString shouldBe "15M1D15M10S10H" // 10 of 20 bases extending past are hard-clipped, 10 remain soft-clipped
+    mate.start shouldBe 20
+    mate.cigar.toString shouldBe "10H15M1D25M" // hard-clip the 10S that extend past
+  }
+
+  it should "clip the forward read when it ends before the mate's start but soft-clipped bases extend past while there is an insertion" in {
+    val (rec, mate) = pair(20, "15M1I15M20S", Plus, 20, "10S15M1I25M", Minus)
+    clipper(Hard).clipExtendingPastMateEnds(rec=rec, mate=mate) shouldBe (0, 0) // No aligned bases clipped
+    rec.start shouldBe 20
+    rec.cigar.toString shouldBe "15M1I15M10S10H" // 10 of 20 bases extending past are hard-clipped, 10 remain soft-clipped
+    mate.start shouldBe 20
+    mate.cigar.toString shouldBe "10H15M1I25M" // hard-clip the 10S that extend past
+  }
+
+  it should "clip the reverse read when it ends before the mate's start but soft-clipped bases extend past" in {
+    val (rec, mate) = pair(20, "40M10S", Plus, 30, "20S30M", Minus)
+    clipper(Hard).clipExtendingPastMateEnds(rec=rec, mate=mate) shouldBe (0, 0) // No aligned bases clipped
+    rec.start shouldBe 20
+    rec.cigar.toString shouldBe "40M10H" // hard-clip the 10S that extend past
+    mate.start shouldBe 30
+    mate.cigar.toString shouldBe "10H10S30M" // hard-clip the 10S that extend past
   }
 
   it should "not clip when the read pairs are mapped +/- with start(R1) > end(R2) but do not overlap" in {
@@ -750,12 +870,63 @@ class SamRecordClipperTest extends UnitSpec with OptionValues {
   }
 
   it should "not clip when the reads do not extend past each other with insertions" in {
-    val builder = new SamBuilder(readLength=100)
     val (rec, mate) = pair(start1=1, start2=1, strand1=Plus, strand2=Minus, cigar1="40M20I40M", cigar2="40M20I40M")
     clipper(Soft).clipExtendingPastMateEnds(rec=rec, mate=mate) shouldBe (0, 0)
     rec.start shouldBe 1
     rec.cigar.toString() shouldBe "40M20I40M"
     mate.start shouldBe 1
     mate.cigar.toString shouldBe "40M20I40M"
+  }
+
+  "SamRecordClipper.numBasesExtendingPastMate" should "return zero when reads do not extend past the end or are not FR pairs" in {
+    val builder = new SamBuilder()
+    val Seq(r1, r2) = builder.addPair(start1=100, start2=200, cigar1="20S80M", cigar2="10S90M")
+    val Seq(r3, r4) = builder.addPair(start1=100, start2=200, cigar1="10S90M", cigar2="20S80M")
+    val Seq(r5, r6) = builder.addPair(start1=100, start2=100, cigar1="10S90M", cigar2="20S80M", strand1=Plus, strand2=Plus)
+    val Seq(r7, r8) = builder.addPair(start1=100, start2=100, cigar1="10S90M", cigar2="20S80M", strand1=Minus, strand2=Minus)
+
+    Seq(r1, r2, r3, r4, r5, r6, r7, r8).foreach { r =>
+      numBasesExtendingPastMate(clipper(Soft), r) shouldBe 0
+    }
+  }
+
+  /** Convenience method for testing numBasesExtendingPastMate */
+  def numBasesExtendingPastMate(clipper: SamRecordClipper, rec: SamRecord): Int = {
+    val mateUnclippedStart = rec.mateUnclippedStart.getOrElse(throw new IllegalStateException(f"Mate cigar (MC SAM tag) needed for read: ${rec.name}"))
+    val mateUnclippedEnd   = rec.mateUnclippedEnd.getOrElse(throw new IllegalStateException(f"Mate cigar (MC SAM tag) needed for read: ${rec.name}"))
+    clipper.numBasesExtendingPastMate(rec=rec, mateUnclippedStart=mateUnclippedStart, mateUnclippedEnd=mateUnclippedEnd)
+  }
+
+  it should "return a return a positive value when reads extend past its mate" in {
+    val builder = new SamBuilder()
+
+    // both extend 50bp beyond the mates
+    val Seq(r1, r2) = builder.addPair(start1=100, start2=50, cigar1="100M", cigar2="100M")
+    numBasesExtendingPastMate(clipper(Soft), r1) shouldBe 50
+    numBasesExtendingPastMate(clipper(Soft), r2) shouldBe 50
+
+    // r3 ends at 149, which is the same as the end of r4 at 149
+    // r4 starts at 51, which is the same as the start of r3 at 51
+    val Seq(r3, r4) = builder.addPair(start1=100, start2=100, cigar1="50S50M", cigar2="50S50M")
+    numBasesExtendingPastMate(clipper(Soft), r3) shouldBe 0
+    numBasesExtendingPastMate(clipper(Soft), r4) shouldBe 0
+
+    // r5 ends at 199, which is the same as the end of r6 at 199
+    // r6 starts at 51, which is the same as the start of 45 at 51
+    val Seq(r5, r6) = builder.addPair(start1=100, start2=100, cigar1="50M50S", cigar2="50M50S")
+    numBasesExtendingPastMate(clipper(Soft), r5) shouldBe 0
+    numBasesExtendingPastMate(clipper(Soft), r6) shouldBe 0
+
+    // r7 ends at 149, which is before the end of r8 at 169
+    // r8 starts at 71, which is after the start of r7 at 51
+    val Seq(r7, r8) = builder.addPair(start1=100, start2=100, cigar1="50S50M", cigar2="30S70M")
+    numBasesExtendingPastMate(clipper(Soft), r7) shouldBe 0
+    numBasesExtendingPastMate(clipper(Soft), r8) shouldBe 0
+
+    // r9 ends at 169, which is after the end of r10 at 149
+    // r10 starts at 51, which is before the start of r9 at 71
+    val Seq(r9, r10) = builder.addPair(start1=100, start2=100, cigar1="30S70M", cigar2="50S50M")
+    numBasesExtendingPastMate(clipper(Soft), r9) shouldBe 20
+    numBasesExtendingPastMate(clipper(Soft), r10) shouldBe 20
   }
 }

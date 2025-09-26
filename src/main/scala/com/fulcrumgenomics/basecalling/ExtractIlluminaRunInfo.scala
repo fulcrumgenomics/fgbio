@@ -28,8 +28,8 @@ package com.fulcrumgenomics.basecalling
 import com.fulcrumgenomics.FgBioDef.FilePath
 import com.fulcrumgenomics.cmdline.{ClpGroups, FgBioTool}
 import com.fulcrumgenomics.illumina.RunInfo
-import com.fulcrumgenomics.util._
 import com.fulcrumgenomics.sopt.{arg, clp}
+import com.fulcrumgenomics.util._
 
 @clp(group=ClpGroups.Basecalling, description=
   """

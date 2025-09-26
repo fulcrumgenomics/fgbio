@@ -24,10 +24,9 @@
 
 package com.fulcrumgenomics.math
 
-import java.math.MathContext
-
 import com.fulcrumgenomics.FgBioDef._
 
+import java.math.MathContext
 import scala.math.{BigDecimal, BigInt}
 
 /**

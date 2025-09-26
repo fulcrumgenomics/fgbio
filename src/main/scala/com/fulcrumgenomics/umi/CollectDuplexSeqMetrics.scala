@@ -306,7 +306,20 @@ class CollectDuplexSeqMetrics
   override def execute(): Unit = {
     // Build the iterator we'll use based on whether or not we're restricting to a set of intervals
     val in = SamSource(input)
-    val _filteredIterator = in.iterator.filter(r => r.paired && r.mapped && r.mateMapped && r.firstOfPair && !r.secondary && !r.supplementary)
+    val _filteredIterator = in
+      .iterator
+      .filter(r => r.paired && r.mapped && r.mateMapped && r.firstOfPair && !r.secondary && !r.supplementary)
+      .bufferBetter
+    // Ensure the records are not consensus records
+    _filteredIterator.headOption.foreach {
+      rec =>
+        val exceptionString = s"Input BAM file to CollectDuplexSeqMetrics ($input) appears to contain consensus sequences. " +
+          "CollectDuplexSeqMetrics cannot run on consensus BAMs, and instead requires the UMI-grouped BAM generated " +
+          "by GroupReadsByUmi which is run prior to consensus calling." +
+          s"\nFirst record in $input has consensus SAM tags present:\n$rec"
+
+        if (Umis.isFgbioStyleConsensus(rec)) throw new IllegalArgumentException(exceptionString)
+    }
     val iterator = intervals match {
       case None       => _filteredIterator
       case Some(path) =>
@@ -389,8 +402,8 @@ class CollectDuplexSeqMetrics
     val umi1s = IndexedSeq.newBuilder[String] // ab UMI 1 (and ba UMI 2) sequences
     val umi2s = IndexedSeq.newBuilder[String] // ab UMI 2 (and ba UMI 1) sequences
 
-    ab.iterator.map(r => r[String](this.umiTag).split('-')).foreach { case Array(u1, u2) => umi1s += u1; umi2s += u2 }
-    ba.iterator.map(r => r[String](this.umiTag).split('-')).foreach { case Array(u1, u2) => umi1s += u2; umi2s += u1 }
+    ab.iterator.map(r => r[String](this.umiTag).split("-", -1)).foreach { case Array(u1, u2) => umi1s += u1; umi2s += u2 }
+    ba.iterator.map(r => r[String](this.umiTag).split("-", -1)).foreach { case Array(u1, u2) => umi1s += u2; umi2s += u1 }
 
     val Seq(abConsensusUmi, baConsensusUmi) = Seq(umi1s, umi2s).map(_.result()).map{ umis =>
       val consensus = this.consensusBuilder.callConsensus(umis)
@@ -487,7 +500,7 @@ class CollectDuplexSeqMetrics
       val startStopCounter = this.startStopFamilyCounter(fraction)
       val duplexCounter    = this.duplexFamilyCounter(fraction)
 
-      val dsFamilies       = duplexCounter.map { case (Pair(a,b), count) => count }.sum
+      val dsFamilies       = duplexCounter.map { case (Pair(_, _), count) => count }.sum
       val countOfDuplexes  = duplexCounter.map {
         case (Pair(a,b), count) if a >= this.minAbReads && b >= this.minBaReads => count
         case _                                                                  => 0
@@ -499,7 +512,7 @@ class CollectDuplexSeqMetrics
         fraction                   = fraction,
         read_pairs                 = startStopCounter.totalMass.toLong,
         cs_families                = startStopCounter.total,
-        ss_families                = duplexCounter.map { case (Pair(a,b), count) => if (b>0) count*2 else count }.sum,
+        ss_families                = duplexCounter.map { case (Pair(_, b), count) => if (b>0) count*2 else count }.sum,
         ds_families                = dsFamilies,
         ds_duplexes                = countOfDuplexes,
         ds_fraction_duplexes       = countOfDuplexes / dsFamilies.toDouble,
@@ -530,7 +543,7 @@ class CollectDuplexSeqMetrics
     val uniqueTotal      = metrics.map(_.unique_observations).sum.toDouble
 
     metrics.foreach { m =>
-      val Array(umi1, umi2)                   = m.umi.split('-')
+      val Array(umi1, umi2)                   = m.umi.split("-", -1)
       m.fraction_raw_observations             = m.raw_observations / rawTotal
       m.fraction_unique_observations          = m.unique_observations / uniqueTotal
       m.fraction_unique_observations_expected = singleUmiMetrics(umi1).fraction_unique_observations * singleUmiMetrics(umi2).fraction_unique_observations

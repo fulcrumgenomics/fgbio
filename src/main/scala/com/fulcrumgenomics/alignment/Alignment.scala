@@ -70,7 +70,7 @@ object Cigar {
       require(i > expectedNumberAtPosition, s"Malformed CIGAR string $cigar, found non-digit ${chars(i)} where number expected.")
 
       // Grab the operator (characterToEnum will throw an exception if the operator is invalid)
-      val operator = CigarOperator.characterToEnum(chars(i))
+      val operator = CigarOperator.characterToEnum(chars(i).toInt)
       elements += CigarElem(operator, length)
       i += 1
     }
@@ -164,7 +164,7 @@ private[alignment] object CigarStats {
   */
 case class Cigar(elems: IndexedSeq[CigarElem]) extends Iterable[CigarElem] {
   // Cache whether or not the Cigar is coalesced already (i.e. has no pair of adjacent elements with the same operator)
-  private lazy val isCoalesced: Boolean = {
+  private lazy val isCoalesced: Boolean = elems.length == 1 || {
     var itIs = true
     var index = 0
     while (index < elems.length-1 && itIs) {
@@ -402,8 +402,8 @@ case class Alignment(query: Array[Byte],
     * @return a new [[Alignment]] with updated coordinates and cigar
     */
   def subByQuery(start: Int, end: Int): Alignment = {
-    require(start >= queryStart && start <= queryEnd, "start is outside of aligned region of target sequence")
-    require(end   >= queryStart && end   <= queryEnd, "end is outside of aligned region of target sequence")
+    require(start >= queryStart && start <= queryEnd, "start is outside of aligned region of query sequence")
+    require(end   >= queryStart && end   <= queryEnd, "end is outside of aligned region of query sequence")
     sub(start, end, this.queryStart, _.operator.consumesReadBases())
   }
 

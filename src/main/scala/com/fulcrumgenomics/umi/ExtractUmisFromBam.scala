@@ -61,7 +61,7 @@ import htsjdk.samtools.util._
     |The read structure describes the structure of a given read as one or more read segments. A read segment describes
     |a contiguous stretch of bases of the same type (ex. template bases) of some length and some offset from the start
     |of the read.  Read structures are made up of `<number><operator>` pairs much like the CIGAR string in BAM files.
-    |Four kinds ofoperators are recognized:
+    |Four kinds of operators are recognized:
     |
     |1. `T` identifies a template read
     |2. `B` identifies a sample barcode read
@@ -96,9 +96,6 @@ class ExtractUmisFromBam
     case Seq() => invalid("No read structures given")
     case _     => invalid("More than two read structures given")
   }
-
-  // This can be removed once the @deprecated molecularBarcodeTags is removed
-  if (molecularIndexTags.isEmpty) invalid("At least one molecular-index-tag must be specified.")
 
   // validate the read structure versus the molecular index tags
   {
@@ -175,7 +172,7 @@ class ExtractUmisFromBam
 
         // If we have a single-tag, then also output values there
         singleTag.foreach { tag =>
-          val value = tagAndValues.map { case (t,v) => v }.mkString(ExtractUmisFromBam.UmiDelimiter)
+          val value = tagAndValues.map { case (_, v) => v }.mkString(ExtractUmisFromBam.UmiDelimiter)
           r1(tag) = value
           r2(tag) = value
         }
@@ -232,8 +229,6 @@ object ExtractUmisFromBam {
     val molecularIndexBases = readStructureBases.filter(_.kind == SegmentType.MolecularBarcode).map(_.bases)
 
     // set the index tags
-    // TODO: when we remove the deprecated molecularBarcodeTags option, consider whether or not we still
-    //       need to have support for specifying a single tag via molecularIndexTags.
     molecularIndexTags match {
       case Seq(tag) => record(tag) = molecularIndexBases.mkString(UmiDelimiter)
       case _ =>
@@ -264,7 +259,7 @@ object ExtractUmisFromBam {
                                              readStructure: ReadStructure): Unit = {
     clippingAttribute.map(tag => (tag, record.get[Int](tag))) match {
       case None => ()
-      case Some((tag, None)) => ()
+      case Some((_, None)) => ()
       case Some((tag, Some(clippingPosition))) =>
         val newClippingPosition = readStructure.takeWhile(_.offset < clippingPosition).filter(_.kind == SegmentType.Template).map { t =>
           if (t.length.exists(l => t.offset + l < clippingPosition)) t.length.get

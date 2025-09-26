@@ -33,14 +33,14 @@ import scala.util.Try
 
 class ReadStructureTest extends UnitSpec with OptionValues {
 
-  private def compareReadStructures(actual: ReadStructure, expected: Seq[ReadSegment]): Unit = {
+  private def compareReadStructures(actual: ReadStructure, expected: Seq[ReadSegment]) = {
     // make sure the segments match
     actual shouldBe expected
     // make sure the string representations are the same
     actual.toString shouldBe ReadStructure(expected).toString
   }
 
-  private def compareReadStructuresResetOffset(actual: Seq[ReadSegment], expected: ReadStructure): Unit = {
+  private def compareReadStructuresResetOffset(actual: Seq[ReadSegment], expected: ReadStructure) = {
     val actualReadStructure = ReadStructure(actual, resetOffsets=true)
     compareReadStructures(actualReadStructure, expected)
   }
@@ -226,7 +226,7 @@ class ReadStructureTest extends UnitSpec with OptionValues {
   "ReadSegment.extract(bases, quals)" should "get extract the bases and qualities for a segment" in {
     val molecularBarcodeSegment = ReadStructure("2T2B2M2S").segments(MolecularBarcode).head
     molecularBarcodeSegment.extract("AACCGGTT", "11223344") match {
-      case SubReadWithQuals(bases, quals, seg) =>  bases shouldBe "GG"; quals shouldBe "33"
+      case SubReadWithQuals(bases, quals, _) =>  bases shouldBe "GG"; quals shouldBe "33"
     }
   }
 

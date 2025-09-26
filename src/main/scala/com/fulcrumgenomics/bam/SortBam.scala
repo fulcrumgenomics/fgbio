@@ -41,6 +41,10 @@ import com.fulcrumgenomics.util.Io
     |and several
     |4. **RandomQuery**: sorts the reads into a random order but keeps reads with the same
     |   queryname together. The ordering is deterministic for any given input.
+    |5. **TemplateCoordinate**: The sort order used by `GroupReadByUmi`. Sorts reads by
+    |   the earlier unclipped 5' coordinate of the read pair, the higher unclipped 5' coordinate of the
+    |   read pair, library, the molecular identifier (MI tag), read name, and if R1 has the lower 
+    |   coordinates of the pair.
     |
     |Uses a temporary directory to buffer sets of sorted reads to disk. The number of reads kept in memory
     |affects memory use and can be changed with the `--max-records-in-ram` option.  The temporary directory
@@ -59,13 +63,15 @@ class SortBam
   @arg(flag='s', doc="Order into which to sort the records.") val sortOrder: SamOrder = SamOrder.Coordinate,
   @arg(flag='m', doc="Max records in RAM.") val maxRecordsInRam: Int = SamWriter.DefaultMaxRecordsInRam
 ) extends FgBioTool with LazyLogging {
+  
+  Io.assertReadable(input)
+  Io.assertCanWriteFile(output)
+  
   override def execute(): Unit = {
-    Io.assertReadable(input)
-    Io.assertCanWriteFile(output)
-
     val in  = SamSource(input)
     val out = SamWriter(output, in.header.clone(), sort=Some(sortOrder), maxRecordsInRam=maxRecordsInRam)
     out ++= in
     out.close()
+    in.safelyClose()
   }
 }

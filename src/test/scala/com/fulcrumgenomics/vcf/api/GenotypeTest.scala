@@ -24,7 +24,6 @@
 
 package com.fulcrumgenomics.vcf.api
 
-import com.fulcrumgenomics.FgBioDef._
 import com.fulcrumgenomics.testing.UnitSpec
 import com.fulcrumgenomics.vcf.api.Allele.NoCallAllele
 import org.scalatest.OptionValues
@@ -37,7 +36,7 @@ class GenotypeTest extends UnitSpec with OptionValues {
     val gtAlleles = parts.map(s => Allele(s)).toIndexedSeq
     val refAllele = Allele(ref)
     val alleles   = AlleleSet(ref=refAllele, alts=gtAlleles.filterNot(a => a == refAllele || a == NoCallAllele))
-    Genotype(alleles, sample, gtAlleles, phased=phased)
+    Genotype(alleles, sample, gtAlleles, phased=phased, attrs=attrs)
   }
 
   "Genotype.ploidy" should "return the right number for various genotypes" in {

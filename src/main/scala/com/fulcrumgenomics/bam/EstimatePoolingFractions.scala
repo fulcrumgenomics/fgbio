@@ -24,7 +24,6 @@
 
 package com.fulcrumgenomics.bam
 
-import java.lang.Math.{max, min}
 import com.fulcrumgenomics.FgBioDef._
 import com.fulcrumgenomics.bam.api.SamSource
 import com.fulcrumgenomics.cmdline.{ClpGroups, FgBioTool}
@@ -37,6 +36,7 @@ import htsjdk.samtools.util.SamLocusIterator.LocusInfo
 import htsjdk.samtools.util._
 import org.apache.commons.math3.stat.regression.OLSMultipleLinearRegression
 
+import java.lang.Math.{max, min}
 import scala.collection.immutable.ArraySeq
 
 @clp(group=ClpGroups.SamOrBam, description=
@@ -95,7 +95,7 @@ class EstimatePoolingFractions
         val gt = v.gt(s)
         gt.get[IndexedSeq[Float]]("AF") match {
           case None      => if (gt.isHomRef) 0 else if (gt.isHet) 0.5 else 1.0  // requires bi-allelic sites and ploidy=2
-          case Some(afs) => afs(0)
+          case Some(afs) => afs(0).toDouble
         }
       }
     )}.toArray
@@ -125,8 +125,8 @@ class EstimatePoolingFractions
       val singletons = coveredLoci.count(l => l.expectedSampleFractions(index) > 0 && l.expectedSampleFractions.sum == l.expectedSampleFractions(index))
       PoolingFractionMetric(
         sample             = sample,
-        variant_sites      = sites,
-        singletons         = singletons,
+        variant_sites      = sites.toLong,
+        singletons         = singletons.toLong,
         estimated_fraction = fractions(index),
         standard_error     = stderrs(index),
         ci99_low           = max(0, fractions(index) - stderrs(index)*Ci99Width),

@@ -55,13 +55,12 @@ class JointVariantContextIterator private(iters: Seq[Iterator[VariantContext]],
                                           dictOrComp: Either[SequenceDictionary, VariantContextComparator]
                                          )
 extends Iterator[Seq[Option[VariantContext]]] {
-  import com.fulcrumgenomics.fasta.Converters.ToSAMSequenceDictionary
 
   if (iters.isEmpty) throw new IllegalArgumentException("No iterators given")
 
   private val iterators = iters.map(_.buffered)
   private val comparator = dictOrComp match {
-    case Left(dict)  => new VariantContextComparator(dict.asSam)
+    case Left(dict)  => new VariantContextComparator(dict.toSam)
     case Right(comp) => comp
   }
 
@@ -73,7 +72,7 @@ extends Iterator[Seq[Option[VariantContext]]] {
     }.head
     // TODO: could use a TreeSet to store the iterators, examine the head of each iterator, then pop the iterator with the min,
     // and add that iterator back in.
-    iterators.zipWithIndex.map { case(iter, idx) =>
+    iterators.map { iter =>
       if (iter.isEmpty || this.comparator.compare(minCtx, iter.head) != 0) None
       else Some(iter.next())
     }

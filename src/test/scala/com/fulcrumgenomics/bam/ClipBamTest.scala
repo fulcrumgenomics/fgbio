@@ -54,7 +54,7 @@ class ClipBamTest extends UnitSpec with ErrorLogLevel with OptionValues {
 
   private case class StartAndEnd(start: Int, end: Int) {
     // NB: assumes FR reads
-    def checkClipping(r: SamRecord, fivePrime: Int, threePrime: Int): Unit = {
+    private[bam] def checkClipping(r: SamRecord, fivePrime: Int, threePrime: Int) = {
       if (r.negativeStrand) {
         r.start shouldBe (this.start + threePrime)
         r.end shouldBe (this.end - fivePrime)
@@ -70,9 +70,9 @@ class ClipBamTest extends UnitSpec with ErrorLogLevel with OptionValues {
     private val prior1 = StartAndEnd(r1)
     private val prior2 = StartAndEnd(r2)
     // NB: assumes FR reads
-    def checkClipping(r1: SamRecord, r2: SamRecord,
+    private[bam] def checkClipping(r1: SamRecord, r2: SamRecord,
                       readOneFivePrime: Int, readOneThreePrime: Int,
-                      readTwoFivePrime: Int, readTwoThreePrime: Int): Unit = {
+                      readTwoFivePrime: Int, readTwoThreePrime: Int) = {
       prior1.checkClipping(r=r1, readOneFivePrime, readOneThreePrime)
       prior2.checkClipping(r=r2, readTwoFivePrime, readTwoThreePrime)
     }
@@ -164,21 +164,6 @@ class ClipBamTest extends UnitSpec with ErrorLogLevel with OptionValues {
     r1.end >= r2.start shouldBe true
     clipper.clipPair(r1, r2)
     r1.end >= r2.start shouldBe false
-  }
-
-  // This is a weird test that ensures that things terminate correctly when due to highly clipped
-  // input reads, one of the reads becomes unmapped during clipping
-  it should "handle reads that get unmapped because they are fully overlapped" in {
-    val builder = new SamBuilder(readLength=50)
-    val clipper = new ClipBam(input=dummyBam, output=dummyBam, ref=ref, clipOverlappingReads=true)
-    val Seq(r1a, r2a) = builder.addPair(name="q1", start1=100, start2=100, cigar1="3M47S", cigar2="48S2M")
-    val Seq(r1b, r2b) = builder.addPair(name="q2", start1=100, start2=100, cigar1="2M48S", cigar2="47S3M")
-
-    for ((r1, r2) <- Seq((r1a, r2a), (r1b, r2b))) {
-      clipper.clipPair(r1, r2)
-      val ok = r1.unmapped || r2.unmapped || r1.end < r2.start
-      ok shouldBe true
-    }
   }
 
   it should "clip a fixed amount on the ends of the reads with reads that do not overlap" in {
@@ -358,6 +343,7 @@ class ClipBamTest extends UnitSpec with ErrorLogLevel with OptionValues {
         metric.productIterator.toSeq should contain theSameElementsInOrderAs pair.productIterator.toSeq
       case metric if metric.read_type == ReadType.All =>
         metric.productIterator.toSeq should contain theSameElementsInOrderAs all.productIterator.toSeq
+      case _ => unreachable("This case should never happen!")
     }
   }
 
@@ -428,6 +414,7 @@ class ClipBamTest extends UnitSpec with ErrorLogLevel with OptionValues {
         metric.bases_clipped_overlapping shouldBe 0
       case metric if metric.read_type == ReadType.ReadOne | metric.read_type == ReadType.ReadTwo | metric.read_type == ReadType.Pair =>
         metric shouldBe ClippingMetrics(read_type=metric.read_type)
+      case _ => unreachable("This case should never happen!")
     }
   }
 

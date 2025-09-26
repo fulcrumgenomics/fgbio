@@ -24,14 +24,12 @@
 
 package com.fulcrumgenomics.illumina
 
-import java.text.{ParseException, SimpleDateFormat}
-
 import com.fulcrumgenomics.FgBioDef.FilePath
-import com.fulcrumgenomics.bam.Template
-import com.fulcrumgenomics.util.SegmentType.SampleBarcode
 import com.fulcrumgenomics.util.{Metric, ReadSegment, ReadStructure, SegmentType}
 import htsjdk.samtools.util.DateParser.InvalidDateException
 import htsjdk.samtools.util.Iso8601Date
+
+import java.text.{ParseException, SimpleDateFormat}
 
 /** Stores the result of parsing the run info (RunInfo.xml) file from an Illumina run folder.
   *

@@ -25,9 +25,6 @@
 
 package com.fulcrumgenomics.fasta
 
-import java.io.StringWriter
-
-import com.fulcrumgenomics.FgBioDef
 import com.fulcrumgenomics.FgBioDef._
 import com.fulcrumgenomics.fasta.SequenceMetadata.Keys
 import com.fulcrumgenomics.util.Io
@@ -36,6 +33,7 @@ import htsjdk.samtools.util.BufferedLineReader
 import htsjdk.samtools.{SAMSequenceDictionary, SAMSequenceDictionaryCodec, SAMSequenceRecord, SAMTextHeaderCodec}
 import htsjdk.variant.utils.SAMSequenceDictionaryExtractor
 
+import java.io.StringWriter
 import scala.collection.mutable
 import scala.collection.mutable.ListBuffer
 
@@ -46,9 +44,9 @@ object SequenceMetadata {
     val AlternateLocus        : String = "AH"
     val Assembly              : String = SAMSequenceRecord.ASSEMBLY_TAG
     val Description           : String = SAMSequenceRecord.DESCRIPTION_TAG
-    private[fasta] val Length : String = SAMSequenceRecord.SEQUENCE_LENGTH_TAG
+    val Length                : String = SAMSequenceRecord.SEQUENCE_LENGTH_TAG
     val Md5                   : String = SAMSequenceRecord.MD5_TAG
-    private[fasta] val Name   : String = SAMSequenceRecord.SEQUENCE_NAME_TAG
+    val Name                  : String = SAMSequenceRecord.SEQUENCE_NAME_TAG
     val Species               : String = SAMSequenceRecord.SPECIES_TAG
     val Topology              : String = "TP"
     val Uri                   : String = SAMSequenceRecord.URI_TAG
@@ -84,7 +82,7 @@ object SequenceMetadata {
             species: Option[String]                = None,
             topology: Option[Topology]             = None,
             uri: Option[String]                    = None,
-            customAttributes: Map[String, String]        = Map.empty
+            customAttributes: Map[String, String]  = Map.empty
            ): SequenceMetadata = {
     Keys.values.find(customAttributes.contains).foreach { key =>
       throw new IllegalArgumentException(s"Attributes contains a standard key: $key")
@@ -139,6 +137,10 @@ object SequenceMetadata {
 
 /** Stores information about a single Sequence (ex. chromosome, contig)
   *
+  * Important: when retrieving attributes using the `apply`, `get`, and `getOrElse` methods, all values will be
+  * returned as `String`s.  Use the named accessors for attributes that have non-`String` types (i.e. `length`,
+  * `aliases`, `alternate`, and `topology`).
+  *
   * @param name the primary name of the sequence
   * @param length the length of the sequence, or zero if unknown
   * @param index the index in the sequence dictionary
@@ -156,10 +158,20 @@ case class SequenceMetadata private[fasta]
   require(!attributes.contains(Keys.Name), f"`${Keys.Name}` should not given in the list of attributes")
   require(!attributes.contains(Keys.Length), s"`${Keys.Length}` should not given in the list of attributes")
 
-  @inline final def apply(key: String): String = this.attributes(key)
-  @inline final def get(key: String): Option[String] = this.attributes.get(key)
-  @inline final def getOrElse(key: String, default: String): String = this.attributes.getOrElse(key, default)
-  @inline final def contains(key: String): Boolean = this.attributes.contains(key)
+  @inline final def apply(key: String): String = {
+    if (key == Keys.Name) this.name
+    else if (key == Keys.Length) s"${this.length}"
+    else this.attributes(key)
+  }
+  @inline final def get(key: String): Option[String] = {
+    if (key == Keys.Name) Some(this.name)
+    else if (key == Keys.Length) Some(s"${this.length}")
+    else this.attributes.get(key)
+  }
+  @inline final def getOrElse(key: String, default: String): String = this.get(key).getOrElse(default)
+  @inline final def contains(key: String): Boolean = {
+    this.attributes.contains(key) || key == Keys.Name || key == Keys.Length
+  }
   lazy val aliases: Seq[String] = this.get(Keys.Aliases).map(_.split(',').toSeq).getOrElse(Seq.empty[String])
   /** All names, including aliases */
   @inline final def allNames: Seq[String] = name +: aliases
@@ -168,7 +180,7 @@ case class SequenceMetadata private[fasta]
     this.get(Keys.AlternateLocus).flatMap {
       case "*"   => None
       case range =>
-        val locus = FgBioDef.parseRange(range) match {
+        val locus = GenomicRange(range) match {
           case GenomicRange("=", start, end) => AlternateLocus(refName=this.name, start=start.toInt, end=end.toInt)
           case _locus                        => _locus
         }
@@ -185,7 +197,7 @@ case class SequenceMetadata private[fasta]
     this.get(Keys.Topology).flatMap(tp => Topology.values.find(_.name == tp))
   }
 
-  /** Returns true if the the sequences share a common reference name (including aliases), have the same length, and
+  /** Returns true if the sequences share a common reference name (including aliases), have the same length, and
     * the same MD5 if both have MD5s. */
   def sameAs(that: SequenceMetadata): Boolean = {
     if (this.length != that.length) false
@@ -206,10 +218,7 @@ case class SequenceMetadata private[fasta]
     rec
   }
 
-  override def toString: FilenameSuffix = {
-    import com.fulcrumgenomics.fasta.Converters.ToSAMSequenceRecord
-    this.asSam.getSAMString
-  }
+  override def toString: String = this.toSam.getSAMString
 }
 
 object SequenceDictionary {
@@ -267,7 +276,7 @@ case class SequenceDictionary(infos: IndexedSeq[SequenceMetadata]) extends Itera
   override def iterator: Iterator[SequenceMetadata] = this.infos.iterator
   def length: Int = this.infos.length
 
-  /** Returns true if the the sequences share a common reference name (including aliases), have the same length, and
+  /** Returns true if the sequences share a common reference name (including aliases), have the same length, and
     * the same MD5 if both have MD5s. */
   def sameAs(that: SequenceDictionary): Boolean = {
     this.length == that.length && this.zip(that).forall { case (thisInfo, thatInfo) => thisInfo.sameAs(thatInfo) }
@@ -288,11 +297,10 @@ case class SequenceDictionary(infos: IndexedSeq[SequenceMetadata]) extends Itera
 
   /** Writes the sequence dictionary to the given writer */
   def write(writer: java.io.Writer): Unit = {
-    import Converters.ToSAMSequenceRecord
     val codec  = new SAMSequenceDictionaryCodec(writer)
     codec.encodeHeaderLine(false)
     this.foreach { metadata: SequenceMetadata =>
-      codec.encodeSequenceRecord(metadata.asSam)
+      codec.encodeSequenceRecord(metadata.toSam)
     }
   }
 
@@ -307,30 +315,13 @@ case class SequenceDictionary(infos: IndexedSeq[SequenceMetadata]) extends Itera
 /** Contains useful converters to and from HTSJDK objects. */
 object Converters {
 
-  /**
-    * Converter from a [[SequenceMetadata]] to a [[SAMSequenceRecord]]
-    * @deprecated use [[SequenceMetadata.toSam]] instead.
-    */
-  @Deprecated
-  implicit class ToSAMSequenceRecord(info: SequenceMetadata) {
-    def asSam: SAMSequenceRecord = info.toSam
-  }
-
-  /** Converter from a [[SAMSequenceRecord]] to a [[SequenceMetadata]] */
+  /** Converter from a [[htsjdk.samtools.SAMSequenceRecord]] to a [[SequenceMetadata]] */
   implicit class FromSAMSequenceRecord(rec: SAMSequenceRecord) {
     def fromSam: SequenceMetadata = SequenceMetadata(rec)
     def toScala: SequenceMetadata = SequenceMetadata(rec)
   }
 
-  /** Converter from a [[SequenceDictionary]] to a [[SAMSequenceDictionary]]
-    * @deprecated use [[SequenceDictionary.toSam]] instead.
-    */
-  @Deprecated
-  implicit class ToSAMSequenceDictionary(dict: SequenceDictionary) {
-    def asSam: SAMSequenceDictionary = dict.toSam
-  }
-
-  /** Converter from a [[SAMSequenceDictionary]] to a [[SequenceDictionary]] */
+  /** Converter from a [[htsjdk.samtools.SAMSequenceDictionary]] to a [[SequenceDictionary]] */
   implicit class FromSAMSequenceDictionary(dict: SAMSequenceDictionary) {
     require(dict != null, "The reference provided does not have a sequence dictionary (.dict)")
     def fromSam: SequenceDictionary = SequenceDictionary(dict)

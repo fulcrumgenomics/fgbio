@@ -24,18 +24,19 @@
 
 package com.fulcrumgenomics.testing
 
-import java.nio.file.Files
-import java.text.DecimalFormat
-import java.util.concurrent.atomic.AtomicLong
-
 import com.fulcrumgenomics.FgBioDef._
 import com.fulcrumgenomics.alignment.Cigar
 import com.fulcrumgenomics.bam.api.SamRecord.{MissingBases, MissingQuals}
 import com.fulcrumgenomics.bam.api.{SamOrder, SamRecord, SamSource, SamWriter}
 import com.fulcrumgenomics.fasta.{SequenceDictionary, SequenceMetadata}
 import com.fulcrumgenomics.testing.SamBuilder._
+import htsjdk.samtools.SamPairUtil.PairOrientation
 import htsjdk.samtools._
 
+import java.nio.file.Files
+import java.text.DecimalFormat
+import java.util
+import java.util.concurrent.atomic.AtomicLong
 import scala.collection.mutable.ArrayBuffer
 import scala.util.Random
 
@@ -67,12 +68,12 @@ class SamBuilder(val readLength: Int=100,
 
   { // Build the default dictionary
     val dict: SequenceDictionary = sd.getOrElse {
-      val seqs = (Range.inclusive(1, 22) ++ Seq("X", "Y", "M")).map { chr =>
+      val seqs = (Range.inclusive(1, 22).map(_.toString) ++ Seq("X", "Y", "M")).map { chr =>
         SequenceMetadata(name="chr" + chr, length=200e6.toInt)
       }
       SequenceDictionary(seqs:_*)
     }
-    header.setSequenceDictionary(dict.asSam)
+    header.setSequenceDictionary(dict.toSam)
   }
 
   /** Shorter accessor for the sequence dictionary. */
@@ -173,7 +174,8 @@ class SamBuilder(val readLength: Int=100,
     r2("RG") = this.rg.getId
     attrs.foreach { case (key, value) => r2(key) = value }
 
-    SamPairUtil.setMateInfo(r1.asSam, r2.asSam, true)
+    val orientations = util.Arrays.asList(PairOrientation.values(): _*)
+    SamPairUtil.setProperPairAndMateInfo(r1.asSam, r2.asSam, orientations, true)
     val recs = Seq(r1, r2)
     this.records ++= recs
     recs

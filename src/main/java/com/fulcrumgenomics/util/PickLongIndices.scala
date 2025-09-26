@@ -24,18 +24,16 @@
 
 package com.fulcrumgenomics.util
 
-import java.util.Random
-import java.util.regex.Pattern
-
 import com.fulcrumgenomics.FgBioDef._
 import com.fulcrumgenomics.cmdline.{ClpGroups, FgBioTool}
-import com.fulcrumgenomics.util.PickLongIndices.Index
 import com.fulcrumgenomics.commons.util.{LazyLogging, NumericCounter}
 import com.fulcrumgenomics.sopt._
 import com.fulcrumgenomics.util.Metric.{Count, Proportion}
-import com.fulcrumgenomics.util.PickLongIndices.IndexSet
+import com.fulcrumgenomics.util.PickLongIndices.{Index, IndexSet}
 import htsjdk.samtools.util.SequenceUtil
 
+import java.util.Random
+import java.util.regex.Pattern
 import scala.annotation.tailrec
 import scala.collection.mutable
 import scala.collection.mutable.ListBuffer
@@ -52,7 +50,7 @@ object PickLongIndices {
     override def iterator: Iterator[Array[Byte]] = this.arrays.iterator
 
     /** Add an index to the set. */
-    def +=(index : Array[Byte]): Unit = {
+    def +=(index : Array[Byte]): Boolean = {
       this.arrays += index
       this.set.add(new String(index))
     }
@@ -133,7 +131,7 @@ class PickLongIndices
   @arg(flag='g', doc="The minimum GC fraction for an index to be accepted.")           val minGc: Double = 0.2,
   @arg(flag='G', doc="The maximum GC fraction for an index to be accepted.")           val maxGc: Double = 0.8,
   @arg(          doc="File of existing index sequences to integrate, one per line.")   val existing: Option[FilePath] = None,
-  @arg(flag='s', doc="Random seed value.")                                             val seed: Int = 1,
+  @arg(flag='s', doc="Random seed value.")                                             val seed: Long = 1,
   @arg(flag='a', doc="Attempts to pick the next index before quitting.")               val attempts: Int = 1e5.toInt,
   @arg(          doc="The installation directory for `ViennaRNA`.")                    val viennaRnaDir: Option[DirPath] = None,
   @arg(flag='t', doc="The temperature at which to predict secondary structure.")       val temperature: Double = 25d,
@@ -235,7 +233,7 @@ class PickLongIndices
     */
   private def addIndex(picks: IndexSet): Boolean = {
     var pick: Option[Index] = None
-    forloop (0)(_ < attempts && pick.isEmpty)(_ + 1) { attempt =>
+    forloop (0)(_ < attempts && pick.isEmpty)(_ + 1) { _ =>
       val index = nextRandomIndependentIndex(length)
       if (shouldAddIndexIntoSet(index, picks)) pick = Some(index)
     }
@@ -282,7 +280,7 @@ class PickLongIndices
     (this.dnaFoldPredictor, adapters) match {
       case (None, _)     => None
       case (_, Seq())    => None
-      case (Some(f), as) => adapters.map(a => f.predict(a.replaceAll("N+", sIndex))).sortBy(_.deltaG()).headOption
+      case (Some(f), _) => adapters.map(a => f.predict(a.replaceAll("N+", sIndex))).sortBy(_.deltaG()).headOption
     }
   }
 
@@ -295,7 +293,7 @@ class PickLongIndices
 
   /** Checks to see if the index sequence contains any homopolymers longer than longest. */
   private[util] def homopolymerLengthOk(index: Index, longest: Int): Boolean = {
-    var end = index.length - longest
+    val end = index.length - longest
     var ok = true
 
     // Check for a homopolymer starting at each base up to longest+1 from the end of the index
@@ -341,7 +339,7 @@ class PickLongIndices
       IndexMetric(
         index                     = new String(ann.index),
         source                    = if (ann.existing) "existing" else "novel",
-        min_mismatches            = ann.distances.headOption.map { case (distance, count) => distance }.getOrElse(ann.index.length),
+        min_mismatches            = ann.distances.headOption.map { case (distance, _) => distance }.getOrElse(ann.index.length),
         indices_at_min_mismatches = ann.distances.headOption.map { case (_, count) => count }.getOrElse(0L),
         gc                        = SequenceUtil.calculateGc(ann.index),
         longest_homopolymer       = Sequences.longestHomopolymer(new String(ann.index)).length,

@@ -24,7 +24,6 @@
 
 package com.fulcrumgenomics.fastq
 
-import java.util
 import com.fulcrumgenomics.FgBioDef._
 import com.fulcrumgenomics.bam.api.{SamOrder, SamRecord, SamWriter}
 import com.fulcrumgenomics.cmdline.{ClpGroups, FgBioTool}
@@ -33,10 +32,12 @@ import com.fulcrumgenomics.commons.util.LazyLogging
 import com.fulcrumgenomics.sopt.{arg, clp}
 import com.fulcrumgenomics.umi.{ConsensusTags, Umis}
 import com.fulcrumgenomics.util.SegmentType._
-import com.fulcrumgenomics.util.{Io, ProgressLogger, ReadStructure}
+import com.fulcrumgenomics.util.{Io, ReadStructure}
 import htsjdk.samtools.SAMFileHeader.{GroupOrder, SortOrder}
 import htsjdk.samtools.util.Iso8601Date
 import htsjdk.samtools.{ReservedTagConstants, SAMFileHeader, SAMReadGroupRecord}
+
+import java.util
 
 @clp(group=ClpGroups.Fastq, description=
   """
@@ -92,10 +93,12 @@ class FastqToBam
   @arg(flag='s', doc="If true, queryname sort the BAM file, otherwise preserve input order.")  val sort: Boolean = false,
   @arg(flag='u', doc="Tag in which to store molecular barcodes/UMIs.")                         val umiTag: String = ConsensusTags.UmiBases,
   @arg(flag='q', doc="Tag in which to store molecular barcode/UMI qualities.")                 val umiQualTag: Option[String] = None,
+  @arg(flag='Q', doc="Store the sample barcode qualities in the QT Tag.")                      val storeSampleBarcodeQualities: Boolean = false,
   @arg(flag='n', doc="Extract UMI(s) from read names and prepend to UMIs from reads.")         val extractUmisFromReadNames: Boolean = false,
   @arg(          doc="Read group ID to use in the file header.")                               val readGroupId: String = "A",
   @arg(          doc="The name of the sequenced sample.")                                      val sample: String,
   @arg(          doc="The name/ID of the sequenced library.")                                  val library: String,
+  @arg(flag='b', doc="Library or Sample barcode sequence.")                                    val barcode: Option[String] = None,
   @arg(          doc="Sequencing Platform.")                                                   val platform: String = "illumina",
   @arg(doc="Platform unit (e.g. '<flowcell-barcode>.<lane>.<sample-barcode>')")                val platformUnit: Option[String] = None,
   @arg(doc="Platform model to insert into the group header (ex. miseq, hiseq2500, hiseqX)")    val platformModel: Option[String] = None,
@@ -117,11 +120,23 @@ class FastqToBam
   validate(!extractUmisFromReadNames || umiQualTag.isEmpty, "Cannot extract UMI qualities when also extracting UMI from read names.")
 
   override def execute(): Unit = {
-    val encoding = qualityEncoding
-    val writer   = makeSamWriter()
-    val iterator = FastqSource.zipped(this.input.map(FastqSource(_)))
+    val writer   = this.makeSamWriter()
+    val sources  = this.input.map(FastqSource.apply)
+    val heads    = sources.map(_.take(400).toSeq) // Use the first 400 records of each FASTQ for encoding detection
 
-    iterator.foreach { fqs => writer ++= makeSamRecords(fqs, actualReadStructures, writer.header, encoding) }
+    val encoding: QualityEncoding = QualityEncodingDetector.encodingsOf(heads.transpose.flatten) match {
+      case Nil        => fail("Quality scores in FASTQ files do not match any known encoding.")
+      case enc :: Nil => yieldAndThen(enc)(logger.info("Detected FASTQ quality encoding: ", enc))
+      case enc :: xs  =>
+        logger.info(s"Could not uniquely determine quality encoding. Using $enc, other valid encodings: ${xs.mkString(", ")}")
+        enc
+    }
+
+    FastqSource
+      .zipped(heads.zip(sources).map { case (head, tail) => head.iterator ++ tail })
+      .foreach { fqs => writer ++= makeSamRecords(fqs, actualReadStructures, writer.header, encoding) }
+
+    sources.foreach(_.safelyClose())
     writer.close()
   }
 
@@ -135,6 +150,7 @@ class FastqToBam
     val rg = new SAMReadGroupRecord(this.readGroupId)
     rg.setSample(sample)
     rg.setLibrary(library)
+    this.barcode.foreach(bc => rg.setBarcodes(util.Arrays.asList(bc)))
     rg.setPlatform(this.platform)
     this.platformUnit.foreach(pu => rg.setPlatformUnit(pu))
     this.sequencingCenter.foreach(cn => rg.setSequencingCenter(cn))
@@ -157,6 +173,7 @@ class FastqToBam
     try {
       val subs = fqs.iterator.zip(structures.iterator).flatMap { case(fq, rs) => rs.extract(fq.bases, fq.quals) }.toIndexedSeq
       val sampleBarcode = subs.iterator.filter(_.kind == SampleBarcode).map(_.bases).mkString("-")
+      val sampleQuals   = subs.iterator.filter(_.kind == SampleBarcode).map(_.quals).mkString(" ")
       val umi           = subs.iterator.filter(_.kind == MolecularBarcode).map(_.bases).mkString("-")
       val umiQual       = subs.iterator.filter(_.kind == MolecularBarcode).map(_.quals).mkString(" ")
       val templates     = subs.iterator.filter(_.kind == Template).toList
@@ -166,7 +183,7 @@ class FastqToBam
 
       templates.zipWithIndex.map { case (read, index) =>
         // If the template read had no bases, we'll substitute in a single N @ Q2 below to keep htsjdk happy
-        val empty = read.bases.length == 0
+        val empty = read.bases.isEmpty
 
         val rec = SamRecord(header)
         rec(ReservedTagConstants.READ_GROUP_ID) = this.readGroupId
@@ -181,6 +198,7 @@ class FastqToBam
         }
 
         if (sampleBarcode.nonEmpty) rec("BC") = sampleBarcode
+        if (storeSampleBarcodeQualities && sampleQuals.nonEmpty) rec("QT") = sampleQuals
 
         // Set the UMI on the read depending on whether we got UMIs from the read names, reads or both
         (umi, umiFromReadName) match {
@@ -197,22 +215,6 @@ class FastqToBam
     }
     catch {
       case ex: Exception => fail(s"Failed to process record(s) with name ${fqs.map(_.name).head} due to: ${ex.getMessage}")
-    }
-  }
-
-  /** Determine the quality encoding of the incoming fastq files. */
-  protected def qualityEncoding: QualityEncoding = {
-    val readers  = input.map { fastq => FastqSource(fastq) }
-    val iterator = readers.tail.foldLeft(readers.head.iterator) {(a,b) => a ++ b }.map(_.quals)
-    val detector = new QualityEncodingDetector
-    detector.sample(iterator)
-    readers.foreach(_.safelyClose())
-    detector.rankedCompatibleEncodings(q=30) match {
-      case Nil        => fail("Quality scores in FASTQ file do not match any known encoding.")
-      case enc :: Nil => yieldAndThen(enc) { logger.info("Detected fastq quality encoding: ", enc) }
-      case enc :: xs  =>
-        logger.info(s"Could not uniquely determine quality encoding. Using $enc, other valid encodings: ${xs.mkString(", ")}")
-        enc
     }
   }
 }

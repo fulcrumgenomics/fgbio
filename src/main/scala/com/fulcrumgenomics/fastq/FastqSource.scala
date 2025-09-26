@@ -23,11 +23,10 @@
  */
 package com.fulcrumgenomics.fastq
 
-import java.io._
-
-import com.fulcrumgenomics.util.Io
 import com.fulcrumgenomics.commons.CommonsDef.{PathToFastq, yieldAndThen}
+import com.fulcrumgenomics.util.Io
 
+import java.io._
 import scala.io.Source
 
 /**
@@ -52,24 +51,25 @@ object FastqSource {
   /** Creates a new fastq source from a Path. */
   def apply(path: PathToFastq): FastqSource = apply(Io.readLines(path))
 
-  /** Returns an iterator over multiple fastq files that ensures:
-    *   1. Either all sources or no sources have more records
-    *   2. That the next records from each of the sources have the same read name
+  /** Returns an iterator over multiple FASTQ iterators that ensures:
     *
-    * @param sources a Seq of one or more FastqSource objects
-    * @return an Iterator that returns a Seq of FastqRecord, one per source
+    *   1. Either all iterators or no iterators have more records
+    *   2. That the next records from each of the iterators have the same read name
+    *
+    * @param sources a Seq of one or more iterators of FASTQs
+    * @return an Iterator that returns a Seq of FastqRecord, one per input iterator
     */
-  def zipped(sources: Seq[FastqSource]): Iterator[Seq[FastqRecord]] = new Iterator[Seq[FastqRecord]] {
-    require(sources.nonEmpty, "No sources provided")
+  def zipped(sources: Seq[Iterator[FastqRecord]]): Iterator[Seq[FastqRecord]] = new Iterator[Seq[FastqRecord]] {
+    require(sources.nonEmpty, "No iterators provided")
 
     def hasNext: Boolean = sources.exists(_.hasNext)
 
     def next(): Seq[FastqRecord] = {
       if (!this.hasNext) throw new NoSuchElementException("Calling next() when hasNext() is false.")
-      require(sources.forall(_.hasNext) == sources.head.hasNext, "Sources are out of sync.")
+      require(sources.forall(_.hasNext) == sources.head.hasNext, "Iterators are out of sync.")
       val records = sources.map(_.next())
       // Check that the FASTQ records all have the same name
-      require(records.forall(_.name == records.head.name), "Fastqs are out of sync, found read names: " + records.map(_.name).mkString(", "))
+      require(records.forall(_.name == records.head.name), "FASTQs are out of sync, found read names: " + records.map(_.name).mkString(", "))
       records
     }
   }
@@ -84,6 +84,7 @@ object FastqSource {
 class FastqSource private(val lines: Iterator[String],
                           private[this] val source: Option[{ def close(): Unit }] = None)
   extends Iterator[FastqRecord] with Closeable {
+  import scala.language.reflectiveCalls
   
   private var nextRecord: Option[FastqRecord] = fetchNextRecord()
 

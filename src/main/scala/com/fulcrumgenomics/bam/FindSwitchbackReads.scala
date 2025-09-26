@@ -24,8 +24,6 @@
 
 package com.fulcrumgenomics.bam
 
-import java.lang.Math.{abs, max, min}
-
 import com.fulcrumgenomics.FgBioDef._
 import com.fulcrumgenomics.bam.api.{SamOrder, SamRecord, SamSource, SamWriter}
 import com.fulcrumgenomics.cmdline.{ClpGroups, FgBioTool}
@@ -40,6 +38,8 @@ import htsjdk.samtools.SamPairUtil.PairOrientation
 import htsjdk.samtools.reference.ReferenceSequence
 import htsjdk.samtools.util.{CoordMath, SequenceUtil}
 import htsjdk.samtools.{CigarOperator, SAMFileHeader, SAMReadGroupRecord}
+
+import java.lang.Math.{abs, max, min}
 
 
 object FindSwitchbackReads {

@@ -25,13 +25,13 @@
 
 package com.fulcrumgenomics.basecalling
 
-import com.fulcrumgenomics.FgBioDef.{DirPath, FilePath, PathToBam, unreachable}
+import com.fulcrumgenomics.FgBioDef.{DirPath, FilePath, PathToBam}
 import com.fulcrumgenomics.cmdline.{ClpGroups, FgBioTool}
-import com.fulcrumgenomics.illumina.{Sample, SampleSheet}
-import com.fulcrumgenomics.util.Io
 import com.fulcrumgenomics.commons.io.PathUtil
 import com.fulcrumgenomics.commons.util.LazyLogging
+import com.fulcrumgenomics.illumina.{Sample, SampleSheet}
 import com.fulcrumgenomics.sopt.{arg, clp}
+import com.fulcrumgenomics.util.Io
 
 import scala.collection.mutable.ListBuffer
 

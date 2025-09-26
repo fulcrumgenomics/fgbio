@@ -29,9 +29,12 @@ import com.fulcrumgenomics.FgBioDef._
 import htsjdk.variant.variantcontext.VariantContext
 import htsjdk.variant.vcf.VCFFileReader
 
+import scala.annotation.nowarn
+
 /**
   * Tests for VariantContextSetBuilder.
   */
+@nowarn("msg=class VariantContextSetBuilder in package testing is deprecated")
 class VariantContextSetBuilderTest extends  UnitSpec {
   private def readVcf(vcf: PathToVcf): IndexedSeq[VariantContext] = {
     val in = new VCFFileReader(vcf, false)
@@ -42,7 +45,7 @@ class VariantContextSetBuilderTest extends  UnitSpec {
 
   "VariantContextSetBuilder" should "add genotypes for two samples" in {
     val sampleNames = Seq("Sample1", "Sample2")
-    val builder     = new VariantContextSetBuilder(sampleNames=sampleNames)
+    val builder: VariantContextSetBuilder = new VariantContextSetBuilder(sampleNames=sampleNames)
       .addVariant(refIdx=0, start=1, variantAlleles=List("A", "C"), genotypeAlleles=List("A"), sampleName=Some(sampleNames.head))
       .addVariant(refIdx=0, start=1, variantAlleles=List("A", "C"), genotypeAlleles=List("C"), sampleName=Some(sampleNames.last))
     builder.iterator.next().getGenotypes.size shouldBe 2

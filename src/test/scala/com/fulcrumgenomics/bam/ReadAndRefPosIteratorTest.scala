@@ -31,7 +31,7 @@ import com.fulcrumgenomics.testing.{SamBuilder, UnitSpec}
 
 class ReadAndRefPosIteratorTest extends UnitSpec {
 
-  private def test(start: Int, cigar: String, readPositions: Seq[Int], refPositions: Seq[Int]): Unit = {
+  private def test(start: Int, cigar: String, readPositions: Seq[Int], refPositions: Seq[Int]) = {
     val builder   = new SamBuilder(Cigar(cigar).lengthOnQuery)
     val frag      = builder.addFrag(start=start, cigar=cigar).value
     val positions = new ReadAndRefPosIterator(rec=frag).toIndexedSeq

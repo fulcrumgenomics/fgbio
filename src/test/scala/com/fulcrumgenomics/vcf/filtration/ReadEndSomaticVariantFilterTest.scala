@@ -121,7 +121,7 @@ class ReadEndSomaticVariantFilterTest extends UnitSpec {
     val builder = new SamBuilder(readLength=50, baseQuality=40, sort=Some(Coordinate))
 
     // Add a ton of reference allele
-    for (start <- Range.inclusive(1, 25); i <- Range.inclusive(1, 10); strand <- Seq(Plus, Minus)) {
+    for (start <- Range.inclusive(1, 25); _ <- Range.inclusive(1, 10); strand <- Seq(Plus, Minus)) {
       builder.addFrag(start=start, strand=strand, bases="G"*50)
     }
 
@@ -147,7 +147,7 @@ class ReadEndSomaticVariantFilterTest extends UnitSpec {
     val builder = new SamBuilder(readLength=50, baseQuality=40, sort=Some(Coordinate))
 
     // Add a ton of reference allele at various positions
-    for (start <- Range.inclusive(1, 25); i <- Range.inclusive(1, 5); strand <- Seq(Plus, Minus)) {
+    for (start <- Range.inclusive(1, 25); _ <- Range.inclusive(1, 5); strand <- Seq(Plus, Minus)) {
       builder.addFrag(start=start, strand=strand, bases="G"*50)
     }
 
@@ -233,7 +233,7 @@ class ReadEndSomaticVariantFilterTest extends UnitSpec {
     val builder = new SamBuilder(readLength=50, baseQuality=40, sort=Some(Coordinate))
 
     // Add a ton of reference allele
-    for (start <- Range.inclusive(1, 25); i <- Range.inclusive(1, 10); strand <- Seq(Plus, Minus)) {
+    for (start <- Range.inclusive(1, 25); _ <- Range.inclusive(1, 10); strand <- Seq(Plus, Minus)) {
       builder.addFrag(start=start, strand=strand, bases="G"*50)
     }
 
@@ -259,7 +259,7 @@ class ReadEndSomaticVariantFilterTest extends UnitSpec {
     val builder = new SamBuilder(readLength=50, baseQuality=40, sort=Some(Coordinate))
 
     // Add a ton of reference allele at various positions
-    for (start <- Range.inclusive(1, 25); i <- Range.inclusive(1, 5); strand <- Seq(Plus, Minus)) {
+    for (start <- Range.inclusive(1, 25); _ <- Range.inclusive(1, 5); strand <- Seq(Plus, Minus)) {
       builder.addFrag(start=start, strand=strand, bases="G"*50)
     }
 
@@ -285,7 +285,7 @@ class ReadEndSomaticVariantFilterTest extends UnitSpec {
     val builder = new SamBuilder(readLength=50, baseQuality=40, sort=Some(Coordinate))
 
     // Add a ton of reference allele, 5/6ths in the first 5bp of the read
-    for (start <- Range.inclusive(20, 25); i <- Range.inclusive(1, 10); strand <- Seq(Plus, Minus)) {
+    for (start <- Range.inclusive(20, 25); _ <- Range.inclusive(1, 10); strand <- Seq(Plus, Minus)) {
       builder.addFrag(start=start, strand=strand, bases="G"*50)
     }
 
@@ -321,7 +321,7 @@ class ReadEndSomaticVariantFilterTest extends UnitSpec {
     }
 
     { // And again with just a bunch of ref allele
-      for (start <- Range.inclusive(1, 20); i <- Range.inclusive(1, 10); strand <- Seq(Plus, Minus)) {
+      for (start <- Range.inclusive(1, 20); _ <- Range.inclusive(1, 10); strand <- Seq(Plus, Minus)) {
         builder.addFrag(start = start, strand = strand, bases = "G" * 50)
       }
       val source      = builder.toSource

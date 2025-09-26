@@ -27,6 +27,9 @@ package com.fulcrumgenomics.vcf
 import com.fulcrumgenomics.fasta.SequenceDictionary
 import com.fulcrumgenomics.testing.{ReferenceSetBuilder, UnitSpec, VariantContextSetBuilder}
 
+import scala.annotation.nowarn
+
+@nowarn("msg=class VariantContextSetBuilder in package testing is deprecated")
 class VariantMaskTest extends UnitSpec {
   val ref = {
     val builder = new ReferenceSetBuilder()

@@ -24,23 +24,24 @@
 
 package com.fulcrumgenomics.cmdline
 
-import java.io.IOException
-import java.net.InetAddress
-import java.nio.file.Paths
-import java.text.DecimalFormat
-
 import com.fulcrumgenomics.bam.api.{SamSource, SamWriter}
 import com.fulcrumgenomics.cmdline.FgBioMain.FailureException
 import com.fulcrumgenomics.commons.CommonsDef._
 import com.fulcrumgenomics.commons.util.SystemUtil.IntelCompressionLibrarySupported
 import com.fulcrumgenomics.commons.util.{LazyLogging, LogLevel, Logger}
-import com.fulcrumgenomics.sopt.cmdline.CommandLineProgramParserStrings
+import com.fulcrumgenomics.sopt.cmdline.{CommandLineParser, CommandLineProgramParserStrings}
 import com.fulcrumgenomics.sopt.{Sopt, arg}
 import com.fulcrumgenomics.util.Io
 import com.fulcrumgenomics.vcf.api.VcfWriter
 import com.intel.gkl.compression.{IntelDeflaterFactory, IntelInflaterFactory}
 import htsjdk.samtools.ValidationStringency
 import htsjdk.samtools.util.{BlockCompressedOutputStream, BlockGunzipper, IOUtil, SnappyLoader}
+
+import java.io.IOException
+import java.net.InetAddress
+import java.nio.file.Paths
+import java.text.DecimalFormat
+import scala.annotation.unused
 
 /**
   * Main program for fgbio that loads everything up and runs the appropriate sub-command
@@ -110,16 +111,26 @@ class FgBioMain extends LazyLogging {
     }
 
     val startTime = System.currentTimeMillis()
-    val exit      = Sopt.parseCommandAndSubCommand[FgBioCommonArgs,FgBioTool](name, args.toIndexedSeq, Sopt.find[FgBioTool](packageList)) match {
+    val parser    = new CommandLineParser[FgBioTool](name)  // Keep a reference to the parser so we can get the command line
+    val exit      = parser.parseCommandAndSubCommand[FgBioCommonArgs](args.toIndexedSeq, Sopt.find[FgBioTool](packageList)) match {
       case Sopt.Failure(usage) =>
         System.err.print(usage())
         1
-      case Sopt.CommandSuccess(cmd) =>
+      case Sopt.CommandSuccess(_) =>
         unreachable("CommandSuccess should never be returned by parseCommandAndSubCommand.")
       case Sopt.SubcommandSuccess(commonArgs, subcommand) =>
         FgBioCommonArgs.args = commonArgs
         val name = subcommand.getClass.getSimpleName
         try {
+          parser.commandLine.foreach { commandLine =>
+            subcommand.toolInfo = FgBioToolInfo(
+              name                    = name,
+              args                    = this.name +: args.toIndexedSeq, // make sure to include the tool set name
+              commandLineWithDefaults = commandLine,
+              description             = parser.formatShortDescription(Sopt.inspect(subcommand.getClass).description),
+              version                 = CommandLineProgramParserStrings.version(subcommand.getClass, color=false).replace("Version: ", "")
+            )
+          }
           printStartupLines(name, args, commonArgs)
           subcommand.execute()
           printEndingLines(startTime, name, true)
@@ -151,7 +162,7 @@ class FgBioMain extends LazyLogging {
   protected def name: String = "fgbio"
 
   /** Prints a line of useful information when a tool starts executing. */
-  protected def printStartupLines(tool: String, args: Array[String], commonArgs: FgBioCommonArgs): Unit = {
+  protected def printStartupLines(tool: String, @unused args: Array[String], @unused commonArgs: FgBioCommonArgs): Unit = {
     val version    = CommandLineProgramParserStrings.version(getClass, color=false).replace("Version: ", "")
     val host       = try { InetAddress.getLocalHost.getHostName } catch { case _: Exception => "unknown-host" }
     val user       = System.getProperty("user.name")

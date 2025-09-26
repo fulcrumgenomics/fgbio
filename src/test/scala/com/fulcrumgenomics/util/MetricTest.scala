@@ -25,15 +25,16 @@
 
 package com.fulcrumgenomics.util
 
-import java.io.StringWriter
-import java.nio.file.Path
-
 import com.fulcrumgenomics.testing.UnitSpec
 import enumeratum.EnumEntry.Uppercase
 import enumeratum.{Enum, EnumEntry}
 import org.scalatest.OptionValues
 import org.scalatest.concurrent.TimeLimits
 import org.scalatest.time.SpanSugar._
+
+import java.io.StringWriter
+import java.nio.file.Path
+import scala.language.postfixOps
 
 /** Mixin to provide access to field formatting for [[Metric]] classes. */
 trait Formatted { self: Metric => def formatted(x: Any): String = formatValue(x) }
@@ -72,6 +73,22 @@ private case class TestDoubleMetric(d: Double) extends Metric
 private case class TestFloatMetric(f: Float) extends Metric
 private case class TestCharMetric(c: Char) extends Metric
 
+private case class TestScalaCollection(list: List[String]) extends Metric
+private case class TestJavaCollection(list: java.util.List[String]) extends Metric
+
+private object TestCustomCollectionDelimiter {
+  val CollectionDelimiter: Char = '|'
+}
+private case class TestCustomCollectionDelimiter(list: List[String]) extends Metric
+
+private object TestStringCollectionDelimiter {
+  val CollectionDelimiter: String = "|"
+}
+private case class TestStringCollectionDelimiter(list: List[String]) extends Metric
+
+
+private case class TestReadStructureMetric(readStructure: ReadStructure) extends Metric
+
 /**
   * Tests for Metric.
   */
@@ -86,6 +103,11 @@ class MetricTest extends UnitSpec with OptionValues with TimeLimits {
   "Metric.values" should "return the values in order" in {
     val testMetric = TestMetric(foo="fooValue", bar=1)
     testMetric.values should contain theSameElementsInOrderAs Seq("fooValue", "1", "default")
+  }
+
+  it should "not delimit ReadStructure values" in {
+    val testMetric = TestReadStructureMetric(ReadStructure("100T30M100S"))
+    testMetric.values should contain theSameElementsInOrderAs Seq("100T30M100S")
   }
 
   "Metric.read" should "build a metric when all fields are present in the file/lines" in {
@@ -115,7 +137,7 @@ class MetricTest extends UnitSpec with OptionValues with TimeLimits {
   }
 
   it should "fail when an unknown argument is given" in {
-    an[Exception] should be thrownBy Metric.read[TestMetric](Iterator("foo\tdoh\tbar", "fooValue\t1\t1"))
+    an[MetricBuilderException] should be thrownBy Metric.read[TestMetric](Iterator("foo\tdoh\tbar", "fooValue\t1\t1"))
   }
 
   it should "fail when an argument cannot be built from the given string" in {
@@ -169,7 +191,7 @@ class MetricTest extends UnitSpec with OptionValues with TimeLimits {
     val n = 1000
     val lines = Seq("foo\tbar\tcar") ++ Range(0,n).map(_ => "fooey\t273\tvroomvroom")
     val metrics = failAfter(1 second) { Metric.read[TestMetric](lines.iterator) }
-    metrics should have size n
+    metrics should have size n.toLong
   }
 
   //////////////////////////////////////////////////////////////////////////////
@@ -284,7 +306,7 @@ class MetricTest extends UnitSpec with OptionValues with TimeLimits {
   it should "read and write a char" in {
     val path = makeTempFile("char_test", ".txt")
 
-    Seq('X', '$', 'a').foreach { c => 
+    Seq('X', '$', 'a').foreach { c =>
       val expected = TestCharMetric(c=c)
       Metric.write(path, expected)
       val actual = Metric.read[TestCharMetric](path)
@@ -321,5 +343,81 @@ class MetricTest extends UnitSpec with OptionValues with TimeLimits {
     val metricMixin = TestMetricWithEnumEntryMixin(TestEnumMixin.TestUpperCase)
     metricMixin.formatted(metricMixin.foo)            shouldBe "TESTUPPERCASE"             // Serialization
     TestEnumMixin.withName(metricMixin.foo.entryName) shouldBe TestEnumMixin.TestUpperCase // De-serialization
+  }
+
+  "Metric.iterator" should "fail if there are no lines" in {
+    a[MetricBuilderException] should be thrownBy Metric.iterator[TestFloatMetric](Iterator.empty)
+  }
+
+  it should "read in a metric from a set of lines" in {
+    val metrics: Seq[TestCharMetric] = Metric.iterator[TestCharMetric](lines = Iterator("c", "A", "a")).toIndexedSeq
+    metrics.head.c shouldBe 'A'
+    metrics.last.c shouldBe 'a'
+  }
+
+  it should "write and read scala collections" in {
+    val path = makeTempFile("test.", ".txt")
+
+    // empty
+    {
+      val expected = TestScalaCollection(list=List.empty)
+      Metric.write(path, expected)
+      val actual = Metric.read[TestScalaCollection](path)
+      actual should have size 1
+      actual.head.list should contain theSameElementsInOrderAs expected.list
+    }
+
+    // non-empty
+    {
+      val expected = TestScalaCollection(list = List("A", "B", "C"))
+      Metric.write(path, expected)
+      val actual = Metric.read[TestScalaCollection](path)
+      actual should have size 1
+      actual.head.list should contain theSameElementsInOrderAs expected.list
+    }
+  }
+
+  it should "write and read java collections" in {
+    import com.fulcrumgenomics.commons.CommonsDef.javaIterableToIterator
+    val path = makeTempFile("test.", ".txt")
+
+    // empty
+    {
+      val expected = TestJavaCollection(list=java.util.Collections.emptyList())
+      Metric.write(path, expected)
+      val actual = Metric.read[TestJavaCollection](path)
+      actual should have size 1
+      actual.head.list should contain theSameElementsInOrderAs expected.list.toSeq
+    }
+
+    // non-empty
+    {
+      val expected = TestJavaCollection(list = java.util.Arrays.asList("A", "B", "C"))
+      Metric.write(path, expected)
+      val actual = Metric.read[TestJavaCollection](path)
+      actual should have size 1
+      actual.head.list should contain theSameElementsInOrderAs expected.list.toSeq
+    }
+  }
+
+  it should "not allow commas in collections" in {
+    val path = makeTempFile("test.", ".txt")
+    val expected = TestScalaCollection(list=List("a", "comma,comma"))
+    an[Exception] should be thrownBy Metric.write(path, expected)
+  }
+
+  it should "support custom collection delimiters" in {
+    val path = makeTempFile("test.", ".txt")
+    val expected = TestCustomCollectionDelimiter(list=List("a", "b", "c"))
+    expected.values should contain theSameElementsInOrderAs Seq("a|b|c")
+    Metric.write(path, expected)
+    val actual = Metric.read[TestCustomCollectionDelimiter](path)
+    actual should have size 1
+    actual.head.list should contain theSameElementsInOrderAs expected.list.toSeq
+  }
+
+  it should "throw an excpetion if the custom collection delimiter is not a Char" in {
+    val expected = TestStringCollectionDelimiter(list=List("a", "b", "c"))
+    a[ClassCastException] should be thrownBy expected.values
   }
 }

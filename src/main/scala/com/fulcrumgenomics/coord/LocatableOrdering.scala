@@ -3,10 +3,10 @@ package com.fulcrumgenomics.coord
 import com.fulcrumgenomics.fasta.SequenceDictionary
 import htsjdk.samtools.util.Locatable
 
-/** Methods for building orderings of [[Locatable]] instances. */
+/** Methods for building orderings of [[htsjdk.samtools.util.Locatable]] instances. */
 object LocatableOrdering {
 
-  /** Build a coordinate-based ordering of [[Locatable]] instances. */
+  /** Build a coordinate-based ordering of [[htsjdk.samtools.util.Locatable]] instances. */
   def apply(dict: SequenceDictionary): Ordering[Locatable] = (x: Locatable, y: Locatable) => {
     var compare = (dict.get(x.getContig), dict.get(y.getContig)) match {
       case (Some(meta1), Some(meta2)) => meta1.index.compare(meta2.index)

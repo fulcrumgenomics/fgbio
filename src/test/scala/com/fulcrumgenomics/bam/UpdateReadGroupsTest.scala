@@ -25,15 +25,13 @@
 
 package com.fulcrumgenomics.bam
 
-import java.nio.file.Files
-
 import com.fulcrumgenomics.FgBioDef._
 import com.fulcrumgenomics.bam.api.{SamOrder, SamSource, SamWriter}
 import com.fulcrumgenomics.testing.{SamBuilder, UnitSpec}
 import htsjdk.samtools.SAMFileHeader.SortOrder
 import htsjdk.samtools._
 
-import scala.collection.JavaConverters._
+import java.nio.file.Files
 
 /**
   * Tests for UpdateReadGroups.
@@ -58,7 +56,7 @@ class UpdateReadGroupsTest extends UnitSpec {
   /** toFr are tuples, where each triple is old read group ID ("FR"), the new read group ID, and new sample name ("SM"). */
   def makeHeaderWithNewSample(fromAndTo: (String, String, String)*): SAMFileHeader = {
     val header = makeHeader(fromAndTo.map(x => (x._1, x._2)):_*)
-    fromAndTo.foreach { case ((fr, to, sn)) => header.getReadGroup(to).setSample(sn) }
+    fromAndTo.foreach { case (_, to, sn) => header.getReadGroup(to).setSample(sn) }
     header
   }
 

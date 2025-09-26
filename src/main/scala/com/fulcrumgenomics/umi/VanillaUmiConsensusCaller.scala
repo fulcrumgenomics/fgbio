@@ -33,7 +33,9 @@ import com.fulcrumgenomics.umi.UmiConsensusCaller.ReadType._
 import com.fulcrumgenomics.umi.UmiConsensusCaller._
 import com.fulcrumgenomics.umi.VanillaUmiConsensusCallerOptions._
 import com.fulcrumgenomics.util.NumericTypes._
+import com.fulcrumgenomics.util.Sequences
 
+import java.util
 import scala.util.Random
 
 /**
@@ -90,6 +92,58 @@ case class VanillaConsensusRead(id: String, bases: Array[Byte], quals: Array[Byt
     if (len >= this.length) this
     else this.copy(bases=bases.take(len), quals=quals.take(len), depths=depths.take(len), errors=errors.take(len))
   }
+
+  /**
+    * Modifies all of the bases, quals, depths and errors arrays *in place* to reverse complement the sequence
+    * and related information in the consensus read instance.
+    *
+    * WARNING: modifies the record in place!
+    */
+  def revcomp(): Unit = {
+    Sequences.revcomp(this.bases)
+    Sequences.reverse(quals)
+    Sequences.reverse(depths)
+    Sequences.reverse(errors)
+  }
+
+  /**
+    * Pads a consensus reads by adding bases to the either the left or right of the existing sequence.
+    *
+    * @param newLength the new total length of the consensus read - must be at least the existing length
+    * @param left if true pad to the left of the existing sequence, else pad to the right of the existing sequence
+    * @param base the base to use to fill in the padded sequence
+    * @param qual the qual to use to fill in the qualities
+    */
+  def padded(newLength: Int, left: Boolean, base: Byte = 'n', qual: Byte = 2): VanillaConsensusRead = {
+    require(newLength >= this.bases.length, "Cannot pad to a length shorter than current length.")
+    if (newLength == this.bases.length) this else {
+      val newBases  = new Array[Byte](newLength)
+      val newQuals  = new Array[Byte](newLength)
+      val newDepths = new Array[Short](newLength)
+      val newErrors = new Array[Short](newLength)
+
+      val oldLength = this.bases.length
+      val addedLength = newLength - oldLength
+
+      val destPos = if (left) addedLength else 0
+      System.arraycopy(this.bases, 0,  newBases,  destPos, oldLength)
+      System.arraycopy(this.quals, 0,  newQuals,  destPos, oldLength)
+      System.arraycopy(this.depths, 0, newDepths, destPos, oldLength)
+      System.arraycopy(this.errors, 0, newErrors, destPos, oldLength)
+
+      val startIndex = if (left) 0 else oldLength
+      util.Arrays.fill(newBases, startIndex, startIndex + addedLength, base)
+      util.Arrays.fill(newQuals, startIndex, startIndex + addedLength, qual)
+
+      VanillaConsensusRead(
+        id     = this.id,
+        bases  = newBases,
+        quals  = newQuals,
+        depths = newDepths,
+        errors = newErrors,
+      )
+    }
+  }
 }
 
 /** Calls consensus reads by grouping consecutive reads with the same SAM tag.
@@ -102,8 +156,10 @@ case class VanillaConsensusRead(id: String, bases: Array[Byte], quals: Array[Byt
 class VanillaUmiConsensusCaller(override val readNamePrefix: String,
                                 override val readGroupId: String = "A",
                                 val options: VanillaUmiConsensusCallerOptions = new VanillaUmiConsensusCallerOptions(),
-                                val rejects: Option[SamWriter] = None
+                                override val rejectsWriter: Option[SamWriter] = None
                                ) extends UmiConsensusCaller[VanillaConsensusRead] with LazyLogging {
+
+  initializeRejectCounts(_.usedByVanilla)
 
   private val NotEnoughReadsQual: PhredScore = 0.toByte // Score output when masking to N due to insufficient input reads
   private val TooLowQualityQual: PhredScore = 2.toByte  // Score output when masking to N due to too low consensus quality
@@ -112,9 +168,9 @@ class VanillaUmiConsensusCaller(override val readNamePrefix: String,
                                            errorRatePostLabeling = options.errorRatePostUmi)
 
   /** Map from input qual score to output qual score in the case where there is only one read going into the consensus. */
-  private val SingleInputConsensusQuals: Array[Byte] = Range.inclusive(0, PhredScore.MaxValue).map { q =>
+  private val SingleInputConsensusQuals: Array[Byte] = Range.inclusive(0, PhredScore.MaxValue.toInt).map { q =>
     val lnProbOne = LogProbability.fromPhredScore(q)
-    val lnProbTwo = LogProbability.fromPhredScore(Math.min(this.options.errorRatePreUmi, this.options.errorRatePostUmi))
+    val lnProbTwo = LogProbability.fromPhredScore(Math.min(this.options.errorRatePreUmi.toInt, this.options.errorRatePostUmi.toInt))
     PhredScore.fromLogProbability(LogProbability.probabilityOfErrorTwoTrials(lnProbOne, lnProbTwo))
   }.toArray
 
@@ -127,7 +183,7 @@ class VanillaUmiConsensusCaller(override val readNamePrefix: String,
       readNamePrefix = readNamePrefix,
       readGroupId    = readGroupId,
       options        = options,
-      rejects        = rejects
+      rejectsWriter  = this.rejectsWriter
     )
   }
 
@@ -147,9 +203,9 @@ class VanillaUmiConsensusCaller(override val readNamePrefix: String,
 
     // pairs
     (consensusFromSamRecords(firstOfPair), consensusFromSamRecords(secondOfPair)) match {
-      case (None, Some(_))     => rejectRecords(secondOfPair, UmiConsensusCaller.FilterOrphan)
-      case (Some(_), None)     => rejectRecords(firstOfPair,  UmiConsensusCaller.FilterOrphan)
-      case (None, None)         => rejectRecords(firstOfPair ++ secondOfPair, UmiConsensusCaller.FilterOrphan)
+      case (None, Some(_))     => rejectRecords(secondOfPair, RejectionReason.OrphanConsensus)
+      case (Some(_), None)     => rejectRecords(firstOfPair,  RejectionReason.OrphanConsensus)
+      case (None, None)         => rejectRecords(firstOfPair ++ secondOfPair, RejectionReason.OrphanConsensus)
       case (Some(r1), Some(r2)) =>
         builder += createSamRecord(r1, FirstOfPair, firstOfPair.flatMap(_.get[String](ConsensusTags.UmiBases)))
         builder += createSamRecord(r2, SecondOfPair, secondOfPair.flatMap(_.get[String](ConsensusTags.UmiBases)))
@@ -161,7 +217,7 @@ class VanillaUmiConsensusCaller(override val readNamePrefix: String,
   /** Creates a consensus read from the given records.  If no consensus read was created, None is returned. */
   protected[umi] def consensusFromSamRecords(records: Seq[SamRecord]): Option[VanillaConsensusRead] = {
     if (records.size < this.options.minReads) {
-      rejectRecords(records, UmiConsensusCaller.FilterInsufficientSupport)
+      rejectRecords(records, RejectionReason.InsufficientSupport)
       None
     }
     else {
@@ -177,7 +233,7 @@ class VanillaUmiConsensusCaller(override val readNamePrefix: String,
       }
 
       if (filteredRecords.size >= this.options.minReads) consensusCall(filteredRecords) else {
-        rejectRecords(filteredRecords.flatMap(_.sam), UmiConsensusCaller.FilterInsufficientSupport)
+        rejectRecords(filteredRecords.flatMap(_.sam), RejectionReason.InsufficientSupport)
         None
       }
     }
@@ -196,7 +252,6 @@ class VanillaUmiConsensusCaller(override val readNamePrefix: String,
     else {
       // First limit to max reads if necessary
       val capped  = if (reads.size <= this.options.maxReads) reads else this.random.shuffle(reads).take(this.options.maxReads)
-
       // get the most likely consensus bases and qualities
       val consensusLength = consensusReadLength(capped, this.options.minReads)
       val consensusBases  = new Array[Base](consensusLength)
@@ -210,13 +265,12 @@ class VanillaUmiConsensusCaller(override val readNamePrefix: String,
 
         forloop (from=0, until=consensusLength) { i =>
           val rawBase      = inBases(i)
-          val rawQual      = SingleInputConsensusQuals(inQuals(i))
+          val rawQual      = SingleInputConsensusQuals(inQuals(i).toInt)
           val (base, qual) = if (rawQual < this.options.minConsensusBaseQuality) (NoCall, TooLowQualityQual) else (rawBase, rawQual)
-          val isNoCall     = base == NoCall
 
           consensusBases(i)  = base
           consensusQuals(i)  = qual
-          consensusDepths(i) = if (isNoCall) 0 else 1
+          consensusDepths(i) = if (rawBase == NoCall) 0 else 1
           consensusErrors(i) = 0
         }
       }
@@ -272,12 +326,6 @@ class VanillaUmiConsensusCaller(override val readNamePrefix: String,
   protected def consensusReadLength(reads: Seq[SourceRead], minReads: Int): Int = {
     require(reads.size >= minReads, "Too few reads to create a consensus.")
     reads.map(_.length).sortBy(len => -len).drop(minReads-1).head
-  }
-
-  /** If a reject writer was provided, emit the reads to that writer. */
-  override protected def rejectRecords(recs: Iterable[SamRecord], reason: String): Unit = {
-    super.rejectRecords(recs, reason)
-    this.rejects.foreach(rej => rej ++= recs)
   }
 
   /** Creates a `SamRecord` from the called consensus base and qualities. */

@@ -28,13 +28,14 @@ import com.fulcrumgenomics.FgBioDef._
 import com.fulcrumgenomics.bam.BaseCounts
 import com.fulcrumgenomics.bam.api.{SamRecord, SamSource, SamWriter}
 import com.fulcrumgenomics.cmdline.{ClpGroups, FgBioTool}
+import com.fulcrumgenomics.commons.io.PathUtil
 import com.fulcrumgenomics.commons.util.LazyLogging
 import com.fulcrumgenomics.sopt.{arg, clp}
 import com.fulcrumgenomics.umi.ReviewConsensusVariants._
 import com.fulcrumgenomics.util.{Io, Metric}
 import htsjdk.samtools.SamPairUtil.PairOrientation
 import htsjdk.samtools.reference.{ReferenceSequenceFile, ReferenceSequenceFileFactory}
-import htsjdk.samtools.util.{FileExtensions, Interval, IntervalList, Locatable, SamLocusIterator, SequenceUtil}
+import htsjdk.samtools.util._
 import htsjdk.variant.variantcontext.VariantContext
 import htsjdk.variant.vcf.VCFFileReader
 
@@ -160,6 +161,13 @@ class ReviewConsensusVariants
   private val refFile = ReferenceSequenceFileFactory.getReferenceSequenceFile(ref)
   private val dict = refFile.getSequenceDictionary
 
+  validate(this.refFile.isIndexed,
+    f"The reference file has not indexed (use `samtools faidx ${this.ref}`)."
+  )
+  validate(this.refFile.getSequenceDictionary != null,
+    f"The reference file has no sequence dictionary (use `samtools dict ${this.ref} -o  ${PathUtil.replaceExtension(this.ref, ".dict")}`)"
+  )
+
   /** Simple case class to hold the relevant information from a variant context for easy access. */
   private[umi] case class Variant(chrom: String, start: Int, refBase: Char, genotype: Option[String], filters: Option[String])
   extends Locatable {
@@ -252,7 +260,7 @@ class ReviewConsensusVariants
           val rec = c.getRecord.asInstanceOf[SamRecord]
           val mi = toMi(rec)
           val consensusReadName = c.getRecord.getReadName + readNumberSuffix(rec)
-          val rawCounts = BaseCounts(rawByMiAndReadNum(mi + readNumberSuffix(rec)))
+          val rawCounts = BaseCounts(rawByMiAndReadNum.getOrElse(mi + readNumberSuffix(rec), Seq.empty))
 
           val m = ConsensusVariantReviewInfo(
             chrom = variant.chrom,
@@ -268,7 +276,7 @@ class ReviewConsensusVariants
             consensus_read = consensusReadName,
             consensus_insert = toInsertString(rec),
             consensus_call = c.getReadBase.toChar.toUpper,
-            consensus_qual = c.getBaseQuality,
+            consensus_qual = c.getBaseQuality.toInt,
             a = rawCounts.a,
             c = rawCounts.c,
             g = rawCounts.g,
@@ -306,7 +314,7 @@ class ReviewConsensusVariants
     else {
       val list = IntervalList.fromFile(path.toFile).uniqued(false)
       for (i <- list; pos <- i.getStart to i.getEnd) {
-        buffer += Variant(i.getContig, pos, refFile.getSubsequenceAt(i.getContig, pos, pos).getBases()(0).toChar.toUpper, None, None)
+        buffer += Variant(i.getContig, pos, refFile.getSubsequenceAt(i.getContig, pos.toLong, pos.toLong).getBases()(0).toChar.toUpper, None, None)
       }
     }
 

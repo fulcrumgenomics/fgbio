@@ -31,6 +31,7 @@ import com.fulcrumgenomics.bam.pileup.PileupBuilder.BamAccessPattern.Streaming
 import com.fulcrumgenomics.commons.CommonsDef._
 import com.fulcrumgenomics.testing.VcfBuilder.Gt
 import com.fulcrumgenomics.testing.{SamBuilder, UnitSpec, VcfBuilder}
+import com.fulcrumgenomics.vcf.api.Variant.PassingFilters
 import com.fulcrumgenomics.vcf.api._
 
 /** Unit tests for [[FilterSomaticVcf]]. */
@@ -61,7 +62,7 @@ class FilterSomaticVcfTest extends UnitSpec {
       * ATailingArtifactFilter should apply and output low p-value
       * EndRepairArtifactFilter should apply and output low p-value
       */
-    for (pos <- 61 to 100; i <- 1 to 3) {
+    for (pos <- 61 to 100; _ <- 1 to 3) {
       builder.addPair(start1=pos,      start2=pos+rlen, bases1="C"*rlen, bases2="C"*rlen)
       builder.addPair(start1=pos-rlen, start2=pos     , bases1="C"*rlen, bases2="C"*rlen)
     }
@@ -90,7 +91,7 @@ class FilterSomaticVcfTest extends UnitSpec {
       * ATailingArtifactFilter should apply and output low p-value
       * EndRepairArtifactFilter should apply and output low p-value
       */
-    for (pos <- 361 to 400; i <- 1 to 3) {
+    for (pos <- 361 to 400; _ <- 1 to 3) {
       builder.addPair(start1=pos,      start2=pos+rlen, bases1="A"*rlen, bases2="A"*rlen)
       builder.addPair(start1=pos-rlen, start2=pos     , bases1="A"*rlen, bases2="A"*rlen)
     }
@@ -105,7 +106,7 @@ class FilterSomaticVcfTest extends UnitSpec {
       * ATailingArtifactFilter should not apply
       * EndRepairArtifactFilter should apply and output low p-value
       */
-    for (pos <- 461 to 500; i <- 1 to 3) {
+    for (pos <- 461 to 500; _ <- 1 to 3) {
       builder.addPair(start1=pos,      start2=pos+rlen, bases1="C"*rlen, bases2="C"*rlen)
       builder.addPair(start1=pos-rlen, start2=pos     , bases1="C"*rlen, bases2="C"*rlen)
     }
@@ -161,6 +162,163 @@ class FilterSomaticVcfTest extends UnitSpec {
         accessPattern = Streaming
       ).execute()
     }
+  }
+
+  it should s"not change existing INFO data when adding new INFO data" in {
+    val samples  = Seq("sample1")
+    val variants = VcfBuilder(samples)
+    variants.add(pos = 200, alleles = Seq("G", "A"), gts = Seq(Gt("sample1", "G/A")), info = Map("DP" -> 2))
+
+    val length    = 40
+    val sequences = new SamBuilder(readLength = length, sort = Some(SamOrder.Coordinate))
+
+    // G>A SNP at 200 with low variant allele frequency but even coverage of reads
+    //  - ATailingArtifactFilter should apply and output a high p-value
+    //  - EndRepairArtifactFilter should apply and output a high p-value
+    for (pos <- 161 to 200; i <- 1 to 3) {
+      sequences.addPair(start1 = pos,          start2 = pos + length, bases1 = "G" * length, bases2 = "G" * length)
+      sequences.addPair(start1 = pos - length, start2 = pos,          bases1 = "G" * length, bases2 = "G" * length)
+      if (i == 1 && pos % 4 == 0) {
+        sequences.addPair(start1 = pos,          start2 = pos + length, bases1 = "A" * length, bases2 = "A" * length)
+        sequences.addPair(start1 = pos - length, start2 = pos,          bases1 = "A" * length, bases2 = "A" * length)
+      }
+    }
+
+    val output = makeTempFile(getClass.getSimpleName, ".vcf")
+
+    new FilterSomaticVcf(
+      input                 = variants.toTempFile(),
+      output                = output,
+      bam                   = sequences.toTempFile(),
+      accessPattern         = Streaming,
+      aTailingPValue        = None,
+      endRepairFillInPValue = None,
+    ).execute()
+
+    val Seq(annotated) = readVcfRecs(output)
+
+    annotated.pos shouldBe 200
+    annotated.get[Int]("DP").value shouldBe 2
+    annotated.get[Float](ATailInfoKey).value shouldBe 1.0
+    annotated.get[Float](EndRepairInfoKey).value shouldBe 1.0
+    annotated.filters shouldBe empty
+  }
+
+  it should s"not change existing FILTER data when adding new FILTER data" in {
+    val samples  = Seq("sample1")
+    val variants = VcfBuilder(samples)
+    variants.add(pos = 200, alleles = Seq("G", "A"), gts = Seq(Gt("sample1", "G/A")), filters = Seq("LowQD"))
+
+    val length    = 40
+    val sequences = new SamBuilder(readLength = length, sort = Some(SamOrder.Coordinate))
+
+    // G>A SNP at 200 with low variant allele frequency but even coverage of reads
+    //  - ATailingArtifactFilter should apply and output a high p-value
+    //  - EndRepairArtifactFilter should apply and output a high p-value
+    for (pos <- 161 to 200; i <- 1 to 3) {
+      sequences.addPair(start1 = pos,          start2 = pos + length, bases1 = "G" * length, bases2 = "G" * length)
+      sequences.addPair(start1 = pos - length, start2 = pos,          bases1 = "G" * length, bases2 = "G" * length)
+      if (i == 1 && pos % 4 == 0) {
+        sequences.addPair(start1 = pos,          start2 = pos + length, bases1 = "A" * length, bases2 = "A" * length)
+        sequences.addPair(start1 = pos - length, start2 = pos,          bases1 = "A" * length, bases2 = "A" * length)
+      }
+    }
+
+    val output = makeTempFile(getClass.getSimpleName, ".vcf")
+
+    new FilterSomaticVcf(
+      input                 = variants.toTempFile(),
+      output                = output,
+      bam                   = sequences.toTempFile(),
+      accessPattern         = Streaming,
+      aTailingPValue        = Some(1.0),
+      endRepairFillInPValue = Some(1.0),
+    ).execute()
+
+    val Seq(annotated) = readVcfRecs(output)
+
+    annotated.pos shouldBe 200
+    annotated.get[Float](ATailInfoKey).value shouldBe 1.0
+    annotated.get[Float](EndRepairInfoKey).value shouldBe 1.0
+    annotated.filters should contain theSameElementsAs Set("LowQD", ATailFilterKey, EndRepairFilterKey)
+  }
+
+  it should s"not remove PASS from the FILTER field if no new filters are added" in {
+    val samples  = Seq("sample1")
+    val variants = VcfBuilder(samples)
+    variants.add(pos = 200, alleles = Seq("G", "A"), gts = Seq(Gt("sample1", "G/A")), filters = PassingFilters)
+
+    val length    = 40
+    val sequences = new SamBuilder(readLength = length, sort = Some(SamOrder.Coordinate))
+
+    // G>A SNP at 200 with low variant allele frequency but even coverage of reads
+    //  - ATailingArtifactFilter should apply and output a high p-value
+    //  - EndRepairArtifactFilter should apply and output a high p-value
+    for (pos <- 161 to 200; i <- 1 to 3) {
+      sequences.addPair(start1 = pos,          start2 = pos + length, bases1 = "G" * length, bases2 = "G" * length)
+      sequences.addPair(start1 = pos - length, start2 = pos,          bases1 = "G" * length, bases2 = "G" * length)
+      if (i == 1 && pos % 4 == 0) {
+        sequences.addPair(start1 = pos,          start2 = pos + length, bases1 = "A" * length, bases2 = "A" * length)
+        sequences.addPair(start1 = pos - length, start2 = pos,          bases1 = "A" * length, bases2 = "A" * length)
+      }
+    }
+
+    val output = makeTempFile(getClass.getSimpleName, ".vcf")
+
+    new FilterSomaticVcf(
+      input                 = variants.toTempFile(),
+      output                = output,
+      bam                   = sequences.toTempFile(),
+      accessPattern         = Streaming,
+      aTailingPValue        = None,
+      endRepairFillInPValue = None,
+    ).execute()
+
+    val Seq(annotated) = readVcfRecs(output)
+
+    annotated.pos shouldBe 200
+    annotated.get[Float](ATailInfoKey).value shouldBe 1.0
+    annotated.get[Float](EndRepairInfoKey).value shouldBe 1.0
+    annotated.filters should contain theSameElementsAs PassingFilters
+  }
+
+  it should s"remove PASS from the FILTER field if a new filter is added" in {
+    val samples  = Seq("sample1")
+    val variants = VcfBuilder(samples)
+    variants.add(pos = 200, alleles = Seq("G", "A"), gts = Seq(Gt("sample1", "G/A")), filters = PassingFilters)
+
+    val length    = 40
+    val sequences = new SamBuilder(readLength = length, sort = Some(SamOrder.Coordinate))
+
+    // G>A SNP at 200 with low variant allele frequency but even coverage of reads
+    //  - ATailingArtifactFilter should apply and output a high p-value
+    //  - EndRepairArtifactFilter should apply and output a high p-value
+    for (pos <- 161 to 200; i <- 1 to 3) {
+      sequences.addPair(start1 = pos,          start2 = pos + length, bases1 = "G" * length, bases2 = "G" * length)
+      sequences.addPair(start1 = pos - length, start2 = pos,          bases1 = "G" * length, bases2 = "G" * length)
+      if (i == 1 && pos % 4 == 0) {
+        sequences.addPair(start1 = pos,          start2 = pos + length, bases1 = "A" * length, bases2 = "A" * length)
+        sequences.addPair(start1 = pos - length, start2 = pos,          bases1 = "A" * length, bases2 = "A" * length)
+      }
+    }
+
+    val output = makeTempFile(getClass.getSimpleName, ".vcf")
+
+    new FilterSomaticVcf(
+      input                 = variants.toTempFile(),
+      output                = output,
+      bam                   = sequences.toTempFile(),
+      accessPattern         = Streaming,
+      aTailingPValue        = Some(1.0),
+      endRepairFillInPValue = Some(1.0),
+    ).execute()
+
+    val Seq(annotated) = readVcfRecs(output)
+
+    annotated.pos shouldBe 200
+    annotated.get[Float](ATailInfoKey).value shouldBe 1.0
+    annotated.get[Float](EndRepairInfoKey).value shouldBe 1.0
+    annotated.filters should contain theSameElementsAs Set(ATailFilterKey, EndRepairFilterKey)
   }
 
   BamAccessPattern.values.foreach { accessPattern =>

@@ -25,9 +25,8 @@
 package com.fulcrumgenomics.fastq
 
 import com.fulcrumgenomics.FgBioDef._
-import com.fulcrumgenomics.alignment.Mode
-import com.fulcrumgenomics.alignment.Mode.findValues
 import com.fulcrumgenomics.commons.util.{NumericCounter, SimpleCounter}
+import com.fulcrumgenomics.fastq.QualityEncodingDetector.DefaultScoresCount
 import enumeratum.EnumEntry
 
 import scala.collection.immutable
@@ -115,14 +114,23 @@ class QualityEncodingDetector {
     * @param ss an iterator of Strings where each string is an ascii string of quality scores
     * @param count the number of quality scores (not strings!) to attempt to sample
     */
-  def sample(ss: Iterator[String], count: Int = 100000): Unit = {
+  def sample(ss: Iterator[String], count: Int = DefaultScoresCount): Unit = {
     val goal = counter.total + count
     while (counter.total < goal && ss.hasNext) add(ss.next())
   }
 
+  /**
+   * Samples strings from an iterable of FASTQ records until at least `count` qualities have been sampled.
+   * @param ss an iterable of Strings where each string is an ascii string of quality scores
+   * @param count the number of quality scores (not strings!) to attempt to sample
+   */
+  def sample(ss: Iterable[FastqRecord], count: Int): Unit = {
+    sample(ss.iterator.map(_.quals), count=count)
+  }
+
   /** Returns the set of quality formats that are compatible with the qualities seen thus far. */
   def compatibleEncodings: List[QualityEncoding] = {
-    QualityEncoding.all.filter(enc => counter.forall { case (ch, count) => enc.asciiRange.contains(ch.toInt)} )
+    QualityEncoding.all.filter(enc => counter.forall { case (ch, _) => enc.asciiRange.contains(ch.toInt)} )
   }
 
   /** Returns true if the observed qualities are compatible with the encoding, false otherwise. */
@@ -140,9 +148,28 @@ class QualityEncodingDetector {
     else {
       compatible.map { enc =>
         val x = new NumericCounter[Int]()
-        this.counter.foreach { case (ch, count) => x.count(enc.toStandardNumeric(ch), count) }
+        this.counter.foreach { case (ch, count) => x.count(enc.toStandardNumeric(ch).toInt, count) }
         (enc, math.abs(x.mean() - q))
       }.sortBy(_._2).map(_._1)
     }
+  }
+}
+
+/** Companion object for [[QualityEncodingDetector]]. */
+object QualityEncodingDetector {
+
+  /** The default number of scores to count when sampling for quality encoding detection. */
+  val DefaultScoresCount: Int = 100_000
+
+  /** Determine the most likely (ranked) encodings of a collection of FASTQ records.
+   *
+   * @param fastqs an iterable of FASTQ records
+   * @param count the number of quality scores (not strings!) to attempt to sample
+   * @param q the quality score to rank the list of compatible encodings by which is closest to that quality score
+   */
+  def encodingsOf(fastqs: Iterable[FastqRecord], count: Int = DefaultScoresCount, q: Int = 30): Seq[QualityEncoding] = {
+    val detector = new QualityEncodingDetector()
+    detector.sample(fastqs, count=count)
+    detector.rankedCompatibleEncodings(q=q)
   }
 }

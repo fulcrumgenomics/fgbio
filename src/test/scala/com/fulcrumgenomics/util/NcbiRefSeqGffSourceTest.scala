@@ -24,12 +24,12 @@
 
 package com.fulcrumgenomics.util
 
-import java.nio.file.Paths
-
 import com.fulcrumgenomics.fasta.{SequenceDictionary, SequenceMetadata}
 import com.fulcrumgenomics.testing.UnitSpec
 import com.fulcrumgenomics.util.GeneAnnotations.Exon
 import org.scalatest.OptionValues
+
+import java.nio.file.Paths
 
 class NcbiRefSeqGffSourceTest extends UnitSpec with OptionValues {
   // Excerpted from https://ftp.ncbi.nlm.nih.gov/genomes/refseq/vertebrate_mammalian/Homo_sapiens/latest_assembly_versions/GCF_000001405.39_GRCh38.p13/GCF_000001405.39_GRCh38.p13_genomic.gff.gz

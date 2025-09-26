@@ -24,19 +24,18 @@
 
 package com.fulcrumgenomics.vcf
 
-import java.util
-
 import com.fulcrumgenomics.FgBioDef._
 import com.fulcrumgenomics.cmdline.{ClpGroups, FgBioTool}
+import com.fulcrumgenomics.sopt._
 import com.fulcrumgenomics.util.Io
 import com.fulcrumgenomics.vcf.MakeTwoSampleMixtureVcf._
-import com.fulcrumgenomics.sopt._
 import htsjdk.samtools.util.IntervalList
 import htsjdk.variant.variantcontext._
-import htsjdk.variant.vcf.{VCFFilterHeaderLine, _}
+import htsjdk.variant.vcf._
 
-import scala.jdk.CollectionConverters._
+import java.util
 import scala.collection.mutable.ListBuffer
+import scala.jdk.CollectionConverters._
 
 object MakeTwoSampleMixtureVcf {
   val AlleleFractionField = "AF"
@@ -146,7 +145,7 @@ class MakeTwoSampleMixtureVcf
         }
 
         val gts = Seq(Some(newTumorGt), newNormalGt).flatten
-        val builder = new VariantContextBuilder(ctx.getSource, ctx.getContig, ctx.getStart(), ctx.getEnd(), ctx.getAlleles)
+        val builder = new VariantContextBuilder(ctx.getSource, ctx.getContig, ctx.getStart.toLong, ctx.getEnd.toLong, ctx.getAlleles)
         builder.id(ctx.getID)
         builder.genotypes(gts.asJavaCollection)
 

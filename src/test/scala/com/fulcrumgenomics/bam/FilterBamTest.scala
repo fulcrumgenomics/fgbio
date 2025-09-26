@@ -25,10 +25,10 @@
 package com.fulcrumgenomics.bam
 
 import com.fulcrumgenomics.bam.api.{SamOrder, SamSource}
-import com.fulcrumgenomics.testing.{SamBuilder, UnitSpec}
-import htsjdk.samtools.util.{Interval, IntervalList}
 import com.fulcrumgenomics.commons.CommonsDef._
 import com.fulcrumgenomics.testing.SamBuilder.{Minus, Plus}
+import com.fulcrumgenomics.testing.{SamBuilder, UnitSpec}
+import htsjdk.samtools.util.{Interval, IntervalList}
 
 class FilterBamTest extends UnitSpec {
   def newBam: PathToBam = makeTempFile("filter_bam_test.", ".bam")
@@ -67,9 +67,12 @@ class FilterBamTest extends UnitSpec {
 
   it should "remove all but the 'ok' records" in {
     val out = newBam
-    new FilterBam(input=builder.toTempFile(), output=out, minMapQ=10).execute()
+    val rejects = newBam
+    new FilterBam(input=builder.toTempFile(), output=out, rejects=Some(rejects), minMapQ=10).execute()
     val recs = readBamRecs(out)
     recs.map(_.name) should contain theSameElementsAs builder.filter(_.name.startsWith("ok_")).toSeq.map(_.name)
+    val rejectRecs = readBamRecs(rejects)
+    rejectRecs.map(_.name) should contain theSameElementsAs builder.filterNot(_.name.startsWith("ok_")).toSeq.map(_.name)
   }
 
   it should "remove just the unmapped records" in {

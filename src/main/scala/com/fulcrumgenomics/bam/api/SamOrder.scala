@@ -28,8 +28,6 @@ import com.fulcrumgenomics.umi.ConsensusTags
 import htsjdk.samtools.SAMFileHeader.{GroupOrder, SortOrder}
 import htsjdk.samtools.util.Murmur3
 import htsjdk.samtools.{SAMFileHeader, SAMUtils}
-import org.apache.commons.math3.genetics.RandomKey
-
 
 /** Trait for specifying BAM orderings. */
 sealed trait SamOrder extends Product {

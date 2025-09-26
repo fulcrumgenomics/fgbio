@@ -26,8 +26,6 @@
 package com.fulcrumgenomics.util
 
 
-import java.io.{Closeable, File, InputStream}
-
 import com.fulcrumgenomics.FgBioDef.{PathToIntervals, yieldAndThen}
 import com.fulcrumgenomics.commons.CommonsDef.BetterBufferedIteratorScalaWrapper
 import com.fulcrumgenomics.commons.util.StringUtil
@@ -35,7 +33,9 @@ import com.fulcrumgenomics.fasta.SequenceDictionary
 import htsjdk.samtools.util.{BufferedLineReader, Interval, IntervalList}
 import htsjdk.samtools.{SAMFileHeader, SAMTextHeaderCodec}
 
+import java.io.{Closeable, File, InputStream}
 import scala.io.Source
+import scala.language.reflectiveCalls
 
 object IntervalListSource {
 
@@ -88,7 +88,7 @@ class IntervalListSource private(lines: Iterator[String],
 
   require(this.dict.nonEmpty, "No reference sequences found in the header.")
 
-  /** The [[SequenceDictionary]] associated with the source. */
+  /** The [[com.fulcrumgenomics.fasta.SequenceDictionary]] associated with the source. */
   lazy val dict: SequenceDictionary = {
     import com.fulcrumgenomics.fasta.Converters.FromSAMSequenceDictionary
     this.header.getSequenceDictionary.fromSam
@@ -127,8 +127,7 @@ class IntervalListSource private(lines: Iterator[String],
 
   /** Reads in the intervals into an [[htsjdk.samtools.util.IntervalList]] */
   def toIntervalList: IntervalList = {
-    import com.fulcrumgenomics.fasta.Converters.ToSAMSequenceDictionary
-    val list = new IntervalList(dict.asSam)
+    val list = new IntervalList(dict.toSam)
     this.foreach { list.add }
     list
   }

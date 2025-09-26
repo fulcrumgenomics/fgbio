@@ -24,10 +24,7 @@
 
 package com.fulcrumgenomics.math
 
-import java.math.MathContext
-
 import com.fulcrumgenomics.testing.UnitSpec
-import com.fulcrumgenomics.commons.CommonsDef._
 import com.fulcrumgenomics.util.NumericTypes.LogProbability
 import org.apache.commons.math3.distribution.{BinomialDistribution => CommonsBinomial}
 

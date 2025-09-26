@@ -27,7 +27,7 @@ package com.fulcrumgenomics.internal
 import com.fulcrumgenomics.FgBioDef._
 import com.fulcrumgenomics.commons.util.LazyLogging
 import com.fulcrumgenomics.sopt.Sopt
-import com.fulcrumgenomics.sopt.Sopt.{CommandSuccess, Failure, SubcommandSuccess}
+import com.fulcrumgenomics.sopt.Sopt.{CommandSuccess, Failure}
 
 /** Trait for internal tools to extends. */
 trait InternalTool extends LazyLogging {

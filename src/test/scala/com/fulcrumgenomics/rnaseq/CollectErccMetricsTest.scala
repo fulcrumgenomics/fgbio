@@ -25,8 +25,6 @@
 
 package com.fulcrumgenomics.rnaseq
 
-import java.nio.file.Files
-
 import com.fulcrumgenomics.commons.CommonsDef.{FilePath, PathPrefix}
 import com.fulcrumgenomics.commons.io.{Io, PathUtil}
 import com.fulcrumgenomics.commons.util.DelimitedDataParser
@@ -35,6 +33,7 @@ import com.fulcrumgenomics.testing.{SamBuilder, UnitSpec}
 import com.fulcrumgenomics.util.{Metric, Rscript}
 import org.scalatest.OptionValues
 
+import java.nio.file.Files
 import scala.collection.mutable.ListBuffer
 import scala.io.Source
 
@@ -69,11 +68,11 @@ class CollectErccMetricsTest extends UnitSpec with OptionValues {
     val path = makeTempFile("CollectErccMetricsTest.", ".tab")
     val lines = Seq(
       Seq("Id", "Concentration"),
-      Seq("ERCC-00001", 1),
-      Seq("ERCC-00002", 2),
-      Seq("ERCC-00003", 4),
-      Seq("ERCC-00004", 8),
-      Seq("ERCC-00005", 16)
+      Seq("ERCC-00001", 1.toString),
+      Seq("ERCC-00002", 2.toString),
+      Seq("ERCC-00003", 4.toString),
+      Seq("ERCC-00004", 8.toString),
+      Seq("ERCC-00005", 16.toString)
     ).map(_.mkString("\t"))
     Io.writeLines(path, lines)
     path
@@ -115,12 +114,12 @@ class CollectErccMetricsTest extends UnitSpec with OptionValues {
       val path = makeTempFile("CollectErccMetricsTest.", ".tab")
       val lines = Seq(
         Seq("Id", "Concentration"),
-        Seq("ERCC-00001", 1),
-        Seq("ERCC-00002", 2),
-        Seq("ERCC-00003", 4),
-        Seq("ERCC-00004", 8),
-        Seq("ERCC-00005", 16),
-        Seq("ERCC-00006", 32) // an extra ERCC
+        Seq("ERCC-00001", 1.toString),
+        Seq("ERCC-00002", 2.toString),
+        Seq("ERCC-00003", 4.toString),
+        Seq("ERCC-00004", 8.toString),
+        Seq("ERCC-00005", 16.toString),
+        Seq("ERCC-00006", 32.toString) // an extra ERCC
       ).map(_.mkString("\t"))
       Io.writeLines(path, lines)
       path

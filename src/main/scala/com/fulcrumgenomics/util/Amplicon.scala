@@ -30,14 +30,14 @@ import htsjdk.samtools.util.{CoordMath, OverlapDetector}
 
 /** Convenience methods for [[Amplicon]] */
 object Amplicon {
-  /** Builds a [[OverlapDetector]] for the given amplicons. */
+  /** Builds a [[htsjdk.samtools.util.OverlapDetector]] for the given amplicons. */
   def overlapDetector(amplicons: Iterator[Amplicon]): OverlapDetector[Amplicon] = {
     val detector = new OverlapDetector[Amplicon](0,0)
     amplicons.foreach(amp => detector.addLhs(amp, amp))
     detector
   }
 
-  /** Builds a [[OverlapDetector]] for the given file of amplicons. */
+  /** Builds a [[htsjdk.samtools.util.OverlapDetector]] for the given file of amplicons. */
   def overlapDetector(path: FilePath): OverlapDetector[Amplicon] = {
     Amplicon.overlapDetector(amplicons=Metric.iterator[Amplicon](path))
   }
@@ -69,13 +69,13 @@ case class Amplicon
   require(rightStart == -1 || rightStart <= rightEnd, f"rightStart is > rightEnd: $this")
   require(leftStart == -1 || rightStart == -1 || leftStart <= rightStart, f"leftStart is > rightStart: $this")
 
-  @inline def leftStart: Int  = left_start
-  @inline def leftEnd: Int    = left_end
-  @inline def rightStart: Int = right_start
-  @inline def rightEnd: Int   = right_end
-  @inline def contig: String  = chrom
-  @inline def start: Int      = if (leftStart == -1) rightStart else leftStart
-  @inline def end: Int        = if (rightEnd == -1) leftEnd else rightEnd
+  @inline final def leftStart: Int  = left_start
+  @inline final def leftEnd: Int    = left_end
+  @inline final def rightStart: Int = right_start
+  @inline final def rightEnd: Int   = right_end
+  @inline final def contig: String  = chrom
+  @inline final def start: Int      = if (leftStart == -1) rightStart else leftStart
+  @inline final def end: Int        = if (rightEnd == -1) leftEnd else rightEnd
 
   def leftPrimerLength: Int       = CoordMath.getLength(leftStart, leftEnd)
   def rightPrimerLength: Int      = CoordMath.getLength(rightStart, rightEnd)

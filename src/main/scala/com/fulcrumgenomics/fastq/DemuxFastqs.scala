@@ -74,8 +74,8 @@ object DemuxFastqs {
 
   /** Gets the quality format of the FASTQs. If a format is given, checks that the given format is compatible. */
   private def determineQualityFormat(fastqs: Seq[PathToFastq],
-                                     format: Option[QualityEncoding] = None,
-                                     logger: Option[Logger] = None): QualityEncoding = {
+                                     format: Option[QualityEncoding],
+                                     logger: Option[Logger]): QualityEncoding = {
     val detector = new QualityEncodingDetector
     detector.sample(fastqs.iterator.flatMap(FastqSource(_)).map(_.quals))
 
@@ -136,7 +136,7 @@ object DemuxFastqs {
   /** Creates a demultiplexing iterator that performs demultiplexing in parallel.
     *
     * @param sources the FASTQ sources, one per read.
-    * @param demultiplexer the demultiplexer to use.  The demultiplexer's [[com.fulcrumgenomics.fastq.FastqDemultiplexer.demultiplex()]]
+    * @param demultiplexer the demultiplexer to use.  The demultiplexer's `demultiplex`
     *                      method expects the same number of reads as sources.
     */
   def demultiplexingIterator(sources: Seq[FastqSource],
@@ -167,7 +167,7 @@ object DemuxFastqs {
             .parWith(pool=pool)
             .map { readRecords =>
                 demultiplexer.demultiplex(readRecords: _*)
-                    .maskLowQualityBases(minBaseQualityForMasking=maskingThresholdToByte, qualityEncoding=qualityEncoding, omitFailingReads=omitFailingReads)
+                    .maskLowQualityBases(minBaseQualityForMasking=maskingThresholdToByte, qualityEncoding=qualityEncoding)
             }
             .seq
         }
@@ -175,7 +175,7 @@ object DemuxFastqs {
     else {
       zippedIterator
         .map { readRecords => demultiplexer.demultiplex(readRecords: _*)
-          .maskLowQualityBases(minBaseQualityForMasking=maskingThresholdToByte, qualityEncoding=qualityEncoding, omitFailingReads=omitFailingReads) }
+          .maskLowQualityBases(minBaseQualityForMasking=maskingThresholdToByte, qualityEncoding=qualityEncoding) }
     }
 
     resultIterator.map { res =>
@@ -201,6 +201,8 @@ object DemuxFastqs {
   description =
     """
       |Performs sample demultiplexing on FASTQs.
+      |
+      |**Please see https://github.com/fulcrumgenomics/fqtk for a faster and supported replacement**
       |
       |The sample barcode for each sample in the sample sheet will be compared against the sample barcode bases extracted from
       |the FASTQs, to assign each read to a sample.  Reads that do not match any sample within the given error tolerance
@@ -234,7 +236,7 @@ object DemuxFastqs {
       |If multiple FASTQs are present for each sub-read, then the FASTQs for each sub-read should be concatenated together
       |prior to running this tool (ex. `cat s_R1_L001.fq.gz s_R1_L002.fq.gz > s_R1.fq.gz`).
       |
-      |(Read structures)[https://github.com/fulcrumgenomics/fgbio/wiki/Read-Structures] are made up of `<number><operator>`
+      |[Read structures](https://github.com/fulcrumgenomics/fgbio/wiki/Read-Structures) are made up of `<number><operator>`
       |pairs much like the `CIGAR` string in BAM files. Four kinds of operators are recognized:
       |
       |1. `T` identifies a template read
@@ -310,12 +312,11 @@ object DemuxFastqs {
       |
       |[See the Illumina FASTQ conventions for more details.](https://support.illumina.com/help/BaseSpace_OLH_009008/Content/Source/Informatics/BS/FASTQFiles_Intro_swBS.htm)
       |
-      |The `--illumina-standards` option may not be specified with the three options above.  Use this option if you
-      |intend to upload to Illumina BaseSpace.  This option implies:
+      |Use the following options to upload to Illumina BaseSpace:
       |
       |`--omit-fastq-read-numbers=true --include-sample-barcodes-in-fastq=false --illumina-file-names=true`
       |
-      |[See the Illumina Basespace standards described here](https://help.basespace.illumina.com/articles/tutorials/upload-data-using-web-uploader/).
+      |[See the Illumina BaseSpace standards described here](https://help.basespace.illumina.com/articles/tutorials/upload-data-using-web-uploader/).
       |
       |To output with recent Illumina conventions (circa 2021) that match `bcl2fastq` and `BCLconvert`, use:
       |
@@ -364,15 +365,11 @@ class DemuxFastqs
         and read two) as defined by the corresponding read structure(s).
      """)
  val includeAllBasesInFastqs: Boolean = false,
- @deprecated(message="Use outputStandards instead", since="1.3.0")
- @arg(doc="Output FASTQs according to Illumina BaseSpace Sequence Hub naming standards.  This is differfent than Illumina naming standards.",
-   mutex=Array("omitFastqReadNumbers", "includeSampleBarcodesInFastq", "illuminaFileNames"))
- val illuminaStandards: Boolean = false,
- @arg(doc="Do not include trailing /1 or /2 for R1 and R2 in the FASTQ read name.", mutex=Array("illuminaStandards"))
+ @arg(doc="Do not include trailing /1 or /2 for R1 and R2 in the FASTQ read name.")
  val omitFastqReadNumbers: Boolean = false,
- @arg(doc="Insert the sample barcode into the FASTQ header.", mutex=Array("illuminaStandards"))
+ @arg(doc="Insert the sample barcode into the FASTQ header.")
  val includeSampleBarcodesInFastq: Boolean = false,
- @arg(doc="Name the output files according to the Illumina file name standards.", mutex=Array("illuminaStandards"))
+ @arg(doc="Name the output files according to the Illumina file name standards.")
  val illuminaFileNames: Boolean = false,
  @arg(doc="Keep only passing filter reads if true, otherwise keep all reads. Passing filter reads are determined from the comment in the FASTQ header.")
  val omitFailingReads: Boolean = false,
@@ -381,21 +378,12 @@ class DemuxFastqs
  @arg(doc="Mask bases with a quality score below the specified threshold as Ns") val maskBasesBelowQuality: Int = 0,
 ) extends FgBioTool with LazyLogging {
 
-  // Support the deprecated --illumina-standards option
   private val fastqStandards: FastqStandards = {
-    if (illuminaStandards) {
-      logger.warning("The `--illumina-standards` option will be removed in a future version, please use `--output-standards=Illumina`")
-      // NB: include read numbers
-      FastqStandards(
-        illuminaFileNames     = true
-      )
-    } else {
-      FastqStandards(
-        includeReadNumbers    = !omitFastqReadNumbers,
-        includeSampleBarcodes = includeSampleBarcodesInFastq,
-        illuminaFileNames     = illuminaFileNames
-      )
-    }
+    FastqStandards(
+      includeReadNumbers    = !omitFastqReadNumbers,
+      includeSampleBarcodes = includeSampleBarcodesInFastq,
+      illuminaFileNames     = illuminaFileNames
+    )
   }
 
   import DemuxFastqs._
@@ -712,8 +700,7 @@ private[fastq] object FastqDemultiplexer {
       * @return a new DemuxResult with updated bases
       */
     def maskLowQualityBases(minBaseQualityForMasking: Byte,
-                            qualityEncoding: QualityEncoding,
-                            omitFailingReads: Boolean): DemuxResult = { // using this.type here causes a mismatch error
+                            qualityEncoding: QualityEncoding): DemuxResult = { // using this.type here causes a mismatch error
       val records = if (minBaseQualityForMasking <= 0) this.records else {
         this.records.map(_.maskLowQualityBases(minBaseQualityForMasking = minBaseQualityForMasking,
                                                qualityEncoding          = qualityEncoding)
@@ -817,6 +804,7 @@ private class FastqDemultiplexer(val sampleInfos: Seq[SampleInfo],
         case Nil                              => (this.unmatchedSample, Int.MaxValue, Int.MaxValue)
         case List(bestTuple)                  => (bestTuple._1, bestTuple._2, Int.MaxValue)
         case List(bestTuple, secondBestTuple) => (bestTuple._1, bestTuple._2, secondBestTuple._2)
+        case _ => unreachable("Only up to two elements must exist in the above expression!")
       }
     }
     else {
@@ -913,7 +901,7 @@ object OutputType extends FgBioEnum[OutputType] {
   */
 case class ReadInfo(readNumber: Int, passQc: Boolean, internalControl: Boolean, sampleInfo: String, rest: Seq[String]) {
   override def toString: String = {
-    val leading = f"$readNumber:${if (passQc) "Y" else "N"}:${if (internalControl) 1 else 0}:$sampleInfo"
+    val leading = f"$readNumber:${if (passQc) "N" else "Y"}:${if (internalControl) 1 else 0}:$sampleInfo"
     if (rest.isEmpty) leading else leading + " " + rest.mkString(" ")
   }
 }
@@ -924,7 +912,7 @@ object ReadInfo {
   /** Builds the [[ReadInfo]] by parsing a [[FastqRecord]]. */
   def apply(rec: FastqRecord): ReadInfo = this(rec.name, rec.comment.getOrElse(reject(rec.name)))
 
-  /** Builds the [[ReadInfo]] by parsing a [[DemuxRecord]]. */
+  /** Builds the [[ReadInfo]] by parsing a `DemuxRecord`. */
   def apply(rec: DemuxRecord): ReadInfo = this(rec.name, rec.comment.getOrElse(reject(rec.name)))
 
   /** Builds the [[ReadInfo]] by parsing a standard input FASTQ. */
@@ -961,7 +949,7 @@ object ReadInfo {
   * @param includeSampleBarcodes update the sample barcode in the comment of the FASTQ header
   * @param illuminaFileNames the output FASTQ file names should follow Illumina standards
   */
-private case class FastqStandards
+private[fastq] case class FastqStandards
 ( includeReadNumbers: Boolean    = false,
   includeSampleBarcodes: Boolean = false,
   illuminaFileNames: Boolean     = false

@@ -36,7 +36,7 @@ import htsjdk.samtools.SAMFileHeader.{GroupOrder, SortOrder}
 import htsjdk.samtools.SamPairUtil.PairOrientation
 import htsjdk.samtools._
 import htsjdk.samtools.reference.ReferenceSequence
-import htsjdk.samtools.util.{CloserUtil, CoordMath, SequenceUtil}
+import htsjdk.samtools.util.{CloserUtil, CoordMath, Murmur3, SequenceUtil}
 
 import java.io.Closeable
 import scala.math.{max, min}
@@ -90,7 +90,7 @@ case class Template(r1: Option[SamRecord],
     val x2 = r2.map(_.clone())
     Seq(x1, x2).flatten.foreach { r =>
       if (r.mapped) {
-        val nm = r.get[Int]("NM").getOrElse("")
+        val nm = r.get[Int]("NM").map(_.toString).getOrElse("")
         r("OA") = s"${r.refName},${r.start},${if (r.positiveStrand) "+" else "-"},${r.cigar},${r.mapq},$nm"
       }
       SAMUtils.makeReadUnmapped(r.asSam)
@@ -105,16 +105,21 @@ case class Template(r1: Option[SamRecord],
     Template(x1, x2)
   }
 
-  /** Fixes mate information and sets mate cigar on all primary and supplementary (but not secondary) records. */
+  /** Fixes mate information and sets mate cigar and mate score on all primary and supplementary (but not secondary) records. */
   def fixMateInfo(): Unit = {
+    // Developer note: the mate score ("ms") tag is used by samtools markdup
     for (primary <- r1; supp <- r2Supplementals) {
       SamPairUtil.setMateInformationOnSupplementalAlignment(supp.asSam, primary.asSam, true)
+      primary.get[Int]("AS").foreach(supp("ms") = _)
     }
     for (primary <- r2; supp <- r1Supplementals) {
       SamPairUtil.setMateInformationOnSupplementalAlignment(supp.asSam, primary.asSam, true)
+      primary.get[Int]("AS").foreach(supp("ms") = _)
     }
     for (first <- r1; second <- r2) {
       SamPairUtil.setMateInfo(first.asSam, second.asSam, true)
+      first.get[Int]("AS").foreach(second("ms") = _)
+      second.get[Int]("AS").foreach(first("ms") = _)
     }
   }
 
@@ -320,11 +325,10 @@ object Bams extends LazyLogging {
 
   /** Return an iterator over records sorted and grouped into [[Template]] objects. Although a queryname sort is
     * guaranteed, the sort order may not be consistent with other queryname sorting implementations, especially in other
-    * tool kits. See [[templateIterator]] for a [[Template]] iterator which emits templates in a non-guaranteed sort
-    * order.
+    * tool kits.
     *
-    * @see [[templateIterator]]
-    *
+    * @see [[templateIterator(in:com\.fulcrumgenomics\.bam\.api\.SamSource,maxInMemory:Int,tmpDir:com\.fulcrumgenomics\.FgBioDef\.DirPath):com\.fulcrumgenomics\.commons\.collection\.SelfClosingIterator[com\.fulcrumgenomics\.bam\.Template]*]]
+    *      for a [[Template]] iterator which emits templates in a non-guaranteed sort order.
     * @param in a SamReader from which to consume records
     * @param maxInMemory the maximum number of records to keep and sort in memory, if sorting is needed
     * @param tmpDir a temp directory to use for temporary sorting files if sorting is needed
@@ -338,11 +342,10 @@ object Bams extends LazyLogging {
 
   /** Return an iterator over records sorted and grouped into [[Template]] objects. Although a queryname sort is
     * guaranteed, the sort order may not be consistent with other queryname sorting implementations, especially in other
-    * tool kits. See [[templateIterator]] for a [[Template]] iterator which emits templates in a non-guaranteed sort
-    * order.
+    * tool kits.
     *
-    * @see [[templateIterator]]
-    *
+    * @see [[templateIterator(in:com\.fulcrumgenomics\.bam\.api\.SamSource,maxInMemory:Int,tmpDir:com\.fulcrumgenomics\.FgBioDef\.DirPath):com\.fulcrumgenomics\.commons\.collection\.SelfClosingIterator[com\.fulcrumgenomics\.bam\.Template]*]]
+    *      for a [[Template]] iterator which emits templates in a non-guaranteed sort order.
     * @param iterator an iterator from which to consume records
     * @param header the header associated with the records
     * @param maxInMemory the maximum number of records to keep and sort in memory, if sorting is needed
@@ -366,6 +369,39 @@ object Bams extends LazyLogging {
     new SelfClosingIterator(_iterator, () => queryIterator.close())
   }
 
+  /** Returns an iterator over records, grouped into [[Template]] objects, in a random order. Reads are first
+    * sorted based on a hash of their read name in order to randomize the order while collating by read name.
+    * The randomized reads are then iterated and grouped into [[Template]] objects.
+    *
+    * @param in the [[com.fulcrumgenomics.bam.api.SamSource]] from which to pull reads and the SAM header
+    * @param randomSeed a seed used to generate the hashes that drive the random sorting.  Different seeds will produce
+    *                   different randomizations of the reads.  Using the same seed will result in the same ordering
+    *                   of the data across invocations.
+    * @param maxInMemory the maximum number of records to keep and sort in memory, if sorting is needed
+    * @param tmpDir a temp directory to use for temporary sorting files if sorting is needed
+    */
+  def templateRandomIterator(in: SamSource,
+                             randomSeed: Int = 42,
+                             maxInMemory: Int = Bams.MaxInMemory,
+                             tmpDir: DirPath = Io.tmpDir): Iterator[Template] = {
+    val hasher = new Murmur3(randomSeed)
+    val sorter = {
+      val f = (r: SamRecord) => SamOrder.RandomQueryKey(hasher.hashUnencodedChars(r.name), r.name, r.asSam.getFlags)
+      new Sorter(maxInMemory, new SamRecordCodec(in.header), f)
+    }
+
+    val sortProgress = ProgressLogger(logger, verb = "sorted", unit = 5e6.toInt)
+    in.foreach { rec =>
+      sorter += rec
+      sortProgress.record()
+    }
+
+    val header = in.header.clone()
+    SamOrder.RandomQuery.applyTo(header)
+    Bams.templateIterator(sorter.iterator, header, maxInMemory, tmpDir)
+  }
+
+
   /** Returns an iterator over the records in the given iterator such that the order of the records returned is
     * determined by the value of the given SAM tag, which can optionally be transformed.
     *
@@ -376,9 +412,9 @@ object Bams extends LazyLogging {
     * @param tag the SAM tag (two-letter key) to sort by
     * @param defaultValue the default value, if any, otherwise require all records to have the SAM tag.
     * @param transform the transform to apply to the value of the SAM tags (default is the identity)
-    * @param ordering the ordering of [[B]].
+    * @param ordering the ordering of `B`.
     * @tparam A the type of the SAM tag
-    * @tparam B the type of the SAM tag after any transformation, or just [[A]] if no transform is given.
+    * @tparam B the type of the SAM tag after any transformation, or just `A` if no transform is given.
     * @return an Iterator over records sorted by the given SAM tag, optionally transformed.
     */
   def sortByTransformedTag[A, B](iterator: Iterator[SamRecord],
@@ -410,7 +446,7 @@ object Bams extends LazyLogging {
     * @param tmpDir the temporary directory to use when spilling to disk
     * @param tag the SAM tag (two-letter key) to sort by
     * @param defaultValue the default value, if any, otherwise require all records to have the SAM tag.
-    * @param ordering the ordering of [[A]].
+    * @param ordering the ordering of `A`.
     * @tparam A the type of the SAM tag
     * @return an Iterator over records sorted by the given SAM tag.
     */
@@ -509,8 +545,8 @@ object Bams extends LazyLogging {
     )
   }
 
-  /** Builds a [[Writer]] of [[SamRecord]]s that regenerates the NM, UQ, and MD tags using the given map of reference
-    * sequences.
+  /** Builds a [[com.fulcrumgenomics.commons.io.Writer]] of [[com.fulcrumgenomics.bam.api.SamRecord]]s that regenerates
+    * the NM, UQ, and MD tags using the given map of reference sequences.
     *
     * @param writer the writer to write to
     * @param ref the path to the reference FASTA

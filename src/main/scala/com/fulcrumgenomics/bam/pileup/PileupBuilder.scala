@@ -61,7 +61,15 @@ object PileupBuilder {
     /** Allow records flagged as supplementary alignments to contribute to a pileup by default. */
     val includeSupplementalAlignments: Boolean = false
 
-    /** Exclude any record of an FR pair where the site requested is outside the insert by default. */
+    /** For FR pairs only, determine if we should keep the pair of reads if the site requested is outside of the
+      * insert. By default this filter is set to <false> which means for FR pairs where R1 and R2 overlap each other
+      * and *extend* past the start coordinates of their mate, the pair will be filtered out if the position requested
+      * overlaps the end of either read in the span that is beyond the start coordinate of the read's mate.
+      *
+      * See the following GitHub issue comment for a visualization of when this filter applies:
+      *
+      * - https://github.com/fulcrumgenomics/fgbio/issues/980#issuecomment-2075049301
+      */
     val includeMapPositionsOutsideFrInsert: Boolean = false
   }
 
@@ -82,7 +90,7 @@ object PileupBuilder {
     case object Streaming extends BamAccessPattern
   }
 
-  /** Build a [[PileupBuilder]] from a [[SamSource]]. */
+  /** Build a [[PileupBuilder]] from a [[com.fulcrumgenomics.bam.api.SamSource]]. */
   def apply(
     source: SamSource,
     accessPattern: BamAccessPattern             = RandomAccess,
@@ -116,14 +124,11 @@ object PileupBuilder {
     )
   }
 
-  /** Returns true if <rec> is in a mapped FR pair but the position <pos> is outside the insert coordinates of <rec>.
-    * Returns false if <rec> is in a mapped FR pair and the position <pos> is inside the insert coordinates of <rec> or
-    * <rec> is not in a mapped FR pair.
-    */
-  private def positionIsOutsideFrInsert(rec: SamRecord, refIndex: Int, pos: Int): Boolean = {
-    rec.isFrPair && {
+  /** Returns true if <rec> is in a mapped FR pair and the position <pos> is inside the insert coordinates of <rec>. */
+  private def positionIsInsideFrInsert(rec: SamRecord, refIndex: Int, pos: Int): Boolean = {
+    refIndex == rec.refIndex && rec.isFrPair && {
       val (start, end) = Bams.insertCoordinates(rec)
-      rec.refIndex == refIndex && pos >= start && pos <= end
+      pos >= start && pos <= end
     }
   }
 
@@ -201,7 +206,7 @@ trait PileupBuilder extends PileupParameters {
         if (compare) compare = rec.end >= pos
         if (compare) compare = rec.start <= pos || PileupBuilder.startsWithInsertion(rec)
         if (compare) compare = if (!includeMapPositionsOutsideFrInsert && rec.isFrPair) {
-          PileupBuilder.positionIsOutsideFrInsert(rec, refIndex = refIndex, pos = pos)
+          PileupBuilder.positionIsInsideFrInsert(rec, refIndex = refIndex, pos = pos)
         } else { compare }
         compare
       }
@@ -215,8 +220,8 @@ trait PileupBuilder extends PileupParameters {
             testAndAdd(DeletionEntry(rec, deletionPosition - 1))
           } else { // This site must be a matched site within the read.
             testAndAdd(BaseEntry(rec, offset - 1))
-            // Also check to see if the subsequent base represents an insertion.
-            if (offset < rec.length - 1 && rec.refPosAtReadPos(offset + 1) == 0) testAndAdd(InsertionEntry(rec, offset))
+            // Also check to see if any subsequent base represents an insertion.
+            if (rec.end > pos && rec.refPosAtReadPos(offset + 1) == 0) testAndAdd(InsertionEntry(rec, offset))
           }
         }
       }

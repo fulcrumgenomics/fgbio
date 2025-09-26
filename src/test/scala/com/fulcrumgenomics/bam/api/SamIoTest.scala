@@ -73,7 +73,7 @@ class SamIoTest extends UnitSpec {
   it should "sort to disk and read records back" in {
     val builder = new SamBuilder(sort=None)
     val random  = new Random(42)
-    Range.inclusive(1, 1000).foreach { i =>
+    Range.inclusive(1, 1000).foreach { _ =>
       builder.addPair(contig=random.nextInt(23), start1=random.nextInt(1000000), start2=random.nextInt(1000000))
     }
 
@@ -95,7 +95,7 @@ class SamIoTest extends UnitSpec {
     mkfifo.exitValue() shouldBe 0
 
     val builder = new SamBuilder(readLength=100)
-    forloop (from=1, until=5001) { i => builder.addFrag(name=s"q$i", contig=0, start=i) }
+    val _ = forloop (from=1, until=5001) { i => val _ = builder.addFrag(name=s"q$i", contig=0, start=i) }
 
     // Figure up an executor to pump data into the pipe
     val exec = Executors.newSingleThreadExecutor()
@@ -150,7 +150,7 @@ class SamIoTest extends UnitSpec {
     var filterCount: Int = 0
     var mapCount: Int = 0
 
-    val xs = source.filter { r =>
+    val xs = source.filter { _ =>
       filterCount += 1
       true
     }.map { r =>
@@ -188,5 +188,32 @@ class SamIoTest extends UnitSpec {
     source.indexed shouldBe false
     source.toSeq.map(_.start) should contain theSameElementsInOrderAs Seq(100, 200, 300, 300, 400, 400, 500, 600)
     source.close()
+  }
+
+  "SamSource.query" should "query a BAM, accounting for queries before and after the contig start and end" in {
+      val queryType = QueryType.Overlapping
+      val builder = new SamBuilder(readLength=10, baseQuality=20, sort=Some(SamOrder.Coordinate))
+      Range(0, 10).foreach { _ => builder.addFrag(start=100) }
+      val source = builder.toSource
+
+      // test a query before the contig start
+      source.query("chr1", 0, 1000, queryType).length shouldBe 10
+      source.query("chr1", -100, 1000, queryType).length shouldBe 10
+
+      // test a query after the contig end
+      val contigEnd = builder.dict("chr1").length
+      source.query("chr1", 100, contigEnd+1, queryType).length shouldBe 10
+      source.query("chr1", 100, contigEnd+100, queryType).length shouldBe 10
+
+      // test a query both before and after the contig start and end respectively
+      source.query("chr1", -100, contigEnd+100, queryType).length shouldBe 10
+
+      // at the start and end     
+      source.query("chr1", 1, 1000, queryType).length shouldBe 10 
+      source.query("chr1", 100, contigEnd, queryType).length shouldBe 10
+      source.query("chr1", 1, contigEnd, queryType).length shouldBe 10
+
+      // exception when the contig does not exist
+      an[NoSuchElementException] should be thrownBy source.query("contig-does-not-exist", 1, 1000, queryType)
   }
 }

@@ -28,13 +28,12 @@ import com.fulcrumgenomics.FgBioDef._
 import com.fulcrumgenomics.bam.OverlappingBasesConsensusCaller
 import com.fulcrumgenomics.bam.api.{SamOrder, SamSource, SamWriter}
 import com.fulcrumgenomics.cmdline.{ClpGroups, FgBioTool}
-import com.fulcrumgenomics.sopt.clp
 import com.fulcrumgenomics.commons.io.Io
 import com.fulcrumgenomics.commons.util.LazyLogging
 import com.fulcrumgenomics.sopt._
 import com.fulcrumgenomics.umi.VanillaUmiConsensusCallerOptions._
 import com.fulcrumgenomics.util.NumericTypes.PhredScore
-import com.fulcrumgenomics.util.ProgressLogger
+import com.fulcrumgenomics.util.{Metric, ProgressLogger}
 
 @clp(description =
   """
@@ -51,6 +50,11 @@ import com.fulcrumgenomics.util.ProgressLogger
     |Because of the nature of duplex sequencing, this tool does not support fragment reads - if found in the
     |input they are _ignored_.  Similarly, read pairs for which consensus reads cannot be generated for one or
     |other read (R1 or R2) are omitted from the output.
+    |
+    |The consensus reads produced are unaligned, due to the difficulty and error-prone nature of inferring the conesensus
+    |alignment.  Consensus reads should therefore be aligned after, which should not be too expensive as likely there
+    |are far fewer consensus reads than input raw raws.  Please see how best to use this tool within the best-practice
+    |pipeline: https://github.com/fulcrumgenomics/fgbio/blob/main/docs/best-practice-consensus-pipeline.md
     |
     |Consensus reads have a number of additional optional tags set in the resulting BAM file.  The tag names follow
     |a pattern where the first letter (a, b or c) denotes that the tag applies to the first single strand consensus (a),
@@ -93,6 +97,8 @@ import com.fulcrumgenomics.util.ProgressLogger
 class CallDuplexConsensusReads
 (@arg(flag='i', doc="The input SAM or BAM file.") val input: PathToBam,
  @arg(flag='o', doc="Output SAM or BAM file to write consensus reads.") val output: PathToBam,
+ @arg(flag='r', doc="Optional output SAM or BAM file to write reads not used.") val rejects: Option[PathToBam] = None,
+ @arg(flag='s', doc="Optional output text file of key consensus calling statistics.") val stats: Option[FilePath] = None,
  @arg(flag='p', doc="The prefix all consensus read names") val readNamePrefix: Option[String] = None,
  @arg(flag='R', doc="The new read group ID for all the consensus reads.") val readGroupId: String = "A",
  @arg(flag='1', doc="The Phred-scaled error rate for an error prior to the UMIs being integrated.") val errorRatePreUmi: PhredScore = DefaultErrorRatePreUmi,
@@ -112,12 +118,15 @@ class CallDuplexConsensusReads
 
   Io.assertReadable(input)
   Io.assertCanWriteFile(output)
+  rejects.foreach(Io.assertCanWriteFile(_))
+  stats.foreach(Io.assertCanWriteFile(_))
   validate(errorRatePreUmi  > 0, "Phred-scaled error rate pre UMI must be > 0")
   validate(errorRatePostUmi > 0, "Phred-scaled error rate post UMI must be > 0")
 
   override def execute(): Unit = {
     val in = SamSource(input)
     UmiConsensusCaller.checkSortOrder(in.header, input, logger.warning, fail)
+    val rejectsWriter = rejects.map(r => SamWriter(r, in.header))
 
     // Build an iterator for the input reads, which only really matters if calling consensus in overlapping read pairs.
     val inIter = if (!consensusCallOverlappingBases) in.iterator else {
@@ -135,11 +144,12 @@ class CallDuplexConsensusReads
       readNamePrefix      = readNamePrefix.getOrElse(UmiConsensusCaller.makePrefixFromSamHeader(in.header)),
       readGroupId         = readGroupId,
       minInputBaseQuality = minInputBaseQuality,
-      trim                = trim,
+      qualityTrim         = trim,
       errorRatePreUmi     = errorRatePreUmi,
       errorRatePostUmi    = errorRatePostUmi,
       minReads            = minReads,
-      maxReadsPerStrand   = maxReadsPerStrand.getOrElse(VanillaUmiConsensusCallerOptions.DefaultMaxReads)
+      maxReadsPerStrand   = maxReadsPerStrand.getOrElse(VanillaUmiConsensusCallerOptions.DefaultMaxReads),
+      rejectsWriter       = rejectsWriter
     )
     val progress = ProgressLogger(logger, unit=1000000)
     val iterator = new ConsensusCallingIterator(inIter, caller, Some(progress), threads)
@@ -148,6 +158,8 @@ class CallDuplexConsensusReads
 
     in.safelyClose()
     out.close()
+    rejectsWriter.foreach(_.close())
     caller.logStatistics(logger)
+    stats.foreach { path => Metric.write(path, caller.statistics) }
   }
 }

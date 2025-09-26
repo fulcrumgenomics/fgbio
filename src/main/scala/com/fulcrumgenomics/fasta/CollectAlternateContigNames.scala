@@ -34,7 +34,6 @@ import com.fulcrumgenomics.sopt._
 import com.fulcrumgenomics.util.Io
 import enumeratum.EnumEntry
 
-import scala.collection.immutable.IndexedSeq
 import scala.collection.mutable.ListBuffer
 
 /** Trait that entries in AssemblyReportColumn will extend. */
@@ -96,8 +95,9 @@ object SequenceRole extends FgBioEnum[SequenceRole] {
     SequenceRole(roleValue)
   }
 
-  case object AltScaffold         extends SequenceRole { val key: String = "alt-scaffold" }
+  // NB: the order in which these are defined is important for when `--sort-by-sequence-role` is used
   case object AssembledMolecule   extends SequenceRole { val key: String = "assembled-molecule" }
+  case object AltScaffold         extends SequenceRole { val key: String = "alt-scaffold" }
   case object FixPatch            extends SequenceRole { val key: String = "fix-patch" }
   case object NovelPatch          extends SequenceRole { val key: String = "novel-patch" }
   case object UnlocalizedScaffold extends SequenceRole { val key: String = "unlocalized-scaffold" }
@@ -131,9 +131,11 @@ class CollectAlternateContigNames
  @arg(flag='a', doc="The assembly report column(s) for the alternate contig name(s)", minElements=1) val alternates: Seq[AssemblyReportColumn],
  @arg(flag='s', doc="Only output sequences with the given sequence roles.  If none given, all sequences will be output.", minElements=0)
   val sequenceRoles: Seq[SequenceRole] = Seq.empty,
- @arg(flag='d', doc="Update an existing sequence dictionary file.  The primary names must match.") val existing: Option[PathToSequenceDictionary] = None,
+ @arg(flag='d', doc="Update an existing sequence dictionary file.  The primary names must match.", mutex=Array("sortBySequencingRole")) val existing: Option[PathToSequenceDictionary] = None,
  @arg(flag='x', doc="Allow mismatching sequence lengths when using an existing sequence dictionary file.") val allowMismatchingLengths: Boolean = false,
- @arg(doc="Skip contigs that have no alternates") val skipMissingAlternates: Boolean = true
+ @arg(doc="Skip contigs that have no alternates") val skipMissingAlternates: Boolean = true,
+ @arg(doc="Sort by the sequencing role (only when not updating an existing sequence dictionary file).  Uses the order from `--sequence-roles` if provided.", mutex=Array("existing"))
+ val sortBySequencingRole: Boolean = false,
 ) extends FgBioTool with LazyLogging {
 
   import com.fulcrumgenomics.fasta.{AssemblyReportColumn => Column}
@@ -182,7 +184,7 @@ class CollectAlternateContigNames
               None
             case alternate => Some(alternate)
           }
-      }.distinct
+      }.distinct.filter(_ != name)
       if (sequenceRoles.nonEmpty && !this.sequenceRoles.contains(role)) {
         skipReasons += SkipReason(name=name, role=role, msg=s"Skipping contig name '$name' with mismatching sequencing role: $role.")
       }
@@ -213,7 +215,17 @@ class CollectAlternateContigNames
 
     // Apply to an existing sequence dictionary if necessary
     val dict: SequenceDictionary = existing match {
-      case None => SequenceDictionary(metadatas.toSeq:_*)
+      case None if !sortBySequencingRole => SequenceDictionary(metadatas.toSeq:_*)
+      case None =>
+        // Use the user-provided roles, otherwise use all role
+        val roles = (if (sequenceRoles.nonEmpty) sequenceRoles.toIndexedSeq else SequenceRole.values)
+          .zipWithIndex
+          .map { case (role, index) =>  role.key -> index }
+          .toMap
+        val metas = metadatas.toSeq.sortBy { metadata =>
+          metadata.get(Column.SequenceRole.tag).flatMap { name => roles.get(name) }.getOrElse(roles.size)
+        }.zipWithIndex.map { case (metadata, index) => metadata.copy(index=index) }
+        SequenceDictionary(metas:_*)
       case Some(path) =>
         val assemblyReportMetadataMap = metadatas.map { m => (m.name, m) }.toMap
         val updatedMetadatas          = SequenceDictionary(path).map { existingMetadata =>

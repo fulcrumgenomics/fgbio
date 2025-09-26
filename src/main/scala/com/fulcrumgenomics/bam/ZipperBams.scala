@@ -67,7 +67,7 @@ private[bam] object ZipperBams extends LazyLogging {
   /** Checks the source's header declares it is queryname sorted or grouped and logs a warning if not. */
   def checkSort(source: SamSource, path: FilePath, name: String): Unit = {
     if (source.header.getSortOrder != SortOrder.queryname && source.header.getGroupOrder != GroupOrder.query) {
-      logger.warning(s"${name} file ${path} does not appear to be queryname sorted or grouped.")
+      logger.warning(s"${name} file ${path} does not appear to be queryname sorted or grouped per the SAM header.")
       logger.warning(s"Continuing, but your output may be incorrect.")
     }
   }
@@ -87,11 +87,15 @@ private[bam] object ZipperBams extends LazyLogging {
     val header = new SAMFileHeader(dict)
 
     // Copy over comments, RGs and PGs, letting mapped override unmapped if there are conflicts
-    Iterator(unmapped, mapped).foreach { old =>
-      old.getComments.iterator().foreach(header.addComment)
-      old.getReadGroups.iterator().foreach(header.addReadGroup)
-      old.getProgramRecords.iterator().foreach(header.addProgramRecord)
-    }
+    val mappedComments       = mapped.getComments.toSet
+    val mappedReadGroups     = mapped.getReadGroups.toSet
+    val mappedProgramRecords = mapped.getProgramRecords.toSet
+    unmapped.getComments.filterNot(mappedComments.contains).foreach(header.addComment)
+    unmapped.getReadGroups.filterNot(mappedReadGroups.contains).foreach(header.addReadGroup)
+    unmapped.getProgramRecords.filterNot(mappedProgramRecords.contains).foreach(header.addProgramRecord)
+    mapped.getComments.foreach(header.addComment)
+    mapped.getReadGroups.foreach(header.addReadGroup)
+    mapped.getProgramRecords.foreach(header.addProgramRecord)
 
     // Set the sort and group order
     header.setSortOrder(unmapped.getSortOrder)
@@ -241,6 +245,16 @@ class ZipperBams
     }
 
     out.close()
+
+    // There really should be no more mapped reads!
+    if (mappedIter.hasNext) {
+      throw new IllegalStateException(
+        """Error: processed all unmapped reads but there are mapped reads remaining to be read.
+        |Please ensure the unmapped and mapped reads have the same set of read names in the same
+        |order, and reads with the same name are consecutive (grouped) in each input""".stripMargin
+      )
+    }
+    
     unmappedSource.safelyClose()
     mappedSource.safelyClose()
   }

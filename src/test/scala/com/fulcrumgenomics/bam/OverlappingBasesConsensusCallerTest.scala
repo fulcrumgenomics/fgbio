@@ -38,7 +38,7 @@ class OverlappingBasesConsensusCallerTest extends UnitSpec {
 
   private def quals(q: Int, rl: Int): String = (33 + q).toChar.toString*rl
 
-  private val minQual: String = quals(q=PhredScore.MinValue, rl=1)
+  private val minQual: String = quals(q=PhredScore.MinValue.toInt, rl=1)
   private val q10: String = quals(q=10, rl=1)
   private val q20: String = quals(q=20, rl=1)
   private val q30: String = quals(q=30, rl=1)

@@ -24,14 +24,13 @@
 
 package com.fulcrumgenomics.testing
 
-import java.nio.file.Files
-
 import com.fulcrumgenomics.FgBioDef._
 import com.fulcrumgenomics.testing.VcfBuilder.Gt
 import com.fulcrumgenomics.vcf.api.Allele.NoCallAllele
+import com.fulcrumgenomics.vcf.api.Variant.PassingFilters
 import com.fulcrumgenomics.vcf.api._
 
-import scala.collection.compat._
+import java.nio.file.Files
 import scala.collection.immutable.ListMap
 import scala.collection.mutable
 import scala.util.Try
@@ -140,7 +139,8 @@ class VcfBuilder private (initialHeader: VcfHeader) extends Iterable[Variant] {
     * possible to update a variant once added. If a variant already exists at the given position an exception
     * will be thrown.
     *
-    * The genotypes are specified using instance of the [[Gt]] helper class.  The genotype strings within the [[Gt]]
+    * The genotypes are specified using instance of the [[com.fulcrumgenomics.testing.VcfBuilder.Gt]] helper class.
+    * The genotype strings within the [[com.fulcrumgenomics.testing.VcfBuilder.Gt]]
     * objects may be either numeric like in a VCF (e.g. `0/1`) or use allele strings (e.g. `A/T`.)
     *
     * The variant must also be valid, e.g. not reference INFO, FILTER or FORMAT fields that are no in the header,
@@ -166,7 +166,7 @@ class VcfBuilder private (initialHeader: VcfHeader) extends Iterable[Variant] {
     require(!variants.contains(key), s"Variant already exists at position $chrom:$pos")
     require(alleles.nonEmpty, s"Must specify at least one allele.")
     info.keys.foreach(k => require(this._header.info.contains(k), s"No INFO header for key $k"))
-    filters.foreach(f => require(this._header.filter.contains(f), s"No FILTER header for key $f"))
+    filters.filterNot(PassingFilters.contains).foreach(f => require(this._header.filter.contains(f), s"No FILTER header for key $f"))
     require(gts.map(_.sample).toSet.size == gts.size, s"Non-unique sample names in genotypes.")
 
     val alleleSet = AlleleSet(alleles:_*)
@@ -194,7 +194,7 @@ class VcfBuilder private (initialHeader: VcfHeader) extends Iterable[Variant] {
       pos       = pos,
       id        = if (id == ".") None else Some(id),
       alleles   = alleleSet,
-      qual      = if (qual < 0) None else Some(qual),
+      qual      = if (qual < 0) None else Some(qual.toDouble),
       attrs     = ListMap(info.toSeq:_*),
       filters   = filters.toSet,
       genotypes = (calledGenotypes ++ noCalls).map(gt => gt.sample -> gt).toMap

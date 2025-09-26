@@ -25,15 +25,14 @@
 
 package com.fulcrumgenomics.testing
 
-import java.nio.file.Files
-import java.util.Collections
-
 import com.fulcrumgenomics.FgBioDef._
 import com.fulcrumgenomics.fasta.SequenceDictionary
 import htsjdk.variant.variantcontext._
 import htsjdk.variant.variantcontext.writer.{Options, VariantContextWriterBuilder}
 import htsjdk.variant.vcf.{VCFFileReader, VCFHeader, VCFHeaderLine}
 
+import java.nio.file.Files
+import java.util.Collections
 import scala.collection.JavaConverters._
 import scala.collection.compat._
 import scala.collection.mutable.ListBuffer
@@ -76,8 +75,7 @@ class VariantContextSetBuilder(sampleNames: Seq[String] = List("Sample")) extend
 
   /** Sets the sequence dictionary for this builder.  This should be set before adding variants. */
   def setSequenceDictionary(dict: SequenceDictionary): this.type = {
-    import com.fulcrumgenomics.fasta.Converters.ToSAMSequenceDictionary
-    yieldingThis(this._header.setSequenceDictionary(dict.asSam))
+    yieldingThis(this._header.setSequenceDictionary(dict.toSam))
   }
 
   /** Adds the header line to the header for this builder.  This should be set before adding variants. */
@@ -97,8 +95,8 @@ class VariantContextSetBuilder(sampleNames: Seq[String] = List("Sample")) extend
     * be a genotype for this variant with the given sample name, and the sample name must be present in the header.
     *
     * Genotype attributes may be given with the `genotypeAttributes` parameter.  The value for the `GQ` and `DP`
-    * attributes must have type [[Int]].  The value for the `AD` and `PL` attributes must have either type
-    * [[IterableOnce]] or [[Array]], with each item having type [[Int]].  For example:
+    * attributes must have type [[scala.Int]].  The value for the `AD` and `PL` attributes must have either type
+    * [[scala.collection.IterableOnce]] or [[scala.Array]], with each item having type [[scala.Int]].  For example:
     * {{{
     *   val builder = new VariantContextSetBuilder()
     *   builder.addVariant(
@@ -129,7 +127,7 @@ class VariantContextSetBuilder(sampleNames: Seq[String] = List("Sample")) extend
     }
     val contig  = this.dict(refIdx).name
     val alleles = toAlleles(variantAlleles)
-    val stop    = VariantContextUtils.computeEndFromAlleles(alleles.asJava, start.toInt, -1)
+    val stop    = VariantContextUtils.computeEndFromAlleles(alleles.asJava, start.toInt, -1).toLong
     // check to see if there are already genotypes for this variant
     val (ctxBuilder, prevGenotypes) = this.variants.find { ctx =>
       ctx.getContig == contig &&

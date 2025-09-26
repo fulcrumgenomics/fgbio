@@ -27,7 +27,6 @@ package com.fulcrumgenomics.bam.pileup
 import com.fulcrumgenomics.bam.api.SamOrder.Coordinate
 import com.fulcrumgenomics.bam.api.{SamOrder, SamRecord, SamSource}
 import com.fulcrumgenomics.bam.pileup.PileupBuilder._
-import com.fulcrumgenomics.bam.pileup.StreamingPileupBuilder.DefaultInitialCacheSize
 import com.fulcrumgenomics.commons.CommonsDef._
 import com.fulcrumgenomics.coord.LocatableOrdering
 import com.fulcrumgenomics.fasta.SequenceDictionary
@@ -67,6 +66,7 @@ object StreamingPileupBuilder {
       includeSecondaryAlignments         = includeSecondaryAlignments,
       includeSupplementalAlignments      = includeSupplementalAlignments,
       includeMapPositionsOutsideFrInsert = includeMapPositionsOutsideFrInsert,
+      initialCacheSize                   = initialCacheSize,
       source                             = Some(iterator)
     )
   }
@@ -98,19 +98,20 @@ object StreamingPileupBuilder {
   * @param includeSupplementalAlignments if true, allow records flagged as supplementary alignments to contribute to a pileup.
   * @param includeMapPositionsOutsideFrInsert if true, include any record of an FR pair where the site requested is outside the insert.
   * @param initialCacheSize the initial size for the internal SAM record cache, set this to your expected pileup depth.
+  * @param source an optional source to additionally close upon closing this pileup builder.
   */
 class StreamingPileupBuilder private(
   records: => Iterator[SamRecord],
   override val dict: SequenceDictionary,
-  override val minMapQ: Int                                = PileupDefaults.minMapQ,
-  override val minBaseQ: Int                               = PileupDefaults.minBaseQ,
-  override val mappedPairsOnly: Boolean                    = PileupDefaults.mappedPairsOnly,
-  override val includeDuplicates: Boolean                  = PileupDefaults.includeDuplicates,
-  override val includeSecondaryAlignments: Boolean         = PileupDefaults.includeSecondaryAlignments,
-  override val includeSupplementalAlignments: Boolean      = PileupDefaults.includeSupplementalAlignments,
-  override val includeMapPositionsOutsideFrInsert: Boolean = PileupDefaults.includeMapPositionsOutsideFrInsert,
-  initialCacheSize: Int                                    = DefaultInitialCacheSize,
-  source: => Option[{ def close(): Unit }]                 = None,
+  override val minMapQ: Int,
+  override val minBaseQ: Int,
+  override val mappedPairsOnly: Boolean,
+  override val includeDuplicates: Boolean,
+  override val includeSecondaryAlignments: Boolean,
+  override val includeSupplementalAlignments: Boolean,
+  override val includeMapPositionsOutsideFrInsert: Boolean,
+  initialCacheSize: Int,
+  source: => Option[{ def close(): Unit }],
 ) extends PileupBuilder with Closeable {
   import com.fulcrumgenomics.bam.pileup.StreamingPileupBuilder.LocatablePileup
 

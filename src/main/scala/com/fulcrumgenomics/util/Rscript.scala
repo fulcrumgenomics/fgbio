@@ -24,10 +24,9 @@
 
 package com.fulcrumgenomics.util
 
-import java.nio.file.Path
-
 import com.fulcrumgenomics.commons.util.LazyLogging
 
+import java.nio.file.Path
 import scala.util.{Success, Try}
 
 /**
@@ -48,7 +47,7 @@ object Rscript extends LazyLogging {
       val process = new ProcessBuilder(Executable, "-e", "stopifnot(require(ggplot2))").redirectErrorStream(true).start()
       process.waitFor() == 0
     }
-    catch { case e: Exception => false }
+    catch { case _: Exception => false }
   }
 
   /** Executes an Rscript from the classpath if Rscript is available. */
@@ -61,7 +60,7 @@ object Rscript extends LazyLogging {
 
   /** Executes an Rscript from the classpath. */
   def exec(scriptResource: String, args: String*): Try[Unit] =
-    Try { writeResourceToTempFile(scriptResource) }.map(path => exec(path, args:_*))
+    Try { writeResourceToTempFile(scriptResource) }.flatMap(path => exec(path, args:_*))
 
   /** Executes an Rscript from a script stored at a Path. */
   def exec(script: Path, args: String*): Try[Unit] = Try {

@@ -54,15 +54,15 @@ sealed trait VcfFieldType extends EnumEntry {
 }
 
 object VcfFieldType extends FgBioEnum[VcfFieldType] {
-  /** Integer field type, represented internally as [[Int]]. */
+  /** Integer field type, represented internally as [[scala.Int]]. */
   case object Integer   extends VcfFieldType { override def parse(s: String): Any = if (s == ".") Variant.MissingInt else s.toInt }
-  /** Floating point number field type, represented internally as [[Float]]. */
+  /** Floating point number field type, represented internally as [[scala.Float]]. */
   case object Float     extends VcfFieldType { override def parse(s: String): Any = if (s == ".") Variant.MissingFloat else s.toFloat }
-  /** String field type, represented internally as [[String]]. */
+  /** String field type, represented internally as [[java.lang.String]]. */
   case object String    extends VcfFieldType { override def parse(s: String): Any = s }
-  /** Character field type, represented internally as [[Char]]. */
+  /** Character field type, represented internally as [[scala.Char]]. */
   case object Character extends VcfFieldType { override def parse(s: String): Any = s.charAt(0) }
-  /** Character field type, represented internally as [[Char]]. */
+  /** Character field type, represented internally as [[scala.Char]]. */
   case object Flag      extends VcfFieldType { override def parse(s: String): Any = "." }
 
   override def values: immutable.IndexedSeq[VcfFieldType] = findValues

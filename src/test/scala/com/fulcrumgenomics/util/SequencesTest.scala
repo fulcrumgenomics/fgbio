@@ -79,6 +79,15 @@ class SequencesTest extends UnitSpec {
     Sequences.longestDinuc("AGTGTGT")  shouldBe OffsetAndLength(1, 6)
     Sequences.longestDinuc("GGGGGGGG") shouldBe OffsetAndLength(0, 8)
     Sequences.longestDinuc("AGCGtagCGCGCgcGCTCTCTatCGCGCA") shouldBe OffsetAndLength(6, 10)
+    Sequences.longestDinuc("ACACACTCTCTCT") shouldBe OffsetAndLength(5, 8)
+    Sequences.longestDinuc("") shouldBe OffsetAndLength(0, 0)
+    Sequences.longestDinuc("ccgTATGC") shouldBe OffsetAndLength(0, 2)
+    Sequences.longestDinuc("ATATCC") shouldBe OffsetAndLength(0, 4)
+    Sequences.longestDinuc("CCATATCC") shouldBe OffsetAndLength(2, 4)
+    Sequences.longestDinuc("ATAC") shouldBe OffsetAndLength(0, 2)
+    Sequences.longestDinuc("AACC") shouldBe OffsetAndLength(0, 2)
+    Sequences.longestDinuc("ACGTAAAAAATT") shouldBe OffsetAndLength(4, 6)
+    Sequences.longestDinuc("ATAT") shouldBe OffsetAndLength(0, 4)
   }
 
   "Sequences.complement" should "return the complement of sequences" in {
@@ -88,6 +97,24 @@ class SequencesTest extends UnitSpec {
     Sequences.complement("AACCGGTGTG") shouldBe "TTGGCCACAC"
   }
 
+  it should "correctly complement all IUPAC codes" in {
+    val bases = "ACGT".getBytes.toIndexedSeq
+    val comps = "TGCA".getBytes.toIndexedSeq
+    val codes = "ACGTMKRYWSBVHDN".getBytes.toIndexedSeq
+
+    codes.foreach { iupac =>
+      val complement = Sequences.complement(iupac)
+
+      // Checks to see that the set of non-ambigous bases that are deemed compatible
+      // with the iupac code, and the set of non-ambiguous bases that are compatible
+      // with the complement of the iupac code, are actually complements of one another
+      val x = bases.filter(ch => Sequences.compatible(ch, iupac))
+      val y = comps.filter(ch => Sequences.compatible(ch, complement))
+      val z = y.map(Sequences.complement)
+      x.map(_.toChar) should contain theSameElementsAs z.map(_.toChar)
+    }
+  }
+
   "Sequences.revcomp" should "return the reverse complement of sequences" in {
     Sequences.revcomp("AAA")        shouldBe "TTT"
     Sequences.revcomp("ACAC")       shouldBe "GTGT"
@@ -95,6 +122,19 @@ class SequencesTest extends UnitSpec {
     Sequences.revcomp("AACCGGTGTG") shouldBe "CACACCGGTT"
     Sequences.revcomp("acacNNNN")   shouldBe "NNNNgtgt"
     Sequences.revcomp("NRG")        shouldBe "CYN"
+  }
+
+  "Sequences.reverse" should "reverse arrays of various lengths and types" in {
+    def r[T](xs: Array[T]): Array[T] = {
+      Sequences.reverse(xs)
+      xs
+    }
+
+    r(Array()) shouldBe Array()
+    r(Array(1)) shouldBe Array(1)
+    r(Array(1, 2)) shouldBe Array(2, 1)
+    r(Array(1, 2, 3)) shouldBe Array(3, 2, 1)
+    r(Array("foo", "bar", "splat", "whee", "bonk", "kaboom")) shouldBe Array("kaboom", "bonk", "whee", "splat", "bar", "foo")
   }
 
   "Sequences.compatible" should "do the right thing for pairs of bases" in {

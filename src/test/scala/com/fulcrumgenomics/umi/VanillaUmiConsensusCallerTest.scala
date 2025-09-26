@@ -26,6 +26,7 @@
 package com.fulcrumgenomics.umi
 
 import com.fulcrumgenomics.alignment.Cigar
+import com.fulcrumgenomics.bam.api.SamRecord.MissingQuals
 import com.fulcrumgenomics.testing.SamBuilder.{Minus, Plus}
 import com.fulcrumgenomics.testing.{SamBuilder, UnitSpec}
 import com.fulcrumgenomics.umi.UmiConsensusCaller.SourceRead
@@ -33,8 +34,8 @@ import com.fulcrumgenomics.umi.VanillaUmiConsensusCallerOptions._
 import com.fulcrumgenomics.util.NumericTypes._
 import htsjdk.samtools.SAMUtils
 import htsjdk.samtools.util.CloserUtil
-import org.scalatest.OptionValues
 import org.apache.commons.math3.util.FastMath._
+import org.scalatest.OptionValues
 
 /**
   * Tests for ConsensusCaller.
@@ -95,7 +96,7 @@ class VanillaUmiConsensusCallerTest extends UnitSpec with OptionValues {
     val sources   = Seq(source, source)
 
     val expectedQual = expectedConsensusQuality(10, 2)
-    val expectedQuals = source.quals.map(q => expectedQual)
+    val expectedQuals = source.quals.map(_ => expectedQual)
 
     val consensus = cc(cco(minReads=1, minConsensusBaseQuality=0.toByte)).consensusCall(sources)
     consensus.isDefined shouldBe true
@@ -151,8 +152,8 @@ class VanillaUmiConsensusCallerTest extends UnitSpec with OptionValues {
     * instead produce a shortened read.
     */
   it should "produce a consensus even when most of the bases have < minReads" in {
-    val src1 = src("A" * 10, (1 to 10).map(q => 30))
-    val src2 = src("A" * 20, (1 to 20).map(q => 30))
+    val src1 = src("A" * 10, (1 to 10).map(_ => 30))
+    val src2 = src("A" * 20, (1 to 20).map(_ => 30))
 
     val caller = cc(cco(minReads=2, minConsensusBaseQuality=10.toByte))
     val consensus = caller.consensusCall(Seq(src1, src2))
@@ -227,7 +228,7 @@ class VanillaUmiConsensusCallerTest extends UnitSpec with OptionValues {
     val inputQuals = Seq(10, 10, 10, 10, 10, 10, 10)
     val lnProbError = LogProbability.fromPhredScore(10)
     val outputQual  = PhredScore.fromLogProbability(LogProbability.probabilityOfErrorTwoTrials(lnProbError, lnProbError))
-    val outputQuals = inputQuals.map(q => outputQual)
+    val outputQuals = inputQuals.map(_ => outputQual)
     caller.consensusCall(Seq(src("GATTACA", inputQuals))) match {
       case None => fail()
       case Some(consensus) =>
@@ -247,7 +248,7 @@ class VanillaUmiConsensusCallerTest extends UnitSpec with OptionValues {
     val inputQuals = Seq(10, 10, 10, 10, 10, 10, 10)
     val lnProbError = LogProbability.fromPhredScore(10)
     val outputQual  = PhredScore.fromLogProbability(LogProbability.probabilityOfErrorTwoTrials(lnProbError, lnProbError))
-    val outputQuals = inputQuals.map(q => outputQual)
+    val outputQuals = inputQuals.map(_ => outputQual)
 
     caller.consensusCall(Seq(src("GATTACA", inputQuals))) match {
       case None => fail()
@@ -274,6 +275,34 @@ class VanillaUmiConsensusCallerTest extends UnitSpec with OptionValues {
       case Some(consensus) =>
         consensus.baseString shouldBe "GATTACA"
         consensus.quals.foreach(q => q shouldBe 30.toByte)
+    }
+  }
+
+  it should "produce a consensus with Ns with per-base zero depths when consensus base quality is too low due to masking input bases" in {
+    // The base qualities for the first three read (Q20) are less than `minInputBaseQuality`, so the bases gets masked
+    // (all Ns). Thus, only one read is used for consensus calling.  The resulting consensus base qualities are Q30
+    // which is less than the minimum consensus base quality (Q40), so a consensus of all Ns is produced and consensus
+    // depth is set to one for all bases.
+    val builder = new SamBuilder(readLength=7)
+    builder.addFrag(start=100, bases="GATTACA", quals="5555555", attrs=Map("MI" -> "1")) // Q20
+    builder.addFrag(start=100, bases="GATTACA", quals="5555555", attrs=Map("MI" -> "1")) // Q20
+    builder.addFrag(start=100, bases="GATTACA", quals="5555555", attrs=Map("MI" -> "1")) // Q20
+    builder.addFrag(start=100, bases="CTAATGT", quals="???????", attrs=Map("MI" -> "1")) // Q30
+    val opts = cco(
+      errorRatePreUmi             = PhredScore.MaxValue,
+      errorRatePostUmi            = PhredScore.MaxValue,
+      minInputBaseQuality         = 30.toByte,
+      minConsensusBaseQuality     = 40.toByte,
+      minReads                    = 1
+    )
+
+    cc(opts).consensusFromSamRecords(builder.toSeq) match {
+      case None => fail()
+      case Some(consensus) =>
+        consensus.baseString shouldBe "NNNNNNN"
+        consensus.quals.foreach(q => q shouldBe 2.toByte)
+        consensus.errors.foreach(d => d shouldBe 0)
+        consensus.depths.foreach(d => d shouldBe 1)
     }
   }
 
@@ -403,22 +432,22 @@ class VanillaUmiConsensusCallerTest extends UnitSpec with OptionValues {
   }
 
   "VanillaUmiConsensusCaller.filterToMostCommonAlignment" should "return all reads when all cigars are 50M" in {
-    val srcs = (1 to 10).map { i => src(cigar="50M") }
+    val srcs = (1 to 10).map { _ => src(cigar="50M") }
     val recs = cc().filterToMostCommonAlignment(srcs)
     recs should have size 10
   }
 
   it should "return all reads when all cigars are complicated but the same" in {
-    val srcs = (1 to 10).map { i => src(cigar="10M5D10M5I20M5S") }
+    val srcs = (1 to 10).map { _ => src(cigar="10M5D10M5I20M5S") }
     val recs = cc().filterToMostCommonAlignment(srcs)
     recs should have size 10
   }
 
   it should "return only the 50M reads (i.e. the most common alignment)" in {
     val buffer = Seq.newBuilder[SourceRead]
-    (1 to  3).foreach { i => buffer += src(cigar="25M1D25M") }
-    (1 to 10).foreach { i => buffer += src(cigar="50M") }
-    (1 to  3).foreach { i => buffer += src(cigar="25M2I23M") }
+    (1 to  3).foreach { _ => buffer += src(cigar="25M1D25M") }
+    (1 to 10).foreach { _ => buffer += src(cigar="50M") }
+    (1 to  3).foreach { _ => buffer += src(cigar="25M2I23M") }
 
     val recs = cc().filterToMostCommonAlignment(buffer.result())
     recs should have size 10
@@ -428,15 +457,15 @@ class VanillaUmiConsensusCallerTest extends UnitSpec with OptionValues {
   it should "return only the reads with a single base deletion at base 25" in {
     val buffer = Seq.newBuilder[SourceRead]
     // These should all be returned
-    (1 to  5).foreach { i => buffer += src(cigar="25M1D25M") }
-    (1 to  2).foreach { i => buffer += src(cigar="5S20M1D25M") }
-    (1 to  2).foreach { i => buffer += src(cigar="5S20M1D20M5H") }
-    (1 to  2).foreach { i => buffer += src(cigar="25M1D20M5S") }
+    (1 to  5).foreach { _ => buffer += src(cigar="25M1D25M") }
+    (1 to  2).foreach { _ => buffer += src(cigar="5S20M1D25M") }
+    (1 to  2).foreach { _ => buffer += src(cigar="5S20M1D20M5H") }
+    (1 to  2).foreach { _ => buffer += src(cigar="25M1D20M5S") }
 
     // These should not be!
-    (1 to  2).foreach { i => buffer += src(cigar="25M2D25M") }
-    (1 to  2).foreach { i => buffer += src(cigar="25M1I24M") }
-    (1 to  2).foreach { i => buffer += src(cigar="20M1D5M1D25M") }
+    (1 to  2).foreach { _ => buffer += src(cigar="25M2D25M") }
+    (1 to  2).foreach { _ => buffer += src(cigar="25M1I24M") }
+    (1 to  2).foreach { _ => buffer += src(cigar="20M1D5M1D25M") }
 
     val recs = cc().filterToMostCommonAlignment(buffer.result())
     recs should have size 11
@@ -460,7 +489,7 @@ class VanillaUmiConsensusCallerTest extends UnitSpec with OptionValues {
   "VanillaConsensusCaller.toSourceRead" should "mask bases that are below the quality threshold" in {
     val builder = new SamBuilder(readLength=10)
     val rec     = builder.addFrag(start=1, bases="AAAAAAAAAA").map { r => r.quals = Array[Byte](2,30,19,21,18,20,0,30,2,30); r}.value
-    val source  = cc().toSourceRead(rec, minBaseQuality=20.toByte, trim=false).value
+    val source  = cc().toSourceRead(rec, minBaseQuality=20.toByte, qualityTrim=false).value
 
     source.baseString shouldBe "NANANANANA"
     source.quals      shouldBe Array[Byte](2,30,2,21,2,20,2,30,2,30)
@@ -469,7 +498,7 @@ class VanillaUmiConsensusCallerTest extends UnitSpec with OptionValues {
   it should "trim the source read when the end is low-quality so that there are no trailing no-calls" in {
     val builder = new SamBuilder(readLength=10)
     val rec     = builder.addFrag(start=1, bases="AAAAAAAAAA").map { r => r.quals = Array[Byte](30,30,30,30,30,30,2,2,2,2); r}.value
-    val source  = cc().toSourceRead(rec, minBaseQuality=20.toByte, trim=false).value
+    val source  = cc().toSourceRead(rec, minBaseQuality=20.toByte, qualityTrim=false).value
 
     source.baseString shouldBe "AAAAAA"
     source.quals      shouldBe Array[Byte](30,30,30,30,30,30)
@@ -478,7 +507,7 @@ class VanillaUmiConsensusCallerTest extends UnitSpec with OptionValues {
   it should "trim the source read when the end of the raw read is all Ns so that there are no trailing no-calls" in {
     val builder = new SamBuilder(readLength=10)
     val rec     = builder.addFrag(start=1, bases="AAAAAANNNN").map { r => r.quals = Array[Byte](30,30,30,30,30,30,30,30,30,30); r}.value
-    val source  = cc().toSourceRead(rec, minBaseQuality=20.toByte, trim=false).value
+    val source  = cc().toSourceRead(rec, minBaseQuality=20.toByte, qualityTrim=false).value
 
     source.baseString shouldBe "AAAAAA"
     source.quals      shouldBe Array[Byte](30,30,30,30,30,30)
@@ -487,7 +516,7 @@ class VanillaUmiConsensusCallerTest extends UnitSpec with OptionValues {
   it should "trim the source read when the end of the raw read is all Ns and the read is mapped to the negative strand" in {
     val builder = new SamBuilder(readLength=10)
     val rec     = builder.addFrag(start=1, strand=Minus, cigar="4S1M1D5M", bases="NNNNAAAAAA").map { r => r.quals = Array[Byte](30,30,30,30,30,30,30,30,30,30); r}.value
-    val source  = cc().toSourceRead(rec, minBaseQuality=20.toByte, trim=false).value
+    val source  = cc().toSourceRead(rec, minBaseQuality=20.toByte, qualityTrim=false).value
 
     source.baseString shouldBe "TTTTTT" // cos revcomp'd
     source.quals      shouldBe Array[Byte](30,30,30,30,30,30)
@@ -497,8 +526,8 @@ class VanillaUmiConsensusCallerTest extends UnitSpec with OptionValues {
   it should "trim the source read when the read length is shorter than the insert size" in {
     val builder     = new SamBuilder(readLength=50)
     val Seq(r1, r2) = builder.addPair(start1=11, start2=1, strand1=Plus, strand2=Minus).map { r => r.bases = "A"*10 + "C"*30 + "G"*10; r }
-    val s1          = cc().toSourceRead(r1, minBaseQuality=2.toByte, trim=false).value
-    val s2          = cc().toSourceRead(r2, minBaseQuality=2.toByte, trim=false).value
+    val s1          = cc().toSourceRead(r1, minBaseQuality=2.toByte, qualityTrim=false).value
+    val s2          = cc().toSourceRead(r2, minBaseQuality=2.toByte, qualityTrim=false).value
 
     s1.baseString shouldBe "A"*10 + "C"*30 // the first ten bases should be trimmed
     s1.cigar.toString shouldBe "40M"
@@ -510,21 +539,21 @@ class VanillaUmiConsensusCallerTest extends UnitSpec with OptionValues {
     val builder     = new SamBuilder(readLength=50)
     val Seq(r1, r2) = builder.addPair(start1=20, start2=20, strand1=Plus, strand2=Minus, cigar1="10S35M5S", cigar2="12S30M8S")
       .map { r => r.bases = "A"*2 + "C"*46 + "G"*2; r }
-    val s1          = cc().toSourceRead(r1, minBaseQuality=2.toByte, trim=false).value
-    val s2          = cc().toSourceRead(r2, minBaseQuality=2.toByte, trim=false).value
+    val s1          = cc().toSourceRead(r1, minBaseQuality=2.toByte, qualityTrim=false).value
+    val s2          = cc().toSourceRead(r2, minBaseQuality=2.toByte, qualityTrim=false).value
 
-    s1.baseString shouldBe "A"*2 + "C"*38 // trimmed by ten bases at the 3' end, five due to existing soft-clipping and the other due to past mate start
-    s1.cigar.toString shouldBe "10S30M"
-    s2.baseString shouldBe "C"*2 + "G"*36 // trimmed by twelve bases at the 3' end (the "12S" in the cigar)
-    s2.cigar.toString shouldBe "8S30M" // NB: cigar is reversed in toSourceRead
+    s1.baseString shouldBe "A"*2 + "C"*46 // end of r1 is 60, whereas the end of r2 is 58, so trim 2bp off the end of r1
+    s1.cigar.toString shouldBe "10S35M3S"
+    s2.baseString shouldBe "C"*2 + "G"*46 // start of r1 is 10, whereas the start of r2 is 8, so trim 2bp off the start of r2
+    s2.cigar.toString shouldBe "8S30M10S" // NB: cigar is reversed in toSourceRead
   }
 
   it should "not trim based on insert size in the presence of soft-clipping (-/+)" in {
     val builder     = new SamBuilder(readLength=142)
     val Seq(r1, r2) = builder.addPair(start1=545, start2=493, strand1=Minus, strand2=Plus, cigar1="47S72M23S", cigar2="46S96M")
       .map { r => r.bases = "A"*142; r }
-    val s1          = cc().toSourceRead(r1, minBaseQuality=2.toByte, trim=false).value
-    val s2          = cc().toSourceRead(r2, minBaseQuality=2.toByte, trim=false).value
+    val s1          = cc().toSourceRead(r1, minBaseQuality=2.toByte, qualityTrim=false).value
+    val s2          = cc().toSourceRead(r2, minBaseQuality=2.toByte, qualityTrim=false).value
 
     s1.baseString shouldBe "T"*142 // all the bases remain, no clipping
     s1.cigar.toString shouldBe "23S72M47S"  // NB: cigar is reversed in toSourceRead
@@ -536,8 +565,8 @@ class VanillaUmiConsensusCallerTest extends UnitSpec with OptionValues {
     val builder     = new SamBuilder(readLength=142)
     val Seq(r1, r2) = builder.addPair(start2=545, start1=493, strand2=Minus, strand1=Plus, cigar2="47S72M23S", cigar1="46S96M")
       .map { r => r.bases = "A"*142; r }
-    val s1          = cc().toSourceRead(r1, minBaseQuality=2.toByte, trim=false).value
-    val s2          = cc().toSourceRead(r2, minBaseQuality=2.toByte, trim=false).value
+    val s1          = cc().toSourceRead(r1, minBaseQuality=2.toByte, qualityTrim=false).value
+    val s2          = cc().toSourceRead(r2, minBaseQuality=2.toByte, qualityTrim=false).value
 
     // for R2, the leading 47S in the alignment is trimmed because
     s1.baseString shouldBe "A"*142
@@ -549,8 +578,8 @@ class VanillaUmiConsensusCallerTest extends UnitSpec with OptionValues {
   it should "not trim the source read based on insert size if the read is not an FR pair" in {
     val builder     = new SamBuilder(readLength=50)
     val Seq(r1, r2) = builder.addPair(start1=11, start2=1, strand1=Plus, strand2=Plus).map { r => r.bases = "A"*50; r }
-    val s1          = cc().toSourceRead(r1, minBaseQuality=2.toByte, trim=false).value
-    val s2          = cc().toSourceRead(r2, minBaseQuality=2.toByte, trim=false).value
+    val s1          = cc().toSourceRead(r1, minBaseQuality=2.toByte, qualityTrim=false).value
+    val s2          = cc().toSourceRead(r2, minBaseQuality=2.toByte, qualityTrim=false).value
 
     s1.baseString shouldBe "A"*50
     s1.cigar.toString shouldBe "50M"
@@ -561,14 +590,14 @@ class VanillaUmiConsensusCallerTest extends UnitSpec with OptionValues {
   it should "return None if the read is all low-quality or Ns" in {
     val builder = new SamBuilder(readLength=10)
     val rec     = builder.addFrag(start=1, bases="NANANANANA").map { r => r.quals = Array[Byte](30,2,30,2,30,2,30,2,30,2); r}.value
-    val source  = cc().toSourceRead(rec, minBaseQuality=20.toByte, trim=false)
+    val source  = cc().toSourceRead(rec, minBaseQuality=20.toByte, qualityTrim=false)
     source shouldBe None
   }
 
   it should "apply phred-style quality trimming to the read in addition to masking" in {
     val builder = new SamBuilder(readLength=10)
     val rec     = builder.addFrag(start=1, bases="AGCACGACGT").map { r => r.quals = Array[Byte](30,30,30,2,5,2,3,20,2,6); r}.value
-    val source  = cc().toSourceRead(rec, minBaseQuality=15.toByte, trim=true).value
+    val source  = cc().toSourceRead(rec, minBaseQuality=15.toByte, qualityTrim=true).value
     source.baseString shouldBe "AGC"
     source.quals should have length 3
     source.cigar.toString() shouldBe "3M"
@@ -580,12 +609,83 @@ class VanillaUmiConsensusCallerTest extends UnitSpec with OptionValues {
     val Seq(r1, r2) = builder.addPair(
       start1=1, start2=1, strand1=Plus, strand2=Minus, cigar1="40M20I40M", cigar2="40M20I40M"
     ).map { r => r.bases = "A"*100; r }
-    val s1          = cc().toSourceRead(r1, minBaseQuality=2.toByte, trim=false).value
-    val s2          = cc().toSourceRead(r2, minBaseQuality=2.toByte, trim=false).value
+    val s1          = cc().toSourceRead(r1, minBaseQuality=2.toByte, qualityTrim=false).value
+    val s2          = cc().toSourceRead(r2, minBaseQuality=2.toByte, qualityTrim=false).value
 
     s1.baseString shouldBe "A"*100
     s1.cigar.toString shouldBe "40M20I40M"
     s2.baseString shouldBe "T"*100
     s2.cigar.toString shouldBe "40M20I40M"
+  }
+
+  it should "except when the reads do not have base qualities" in {
+    val builder = new SamBuilder(readLength=10)
+    val rec     = builder.addFrag(start=1, bases="AAAAAAAAAA").map(r => { r.quals = MissingQuals; r }).value
+    an[IllegalArgumentException] should be thrownBy cc().toSourceRead(rec, minBaseQuality=20.toByte, qualityTrim=false)
+  }
+
+  "VanillaUmiConsensusCaller.consensusReadsFromSamRecords" should "add the mate cigar when not present before consensus calling" in {
+    val builder = new SamBuilder(readLength=10)
+    val Seq(r1, r2) = builder.addPair("READ1", start1=1, start2=100, attrs=Map(DefaultTag -> "AAA", ConsensusTags.UmiBases -> "GAT-ACA"))
+
+    // remove the mate cigar
+    r1.remove("MC")
+    r2.remove("MC")
+
+    val consensusCaller = cc(cco(minReads = 1, minInputBaseQuality = 2.toByte))
+    val consensuses = consensusCaller.consensusReadsFromSamRecords(builder.toSeq)
+    consensuses.length shouldBe 2
+  }
+
+  "VanillaUmiConsensusRead.padded" should "pad reads to the left of the existing sequence" in {
+    val bases = "AACCGGTT"
+    val read = VanillaConsensusRead(
+      id="test",
+      bases=bases.getBytes,
+      quals=Array.fill(bases.length)(45.toByte),
+      depths=Array.fill(bases.length)(3.toShort),
+      errors=Array.fill(bases.length)(1.toShort)
+    )
+
+    an[Exception] should be thrownBy read.padded(newLength=7, left=true)
+    read.padded(newLength=8, left=true) shouldBe read
+
+    val padded = read.padded(newLength=12, left=true)
+    padded.baseString shouldBe s"nnnn${read.baseString}"
+    padded.quals  shouldBe Array(2, 2, 2, 2, 45, 45, 45, 45, 45, 45, 45, 45)
+    padded.depths shouldBe Array(0, 0, 0, 0, 3, 3, 3, 3, 3, 3, 3, 3)
+    padded.errors shouldBe Array(0, 0, 0, 0, 1, 1, 1, 1, 1, 1, 1, 1)
+
+    val padded2 = read.padded(newLength=12, left=true, base='N'.toByte, qual=0)
+    padded2.baseString shouldBe s"NNNN${read.baseString}"
+    padded2.quals  shouldBe Array(0, 0, 0, 0, 45, 45, 45, 45, 45, 45, 45, 45)
+    padded2.depths shouldBe Array(0, 0, 0, 0, 3, 3, 3, 3, 3, 3, 3, 3)
+    padded2.errors shouldBe Array(0, 0, 0, 0, 1, 1, 1, 1, 1, 1, 1, 1)
+  }
+
+  it should "pad reads to the right of the existing sequence" in {
+    val bases = "AACCGGTT"
+    val read = VanillaConsensusRead(
+      id="test",
+      bases=bases.getBytes,
+      quals=Array.fill(bases.length)(45.toByte),
+      depths=Array.fill(bases.length)(3.toShort),
+      errors=Array.fill(bases.length)(1.toShort)
+    )
+
+    an[Exception] should be thrownBy read.padded(newLength=7, left=true)
+    read.padded(newLength=8, left=false) shouldBe read
+
+    val padded = read.padded(newLength=12, left=false)
+    padded.baseString shouldBe s"${read.baseString}nnnn"
+    padded.quals  shouldBe Array(45, 45, 45, 45, 45, 45, 45, 45, 2, 2, 2, 2)
+    padded.depths shouldBe Array(3, 3, 3, 3, 3, 3, 3, 3, 0, 0, 0, 0)
+    padded.errors shouldBe Array(1, 1, 1, 1, 1, 1, 1, 1, 0, 0, 0, 0)
+
+    val padded2 = read.padded(newLength=12, left=false, base='N'.toByte, qual=0)
+    padded2.baseString shouldBe s"${read.baseString}NNNN"
+    padded2.quals  shouldBe Array(45, 45, 45, 45, 45, 45, 45, 45, 0, 0, 0, 0)
+    padded2.depths shouldBe Array(3, 3, 3, 3, 3, 3, 3, 3, 0, 0, 0, 0)
+    padded2.errors shouldBe Array(1, 1, 1, 1, 1, 1, 1, 1, 0, 0, 0, 0)
   }
 }

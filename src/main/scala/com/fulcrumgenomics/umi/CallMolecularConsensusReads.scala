@@ -26,18 +26,16 @@
 package com.fulcrumgenomics.umi
 
 import com.fulcrumgenomics.FgBioDef._
-import com.fulcrumgenomics.bam.{Bams, CallOverlappingConsensusBasesMetric, CountKind, OverlappingBasesConsensusCaller}
+import com.fulcrumgenomics.bam.OverlappingBasesConsensusCaller
 import com.fulcrumgenomics.bam.api.{SamOrder, SamSource, SamWriter}
-import com.fulcrumgenomics.cmdline.{ClpGroups, FgBioMain, FgBioTool}
-import com.fulcrumgenomics.commons.collection.SelfClosingIterator
+import com.fulcrumgenomics.cmdline.{ClpGroups, FgBioTool}
 import com.fulcrumgenomics.commons.io.Io
 import com.fulcrumgenomics.commons.util.{LazyLogging, LogLevel, Logger}
 import com.fulcrumgenomics.sopt._
 import com.fulcrumgenomics.sopt.cmdline.ValidationException
 import com.fulcrumgenomics.umi.VanillaUmiConsensusCallerOptions._
 import com.fulcrumgenomics.util.NumericTypes.PhredScore
-import com.fulcrumgenomics.util.ProgressLogger
-import htsjdk.samtools.SAMFileHeader.{GroupOrder, SortOrder}
+import com.fulcrumgenomics.util.{Metric, ProgressLogger}
 
 @clp(description =
   """
@@ -72,6 +70,11 @@ import htsjdk.samtools.SAMFileHeader.{GroupOrder, SortOrder}
     |calls each end of a pair independently, and does not jointly call bases that overlap within a pair.  Insertion or
     |deletion errors in the reads are not considered in the consensus model.
     |
+    |The consensus reads produced are unaligned, due to the difficulty and error-prone nature of inferring the conesensus
+    |alignment.  Consensus reads should therefore be aligned after, which should not be too expensive as likely there
+    |are far fewer consensus reads than input raw raws.  Please see how best to use this tool within the best-practice
+    |pipeline: https://github.com/fulcrumgenomics/fgbio/blob/main/docs/best-practice-consensus-pipeline.md
+    |
     |Particular attention should be paid to setting the `--min-reads` parameter as this can have a dramatic effect on
     |both results and runtime.  For libraries with low duplication rates (e.g. 100-300X exomes libraries) in which it
     |is desirable to retain singleton reads while making consensus reads from sets of duplicates, `--min-reads=1` is
@@ -104,18 +107,13 @@ class CallMolecularConsensusReads
 (@arg(flag='i', doc="The input SAM or BAM file.") val input: PathToBam,
  @arg(flag='o', doc="Output SAM or BAM file to write consensus reads.") val output: PathToBam,
  @arg(flag='r', doc="Optional output SAM or BAM file to write reads not used.") val rejects: Option[PathToBam] = None,
+ @arg(flag='s', doc="Optional output text file of key consensus calling statistics.") val stats: Option[FilePath] = None,
  @arg(flag='t', doc="The SAM attribute with the unique molecule tag.") val tag: String = DefaultTag,
  @arg(flag='p', doc="The Prefix all consensus read names") val readNamePrefix: Option[String] = None,
  @arg(flag='R', doc="The new read group ID for all the consensus reads.") val readGroupId: String = "A",
  @arg(flag='1', doc="The Phred-scaled error rate for an error prior to the UMIs being integrated.") val errorRatePreUmi: PhredScore = DefaultErrorRatePreUmi,
  @arg(flag='2', doc="The Phred-scaled error rate for an error post the UMIs have been integrated.") val errorRatePostUmi: PhredScore = DefaultErrorRatePostUmi,
  @arg(flag='m', doc="Ignore bases in raw reads that have Q below this value.") val minInputBaseQuality: PhredScore = DefaultMinInputBaseQuality,
- @arg(flag='N', doc=
-   """
-     |Deprecated: will be removed in future versions; use FilterConsensusReads to filter consensus bases on
-     |quality instead. Mask (make 'N') consensus bases with quality less than this threshold.
-   """)
- val minConsensusBaseQuality: PhredScore = 2.toByte,
  @arg(flag='M', doc="The minimum number of reads to produce a consensus base.") val minReads: Int,
  @arg(doc="""
             |The maximum number of reads to use when building a consensus. If more than this many reads are
@@ -127,7 +125,6 @@ class CallMolecularConsensusReads
  @arg(flag='D', doc="Turn on debug logging.") val debug: Boolean = false,
  @arg(doc="The number of threads to use while consensus calling.") val threads: Int = 1,
  @arg(doc="Consensus call overlapping bases in mapped paired end reads") val consensusCallOverlappingBases: Boolean = true,
- val maxQualOnAgreement: Boolean = false
 ) extends FgBioTool with LazyLogging {
 
   if (debug) Logger.level = LogLevel.Debug
@@ -135,6 +132,7 @@ class CallMolecularConsensusReads
   Io.assertReadable(input)
   Io.assertCanWriteFile(output)
   rejects.foreach(Io.assertCanWriteFile(_))
+  stats.foreach(Io.assertCanWriteFile(_))
 
   if (tag.length != 2)      throw new ValidationException("attribute must be of length 2")
   if (errorRatePreUmi < 0)  throw new ValidationException("Phred-scaled error rate pre UMI must be >= 0")
@@ -145,7 +143,7 @@ class CallMolecularConsensusReads
   override def execute(): Unit = {
     val in  = SamSource(input)
     UmiConsensusCaller.checkSortOrder(in.header, input, logger.warning, fail)
-    val rej = rejects.map(r => SamWriter(r, in.header))
+    val rejectsWriter = rejects.map(r => SamWriter(r, in.header))
 
     // Build an iterator for the input reads, which only really matters if calling consensus in overlapping read pairs.
     val inIter = if (!consensusCallOverlappingBases) in.iterator else {
@@ -164,7 +162,7 @@ class CallMolecularConsensusReads
       errorRatePreUmi              = errorRatePreUmi,
       errorRatePostUmi             = errorRatePostUmi,
       minInputBaseQuality          = minInputBaseQuality,
-      minConsensusBaseQuality      = minConsensusBaseQuality,
+      minConsensusBaseQuality      = PhredScore.MinValue,
       minReads                     = minReads,
       maxReads                     = maxReads.getOrElse(VanillaUmiConsensusCallerOptions.DefaultMaxReads),
       producePerBaseTags           = outputPerBaseTags
@@ -174,7 +172,7 @@ class CallMolecularConsensusReads
       readNamePrefix = readNamePrefix.getOrElse(UmiConsensusCaller.makePrefixFromSamHeader(in.header)),
       readGroupId    = readGroupId,
       options        = options,
-      rejects        = rej
+      rejectsWriter  = rejectsWriter
     )
 
     val progress = ProgressLogger(logger, unit=1e6.toInt)
@@ -184,7 +182,8 @@ class CallMolecularConsensusReads
     progress.logLast()
     in.safelyClose()
     out.close()
-    rej.foreach(_.close())
+    rejectsWriter.foreach(_.close())
     caller.logStatistics(logger)
+    stats.foreach { path => Metric.write(path, caller.statistics) }
   }
 }

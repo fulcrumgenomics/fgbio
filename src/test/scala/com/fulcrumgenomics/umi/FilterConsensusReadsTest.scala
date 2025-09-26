@@ -24,13 +24,14 @@
 
 package com.fulcrumgenomics.umi
 
-import java.nio.file.Files
 import com.fulcrumgenomics.FgBioDef._
 import com.fulcrumgenomics.bam.api.SamOrder.Queryname
 import com.fulcrumgenomics.bam.api.{SamOrder, SamRecord, SamSource, SamWriter}
 import com.fulcrumgenomics.testing.{ReferenceSetBuilder, SamBuilder, UnitSpec}
 import com.fulcrumgenomics.util.NumericTypes.PhredScore
 import htsjdk.samtools.SamPairUtil
+
+import java.nio.file.Files
 
 class FilterConsensusReadsTest extends UnitSpec {
   private val temp = makeTempFile("meh.", ".bam")
@@ -44,20 +45,20 @@ class FilterConsensusReadsTest extends UnitSpec {
   }
 
   /** Generates a FilterConsensusReads instance for testing non-end-to-end methods on vanilla reads. */
-  private def fv(q: Int, d: Int, mq: Option[PhredScore], readErr: Double, baseErr: Double, nf: Double) : FilterConsensusReads =
+  private def fv(q: Int, d: Int, mq: Option[PhredScore], readErr: Double, baseErr: Double, n: Double) : FilterConsensusReads =
     new FilterConsensusReads(input=temp, output=temp, ref=temp, reversePerBaseTags=false,
       minBaseQuality=q.toByte, minReads=Seq(d), minMeanBaseQuality=mq,
       maxReadErrorRate=Seq(readErr), maxBaseErrorRate=Seq(baseErr),
-      maxNoCallFraction=nf)
+      maxNoCalls=n)
 
   /** Generates a FilterConsensusReads instance for testing non-end-to-end methods on duplex reads. */
-  private def fv(q: Int, d: Seq[Int], mq: Option[PhredScore], readErr: Seq[Double], baseErr: Seq[Double], nf: Double, ss: Boolean) : FilterConsensusReads =
+  private def fv(q: Int, d: Seq[Int], mq: Option[PhredScore], readErr: Seq[Double], baseErr: Seq[Double], n: Double, ss: Boolean) : FilterConsensusReads =
     new FilterConsensusReads(input=temp, output=temp, ref=temp, reversePerBaseTags=false,
       minBaseQuality=q.toByte, minReads=d, minMeanBaseQuality=mq,
-      maxReadErrorRate=readErr, maxBaseErrorRate=baseErr, maxNoCallFraction=nf, requireSingleStrandAgreement=ss)
+      maxReadErrorRate=readErr, maxBaseErrorRate=baseErr, maxNoCalls=n, requireSingleStrandAgreement=ss)
 
   /** Tags up a SAMRecord for filtering. */
-  private def tag(rec: SamRecord, minDepth: Int, depth: Int, readErr: Float, depths: Array[Short]=null, errors: Array[Short]=null): SamRecord = {
+  private def tag(rec: SamRecord, minDepth: Int, depth: Int, readErr: Float, depths: Array[Short], errors: Array[Short]): SamRecord = {
     rec.bases = "A" * rec.length
     rec(ConsensusTags.PerRead.RawReadCount)     = depth
     rec(ConsensusTags.PerRead.MinRawReadCount)  = minDepth
@@ -69,7 +70,7 @@ class FilterConsensusReadsTest extends UnitSpec {
 
   /** Makes a SAMRecord with which to test filtering. */
   private def r(len: Int=10, q: Int=40, minDepth: Int, depth: Int, readErr: Float, depths: Array[Short]=null, errors: Array[Short]=null) : SamRecord = {
-    val builder = new SamBuilder(readLength=len, baseQuality=q.toByte)
+    val builder = new SamBuilder(readLength=len, baseQuality=q)
     tag(builder.addFrag(start=100).get, minDepth=minDepth, depth=depth, readErr=readErr, depths=depths, errors=errors)
   }
 
@@ -81,7 +82,7 @@ class FilterConsensusReadsTest extends UnitSpec {
   }
 
   "FilterConsensusReads.filterRead" should "keep rec and not mask any bases" in {
-    val filter = fv(q=10, d=2, mq=None, readErr=0.05, baseErr=0.1, nf=0.2)
+    val filter = fv(q=10, d=2, mq=None, readErr=0.05, baseErr=0.1, n=0.2)
     val rec    = r(depth=2, minDepth=2, readErr = 0.01f)
     val result = filter.filterRecord(rec)
     result.keepRead shouldBe true
@@ -89,7 +90,7 @@ class FilterConsensusReadsTest extends UnitSpec {
   }
 
   it should "keep rec and not mask any bases when detail tags are present" in {
-    val filter = fv(q=10, d=2, mq=None, readErr=0.05, baseErr=0.1, nf=0.2)
+    val filter = fv(q=10, d=2, mq=None, readErr=0.05, baseErr=0.1, n=0.2)
     val rec    = r(depth=2, minDepth=2, readErr=0.01f, depths=arr(2, 10), errors=arr(0, 10))
     val result = filter.filterRecord(rec)
     result.keepRead shouldBe true
@@ -98,7 +99,7 @@ class FilterConsensusReadsTest extends UnitSpec {
   }
 
   it should "filter out a read with depth < minDepth" in {
-    val filter = fv(q=10, d=5, mq=None, readErr=0.05, baseErr=0.1, nf=0.2)
+    val filter = fv(q=10, d=5, mq=None, readErr=0.05, baseErr=0.1, n=0.2)
     val rec    = r(depth=4, minDepth=4, readErr=0.00f, depths=arr(4, 10), errors=arr(0, 10))
     val result = filter.filterRecord(rec)
     result.keepRead shouldBe false
@@ -107,7 +108,7 @@ class FilterConsensusReadsTest extends UnitSpec {
   }
 
   it should "filter out a read with too high an error rate" in {
-    val filter = fv(q=10, d=3, mq=None, readErr=0.05, baseErr=0.5, nf=0.2)
+    val filter = fv(q=10, d=3, mq=None, readErr=0.05, baseErr=0.5, n=0.2)
     val rec    = r(depth=50, minDepth=50, readErr=0.20f, depths=arr(50, 10), errors=arr(10, 10))
     val result = filter.filterRecord(rec)
     result.keepRead shouldBe false
@@ -116,7 +117,7 @@ class FilterConsensusReadsTest extends UnitSpec {
   }
 
   it should "filter out bases that are below the required quality score" in {
-    val filter = fv(q=40, d=3, mq=None, readErr=0.05, baseErr=0.1, nf=0.5)
+    val filter = fv(q=40, d=3, mq=None, readErr=0.05, baseErr=0.1, n=0.5)
     val rec    = r(depth=5, minDepth=5, readErr=0.00f, depths=arr(5, 10), errors=arr(0, 10))
     Seq(1,4,7).foreach(i => rec.quals(i) = 20)
     val result = filter.filterRecord(rec)
@@ -126,7 +127,7 @@ class FilterConsensusReadsTest extends UnitSpec {
   }
 
   it should "filter out bases that have too much disagreement (errors/depth > baseErr)" in {
-    val filter = fv(q=40, d=10, mq=None, readErr=0.05, baseErr=0.1, nf=0.5)
+    val filter = fv(q=40, d=10, mq=None, readErr=0.05, baseErr=0.1, n=0.5)
     val rec    = r(depth=20, minDepth=20, readErr=0.00f, depths=arr(20, 10), errors=Array[Short](0,1,2,3,4,3,2,1,0,0))
     val result = filter.filterRecord(rec)
     result.keepRead shouldBe true
@@ -135,7 +136,7 @@ class FilterConsensusReadsTest extends UnitSpec {
   }
 
   it should "filter out the read if too many bases are masked in the read in the first place" in {
-    val filter = fv(q=20, d=5, mq=None, readErr=0.05, baseErr=0.1, nf=0.2)
+    val filter = fv(q=20, d=5, mq=None, readErr=0.05, baseErr=0.1, n=0.2)
     val rec    = r(depth=20, minDepth=20, readErr=0.00f)
     rec.bases = "AANNNNNAAA"
     val result = filter.filterRecord(rec)
@@ -145,16 +146,26 @@ class FilterConsensusReadsTest extends UnitSpec {
   }
 
   it should "filter out the read if too many bases are masked post-filtering" in {
-    val filter = fv(q=20, d=5, mq=None, readErr=0.05, baseErr=0.1, nf=0.2)
+    // Once with no-call fraction
     val rec    = r(depth=20, minDepth=20, readErr=0.00f, depths=arr(20, 10), errors=Array[Short](3,3,3,0,0,0,0,3,3,3))
-    val result = filter.filterRecord(rec)
+    val result = fv(q=20, d=5, mq=None, readErr=0.05, baseErr=0.1, n=0.2).filterRecord(rec)
     result.keepRead shouldBe false
     result.maskedBases shouldBe 6
     rec.basesString shouldBe "NNNAAAANNN"
+
+    // And again with no-calls as a count limit that allows the read through
+    fv(q=20, d=5, mq=None, readErr=0.05, baseErr=0.1, n=6).filterRecord(
+      r(depth=20, minDepth=20, readErr=0.00f, depths=arr(20, 10), errors=Array[Short](3,3,3,0,0,0,0,3,3,3))
+    ).keepRead shouldBe true
+
+    // And again with no-calls as a count limit that should reject the read
+    fv(q=20, d=5, mq=None, readErr=0.05, baseErr=0.1, n=5).filterRecord(
+      r(depth=20, minDepth=20, readErr=0.00f, depths=arr(20, 10), errors=Array[Short](3,3,3,0,0,0,0,3,3,3))
+    ).keepRead shouldBe false
   }
 
   it should "filter out the read if the mean base quality is too low" in {
-    val filter = fv(q=20, d=5, mq=Some(31.toByte), readErr=0.05, baseErr=0.1, nf=0.2)
+    val filter = fv(q=20, d=5, mq=Some(31.toByte), readErr=0.05, baseErr=0.1, n=0.2)
     val rec    = r(q=30, depth=20, minDepth=20, readErr=0.00f)
     val result = filter.filterRecord(rec)
     result.keepRead shouldBe false
@@ -168,7 +179,7 @@ class FilterConsensusReadsTest extends UnitSpec {
     builder.addPair(name="q2", start1=100, start2=200).foreach(r => tag(r, minDepth=5, depth=5, readErr=0f, depths=arr(5, 10), errors=arr(0,10)))
     val out = makeTempFile("filtered.", ".bam")
     new FilterConsensusReads(input=builder.toTempFile(), output=out, ref=ref, reversePerBaseTags=false,
-      minBaseQuality=45.toByte, minReads=Seq(3), maxReadErrorRate=Seq(0.025), maxBaseErrorRate=Seq(0.1), maxNoCallFraction=0.1).execute()
+      minBaseQuality=45.toByte, minReads=Seq(3), maxReadErrorRate=Seq(0.025), maxBaseErrorRate=Seq(0.1), maxNoCalls=0.1).execute()
 
     val recs = SamSource(out).toSeq
     recs.size shouldBe 4
@@ -183,7 +194,7 @@ class FilterConsensusReadsTest extends UnitSpec {
 
     val out = makeTempFile("filtered.", ".bam")
     new FilterConsensusReads(input=builder.toTempFile(), output=out, ref=ref, reversePerBaseTags=false,
-      minBaseQuality=45.toByte, minReads=Seq(3), maxReadErrorRate=Seq(0.025), maxBaseErrorRate=Seq(0.1), maxNoCallFraction=0.1).execute()
+      minBaseQuality=45.toByte, minReads=Seq(3), maxReadErrorRate=Seq(0.025), maxBaseErrorRate=Seq(0.1), maxNoCalls=0.1).execute()
 
     val recs = SamSource(out).toSeq
     recs.size shouldBe 2
@@ -202,7 +213,7 @@ class FilterConsensusReadsTest extends UnitSpec {
 
     val out = makeTempFile("filtered.", ".bam")
     new FilterConsensusReads(input=builder.toTempFile(), output=out, ref=ref, reversePerBaseTags=false,
-      minBaseQuality=45.toByte, minReads=Seq(3), maxReadErrorRate=Seq(0.025), maxBaseErrorRate=Seq(0.1), maxNoCallFraction=0.1).execute()
+      minBaseQuality=45.toByte, minReads=Seq(3), maxReadErrorRate=Seq(0.025), maxBaseErrorRate=Seq(0.1), maxNoCalls=0.1).execute()
 
     val recs = SamSource(out).toSeq
     recs.size shouldBe 0
@@ -220,7 +231,7 @@ class FilterConsensusReadsTest extends UnitSpec {
 
     val out = makeTempFile("filtered.", ".bam")
     new FilterConsensusReads(input=builder.toTempFile(), output=out, ref=ref, reversePerBaseTags=false,
-      minBaseQuality=45.toByte, minReads=Seq(3), maxReadErrorRate=Seq(0.025), maxBaseErrorRate=Seq(0.1), maxNoCallFraction=0.1).execute()
+      minBaseQuality=45.toByte, minReads=Seq(3), maxReadErrorRate=Seq(0.025), maxBaseErrorRate=Seq(0.1), maxNoCalls=0.1).execute()
 
     val recs = SamSource(out).toSeq
     recs.size shouldBe 3
@@ -235,7 +246,7 @@ class FilterConsensusReadsTest extends UnitSpec {
     Seq(true, false) foreach { reverseTags =>
       val out = makeTempFile("filtered.", ".bam")
       new FilterConsensusReads(input=builder.toTempFile(), output=out, ref=ref, reversePerBaseTags=reverseTags,
-        minBaseQuality=45.toByte, minReads=Seq(3), maxReadErrorRate=Seq(0.025), maxBaseErrorRate=Seq(0.1), maxNoCallFraction=0.1).execute()
+        minBaseQuality=45.toByte, minReads=Seq(3), maxReadErrorRate=Seq(0.025), maxBaseErrorRate=Seq(0.1), maxNoCalls=0.1).execute()
 
       val recs = SamSource(out).toSeq
       recs.size shouldBe 2
@@ -274,7 +285,7 @@ class FilterConsensusReadsTest extends UnitSpec {
     Seq(true, false) foreach { reverseTags =>
       val out = makeTempFile("filtered.", ".bam")
       new FilterConsensusReads(input=path, output=out, ref=ref, reversePerBaseTags=reverseTags,
-        minBaseQuality=2.toByte, minReads=Seq(0), maxReadErrorRate=Seq(1), maxBaseErrorRate=Seq(1), maxNoCallFraction=1).execute()
+        minBaseQuality=2.toByte, minReads=Seq(0), maxReadErrorRate=Seq(1), maxBaseErrorRate=Seq(1), maxNoCalls=1).execute()
 
       val recs = SamSource(out).toSeq
       recs.size shouldBe 2
@@ -300,7 +311,7 @@ class FilterConsensusReadsTest extends UnitSpec {
     val in  = builder.toTempFile()
     val out = makeTempFile("filtered.", ".bam")
     new FilterConsensusReads(input=in, output=out, ref=ref, reversePerBaseTags=false,
-      minBaseQuality=45.toByte, minReads=Seq(3), maxReadErrorRate=Seq(0.025), maxBaseErrorRate=Seq(0.1), maxNoCallFraction=0.1,
+      minBaseQuality=45.toByte, minReads=Seq(3), maxReadErrorRate=Seq(0.025), maxBaseErrorRate=Seq(0.1), maxNoCalls=0.1,
       sortOrder=outOrder
     ).execute()
 
@@ -455,7 +466,7 @@ class FilterConsensusReadsTest extends UnitSpec {
   "FilterConsensusReads.filterRead(duplex)" should "filter appropriately by total read depth" in {
     val good = DuplexBuilder.addSimple(abDp=3, baDp=2)
     val bad  = DuplexBuilder.addSimple(abDp=2, baDp=2)
-    val filter = fv(q=1, d=Seq(5,1,1), mq=None, readErr=Seq(1.0,1.0,1.0), baseErr=Seq(1.0,1.0,1.0), nf=1.0, ss=false)
+    val filter = fv(q=1, d=Seq(5,1,1), mq=None, readErr=Seq(1.0,1.0,1.0), baseErr=Seq(1.0,1.0,1.0), n=1.0, ss=false)
     filter.filterRecord(good).keepRead shouldBe true
     filter.filterRecord(bad ).keepRead shouldBe false
   }
@@ -463,7 +474,7 @@ class FilterConsensusReadsTest extends UnitSpec {
   it should "filter appropriately by read error rate" in {
     val good = DuplexBuilder.add(err=0.024f)
     val bad  = DuplexBuilder.add(err=0.026f)
-    val filter = fv(q=1, d=Seq(1,1,1), mq=None, readErr=Seq(0.025,1.0,1.0), baseErr=Seq(1.0,1.0,1.0), nf=1.0, ss=false)
+    val filter = fv(q=1, d=Seq(1,1,1), mq=None, readErr=Seq(0.025,1.0,1.0), baseErr=Seq(1.0,1.0,1.0), n=1.0, ss=false)
     filter.filterRecord(good).keepRead shouldBe true
     filter.filterRecord(bad ).keepRead shouldBe false
   }
@@ -472,7 +483,7 @@ class FilterConsensusReadsTest extends UnitSpec {
     val good = DuplexBuilder.addSimple(abDp=3, baDp=3)
     val bad1 = DuplexBuilder.addSimple(abDp=3, baDp=2)
     val bad2 = DuplexBuilder.addSimple(abDp=2, baDp=3)
-    val filter = fv(q=1, d=Seq(3,3,3), mq=None, readErr=Seq(1.0,1.0,1.0), baseErr=Seq(1.0,1.0,1.0), nf=1.0, ss=false)
+    val filter = fv(q=1, d=Seq(3,3,3), mq=None, readErr=Seq(1.0,1.0,1.0), baseErr=Seq(1.0,1.0,1.0), n=1.0, ss=false)
     filter.filterRecord(good).keepRead shouldBe true
     filter.filterRecord(bad1).keepRead shouldBe false
     filter.filterRecord(bad2).keepRead shouldBe false
@@ -483,7 +494,7 @@ class FilterConsensusReadsTest extends UnitSpec {
     val good2 = DuplexBuilder.addSimple(abDp=3, baDp=2)
     val good3 = DuplexBuilder.addSimple(abDp=2, baDp=3)
     val bad1  = DuplexBuilder.addSimple(abDp=2, baDp=2)
-    val filter = fv(q=1, d=Seq(3,3,2), mq=None, readErr=Seq(1.0,1.0,1.0), baseErr=Seq(1.0,1.0,1.0), nf=1.0, ss=false)
+    val filter = fv(q=1, d=Seq(3,3,2), mq=None, readErr=Seq(1.0,1.0,1.0), baseErr=Seq(1.0,1.0,1.0), n=1.0, ss=false)
     filter.filterRecord(good1).keepRead shouldBe true
     filter.filterRecord(good2).keepRead shouldBe true
     filter.filterRecord(good3).keepRead shouldBe true
@@ -495,7 +506,7 @@ class FilterConsensusReadsTest extends UnitSpec {
     val bad1 = DuplexBuilder.add(abDp=100, baDp=100, abErr=0.01f, baErr=0.03f, err=0.02f)
     val bad2 = DuplexBuilder.add(abDp=100, baDp=100, abErr=0.03f, baErr=0.01f, err=0.02f)
     val bad3 = DuplexBuilder.add(abDp=100, baDp=100, abErr=0.03f, baErr=0.03f, err=0.03f)
-    val filter = fv(q=1, d=Seq(1,1,1), mq=None, readErr=Seq(1.0,0.02,0.02), baseErr=Seq(1.0,1.0,1.0), nf=1.0, ss=false)
+    val filter = fv(q=1, d=Seq(1,1,1), mq=None, readErr=Seq(1.0,0.02,0.02), baseErr=Seq(1.0,1.0,1.0), n=1.0, ss=false)
     filter.filterRecord(good).keepRead shouldBe true
     filter.filterRecord(bad1).keepRead shouldBe false
     filter.filterRecord(bad2).keepRead shouldBe false
@@ -508,7 +519,7 @@ class FilterConsensusReadsTest extends UnitSpec {
     val good3 = DuplexBuilder.add(abDp=100, baDp=100, abErr=0.01f, baErr=0.03f, err=0.02f)
     val bad1  = DuplexBuilder.add(abDp=100, baDp=100, abErr=0.01f, baErr=0.04f, err=0.03f)
     val bad2  = DuplexBuilder.add(abDp=100, baDp=100, abErr=0.04f, baErr=0.01f, err=0.03f)
-    val filter = fv(q=1, d=Seq(1,1,1), mq=None, readErr=Seq(1.0,0.02,0.03), baseErr=Seq(1.0,1.0,1.0), nf=1.0, ss=false)
+    val filter = fv(q=1, d=Seq(1,1,1), mq=None, readErr=Seq(1.0,0.02,0.03), baseErr=Seq(1.0,1.0,1.0), n=1.0, ss=false)
     filter.filterRecord(good1).keepRead shouldBe true
     filter.filterRecord(good2).keepRead shouldBe true
     filter.filterRecord(good3).keepRead shouldBe true
@@ -537,7 +548,7 @@ class FilterConsensusReadsTest extends UnitSpec {
       r.quals = ss(5, r.length).map(_.toByte).drop(1) ++ Array[Byte](4.toByte)
       r
     }
-    val filter = fv(q=1, d=Seq(1,1,1), mq=Some(5.toByte), readErr=Seq(1.0,0.02,0.03), baseErr=Seq(1.0,1.0,1.0), nf=1.0, ss=false)
+    val filter = fv(q=1, d=Seq(1,1,1), mq=Some(5.toByte), readErr=Seq(1.0,0.02,0.03), baseErr=Seq(1.0,1.0,1.0), n=1.0, ss=false)
     filter.filterRecord(good1).keepRead shouldBe true
     filter.filterRecord(good2).keepRead shouldBe true
     filter.filterRecord(bad1).keepRead shouldBe false
@@ -546,7 +557,7 @@ class FilterConsensusReadsTest extends UnitSpec {
 
   it should "mask bases when the total depth dips below the required minimum" in {
     val rec = DuplexBuilder.add(dp=15, abDp=8, baDp=7, abDps=Array[Short](8,7,8,8,8,8,8,8,8,8), baDps=Array[Short](7,7,7,7,2,7,7,7,1,7))
-    val filter = fv(q=1, d=Seq(15,1,1), mq=None, readErr=Seq(1.0,1.0,1.0), baseErr=Seq(1.0,1.0,1.0), nf=1.0, ss=false)
+    val filter = fv(q=1, d=Seq(15,1,1), mq=None, readErr=Seq(1.0,1.0,1.0), baseErr=Seq(1.0,1.0,1.0), n=0.99, ss=false)
     val result = filter.filterRecord(rec)
     result.keepRead shouldBe true
     result.maskedBases shouldBe 3
@@ -555,7 +566,7 @@ class FilterConsensusReadsTest extends UnitSpec {
 
   it should "mask bases when the A/B depth dips below the symmetric required minimum" in {
     val rec = DuplexBuilder.add(dp=6, abDp=3, baDp=3, abDps=Array[Short](3,3,2,3,3,1,3,3,3,2), baDps=Array[Short](3,3,3,3,3,3,3,3,2,2))
-    val filter = fv(q=1, d=Seq(3,3,3), mq=None, readErr=Seq(1.0,1.0,1.0), baseErr=Seq(1.0,1.0,1.0), nf=1.0, ss=false)
+    val filter = fv(q=1, d=Seq(3,3,3), mq=None, readErr=Seq(1.0,1.0,1.0), baseErr=Seq(1.0,1.0,1.0), n=0.99, ss=false)
     val result = filter.filterRecord(rec)
     result.keepRead shouldBe true
     result.maskedBases shouldBe 4
@@ -564,7 +575,7 @@ class FilterConsensusReadsTest extends UnitSpec {
 
   it should "mask bases when the A/B depth dips below the asymmetric required minimums" in {
     val rec = DuplexBuilder.add(dp=6, abDp=3, baDp=3, abDps=Array[Short](2,2,2,3,3,3,3,3,2,3), baDps=Array[Short](3,3,3,2,2,2,3,3,2,1))
-    val filter = fv(q=1, d=Seq(3,3,2), mq=None, readErr=Seq(1.0,1.0,1.0), baseErr=Seq(1.0,1.0,1.0), nf=1.0, ss=false)
+    val filter = fv(q=1, d=Seq(3,3,2), mq=None, readErr=Seq(1.0,1.0,1.0), baseErr=Seq(1.0,1.0,1.0), n=0.99, ss=false)
     val result = filter.filterRecord(rec)
     result.keepRead shouldBe true
     result.maskedBases shouldBe 2
@@ -574,7 +585,7 @@ class FilterConsensusReadsTest extends UnitSpec {
   it should "mask bases when the total error rate rises above the required per-base maximum" in {
     val rec = DuplexBuilder.add(dp=100, abDp=50, baDp=50, abDps=ss(50), baDps=ss(50),
       abErrs=Array[Short](5,0,0,0,4,0,3,0,2,0), baErrs=Array[Short](0,0,5,0,1,0,2,0,3,0) )
-    val filter = fv(q=1, d=Seq(1,1,1), mq=None, readErr=Seq(1.0,1.0,1.0), baseErr=Seq(0.04, 1.0, 1.0), nf=1.0, ss=false)
+    val filter = fv(q=1, d=Seq(1,1,1), mq=None, readErr=Seq(1.0,1.0,1.0), baseErr=Seq(0.04, 1.0, 1.0), n=0.99, ss=false)
     val result = filter.filterRecord(rec)
     result.keepRead shouldBe true
     result.maskedBases shouldBe 5
@@ -584,7 +595,7 @@ class FilterConsensusReadsTest extends UnitSpec {
   it should "mask bases when the A/B error rates rise above the required symmetric maximum" in {
     val rec = DuplexBuilder.add(dp=200, abDp=100, baDp=100, abDps=ss(100), baDps=ss(100),
       abErrs=Array[Short](0,1,2,3,0,0,0,1,2,3), baErrs=Array[Short](0,3,2,1,0,0,0,3,2,3) )
-    val filter = fv(q=1, d=Seq(1,1,1), mq=None, readErr=Seq(1.0,1.0,1.0), baseErr=Seq(1.0, 0.025, 0.025), nf=1.0, ss=false)
+    val filter = fv(q=1, d=Seq(1,1,1), mq=None, readErr=Seq(1.0,1.0,1.0), baseErr=Seq(1.0, 0.025, 0.025), n=0.99, ss=false)
     val result = filter.filterRecord(rec)
     result.keepRead shouldBe true
     result.maskedBases shouldBe 4
@@ -594,7 +605,7 @@ class FilterConsensusReadsTest extends UnitSpec {
   it should "mask bases when the A/B error rates rise above the required asymmetric maximums" in {
     val rec = DuplexBuilder.add(dp=200, abDp=100, baDp=100, abDps=ss(100), baDps=ss(100),
       abErrs=Array[Short](0,1,2,3,0,3,3,3,2,1), baErrs=Array[Short](0,1,2,3,0,1,2,3,3,3) )
-    val filter = fv(q=1, d=Seq(1,1,1), mq=None, readErr=Seq(1.0,1.0,1.0), baseErr=Seq(1.0, 0.02, 0.03), nf=1.0, ss=false)
+    val filter = fv(q=1, d=Seq(1,1,1), mq=None, readErr=Seq(1.0,1.0,1.0), baseErr=Seq(1.0, 0.02, 0.03), n=0.99, ss=false)
     val result = filter.filterRecord(rec)
     result.keepRead shouldBe true
     result.maskedBases shouldBe 2
@@ -604,7 +615,7 @@ class FilterConsensusReadsTest extends UnitSpec {
   it should "mask bases by base quality" in {
     val rec = DuplexBuilder.addSimple(abDp=3, baDp=3)
     rec.quals = Array(10, 20, 30, 40, 50, 60, 70, 80, 90, 99).map(_.toByte)
-    val filter = fv(q=80, d=Seq(1,1,1), mq=None, readErr=Seq(1.0,1.0,1.0), baseErr=Seq(1.0, 1.0, 1.0), nf=1.0, ss=false)
+    val filter = fv(q=80, d=Seq(1,1,1), mq=None, readErr=Seq(1.0,1.0,1.0), baseErr=Seq(1.0, 1.0, 1.0), n=0.99, ss=false)
     val result = filter.filterRecord(rec)
     result.keepRead    shouldBe true
     result.maskedBases shouldBe 7
@@ -615,7 +626,7 @@ class FilterConsensusReadsTest extends UnitSpec {
     val rec = DuplexBuilder.addSimple(abDp=3, baDp=3)
     rec(ConsensusTags.PerBase.AbConsensusBases) = rec.basesString
     rec(ConsensusTags.PerBase.BaConsensusBases) = "NT" + rec.basesString.drop(2)
-    val filter = fv(q=1, d=Seq(1,1,1), mq=None, readErr=Seq(1.0,1.0,1.0), baseErr=Seq(1.0, 1.0, 1.0), nf=1.0, ss=true)
+    val filter = fv(q=1, d=Seq(1,1,1), mq=None, readErr=Seq(1.0,1.0,1.0), baseErr=Seq(1.0, 1.0, 1.0), n=0.99, ss=true)
     val result = filter.filterRecord(rec)
     result.keepRead    shouldBe true
     result.maskedBases shouldBe 2
@@ -626,7 +637,7 @@ class FilterConsensusReadsTest extends UnitSpec {
     val rec = DuplexBuilder.addSimple(abDp=3, baDp=3)
     rec(ConsensusTags.PerBase.AbConsensusBases) = rec.basesString
     rec(ConsensusTags.PerBase.BaConsensusBases) = "NT" + rec.basesString.drop(2)
-    val filter = fv(q=1, d=Seq(1,1,1), mq=None, readErr=Seq(1.0,1.0,1.0), baseErr=Seq(1.0, 1.0, 1.0), nf=1.0, ss=false)
+    val filter = fv(q=1, d=Seq(1,1,1), mq=None, readErr=Seq(1.0,1.0,1.0), baseErr=Seq(1.0, 1.0, 1.0), n=0.99, ss=false)
     val result = filter.filterRecord(rec)
     result.keepRead    shouldBe true
     result.maskedBases shouldBe 0
@@ -636,7 +647,7 @@ class FilterConsensusReadsTest extends UnitSpec {
   it should "not mask bases if missing an AB or BA and requiring single strand agreement" in {
     val rec = DuplexBuilder.addSimple(abDp=3, baDp=0)
     rec(ConsensusTags.PerBase.AbConsensusBases) = rec.basesString
-    val filter = fv(q=1, d=Seq(1,1,0), mq=None, readErr=Seq(1.0,1.0,1.0), baseErr=Seq(1.0, 1.0, 1.0), nf=1.0, ss=true)
+    val filter = fv(q=1, d=Seq(1,1,0), mq=None, readErr=Seq(1.0,1.0,1.0), baseErr=Seq(1.0, 1.0, 1.0), n=0.99, ss=true)
     val result = filter.filterRecord(rec)
     result.keepRead    shouldBe true
     result.maskedBases shouldBe 0
@@ -649,7 +660,7 @@ class FilterConsensusReadsTest extends UnitSpec {
     val bad  = DuplexBuilder.addSimple(abDp=3, baDp=3)
     bad.bases = "NNAAAAAANN"
 
-    val filter = fv(q=1, d=Seq(1,1,1), mq=None, readErr=Seq(1.0,1.0,1.0), baseErr=Seq(1.0, 1.0, 1.0), nf=0.2, ss=false)
+    val filter = fv(q=1, d=Seq(1,1,1), mq=None, readErr=Seq(1.0,1.0,1.0), baseErr=Seq(1.0, 1.0, 1.0), n=0.2, ss=false)
     filter.filterRecord(good).keepRead shouldBe true
     filter.filterRecord(bad ).keepRead shouldBe false
   }
@@ -663,7 +674,7 @@ class FilterConsensusReadsTest extends UnitSpec {
     bad1.bases = "NNAAAAAAAA"; bad1.quals = Array( 2, 2,20,30,90,90,90,90,90,90).map(_.toByte)
     bad2.bases = "AAAAAAAAAA"; bad2.quals = Array(90,90,40,35,48,90,90,90,90,90).map(_.toByte)
 
-    val filter = fv(q=50, d=Seq(1,1,1), mq=None, readErr=Seq(1.0,1.0,1.0), baseErr=Seq(1.0, 1.0, 1.0), nf=0.2, ss=false)
+    val filter = fv(q=50, d=Seq(1,1,1), mq=None, readErr=Seq(1.0,1.0,1.0), baseErr=Seq(1.0, 1.0, 1.0), n=0.2, ss=false)
     filter.filterRecord(good).keepRead shouldBe true
     filter.filterRecord(bad1).keepRead shouldBe false
     filter.filterRecord(bad2).keepRead shouldBe false
@@ -673,7 +684,7 @@ class FilterConsensusReadsTest extends UnitSpec {
     val good = DuplexBuilder.addSimple(abDp=3, baDp=0)
     val bad = DuplexBuilder.addSimple(abDp=1, baDp=0)
 
-    val filter = fv(q=50, d=Seq(2,1,0), mq=None, readErr=Seq(1.0,1.0,1.0), baseErr=Seq(1.0, 1.0, 1.0), nf=0.2, ss=false)
+    val filter = fv(q=50, d=Seq(2,1,0), mq=None, readErr=Seq(1.0,1.0,1.0), baseErr=Seq(1.0, 1.0, 1.0), n=0.2, ss=false)
     filter.filterRecord(good).keepRead shouldBe true
     filter.filterRecord(bad).keepRead shouldBe false
   }
@@ -681,7 +692,7 @@ class FilterConsensusReadsTest extends UnitSpec {
   it should "not keep duplex reads that come from only one strand when min-reads is 1,1,1" in {
     val bad1 = DuplexBuilder.addSimple(abDp=3, baDp=0)
     val bad2 = DuplexBuilder.addSimple(abDp=1, baDp=0)
-    val filter = fv(q=50, d=Seq(3,2,1), mq=None, readErr=Seq(1.0,1.0,1.0), baseErr=Seq(1.0, 1.0, 1.0), nf=0.2, ss=false)
+    val filter = fv(q=50, d=Seq(3,2,1), mq=None, readErr=Seq(1.0,1.0,1.0), baseErr=Seq(1.0, 1.0, 1.0), n=0.2, ss=false)
     filter.filterRecord(bad1).keepRead shouldBe false
     filter.filterRecord(bad2).keepRead shouldBe false
   }

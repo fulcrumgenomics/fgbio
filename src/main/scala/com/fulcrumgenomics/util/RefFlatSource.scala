@@ -25,13 +25,12 @@
 
 package com.fulcrumgenomics.util
 
-import java.io.{Closeable, File, InputStream}
-
 import com.fulcrumgenomics.commons.CommonsDef.FilePath
 import com.fulcrumgenomics.commons.util.{DelimitedDataParser, LazyLogging}
 import com.fulcrumgenomics.fasta.SequenceDictionary
 import com.fulcrumgenomics.util.GeneAnnotations.{Exon, Gene, GeneLocus, Transcript}
 
+import java.io.{Closeable, File, InputStream}
 import scala.collection.mutable.ArrayBuffer
 import scala.io.Source
 
@@ -94,9 +93,11 @@ object RefFlatSource {
   * A Picard-style header is also supported (GENE_NAME, TRANSCRIPT_NAME, ...).
   * */
 class RefFlatSource private(lines: Iterator[String],
-                            dict: Option[SequenceDictionary] = None,
+                            private[this] val dict: Option[SequenceDictionary],
                             private[this] val source: Option[{ def close(): Unit }] = None
                            ) extends Iterable[Gene] with Closeable with LazyLogging {
+  import scala.language.reflectiveCalls
+
   private val genes = {
 
     // Ensure there is a header for DelimitedDataParser, and if a Picard-style header is used, convert it
@@ -129,7 +130,7 @@ class RefFlatSource private(lines: Iterator[String],
       val exonEnds       = row.string("exonEnds").split(',').filter(_.nonEmpty).map(_.toInt)
       val isNegative     = strand == "-"
 
-      if (dict.exists(!_.contains(contig))) { // skip unrecognized sequences
+      if (this.dict.exists(!_.contains(contig))) { // skip unrecognized sequences
         None
       }
       else {

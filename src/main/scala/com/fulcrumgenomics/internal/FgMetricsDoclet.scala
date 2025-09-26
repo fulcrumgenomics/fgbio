@@ -24,11 +24,12 @@
 
 package com.fulcrumgenomics.internal
 
-import java.io.PrintStream
-import java.nio.file.Paths
-
 import com.fulcrumgenomics.util.Metric
 
+import java.io.PrintStream
+import java.nio.file.Paths
+import scala.annotation.unused
+import scala.reflect.internal.Reporter
 import scala.tools.nsc.Settings
 import scala.tools.nsc.doc.base.comment._
 import scala.tools.nsc.doc.html.Doclet
@@ -47,7 +48,7 @@ case class MetricDescription(name: String, description: String, columns: Seq[Col
   * Custom scaladoc Doclet for rendering the documentation for [[com.fulcrumgenomics.util.Metric]] classes into
   * MarkDown for display on the fgbio website.
   */
-class FgMetricsDoclet extends Doclet(reporter = new ConsoleReporter(new Settings())) {
+class FgMetricsDoclet(@unused reporter: Reporter)  extends Doclet(reporter = new ConsoleReporter(new Settings())) {
   /**
     * Main entry point for the doclet.  Scans for documentation for the metrics classes and
     * renders it into MarkDown.
@@ -129,22 +130,23 @@ class FgMetricsDoclet extends Doclet(reporter = new ConsoleReporter(new Settings
 
     find(universe.rootPackage)
       .filter(d => d.isClass && !d.isAbstract)
-      .filter(d => d.parentTypes.exists { case (template, typ) => template.toString == classOf[Metric].getName })
+      .filter(d => d.parentTypes.exists { case (template, _) => template.toString == classOf[Metric].getName })
   }
 
   /** Take the body of a scaladoc comment and renders it into MarkDown. */
   protected def renderBody(body: Body): String = {
     val buffer = new StringBuilder
+    import annotation.unused
 
     // Takes a block element and renders it into MarkDown and writes it into the buffer
-    def renderBlock(block: Block, indent: String): Unit = {
+    def renderBlock(block: Block, @unused indent: String): Unit = {
       (block: @unchecked) match {
-        case para:  Paragraph      => render(para.text)
-        case dlist: DefinitionList => () // TODO
-        case hr:    HorizontalRule => () // TODO
-        case olist: OrderedList    => () // TODO
-        case title: Title          => buffer.append("#" * title.level).append(" "); render(title.text); buffer.append("\n\n")
-        case ulist: UnorderedList  => () // TODO
+        case para:  Paragraph     => render(para.text)
+        case _: DefinitionList    => () // TODO
+        case _:    HorizontalRule => () // TODO
+        case _: OrderedList       => () // TODO
+        case title: Title         => buffer.append("#" * title.level).append(" "); render(title.text); buffer.append("\n\n")
+        case _: UnorderedList     => () // TODO
       }
     }
 

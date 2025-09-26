@@ -49,18 +49,16 @@ private[api] trait SamRecordIntermediate extends SAMRecord {
     setCigarString(s)
   }
 
-  override def setCigarString(cigar: String): Unit = { super.setCigarString(cigar);  cigarChanged(cigar) }
+  override def setCigarString(cigar: String): Unit = { super.setCigarString(cigar);  cigarChanged() }
   protected[api] def setCigarStringNoNotify(cigar: String): Unit = super.setCigarString(cigar)
-  protected[api] def cigarChanged(cigar: String): Unit = {}
+  protected[api] def cigarChanged(): Unit = {}
 }
 
 /** Class that is used to provide a nice API to transient attributes in the SamRecord. */
 class TransientAttrs(private val rec: SamRecord) {
   def apply[A](key: Any): A = rec.asSam.getTransientAttribute(key).asInstanceOf[A]
-  def update(key: Any, value: Any): Unit = {
-    if (value == null) rec.asSam.removeTransientAttribute(key) else rec.asSam.setTransientAttribute(key, value)
-  }
-  def get[A](key: Any): Option[A] = Option(apply(key))
+  def update(key: Any, value: Any): Any = if (value == null) rec.asSam.removeTransientAttribute(key) else rec.asSam.setTransientAttribute(key, value)
+  def get[A](key: Any): Option[A] = Option[A](apply[A](key))
   def getOrElse[A](key: Any, default: => A): A = rec.asSam.getTransientAttribute(key) match {
     case null => default
     case value => value.asInstanceOf[A]
@@ -68,18 +66,18 @@ class TransientAttrs(private val rec: SamRecord) {
   def getOrElseUpdate[A](key: Any, default: => A): A = rec.asSam.getTransientAttribute(key) match {
     case null  =>
       val value: A = default
-      update(key, value)
+      val _ = update(key, value)
       value
     case value => value.asInstanceOf[A]
   }
 }
 
 /**
-  * A trait that fgbio uses as a replacement for [[SAMRecord]].  The trait is self-typed as a
-  * [[SamRecordIntermediate]] which is a sub-class of SAMRecord.  It is done this wasy so that
-  * a) we can access superclass methods via [[SamRecordIntermediate]] but that self-typing here
-  * instead of extending hides the [[SAMRecord]] API from users of the class.  The result is
-  * always a [[SAMRecord]] but isn't seen as such without casting.
+  * A trait that fgbio uses as a replacement for [[htsjdk.samtools.SAMRecord]].  The trait is self-typed as a
+  * `SamRecordIntermediate` which is a subclass of SAMRecord.  It is done this wasy so that
+  * a) we can access superclass methods via `SamRecordIntermediate` but that self-typing here
+  * instead of extending hides the [[htsjdk.samtools.SAMRecord]] API from users of the class.  The result is
+  * always a [[htsjdk.samtools.SAMRecord]] but isn't seen as such without casting.
   */
 trait SamRecord {
   this: SamRecordIntermediate =>
@@ -167,7 +165,7 @@ trait SamRecord {
   @inline final def cigar: Cigar = { if (_cigar == null) _cigar = Cigar.fromSam(getCigarString);  _cigar }
   @inline final def cigar_=(cig: String): Unit = { this._cigar = null; setCigarStringNoNotify(cig) }
   @inline final def cigar_=(cig: Cigar): Unit  = { this._cigar = cig; setCigarStringNoNotify(if (cig.isEmpty) null else cig.toString()) }
-  @inline final override def cigarChanged(cigar: String): Unit = { this._cigar = null } // null out the cigar; lazily reconstruct if asked for again
+  @inline final override def cigarChanged(): Unit = { this._cigar = null } // null out the cigar; lazily reconstruct if asked for again
 
   @inline final def mateRefName: String = getMateReferenceName
   @inline final def mateRefName_=(name: String):Unit = setMateReferenceName(name)
@@ -226,7 +224,7 @@ trait SamRecord {
 
   // Use apply/update for tag attributes
   @inline final def apply[A](name: String): A                    = getAttribute(name).asInstanceOf[A]
-  @inline final def get[A](name: String): Option[A]              = Option(apply(name))
+  @inline final def get[A](name: String): Option[A]              = Option[A](apply[A](name))
   @inline final def update(name: String, value: Any): Unit       = setAttribute(name, value)
   @inline final def attributes: Map[String,Any]                  = getAttributes.map(x => x.tag -> x.value).toMap
   @inline final def getOrElse[A](name: String, default: => A): A = get(name).getOrElse(default)

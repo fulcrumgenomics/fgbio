@@ -87,7 +87,7 @@ class NumericTypesTest extends UnitSpec {
   }
 
   it should "1 - probability in log space" in {
-    import LogProbability.{not, toLogProbability}
+    import LogProbability.toLogProbability
     val Seq(q10, q20) = Seq(10, 20).map(LogProbability.fromPhredScore)
     exp(LogProbability.not(q10)) shouldBe 0.9 +- 0.00001
     exp(LogProbability.not(q20)) shouldBe 0.99 +- 0.00001

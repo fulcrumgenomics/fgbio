@@ -24,7 +24,6 @@
 
 package com.fulcrumgenomics.vcf.api
 
-import com.fulcrumgenomics.FgBioDef._
 import com.fulcrumgenomics.vcf.api.Allele.SimpleAllele
 
 /**
@@ -38,9 +37,9 @@ case class AlleleSet(ref: SimpleAllele, alts: IndexedSeq[Allele]) extends Iterab
   /** Provides an iterator over all the alleles. */
   override def iterator: Iterator[Allele] = Iterator(ref) ++ alts.iterator
 
-  /** Retrives the allele at `index`.  The reference allele is given index 0, and alternate
+  /** Retrieves the allele at `index`.  The reference allele is given index 0, and alternate
     * alleles are indexed starting at 1.  Requesting an index  `< 1` or `> size-1` will result
-    *  in a [[IndexOutOfBoundsException]].
+    *  in a [[java.lang.IndexOutOfBoundsException]].
     *
     * @param index The index of the allele to return
     * @return the allele present at the index
@@ -55,12 +54,11 @@ case class AlleleSet(ref: SimpleAllele, alts: IndexedSeq[Allele]) extends Iterab
 }
 
 object AlleleSet {
-  private val NoAlts: IndexedSeq[Allele] = IndexedSeq.empty
 
   /**
     * Generates an AlleleSet from a reference allele and zero or more alternative alleles.
     *
-    * @param ref the reference allele; if this is not a [[SimpleAllele]] an [[IllegalArgumentException]]
+    * @param ref the reference allele; if this is not a [[com.fulcrumgenomics.vcf.api.Allele.SimpleAllele]] an [[java.lang.IllegalArgumentException]]
     *            will be thrown. The parameter type is [[Allele]] to avoid callers having to cast.
     * @param alts zero or more alternative alleles
     */
@@ -72,7 +70,7 @@ object AlleleSet {
   /**
     * Generates an AlleleSet from a reference allele and zero or more alternative alleles.
     *
-    * @param ref the reference allele; if this is not a [[SimpleAllele]] an [[IllegalArgumentException]]
+    * @param ref the reference allele; if this is not a [[com.fulcrumgenomics.vcf.api.Allele.SimpleAllele]] an [[java.lang.IllegalArgumentException]]
     *            will be thrown. The parameter type is [[Allele]] to avoid callers having to cast.
     * @param alts zero or more alternative alleles
     */

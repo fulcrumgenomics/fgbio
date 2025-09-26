@@ -31,8 +31,6 @@ import com.fulcrumgenomics.testing.UnitSpec
 import enumeratum.EnumEntry
 import htsjdk.samtools.{SAMFileHeader, SAMReadGroupRecord}
 
-import scala.collection.immutable.IndexedSeq
-
 class FgBioDefTest extends UnitSpec {
   private case class SampleAndLibrary(sample: String, library: String)
 

@@ -23,13 +23,12 @@
  */
 package com.fulcrumgenomics.util
 
-import java.io.{InputStream, OutputStream}
-import java.nio.file.{Files, Path, Paths}
-import java.util.zip.{GZIPInputStream, GZIPOutputStream}
-
 import com.fulcrumgenomics.commons.CommonsDef.DirPath
 import com.fulcrumgenomics.commons.io.{IoUtil, PathUtil}
 import htsjdk.samtools.util.BlockCompressedOutputStream
+
+import java.io.OutputStream
+import java.nio.file.{Files, Path, Paths}
 
 /**
   * Provides common IO utility methods.  Can be instantiated to create a custom factory, or

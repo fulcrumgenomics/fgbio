@@ -33,6 +33,7 @@ import com.fulcrumgenomics.cmdline.FgBioMain.FailureException
 import com.fulcrumgenomics.testing.SamBuilder.{Minus, Plus}
 import com.fulcrumgenomics.testing.{SamBuilder, UnitSpec}
 import com.fulcrumgenomics.umi.GroupReadsByUmi._
+import com.fulcrumgenomics.util.Metric
 import org.scalatest.{OptionValues, PrivateMethodTester}
 
 import java.nio.file.Files
@@ -44,7 +45,7 @@ import scala.collection.mutable
   */
 class GroupReadsByUmiTest extends UnitSpec with OptionValues with PrivateMethodTester {
   // Returns a List of the element 't' repeated 'n' times
-  private def n[T](t: T, n:Int =1): List[T] = List.tabulate(n)(x => t)
+  private def n[T](t: T, n: Int): List[T] = List.tabulate(n)(_ => t)
 
   /**
     * Converts a mapping of umi->id to a Set of Sets of Umis that are assigned the same ID.
@@ -84,31 +85,31 @@ class GroupReadsByUmiTest extends UnitSpec with OptionValues with PrivateMethodT
       group(assigner.assign(umis)) should contain theSameElementsAs Set(Set("AAAAAA", "AAAATA", "AAAATT", "GGCGGC", "TGCACC", "TGCACG"))
     }
 
-    {
-      "AdjacencyUmiAssigner" should "assign each UMI to separate groups" in {
+    Seq(1, 4).foreach { threads =>
+      "AdjacencyUmiAssigner" should s"assign each UMI to separate groups with $threads thread(s)" in {
         val umis = Seq("AAAAAA", "CCCCCC", "GGGGGG", "TTTTTT", "AAATTT", "TTTAAA", "AGAGAG")
-        val groups  = group(new AdjacencyUmiAssigner(maxMismatches=2).assign(umis))
+        val groups  = group(new AdjacencyUmiAssigner(maxMismatches=2, threads=threads).assign(umis))
         groups shouldBe umis.map(Set(_)).toSet
       }
 
-      it should "assign everything into one group when all counts=1 and within mismatch threshold" in {
+      it should f"assign everything into one group when all counts=1 and within mismatch threshold with $threads thread(s)" in {
         val umis = Seq("AAAAAA", "AAAAAc", "AAAAAg").map(_.toUpperCase)
-        val groups = group(new AdjacencyUmiAssigner(maxMismatches=1).assign(umis))
+        val groups = group(new AdjacencyUmiAssigner(maxMismatches=1, threads=threads).assign(umis))
         groups shouldBe Set(umis.toSet)
       }
 
-      it should "assign everything into one group" in {
+      it should f"assign everything into one group with $threads thread(s)" in {
         val umis = Seq("AAAAAA", "AAAAAA", "AAAAAA", "AAAAAc", "AAAAAc", "AAAAAg", "AAAtAA").map(_.toUpperCase)
-        val groups = group(new AdjacencyUmiAssigner(maxMismatches=1).assign(umis))
+        val groups = group(new AdjacencyUmiAssigner(maxMismatches=1, threads=threads).assign(umis))
         groups shouldBe Set(umis.toSet)
       }
 
-      it should "make three groups" in {
+      it should f"make three groups with $threads thread(s)" in {
         val umis: Seq[String] = n("AAAAAA", 4) ++ n("AAAAAT", 2) ++ n("AATAAT", 1) ++ n("AATAAA", 2) ++
                                 n("GACGAC", 9) ++ n("GACGAT", 1) ++ n("GACGCC", 4) ++
                                 n("TACGAC", 7)
 
-        val groups  = group(new AdjacencyUmiAssigner(maxMismatches=2).assign(umis))
+        val groups  = group(new AdjacencyUmiAssigner(maxMismatches=2, threads=threads).assign(umis))
         groups shouldBe Set(
           Set("AAAAAA", "AAAAAT", "AATAAT", "AATAAA"),
           Set("GACGAC", "GACGAT", "GACGCC"),
@@ -117,15 +118,15 @@ class GroupReadsByUmiTest extends UnitSpec with OptionValues with PrivateMethodT
       }
 
       // Unit test for something that failed when running on real data
-      it should "correctly assign the following UMIs" in {
+      it should f"correctly assign the following UMIs with $threads thread(s)" in {
         val umis   = Seq("CGGGGG", "GTGGGG", "GGGGGG", "CTCACA", "TGCAGT", "CTCACA", "CGGGGG")
-        val groups = group(new AdjacencyUmiAssigner(maxMismatches=1).assign(umis))
+        val groups = group(new AdjacencyUmiAssigner(maxMismatches=1, threads=threads).assign(umis))
         groups shouldBe Set(Set("CGGGGG", "GGGGGG", "GTGGGG"), Set("CTCACA"), Set("TGCAGT"))
       }
 
-      it should "handle a deep tree of UMIs" in {
+      it should f"handle a deep tree of UMIs with $threads thread(s)" in {
         val umis   = n("AAAAAA", 256) ++ n("TAAAAA", 128) ++ n("TTAAAA", 64) ++ n("TTTAAA", 32) ++ n("TTTTAA", 16)
-        val groups = group(new AdjacencyUmiAssigner(maxMismatches=1).assign(umis))
+        val groups = group(new AdjacencyUmiAssigner(maxMismatches=1, threads=threads).assign(umis))
         groups shouldBe Set(Set("AAAAAA", "TAAAAA", "TTAAAA", "TTTAAA", "TTTTAA"))
       }
     }
@@ -173,7 +174,7 @@ class GroupReadsByUmiTest extends UnitSpec with OptionValues with PrivateMethodT
   }
 
   "GroupReadsByUmi.umiForRead" should "correctly assign a/b for paired UMI prefixes" in {
-    val tool = new GroupReadsByUmi(rawTag="RX", assignTag="MI", strategy=Strategy.Paired, edits = 0, allowInterContig=true)
+    val tool = new GroupReadsByUmi(rawTag="RX", assignTag="MI", strategy=Strategy.Paired, edits = 0)
     val builder = new SamBuilder(readLength=100)
     val templates = Seq(
       // These 4 should be a::AAA-b::TTT since contig1 is lower
@@ -196,6 +197,24 @@ class GroupReadsByUmiTest extends UnitSpec with OptionValues with PrivateMethodT
       builder.addPair(contig = 1, start1=100, start2=100, strand1=Minus,  strand2=Plus, attrs=Map("RX" -> "AAA-TTT")),
     ).map { pair => Template(r1 = pair.headOption, r2 = pair.lastOption) }
     val expected = n("a::AAA-b::TTT", 4) ++ n("b::AAA-a::TTT", 4) ++ n("a::AAA-b::TTT", 1) ++ n("b::AAA-a::TTT", 1) ++ n("a::AAA-b::TTT", 1) ++ n("b::AAA-a::TTT", 1)
+    val umiForRead = PrivateMethod[String](Symbol("umiForRead"))
+    templates.map(t => tool invokePrivate umiForRead(t)) should contain theSameElementsInOrderAs expected
+  }
+
+  it should "correctly assign a/b for paired UMI prefixes when the UMI for one end of the source molecule is absent" in {
+    val tool = new GroupReadsByUmi(rawTag = "RX", assignTag = "MI", strategy = Strategy.Paired, edits = 0)
+    val builder = new SamBuilder(readLength = 100)
+    val templates = Seq(
+      // This should be a::AAA-b:: since contig1 is lower
+      builder.addPair(contig = 1, contig2 = Some(2), start1 = 100, start2 = 300, strand1 = Plus, strand2 = Minus, attrs = Map("RX" -> "AAA-")),
+      // This should be b::AAA-a:: since contig2 is lower
+      builder.addPair(contig = 2, contig2 = Some(1), start1 = 100, start2 = 300, strand1 = Plus, strand2 = Minus, attrs = Map("RX" -> "AAA-")),
+      // This should be a::-b::TTT since contig1 is lower
+      builder.addPair(contig = 1, contig2 = Some(2), start1 = 100, start2 = 300, strand1 = Plus, strand2 = Minus, attrs = Map("RX" -> "-TTT")),
+      // This should be b::-a::TTT since contig2 is lower
+      builder.addPair(contig = 2, contig2 = Some(1), start1 = 100, start2 = 300, strand1 = Plus, strand2 = Minus, attrs = Map("RX" -> "-TTT")),
+    ).map { pair => Template(r1 = pair.headOption, r2 = pair.lastOption) }
+    val expected = n("a::AAA-b::", 1) ++ n("b::AAA-a::", 1) ++  n("a::-b::TTT", 1) ++ n("b::-a::TTT", 1)
     val umiForRead = PrivateMethod[String](Symbol("umiForRead"))
     templates.map(t => tool invokePrivate umiForRead(t)) should contain theSameElementsInOrderAs expected
   }
@@ -229,7 +248,8 @@ class GroupReadsByUmiTest extends UnitSpec with OptionValues with PrivateMethodT
       val in  = builder.toTempFile()
       val out = Files.createTempFile("umi_grouped.", ".sam")
       val hist = Files.createTempFile("umi_grouped.", ".histogram.txt")
-      val tool = new GroupReadsByUmi(input=in, output=out, familySizeHistogram=Some(hist), rawTag="RX", assignTag="MI", strategy=Strategy.Edit, edits=1, minMapQ=30)
+      val metrics = Files.createTempFile("umi_grouped.", ".metrics.txt")
+      val tool = new GroupReadsByUmi(input=in, output=out, familySizeHistogram=Some(hist), groupingMetrics=Some(metrics), rawTag="RX", assignTag="MI", strategy=Strategy.Edit, edits=1, minMapQ=Some(30))
       val logs = executeFgbioTool(tool)
 
       val groups = readBamRecs(out).groupBy(_.name.charAt(0))
@@ -249,10 +269,103 @@ class GroupReadsByUmiTest extends UnitSpec with OptionValues with PrivateMethodT
 
       hist.toFile.exists() shouldBe true
 
+      // TODO: Consider creating more unit tests that vary the following metric fields
+      val expectedMetric = UmiGroupingMetric(accepted_sam_records = 10, discarded_non_pf = 0, discarded_poor_alignment = 2, discarded_ns_in_umi = 0, discarded_umis_to_short = 0)
+      Metric.read[UmiGroupingMetric](metrics) shouldEqual Seq(expectedMetric)
+
       // Make sure that we skip sorting for TemplateCoordinate
       val sortMessage = "Sorting the input to TemplateCoordinate order"
       logs.exists(_.contains(sortMessage)) shouldBe (sortOrder != TemplateCoordinate)
     }
+  }
+
+  it should "correctly mark duplicates on duplicate reads in group, when flag is passed" in {
+    val builder = new SamBuilder(readLength = 100, sort = Some(SamOrder.Coordinate))
+    // Mapping Quality is a tiebreaker, so use that to our advantage here.
+    builder.addPair(mapq1 = 10, mapq2 = 10, name = "a01", start1 = 100, start2 = 300, strand1 = Plus, strand2 = Minus, attrs = Map("RX" -> "ACT-ACT"))
+    builder.addPair(mapq1 = 30, mapq2 = 30, name = "a02", start1 = 100, start2 = 300, strand1 = Plus, strand2 = Minus, attrs = Map("RX" -> "ACT-ACT"))
+    builder.addPair(mapq1 = 100, mapq2 = 10, name = "a03", start1 = 100, start2 = 300, strand1 = Plus, strand2 = Minus, attrs = Map("RX" -> "ACT-ACT"))
+    builder.addPair(mapq1 = 0, mapq2 = 0, name = "a04", start1 = 100, start2 = 300, strand1 = Plus, strand2 = Minus, attrs = Map("RX" -> "ACT-ACT"))
+
+    val in = builder.toTempFile()
+    val out = Files.createTempFile("umi_grouped.", ".sam")
+    val hist = Files.createTempFile("umi_grouped.", ".histogram.txt")
+    val gr = new GroupReadsByUmi(input=in, output=out, familySizeHistogram=Some(hist), strategy=Strategy.Paired, edits=1, markDuplicates=true)
+
+    gr.markDuplicates shouldBe true
+    gr.execute()
+
+    val recs = readBamRecs(out)
+    recs.length shouldBe 8
+    recs.filter(_.name.equals("a01")).forall(_.duplicate == true) shouldBe true
+    recs.filter(_.name.equals("a02")).forall(_.duplicate == true) shouldBe true
+    recs.filter(_.name.equals("a03")).forall(_.duplicate == false) shouldBe true
+    recs.filter(_.name.equals("a04")).forall(_.duplicate == true) shouldBe true
+  }
+
+  it should "does not mark duplicates on reads in group, when flag is not passed" in {
+    val builder = new SamBuilder(readLength = 100, sort = Some(SamOrder.Coordinate))
+    // Mapping Quality is a tiebreaker, so use that to our advantage here.
+    builder.addPair(mapq1 = 10, mapq2 = 10, name = "a01", start1 = 100, start2 = 300, strand1 = Plus, strand2 = Minus, attrs = Map("RX" -> "ACT-ACT"))
+    builder.addPair(mapq1 = 30, mapq2 = 30, name = "a02", start1 = 100, start2 = 300, strand1 = Plus, strand2 = Minus, attrs = Map("RX" -> "ACT-ACT"))
+    builder.addPair(mapq1 = 100, mapq2 = 10, name = "a03", start1 = 100, start2 = 300, strand1 = Plus, strand2 = Minus, attrs = Map("RX" -> "ACT-ACT"))
+    builder.addPair(mapq1 = 0, mapq2 = 0, name = "a04", start1 = 100, start2 = 300, strand1 = Plus, strand2 = Minus, attrs = Map("RX" -> "ACT-ACT"))
+
+    val in = builder.toTempFile()
+    val out = Files.createTempFile("umi_grouped.", ".sam")
+    val hist = Files.createTempFile("umi_grouped.", ".histogram.txt")
+    new GroupReadsByUmi(input=in, output=out, familySizeHistogram=Some(hist), strategy=Strategy.Paired, edits=1).execute()
+
+    val recs = readBamRecs(out)
+    recs.length shouldBe 6
+    recs.filter(_.name.equals("a01")).forall(_.duplicate == false) shouldBe true
+    recs.filter(_.name.equals("a02")).forall(_.duplicate == false) shouldBe true
+    recs.filter(_.name.equals("a03")).forall(_.duplicate == false) shouldBe true
+    recs.filter(_.name.equals("a04")).forall(_.duplicate == false) shouldBe true
+  }
+
+  it should "correctly mark duplicates on duplicate single-end reads with UMIs" in {
+    val builder = new SamBuilder(readLength = 100, sort = Some(SamOrder.Coordinate))
+    builder.addFrag(mapq = 100, name = "a01", start = 100, attrs = Map("RX" -> "AAAAAAAA"))
+    builder.addFrag(mapq = 10, name = "a02", start = 100, attrs = Map("RX" -> "AAAAAAAA"))
+    builder.addFrag(mapq = 100, name = "a03", start = 100, attrs = Map("RX" -> "CACACACA"))
+    builder.addFrag(mapq = 10, name = "a04", start = 100, attrs = Map("RX" -> "CACACACC"))
+
+    val in = builder.toTempFile()
+    val out = Files.createTempFile("umi_grouped.", ".sam")
+    val hist = Files.createTempFile("umi_grouped.", ".histogram.txt")
+    new GroupReadsByUmi(input = in, output = out, familySizeHistogram = Some(hist), rawTag = "RX", assignTag = "MI", strategy = Strategy.Edit, edits = 1, markDuplicates = true).execute()
+
+    val recs = readBamRecs(out)
+    recs.length shouldBe 4
+    recs.filter(_.name.equals("a01")).forall(_.duplicate == false) shouldBe true
+    recs.filter(_.name.equals("a02")).forall(_.duplicate == true) shouldBe true
+    recs.filter(_.name.equals("a03")).forall(_.duplicate == false) shouldBe true
+    recs.filter(_.name.equals("a04")).forall(_.duplicate == true) shouldBe true
+  }
+
+  it should "mark duplicates and discard secondary and supplementary reads" in {
+    // Mapping Quality is a tiebreaker, so use that to our advantage here.
+    val builder = new SamBuilder(readLength = 100, sort = Some(SamOrder.Coordinate))
+    Range.inclusive(start=1, end=3).foreach { i =>
+      val rec = builder.addFrag(mapq = 100, name = "a01", start = 100, attrs = Map("RX" -> "AAAAAAAA")).value
+      rec.secondary = i == 2
+      rec.supplementary = i == 3
+      rec
+    }
+    builder.addFrag(mapq = 10, name = "a02", start = 100, attrs = Map("RX" -> "AAAAAAAA")).value
+
+    val in = builder.toTempFile()
+    val out = Files.createTempFile("umi_grouped.", ".sam")
+    val hist = Files.createTempFile("umi_grouped.", ".histogram.txt")
+    new GroupReadsByUmi(input = in, output = out, familySizeHistogram = Some(hist), rawTag = "RX", assignTag = "MI", strategy = Strategy.Edit, edits = 1, markDuplicates = true).execute()
+
+    val recs = readBamRecs(out)
+    recs.length shouldBe 2
+    recs.filter(_.name.equals("a01")).forall(_.duplicate == false) shouldBe true
+    recs.filter(_.name.equals("a02")).forall(_.duplicate == true) shouldBe true
+    recs.forall(_.secondary) shouldBe false
+    recs.forall(_.supplementary) shouldBe false
   }
 
   it should "correctly group reads with the paired assigner when the two UMIs are the same" in {
@@ -297,7 +410,7 @@ class GroupReadsByUmiTest extends UnitSpec with OptionValues with PrivateMethodT
     val in   = builder.toTempFile()
     val out  = Files.createTempFile("umi_grouped.", ".sam")
     val hist = Files.createTempFile("umi_grouped.", ".histogram.txt")
-    new GroupReadsByUmi(input=in, output=out, familySizeHistogram=Some(hist), rawTag="RX", assignTag="MI", strategy=Strategy.Paired, edits=1, allowInterContig=true).execute()
+    new GroupReadsByUmi(input=in, output=out, familySizeHistogram=Some(hist), rawTag="RX", assignTag="MI", strategy=Strategy.Paired, edits=1).execute()
 
     val recs = readBamRecs(out)
     val aIds = recs.filter(_.name.startsWith("a")).map(r => r[String]("MI")).distinct
@@ -341,8 +454,12 @@ class GroupReadsByUmiTest extends UnitSpec with OptionValues with PrivateMethodT
     builder.addPair(name="a03", start1=100, start2=300, strand1=Plus,  strand2=Minus, attrs=Map("RX" -> "ACT-ANN"))
 
     val in  = builder.toTempFile()
+    val metrics = Files.createTempFile("umi_grouped.", ".metrics.txt")
     val out = Files.createTempFile("umi_grouped.", ".bam")
-    new GroupReadsByUmi(input=in, output=out, rawTag="RX", assignTag="MI", strategy=Strategy.Paired, edits=2).execute()
+    new GroupReadsByUmi(input=in, output=out, groupingMetrics=Some(metrics), rawTag="RX", assignTag="MI", strategy=Strategy.Paired, edits=2).execute()
+
+    val expectedMetric = UmiGroupingMetric(accepted_sam_records = 4, discarded_non_pf = 0, discarded_poor_alignment = 0, discarded_ns_in_umi = 2, discarded_umis_to_short = 0)
+    Metric.read[UmiGroupingMetric](metrics) shouldEqual Seq(expectedMetric)
 
     readBamRecs(out).map(_.name).distinct shouldBe Seq("a01", "a02")
   }
@@ -357,6 +474,56 @@ class GroupReadsByUmiTest extends UnitSpec with OptionValues with PrivateMethodT
     val tool = new GroupReadsByUmi(input=in, output=out, familySizeHistogram=None, rawTag="RX", assignTag="MI", strategy=Strategy.Paired, edits=1)
 
     an[Exception] should be thrownBy tool.execute()
+  }
+
+  it should "not consider read-pairs with the same coordinates but different pair orientations as being from the same molecule" in {
+    val builder = new SamBuilder(readLength=100, sort=Some(SamOrder.Coordinate))
+    builder.addPair(name="f1r2", start1=100, start2=300, strand1=Plus,  strand2=Minus, attrs=Map("RX" -> "ACGT-TTGA"))
+    builder.addPair(name="f2r1", start1=300, start2=100, strand1=Minus, strand2=Plus,  attrs=Map("RX" -> "ACGT-TTGA"))
+    builder.addPair(name="ff",   start1=100, start2=300, strand1=Plus,  strand2=Plus,  attrs=Map("RX" -> "ACGT-TTGA"))
+    builder.addPair(name="rr",   start1=  1, start2=201, strand1=Minus, strand2=Minus, attrs=Map("RX" -> "ACGT-TTGA"))
+    builder.addPair(name="r1f2", start1=100, start2=300, strand1=Minus, strand2=Plus,  attrs=Map("RX" -> "ACGT-TTGA"))
+    builder.addPair(name="r2f1", start1=300, start2=100, strand1=Plus,  strand2=Minus, attrs=Map("RX" -> "ACGT-TTGA"))
+    builder.addFrag(name="Frag", start=100, strand=Minus, attrs=Map("RX" -> "ACGT-TTGA"))
+    builder.addFrag(name="fRag", start=1,   strand=Plus,  attrs=Map("RX" -> "ACGT-TTGA"))
+
+    val in   = builder.toTempFile()
+    val out  = Files.createTempFile("umi_grouped.", ".sam")
+    new GroupReadsByUmi(input=in, output=out, familySizeHistogram=None, rawTag="RX", assignTag="MI", strategy=Strategy.Adjacency, edits=1).execute()
+
+    val recs = readBamRecs(out)
+    recs.map(r => r[String]("MI")).distinct.size shouldBe 8  // each template is a separate MI
+  }
+
+  Seq(
+    Seq("right", "ACT-", "-ACT"),
+    Seq("left", "-ACT", "ACT-"),
+  ).foreach { case Seq(orientation, leftUmi, rightUmi) =>
+    it should s"succeed when run in paired mode but the $orientation end of the source molecule does not have a UMI" in {
+      val builder = new SamBuilder(readLength = 100, sort = Some(SamOrder.Coordinate))
+      builder.addPair(name = "a01", start1 = 100, start2 = 300, strand1 = Plus, strand2 = Minus, attrs = Map("RX" -> leftUmi))
+      builder.addPair(name = "a02", start1 = 100, start2 = 300, strand1 = Plus, strand2 = Minus, attrs = Map("RX" -> leftUmi))
+      builder.addPair(name = "a03", start1 = 100, start2 = 300, strand1 = Plus, strand2 = Minus, attrs = Map("RX" -> leftUmi))
+      builder.addPair(name = "a04", start1 = 100, start2 = 300, strand1 = Plus, strand2 = Minus, attrs = Map("RX" -> leftUmi))
+
+      builder.addPair(name = "b01", start1 = 300, start2 = 100, strand1 = Minus, strand2 = Plus, attrs = Map("RX" -> rightUmi))
+      builder.addPair(name = "b02", start1 = 300, start2 = 100, strand1 = Minus, strand2 = Plus, attrs = Map("RX" -> rightUmi))
+      builder.addPair(name = "b03", start1 = 300, start2 = 100, strand1 = Minus, strand2 = Plus, attrs = Map("RX" -> rightUmi))
+      builder.addPair(name = "b04", start1 = 300, start2 = 100, strand1 = Minus, strand2 = Plus, attrs = Map("RX" -> rightUmi))
+
+      val in  = builder.toTempFile()
+      val out = Files.createTempFile("umi_grouped.", ".sam")
+      new GroupReadsByUmi(input = in, output = out, rawTag = "RX", assignTag = "MI", strategy = Strategy.Paired, edits = 1).execute()
+
+      val recs = readBamRecs(out)
+      val aIds = recs.filter(_.name.startsWith("a")).map(r => r[String]("MI")).distinct
+      val bIds = recs.filter(_.name.startsWith("b")).map(r => r[String]("MI")).distinct
+
+      aIds should have size 1
+      bIds should have size 1
+      aIds.head shouldBe "0/A"
+      bIds.head shouldBe "0/B"
+    }
   }
 
   it should "fail when the raw tag is not present" in {

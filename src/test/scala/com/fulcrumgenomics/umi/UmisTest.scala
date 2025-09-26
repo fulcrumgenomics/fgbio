@@ -25,8 +25,9 @@
 
 package com.fulcrumgenomics.umi
 
-import com.fulcrumgenomics.bam.api.SamRecord
+import com.fulcrumgenomics.bam.api.{SamOrder, SamRecord}
 import com.fulcrumgenomics.testing.{SamBuilder, UnitSpec}
+import com.fulcrumgenomics.umi.ConsensusTags.PerRead.{AbRawReadCount, BaRawReadCount, RawReadCount}
 import org.scalatest.OptionValues
 
 class UmisTest extends UnitSpec with OptionValues {
@@ -92,9 +93,9 @@ class UmisTest extends UnitSpec with OptionValues {
   }
   
   it should "split on a different name delimiter if specified" in {
-    copyUmiFromReadName(rec=rec("UMI-A"), delimiter='-').nameAndUmi shouldBe ("UMI-A", "A")
-    copyUmiFromReadName(rec=rec("UMI-C-A"), delimiter='-').nameAndUmi shouldBe ("UMI-C-A", "A")
-    copyUmiFromReadName(rec=rec("UMI-C-ACC+GGT"), delimiter='-').nameAndUmi shouldBe ("UMI-C-ACC+GGT", "ACC-GGT")
+    copyUmiFromReadName(rec=rec("UMI-A"), fieldDelimiter='-').nameAndUmi shouldBe ("UMI-A", "A")
+    copyUmiFromReadName(rec=rec("UMI-C-A"), fieldDelimiter='-').nameAndUmi shouldBe ("UMI-C-A", "A")
+    copyUmiFromReadName(rec=rec("UMI-C-ACC+GGT"), fieldDelimiter='-').nameAndUmi shouldBe ("UMI-C-ACC+GGT", "ACC-GGT")
   }
 
   it should "change the UMI delimiter from + to -" in {
@@ -110,5 +111,43 @@ class UmisTest extends UnitSpec with OptionValues {
     an[Exception] should be thrownBy copyUmiFromReadName(rec=rec("NAME:XYZ"))
     an[Exception] should be thrownBy copyUmiFromReadName(rec=rec("NAME:ACGT-CCKC"))
     an[Exception] should be thrownBy copyUmiFromReadName(rec=rec("NAME:CCKC-ACGT"))
+  }
+
+  "Umis.isFgbioStyleConsensus" should "return false for reads without consensus tags" in {
+    val builder = new SamBuilder(sort=Some(SamOrder.Coordinate), readLength=10, baseQuality=20)
+    Umis.isFgbioStyleConsensus(builder.addFrag(start=100).value) shouldBe false
+    val pair = builder.addPair(start1=100, start2=100, unmapped2=true)
+    pair.length shouldBe 2
+    pair.forall(rec => Umis.isFgbioStyleConsensus(rec)) shouldBe false
+  }
+
+  it should "return true for reads with consensus tags" in {
+    val builder = new SamBuilder(sort=Some(SamOrder.Coordinate), readLength=10, baseQuality=20)
+    Umis.isFgbioStyleConsensus(builder.addFrag(start=10, attrs=Map(RawReadCount -> 10)).value) shouldBe true
+    Umis.isFgbioStyleConsensus(builder.addFrag(start=10, attrs=Map(AbRawReadCount -> 10, BaRawReadCount -> 10)).value) shouldBe true
+  }
+
+  "Umis.isFgbioSimplexConsensus" should "return true for reads with simplex only consensus tags" in {
+    val builder = new SamBuilder(sort=Some(SamOrder.Coordinate), readLength=10, baseQuality=20)
+    Umis.isFgbioSimplexConsensus(builder.addFrag(start=100).value) shouldBe false
+    Umis.isFgbioSimplexConsensus(builder.addFrag(start=10, attrs=Map(RawReadCount -> 10)).value) shouldBe true
+    Umis.isFgbioSimplexConsensus(builder.addFrag(start=10, attrs=Map(AbRawReadCount -> 10, BaRawReadCount -> 10)).value) shouldBe false
+    Umis.isFgbioSimplexConsensus(builder.addFrag(start=10, attrs=Map(RawReadCount -> 20, AbRawReadCount -> 10, BaRawReadCount -> 10)).value) shouldBe false
+
+    val pair = builder.addPair(start1=100, start2=100, unmapped2=true)
+    pair.length shouldBe 2
+    pair.forall(rec => Umis.isFgbioSimplexConsensus(rec)) shouldBe false
+  }
+
+  "Umis.isFgbioDuplexConsensus" should "return true for reads with duplex only consensus tags" in {
+    val builder = new SamBuilder(sort=Some(SamOrder.Coordinate), readLength=10, baseQuality=20)
+    Umis.isFgbioDuplexConsensus(builder.addFrag(start=100).value) shouldBe false
+    Umis.isFgbioDuplexConsensus(builder.addFrag(start=10, attrs=Map(RawReadCount -> 10)).value) shouldBe false
+    Umis.isFgbioDuplexConsensus(builder.addFrag(start=10, attrs=Map(AbRawReadCount -> 10, BaRawReadCount -> 10)).value) shouldBe true
+    Umis.isFgbioDuplexConsensus(builder.addFrag(start=10, attrs=Map(RawReadCount -> 20, AbRawReadCount -> 10, BaRawReadCount -> 10)).value) shouldBe true
+
+    val pair = builder.addPair(start1=100, start2=100, unmapped2=true)
+    pair.length shouldBe 2
+    pair.forall(rec => Umis.isFgbioDuplexConsensus(rec)) shouldBe false
   }
 }

@@ -24,8 +24,6 @@
 
 package com.fulcrumgenomics.fasta
 
-import java.io.BufferedWriter
-
 import com.fulcrumgenomics.FgBioDef.PathToSequenceDictionary
 import com.fulcrumgenomics.cmdline.{ClpGroups, FgBioTool}
 import com.fulcrumgenomics.commons.CommonsDef._
@@ -33,6 +31,8 @@ import com.fulcrumgenomics.commons.util.LazyLogging
 import com.fulcrumgenomics.sopt.{arg, clp}
 import com.fulcrumgenomics.util.{Io, ProgressLogger}
 import htsjdk.samtools.reference.{FastaSequenceIndex, ReferenceSequence, ReferenceSequenceFile, ReferenceSequenceFileFactory}
+
+import java.io.BufferedWriter
 
 @clp(description =
   """
@@ -56,7 +56,7 @@ class UpdateFastaContigNames
  @arg(flag='d', doc="The path to the sequence dictionary with contig aliases.") val dict: PathToSequenceDictionary,
  @arg(flag='o', doc="Output FASTA.") val output: PathToFasta,
  @arg(flag='l', doc="Line length or sequence lines.") val lineLength: Int = 100,
- @arg(doc="Skip missing source contigs (will not be outputted).") val skipMissing: Boolean = false,
+ @arg(doc="Skip contigs in the FASTA that are not found in the sequence dictionary.") val skipMissing: Boolean = false,
  @arg(doc="Sort the contigs based on the input sequence dictionary.") sortByDict: Boolean = false,
  @arg(doc="Add sequences from this FASTA when contigs in the sequence dictionary are missing from the input FASTA.")
  defaultContigs: Option[PathToFasta] = None
@@ -83,7 +83,7 @@ class UpdateFastaContigNames
       val bases = ref.getBases
       var baseCounter = 0
       forloop(from = 0, until = bases.length) { baseIdx =>
-        writer.write(bases(baseIdx))
+        writer.write(bases(baseIdx).toInt)
         progress.record(info.name, baseIdx + 1)
         baseCounter += 1
         if (baseCounter >= lineLength) {
