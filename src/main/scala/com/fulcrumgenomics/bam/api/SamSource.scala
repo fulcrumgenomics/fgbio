@@ -37,7 +37,7 @@ object SamSource {
   var DefaultUseAsyncIo: Boolean = false
   var DefaultValidationStringency: ValidationStringency = ValidationStringency.STRICT
 
-  /** Configure a [[SAMRecordFactory]] with a variety of parameters. */
+  /** Configure a [[SamReaderFactory]] with a variety of parameters. */
   private def buildSamRecordFactory(
     factory: SAMRecordFactory,
     ref: Option[PathToFasta],
