@@ -37,7 +37,7 @@ object SamSource {
   var DefaultUseAsyncIo: Boolean = false
   var DefaultValidationStringency: ValidationStringency = ValidationStringency.STRICT
 
-  /** Configure a [[SamReaderFactory]] with a variety of parameters. */
+  /** Configure a SAM Record Factory with a variety of parameters. */
   private def buildSamRecordFactory(
     factory: SAMRecordFactory,
     ref: Option[PathToFasta],
@@ -59,7 +59,7 @@ object SamSource {
     * @param ref an optional reference sequence for decoding CRAM files
     * @param async if true use extra thread(s) to speed up reading
     * @param stringency the validation stringency to apply when reading the data
-    * @param factory a [[SAMRecordFactory]]; MUST return classes that mix in [[SamRecord]]
+    * @param factory a [[SamRecord.Factory]]; MUST return classes that mix in [[SamRecord]]
     */
   def apply(path: PathToBam,
             index: Option[FilePath] = None,
@@ -79,7 +79,7 @@ object SamSource {
     * @param ref an optional reference sequence for decoding CRAM files
     * @param async if true use extra thread(s) to speed up reading
     * @param stringency the validation stringency to apply when reading the data
-    * @param factory a [[SAMRecordFactory]]; MUST return classes that mix in [[SamRecord]]
+    * @param factory a [[SamRecord.Factory]]; MUST return classes that mix in [[SamRecord]]
     */
   def apply(
     stream: InputStream,
