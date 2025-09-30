@@ -367,7 +367,6 @@ object GroupReadsByUmi {
     /** String that is prefixed onto the UMI from the read with that maps to a higher coordinate in the genome.. */
     private[umi] val higherReadUmiPrefix: String = ("b" * (maxMismatches+1)) + ":"
 
-
     /** Returns true if the two UMIs are the same. */
     final override def isSameUmi(a: Umi, b: Umi): Boolean = {
       if (a == b) true else {
@@ -598,10 +597,13 @@ class GroupReadsByUmi
                          |""")
     val minUmiLength: Option[Int] = None,
  @arg(flag='@', doc="Number of threads to use when comparing UMIs. Only recommended for amplicon or similar data.") val threads: Int = 1,
-)extends FgBioTool with LazyLogging {
+ @arg(flag='X', doc="Ignore the order of paired UMIs (when using the paired assigner).") val ignorePairedUmiOrder: Boolean = false,
+) extends FgBioTool with LazyLogging {
   import GroupReadsByUmi._
 
-  require(this.minUmiLength.forall(_ => this.strategy != Strategy.Paired), "Paired strategy cannot be used with --min-umi-length")
+  validate(this.minUmiLength.forall(_ => this.strategy != Strategy.Paired), "Paired strategy cannot be used with --min-umi-length")
+
+  validate(!ignorePairedUmiOrder || this.strategy == Strategy.Paired, "Paired strategy must be used with --ignore-paired-umi-order")
 
   private val assigner = strategy.newStrategy(this.edits, this.threads)
 
@@ -863,9 +865,14 @@ class GroupReadsByUmi
         val r1Lower = r1.refIndex < r2.refIndex || (r1.refIndex == r2.refIndex && (pos1 < pos2 || (pos1 == pos2 && r1.positiveStrand)))
         val umis = umi.split("-", -1) // Split and ensure we return empty strings for missing UMIs.
         require(umis.length == 2, s"Paired strategy used but umi did not contain 2 segments delimited by a '-': $umi")
-
-        if (r1Lower) paired.lowerReadUmiPrefix  + ":" + umis(0) + "-" + paired.higherReadUmiPrefix + ":" + umis(1)
-        else         paired.higherReadUmiPrefix + ":" + umis(0) + "-" + paired.lowerReadUmiPrefix  + ":" + umis(1)
+        if (ignorePairedUmiOrder) {
+          val _umis = umis.sorted
+          if (r1Lower) paired.lowerReadUmiPrefix + ":" + _umis(0) + "-" + paired.higherReadUmiPrefix + ":" + _umis(1)
+          else         paired.higherReadUmiPrefix + ":" + _umis(1) + "-" + paired.lowerReadUmiPrefix + ":" + _umis(0)
+        } else {
+          if (r1Lower) paired.lowerReadUmiPrefix + ":" + umis(0) + "-" + paired.higherReadUmiPrefix + ":" + umis(1)
+          else         paired.higherReadUmiPrefix + ":" + umis(0) + "-" + paired.lowerReadUmiPrefix + ":" + umis(1)
+        }
       case (_, _, _: PairedUmiAssigner) =>
         fail(s"Template ${t.name} has only one read, paired-reads required for paired strategy.")
       case (Some(r1), _, _) =>
