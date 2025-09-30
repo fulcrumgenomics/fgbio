@@ -866,7 +866,7 @@ class GroupReadsByUmi
         val umis = umi.split("-", -1) // Split and ensure we return empty strings for missing UMIs.
         require(umis.length == 2, s"Paired strategy used but umi did not contain 2 segments delimited by a '-': $umi")
         if (ignorePairedUmiOrder) {
-          val _umis = umis.sorted
+          val _umis = if (umi(0) <= umi(1)) umis else umis.reverse
           if (r1Lower) paired.lowerReadUmiPrefix + ":" + _umis(0) + "-" + paired.higherReadUmiPrefix + ":" + _umis(1)
           else         paired.higherReadUmiPrefix + ":" + _umis(1) + "-" + paired.lowerReadUmiPrefix + ":" + _umis(0)
         } else {
