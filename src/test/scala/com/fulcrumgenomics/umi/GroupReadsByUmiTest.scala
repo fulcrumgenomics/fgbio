@@ -569,4 +569,20 @@ class GroupReadsByUmiTest extends UnitSpec with OptionValues with PrivateMethodT
       recs.map(r => r[String]("MI")).distinct should have length 1 // all should be assigned to one molecule
     }
   }
+
+  it should "correctly group reads with the paired assigner ignoring the paired umi order" in {
+    val builder = new SamBuilder(readLength=100, sort=Some(SamOrder.Coordinate))
+    builder.addPair(name="a01", contig = 1, start1=16125066, start2=16125074, strand1=Plus,  strand2=Minus, attrs=Map("RX" -> "CTG-ATG"))
+    builder.addPair(name="a02", contig = 1, start1=16125074, start2=16125066, strand1=Minus, strand2=Plus,  attrs=Map("RX" -> "CTG-ATG"))
+    builder.addPair(name="a03", contig = 1, start1=16125066, start2=16125074, strand1=Plus,  strand2=Minus, attrs=Map("RX" -> "ATG-CTG"))
+    builder.addPair(name="a04", contig = 1, start1=16125074, start2=16125066, strand1=Minus,  strand2=Plus,  attrs=Map("RX" -> "ATG-CTG"))
+
+    val in   = builder.toTempFile()
+    val out  = Files.createTempFile("umi_grouped.", ".sam")
+    val hist = Files.createTempFile("umi_grouped.", ".histogram.txt")
+    new GroupReadsByUmi(input=in, output=out, familySizeHistogram=Some(hist), rawTag="RX", assignTag="MI", strategy=Strategy.Paired, edits=1, ignorePairedUmiOrder=true).execute()
+
+    val recs = readBamRecs(out)
+    recs.filter(_.firstOfPair).sortBy(_.name).map(r => r[String]("MI")) should contain theSameElementsInOrderAs Seq("0/A", "0/B", "0/A", "0/B")
+  }
 }
