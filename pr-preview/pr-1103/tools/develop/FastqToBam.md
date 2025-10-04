@@ -12,7 +12,7 @@ gzipped), each representing a different sequencing read (e.g. R1, R2, I1 or I2) 
 structures to allocate bases in those reads to template reads, sample indices, unique molecular indices, cell
 barcodes, or to designate bases to be skipped over.
 
-Read structures are made up of `<number><operator>` pairs much like the CIGAR string in BAM files. Four kinds of
+Read structures are made up of `<number><operator>` pairs much like the CIGAR string in BAM files. Five kinds of
 operators are recognized:
 
 1. `T` identifies a template read
