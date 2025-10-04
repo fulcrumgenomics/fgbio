@@ -178,6 +178,7 @@ class ReadStructure private(val segments: Seq[ReadSegment]) extends immutable.Se
   def templateSegments:         Seq[ReadSegment] = segments(SegmentType.Template)
   def sampleBarcodeSegments:    Seq[ReadSegment] = segments(SegmentType.SampleBarcode)
   def molecularBarcodeSegments: Seq[ReadSegment] = segments(SegmentType.MolecularBarcode)
+  def cellBarcodeSegments:      Seq[ReadSegment] = segments(SegmentType.CellBarcode)
   def skipSegments:             Seq[ReadSegment] = segments(SegmentType.Skip)
 }
 
@@ -187,23 +188,25 @@ object SegmentType {
   case object Template extends SegmentType('T')
   case object SampleBarcode extends SegmentType('B')
   case object MolecularBarcode extends SegmentType('M')
+  case object CellBarcode extends SegmentType('C')
   case object Skip extends SegmentType('S')
 
   /** All the possible types. */
-  val values: Seq[SegmentType] = Seq(Template, SampleBarcode, MolecularBarcode, Skip)
+  val values: Seq[SegmentType] = Seq(Template, SampleBarcode, MolecularBarcode, CellBarcode, Skip)
 
   /** Returns the [[SegmentType]] for the given code/letter. */
   def apply(code: Char): SegmentType = code match {
     case 'T' => Template
     case 'B' => SampleBarcode
     case 'M' => MolecularBarcode
+    case 'C' => CellBarcode
     case 'S' => Skip
     case _   => throw new IllegalArgumentException(s"Invalid read segment type: $code")
   }
 }
 
 object ReadSegment {
-  val Types = Seq('T', 'B', 'M', 'S')
+  val Types: Seq[Char] = Seq('T', 'B', 'M', 'C', 'S') // TODO: this is never used, can we delete it?
 
   /** Creates a new ReadSegment with undefined length (i.e. length=0 or more). */
   def apply(offset: Int, c: Char): ReadSegment = new ReadSegment(offset, None, kind=SegmentType(c))

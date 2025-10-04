@@ -383,6 +383,22 @@ class FastqToBamTest extends UnitSpec {
     recs(1).apply[String]("RX") shouldBe "TTGA-TAAT-TA-AA"
   }
 
+  it should "extract cell barcodes in read sequences" in {
+    val r1 = fq(
+      FastqRecord("q1:2:3:4:5:6:7:ACGT+CGTA", "GGNCCGAAAAAAA", "============="),
+      FastqRecord("q2:2:3:4:5:6:7:TTGA+TAAT", "TANAACAAAAAAA", "============="),
+    )
+    val rs  = ReadStructure("2C1S2C+T")
+    val bam = makeTempFile("fastqToBamTest.", ".bam")
+    new FastqToBam(input=Seq(r1), readStructures=Seq(rs), output=bam, sample="s", library="l", cellQualTag = Some("CY")).execute()
+    val recs = readBamRecs(bam)
+    recs should have size 2
+    recs(0).apply[String]("CB") shouldBe "GG-CC"
+    recs(0).apply[String]("CY") shouldBe "== =="
+    recs(1).apply[String]("CB") shouldBe "TA-AA"
+    recs(1).apply[String]("CY") shouldBe "== =="
+  }
+
   it should "fail when read names don't match up" in {
     val r1 = fq(FastqRecord("q1", "AAAAAAAAAA", "=========="))
     val r2 = fq(FastqRecord("x1", "CCCCCCCCCC", "##########"))

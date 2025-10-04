@@ -237,7 +237,7 @@ object DemuxFastqs {
       |prior to running this tool (ex. `cat s_R1_L001.fq.gz s_R1_L002.fq.gz > s_R1.fq.gz`).
       |
       |[Read structures](https://github.com/fulcrumgenomics/fgbio/wiki/Read-Structures) are made up of `<number><operator>`
-      |pairs much like the `CIGAR` string in BAM files. Four kinds of operators are recognized:
+      |pairs much like the `CIGAR` string in BAM files. Four kinds of operators are supported by this tool:
       |
       |1. `T` identifies a template read
       |2. `B` identifies a sample barcode read
@@ -377,6 +377,10 @@ class DemuxFastqs
  val omitControlReads: Boolean = false,
  @arg(doc="Mask bases with a quality score below the specified threshold as Ns") val maskBasesBelowQuality: Int = 0,
 ) extends FgBioTool with LazyLogging {
+  validate(
+    !readStructures.exists(_.cellBarcodeSegments.nonEmpty),
+    "DemuxFastqs does not support cell barcodes in read structures!",
+  )
 
   private val fastqStandards: FastqStandards = {
     FastqStandards(
