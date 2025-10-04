@@ -42,7 +42,7 @@ import com.fulcrumgenomics.util._
     |3. `instrument_name`: the instrument name.
     |4. `run_date`: the date of the sequencing run.
     |5. `read_structure`: the description of the logical structure of cycles within the sequencing run, including which cycles
-    |   correspond to sample barcodes, molecular barcodes, template bases, and bases that should be skipped.
+    |   correspond to sample barcodes, molecular barcodes, cell barcodes, template bases, and bases that should be skipped.
     |6. `number_of_lanes`: the number of lanes in the flowcell.
   """)
 class ExtractIlluminaRunInfo
