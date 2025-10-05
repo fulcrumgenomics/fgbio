@@ -220,18 +220,22 @@ class GroupReadsByUmiTest extends UnitSpec with OptionValues with PrivateMethodT
   }
 
   "GroupReads.ReadInfo" should "extract the same ReadEnds from a Template as from an R1 with mate cigar" in {
+    val specialCellTag = "XX"
     val builder = new SamBuilder(readLength=100, sort=None)
     val Seq(r1, r2) = builder.addPair(contig=2, contig2=Some(1), start1=300, start2=400, cigar1="10S90M", cigar2="90M10S")
     val template    = Template(r1=Some(r1), r2=Some(r2))
 
-    val tReadInfo = ReadInfo(template)
-    val rReadInfo = ReadInfo(r1)
+    r1(specialCellTag) = "GTTTA"
+
+    val tReadInfo = ReadInfo(template, cellTag = specialCellTag)
+    val rReadInfo = ReadInfo(r1, cellTag = specialCellTag)
     rReadInfo shouldBe tReadInfo
 
     tReadInfo.refIndex1 shouldBe 1
     tReadInfo.start1    shouldBe 499
     tReadInfo.refIndex2 shouldBe 2
     tReadInfo.start2    shouldBe 290
+    tReadInfo.cellBarcode.value shouldBe "GTTTA"
   }
 
   // Test for running the GroupReadsByUmi command line program with some sample input
@@ -445,6 +449,28 @@ class GroupReadsByUmiTest extends UnitSpec with OptionValues with PrivateMethodT
     val groups = recs.groupBy(r => r[String]("MI")).values.map(rs => rs.map(_.name).toSet)
     groups should have size 4
     groups should contain theSameElementsAs Seq(Set("a01", "a02"), Set("a03", "a04"), Set("a05", "a06"), Set("a07", "a08"))
+  }
+
+  it should "correctly group together reads with UMIs across different cells using the cell barcode" in {
+    val builder = new SamBuilder(readLength=100, sort=Some(SamOrder.Coordinate))
+    val specialCellTag = "XX"
+    builder.addFrag(name="a01", start=100, attrs=Map("RX" -> "AAAAAAAA", specialCellTag -> "AA"))
+    builder.addFrag(name="a02", start=100, attrs=Map("RX" -> "AAAAAAAA", specialCellTag -> "AA"))
+    builder.addFrag(name="a03", start=100, attrs=Map("RX" -> "CACACACA", specialCellTag -> "CA"))
+    builder.addFrag(name="a04", start=100, attrs=Map("RX" -> "CACACACC", specialCellTag -> "NN"))
+    builder.addFrag(name="a05", start=105, attrs=Map("RX" -> "GTAGTAGG", specialCellTag -> "GT"))
+    builder.addFrag(name="a06", start=105, attrs=Map("RX" -> "GTAGTAGG", specialCellTag -> "GT"))
+
+    val in  = builder.toTempFile()
+    val out = Files.createTempFile("umi_grouped.", ".sam")
+    new GroupReadsByUmi(input=in, output=out, rawTag="RX", assignTag="MI", cellTag=specialCellTag, strategy=Strategy.Edit, edits=1).execute()
+
+    val recs = readBamRecs(out)
+    recs should have size 6
+
+    val groups = recs.groupBy(r => r[String]("MI")).values.map(rs => rs.map(_.name).toSet)
+    groups should have size 4
+    groups should contain theSameElementsAs Seq(Set("a01", "a02"), Set("a03"), Set("a04"), Set("a05", "a06"))
   }
 
   it should "exclude reads that contain an N in the UMI" in {

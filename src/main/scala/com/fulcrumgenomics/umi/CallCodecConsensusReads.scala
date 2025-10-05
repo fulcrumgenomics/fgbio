@@ -33,6 +33,7 @@ import com.fulcrumgenomics.sopt._
 import com.fulcrumgenomics.umi.VanillaUmiConsensusCallerOptions._
 import com.fulcrumgenomics.util.NumericTypes.PhredScore
 import com.fulcrumgenomics.util.{Metric, ProgressLogger}
+import htsjdk.samtools.SAMTag
 
 @clp(description =
   """
@@ -103,6 +104,7 @@ class CallCodecConsensusReads
  @arg(flag='O', doc="The number of bases at the start and end of the read to reduce quality over *if* `outer-bases-qual` is specified.") val outerBasesLength: Int = 5,
  @arg(flag='x', doc="Discard consensus reads where greater than this fraction of duplex bases disagree.") val maxDuplexDisagreementRate: Double = 1.0,
  @arg(flag='X', doc="Discard consensus reads where greater than this number of duplex bases disagree.") val maxDuplexDisagreements: Int = Int.MaxValue,
+ @arg(flag='c', doc="Tag containing the cellular barcodes.") val cellTag: Option[String] = Some(SAMTag.CB.name),
  @arg(doc="The number of threads to use while consensus calling.") val threads: Int = 1,
 ) extends FgBioTool with LazyLogging {
 
@@ -142,7 +144,8 @@ class CallCodecConsensusReads
       outerBasesLength          = outerBasesLength,
       maxDuplexDisagreements    = this.maxDuplexDisagreements,
       maxDuplexDisagreementRate = this.maxDuplexDisagreementRate,
-      rejectsWriter             = rejectsWriter
+      cellTag                   = cellTag,
+      rejectsWriter             = rejectsWriter,
     )
     val progress = ProgressLogger(logger, unit=1000000)
     val iterator = new ConsensusCallingIterator(in.iterator, caller, Some(progress), threads)

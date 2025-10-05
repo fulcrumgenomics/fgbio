@@ -35,7 +35,7 @@ import com.fulcrumgenomics.util.SegmentType._
 import com.fulcrumgenomics.util.{Io, ReadStructure}
 import htsjdk.samtools.SAMFileHeader.{GroupOrder, SortOrder}
 import htsjdk.samtools.util.Iso8601Date
-import htsjdk.samtools.{ReservedTagConstants, SAMFileHeader, SAMReadGroupRecord}
+import htsjdk.samtools.{ReservedTagConstants, SAMFileHeader, SAMReadGroupRecord, SAMTag}
 
 import java.util
 
@@ -94,7 +94,7 @@ class FastqToBam
   @arg(flag='s', doc="If true, queryname sort the BAM file, otherwise preserve input order.")  val sort: Boolean = false,
   @arg(flag='u', doc="Tag in which to store molecular barcodes/UMIs.")                         val umiTag: String = ConsensusTags.UmiBases,
   @arg(flag='q', doc="Tag in which to store molecular barcode/UMI qualities.")                 val umiQualTag: Option[String] = None,
-  @arg(flag='c', doc="Tag in which to store the cellular barcodes.")                           val cellTag: String = "CB",
+  @arg(flag='c', doc="Tag in which to store the cellular barcodes.")                           val cellTag: String = SAMTag.CB.name,
   @arg(flag='C', doc="Tag in which to store the cellular barcodes qualities.")                 val cellQualTag: Option[String] = None,
   @arg(flag='Q', doc="Store the sample barcode qualities in the QT Tag.")                      val storeSampleBarcodeQualities: Boolean = false,
   @arg(flag='n', doc="Extract UMI(s) from read names and prepend to UMIs from reads.")         val extractUmisFromReadNames: Boolean = false,

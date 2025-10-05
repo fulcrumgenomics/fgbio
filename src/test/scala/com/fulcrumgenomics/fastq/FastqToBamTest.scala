@@ -30,6 +30,7 @@ import com.fulcrumgenomics.testing.UnitSpec
 import com.fulcrumgenomics.umi.ConsensusTags
 import com.fulcrumgenomics.util.ReadStructure
 import htsjdk.samtools.SAMFileHeader.{GroupOrder, SortOrder}
+import htsjdk.samtools.SAMTag
 import htsjdk.samtools.util.Iso8601Date
 
 class FastqToBamTest extends UnitSpec {
@@ -393,10 +394,10 @@ class FastqToBamTest extends UnitSpec {
     new FastqToBam(input=Seq(r1), readStructures=Seq(rs), output=bam, sample="s", library="l", cellQualTag = Some("CY")).execute()
     val recs = readBamRecs(bam)
     recs should have size 2
-    recs(0).apply[String]("CB") shouldBe "GG-CC"
-    recs(0).apply[String]("CY") shouldBe "== =="
-    recs(1).apply[String]("CB") shouldBe "TA-AA"
-    recs(1).apply[String]("CY") shouldBe "== =="
+    recs(0).apply[String](SAMTag.CB.name) shouldBe "GG-CC"
+    recs(0).apply[String](SAMTag.CY.name) shouldBe "== =="
+    recs(1).apply[String](SAMTag.CB.name) shouldBe "TA-AA"
+    recs(1).apply[String](SAMTag.CY.name) shouldBe "== =="
   }
 
   it should "fail when read names don't match up" in {

@@ -183,6 +183,9 @@ object UmiConsensusCaller {
 trait UmiConsensusCaller[ConsensusRead <: SimpleRead] {
   import com.fulcrumgenomics.umi.UmiConsensusCaller.ReadType._
 
+  /** The SAM tag containing the unique cell identifier (if cell-based consensus calling is desired). */
+  val cellTag: Option[String] = Some(SAMTag.CB.name)
+
   // vars to track how many reads meet various fates
   private var _totalReads: Long = 0
   private val _filteredReads = new SimpleCounter[RejectionReason]()
@@ -446,7 +449,12 @@ trait UmiConsensusCaller[ConsensusRead <: SimpleRead] {
   }
 
   /** Creates a `SamRecord` from the called consensus base and qualities. */
-  protected def createSamRecord(read: ConsensusRead, readType: ReadType, umis: Seq[String] = Seq.empty): SamRecord = {
+  protected def createSamRecord(
+    read: ConsensusRead,
+    readType: ReadType,
+    umis: Seq[String]           = Seq.empty,
+    cellBarcode: Option[String] = None,
+  ): SamRecord = {
     val rec = SamRecord(null)
     rec.name = this.readNamePrefix + ":" + read.id
     rec.unmapped = true
@@ -465,6 +473,7 @@ trait UmiConsensusCaller[ConsensusRead <: SimpleRead] {
     rec.quals = read.quals
     rec(SAMTag.RG.name()) = readGroupId
     rec(ConsensusTags.MolecularId) = read.id
+    for { tag <- this.cellTag; barcode <- cellBarcode } rec(tag) = barcode
     if (umis.nonEmpty) rec(ConsensusTags.UmiBases) = this.consensusBuilder.callConsensus(umis)
 
     rec

@@ -34,6 +34,7 @@ import com.fulcrumgenomics.sopt._
 import com.fulcrumgenomics.umi.VanillaUmiConsensusCallerOptions._
 import com.fulcrumgenomics.util.NumericTypes.PhredScore
 import com.fulcrumgenomics.util.{Metric, ProgressLogger}
+import htsjdk.samtools.SAMTag
 
 @clp(description =
   """
@@ -112,6 +113,7 @@ class CallDuplexConsensusReads
             |present in a tag family, the family is randomly downsampled to exactly max-reads reads.
           """)
  val maxReadsPerStrand: Option[Int] = None,
+ @arg(flag='c', doc="Tag containing the cellular barcodes.") val cellTag: Option[String] = Some(SAMTag.CB.name),
  @arg(doc="The number of threads to use while consensus calling.") val threads: Int = 1,
  @arg(doc="Consensus call overlapping bases in mapped paired end reads") val consensusCallOverlappingBases: Boolean = true,
 ) extends FgBioTool with LazyLogging {
@@ -149,6 +151,7 @@ class CallDuplexConsensusReads
       errorRatePostUmi    = errorRatePostUmi,
       minReads            = minReads,
       maxReadsPerStrand   = maxReadsPerStrand.getOrElse(VanillaUmiConsensusCallerOptions.DefaultMaxReads),
+      cellTag             = cellTag,
       rejectsWriter       = rejectsWriter
     )
     val progress = ProgressLogger(logger, unit=1000000)

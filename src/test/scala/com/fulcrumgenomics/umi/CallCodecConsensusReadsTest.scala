@@ -86,24 +86,36 @@ class CallCodecConsensusReadsTest extends UnitSpec with OptionValues {
   }
 
   it should "emit statistics and a reject BAM" in {
+    val specialCellTag = "XX"
     for (threads <- Seq(1, 4)) {
       val builder = new SamBuilder(readLength=30, sort=Some(SamOrder.TemplateCoordinate))
       builder.addPair( // Should form a consensus
-        start1=100, start2=100, bases1="AC" * 15, bases2="AC" * 15, attrs=Map(("RX", "ACC-TGA"), ("MI", "hi"))
+        start1=100, start2=100, bases1="AC" * 15, bases2="AC" * 15, attrs=Map(("RX", "ACC-TGA"), ("MI", "hi"), (specialCellTag, "AB"))
       )
       builder.addPair( // Too far apart to form a consensus
-        name="x", start1=200, start2=500, bases1="AC" * 15, bases2="AC" * 15, attrs=Map(("RX", "ACC-TGA"), ("MI", "bye"))
+        name="x", start1=200, start2=500, bases1="AC" * 15, bases2="AC" * 15, attrs=Map(("RX", "ACC-TGA"), ("MI", "bye"), (specialCellTag, "AB"))
       )
       val in  = builder.toTempFile()
 
       val out = makeTempFile("codec.", ".bam")
       val rej = makeTempFile("rejects.", ".bam")
       val statsPath = makeTempFile("stats.", ".txt")
-      val caller = new CallCodecConsensusReads(input=in, output=out, readGroupId="ZZ", threads=threads, rejects=Some(rej), stats=Some(statsPath))
+      val caller = new CallCodecConsensusReads(
+        input       = in,
+        output      = out,
+        readGroupId ="ZZ",
+        threads     = threads,
+        cellTag     = Some(specialCellTag),
+        rejects     = Some(rej),
+        stats       = Some(statsPath)
+      )
       caller.execute()
 
       val recs = readBamRecs(out)
       recs should have size 1
+      recs.foreach { rec =>
+        rec[String](specialCellTag) shouldBe "AB"
+      }
 
       val rejectedRecs = readBamRecs(rej)
       rejectedRecs should have size 2

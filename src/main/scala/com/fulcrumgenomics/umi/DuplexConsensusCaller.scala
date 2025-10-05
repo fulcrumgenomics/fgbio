@@ -32,6 +32,7 @@ import com.fulcrumgenomics.umi.UmiConsensusCaller.ReadType.{ReadType, _}
 import com.fulcrumgenomics.umi.UmiConsensusCaller.{RejectionReason, SimpleRead, SourceRead}
 import com.fulcrumgenomics.util.NumericTypes.PhredScore
 import com.fulcrumgenomics.util.Sequences
+import htsjdk.samtools.SAMTag
 
 import java.lang.Math.min
 
@@ -106,6 +107,7 @@ object DuplexConsensusCaller {
   * @param errorRatePostUmi the estimated rate of errors in the DNA post attaching UMIs
   * @param minReads the minimum number of input reads to a consensus read (see [[CallDuplexConsensusReads]]).
   * @param maxReadsPerStrand the maximum number of reads to use when calling consensus on a single strand
+  * @param cellTag if defined, ensure all source reads have at most one cell barcode defined and set that barcode on the final consensus.
   * @param rejectsWriter an optional writer to write _incoming_ SamRecords to if they are not used to generate
   *                      a consensus read
   * */
@@ -117,7 +119,8 @@ class DuplexConsensusCaller(override val readNamePrefix: String,
                             val errorRatePostUmi: PhredScore              = DuplexConsensusCaller.ErrorRatePostUmi,
                             val minReads: Seq[Int]                        = Seq(1),
                             val maxReadsPerStrand: Int                    = VanillaUmiConsensusCallerOptions.DefaultMaxReads,
-                            override val rejectsWriter: Option[SamWriter] = None
+                            override val cellTag: Option[String]          = Some(SAMTag.CB.name),
+                            override val rejectsWriter: Option[SamWriter] = None,
                            ) extends UmiConsensusCaller[DuplexConsensusRead] with LazyLogging {
 
   private val Seq(minTotalReads, minXyReads, minYxReads) = this.minReads.padTo(3, this.minReads.last)
@@ -167,6 +170,7 @@ class DuplexConsensusCaller(override val readNamePrefix: String,
       errorRatePostUmi    = errorRatePostUmi,
       minReads            = minReads,
       maxReadsPerStrand   = maxReadsPerStrand,
+      cellTag             = cellTag,
       rejectsWriter       = this.rejectsWriter
     )
   }
@@ -281,6 +285,12 @@ class DuplexConsensusCaller(override val readNamePrefix: String,
 
   /** Attempts to call a duplex consensus reads from the two sets of reads, one for each strand. */
   private def callDuplexConsensusRead(ab: Seq[SamRecord], ba: Seq[SamRecord]): Seq[SamRecord] = {
+    val cellBarcode: Option[String] = this.cellTag.flatMap { tag =>
+      val barcodes = (ab ++ ba).flatMap(_.get(tag)).distinct
+      require(barcodes.length <= 1, s"Multiple different cell barcodes found for tag $tag: $barcodes")
+      barcodes.headOption
+    }
+
     // Fragments have no place in duplex land (and are filtered out previously anyway)!
     val (_, abR1s, abR2s) = subGroupRecords(ab)
     val (_, baR1s, baR2s) = subGroupRecords(ba)
@@ -332,10 +342,19 @@ class DuplexConsensusCaller(override val readNamePrefix: String,
         // Convert to SamRecords and return
         (duplexR1, duplexR2) match {
           case (Some(r1), Some(r2)) =>
-            Seq(
-              createSamRecord(r1, FirstOfPair, toUmiBasesForConsensusUmiCalling(duplexR1Sources, firstOfPair=true)),
-              createSamRecord(r2, SecondOfPair, toUmiBasesForConsensusUmiCalling(duplexR2Sources, firstOfPair=false))
+            val newR1 = createSamRecord(
+              read        = r1,
+              readType    = FirstOfPair,
+              umis        = toUmiBasesForConsensusUmiCalling(duplexR1Sources, firstOfPair=true),
+              cellBarcode = cellBarcode,
             )
+            val newR2 = createSamRecord(
+              read        = r2,
+              readType    = SecondOfPair,
+              umis        = toUmiBasesForConsensusUmiCalling(duplexR2Sources, firstOfPair=false),
+              cellBarcode = cellBarcode
+            )
+            Seq(newR1, newR2)
           case _                    =>
             // NB: some reads may have been rejected already in filterToMostCommonAlignment, so just
             //     reject those records that survived the initial filtering.
@@ -449,8 +468,13 @@ class DuplexConsensusCaller(override val readNamePrefix: String,
   /**
     * Creates a SamRecord with a ton of additional tags annotating the duplex read.
     */
-  override protected def createSamRecord(read: DuplexConsensusRead, readType: ReadType, umis: Seq[String] = Seq.empty): SamRecord = {
-    val rec = super.createSamRecord(read, readType, umis)
+  override protected def createSamRecord(
+    read: DuplexConsensusRead,
+    readType: ReadType,
+    umis: Seq[String]           = Seq.empty,
+    cellBarcode: Option[String] = None,
+  ): SamRecord = {
+    val rec = super.createSamRecord(read, readType, umis, cellBarcode=cellBarcode)
 
     // Calculate the total depths across both SS consensus reads
     val totalDepths: Array[Int] = read.baConsensus match {

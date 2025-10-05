@@ -33,6 +33,7 @@ import com.fulcrumgenomics.commons.util.{LazyLogging, NumericCounter, SimpleCoun
 import com.fulcrumgenomics.sopt.{arg, clp}
 import com.fulcrumgenomics.util.Metric.{Count, Proportion}
 import com.fulcrumgenomics.util._
+import htsjdk.samtools.SAMTag
 import htsjdk.samtools.util.{Interval, IntervalList, Murmur3, OverlapDetector}
 import org.apache.commons.math3.distribution.BinomialDistribution
 
@@ -273,8 +274,9 @@ class CollectDuplexSeqMetrics
   @arg(flag='u', doc="If true, produce the .duplex_umi_counts.txt file with counts of duplex UMI observations.") val duplexUmiCounts: Boolean = false,
   @arg(flag='a', doc="Minimum AB reads to call a tag family a 'duplex'.") val minAbReads: Int = 1,
   @arg(flag='b', doc="Minimum BA reads to call a tag family a 'duplex'.") val minBaReads: Int = 1,
-  @arg(flag='t', doc="The tag containing the raw UMI.")  val umiTag: String    = ConsensusTags.UmiBases,
+  @arg(flag='t', doc="The tag containing the raw UMI.")  val umiTag: String = ConsensusTags.UmiBases,
   @arg(flag='T', doc="The output tag for UMI grouping.") val miTag: String = ConsensusTags.MolecularId,
+  @arg(flag='c', doc="The tag containing the cell barcode.") val cellTag: String = SAMTag.CB.name,
   private val generatePlots: Boolean = true // not a CLP arg - here to allow disabling of plots to speed up testing
 ) extends FgBioTool with LazyLogging {
   import CollectDuplexSeqMetrics._
@@ -582,8 +584,8 @@ class CollectDuplexSeqMetrics
     */
   private def takeNextGroup(iterator: BetterBufferedIterator[SamRecord]): Seq[SamRecord] = {
     val rec = iterator.head
-    val info = GroupReadsByUmi.ReadInfo(rec)
-    iterator.takeWhile(rec => GroupReadsByUmi.ReadInfo(rec) == info).toIndexedSeq
+    val info = GroupReadsByUmi.ReadInfo(rec, cellTag = this.cellTag)
+    iterator.takeWhile(rec => GroupReadsByUmi.ReadInfo(rec, cellTag = this.cellTag) == info).toIndexedSeq
   }
 
   /** Writes out all the metrics and plots. */
