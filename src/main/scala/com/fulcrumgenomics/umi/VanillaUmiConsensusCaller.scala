@@ -156,7 +156,8 @@ case class VanillaConsensusRead(id: String, bases: Array[Byte], quals: Array[Byt
 class VanillaUmiConsensusCaller(override val readNamePrefix: String,
                                 override val readGroupId: String = "A",
                                 val options: VanillaUmiConsensusCallerOptions = new VanillaUmiConsensusCallerOptions(),
-                                override val rejectsWriter: Option[SamWriter] = None
+                                override val rejectsWriter: Option[SamWriter] = None,
+                                override val cellTag: Option[String] = None,
                                ) extends UmiConsensusCaller[VanillaConsensusRead] with LazyLogging {
 
   initializeRejectCounts(_.usedByVanilla)
@@ -192,13 +193,24 @@ class VanillaUmiConsensusCaller(override val readNamePrefix: String,
 
   /** Takes in all the SamRecords for a single source molecule and produces consensus records. */
   override protected def consensusSamRecordsFromSamRecords(recs: Seq[SamRecord]): Seq[SamRecord] = {
+    val cellBarcode: Option[String] = this.cellTag.flatMap { tag =>
+      val barcodes = recs.flatMap(_.get(tag)).distinct
+      require(barcodes.length <= 1, s"Multiple different cell barcodes found for tag $tag: $barcodes")
+      barcodes.headOption
+    }
+
     // partition the records to which end of a pair it belongs, or if it is a fragment read.
     val (fragments, firstOfPair, secondOfPair) = subGroupRecords(recs)
     val builder = IndexedSeq.newBuilder[SamRecord]
 
     // fragment
     consensusFromSamRecords(records=fragments).map { frag =>
-      builder += createSamRecord(read=frag, readType=Fragment, fragments.flatMap(_.get[String](ConsensusTags.UmiBases)))
+      builder += createSamRecord(
+        read=frag,
+        readType=Fragment,
+        fragments.flatMap(_.get[String](ConsensusTags.UmiBases)),
+        cellBarcode=cellBarcode,
+      )
     }
 
     // pairs
@@ -207,8 +219,18 @@ class VanillaUmiConsensusCaller(override val readNamePrefix: String,
       case (Some(_), None)     => rejectRecords(firstOfPair,  RejectionReason.OrphanConsensus)
       case (None, None)         => rejectRecords(firstOfPair ++ secondOfPair, RejectionReason.OrphanConsensus)
       case (Some(r1), Some(r2)) =>
-        builder += createSamRecord(r1, FirstOfPair, firstOfPair.flatMap(_.get[String](ConsensusTags.UmiBases)))
-        builder += createSamRecord(r2, SecondOfPair, secondOfPair.flatMap(_.get[String](ConsensusTags.UmiBases)))
+        builder += createSamRecord(
+          r1,
+          FirstOfPair,
+          firstOfPair.flatMap(_.get[String](ConsensusTags.UmiBases)),
+          cellBarcode=cellBarcode,
+        )
+        builder += createSamRecord(
+          r2,
+          SecondOfPair,
+          secondOfPair.flatMap(_.get[String](ConsensusTags.UmiBases)),
+          cellBarcode=cellBarcode,
+        )
     }
 
     builder.result()
@@ -329,8 +351,13 @@ class VanillaUmiConsensusCaller(override val readNamePrefix: String,
   }
 
   /** Creates a `SamRecord` from the called consensus base and qualities. */
-  override protected def createSamRecord(read: VanillaConsensusRead, readType: ReadType, umis: Seq[String] = Seq.empty): SamRecord = {
-    val rec = super.createSamRecord(read, readType, umis)
+  override protected def createSamRecord(
+    read: VanillaConsensusRead,
+    readType: ReadType,
+    umis: Seq[String] = Seq.empty,
+    cellBarcode: Option[String] = None,
+  ): SamRecord = {
+    val rec = super.createSamRecord(read, readType, umis, cellBarcode)
     // Set some additional information tags on the read
     rec(ConsensusTags.PerRead.RawReadCount)     = read.depths.max.toInt
     rec(ConsensusTags.PerRead.MinRawReadCount)  = read.depths.min.toInt

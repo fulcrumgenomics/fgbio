@@ -114,7 +114,7 @@ object GroupReadsByUmi {
 
 
     /** Extract a ReadInfo from a Template object.  R1 primary must be present. */
-    def apply(t: Template, cellTag: String = "CB"): ReadInfo = {
+    def apply(t: Template, cellTag: String): ReadInfo = {
       val r1 = t.r1.getOrElse(throw new IllegalStateException(s"${t.name} did not have a primary R1 record."))
       val r2 = t.r2
 
