@@ -69,7 +69,7 @@ function validateReadStructure(readStructureString) {
 		else {
 			var code = rs.charAt(i);
 			i += 1;
-			if (code !== 'T' && code !== 'B' && code !== 'M' && code !== 'S') {
+			if (code !== 'T' && code !== 'B' && code !== 'M' && code !== 'C' && code !== 'S') {
 				return {"message" : invalid('Read structure segment had unknown type', rs, parsePosition, i)};
 			}
 			else {
@@ -136,6 +136,9 @@ function validateReadStructures(readStructuresString) {
 					break;
 				case 'M':
 					table += "Molecular Barcode";
+					break;
+				case 'C':
+					table += "Cell Barcode";
 					break;
 				case 'S':
 					table += "Skipped Bases";
