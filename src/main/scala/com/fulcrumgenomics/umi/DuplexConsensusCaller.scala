@@ -118,7 +118,7 @@ class DuplexConsensusCaller(override val readNamePrefix: String,
                             val errorRatePostUmi: PhredScore              = DuplexConsensusCaller.ErrorRatePostUmi,
                             val minReads: Seq[Int]                        = Seq(1),
                             val maxReadsPerStrand: Int                    = VanillaUmiConsensusCallerOptions.DefaultMaxReads,
-                            override val cellTag: Option[String]          = None,
+                            override val cellTag: Option[String]          = Some("CB"),
                             override val rejectsWriter: Option[SamWriter] = None,
                            ) extends UmiConsensusCaller[DuplexConsensusRead] with LazyLogging {
 
@@ -169,6 +169,7 @@ class DuplexConsensusCaller(override val readNamePrefix: String,
       errorRatePostUmi    = errorRatePostUmi,
       minReads            = minReads,
       maxReadsPerStrand   = maxReadsPerStrand,
+      cellTag             = cellTag,
       rejectsWriter       = this.rejectsWriter
     )
   }

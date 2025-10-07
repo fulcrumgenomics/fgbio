@@ -74,7 +74,7 @@ object GroupReadsByUmi {
                       start2: Int,
                       strand2: Byte,
                       library: String,
-                      cellId: Option[String])
+                      cellBarcode: Option[String])
 
   object ReadInfo {
     // Use the Max possible value for ref/pos/strand when we have unmapped reads to mirror what's done

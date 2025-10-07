@@ -94,7 +94,7 @@ class CodecConsensusCaller(readNamePrefix: String,
                            val outerBasesLength: Int = 5,
                            val maxDuplexDisagreements: Int = Int.MaxValue,
                            val maxDuplexDisagreementRate: Double = 1.0,
-                           override val cellTag: Option[String] = None,
+                           override val cellTag: Option[String] = Some("CB"),
                            rejectsWriter: Option[SamWriter] = None
                           ) extends DuplexConsensusCaller(
   readNamePrefix      = readNamePrefix,
@@ -143,7 +143,8 @@ class CodecConsensusCaller(readNamePrefix: String,
       outerBasesLength    = this.outerBasesLength,
       maxDuplexDisagreements    = this.maxDuplexDisagreements,
       maxDuplexDisagreementRate = this.maxDuplexDisagreementRate,
-      rejectsWriter             = this.rejectsWriter
+      cellTag                   = this.cellTag,
+      rejectsWriter             = this.rejectsWriter,
     )
   }
 

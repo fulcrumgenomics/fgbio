@@ -88,6 +88,24 @@ class DuplexConsensusCallerTest extends UnitSpec with OptionValues {
     r2.quals(0) > 30 shouldBe true
   }
 
+  it should "create a simple double stranded consensus for a pair of A and a pair of B reads and preserve the cell barcode" in {
+    val specialCellTag: String = "CB"
+    val builder = new SamBuilder(readLength=10, baseQuality=20)
+    builder.addPair(name="q1", start1=100, start2=200, strand1=Plus, strand2=Minus, bases1="AAAAAAAAAA", bases2="CCCCCCCCCC", attrs=Map(MI -> "foo/A", specialCellTag -> "AA"))
+    builder.addPair(name="q2", start1=200, start2=100, strand1=Minus, strand2=Plus, bases1="CCCCCCCCCC", bases2="AAAAAAAAAA", attrs=Map(MI -> "foo/B", specialCellTag -> "AA"))
+
+    val recs = c.consensusReadsFromSamRecords(builder.toSeq)
+    recs should have size 2
+    val r1 = recs.find(_.firstOfPair).getOrElse(fail("No first of pair."))
+    val r2 = recs.find(_.secondOfPair).getOrElse(fail("No second of pair."))
+    r1.basesString shouldBe "AAAAAAAAAA"
+    r2.basesString shouldBe "GGGGGGGGGG" // after un-revcomping
+    r1.quals(0) > 30 shouldBe true
+    r2.quals(0) > 30 shouldBe true
+    r1.get[String](specialCellTag).value shouldBe "AA"
+    r2.get[String](specialCellTag).value shouldBe "AA"
+  }
+
   Seq(
     Seq("right", "ACT-", "-ACT"),
     Seq("left", "-ACT", "ACT-"),

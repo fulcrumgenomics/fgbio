@@ -184,7 +184,7 @@ trait UmiConsensusCaller[ConsensusRead <: SimpleRead] {
   import com.fulcrumgenomics.umi.UmiConsensusCaller.ReadType._
 
   /** The SAM tag containing the unique cell identifier (if cell-based consensus calling is desired). */
-  val cellTag: Option[String]
+  val cellTag: Option[String] = Some("CB")
 
   // vars to track how many reads meet various fates
   private var _totalReads: Long = 0

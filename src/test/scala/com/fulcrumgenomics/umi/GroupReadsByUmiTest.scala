@@ -235,7 +235,7 @@ class GroupReadsByUmiTest extends UnitSpec with OptionValues with PrivateMethodT
     tReadInfo.start1    shouldBe 499
     tReadInfo.refIndex2 shouldBe 2
     tReadInfo.start2    shouldBe 290
-    tReadInfo.cellId.value shouldBe "GTTTA"
+    tReadInfo.cellBarcode.value shouldBe "GTTTA"
   }
 
   // Test for running the GroupReadsByUmi command line program with some sample input

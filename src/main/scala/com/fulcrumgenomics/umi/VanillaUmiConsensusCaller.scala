@@ -156,8 +156,8 @@ case class VanillaConsensusRead(id: String, bases: Array[Byte], quals: Array[Byt
 class VanillaUmiConsensusCaller(override val readNamePrefix: String,
                                 override val readGroupId: String = "A",
                                 val options: VanillaUmiConsensusCallerOptions = new VanillaUmiConsensusCallerOptions(),
+                                override val cellTag: Option[String] = Some("CB"),
                                 override val rejectsWriter: Option[SamWriter] = None,
-                                override val cellTag: Option[String] = None,
                                ) extends UmiConsensusCaller[VanillaConsensusRead] with LazyLogging {
 
   initializeRejectCounts(_.usedByVanilla)
@@ -184,6 +184,7 @@ class VanillaUmiConsensusCaller(override val readNamePrefix: String,
       readNamePrefix = readNamePrefix,
       readGroupId    = readGroupId,
       options        = options,
+      cellTag        = this.cellTag,
       rejectsWriter  = this.rejectsWriter
     )
   }
