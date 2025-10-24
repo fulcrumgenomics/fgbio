@@ -197,7 +197,7 @@ lazy val root = Project(id="fgbio", base=file("."))
       "com.fulcrumgenomics"       %% "sopt"           % "1.1.0",
       "com.github.samtools"       %  "htsjdk"         % "3.0.5" excludeAll(htsjdkExcludes: _*),
       "org.apache.commons"        %  "commons-math3"  % "3.6.1",
-      "com.beachape"              %% "enumeratum"     % "1.7.0",
+      "com.beachape"              %% "enumeratum"     % "1.7.1",
       "com.intel.gkl"             %  "gkl"            % "0.8.10",
 
       //---------- Test libraries -------------------//
