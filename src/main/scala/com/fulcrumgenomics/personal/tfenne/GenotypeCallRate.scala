@@ -59,7 +59,7 @@ class GenotypeCallRate(
   /** All tools should implement this method. */
   override def execute(): Unit = {
     val allStats = mutable.HashMap[String, GenotypingMetric]()
-    val progress = ProgressLogger(logger, noun="variant record", unit=10e6.toInt)
+    val progress = ProgressLogger(logger, noun="variant record", unit=5e6.toInt)
 
     input.foreach { vcf =>
       logger.info(s"Processing ${vcf}")
@@ -79,9 +79,9 @@ class GenotypeCallRate(
             else if (gt.getOrElse[Int]("GQ", 0) < minGq) {
               stats.low_gq += 1
             }
-
-            progress.record(rec)
           }
+
+          progress.record(rec)
         }
     }
 
