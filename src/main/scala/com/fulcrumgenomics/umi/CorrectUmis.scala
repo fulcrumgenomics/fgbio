@@ -77,24 +77,10 @@ object CorrectUmis {
     */
   def findUmiPairsWithinDistance(umis: Seq[String], distance: Int): Seq[(String,String,Int)] = {
     umis.tails.flatMap {
-      case x +: ys => ys.map(y => (x, y, CorrectUmis.countMismatches(x, y, distance+1))).filter(_._3 <= distance)
+      case x +: ys => ys.map(y => (x, y, Sequences.countMismatchesWithMax(x, y, distance+1))).filter(_._3 <= distance)
       case _       => Seq.empty
     }.toList
   }
-
-  @inline
-  private def countMismatches(s1: String, s2: String, max: Int): Int = {
-    require(s1.length == s2.length, s"Cannot count mismatches in strings of differing lengths: $s1 $s2")
-    var count = 0
-    var i = 0
-    while (i < s1.length && count < max) {
-      if (s1.charAt(i) != s2.charAt(i)) count += 1
-      i += 1
-    }
-
-    count
-  }
-
 }
 
 @clp(group=ClpGroups.Umi, description=
@@ -298,7 +284,7 @@ class CorrectUmis
         var nextBest = bases.length + 1
         var i = 0
         while (i < umis.length && !(min == 0 && nextBest < min + this.minDistanceDiff)) {
-          val mismatches = CorrectUmis.countMismatches(bases, umis(i), nextBest)
+          val mismatches = Sequences.countMismatchesWithMax(bases, umis(i), nextBest)
           if (mismatches < min) {
             nextBest = min
             min = mismatches

@@ -49,6 +49,39 @@ class SequencesTest extends UnitSpec {
     Sequences.countMismatches("ACGACTATATGCAT", "NNNNNNNNNNNNNN") shouldBe 14
   }
 
+  "Sequences.countMismatchesWithMax" should "return 0 when comparing a string with itself" in {
+    val seq = "ACGTAGCTGACTGCA"
+    Sequences.countMismatchesWithMax(seq, seq, 10) shouldBe 0
+  }
+
+  it should "be case sensitive" in {
+    val seq = "ACGTAGCTGACTGCA"
+    Sequences.countMismatchesWithMax(seq.toLowerCase, seq.toUpperCase, seq.length + 1) shouldBe seq.length
+  }
+
+  it should "return the max limit when the number of mismatches exceed max" in {
+    val seq = "ACGTAGCTGACTGCA"
+    Sequences.countMismatchesWithMax(seq.toLowerCase, seq.toUpperCase, 5) shouldBe 5
+  }
+
+  it should "return the number of mismatches of just the prefixes of the length of the first sequence (when the first sequence is shorter)" in {
+    // `countMismatchesWithMax` has no length check, so will default to the length of the first sequence
+    Sequences.countMismatchesWithMax("ACGT", "ACGTGG", 5) shouldBe 0
+  }
+
+  it should "throw an exception when the first sequence is longer than the last" in {
+    an[StringIndexOutOfBoundsException] should be thrownBy Sequences.countMismatchesWithMax("ACGTGG", "ACGT", 10)
+  }
+
+  it should "correctly count mismatches" in {
+    Sequences.countMismatchesWithMax("ACGACTATATGCAT", "ACGACTATATGCAT", 100) shouldBe 0
+    Sequences.countMismatchesWithMax("ACGACTATATGCAT", "acgactatatgcat", 100) shouldBe 14
+    Sequences.countMismatchesWithMax("acgactatatgcat", "acgactaNatgcat", 100) shouldBe 1
+    Sequences.countMismatchesWithMax("acgactatatgcat", "acgactataGTcat", 100) shouldBe 2
+    Sequences.countMismatchesWithMax("ACGACTATATGCAT", "NNNNNNNNNNNNNN", 100) shouldBe 14
+    Sequences.countMismatchesWithMax("ACGACTATATGCAT", "NNNNNNNNNNNNNN", 5) shouldBe 5
+  }
+
   "Sequences.longestHomopolymer" should "fail when passed a null String" in {
     an[Throwable] shouldBe thrownBy { Sequences.longestHomopolymer(null) }
   }

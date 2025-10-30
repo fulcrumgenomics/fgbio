@@ -94,7 +94,7 @@ object Sequences {
     */
   def gcContent(s: String): Double = if (s.isEmpty) 0 else SequenceUtil.calculateGc(s.getBytes)
 
-  /** Counts the number of mismatches between two sequences of the same length. */
+  /** Counts the number of mismatches between two sequences of the same length, case-insensitive. */
   def countMismatches(s1: String, s2: String): Int = {
     require(s1.length == s2.length, s"Cannot count mismatches in strings of differing lengths: $s1 $s2")
 
@@ -105,6 +105,26 @@ object Sequences {
       if (a != b) count += 1
     }
 
+    count
+  }
+
+  /** Counts the number of mismatches between two sequences of the same length, case-sensitive.
+   *
+   * @param s1 the first input sequence
+   * @param s2 the second input sequence
+   * @return the number of mismatches between the two sequences, or `max`, whichever is smaller
+   * @note '''Preconditions:'''
+   *       - `s1` and `s2` must have the same length
+   *       - `max` is greater than or equal to zero
+   * */
+  @inline
+  def countMismatchesWithMax(s1: String, s2: String, max: Int): Int = {
+    var count = 0
+    var i = 0
+    while (i < s1.length && count < max) {
+      if (s1.charAt(i) != s2.charAt(i)) count += 1
+      i += 1
+    }
     count
   }
 

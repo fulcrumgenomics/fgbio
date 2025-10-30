@@ -27,7 +27,7 @@ package com.fulcrumgenomics.umi
 import com.fulcrumgenomics.sopt.cmdline.ValidationException
 import com.fulcrumgenomics.testing.{SamBuilder, UnitSpec}
 import com.fulcrumgenomics.umi.CorrectUmis.{UmiCorrectionMetrics, UmiMatch}
-import com.fulcrumgenomics.util.{Io, Metric}
+import com.fulcrumgenomics.util.{Io, Metric, Sequences}
 
 class CorrectUmisTest extends UnitSpec {
   private val FixedUmis = Seq("AAAAAA", "CCCCCC", "GGGGGG", "TTTTTT")
@@ -230,6 +230,23 @@ class CorrectUmisTest extends UnitSpec {
     new CorrectUmis(input=builder.toTempFile(), output=output, umis=expectedUmis, maxMismatches=2, minDistanceDiff=2, dontStoreOriginalUmis=true).execute()
     readBamRecs(output).foreach { rec =>
       rec.get(ConsensusTags.OriginalUmiBases) shouldBe None
+    }
+  }
+
+  it should "reverse complement the barcodes when --revcomp is used" in {
+    val expectedUmis = Seq("AAAAAA", "TTTTTT", "CCCCCC")
+    val builder = new SamBuilder()
+    builder.addFrag(name="exact",       start=100, attrs=Map(ConsensusTags.UmiBases -> Sequences.revcomp("AAAAAA")))
+    builder.addFrag(name="correctable", start=101, attrs=Map(ConsensusTags.UmiBases -> Sequences.revcomp("AAAAGA")))
+    builder.addFrag(name="reject",      start=102, attrs=Map(ConsensusTags.UmiBases -> Sequences.revcomp("GGGGGG")))
+
+    val output = makeTempFile("corrected.", ".bam")
+
+    new CorrectUmis(input=builder.toTempFile(), output=output, umis=expectedUmis, maxMismatches=2, minDistanceDiff=2, revcomp=true).execute()
+    readBamRecs(output).foreach { rec =>
+      if (rec.name == "exact")       rec.get(ConsensusTags.OriginalUmiBases) shouldBe None
+      if (rec.name == "correctable") rec.get(ConsensusTags.OriginalUmiBases) shouldBe Some("TCTTTT")
+      if (rec.name == "reject")      fail("reject record should not have made it into the output.")
     }
   }
 }
