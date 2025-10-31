@@ -102,7 +102,7 @@ object Sequences {
     forloop (from=0, until=s1.length) { i =>
       val a = Character.toUpperCase(s1.charAt(i))
       val b = Character.toUpperCase(s2.charAt(i))
-      if (a != b) count += 1
+      if ((a ^ b) != 0) count += 1
     }
 
     count
@@ -118,11 +118,11 @@ object Sequences {
    *       - `max` is greater than or equal to zero
    * */
   @inline
-  def countMismatchesWithMax(s1: String, s2: String, max: Int): Int = {
+  def countMismatchesWithMax(s1: Array[Byte], s2: Array[Byte], max: Int): Int = {
     var count = 0
     var i = 0
     while (i < s1.length && count < max) {
-      if (s1.charAt(i) != s2.charAt(i)) count += 1
+      if (s1(i) != s2(i)) count += 1
       i += 1
     }
     count

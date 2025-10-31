@@ -44,7 +44,7 @@ object CorrectUmis {
     * @param umi the fixed UMI sequence that was the closest match
     * @param mismatches the number of mismatches between the UMI and the reported best matching fixed UMI
     *  */
-  private[umi] case class UmiMatch(matched: Boolean, umi: String, mismatches: Int)
+  private[umi] case class UmiMatch(matched: Boolean, umi: Array[Byte], mismatches: Int)
 
   /**
     * Metrics produced by `CorrectUmis` regarding the correction of UMI sequences to a fixed set of known UMIs.
@@ -77,7 +77,7 @@ object CorrectUmis {
     */
   def findUmiPairsWithinDistance(umis: Seq[String], distance: Int): Seq[(String,String,Int)] = {
     umis.tails.flatMap {
-      case x +: ys => ys.map(y => (x, y, Sequences.countMismatchesWithMax(x, y, distance+1))).filter(_._3 <= distance)
+      case x +: ys => ys.map(y => (x, y, Sequences.countMismatchesWithMax(x.getBytes, y.getBytes, distance+1))).filter(_._3 <= distance)
       case _       => Seq.empty
     }.toList
   }
@@ -160,6 +160,7 @@ class CorrectUmis
       validate(lengths.size == 1, s"UMIs of multiple lengths found. Lengths: ${lengths.mkString(", ")}")
       (set.map(_.toUpperCase).toArray, lengths.head)
     }
+    val umiSequencesBytes = umiSequences.map(_.getBytes)
 
     // Warn if any of the UMIs are too close together
     CorrectUmis.findUmiPairsWithinDistance(umiSequences.toSeq, minDistanceDiff-1).foreach { case (umi1, umi2, distance) =>
@@ -197,12 +198,12 @@ class CorrectUmis
           }
           else {
             // Find matches for all the UMIs
-            val matches = sequences.map(seq => findBestMatch(seq.toUpperCase, umiSequences))
+            val matches = sequences.map(seq => findBestMatch(seq.toUpperCase, umiSequencesBytes))
 
             // Update the metrics
             matches.foreach { m =>
               if (m.matched) {
-                val metric = umiMetrics(m.umi)
+                val metric = umiMetrics(new String(m.umi))
                 metric.total_matches += 1
                 m.mismatches match {
                   case 0 => metric.perfect_matches      += 1
@@ -274,7 +275,7 @@ class CorrectUmis
   }
 
   /** Given a UMI sequence and a set of fixed UMIs, report the best match. */
-  private[umi] def findBestMatch(bases: String, umis: Array[String]): UmiMatch = {
+  private[umi] def findBestMatch(bases: String, umis: Array[Array[Byte]]): UmiMatch = {
     val cachedResult = if (this.cacheSize > 0) cache.get(bases) else None
     cachedResult match {
       case Some(result) => result
@@ -283,8 +284,9 @@ class CorrectUmis
         var minIndex = -1
         var nextBest = bases.length + 1
         var i = 0
+        val bytes = bases.getBytes
         while (i < umis.length && !(min == 0 && nextBest < min + this.minDistanceDiff)) {
-          val mismatches = Sequences.countMismatchesWithMax(bases, umis(i), nextBest)
+          val mismatches = Sequences.countMismatchesWithMax(bytes, umis(i), nextBest)
           if (mismatches < min) {
             nextBest = min
             min = mismatches
