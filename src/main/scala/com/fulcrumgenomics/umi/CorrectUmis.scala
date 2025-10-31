@@ -44,7 +44,13 @@ object CorrectUmis {
     * @param umi the fixed UMI sequence that was the closest match
     * @param mismatches the number of mismatches between the UMI and the reported best matching fixed UMI
     *  */
-  private[umi] case class UmiMatch(matched: Boolean, umi: Array[Byte], mismatches: Int)
+  private[umi] case class UmiMatch(matched: Boolean, umi: String, mismatches: Int)
+
+  object UmiMatch {
+    def apply(matched: Boolean, umi: Array[Byte], mismatches: Int): UmiMatch = {
+      UmiMatch(matched=matched, umi=new String(umi), mismatches)
+    }
+  }
 
   /**
     * Metrics produced by `CorrectUmis` regarding the correction of UMI sequences to a fixed set of known UMIs.
