@@ -134,7 +134,7 @@ object CorrectUmis {
     |using a cache, set the value to `0`.
     |
     |The reverse complement (using `--revcomp`) option will reverse complement the UMI in place.  In the case of
-    |multiple UMIs concatenated rogether, the individual UMIs are reverse complement, and the order
+    |multiple UMIs concatenated together, the individual UMIs are reverse complement, and the order
     |reversed (eg. `AAGG-ACTG` is changed to `CAGT-CCTT`).
   """)
 class CorrectUmis
