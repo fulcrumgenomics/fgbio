@@ -112,10 +112,12 @@ object Sequences {
    *
    * @param s1 the first input sequence
    * @param s2 the second input sequence
+   * @param max the maximum number of mismatches to count
    * @return the number of mismatches between the two sequences, or `max`, whichever is smaller
-   * @note '''Preconditions:'''
-   *       - `s1` and `s2` must have the same length
-   *       - `max` is greater than or equal to zero
+   * @throws ArrayIndexOutOfBoundsException if `s1` and `s2` have different lengths
+   * @note '''Preconditions (caller must ensure):'''
+   *       - `s1.length == s2.length` (required - undefined behavior if violated)
+   *       - `max >= 0` (required - undefined behavior if violated)
    * */
   @inline
   def countMismatchesWithMax(s1: Array[Byte], s2: Array[Byte], max: Int): Int = {
