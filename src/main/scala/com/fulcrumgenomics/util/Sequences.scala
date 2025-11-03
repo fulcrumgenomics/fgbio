@@ -94,7 +94,7 @@ object Sequences {
     */
   def gcContent(s: String): Double = if (s.isEmpty) 0 else SequenceUtil.calculateGc(s.getBytes)
 
-  /** Counts the number of mismatches between two sequences of the same length. */
+  /** Counts the number of mismatches between two sequences of the same length, case-insensitive. */
   def countMismatches(s1: String, s2: String): Int = {
     require(s1.length == s2.length, s"Cannot count mismatches in strings of differing lengths: $s1 $s2")
 
@@ -102,9 +102,31 @@ object Sequences {
     forloop (from=0, until=s1.length) { i =>
       val a = Character.toUpperCase(s1.charAt(i))
       val b = Character.toUpperCase(s2.charAt(i))
-      if (a != b) count += 1
+      if ((a ^ b) != 0) count += 1
     }
 
+    count
+  }
+
+  /** Counts the number of mismatches between two sequences of the same length, case-sensitive.
+   *
+   * @param s1 the first input sequence
+   * @param s2 the second input sequence
+   * @param max the maximum number of mismatches to count
+   * @return the number of mismatches between the two sequences, or `max`, whichever is smaller
+   * @throws java.lang.ArrayIndexOutOfBoundsException if `s1` and `s2` have different lengths
+   * @note '''Preconditions (caller must ensure):'''
+   *       - `s1.length == s2.length` (required)
+   *       - `max >= 0` (required - undefined behavior if violated)
+   * */
+  @inline
+  def countMismatchesWithMax(s1: Array[Byte], s2: Array[Byte], max: Int): Int = {
+    var count = 0
+    var i     = 0
+    while (i < s1.length && count < max) {
+      if (s1(i) != s2(i)) count += 1
+      i += 1
+    }
     count
   }
 

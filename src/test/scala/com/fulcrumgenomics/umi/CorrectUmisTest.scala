@@ -27,11 +27,11 @@ package com.fulcrumgenomics.umi
 import com.fulcrumgenomics.sopt.cmdline.ValidationException
 import com.fulcrumgenomics.testing.{SamBuilder, UnitSpec}
 import com.fulcrumgenomics.umi.CorrectUmis.{UmiCorrectionMetrics, UmiMatch}
-import com.fulcrumgenomics.util.{Io, Metric}
+import com.fulcrumgenomics.util.{Io, Metric, Sequences}
 
 class CorrectUmisTest extends UnitSpec {
   private val FixedUmis = Seq("AAAAAA", "CCCCCC", "GGGGGG", "TTTTTT")
-  private val FixedUmisArray = FixedUmis.toArray
+  private val FixedUmisArray = FixedUmis.map(_.getBytes).toArray
   private val NoBam = makeTempFile("correct_umis.", ".bam")
 
   "CorrectUmis.findBestMatch" should "find perfect matches" in {
@@ -67,7 +67,7 @@ class CorrectUmisTest extends UnitSpec {
 
   it should "not match with mismatches when two UMIs are too similar (e.g. poorly picked UMIs)" in {
     val corrector = new CorrectUmis(input = NoBam, output = NoBam, maxMismatches = 2, minDistanceDiff = 2, umis = Seq("AAAG", "AAAT"))
-    corrector.findBestMatch("AAAG", Array("AAAG", "AAAT")) shouldBe UmiMatch(matched = false, "AAAG", 0)
+    corrector.findBestMatch("AAAG", Array("AAAG", "AAAT").map(_.getBytes)) shouldBe UmiMatch(matched = false, "AAAG", 0)
   }
 
   it should "match with lots of mismatches, but only if the next best UMI is far enough away" in {
@@ -230,6 +230,23 @@ class CorrectUmisTest extends UnitSpec {
     new CorrectUmis(input=builder.toTempFile(), output=output, umis=expectedUmis, maxMismatches=2, minDistanceDiff=2, dontStoreOriginalUmis=true).execute()
     readBamRecs(output).foreach { rec =>
       rec.get(ConsensusTags.OriginalUmiBases) shouldBe None
+    }
+  }
+
+  it should "reverse complement the barcodes when --revcomp is used" in {
+    val expectedUmis = Seq("AAAAAA", "TTTTTT", "CCCCCC")
+    val builder = new SamBuilder()
+    builder.addFrag(name="exact",       start=100, attrs=Map(ConsensusTags.UmiBases -> Sequences.revcomp("AAAAAA")))
+    builder.addFrag(name="correctable", start=101, attrs=Map(ConsensusTags.UmiBases -> Sequences.revcomp("AAAAGA")))
+    builder.addFrag(name="reject",      start=102, attrs=Map(ConsensusTags.UmiBases -> Sequences.revcomp("GGGGGG")))
+
+    val output = makeTempFile("corrected.", ".bam")
+
+    new CorrectUmis(input=builder.toTempFile(), output=output, umis=expectedUmis, maxMismatches=2, minDistanceDiff=2, revcomp=true).execute()
+    readBamRecs(output).foreach { rec =>
+      if (rec.name == "exact")       rec.get(ConsensusTags.OriginalUmiBases) shouldBe None
+      if (rec.name == "correctable") rec.get(ConsensusTags.OriginalUmiBases) shouldBe Some("TCTTTT")
+      if (rec.name == "reject")      fail("reject record should not have made it into the output.")
     }
   }
 }
