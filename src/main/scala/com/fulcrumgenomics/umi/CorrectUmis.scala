@@ -82,10 +82,14 @@ object CorrectUmis {
     * @return a Seq of three-tuples containing (umi1, umi2, edit_distance)
     */
   def findUmiPairsWithinDistance(umis: Seq[String], distance: Int): Seq[(String,String,Int)] = {
-    umis.tails.flatMap {
-      case x +: ys => ys.map(y => (x, y, Sequences.countMismatchesWithMax(x.getBytes, y.getBytes, distance+1))).filter(_._3 <= distance)
-      case _       => Seq.empty
-    }.toList
+    val builder = Seq.newBuilder[(String, String, Int)]
+    forloop (from=0, until=umis.length) { i =>
+      forloop (from=i+1, until=umis.length) { j =>
+        val d = Sequences.countMismatchesWithMax(umis(i).getBytes, umis(j).getBytes, distance+1)
+        if (d <= distance) builder += ((umis(i), umis(j), d))
+      }
+    }
+    builder.result()
   }
 }
 
@@ -128,6 +132,10 @@ object CorrectUmis {
     |
     |For a large number of input UMIs, the `--cache-size` option may used to speed up the tool.  To disable
     |using a cache, set the value to `0`.
+    |
+    |The reverse complement (using `--revcomp`) option will reverse complement the UMI in place.  In the case of
+    |multiple UMIs concatenated rogether, the individual UMIs are reverse complement, and the order
+    |reversed (eg. `AAGG-ACTG` is changed to `CAGT-CCTT`).
   """)
 class CorrectUmis
 (@arg(flag='i', doc="Input SAM or BAM file.")  val input: PathToBam,
@@ -159,12 +167,12 @@ class CorrectUmis
     // Construct the full set of UMI sequences to match again
     val (umiSequences, umiLength) = {
       val set = mutable.HashSet[String](umis:_*)
-      umiFiles.foreach(Io.readLines(_).map(_.trim).filter(_.nonEmpty).foreach(set.add))
+      umiFiles.foreach(Io.readLines(_).map(_.trim.toUpperCase).filter(_.nonEmpty).foreach(set.add))
       validate(set.nonEmpty, s"At least one UMI sequence must be provided; none found in files ${umiFiles.mkString(", ")}")
 
       val lengths = set.map(_.length)
       validate(lengths.size == 1, s"UMIs of multiple lengths found. Lengths: ${lengths.mkString(", ")}")
-      (set.map(_.toUpperCase).toArray, lengths.head)
+      (set.toArray, lengths.head)
     }
     val umiSequencesBytes = umiSequences.map(_.getBytes)
 
@@ -193,7 +201,7 @@ class CorrectUmis
           missingUmisRecords += 1
           rejectOut.foreach(w => w += rec)
         case Some(umi: String) =>
-          val sequences = if (revcomp) umi.split("-", -1).map(Sequences.revcomp) else umi.split("-", -1)
+          val sequences = if (revcomp) umi.split("-", -1).map(Sequences.revcomp).reverse else umi.split("-", -1)
           if (sequences.exists(_.length != umiLength)) {
             if (wrongLengthRecords == 0) {
               logger.warning(s"Read (${rec.name}) detected with unexpected length UMI(s): ${sequences.mkString(" ")}.")
@@ -297,27 +305,24 @@ class CorrectUmis
     cachedResult match {
       case Some(result) => result
       case None         =>
-        var min = bases.length + 1
-        var minIndex = -1
-        var nextBest = bases.length + 1
-        var i = 0
-        val bytes = bases.getBytes
-        // Note: when the best match has `min == 0`, we still need to scan to see if we find
-        // the next best match (`nextBest`) with `nextBest < min + this.minDistanceDiff`.  If we do
-        // find `min == 0` and `nextBest < this.minDistanceDiff`, we are guaranteed not to match.
-        while (i < umis.length && !(min == 0 && nextBest < this.minDistanceDiff)) {
-          val mismatches = Sequences.countMismatchesWithMax(bytes, umis(i), nextBest)
-          if (mismatches < min) {
-            nextBest = min
-            min = mismatches
-            minIndex = i
-          } else if (mismatches < nextBest) {
-            nextBest = mismatches
+        var minMismatches      = bases.length + 1
+        var minIndex           = -1
+        var nextBestMismatches = bases.length + 1
+        var umiIndex           = 0
+        val bytes              = bases.getBytes
+        while (umiIndex < umis.length) {
+          val mismatches = Sequences.countMismatchesWithMax(bytes, umis(umiIndex), nextBestMismatches)
+          if (mismatches < minMismatches) {
+            nextBestMismatches = minMismatches
+            minMismatches      = mismatches
+            minIndex           = umiIndex
+          } else if (mismatches < nextBestMismatches) {
+            nextBestMismatches = mismatches
           }
-          i += 1
+          umiIndex += 1
         }
-        val matched    = (min <= maxMismatches) && (nextBest >= min + this.minDistanceDiff)
-        val umiMatch   = UmiMatch(matched, umis(minIndex), min)
+        val matched  = (minMismatches <= maxMismatches) && (nextBestMismatches >= minMismatches + this.minDistanceDiff)
+        val umiMatch = UmiMatch(matched, umis(minIndex), minMismatches)
         if (cacheSize > 0) cache.put(bases, umiMatch)
         umiMatch
     }

@@ -122,7 +122,7 @@ object Sequences {
   @inline
   def countMismatchesWithMax(s1: Array[Byte], s2: Array[Byte], max: Int): Int = {
     var count = 0
-    var i = 0
+    var i     = 0
     while (i < s1.length && count < max) {
       if (s1(i) != s2(i)) count += 1
       i += 1
