@@ -166,7 +166,7 @@ class CorrectUmis
   override def execute(): Unit = {
     // Construct the full set of UMI sequences to match again
     val (umiSequences, umiLength) = {
-      val set = mutable.HashSet[String](umis:_*)
+      val set = mutable.HashSet[String](umis.map(_.toUpperCase):_*)
       umiFiles.foreach(Io.readLines(_).map(_.trim.toUpperCase).filter(_.nonEmpty).foreach(set.add))
       validate(set.nonEmpty, s"At least one UMI sequence must be provided; none found in files ${umiFiles.mkString(", ")}")
 
