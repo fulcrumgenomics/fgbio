@@ -209,7 +209,7 @@ class CorrectUmis
             // Update the metrics
             matches.foreach { m =>
               if (m.matched) {
-                val metric = umiMetrics(new String(m.umi))
+                val metric = umiMetrics(m.umi)
                 metric.total_matches += 1
                 m.mismatches match {
                   case 0 => metric.perfect_matches      += 1
@@ -282,7 +282,7 @@ class CorrectUmis
 
   /** Given a UMI sequence and a set of fixed UMIs, report the best match.
    *
-   * The comparison of the input bases and UMIs is case-sensitive.
+   * Both bases and all UMIs in umis must be normalized to upper case prior to calling this method.
    *
    * @param bases the input UMI sequence to match
    * @param umis the set of fixed UMI sequences to compare against
@@ -302,7 +302,10 @@ class CorrectUmis
         var nextBest = bases.length + 1
         var i = 0
         val bytes = bases.getBytes
-        while (i < umis.length && !(min == 0 && nextBest < min + this.minDistanceDiff)) {
+        // Note: when the best match has `min == 0`, we still need to scan to see if we find
+        // the next best match (`nextBest`) with `nextBest < min + this.minDistanceDiff`.  If we do
+        // find `min == 0` and `nextBest < this.minDistanceDiff`, we are guaranteed not to match.
+        while (i < umis.length && !(min == 0 && nextBest < this.minDistanceDiff)) {
           val mismatches = Sequences.countMismatchesWithMax(bytes, umis(i), nextBest)
           if (mismatches < min) {
             nextBest = min
