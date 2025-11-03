@@ -116,7 +116,7 @@ object Sequences {
    * @return the number of mismatches between the two sequences, or `max`, whichever is smaller
    * @throws java.lang.ArrayIndexOutOfBoundsException if `s1` and `s2` have different lengths
    * @note '''Preconditions (caller must ensure):'''
-   *       - `s1.length == s2.length` (required - undefined behavior if violated)
+   *       - `s1.length == s2.length` (required)
    *       - `max >= 0` (required - undefined behavior if violated)
    * */
   @inline
