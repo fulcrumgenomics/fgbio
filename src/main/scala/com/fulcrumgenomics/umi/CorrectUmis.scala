@@ -280,7 +280,13 @@ class CorrectUmis
     }
   }
 
-  /** Given a UMI sequence and a set of fixed UMIs, report the best match. */
+  /** Given a UMI sequence and a set of fixed UMIs, report the best match.
+   *
+   * The comparison of the input bases and UMIs is case-sensitive
+   * @note '''Preconditions'''
+   *       - The comparison of the input bases and UMIs is case-sensitive, so if the inputs must be
+   *         pre-normalized if mixed case is used.
+   * */
   private[umi] def findBestMatch(bases: String, umis: Array[Array[Byte]]): UmiMatch = {
     val cachedResult = if (this.cacheSize > 0) cache.get(bases) else None
     cachedResult match {
