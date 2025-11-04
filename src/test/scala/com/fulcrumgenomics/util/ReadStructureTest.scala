@@ -76,7 +76,7 @@ class ReadStructureTest extends UnitSpec with OptionValues {
     an[Exception] shouldBe thrownBy { ReadStructure("+M+T") }
     an[Exception] shouldBe thrownBy { ReadStructure("+M70T") }
   }
-  
+
   it should "be built from segments while resetting their offset" in {
     compareReadStructuresResetOffset(Seq(T(Int.MaxValue, 1)), ReadStructure("1T"))
     compareReadStructuresResetOffset(Seq(B(Int.MaxValue, 1)), ReadStructure("1B"))
@@ -113,33 +113,36 @@ class ReadStructureTest extends UnitSpec with OptionValues {
   }
 
   "ReadStructure.extract" should "get extract the bases for each segment" in {
-    val rs = ReadStructure("2T2B2M2S")
-    rs.extract("AACCGGTT").foreach { r =>
-        r.kind match {
-          case Template         => r.bases shouldBe "AA"
-          case SampleBarcode    => r.bases shouldBe "CC"
-          case MolecularBarcode => r.bases shouldBe "GG"
-          case Skip             => r.bases shouldBe "TT"
-        }
+    val rs = ReadStructure("2T2B2M2C2S")
+    rs.extract("AACCGGNNTT").foreach { r =>
+      r.kind match {
+        case Template         => r.bases shouldBe "AA"
+        case SampleBarcode    => r.bases shouldBe "CC"
+        case MolecularBarcode => r.bases shouldBe "GG"
+        case CellBarcode      => r.bases shouldBe "NN"
+        case Skip             => r.bases shouldBe "TT"
+      }
     }
 
     an[Exception] should be thrownBy rs.extract("AAAAAAA")
 
     // the last segment is truncated
-    rs.withVariableLastSegment.extract("AACCGGT").foreach { r =>
+    rs.withVariableLastSegment.extract("AACCGGNNT").foreach { r =>
       r.kind match {
         case Template         => r.bases shouldBe "AA"
         case SampleBarcode    => r.bases shouldBe "CC"
         case MolecularBarcode => r.bases shouldBe "GG"
+        case CellBarcode      => r.bases shouldBe "NN"
         case Skip             => r.bases shouldBe "T"
       }
     }
     // the last segment is skipped
-    rs.withVariableLastSegment.extract("AACCGG").foreach { r =>
+    rs.withVariableLastSegment.extract("AACCGGNN").foreach { r =>
       r.kind match {
         case Template         => r.bases shouldBe "AA"
         case SampleBarcode    => r.bases shouldBe "CC"
         case MolecularBarcode => r.bases shouldBe "GG"
+        case CellBarcode      => r.bases shouldBe "NN"
         case Skip             => r.bases shouldBe ""
       }
     }
@@ -147,32 +150,35 @@ class ReadStructureTest extends UnitSpec with OptionValues {
 
 
   "ReadStructure.extract(bases, quals)" should "get extract the bases and qualities for each segment" in {
-    val rs = ReadStructure("2T2B2M2S")
-    rs.extract("AACCGGTT", "11223344").foreach { r =>
+    val rs = ReadStructure("2T2B2M2C2S")
+    rs.extract("AACCGGNNTT", "1122334455").foreach { r =>
       r.kind match {
         case Template         => r.bases shouldBe "AA"; r.quals shouldBe "11"
         case SampleBarcode    => r.bases shouldBe "CC"; r.quals shouldBe "22"
         case MolecularBarcode => r.bases shouldBe "GG"; r.quals shouldBe "33"
-        case Skip             => r.bases shouldBe "TT"; r.quals shouldBe "44"
+        case CellBarcode      => r.bases shouldBe "NN"; r.quals shouldBe "44"
+        case Skip             => r.bases shouldBe "TT"; r.quals shouldBe "55"
       }
     }
     an[Exception] should be thrownBy rs.extract("AAAAAAA", "AAAAAAA")
 
     // the last segment is truncated
-    rs.withVariableLastSegment.extract("AACCGGT", "1122334").foreach { r =>
+    rs.withVariableLastSegment.extract("AACCGGNNT", "112233445").foreach { r =>
       r.kind match {
         case Template         => r.bases shouldBe "AA"; r.quals shouldBe "11"
         case SampleBarcode    => r.bases shouldBe "CC"; r.quals shouldBe "22"
         case MolecularBarcode => r.bases shouldBe "GG"; r.quals shouldBe "33"
-        case Skip             => r.bases shouldBe "T";  r.quals shouldBe "4"
+        case CellBarcode      => r.bases shouldBe "NN"; r.quals shouldBe "44"
+        case Skip             => r.bases shouldBe "T";  r.quals shouldBe "5"
       }
     }
     // the last segment is skipped
-    rs.withVariableLastSegment.extract("AACCGG", "112233").foreach { r =>
+    rs.withVariableLastSegment.extract("AACCGGNN", "11223344").foreach { r =>
       r.kind match {
         case Template         => r.bases shouldBe "AA"; r.quals shouldBe "11"
         case SampleBarcode    => r.bases shouldBe "CC"; r.quals shouldBe "22"
         case MolecularBarcode => r.bases shouldBe "GG"; r.quals shouldBe "33"
+        case CellBarcode      => r.bases shouldBe "NN"; r.quals shouldBe "44"
         case Skip             => r.bases shouldBe ""  ; r.quals shouldBe ""
       }
     }
@@ -187,6 +193,7 @@ class ReadStructureTest extends UnitSpec with OptionValues {
     ReadStructure("5B101T").length shouldBe 2
     ReadStructure("123456789T").length shouldBe 1
     ReadStructure("10T10B10B10S10M").length shouldBe 5
+    ReadStructure("10T10B10B10S10M10C").length shouldBe 6
   }
 
   "ReadStructure.apply(idx: Int)" should "return the segment at the 0-based index" in {
