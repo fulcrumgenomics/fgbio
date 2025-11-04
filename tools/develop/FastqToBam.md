@@ -9,19 +9,20 @@ title: FastqToBam
 
 Generates an unmapped BAM (or SAM or CRAM) file from fastq files.  Takes in one or more fastq files (optionally
 gzipped), each representing a different sequencing read (e.g. R1, R2, I1 or I2) and can use a set of read
-structures to allocate bases in those reads to template reads, sample indices, unique molecular indices, or to
-designate bases to be skipped over.
+structures to allocate bases in those reads to template reads, sample indices, unique molecular indices, cell
+barcodes, or to designate bases to be skipped over.
 
-Read structures are made up of `<number><operator>` pairs much like the CIGAR string in BAM files. Four kinds of
+Read structures are made up of `<number><operator>` pairs much like the CIGAR string in BAM files. Five kinds of
 operators are recognized:
 
 1. `T` identifies a template read
 2. `B` identifies a sample barcode read
 3. `M` identifies a unique molecular index read
-4. `S` identifies a set of bases that should be skipped or ignored
+4. `C` identifies a cell barcode read
+5. `S` identifies a set of bases that should be skipped or ignored
 
 The last `<number><operator>` pair may be specified using a `+` sign instead of number to denote "all remaining
-bases". This is useful if, e.g., fastqs have been trimmed and contain reads of varying length.  For example
+bases". This is useful if, e.g., FASTQs have been trimmed and contain reads of varying length.  For example
 to convert a paired-end run with an index read and where the first 5 bases of R1 are a UMI and the second
 five bases are monotemplate you might specify:
 
@@ -61,6 +62,8 @@ with reads in the same order as they appear in the fastq file.
 |sort|s|Boolean|If true, queryname sort the BAM file, otherwise preserve input order.|Optional|1|false|
 |umi-tag|u|String|Tag in which to store molecular barcodes/UMIs.|Optional|1|RX|
 |umi-qual-tag|q|String|Tag in which to store molecular barcode/UMI qualities.|Optional|1||
+|cell-tag|c|String|Tag in which to store the cellular barcodes.|Optional|1|CB|
+|cell-qual-tag|C|String|Tag in which to store the cellular barcodes qualities.|Optional|1||
 |store-sample-barcode-qualities|Q|Boolean|Store the sample barcode qualities in the QT Tag.|Optional|1|false|
 |extract-umis-from-read-names|n|Boolean|Extract UMI(s) from read names and prepend to UMIs from reads.|Optional|1|false|
 |read-group-id||String|Read group ID to use in the file header.|Optional|1|A|

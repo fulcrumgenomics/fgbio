@@ -44,7 +44,7 @@ If multiple FASTQs are present for each sub-read, then the FASTQs for each sub-r
 prior to running this tool (ex. `cat s_R1_L001.fq.gz s_R1_L002.fq.gz > s_R1.fq.gz`).
 
 [Read structures](https://github.com/fulcrumgenomics/fgbio/wiki/Read-Structures) are made up of `<number><operator>`
-pairs much like the `CIGAR` string in BAM files. Four kinds of operators are recognized:
+pairs much like the `CIGAR` string in BAM files. Four kinds of operators are supported by this tool:
 
 1. `T` identifies a template read
 2. `B` identifies a sample barcode read
