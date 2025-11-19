@@ -75,7 +75,7 @@ val docScalacOptions = Seq("-groups", "-implicits")
 // Common settings 
 ////////////////////////////////////////////////////////////////////////////////////////////////
 
-val primaryScalaVersion = "2.13.14"
+val primaryScalaVersion = "2.13.17"
 
 lazy val commonSettings = Seq(
   organization         := "com.fulcrumgenomics",
@@ -195,10 +195,10 @@ lazy val root = Project(id="fgbio", base=file("."))
       "org.scala-lang.modules"    %% "scala-xml"      % "2.1.0",
       "com.fulcrumgenomics"       %% "commons"        % "1.7.1",
       "com.fulcrumgenomics"       %% "sopt"           % "1.1.0",
-      "com.github.samtools"       %  "htsjdk"         % "3.0.5" excludeAll(htsjdkExcludes: _*),
+      "com.github.samtools"       %  "htsjdk"         % "4.2.0" excludeAll(htsjdkExcludes: _*),
       "org.apache.commons"        %  "commons-math3"  % "3.6.1",
-      "com.beachape"              %% "enumeratum"     % "1.7.0",
-      "com.intel.gkl"             %  "gkl"            % "0.8.10",
+      "com.beachape"              %% "enumeratum"     % "1.9.0",
+      "com.intel.gkl"             %  "gkl"            % "0.9.1",
 
       //---------- Test libraries -------------------//
       "org.scalatest"             %% "scalatest"     % "3.1.3"  % "test->*" excludeAll ExclusionRule(organization="org.junit", name="junit")
