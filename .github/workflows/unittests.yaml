@@ -36,7 +36,7 @@ jobs:
       - name: setup Scala
         uses: coursier/setup-action@039f736548afa5411c1382f40a5bd9c2d30e0383 # v1.3.9
         with:
-          apps: scala:2.13.14 scalac:2.13.14 scaladoc:2.13.14 sbt:1.11.2
+          apps: scala:2.13.17 scalac:2.13.17 scaladoc:2.13.17 sbt:1.11.2
           jvm: ${{ matrix.jvm }}
       - name: Unit Tests
         run: |
@@ -105,7 +105,7 @@ jobs:
       - name: setup Scala
         uses: coursier/setup-action@039f736548afa5411c1382f40a5bd9c2d30e0383 # v1.3.9
         with:
-          apps: scala:2.13.14 scalac:2.13.14 scaladoc:2.13.14 sbt:1.11.2
+          apps: scala:2.13.17 scalac:2.13.17 scaladoc:2.13.17 sbt:1.11.2
           jvm: "temurin:1.8.0-442"
       - name: Build and sign artifacts
         shell: bash -l {0}
