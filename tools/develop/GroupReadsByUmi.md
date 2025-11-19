@@ -85,6 +85,7 @@ UMIs observed at the same genomic location, such as can occur in amplicon sequen
 |grouping-metrics|g|FilePath|Optional output of UMI grouping metrics.|Optional|1||
 |raw-tag|t|String|The tag containing the raw UMI.|Optional|1|RX|
 |assign-tag|T|String|The output tag for UMI grouping.|Optional|1|MI|
+|cell-tag|c|String|The tag containing the cell barcode.|Optional|1|CB|
 |mark-duplicates|d|Boolean|Turn on duplicate marking mode.|Optional|1|false|
 |min-map-q|m|Int|Minimum mapping quality for mapped reads.|Optional|1||
 |include-non-pf-reads|n|Boolean|Include non-PF reads.|Optional|1|false|

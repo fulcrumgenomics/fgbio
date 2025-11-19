@@ -80,6 +80,7 @@ the _more stringent value comes earlier_.
 |sort-order|S|SamOrder|The sort order of the output, the same as the input if not given.|Optional|1||
 |min-reads|M|Int|The minimum number of input reads to a consensus read.|Required|3|1|
 |max-reads-per-strand||Int|The maximum number of reads to use when building a single-strand consensus. If more than this many reads are present in a tag family, the family is randomly downsampled to exactly max-reads reads.|Optional|1||
+|cell-tag|c|String|Tag containing the cellular barcodes.|Optional|1|CB|
 |threads||Int|The number of threads to use while consensus calling.|Optional|1|1|
 |consensus-call-overlapping-bases||Boolean|Consensus call overlapping bases in mapped paired end reads|Optional|1|true|
 

@@ -72,5 +72,6 @@ min-input-base-quality are not counted in tag value calculations.
 |outer-bases-length|O|Int|The number of bases at the start and end of the read to reduce quality over *if* `outer-bases-qual` is specified.|Optional|1|5|
 |max-duplex-disagreement-rate|x|Double|Discard consensus reads where greater than this fraction of duplex bases disagree.|Optional|1|1.0|
 |max-duplex-disagreements|X|Int|Discard consensus reads where greater than this number of duplex bases disagree.|Optional|1|2147483647|
+|cell-tag|c|String|Tag containing the cellular barcodes.|Optional|1|CB|
 |threads||Int|The number of threads to use while consensus calling.|Optional|1|1|
 
