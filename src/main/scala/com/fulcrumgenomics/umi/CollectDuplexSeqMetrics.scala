@@ -579,8 +579,8 @@ class CollectDuplexSeqMetrics
   }
 
   /**
-    * Grabs the next group of records that all share the same start/stop/strand information. This can
-    * and will contain reads with different MIs!
+    * Grabs the next group of records that all share the same start/stop/strand/(optional cell barcode) information.
+    * This can and will contain reads with different MIs!
     */
   private def takeNextGroup(iterator: BetterBufferedIterator[SamRecord]): Seq[SamRecord] = {
     val rec = iterator.head

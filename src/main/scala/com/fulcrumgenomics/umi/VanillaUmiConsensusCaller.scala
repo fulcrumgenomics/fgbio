@@ -196,7 +196,7 @@ class VanillaUmiConsensusCaller(override val readNamePrefix: String,
   /** Takes in all the SamRecords for a single source molecule and produces consensus records. */
   override protected def consensusSamRecordsFromSamRecords(recs: Seq[SamRecord]): Seq[SamRecord] = {
     val cellBarcode: Option[String] = this.cellTag.flatMap { tag =>
-      val barcodes = recs.flatMap(_.get(tag)).distinct
+      val barcodes = recs.flatMap(_.get[String](tag)).distinct
       require(barcodes.length <= 1, s"Multiple different cell barcodes found for tag $tag: $barcodes")
       barcodes.headOption
     }
@@ -231,7 +231,7 @@ class VanillaUmiConsensusCaller(override val readNamePrefix: String,
           read        = r2,
           readType    = SecondOfPair,
           umis        = secondOfPair.flatMap(_.get[String](ConsensusTags.UmiBases)),
-          cellBarcode =cellBarcode,
+          cellBarcode = cellBarcode,
         )
     }
 

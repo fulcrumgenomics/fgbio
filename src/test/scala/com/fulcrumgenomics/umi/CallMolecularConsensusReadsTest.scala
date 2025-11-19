@@ -98,7 +98,7 @@ class CallMolecularConsensusReadsTest extends UnitSpec {
     // check we have no rejected records
     readBamRecs(rejects).isEmpty shouldBe true
 
-    // we should have 1000 consensus paired end reads
+    // we should have 2 consensus paired end reads
     val records = readBamRecs(output)
     records.size shouldBe 2
     records.count { rec => !rec.paired } shouldBe 2
