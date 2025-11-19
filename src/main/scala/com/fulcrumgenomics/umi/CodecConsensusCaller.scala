@@ -31,6 +31,7 @@ import com.fulcrumgenomics.umi.DuplexConsensusCaller.DuplexConsensusRead
 import com.fulcrumgenomics.umi.UmiConsensusCaller.{ConsensusKvMetric, ReadType, RejectionReason, SourceRead}
 import com.fulcrumgenomics.util.NumericTypes.PhredScore
 import com.fulcrumgenomics.util.Sequences
+import htsjdk.samtools.SAMTag
 
 /**
   * Consensus caller for CODEC sequencing[1].  In CODEC each read-pair has an R1 which is generated from one
@@ -76,6 +77,8 @@ import com.fulcrumgenomics.util.Sequences
   *                               strand consensus reads (only counting where both consensus reads make a call)
   * @param maxDuplexDisagreementRate filter out reads with more than this rate of disagreements between the two single
   *                                  strand consensus reads (only counting where both consensus reads make a call)
+  * @param cellTag if defined, ensure all source reads have at most one cell barcode defined and set that barcode on
+ *                 the final consensus.
   * @param rejectsWriter an optional writer to write _incoming_ SamRecords to if they are not used to generate
   *                      a consensus read
   */
@@ -92,6 +95,7 @@ class CodecConsensusCaller(readNamePrefix: String,
                            val outerBasesLength: Int = 5,
                            val maxDuplexDisagreements: Int = Int.MaxValue,
                            val maxDuplexDisagreementRate: Double = 1.0,
+                           override val cellTag: Option[String] = Some(SAMTag.CB.name),
                            rejectsWriter: Option[SamWriter] = None
                           ) extends DuplexConsensusCaller(
   readNamePrefix      = readNamePrefix,
@@ -106,6 +110,7 @@ class CodecConsensusCaller(readNamePrefix: String,
   // complicate the logic of stitching R1 and R2 together.
   minReads            = Seq(1, 1, 1),
   maxReadsPerStrand   = maxReadsPerStrand,
+  cellTag             = cellTag,
   rejectsWriter       = rejectsWriter
 ) {
   require(this.minReadsPerStrand >= 1, "minReadsPerStrand must be at least 1.")
@@ -139,7 +144,8 @@ class CodecConsensusCaller(readNamePrefix: String,
       outerBasesLength    = this.outerBasesLength,
       maxDuplexDisagreements    = this.maxDuplexDisagreements,
       maxDuplexDisagreementRate = this.maxDuplexDisagreementRate,
-      rejectsWriter             = this.rejectsWriter
+      cellTag                   = this.cellTag,
+      rejectsWriter             = this.rejectsWriter,
     )
   }
 
@@ -151,6 +157,12 @@ class CodecConsensusCaller(readNamePrefix: String,
     * @return a seq of consensus SAM records, may be empty
     */
   override protected def consensusSamRecordsFromSamRecords(recs: Seq[SamRecord]): Seq[SamRecord] = {
+    val cellBarcode: Option[String] = this.cellTag.flatMap { tag =>
+      val barcodes = recs.flatMap(_.get(tag)).distinct
+      require(barcodes.length <= 1, s"Multiple different cell barcodes found for tag $tag: $barcodes")
+      barcodes.headOption
+    }
+
     val (pairs, frags) = recs.partition(_.paired)
     rejectRecords(frags, RejectionReason.NonPairedReads)
 
@@ -241,7 +253,7 @@ class CodecConsensusCaller(readNamePrefix: String,
                   if (longestR1Alignment.negativeStrand) consensus.revcomp()
                   maskCodecConsensusQuals(consensus)
                   val umis = recs.iterator.map(r => r[String](ConsensusTags.UmiBases)).toSeq
-                  createSamRecord(consensus, ReadType.Fragment, umis)
+                  createSamRecord(consensus, ReadType.Fragment, umis, cellBarcode=cellBarcode)
                 }.toSeq
               }
           }

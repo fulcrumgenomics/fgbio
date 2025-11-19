@@ -73,7 +73,8 @@ object GroupReadsByUmi {
                       refIndex2: Int,
                       start2: Int,
                       strand2: Byte,
-                      library: String)
+                      library: String,
+                      cellBarcode: Option[String])
 
   object ReadInfo {
     // Use the Max possible value for ref/pos/strand when we have unmapped reads to mirror what's done
@@ -92,7 +93,7 @@ object GroupReadsByUmi {
     }
 
     /** Extract a ReadInfo from a SamRecord; mate cigar must be present if a mate exists and is mapped. */
-    def apply(rec: SamRecord) : ReadInfo =
+    def apply(rec: SamRecord, cellTag: String) : ReadInfo =
       rec.transientAttrs.getOrElseUpdate[ReadInfo](GroupReadsByUmi.ReadInfoTempAttributeName, {
         val lib = library(rec)
         val (ref1, start1, strand1) = positionOf(rec)
@@ -107,13 +108,13 @@ object GroupReadsByUmi {
             (ref1 == ref2 && start1 < start2) ||
             (ref1 == ref2 && start1 == start2 && strand1 < strand2)
 
-        if (r1Earlier) new ReadInfo(ref1, start1, strand1, ref2, start2, strand2, lib)
-        else           new ReadInfo(ref2, start2, strand2, ref1, start1, strand1, lib)
+        if (r1Earlier) new ReadInfo(ref1, start1, strand1, ref2, start2, strand2, lib, rec.get(cellTag))
+        else           new ReadInfo(ref2, start2, strand2, ref1, start1, strand1, lib, rec.get(cellTag))
       })
 
 
     /** Extract a ReadInfo from a Template object.  R1 primary must be present. */
-    def apply(t: Template): ReadInfo = {
+    def apply(t: Template, cellTag: String): ReadInfo = {
       val r1 = t.r1.getOrElse(throw new IllegalStateException(s"${t.name} did not have a primary R1 record."))
       val r2 = t.r2
 
@@ -127,8 +128,8 @@ object GroupReadsByUmi {
           (ref1 == ref2 && start1 < start2) ||
           (ref1 == ref2 && start1 == start2 && strand1 < strand2)
 
-        if (r1Earlier) new ReadInfo(ref1, start1, strand1, ref2, start2, strand2, lib)
-        else           new ReadInfo(ref2, start2, strand2, ref1, start1, strand1, lib)
+        if (r1Earlier) new ReadInfo(ref1, start1, strand1, ref2, start2, strand2, lib, t.r1.flatMap(_.get(cellTag)))
+        else           new ReadInfo(ref2, start2, strand2, ref1, start1, strand1, lib, t.r1.flatMap(_.get(cellTag)))
       })
     }
 
@@ -588,6 +589,7 @@ class GroupReadsByUmi
  @arg(flag='g', doc="Optional output of UMI grouping metrics.") val groupingMetrics: Option[FilePath] = None,
  @arg(flag='t', doc="The tag containing the raw UMI.")  val rawTag: String    = ConsensusTags.UmiBases,
  @arg(flag='T', doc="The output tag for UMI grouping.") val assignTag: String = ConsensusTags.MolecularId,
+ @arg(flag='c', doc="The tag containing the cell barcode.") val cellTag: String = SAMTag.CB.name,
  @arg(flag='d', doc="Turn on duplicate marking mode.") val markDuplicates: Boolean = false,
  @arg(flag='m', doc="Minimum mapping quality for mapped reads.") val minMapQ: Option[Int] = None,
  @arg(flag='n', doc="Include non-PF reads.")            val includeNonPfReads: Boolean = false,
@@ -775,14 +777,14 @@ class GroupReadsByUmi
   /** Consumes the next group of templates with all matching end positions and returns them. */
   def takeNextGroup(iterator: BufferedIterator[Template], canTakeNextGroupByUmi: Boolean) : Seq[Template] = {
     val first     = iterator.next()
-    val firstEnds = ReadInfo(first)
+    val firstEnds = ReadInfo(first, cellTag = this.cellTag)
     val firstUmi  = first.r1.get.apply[String](this.assignTag)
     val builder   = IndexedSeq.newBuilder[Template]
     builder    += first
 
     while (
       iterator.hasNext &&
-      firstEnds == ReadInfo(iterator.head) &&
+      firstEnds == ReadInfo(iterator.head, cellTag = this.cellTag) &&
       // This last condition only works because we put a canonicalized UMI into rec(assignTag) if canTakeNextGroupByUmi
       (!canTakeNextGroupByUmi || firstUmi == iterator.head.r1.get.apply[String](this.assignTag))
     ) {

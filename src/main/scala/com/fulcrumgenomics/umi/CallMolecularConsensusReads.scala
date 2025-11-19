@@ -36,6 +36,7 @@ import com.fulcrumgenomics.sopt.cmdline.ValidationException
 import com.fulcrumgenomics.umi.VanillaUmiConsensusCallerOptions._
 import com.fulcrumgenomics.util.NumericTypes.PhredScore
 import com.fulcrumgenomics.util.{Metric, ProgressLogger}
+import htsjdk.samtools.SAMTag
 
 @clp(description =
   """
@@ -123,6 +124,7 @@ class CallMolecularConsensusReads
  @arg(flag='B', doc="If true produce tags on consensus reads that contain per-base information.") val outputPerBaseTags: Boolean = DefaultProducePerBaseTags,
  @arg(flag='S', doc="The sort order of the output, the same as the input if not given.") val sortOrder: Option[SamOrder] = None,
  @arg(flag='D', doc="Turn on debug logging.") val debug: Boolean = false,
+ @arg(flag='c', doc="Tag containing the cellular barcodes.") val cellTag: Option[String] = Some(SAMTag.CB.name),
  @arg(doc="The number of threads to use while consensus calling.") val threads: Int = 1,
  @arg(doc="Consensus call overlapping bases in mapped paired end reads") val consensusCallOverlappingBases: Boolean = true,
 ) extends FgBioTool with LazyLogging {
@@ -172,6 +174,7 @@ class CallMolecularConsensusReads
       readNamePrefix = readNamePrefix.getOrElse(UmiConsensusCaller.makePrefixFromSamHeader(in.header)),
       readGroupId    = readGroupId,
       options        = options,
+      cellTag        = cellTag,
       rejectsWriter  = rejectsWriter
     )
 
