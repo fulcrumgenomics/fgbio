@@ -184,6 +184,63 @@ class CorrectUmisTest extends UnitSpec {
     metricsByUmi("NNNNNN") shouldBe UmiCorrectionMetrics(umi="NNNNNN", total_matches=2, perfect_matches=0, one_mismatch_matches=0, two_mismatch_matches=0, other_matches=0, fraction_of_matches = 2/10.0, representation = (2/8.0) / (1/4d))
   }
 
+  it should "correctly count 'other_matches' when the number of mismatches is greater than 3" in {
+    val builder = new SamBuilder(readLength = 10)
+    builder.addFrag(name="q1",  start=1, attrs=Map(ConsensusTags.UmiBases -> "AAAAAAAAA"))
+    builder.addFrag(name="q2",  start=1, attrs=Map(ConsensusTags.UmiBases -> "AAAAAAAAT"))
+    builder.addFrag(name="q3",  start=1, attrs=Map(ConsensusTags.UmiBases -> "AAAAAAATT"))
+    builder.addFrag(name="q4",  start=1, attrs=Map(ConsensusTags.UmiBases -> "AAAAAATTT"))
+    builder.addFrag(name="q5",  start=1, attrs=Map(ConsensusTags.UmiBases -> "AAAAATTTT"))
+    builder.addFrag(name="q6",  start=1, attrs=Map(ConsensusTags.UmiBases -> "AAAATTTTT"))
+    builder.addFrag(name="q7",  start=1, attrs=Map(ConsensusTags.UmiBases -> "AAATTTTTT"))
+    builder.addFrag(name="q8",  start=1, attrs=Map(ConsensusTags.UmiBases -> "AATTTTTTT"))
+    builder.addFrag(name="q9",  start=1, attrs=Map(ConsensusTags.UmiBases -> "ATTTTTTTT"))
+    builder.addFrag(name="q10", start=1, attrs=Map(ConsensusTags.UmiBases -> "TTTTTTTTT"))
+
+    val input     = builder.toTempFile()
+    val corrected = makeTempFile("corrected.", ".bam")
+    val rejects   = makeTempFile("rejects.", ".bam")
+    val metrics   = makeTempFile("metrics.", ".txt")
+
+    val corrector = new CorrectUmis(
+      input           = input,
+      output          = corrected,
+      rejects         = Some(rejects),
+      metrics         = Some(metrics),
+      maxMismatches   = 4,
+      minDistanceDiff = 0,
+      umis            = Seq("AAAAAAAAA", "TTTTTTTTT")
+    )
+
+    val logLines = executeFgbioTool(corrector)
+    logLines.exists(line => line.contains("Error")) shouldBe false // No errors this time
+
+    readBamRecs(corrected).map(_.name) should contain theSameElementsAs Seq("q1", "q2", "q3", "q4", "q5", "q6", "q7", "q8", "q9", "q10")
+    readBamRecs(rejects).map(_.name) shouldBe empty
+
+    val metricsByUmi = Metric.read[UmiCorrectionMetrics](metrics).map(m => m.umi -> m).toMap
+    metricsByUmi("AAAAAAAAA") shouldBe UmiCorrectionMetrics(
+      umi                  = "AAAAAAAAA",
+      total_matches        = 5,
+      perfect_matches      = 1,
+      one_mismatch_matches = 1,
+      two_mismatch_matches = 1,
+      other_matches        = 2,
+      fraction_of_matches  = 5 / 10.0,
+      representation       = 1.0
+    )
+    metricsByUmi("TTTTTTTTT") shouldBe UmiCorrectionMetrics(
+      umi                  = "TTTTTTTTT",
+      total_matches        = 5,
+      perfect_matches      = 1,
+      one_mismatch_matches = 1,
+      two_mismatch_matches = 1,
+      other_matches        = 2,
+      fraction_of_matches  = 5 / 10.0,
+      representation       = 1.0
+    )
+  }
+
   it should "do the same thing whether the UMIs are on the command line or in a file" in {
     val builder = new SamBuilder(readLength = 10)
     builder.addFrag(name="q1",  start=1, attrs=Map(ConsensusTags.UmiBases -> "AAAAAA"))
