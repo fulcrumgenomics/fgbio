@@ -30,6 +30,7 @@ import com.fulcrumgenomics.testing.UnitSpec
 import com.fulcrumgenomics.umi.ConsensusTags
 import com.fulcrumgenomics.util.ReadStructure
 import htsjdk.samtools.SAMFileHeader.{GroupOrder, SortOrder}
+import htsjdk.samtools.SAMTag
 import htsjdk.samtools.util.Iso8601Date
 
 class FastqToBamTest extends UnitSpec {
@@ -381,6 +382,22 @@ class FastqToBamTest extends UnitSpec {
     recs should have size 2
     recs(0).apply[String]("RX") shouldBe "ACGT-CGTA-GG-CC"
     recs(1).apply[String]("RX") shouldBe "TTGA-TAAT-TA-AA"
+  }
+
+  it should "extract cell barcodes in read sequences" in {
+    val r1 = fq(
+      FastqRecord("q1:2:3:4:5:6:7:ACGT+CGTA", "GGNCCGAAAAAAA", "============="),
+      FastqRecord("q2:2:3:4:5:6:7:TTGA+TAAT", "TANAACAAAAAAA", "============="),
+    )
+    val rs  = ReadStructure("2C1S2C+T")
+    val bam = makeTempFile("fastqToBamTest.", ".bam")
+    new FastqToBam(input=Seq(r1), readStructures=Seq(rs), output=bam, sample="s", library="l", cellQualTag = Some("CY")).execute()
+    val recs = readBamRecs(bam)
+    recs should have size 2
+    recs(0).apply[String](SAMTag.CB.name) shouldBe "GG-CC"
+    recs(0).apply[String](SAMTag.CY.name) shouldBe "== =="
+    recs(1).apply[String](SAMTag.CB.name) shouldBe "TA-AA"
+    recs(1).apply[String](SAMTag.CY.name) shouldBe "== =="
   }
 
   it should "fail when read names don't match up" in {

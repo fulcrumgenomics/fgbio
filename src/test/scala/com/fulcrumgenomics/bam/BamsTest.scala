@@ -513,4 +513,42 @@ class BamsTest extends UnitSpec {
       }
     }
   }
+
+  it should "set correct TLEN on supplementary alignments based on recalculated primary TLEN" in {
+    // Create a pair on the same contig so TLEN can be calculated, plus supplementary alignments
+    val builder = new SamBuilder(readLength=50)
+    // Primary pair: R1 at 100, R2 at 200, both 50bp, so insert size = 200 + 50 - 100 = 150
+    builder.addPair(name="q1", contig=0, start1=100, start2=200)
+    // Supplementary alignments on different contigs
+    builder.addPair(name="q1", contig=1, contig2=Some(2), start1=300, start2=400)
+      .foreach(_.supplementary = true)
+
+    val recs = builder.toIndexedSeq
+
+    // Simulate aligner output: clear mate info and set TLEN to 0
+    recs.foreach { r =>
+      r.mateStart    = SamRecord.UnmappedStart
+      r.mateRefIndex = SamRecord.UnmappedReferenceIndex
+      r.remove("MC")
+      r.remove("MQ")
+      r.asSam.setInferredInsertSize(0)  // Simulate stale TLEN from aligner
+    }
+
+    val template = Template(recs.iterator)
+    template.fixMateInfo()
+
+    // Verify primary reads have correct TLEN (insert size = 150)
+    template.r1.value.insertSize shouldBe 150
+    template.r2.value.insertSize shouldBe -150
+
+    // Verify supplementary alignments have correct TLEN derived from mate primary
+    // R1 supplemental should have TLEN = -r2.primary.TLEN = -(-150) = 150
+    // R2 supplemental should have TLEN = -r1.primary.TLEN = -(150) = -150
+    template.r1Supplementals.foreach { supp =>
+      supp.insertSize shouldBe 150
+    }
+    template.r2Supplementals.foreach { supp =>
+      supp.insertSize shouldBe -150
+    }
+  }
 }

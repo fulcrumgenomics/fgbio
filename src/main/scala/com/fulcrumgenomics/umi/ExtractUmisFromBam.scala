@@ -61,12 +61,13 @@ import htsjdk.samtools.util._
     |The read structure describes the structure of a given read as one or more read segments. A read segment describes
     |a contiguous stretch of bases of the same type (ex. template bases) of some length and some offset from the start
     |of the read.  Read structures are made up of `<number><operator>` pairs much like the CIGAR string in BAM files.
-    |Four kinds of operators are recognized:
+    |Five kinds of operators are recognized:
     |
     |1. `T` identifies a template read
     |2. `B` identifies a sample barcode read
     |3. `M` identifies a unique molecular index read
-    |4. `S` identifies a set of bases that should be skipped or ignored
+    |4. `C` identifies a cell barcode read
+    |5. `S` identifies a set of bases that should be skipped or ignored
     |
     |The last `<number><operator>` pair may be specified using a '+' sign instead of number to denote "all remaining
     |bases". This is useful if, e.g., fastqs have been trimmed and contain reads of varying length.
@@ -96,9 +97,6 @@ class ExtractUmisFromBam
     case Seq() => invalid("No read structures given")
     case _     => invalid("More than two read structures given")
   }
-
-  // This can be removed once the @deprecated molecularBarcodeTags is removed
-  if (molecularIndexTags.isEmpty) invalid("At least one molecular-index-tag must be specified.")
 
   // validate the read structure versus the molecular index tags
   {
@@ -232,8 +230,6 @@ object ExtractUmisFromBam {
     val molecularIndexBases = readStructureBases.filter(_.kind == SegmentType.MolecularBarcode).map(_.bases)
 
     // set the index tags
-    // TODO: when we remove the deprecated molecularBarcodeTags option, consider whether or not we still
-    //       need to have support for specifying a single tag via molecularIndexTags.
     molecularIndexTags match {
       case Seq(tag) => record(tag) = molecularIndexBases.mkString(UmiDelimiter)
       case _ =>

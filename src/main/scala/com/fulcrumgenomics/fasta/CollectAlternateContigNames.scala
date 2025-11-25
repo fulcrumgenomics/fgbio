@@ -184,7 +184,7 @@ class CollectAlternateContigNames
               None
             case alternate => Some(alternate)
           }
-      }.distinct
+      }.distinct.filter(_ != name)
       if (sequenceRoles.nonEmpty && !this.sequenceRoles.contains(role)) {
         skipReasons += SkipReason(name=name, role=role, msg=s"Skipping contig name '$name' with mismatching sequencing role: $role.")
       }

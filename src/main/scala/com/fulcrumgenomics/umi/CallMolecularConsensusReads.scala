@@ -35,7 +35,8 @@ import com.fulcrumgenomics.sopt._
 import com.fulcrumgenomics.sopt.cmdline.ValidationException
 import com.fulcrumgenomics.umi.VanillaUmiConsensusCallerOptions._
 import com.fulcrumgenomics.util.NumericTypes.PhredScore
-import com.fulcrumgenomics.util.ProgressLogger
+import com.fulcrumgenomics.util.{Metric, ProgressLogger}
+import htsjdk.samtools.SAMTag
 
 @clp(description =
   """
@@ -107,18 +108,13 @@ class CallMolecularConsensusReads
 (@arg(flag='i', doc="The input SAM or BAM file.") val input: PathToBam,
  @arg(flag='o', doc="Output SAM or BAM file to write consensus reads.") val output: PathToBam,
  @arg(flag='r', doc="Optional output SAM or BAM file to write reads not used.") val rejects: Option[PathToBam] = None,
+ @arg(flag='s', doc="Optional output text file of key consensus calling statistics.") val stats: Option[FilePath] = None,
  @arg(flag='t', doc="The SAM attribute with the unique molecule tag.") val tag: String = DefaultTag,
  @arg(flag='p', doc="The Prefix all consensus read names") val readNamePrefix: Option[String] = None,
  @arg(flag='R', doc="The new read group ID for all the consensus reads.") val readGroupId: String = "A",
  @arg(flag='1', doc="The Phred-scaled error rate for an error prior to the UMIs being integrated.") val errorRatePreUmi: PhredScore = DefaultErrorRatePreUmi,
  @arg(flag='2', doc="The Phred-scaled error rate for an error post the UMIs have been integrated.") val errorRatePostUmi: PhredScore = DefaultErrorRatePostUmi,
  @arg(flag='m', doc="Ignore bases in raw reads that have Q below this value.") val minInputBaseQuality: PhredScore = DefaultMinInputBaseQuality,
- @arg(flag='N', doc=
-   """
-     |Deprecated: will be removed in future versions; use FilterConsensusReads to filter consensus bases on
-     |quality instead. Mask (make 'N') consensus bases with quality less than this threshold.
-   """)
- val minConsensusBaseQuality: PhredScore = 2.toByte,
  @arg(flag='M', doc="The minimum number of reads to produce a consensus base.") val minReads: Int,
  @arg(doc="""
             |The maximum number of reads to use when building a consensus. If more than this many reads are
@@ -128,9 +124,9 @@ class CallMolecularConsensusReads
  @arg(flag='B', doc="If true produce tags on consensus reads that contain per-base information.") val outputPerBaseTags: Boolean = DefaultProducePerBaseTags,
  @arg(flag='S', doc="The sort order of the output, the same as the input if not given.") val sortOrder: Option[SamOrder] = None,
  @arg(flag='D', doc="Turn on debug logging.") val debug: Boolean = false,
+ @arg(flag='c', doc="Tag containing the cellular barcodes.") val cellTag: Option[String] = Some(SAMTag.CB.name),
  @arg(doc="The number of threads to use while consensus calling.") val threads: Int = 1,
  @arg(doc="Consensus call overlapping bases in mapped paired end reads") val consensusCallOverlappingBases: Boolean = true,
- val maxQualOnAgreement: Boolean = false
 ) extends FgBioTool with LazyLogging {
 
   if (debug) Logger.level = LogLevel.Debug
@@ -138,6 +134,7 @@ class CallMolecularConsensusReads
   Io.assertReadable(input)
   Io.assertCanWriteFile(output)
   rejects.foreach(Io.assertCanWriteFile(_))
+  stats.foreach(Io.assertCanWriteFile(_))
 
   if (tag.length != 2)      throw new ValidationException("attribute must be of length 2")
   if (errorRatePreUmi < 0)  throw new ValidationException("Phred-scaled error rate pre UMI must be >= 0")
@@ -148,7 +145,7 @@ class CallMolecularConsensusReads
   override def execute(): Unit = {
     val in  = SamSource(input)
     UmiConsensusCaller.checkSortOrder(in.header, input, logger.warning, fail)
-    val rej = rejects.map(r => SamWriter(r, in.header))
+    val rejectsWriter = rejects.map(r => SamWriter(r, in.header))
 
     // Build an iterator for the input reads, which only really matters if calling consensus in overlapping read pairs.
     val inIter = if (!consensusCallOverlappingBases) in.iterator else {
@@ -167,7 +164,7 @@ class CallMolecularConsensusReads
       errorRatePreUmi              = errorRatePreUmi,
       errorRatePostUmi             = errorRatePostUmi,
       minInputBaseQuality          = minInputBaseQuality,
-      minConsensusBaseQuality      = minConsensusBaseQuality,
+      minConsensusBaseQuality      = PhredScore.MinValue,
       minReads                     = minReads,
       maxReads                     = maxReads.getOrElse(VanillaUmiConsensusCallerOptions.DefaultMaxReads),
       producePerBaseTags           = outputPerBaseTags
@@ -177,7 +174,8 @@ class CallMolecularConsensusReads
       readNamePrefix = readNamePrefix.getOrElse(UmiConsensusCaller.makePrefixFromSamHeader(in.header)),
       readGroupId    = readGroupId,
       options        = options,
-      rejects        = rej
+      cellTag        = cellTag,
+      rejectsWriter  = rejectsWriter
     )
 
     val progress = ProgressLogger(logger, unit=1e6.toInt)
@@ -187,7 +185,8 @@ class CallMolecularConsensusReads
     progress.logLast()
     in.safelyClose()
     out.close()
-    rej.foreach(_.close())
+    rejectsWriter.foreach(_.close())
     caller.logStatistics(logger)
+    stats.foreach { path => Metric.write(path, caller.statistics) }
   }
 }

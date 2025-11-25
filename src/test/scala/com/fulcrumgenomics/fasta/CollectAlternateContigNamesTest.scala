@@ -74,6 +74,23 @@ class CollectAlternateContigNamesTest extends UnitSpec {
     dict.last.aliases should contain theSameElementsInOrderAs Seq("chrM")
   }
 
+  it should "handle cases where the primary and one of the alternates contain the same value for a sequence" in {
+    val output = makeTempFile("test.", ".dict")
+    val tool = new CollectAlternateContigNames(
+      input         = reportHg38,
+      output        = output,
+      primary       = Column.SequenceName,
+      alternates    = Seq(Column.AssignedMolecule, Column.UcscName),
+      sequenceRoles = Seq(AssembledMolecule),
+    )
+    executeFgbioTool(tool)
+
+    val dict = SequenceDictionary(output)
+    dict should have length 25
+    dict.head.name shouldBe "1"
+    dict.head.aliases should contain theSameElementsInOrderAs Seq("chr1")
+  }
+
   it should "read the assigned-molecules for alternates in GRCh38.p12" in {
     val output = makeTempFile("test.", ".dict")
     val tool = new CollectAlternateContigNames(

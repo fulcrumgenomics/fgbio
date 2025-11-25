@@ -354,17 +354,22 @@ class SamRecordClipper(val mode: ClippingMode, val autoClipAttributes: Boolean) 
     * @return the additional number of bases clipped (3' end in sequencing order) for the read and mate respectively
     */
   def clipExtendingPastMateEnds(rec: SamRecord, mate: SamRecord): (Int, Int) = {
-    val basesClipped1 = clipExtendingPastMateEnd(
-      rec                    = rec,
-      mateUnSoftClippedStart = mate.unSoftClippedStart,
-      mateUnSoftClippedEnd   = mate.unSoftClippedEnd,
-    )
-    val basesClipped2 = clipExtendingPastMateEnd(
-      rec                    = mate,
-      mateUnSoftClippedStart = rec.unSoftClippedStart,
-      mateUnSoftClippedEnd   = rec.unSoftClippedEnd,
-    )
-    (basesClipped1, basesClipped2)
+    if (rec.isFrPair) {
+      val basesClipped1 = clipExtendingPastMateEnd(
+        rec                    = rec,
+        mateUnSoftClippedStart = mate.unSoftClippedStart,
+        mateUnSoftClippedEnd   = mate.unSoftClippedEnd,
+      )
+      val basesClipped2 = clipExtendingPastMateEnd(
+        rec                    = mate,
+        mateUnSoftClippedStart = rec.unSoftClippedStart,
+        mateUnSoftClippedEnd   = rec.unSoftClippedEnd,
+      )
+      (basesClipped1, basesClipped2)
+    }
+    else {
+      (0, 0)
+    }
   }
 
   /** Clips the read in FR read pairs whose alignments extend beyond the far end of their mate's alignment.

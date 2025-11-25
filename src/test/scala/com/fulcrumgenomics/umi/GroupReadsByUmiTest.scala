@@ -174,7 +174,7 @@ class GroupReadsByUmiTest extends UnitSpec with OptionValues with PrivateMethodT
   }
 
   "GroupReadsByUmi.umiForRead" should "correctly assign a/b for paired UMI prefixes" in {
-    val tool = new GroupReadsByUmi(rawTag="RX", assignTag="MI", strategy=Strategy.Paired, edits = 0, allowInterContig=true)
+    val tool = new GroupReadsByUmi(rawTag="RX", assignTag="MI", strategy=Strategy.Paired, edits = 0)
     val builder = new SamBuilder(readLength=100)
     val templates = Seq(
       // These 4 should be a::AAA-b::TTT since contig1 is lower
@@ -202,7 +202,7 @@ class GroupReadsByUmiTest extends UnitSpec with OptionValues with PrivateMethodT
   }
 
   it should "correctly assign a/b for paired UMI prefixes when the UMI for one end of the source molecule is absent" in {
-    val tool = new GroupReadsByUmi(rawTag = "RX", assignTag = "MI", strategy = Strategy.Paired, edits = 0, allowInterContig = true)
+    val tool = new GroupReadsByUmi(rawTag = "RX", assignTag = "MI", strategy = Strategy.Paired, edits = 0)
     val builder = new SamBuilder(readLength = 100)
     val templates = Seq(
       // This should be a::AAA-b:: since contig1 is lower
@@ -220,18 +220,22 @@ class GroupReadsByUmiTest extends UnitSpec with OptionValues with PrivateMethodT
   }
 
   "GroupReads.ReadInfo" should "extract the same ReadEnds from a Template as from an R1 with mate cigar" in {
+    val specialCellTag = "XX"
     val builder = new SamBuilder(readLength=100, sort=None)
     val Seq(r1, r2) = builder.addPair(contig=2, contig2=Some(1), start1=300, start2=400, cigar1="10S90M", cigar2="90M10S")
     val template    = Template(r1=Some(r1), r2=Some(r2))
 
-    val tReadInfo = ReadInfo(template)
-    val rReadInfo = ReadInfo(r1)
+    r1(specialCellTag) = "GTTTA"
+
+    val tReadInfo = ReadInfo(template, cellTag = specialCellTag)
+    val rReadInfo = ReadInfo(r1, cellTag = specialCellTag)
     rReadInfo shouldBe tReadInfo
 
     tReadInfo.refIndex1 shouldBe 1
     tReadInfo.start1    shouldBe 499
     tReadInfo.refIndex2 shouldBe 2
     tReadInfo.start2    shouldBe 290
+    tReadInfo.cellBarcode.value shouldBe "GTTTA"
   }
 
   // Test for running the GroupReadsByUmi command line program with some sample input
@@ -281,7 +285,7 @@ class GroupReadsByUmiTest extends UnitSpec with OptionValues with PrivateMethodT
 
   it should "correctly mark duplicates on duplicate reads in group, when flag is passed" in {
     val builder = new SamBuilder(readLength = 100, sort = Some(SamOrder.Coordinate))
-    // Mapping Quality is a tie breaker, so use that to our advantage here.
+    // Mapping Quality is a tiebreaker, so use that to our advantage here.
     builder.addPair(mapq1 = 10, mapq2 = 10, name = "a01", start1 = 100, start2 = 300, strand1 = Plus, strand2 = Minus, attrs = Map("RX" -> "ACT-ACT"))
     builder.addPair(mapq1 = 30, mapq2 = 30, name = "a02", start1 = 100, start2 = 300, strand1 = Plus, strand2 = Minus, attrs = Map("RX" -> "ACT-ACT"))
     builder.addPair(mapq1 = 100, mapq2 = 10, name = "a03", start1 = 100, start2 = 300, strand1 = Plus, strand2 = Minus, attrs = Map("RX" -> "ACT-ACT"))
@@ -305,7 +309,7 @@ class GroupReadsByUmiTest extends UnitSpec with OptionValues with PrivateMethodT
 
   it should "does not mark duplicates on reads in group, when flag is not passed" in {
     val builder = new SamBuilder(readLength = 100, sort = Some(SamOrder.Coordinate))
-    // Mapping Quality is a tie breaker, so use that to our advantage here.
+    // Mapping Quality is a tiebreaker, so use that to our advantage here.
     builder.addPair(mapq1 = 10, mapq2 = 10, name = "a01", start1 = 100, start2 = 300, strand1 = Plus, strand2 = Minus, attrs = Map("RX" -> "ACT-ACT"))
     builder.addPair(mapq1 = 30, mapq2 = 30, name = "a02", start1 = 100, start2 = 300, strand1 = Plus, strand2 = Minus, attrs = Map("RX" -> "ACT-ACT"))
     builder.addPair(mapq1 = 100, mapq2 = 10, name = "a03", start1 = 100, start2 = 300, strand1 = Plus, strand2 = Minus, attrs = Map("RX" -> "ACT-ACT"))
@@ -342,6 +346,30 @@ class GroupReadsByUmiTest extends UnitSpec with OptionValues with PrivateMethodT
     recs.filter(_.name.equals("a02")).forall(_.duplicate == true) shouldBe true
     recs.filter(_.name.equals("a03")).forall(_.duplicate == false) shouldBe true
     recs.filter(_.name.equals("a04")).forall(_.duplicate == true) shouldBe true
+  }
+
+  it should "mark duplicates and discard secondary and supplementary reads" in {
+    // Mapping Quality is a tiebreaker, so use that to our advantage here.
+    val builder = new SamBuilder(readLength = 100, sort = Some(SamOrder.Coordinate))
+    Range.inclusive(start=1, end=3).foreach { i =>
+      val rec = builder.addFrag(mapq = 100, name = "a01", start = 100, attrs = Map("RX" -> "AAAAAAAA")).value
+      rec.secondary = i == 2
+      rec.supplementary = i == 3
+      rec
+    }
+    builder.addFrag(mapq = 10, name = "a02", start = 100, attrs = Map("RX" -> "AAAAAAAA")).value
+
+    val in = builder.toTempFile()
+    val out = Files.createTempFile("umi_grouped.", ".sam")
+    val hist = Files.createTempFile("umi_grouped.", ".histogram.txt")
+    new GroupReadsByUmi(input = in, output = out, familySizeHistogram = Some(hist), rawTag = "RX", assignTag = "MI", strategy = Strategy.Edit, edits = 1, markDuplicates = true).execute()
+
+    val recs = readBamRecs(out)
+    recs.length shouldBe 2
+    recs.filter(_.name.equals("a01")).forall(_.duplicate == false) shouldBe true
+    recs.filter(_.name.equals("a02")).forall(_.duplicate == true) shouldBe true
+    recs.forall(_.secondary) shouldBe false
+    recs.forall(_.supplementary) shouldBe false
   }
 
   it should "correctly group reads with the paired assigner when the two UMIs are the same" in {
@@ -386,7 +414,7 @@ class GroupReadsByUmiTest extends UnitSpec with OptionValues with PrivateMethodT
     val in   = builder.toTempFile()
     val out  = Files.createTempFile("umi_grouped.", ".sam")
     val hist = Files.createTempFile("umi_grouped.", ".histogram.txt")
-    new GroupReadsByUmi(input=in, output=out, familySizeHistogram=Some(hist), rawTag="RX", assignTag="MI", strategy=Strategy.Paired, edits=1, allowInterContig=true).execute()
+    new GroupReadsByUmi(input=in, output=out, familySizeHistogram=Some(hist), rawTag="RX", assignTag="MI", strategy=Strategy.Paired, edits=1).execute()
 
     val recs = readBamRecs(out)
     val aIds = recs.filter(_.name.startsWith("a")).map(r => r[String]("MI")).distinct
@@ -423,6 +451,28 @@ class GroupReadsByUmiTest extends UnitSpec with OptionValues with PrivateMethodT
     groups should contain theSameElementsAs Seq(Set("a01", "a02"), Set("a03", "a04"), Set("a05", "a06"), Set("a07", "a08"))
   }
 
+  it should "correctly group together reads with UMIs across different cells using the cell barcode" in {
+    val builder = new SamBuilder(readLength=100, sort=Some(SamOrder.Coordinate))
+    val specialCellTag = "XX"
+    builder.addFrag(name="a01", start=100, attrs=Map("RX" -> "AAAAAAAA", specialCellTag -> "AA"))
+    builder.addFrag(name="a02", start=100, attrs=Map("RX" -> "AAAAAAAA", specialCellTag -> "AA"))
+    builder.addFrag(name="a03", start=100, attrs=Map("RX" -> "CACACACA", specialCellTag -> "CA"))
+    builder.addFrag(name="a04", start=100, attrs=Map("RX" -> "CACACACC", specialCellTag -> "NN"))
+    builder.addFrag(name="a05", start=105, attrs=Map("RX" -> "GTAGTAGG", specialCellTag -> "GT"))
+    builder.addFrag(name="a06", start=105, attrs=Map("RX" -> "GTAGTAGG", specialCellTag -> "GT"))
+
+    val in  = builder.toTempFile()
+    val out = Files.createTempFile("umi_grouped.", ".sam")
+    new GroupReadsByUmi(input=in, output=out, rawTag="RX", assignTag="MI", cellTag=specialCellTag, strategy=Strategy.Edit, edits=1).execute()
+
+    val recs = readBamRecs(out)
+    recs should have size 6
+
+    val groups = recs.groupBy(r => r[String]("MI")).values.map(rs => rs.map(_.name).toSet)
+    groups should have size 4
+    groups should contain theSameElementsAs Seq(Set("a01", "a02"), Set("a03"), Set("a04"), Set("a05", "a06"))
+  }
+
   it should "exclude reads that contain an N in the UMI" in {
     val builder = new SamBuilder(readLength=100, sort=Some(SamOrder.Coordinate))
     builder.addPair(name="a01", start1=100, start2=300, strand1=Plus,  strand2=Minus, attrs=Map("RX" -> "ACT-ACT"))
@@ -450,6 +500,25 @@ class GroupReadsByUmiTest extends UnitSpec with OptionValues with PrivateMethodT
     val tool = new GroupReadsByUmi(input=in, output=out, familySizeHistogram=None, rawTag="RX", assignTag="MI", strategy=Strategy.Paired, edits=1)
 
     an[Exception] should be thrownBy tool.execute()
+  }
+
+  it should "not consider read-pairs with the same coordinates but different pair orientations as being from the same molecule" in {
+    val builder = new SamBuilder(readLength=100, sort=Some(SamOrder.Coordinate))
+    builder.addPair(name="f1r2", start1=100, start2=300, strand1=Plus,  strand2=Minus, attrs=Map("RX" -> "ACGT-TTGA"))
+    builder.addPair(name="f2r1", start1=300, start2=100, strand1=Minus, strand2=Plus,  attrs=Map("RX" -> "ACGT-TTGA"))
+    builder.addPair(name="ff",   start1=100, start2=300, strand1=Plus,  strand2=Plus,  attrs=Map("RX" -> "ACGT-TTGA"))
+    builder.addPair(name="rr",   start1=  1, start2=201, strand1=Minus, strand2=Minus, attrs=Map("RX" -> "ACGT-TTGA"))
+    builder.addPair(name="r1f2", start1=100, start2=300, strand1=Minus, strand2=Plus,  attrs=Map("RX" -> "ACGT-TTGA"))
+    builder.addPair(name="r2f1", start1=300, start2=100, strand1=Plus,  strand2=Minus, attrs=Map("RX" -> "ACGT-TTGA"))
+    builder.addFrag(name="Frag", start=100, strand=Minus, attrs=Map("RX" -> "ACGT-TTGA"))
+    builder.addFrag(name="fRag", start=1,   strand=Plus,  attrs=Map("RX" -> "ACGT-TTGA"))
+
+    val in   = builder.toTempFile()
+    val out  = Files.createTempFile("umi_grouped.", ".sam")
+    new GroupReadsByUmi(input=in, output=out, familySizeHistogram=None, rawTag="RX", assignTag="MI", strategy=Strategy.Adjacency, edits=1).execute()
+
+    val recs = readBamRecs(out)
+    recs.map(r => r[String]("MI")).distinct.size shouldBe 8  // each template is a separate MI
   }
 
   Seq(

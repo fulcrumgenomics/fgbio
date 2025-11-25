@@ -49,9 +49,10 @@ import scala.collection.BufferedIterator
     |chr1   1010873     1010894   1011118     1011137
     |```
     |
-    |Paired end reads that map to a given amplicon position are trimmed so that the
-    |alignment no-longer includes the primer sequences. All other aligned reads have the
-    |_maximum primer length trimmed_!
+    |Both paired end reads and fragment reads that map to a given amplicon position
+    |are trimmed so that the alignment no-longer includes the primer sequences.  This includes
+    |both the 5' and 3' ends of each read.  All other aligned reads have the
+    |_maximum primer length trimmed_ from the 5' end only!
     |
     |Reads that are trimmed will have the `NM`, `UQ` and `MD` tags cleared as they are no longer
     |guaranteed to be accurate.  If a reference is provided the reads will be re-sorted
@@ -63,9 +64,9 @@ import scala.collection.BufferedIterator
     |The `--first-of-pair` option will cause only the first of pair (R1) reads to be trimmed
     |based solely on the primer location of R1.  This is useful when there is a target
     |specific primer on the 5' end of R1 but no primer sequenced on R2 (eg. single gene-specific
-    |primer target enrichment).  In this case, the location of each target specific primer should
-    |be specified in an amplicons left or right primer exclusively.  The coordinates of the
-    |non-specific-target primer should be `-1` for both start and end, e.g:
+    |primer target enrichment), as well as fragment reads.  In this case, the location of each
+    |target specific primer should be specified in an amplicons left or right primer exclusively.
+    |The coordinates of the non-specific-target primer should be `-1` for both start and end, e.g:
     |
     |```
     |chrom  left_start  left_end  right_start right_end
@@ -82,7 +83,7 @@ class TrimPrimers
   @arg(flag='s', doc="Sort order of output BAM file (defaults to input sort order).") val sortOrder: Option[SamOrder] = None,
   @arg(flag='r', doc="Optional reference fasta for recalculating NM, MD and UQ tags.") val ref: Option[PathToFasta] = None,
   @arg(flag='a', doc="Automatically trim extended attributes that are the same length as bases.") val autoTrimAttributes: Boolean = false,
-  @arg(doc="Trim only first of pair reads (R1s), otherwise both ends of a pair") val firstOfPair: Boolean = false
+  @arg(doc="Trim only first of pair reads (R1s) or fragment reads, otherwise both ends of a pair.") val firstOfPair: Boolean = false
 
 )extends FgBioTool with LazyLogging {
   private val clipper = new SamRecordClipper(mode=if (hardClip) ClippingMode.Hard else ClippingMode.Soft, autoClipAttributes=autoTrimAttributes)
@@ -179,10 +180,10 @@ class TrimPrimers
 
   /** Trims all the reads for a given template. */
   def trimReadsForTemplate(detector: AmpliconDetector, reads: Seq[SamRecord]): Unit = {
-    val rec1 = reads.find(r => r.paired && r.firstOfPair  && !r.secondary && !r.supplementary)
+    val rec1 = reads.find(r => (!r.paired || r.firstOfPair) && !r.secondary && !r.supplementary)
     val rec2 = reads.find(r => r.paired && r.secondOfPair && !r.secondary && !r.supplementary)
 
-    val readsToClip = if (firstOfPair) reads.filter(_.firstOfPair) else reads
+    val readsToClip = if (firstOfPair) reads.filter(r => !r.paired || r.firstOfPair) else reads
 
     (rec1, rec2) match {
       case (Some(r1), Some(r2)) =>
@@ -212,6 +213,18 @@ class TrimPrimers
         reads.filter(_.supplementary).foreach { rec =>
           val mate = if (rec.firstOfPair) r2 else r1
           SamPairUtil.setMateInformationOnSupplementalAlignment(rec.asSam, mate.asSam, true);
+        }
+      case (Some(r1), _) =>
+        detector.findPrimer(rec=r1) match {
+          case Some(amplicon) =>
+            val leftClip  = amplicon.leftPrimerLength
+            val rightClip = amplicon.rightPrimerLength
+            readsToClip.foreach { rec =>
+              val toClip = if (r1.positiveStrand) leftClip else rightClip
+              this.clipper.clip5PrimeEndOfRead(rec, toClip)
+            }
+          case None =>
+            readsToClip.foreach(r => this.clipper.clip5PrimeEndOfRead(r, detector.maxPrimerLength))
         }
       case _ =>
         // Just trim each read independently

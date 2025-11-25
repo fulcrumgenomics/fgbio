@@ -36,7 +36,7 @@ jobs:
       - name: setup Scala
         uses: coursier/setup-action@039f736548afa5411c1382f40a5bd9c2d30e0383 # v1.3.9
         with:
-          apps: scala:2.13.14 scalac:2.13.14 scaladoc:2.13.14 sbt:1.10.1
+          apps: scala:2.13.14 scalac:2.13.14 scaladoc:2.13.14 sbt:1.11.2
           jvm: ${{ matrix.jvm }}
       - name: Unit Tests
         run: |
@@ -64,18 +64,54 @@ jobs:
     env:
       SONATYPE_USER: ${{ secrets.SONATYPE_USER }}
       SONATYPE_PASS: ${{ secrets.SONATYPE_PASS }}
+      PGP_PASSPHRASE: ${{ secrets.PGP_PASSPHRASE }}
+      PGP_SECRET: ${{ secrets.PGP_SECRET }}
     steps:
-      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+      - name: Check for secrets.SONATYPE_USER
+        if: ${{ env.SONATYPE_USER == '' }}
+        run: |
+          echo '"SONATYPE_USER" secret not set'
+          echo 'please go to "settings > secrets > actions" to create it'
+      - name: Check for secrets.SONATYPE_PASS
+        if: ${{ env.SONATYPE_PASS == '' }}
+        run: |
+          echo '"SONATYPE_PASS" secret not set'
+          echo 'please go to "settings > secrets > actions" to create it'
+      - name: Check for secrets.PGP_PASSPHRASE
+        if: ${{ env.PGP_PASSPHRASE== '' }}
+        run: |
+          echo '"PGP_PASSPHRASE" secret not set'
+          echo 'please go to "settings > secrets > actions" to create it'
+      - name: Check for secrets.PGP_SECRET
+        if: ${{ env.PGP_SECRET== '' }}
+        run: |
+          echo '"PGP_SECRET" secret not set'
+          echo 'please go to "settings > secrets > actions" to create it'
+      - name: Export tty
+        run: |
+          echo "GPG_TTY=$(tty)" >> $GITHUB_ENV
+      - name: Setup GPG
+        shell: bash -l {0}
+        run: |
+          echo "$PGP_SECRET" | base64 --decode | gpg --import --batch --yes
+      - name: Checkout
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
         with:
           fetch-depth: 0
-      # TODO: The setup-scala action is deprecated and should be migrated to actions/setup-java or coursier/setup-action!
-      - name: Setup Scala
-        uses: olafurpg/setup-scala@32ffa16635ff8f19cc21ea253a987f0fdf29844c # v14
+          # To work with the `pull_request` or any other non-`push` even with git-auto-commit
+          ref: ${{ github.head_ref }}
+      - name: Setup cache
+        uses: coursier/cache-action@4e2615869d13561d626ed48655e1a39e5b192b3c # v6.4.7
+      - name: setup Scala
+        uses: coursier/setup-action@039f736548afa5411c1382f40a5bd9c2d30e0383 # v1.3.9
         with:
-          java-version: adopt-openj9@1.8.0-292
-      - name: Upload to Sonatype
+          apps: scala:2.13.14 scalac:2.13.14 scaladoc:2.13.14 sbt:1.11.2
+          jvm: "temurin:1.8.0-442"
+      - name: Build and sign artifacts
+        shell: bash -l {0}
         run: |
-          sbt +publish
+          sbt +publishSigned
+
   docs:
     name: Generate tool and metric markdown docs
     needs: test

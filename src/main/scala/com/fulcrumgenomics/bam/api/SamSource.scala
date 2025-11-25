@@ -29,7 +29,7 @@ import com.fulcrumgenomics.bam.api.QueryType.QueryType
 import htsjdk.samtools._
 import htsjdk.samtools.util.{Interval, Locatable}
 
-import java.io.Closeable
+import java.io.{Closeable, InputStream}
 import scala.collection.compat._
 
 /** Companion to the [[SamSource]] class that provides factory methods for sources. */
@@ -37,15 +37,29 @@ object SamSource {
   var DefaultUseAsyncIo: Boolean = false
   var DefaultValidationStringency: ValidationStringency = ValidationStringency.STRICT
 
-  /**
-    * Constructs a [[SamSource]] to read from the provided path.
+  /** Configure a SAM Record Factory with a variety of parameters. */
+  private def buildSamRecordFactory(
+    factory: SAMRecordFactory,
+    ref: Option[PathToFasta],
+    async: Boolean,
+    stringency: ValidationStringency,
+  ): SamReaderFactory = {
+    val fac = SamReaderFactory.make()
+    fac.samRecordFactory(factory)
+    fac.setUseAsyncIo(async)
+    fac.validationStringency(stringency)
+    ref.foreach(fac.referenceSequence)
+    fac
+  }
+
+  /** Constructs a [[SamSource]] to read from the provided path.
     *
     * @param path the path to read the SAM/BAM/CRAM from
     * @param index an optional path to read the index from
-    * @param ref an optional reference sequencing for decoding CRAM files
+    * @param ref an optional reference sequence for decoding CRAM files
     * @param async if true use extra thread(s) to speed up reading
     * @param stringency the validation stringency to apply when reading the data
-    * @param factory a SAMRecordFactory; MUST return classes that mix in [[SamRecord]]
+    * @param factory a [[SamRecord.Factory]]; MUST return classes that mix in [[SamRecord]]
     */
   def apply(path: PathToBam,
             index: Option[FilePath] = None,
@@ -53,17 +67,29 @@ object SamSource {
             async: Boolean = DefaultUseAsyncIo,
             stringency: ValidationStringency = DefaultValidationStringency,
             factory: SAMRecordFactory = SamRecord.Factory): SamSource = {
-    // Configure the factory
-    val fac = SamReaderFactory.make()
-    fac.samRecordFactory(factory)
-    fac.setUseAsyncIo(async)
-    fac.validationStringency(stringency)
-    ref.foreach(r => fac.referenceSequence(r.toFile))
-
-    // Open the input(s)
+    val fac   = buildSamRecordFactory(factory = factory, ref = ref, async = async, stringency = stringency)
     val input = SamInputResource.of(path)
-    index.foreach(i => input.index(i))
+    index.foreach(input.index)
     new SamSource(fac.open(input))
+  }
+
+  /** Constructs a [[SamSource]] to read from the provided input stream.
+    *
+    * @param stream the input stream of SAM/BAM/CRAM bytes
+    * @param ref an optional reference sequence for decoding CRAM files
+    * @param async if true use extra thread(s) to speed up reading
+    * @param stringency the validation stringency to apply when reading the data
+    * @param factory a [[SamRecord.Factory]]; MUST return classes that mix in [[SamRecord]]
+    */
+  def apply(
+    stream: InputStream,
+    ref: Option[PathToFasta],
+    async: Boolean,
+    stringency: ValidationStringency,
+    factory: SAMRecordFactory,
+  ): SamSource = {
+    val fac = buildSamRecordFactory(factory = factory, ref = ref, async = async, stringency = stringency)
+    new SamSource(fac.open(SamInputResource.of(stream)), closer = Some(() => stream.close()))
   }
 }
 
@@ -77,7 +103,9 @@ object QueryType extends Enumeration {
   * A source class for reading SAM/BAM/CRAM files and for querying them.
   * @param reader the underlying [[SamReader]]
   */
-class SamSource private(private val reader: SamReader) extends View[SamRecord] with HeaderHelper with Closeable {
+class SamSource private(private val reader: SamReader, private val closer: Option[Closeable] = None)
+  extends View[SamRecord] with HeaderHelper with Closeable {
+
   /** The [[htsjdk.samtools.SAMFileHeader]] associated with the source. */
   override val header: SAMFileHeader = reader.getFileHeader
 
@@ -117,7 +145,11 @@ class SamSource private(private val reader: SamReader) extends View[SamRecord] w
   /** Provides a string that shows where the source is reading from. */
   override def toString: String = s"SamReader(${reader.getResourceDescription})"
 
-  override def close(): Unit = this.reader.close()
+  /** Close an optional wrapped closeable and release the SAM reader. */
+  override def close(): Unit = {
+    this.closer.foreach(_.close())
+    this.reader.close()
+  }
 
   /**
     * Returns the underlying SamReader. This should be avoided as much as possible, and the

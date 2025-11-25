@@ -131,7 +131,7 @@ object Aligner {
       *
       * scoreGap(query, target, qOffset=4, tOffset=3, gapIsinQuery=false, extend=false)
       * scoreGap(query, target, qOffset=5, tOffset=3, gapIsinQuery=false, extend=true)
-      * scoreGap(query, target, qOffset=9, tOffset=8, gapIsinQuery=true, extend=true)
+      * scoreGap(query, target, qOffset=9, tOffset=8, gapIsinQuery=true, extend=false)
       *
       * Offsets of -1, query.length and target.length may be passed to indicate that the gap is occurring
       * before the start of one of the sequences, or after the end of the query or target sequence respectively.

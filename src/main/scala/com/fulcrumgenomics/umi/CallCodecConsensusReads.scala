@@ -1,7 +1,7 @@
 /*
  * The MIT License
  *
- * Copyright (c) 2017 Fulcrum Genomics LLC
+ * Copyright (c) 2025 Fulcrum Genomics LLC
  *
  * Permission is hereby granted, free of charge, to any person obtaining a copy
  * of this software and associated documentation files (the "Software"), to deal
@@ -25,7 +25,6 @@
 package com.fulcrumgenomics.umi
 
 import com.fulcrumgenomics.FgBioDef._
-import com.fulcrumgenomics.bam.OverlappingBasesConsensusCaller
 import com.fulcrumgenomics.bam.api.{SamOrder, SamSource, SamWriter}
 import com.fulcrumgenomics.cmdline.{ClpGroups, FgBioTool}
 import com.fulcrumgenomics.commons.io.Io
@@ -38,24 +37,20 @@ import htsjdk.samtools.SAMTag
 
 @clp(description =
   """
-    |Calls duplex consensus sequences from reads generated from the same _double-stranded_ source molecule. Prior
-    |to running this tool, read must have been grouped with `GroupReadsByUmi` using the `paired` strategy. Doing
-    |so will apply (by default) MI tags to all reads of the form `*/A` and `*/B` where the /A and /B suffixes
-    |with the same identifier denote reads that are derived from opposite strands of the same source duplex molecule.
+    |Calls consensus sequences from reads generated from the the CODEC protocol. For more information on the CODEC
+    |sequencing protocol and the resulting data please refer to Bae et al 2023[1].
     |
-    |Reads from the same unique molecule are first partitioned by source strand and assembled into single
-    |strand consensus molecules as described by CallMolecularConsensusReads.  Subsequently, for molecules that
-    |have at least one observation of each strand, duplex consensus reads are assembled by combining the evidence
-    |from the two single strand consensus reads.
+    |Prior to running this tool, reads must have been grouped with `GroupReadsByUmi` using the `adjacency` or `identity`
+    |strategy (NOT `paired`).
     |
-    |Because of the nature of duplex sequencing, this tool does not support fragment reads - if found in the
-    |input they are _ignored_.  Similarly, read pairs for which consensus reads cannot be generated for one or
-    |other read (R1 or R2) are omitted from the output.
+    |Reads from the same original duplex are collected, and the R1s and R2s assembled into single strand consensus
+    |reads as described by `CallMolecularConsensusReads`.  Subsequently, a single consensus read is generated including
+    |both any single-strand regions as well as the double-stranded region of the template.
     |
-    |The consensus reads produced are unaligned, due to the difficulty and error-prone nature of inferring the conesensus
+    |The consensus reads produced are unaligned, due to the difficulty and error-prone nature of inferring the consensus
     |alignment.  Consensus reads should therefore be aligned after, which should not be too expensive as likely there
-    |are far fewer consensus reads than input raw raws.  Please see how best to use this tool within the best-practice
-    |pipeline: https://github.com/fulcrumgenomics/fgbio/blob/main/docs/best-practice-consensus-pipeline.md
+    |are significantly fewer consensus reads than input raw reads.  Please see how best to use this tool within the
+    |best-practice pipeline: https://github.com/fulcrumgenomics/fgbio/blob/main/docs/best-practice-consensus-pipeline.md
     |
     |Consensus reads have a number of additional optional tags set in the resulting BAM file.  The tag names follow
     |a pattern where the first letter (a, b or c) denotes that the tag applies to the first single strand consensus (a),
@@ -80,22 +75,13 @@ import htsjdk.samtools.SAMTag
     |consensus errors [aq,bq] (string): the single-strand consensus qualities
     |```
     |
-    |The per base depths and errors are both capped at 32,767. In all cases no-calls (Ns) and bases below the
+    |The per base depths and error counts are both capped at 32,767. In all cases no-calls (Ns) and bases below the
     |min-input-base-quality are not counted in tag value calculations.
     |
-    |The --min-reads option can take 1-3 values similar to `FilterConsensusReads`. For example:
-    |
-    |```
-    |CallDuplexConsensusReads ... --min-reads 10 5 3
-    |```
-    |
-    |If fewer than three values are supplied, the last value is repeated (i.e. `5 4` -> `5 4 4` and `1` -> `1 1 1`.  The
-    |first value applies to the final consensus read, the second value to one single-strand consensus, and the last
-    |value to the other single-strand consensus. It is required that if values two and three differ,
-    |the _more stringent value comes earlier_.
+    |[1] https://doi.org/10.1038/s41588-023-01376-0
   """,
   group = ClpGroups.Umi)
-class CallDuplexConsensusReads
+class CallCodecConsensusReads
 (@arg(flag='i', doc="The input SAM or BAM file.") val input: PathToBam,
  @arg(flag='o', doc="Output SAM or BAM file to write consensus reads.") val output: PathToBam,
  @arg(flag='r', doc="Optional output SAM or BAM file to write reads not used.") val rejects: Option[PathToBam] = None,
@@ -105,17 +91,21 @@ class CallDuplexConsensusReads
  @arg(flag='1', doc="The Phred-scaled error rate for an error prior to the UMIs being integrated.") val errorRatePreUmi: PhredScore = DefaultErrorRatePreUmi,
  @arg(flag='2', doc="The Phred-scaled error rate for an error post the UMIs have been integrated.") val errorRatePostUmi: PhredScore = DefaultErrorRatePostUmi,
  @arg(flag='m', doc="Ignore bases in raw reads that have Q below this value.") val minInputBaseQuality: PhredScore = DefaultMinInputBaseQuality,
- @arg(flag='t', doc="If true, quality trim input reads in addition to masking low Q bases.") val trim: Boolean = false,
  @arg(flag='S', doc="The sort order of the output, the same as the input if not given.") val sortOrder: Option[SamOrder] = None,
- @arg(flag='M', minElements=1, maxElements=3, doc="The minimum number of input reads to a consensus read.") val minReads: Seq[Int] = Seq(1),
+ @arg(flag='M', doc="The minimum number of codec read pairs to form a consensus read.") val minReadPairs: Int = 1,
  @arg(doc="""
             |The maximum number of reads to use when building a single-strand consensus. If more than this many reads are
-            |present in a tag family, the family is randomly downsampled to exactly max-reads reads.
+            |present in a tag family, the family is randomly downsampled to exactly max-reads-pairs reads.
           """)
- val maxReadsPerStrand: Option[Int] = None,
+ val maxReadPairs: Option[Int] = None,
+ @arg(flag='d', doc="Minimum length of the duplex region (where R1 and R2 overlap).") val minDuplexLength: Int = 1,
+ @arg(flag='q', doc="Reduce quality scores in single stranded regions of the consensus read to the given quality.") val singleStrandQual: Option[PhredScore] = None,
+ @arg(flag='Q', doc="Reduce the first and last `outer-bases-length` bases to the given quality.") val outerBasesQual: Option[PhredScore] = None,
+ @arg(flag='O', doc="The number of bases at the start and end of the read to reduce quality over *if* `outer-bases-qual` is specified.") val outerBasesLength: Int = 5,
+ @arg(flag='x', doc="Discard consensus reads where greater than this fraction of duplex bases disagree.") val maxDuplexDisagreementRate: Double = 1.0,
+ @arg(flag='X', doc="Discard consensus reads where greater than this number of duplex bases disagree.") val maxDuplexDisagreements: Int = Int.MaxValue,
  @arg(flag='c', doc="Tag containing the cellular barcodes.") val cellTag: Option[String] = Some(SAMTag.CB.name),
  @arg(doc="The number of threads to use while consensus calling.") val threads: Int = 1,
- @arg(doc="Consensus call overlapping bases in mapped paired end reads") val consensusCallOverlappingBases: Boolean = true,
 ) extends FgBioTool with LazyLogging {
 
   Io.assertReadable(input)
@@ -124,44 +114,48 @@ class CallDuplexConsensusReads
   stats.foreach(Io.assertCanWriteFile(_))
   validate(errorRatePreUmi  > 0, "Phred-scaled error rate pre UMI must be > 0")
   validate(errorRatePostUmi > 0, "Phred-scaled error rate post UMI must be > 0")
+  validate(minReadPairs >= 1, "min-read-pairs must be >= 1")
+  validate(maxReadPairs.forall(_ >= minReadPairs), "max-read-pairs must be >= min-read-pairs")
+  validate(minDuplexLength >= 1, "min-duplex-length must be >= 1")
+  validate(outerBasesLength >= 0, "outer-bases-length must be >= 0")
+  validate(outerBasesQual.forall(_ >= PhredScore.MinValue), s"outer-bases-qual must be >= ${PhredScore.MinValue}")
+  validate(singleStrandQual.forall(_ >= PhredScore.MinValue), s"single-strand-qual must be >= ${PhredScore.MinValue}")
 
   override def execute(): Unit = {
     val in = SamSource(input)
     UmiConsensusCaller.checkSortOrder(in.header, input, logger.warning, fail)
     val rejectsWriter = rejects.map(r => SamWriter(r, in.header))
 
-    // Build an iterator for the input reads, which only really matters if calling consensus in overlapping read pairs.
-    val inIter = if (!consensusCallOverlappingBases) in.iterator else {
-      OverlappingBasesConsensusCaller.iterator(
-        in                    = in,
-        logger                = logger
-      )
-    }
-
-    // The output file is unmapped, so for now let's clear out the sequence dictionary & PGs
+    // The output file is unmapped, so clear out the sequence dictionary & PGs
     val outHeader = UmiConsensusCaller.outputHeader(in.header, readGroupId, sortOrder)
     val out = SamWriter(output, outHeader, sort=sortOrder)
 
-    val caller = new DuplexConsensusCaller(
-      readNamePrefix      = readNamePrefix.getOrElse(UmiConsensusCaller.makePrefixFromSamHeader(in.header)),
-      readGroupId         = readGroupId,
-      minInputBaseQuality = minInputBaseQuality,
-      qualityTrim         = trim,
-      errorRatePreUmi     = errorRatePreUmi,
-      errorRatePostUmi    = errorRatePostUmi,
-      minReads            = minReads,
-      maxReadsPerStrand   = maxReadsPerStrand.getOrElse(VanillaUmiConsensusCallerOptions.DefaultMaxReads),
-      cellTag             = cellTag,
-      rejectsWriter       = rejectsWriter
+    val caller = new CodecConsensusCaller(
+      readNamePrefix            = readNamePrefix.getOrElse(UmiConsensusCaller.makePrefixFromSamHeader(in.header)),
+      readGroupId               = readGroupId,
+      minInputBaseQuality       = minInputBaseQuality,
+      errorRatePreUmi           = errorRatePreUmi,
+      errorRatePostUmi          = errorRatePostUmi,
+      minReadsPerStrand         = minReadPairs,
+      maxReadsPerStrand         = maxReadPairs.getOrElse(VanillaUmiConsensusCallerOptions.DefaultMaxReads),
+      minDuplexLength           = minDuplexLength,
+      singleStrandQual          = singleStrandQual,
+      outerBasesQual            = outerBasesQual,
+      outerBasesLength          = outerBasesLength,
+      maxDuplexDisagreements    = this.maxDuplexDisagreements,
+      maxDuplexDisagreementRate = this.maxDuplexDisagreementRate,
+      cellTag                   = cellTag,
+      rejectsWriter             = rejectsWriter,
     )
     val progress = ProgressLogger(logger, unit=1000000)
-    val iterator = new ConsensusCallingIterator(inIter, caller, Some(progress), threads)
+    val iterator = new ConsensusCallingIterator(in.iterator, caller, Some(progress), threads)
     out ++= iterator
     progress.logLast()
 
     in.safelyClose()
     out.close()
     rejectsWriter.foreach(_.close())
+
     caller.logStatistics(logger)
     stats.foreach { path => Metric.write(path, caller.statistics) }
   }

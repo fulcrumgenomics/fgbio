@@ -49,6 +49,43 @@ class SequencesTest extends UnitSpec {
     Sequences.countMismatches("ACGACTATATGCAT", "NNNNNNNNNNNNNN") shouldBe 14
   }
 
+  private def countMismatchesWithMax(s1: String, s2: String, max: Int): Int = {
+    Sequences.countMismatchesWithMax(s1.getBytes, s2.getBytes, max)
+  }
+
+  "Sequences.countMismatchesWithMax" should "return 0 when comparing a string with itself" in {
+    val seq = "ACGTAGCTGACTGCA"
+    countMismatchesWithMax(seq, seq, 10) shouldBe 0
+  }
+
+  it should "be case sensitive" in {
+    val seq = "ACGTAGCTGACTGCA"
+    countMismatchesWithMax(seq.toLowerCase, seq.toUpperCase, seq.length + 1) shouldBe seq.length
+  }
+
+  it should "return the max limit when the number of mismatches exceed max" in {
+    val seq = "ACGTAGCTGACTGCA"
+    countMismatchesWithMax(seq.toLowerCase, seq.toUpperCase, 5) shouldBe 5
+  }
+
+  it should "return the number of mismatches of just the prefixes of the length of the first sequence (when the first sequence is shorter)" in {
+    // `countMismatchesWithMax` has no length check, so will default to the length of the first sequence
+    countMismatchesWithMax("ACGT", "ACGTGG", 5) shouldBe 0
+  }
+
+  it should "throw an exception when the first sequence is longer than the last" in {
+    an[ArrayIndexOutOfBoundsException] should be thrownBy countMismatchesWithMax("ACGTGG", "ACGT", 10)
+  }
+
+  it should "correctly count mismatches" in {
+    countMismatchesWithMax("ACGACTATATGCAT", "ACGACTATATGCAT", 100) shouldBe 0
+    countMismatchesWithMax("ACGACTATATGCAT", "acgactatatgcat", 100) shouldBe 14
+    countMismatchesWithMax("acgactatatgcat", "acgactaNatgcat", 100) shouldBe 1
+    countMismatchesWithMax("acgactatatgcat", "acgactataGTcat", 100) shouldBe 2
+    countMismatchesWithMax("ACGACTATATGCAT", "NNNNNNNNNNNNNN", 100) shouldBe 14
+    countMismatchesWithMax("ACGACTATATGCAT", "NNNNNNNNNNNNNN", 5) shouldBe 5
+  }
+
   "Sequences.longestHomopolymer" should "fail when passed a null String" in {
     an[Throwable] shouldBe thrownBy { Sequences.longestHomopolymer(null) }
   }
@@ -122,6 +159,19 @@ class SequencesTest extends UnitSpec {
     Sequences.revcomp("AACCGGTGTG") shouldBe "CACACCGGTT"
     Sequences.revcomp("acacNNNN")   shouldBe "NNNNgtgt"
     Sequences.revcomp("NRG")        shouldBe "CYN"
+  }
+
+  "Sequences.reverse" should "reverse arrays of various lengths and types" in {
+    def r[T](xs: Array[T]): Array[T] = {
+      Sequences.reverse(xs)
+      xs
+    }
+
+    r(Array()) shouldBe Array()
+    r(Array(1)) shouldBe Array(1)
+    r(Array(1, 2)) shouldBe Array(2, 1)
+    r(Array(1, 2, 3)) shouldBe Array(3, 2, 1)
+    r(Array("foo", "bar", "splat", "whee", "bonk", "kaboom")) shouldBe Array("kaboom", "bonk", "whee", "splat", "bar", "foo")
   }
 
   "Sequences.compatible" should "do the right thing for pairs of bases" in {

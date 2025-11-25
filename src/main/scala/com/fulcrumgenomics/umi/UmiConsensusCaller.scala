@@ -26,11 +26,13 @@ package com.fulcrumgenomics.umi
 
 import com.fulcrumgenomics.FgBioDef._
 import com.fulcrumgenomics.alignment.{Cigar, CigarElem}
-import com.fulcrumgenomics.bam.api.{SamOrder, SamRecord}
+import com.fulcrumgenomics.bam.api.{SamOrder, SamRecord, SamWriter}
 import com.fulcrumgenomics.bam.{ClippingMode, SamRecordClipper}
 import com.fulcrumgenomics.commons.util.{Logger, SimpleCounter}
 import com.fulcrumgenomics.umi.UmiConsensusCaller._
+import com.fulcrumgenomics.util.Metric
 import com.fulcrumgenomics.util.NumericTypes.PhredScore
+import enumeratum.{Enum, EnumEntry}
 import htsjdk.samtools.SAMFileHeader.{GroupOrder, SortOrder}
 import htsjdk.samtools._
 import htsjdk.samtools.util.{Murmur3, SequenceUtil, TrimmingUtil}
@@ -51,17 +53,39 @@ object UmiConsensusCaller {
     val ReadTypeKey: String = "__read_type__"
   }
 
-  /** Filter reason for when there are too few reads to form a consensus. */
-  val FilterInsufficientSupport = "Insufficient Support"
+  /** Enum entry type for why we reject SamRecords during consensus calling. */
+  sealed trait RejectionReason extends EnumEntry {
+    val code: String
+    val description: String
+    val usedByVanilla: Boolean
+    val usedByDuplex: Boolean
+    val usedByCodec: Boolean
+  }
 
-  /** Filter reason for when reads are rejected for having a minority CIGAR. */
-  val FilterMinorityAlignment   = "Mismatching Cigars"
+  /** Base class for [[RejectionReason]] to make them easier to enumerate. */
+  protected class _RejectionReason(
+    val code: String, val description: String, val usedByVanilla: Boolean, val usedByDuplex: Boolean, val usedByCodec: Boolean
+  ) extends RejectionReason
 
-  /** Filter reason for when reads are rejected due to low quality. */
-  val FilterLowQuality = "Low Base Quality"
+  /** Enum of all the reasons we reject SamRecords during consensus calling. */
+  object RejectionReason extends Enum[RejectionReason] {
+    override def values: IndexedSeq[RejectionReason] = findValues
 
-  /** Filter reason for when reads are rejected due creation of orphaned consensus (i.e. R1 or R2 failed). */
-  val FilterOrphan = "Orphan Consensus Created"
+    case object InsufficientSupport      extends _RejectionReason("insufficient_support",        "Insufficient reads to generate a consensus", true, true, true)
+    case object MinorityAlignment        extends _RejectionReason("minority_alignment",          "Reads has a different, and minority, set of indels", true, true, true)
+    case object OrphanConsensus          extends _RejectionReason("orphan_consensus",            "Only one of R1 or R2 consensus generated", true, true, true)
+    case object ZeroPostAfterTrimming    extends _RejectionReason("zero_bases_post_trimming",    "Read or mate had zero bases post trimming", true, true, true)
+    case object NonPairedReads           extends _RejectionReason("non_paired_reads",            "Unpaired/fragment reads not supported by Duplex caller", false, true, true)
+    case object SingleStrandOnly         extends _RejectionReason("single_strand_only",          "Only Generating One Strand of Duplex Consensus", false, true, true)
+    case object PotentialCollision       extends _RejectionReason("potential_umi_collision",     "Potential collision between independent duplex molecules", false, true, true)
+    case object R1R2OverlapTooShort      extends _RejectionReason("r1_r2_overlap_too_short",     "Overlap between R1s and R2s too short for CODEC calling", false, false, true)
+    case object IndelErrorBetweenStrands extends _RejectionReason("indel_error_between_strands", "Indel error between top/bottom strands", false, false, true)
+    case object HighDuplexDisagreement   extends _RejectionReason("high_duplex_disagreement",    "Too many errors between top/bottoms strands", false, false, true)
+    case object ClipOverlapFailed        extends _RejectionReason("clip_overlap_failed",         "See https://github.com/fulcrumgenomics/fgbio/issues/1090", false, false, true)
+  }
+
+  /** Metric class for outputting consensus calling statistics. */
+  case class ConsensusKvMetric(key: String, value: Any, description: String) extends Metric
 
   /** A trait that consensus reads must implement. */
   trait SimpleRead {
@@ -159,9 +183,12 @@ object UmiConsensusCaller {
 trait UmiConsensusCaller[ConsensusRead <: SimpleRead] {
   import com.fulcrumgenomics.umi.UmiConsensusCaller.ReadType._
 
+  /** The SAM tag containing the unique cell identifier (if cell-based consensus calling is desired). */
+  val cellTag: Option[String] = Some(SAMTag.CB.name)
+
   // vars to track how many reads meet various fates
   private var _totalReads: Long = 0
-  private val _filteredReads = new SimpleCounter[String]()
+  private val _filteredReads = new SimpleCounter[RejectionReason]()
   private var _consensusReadsConstructed: Long = 0
 
   protected val NoCall: Byte = 'N'.toByte
@@ -173,6 +200,9 @@ trait UmiConsensusCaller[ConsensusRead <: SimpleRead] {
   /** Clipper utility used to _calculate_ clipping, but not do the actual clipping */
   private val clipper = new SamRecordClipper(mode=ClippingMode.Soft, autoClipAttributes=true)
 
+  /** Returns an optional writer to write rejected source records to. */
+  protected def rejectsWriter: Option[SamWriter] = None
+
   /** Returns a clone of this consensus caller in a state where no previous reads were processed.  I.e. all counters
     * are set to zero.*/
   def emptyClone(): UmiConsensusCaller[ConsensusRead]
@@ -183,25 +213,26 @@ trait UmiConsensusCaller[ConsensusRead <: SimpleRead] {
   /** Returns the total number of reads filtered for any reason. */
   def totalFiltered: Long = _filteredReads.total
 
-  /**
-    * Returns the number of raw reads filtered out due to there being insufficient reads present
-    * to build the necessary set of consensus reads.
-    */
-  def readsFilteredInsufficientSupport: Long = this._filteredReads.countOf(FilterInsufficientSupport)
-
-  /** Returns the number of raw reads filtered out because their alignment disagreed with the majority alignment of
-    * all raw reads for the same source molecule.
-    */
-  def readsFilteredMinorityAlignment: Long = this._filteredReads.countOf(FilterMinorityAlignment)
-
   /** Returns the number of consensus reads constructed by this caller. */
   def consensusReadsConstructed: Long = _consensusReadsConstructed
 
-  /** Records that the supplied records were rejected, and not used to build a consensus read. */
-  protected def rejectRecords(recs: Iterable[SamRecord], reason: String) : Unit = this._filteredReads.count(reason, recs.size.toLong)
+  protected def initializeRejectCounts(pred: RejectionReason => Boolean): Unit = {
+    RejectionReason.values.filter(pred).foreach(this._filteredReads.count(_, 0))
+  }
 
   /** Records that the supplied records were rejected, and not used to build a consensus read. */
-  protected def rejectRecords(reason: String, rec: SamRecord*) : Unit = rejectRecords(rec, reason)
+  protected def rejectRecords(recs: Iterable[SamRecord], reason: RejectionReason) : Unit = {
+    this._filteredReads.count(reason, recs.size.toLong)
+    this.rejectsWriter.foreach { writer =>
+      recs.foreach(_("rr") = reason.code)
+      writer.synchronized {
+        writer ++= recs
+      }
+    }
+  }
+
+  /** Records that the supplied records were rejected, and not used to build a consensus read. */
+  protected def rejectRecords(reason: RejectionReason, rec: SamRecord*) : Unit = rejectRecords(rec, reason)
 
   /** A RG.ID to apply to all generated reads. */
   protected def readGroupId: String
@@ -273,7 +304,7 @@ trait UmiConsensusCaller[ConsensusRead <: SimpleRead] {
 
     len match {
       case 0 =>
-        rejectRecords(Iterable(rec), FilterLowQuality)
+        rejectRecords(Iterable(rec), RejectionReason.ZeroPostAfterTrimming)
         None
       case n if n == bases.length =>
         Some(SourceRead(sourceMoleculeId(rec), bases, quals, cigar, Some(rec)))
@@ -391,7 +422,7 @@ trait UmiConsensusCaller[ConsensusRead <: SimpleRead] {
       val keepers = new ArrayBuffer[SourceRead](bestGroup.size)
       forloop (from=0, until=sorted.length) { i =>
         if (bestGroup.contains(i)) keepers += sorted(i)
-        else sorted(i).sam.foreach(rejectRecords(FilterMinorityAlignment, _))
+        else sorted(i).sam.foreach(rejectRecords(RejectionReason.MinorityAlignment, _))
       }
 
       keepers.toIndexedSeq
@@ -418,7 +449,12 @@ trait UmiConsensusCaller[ConsensusRead <: SimpleRead] {
   }
 
   /** Creates a `SamRecord` from the called consensus base and qualities. */
-  protected def createSamRecord(read: ConsensusRead, readType: ReadType, umis: Seq[String] = Seq.empty): SamRecord = {
+  protected def createSamRecord(
+    read: ConsensusRead,
+    readType: ReadType,
+    umis: Seq[String]           = Seq.empty,
+    cellBarcode: Option[String] = None,
+  ): SamRecord = {
     val rec = SamRecord(null)
     rec.name = this.readNamePrefix + ":" + read.id
     rec.unmapped = true
@@ -437,6 +473,7 @@ trait UmiConsensusCaller[ConsensusRead <: SimpleRead] {
     rec.quals = read.quals
     rec(SAMTag.RG.name()) = readGroupId
     rec(ConsensusTags.MolecularId) = read.id
+    for { tag <- this.cellTag; barcode <- cellBarcode } rec(tag) = barcode
     if (umis.nonEmpty) rec(ConsensusTags.UmiBases) = this.consensusBuilder.callConsensus(umis)
 
     rec
@@ -466,5 +503,23 @@ trait UmiConsensusCaller[ConsensusRead <: SimpleRead] {
       logger.info(f"Raw Reads Filtered Due to $filter: $count%,d (${count/totalReads.toDouble}%.4f).")
     }
     logger.info(f"Consensus reads emitted: $consensusReadsConstructed%,d.")
+  }
+
+  /** Generates a map of statistics collected by the caller. */
+  def statistics: Seq[ConsensusKvMetric] = {
+    val usedFraction = if (totalReads == 0) 0 else (1.0 - (this.totalFiltered / this.totalReads.toDouble))
+
+    val builder = IndexedSeq.newBuilder[ConsensusKvMetric]
+    builder += ConsensusKvMetric("raw_reads_considered", this.totalReads, "Total raw reads considered from input file")
+    builder += ConsensusKvMetric("raw_reads_rejected", this.totalFiltered, "Total number of raw reads rejected before consensus calling")
+    builder += ConsensusKvMetric("raw_reads_used", this.totalReads - this.totalFiltered, "Total count of raw reads used in consensus reads")
+    builder += ConsensusKvMetric("frac_raw_reads_used", usedFraction, "Fraction of raw reads used in consensus reads")
+
+    this._filteredReads.foreach { case (reason, count) =>
+      builder += ConsensusKvMetric(s"raw_reads_rejected_for_${reason.code}", count, reason.description)
+    }
+
+    builder += ConsensusKvMetric("consensus_reads_emitted", this.consensusReadsConstructed, "Total number of consensus reads (R1+R2=2) emitted.")
+    builder.result()
   }
 }

@@ -27,15 +27,15 @@ package com.fulcrumgenomics.umi
 import com.fulcrumgenomics.sopt.cmdline.ValidationException
 import com.fulcrumgenomics.testing.{SamBuilder, UnitSpec}
 import com.fulcrumgenomics.umi.CorrectUmis.{UmiCorrectionMetrics, UmiMatch}
-import com.fulcrumgenomics.util.{Io, Metric}
+import com.fulcrumgenomics.util.{Io, Metric, Sequences}
 
 class CorrectUmisTest extends UnitSpec {
   private val FixedUmis = Seq("AAAAAA", "CCCCCC", "GGGGGG", "TTTTTT")
-  private val FixedUmisArray = FixedUmis.toArray
+  private val FixedUmisArray = FixedUmis.map(_.getBytes).toArray
   private val NoBam = makeTempFile("correct_umis.", ".bam")
 
   "CorrectUmis.findBestMatch" should "find perfect matches" in {
-    val corrector = new CorrectUmis(input = NoBam, output = NoBam, maxMismatches = 2, minDistance = 2, umis = FixedUmis)
+    val corrector = new CorrectUmis(input = NoBam, output = NoBam, maxMismatches = 2, minDistanceDiff = 2, umis = FixedUmis)
     val hit1 = corrector.findBestMatch("AAAAAA", FixedUmisArray)
     hit1.matched shouldBe true
     hit1.mismatches shouldBe 0
@@ -58,7 +58,7 @@ class CorrectUmisTest extends UnitSpec {
   }
 
   it should "match UMIs with up to the maximum allowed mismatches" in {
-    val corrector = new CorrectUmis(input = NoBam, output = NoBam, maxMismatches = 2, minDistance = 2, umis = FixedUmis)
+    val corrector = new CorrectUmis(input = NoBam, output = NoBam, maxMismatches = 2, minDistanceDiff = 2, umis = FixedUmis)
     corrector.findBestMatch("AAAAAA", FixedUmisArray) shouldBe UmiMatch(matched = true, "AAAAAA", 0)
     corrector.findBestMatch("AAAAAT", FixedUmisArray) shouldBe UmiMatch(matched = true, "AAAAAA", 1)
     corrector.findBestMatch("AAAACT", FixedUmisArray) shouldBe UmiMatch(matched = true, "AAAAAA", 2)
@@ -66,12 +66,12 @@ class CorrectUmisTest extends UnitSpec {
   }
 
   it should "not match with mismatches when two UMIs are too similar (e.g. poorly picked UMIs)" in {
-    val corrector = new CorrectUmis(input = NoBam, output = NoBam, maxMismatches = 2, minDistance = 2, umis = Seq("AAAG", "AAAT"))
-    corrector.findBestMatch("AAAG", Array("AAAG", "AAAT")) shouldBe UmiMatch(matched = false, "AAAG", 0)
+    val corrector = new CorrectUmis(input = NoBam, output = NoBam, maxMismatches = 2, minDistanceDiff = 2, umis = Seq("AAAG", "AAAT"))
+    corrector.findBestMatch("AAAG", Array("AAAG", "AAAT").map(_.getBytes)) shouldBe UmiMatch(matched = false, "AAAG", 0)
   }
 
   it should "match with lots of mismatches, but only if the next best UMI is far enough away" in {
-    val corrector = new CorrectUmis(input = NoBam, output = NoBam, maxMismatches = 3, minDistance = 2, umis = FixedUmis)
+    val corrector = new CorrectUmis(input = NoBam, output = NoBam, maxMismatches = 3, minDistanceDiff = 2, umis = FixedUmis)
     corrector.findBestMatch("AAAAAA", FixedUmisArray) shouldBe UmiMatch(matched = true, "AAAAAA", 0)
     corrector.findBestMatch("AAACGT", FixedUmisArray) shouldBe UmiMatch(matched = true, "AAAAAA", 3)
     corrector.findBestMatch("AAACGT", FixedUmisArray) shouldBe UmiMatch(matched = true, "AAAAAA", 3)
@@ -96,7 +96,7 @@ class CorrectUmisTest extends UnitSpec {
     val corrected = makeTempFile("corrected.", ".bam")
     val rejects = makeTempFile("rejects.", ".bam")
 
-    val corrector = new CorrectUmis(input = input, output = corrected, rejects = Some(rejects), maxMismatches = 2, minDistance = 2, umis = FixedUmis)
+    val corrector = new CorrectUmis(input = input, output = corrected, rejects = Some(rejects), maxMismatches = 2, minDistanceDiff = 2, umis = FixedUmis)
     val logLines = executeFgbioTool(corrector)
     logLines.exists(line => line.contains("Error")) shouldBe true
     readBamRecs(corrected) shouldBe empty
@@ -105,7 +105,7 @@ class CorrectUmisTest extends UnitSpec {
 
   it should "throw an exception if all the fixed umis are not the same length " in {
     an[ValidationException] shouldBe thrownBy {
-      new CorrectUmis(input = NoBam, output = NoBam, maxMismatches = 2, minDistance = 2, umis = Seq("AAAAAA", "CCC")).execute()
+      new CorrectUmis(input = NoBam, output = NoBam, maxMismatches = 2, minDistanceDiff = 2, umis = Seq("AAAAAA", "CCC")).execute()
     }
   }
 
@@ -116,7 +116,7 @@ class CorrectUmisTest extends UnitSpec {
     val corrected = makeTempFile("corrected.", ".bam")
     val rejects = makeTempFile("rejects.", ".bam")
 
-    val corrector = new CorrectUmis(input = input, output = corrected, rejects = Some(rejects), maxMismatches = 2, minDistance = 2, umis = FixedUmis)
+    val corrector = new CorrectUmis(input = input, output = corrected, rejects = Some(rejects), maxMismatches = 2, minDistanceDiff = 2, umis = FixedUmis)
     val logLines = executeFgbioTool(corrector)
     logLines.exists(line => line.contains("Error")) shouldBe true
     readBamRecs(corrected) shouldBe empty
@@ -141,7 +141,7 @@ class CorrectUmisTest extends UnitSpec {
     val rejects   = makeTempFile("rejects.", ".bam")
     val metrics   = makeTempFile("metrics.", ".txt")
 
-    val corrector = new CorrectUmis(input=input, output=corrected, rejects=Some(rejects), metrics=Some(metrics), maxMismatches=3, minDistance=2, umis=FixedUmis)
+    val corrector = new CorrectUmis(input=input, output=corrected, rejects=Some(rejects), metrics=Some(metrics), maxMismatches=3, minDistanceDiff=2, umis=FixedUmis)
     val logLines = executeFgbioTool(corrector)
     logLines.exists(line => line.contains("Error")) shouldBe false // No errors this time
 
@@ -169,7 +169,7 @@ class CorrectUmisTest extends UnitSpec {
     val rejects   = makeTempFile("rejects.", ".bam")
     val metrics   = makeTempFile("metrics.", ".txt")
 
-    val corrector = new CorrectUmis(input=input, output=corrected, rejects=Some(rejects), metrics=Some(metrics), maxMismatches=3, minDistance=2, umis=FixedUmis)
+    val corrector = new CorrectUmis(input=input, output=corrected, rejects=Some(rejects), metrics=Some(metrics), maxMismatches=3, minDistanceDiff=2, umis=FixedUmis)
     val logLines = executeFgbioTool(corrector)
     logLines.exists(line => line.contains("Error")) shouldBe false // No errors this time
 
@@ -182,6 +182,63 @@ class CorrectUmisTest extends UnitSpec {
     metricsByUmi("GGGGGG") shouldBe UmiCorrectionMetrics(umi="GGGGGG", total_matches=1, perfect_matches=1, one_mismatch_matches=0, two_mismatch_matches=0, other_matches=0, fraction_of_matches = 1/10.0, representation = (1/8.0) / (1/4d))
     metricsByUmi("TTTTTT") shouldBe UmiCorrectionMetrics(umi="TTTTTT", total_matches=2, perfect_matches=2, one_mismatch_matches=0, two_mismatch_matches=0, other_matches=0, fraction_of_matches = 2/10.0, representation = (2/8.0) / (1/4d))
     metricsByUmi("NNNNNN") shouldBe UmiCorrectionMetrics(umi="NNNNNN", total_matches=2, perfect_matches=0, one_mismatch_matches=0, two_mismatch_matches=0, other_matches=0, fraction_of_matches = 2/10.0, representation = (2/8.0) / (1/4d))
+  }
+
+  it should "correctly count 'other_matches' when the number of mismatches is greater than 3" in {
+    val builder = new SamBuilder(readLength = 10)
+    builder.addFrag(name="q1",  start=1, attrs=Map(ConsensusTags.UmiBases -> "AAAAAAAAA"))
+    builder.addFrag(name="q2",  start=1, attrs=Map(ConsensusTags.UmiBases -> "AAAAAAAAT"))
+    builder.addFrag(name="q3",  start=1, attrs=Map(ConsensusTags.UmiBases -> "AAAAAAATT"))
+    builder.addFrag(name="q4",  start=1, attrs=Map(ConsensusTags.UmiBases -> "AAAAAATTT"))
+    builder.addFrag(name="q5",  start=1, attrs=Map(ConsensusTags.UmiBases -> "AAAAATTTT"))
+    builder.addFrag(name="q6",  start=1, attrs=Map(ConsensusTags.UmiBases -> "AAAATTTTT"))
+    builder.addFrag(name="q7",  start=1, attrs=Map(ConsensusTags.UmiBases -> "AAATTTTTT"))
+    builder.addFrag(name="q8",  start=1, attrs=Map(ConsensusTags.UmiBases -> "AATTTTTTT"))
+    builder.addFrag(name="q9",  start=1, attrs=Map(ConsensusTags.UmiBases -> "ATTTTTTTT"))
+    builder.addFrag(name="q10", start=1, attrs=Map(ConsensusTags.UmiBases -> "TTTTTTTTT"))
+
+    val input     = builder.toTempFile()
+    val corrected = makeTempFile("corrected.", ".bam")
+    val rejects   = makeTempFile("rejects.", ".bam")
+    val metrics   = makeTempFile("metrics.", ".txt")
+
+    val corrector = new CorrectUmis(
+      input           = input,
+      output          = corrected,
+      rejects         = Some(rejects),
+      metrics         = Some(metrics),
+      maxMismatches   = 4,
+      minDistanceDiff = 0,
+      umis            = Seq("AAAAAAAAA", "TTTTTTTTT")
+    )
+
+    val logLines = executeFgbioTool(corrector)
+    logLines.exists(line => line.contains("Error")) shouldBe false // No errors this time
+
+    readBamRecs(corrected).map(_.name) should contain theSameElementsAs Seq("q1", "q2", "q3", "q4", "q5", "q6", "q7", "q8", "q9", "q10")
+    readBamRecs(rejects).map(_.name) shouldBe empty
+
+    val metricsByUmi = Metric.read[UmiCorrectionMetrics](metrics).map(m => m.umi -> m).toMap
+    metricsByUmi("AAAAAAAAA") shouldBe UmiCorrectionMetrics(
+      umi                  = "AAAAAAAAA",
+      total_matches        = 5,
+      perfect_matches      = 1,
+      one_mismatch_matches = 1,
+      two_mismatch_matches = 1,
+      other_matches        = 2,
+      fraction_of_matches  = 5 / 10.0,
+      representation       = 1.0
+    )
+    metricsByUmi("TTTTTTTTT") shouldBe UmiCorrectionMetrics(
+      umi                  = "TTTTTTTTT",
+      total_matches        = 5,
+      perfect_matches      = 1,
+      one_mismatch_matches = 1,
+      two_mismatch_matches = 1,
+      other_matches        = 2,
+      fraction_of_matches  = 5 / 10.0,
+      representation       = 1.0
+    )
   }
 
   it should "do the same thing whether the UMIs are on the command line or in a file" in {
@@ -201,8 +258,8 @@ class CorrectUmisTest extends UnitSpec {
 
     Io.writeLines(umiFile, FixedUmis)
 
-    new CorrectUmis(input=input, output=corrected, rejects=Some(rejects), metrics=Some(metrics1), maxMismatches=3, minDistance=2, umis=FixedUmis).execute()
-    new CorrectUmis(input=input, output=corrected, rejects=Some(rejects), metrics=Some(metrics2), maxMismatches=3, minDistance=2, umiFiles=Seq(umiFile)).execute()
+    new CorrectUmis(input=input, output=corrected, rejects=Some(rejects), metrics=Some(metrics1), maxMismatches=3, minDistanceDiff=2, umis=FixedUmis).execute()
+    new CorrectUmis(input=input, output=corrected, rejects=Some(rejects), metrics=Some(metrics2), maxMismatches=3, minDistanceDiff=2, umiFiles=Seq(umiFile)).execute()
 
     val m1 = Metric.read[UmiCorrectionMetrics](metrics1)
     val m2 = Metric.read[UmiCorrectionMetrics](metrics2)
@@ -219,7 +276,7 @@ class CorrectUmisTest extends UnitSpec {
     val output = makeTempFile("corrected.", ".bam")
 
     // Should store original UMI on corrected records
-    new CorrectUmis(input=builder.toTempFile(), output=output, umis=expectedUmis, maxMismatches=2, minDistance=2).execute()
+    new CorrectUmis(input=builder.toTempFile(), output=output, umis=expectedUmis, maxMismatches=2, minDistanceDiff=2).execute()
     readBamRecs(output).foreach { rec =>
       if (rec.name == "exact")       rec.get(ConsensusTags.OriginalUmiBases) shouldBe None
       if (rec.name == "correctable") rec.get(ConsensusTags.OriginalUmiBases) shouldBe Some("AAAAGA")
@@ -227,9 +284,26 @@ class CorrectUmisTest extends UnitSpec {
     }
 
     // Should not store original UMIs on any records
-    new CorrectUmis(input=builder.toTempFile(), output=output, umis=expectedUmis, maxMismatches=2, minDistance=2, dontStoreOriginalUmis=true).execute()
+    new CorrectUmis(input=builder.toTempFile(), output=output, umis=expectedUmis, maxMismatches=2, minDistanceDiff=2, dontStoreOriginalUmis=true).execute()
     readBamRecs(output).foreach { rec =>
       rec.get(ConsensusTags.OriginalUmiBases) shouldBe None
+    }
+  }
+
+  it should "reverse complement the barcodes when --revcomp is used" in {
+    val expectedUmis = Seq("AAAAAA", "TTTTTT", "CCCCCC")
+    val builder = new SamBuilder()
+    builder.addFrag(name="exact",       start=100, attrs=Map(ConsensusTags.UmiBases -> Sequences.revcomp("AAAAAA")))
+    builder.addFrag(name="correctable", start=101, attrs=Map(ConsensusTags.UmiBases -> Sequences.revcomp("AAAAGA")))
+    builder.addFrag(name="reject",      start=102, attrs=Map(ConsensusTags.UmiBases -> Sequences.revcomp("GGGGGG")))
+
+    val output = makeTempFile("corrected.", ".bam")
+
+    new CorrectUmis(input=builder.toTempFile(), output=output, umis=expectedUmis, maxMismatches=2, minDistanceDiff=2, revcomp=true).execute()
+    readBamRecs(output).foreach { rec =>
+      if (rec.name == "exact")       rec.get(ConsensusTags.OriginalUmiBases) shouldBe None
+      if (rec.name == "correctable") rec.get(ConsensusTags.OriginalUmiBases) shouldBe Some("TCTTTT")
+      if (rec.name == "reject")      fail("reject record should not have made it into the output.")
     }
   }
 }
