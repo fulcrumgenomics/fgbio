@@ -206,11 +206,11 @@ class VanillaUmiConsensusCaller(override val readNamePrefix: String,
     val builder = IndexedSeq.newBuilder[SamRecord]
 
     // fragment
-    consensusFromSamRecords(records=fragments).map { frag =>
+    consensusFromSamRecords(records=fragments).map { case (frag, recs) =>
       builder += createSamRecord(
         read        = frag,
         readType    = Fragment,
-        umis        = fragments.flatMap(_.get[String](ConsensusTags.UmiBases)),
+        umis        = recs.flatMap(rec => rec.sam.flatMap(_.get[String](ConsensusTags.UmiBases))),
         cellBarcode = cellBarcode,
       )
     }
@@ -220,17 +220,17 @@ class VanillaUmiConsensusCaller(override val readNamePrefix: String,
       case (None, Some(_))      => rejectRecords(secondOfPair, RejectionReason.OrphanConsensus)
       case (Some(_), None)      => rejectRecords(firstOfPair,  RejectionReason.OrphanConsensus)
       case (None, None)         => rejectRecords(firstOfPair ++ secondOfPair, RejectionReason.OrphanConsensus)
-      case (Some(r1), Some(r2)) =>
+      case (Some((read1, r1s)), Some((read2, r2s))) =>
         builder += createSamRecord(
-          read        = r1,
+          read        = read1,
           readType    = FirstOfPair,
-          umis        = firstOfPair.flatMap(_.get[String](ConsensusTags.UmiBases)),
+          umis        = r1s.flatMap(rec => rec.sam.flatMap(_.get[String](ConsensusTags.UmiBases))),
           cellBarcode = cellBarcode,
         )
         builder += createSamRecord(
-          read        = r2,
+          read        = read2,
           readType    = SecondOfPair,
-          umis        = secondOfPair.flatMap(_.get[String](ConsensusTags.UmiBases)),
+          umis        = r2s.flatMap(rec => rec.sam.flatMap(_.get[String](ConsensusTags.UmiBases))),
           cellBarcode = cellBarcode,
         )
     }
@@ -239,7 +239,7 @@ class VanillaUmiConsensusCaller(override val readNamePrefix: String,
   }
 
   /** Creates a consensus read from the given records.  If no consensus read was created, None is returned. */
-  protected[umi] def consensusFromSamRecords(records: Seq[SamRecord]): Option[VanillaConsensusRead] = {
+  protected[umi] def consensusFromSamRecords(records: Seq[SamRecord]): Option[(VanillaConsensusRead, Seq[SourceRead])] = {
     if (records.size < this.options.minReads) {
       rejectRecords(records, RejectionReason.InsufficientSupport)
       None
@@ -256,7 +256,9 @@ class VanillaUmiConsensusCaller(override val readNamePrefix: String,
         logger.debug("Discarded ", discards, "/", records.size, " records due to mismatched alignments for ", m, n)
       }
 
-      if (filteredRecords.size >= this.options.minReads) consensusCall(filteredRecords) else {
+      if (filteredRecords.size >= this.options.minReads) {
+        consensusCall(filteredRecords).map(call => (call, filteredRecords))
+      } else {
         rejectRecords(filteredRecords.flatMap(_.sam), RejectionReason.InsufficientSupport)
         None
       }
