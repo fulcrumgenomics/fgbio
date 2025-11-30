@@ -62,6 +62,25 @@ class MathUtilTest extends UnitSpec {
     minWithIndex(Array(1.0, 2.0, 3.0, 4.0, 1.0), requireUniqueMinimum=true) shouldBe (1.0, -1)
   }
 
+  it should "use epsilon for equality comparison when requireUniqueMinimum is true" in {
+    // Use a custom epsilon that's large enough to avoid floating point representation issues
+    val testEpsilon = 0.01
+    val smallDiff = testEpsilon / 2  // 0.005 - within epsilon
+    val largeDiff = testEpsilon * 2  // 0.02 - outside epsilon
+
+    // Values within epsilon should be considered equal (returns -1)
+    minWithIndex(Array(1.0, 2.0, 1.0 + smallDiff), requireUniqueMinimum=true, epsilon=testEpsilon) shouldBe (1.0, -1)
+
+    // Values outside epsilon should be considered distinct (returns first index)
+    minWithIndex(Array(1.0, 2.0, 1.0 + largeDiff), requireUniqueMinimum=true, epsilon=testEpsilon) shouldBe (1.0, 0)
+
+    // Custom epsilon: large epsilon treats different values as equal
+    minWithIndex(Array(1.0, 2.0, 1.5), requireUniqueMinimum=true, epsilon=1.0) shouldBe (1.0, -1)
+
+    // Custom epsilon: zero epsilon treats any different values as distinct
+    minWithIndex(Array(1.0, 2.0, 1.0 + smallDiff), requireUniqueMinimum=true, epsilon=0.0) shouldBe (1.0, 0)
+  }
+
   "MathUtil.maxWithIndex" should "find the maximum value" in {
     maxWithIndex(Array(5.0, 10.0, -5.0, 100.0)) shouldBe (100, 3)
     maxWithIndex(Array(5.0, 100, -5.0, 100.0)) shouldBe (100, 1)
@@ -77,5 +96,24 @@ class MathUtilTest extends UnitSpec {
   it should "report -1 as the index when requireUniqueMaximum is true" in {
     maxWithIndex(Array(1.0, 20.0, 20.0, 20.0, 5.0)) shouldBe (20.0, 1)
     maxWithIndex(Array(1.0, 20.0, 20.0, 20.0, 5.0), requireUniqueMaximum=true) shouldBe (20.0, -1)
+  }
+
+  it should "use epsilon for equality comparison when requireUniqueMaximum is true" in {
+    // Use a custom epsilon that's large enough to avoid floating point representation issues
+    val testEpsilon = 0.01
+    val smallDiff = testEpsilon / 2  // 0.005 - within epsilon
+    val largeDiff = testEpsilon * 2  // 0.02 - outside epsilon
+
+    // Values within epsilon should be considered equal (returns -1)
+    maxWithIndex(Array(1.0, 20.0, 20.0 - smallDiff), requireUniqueMaximum=true, epsilon=testEpsilon) shouldBe (20.0, -1)
+
+    // Values outside epsilon should be considered distinct (returns first index)
+    maxWithIndex(Array(1.0, 20.0, 20.0 - largeDiff), requireUniqueMaximum=true, epsilon=testEpsilon) shouldBe (20.0, 1)
+
+    // Custom epsilon: large epsilon treats different values as equal
+    maxWithIndex(Array(1.0, 20.0, 19.5), requireUniqueMaximum=true, epsilon=1.0) shouldBe (20.0, -1)
+
+    // Custom epsilon: zero epsilon treats any different values as distinct
+    maxWithIndex(Array(1.0, 20.0, 20.0 - smallDiff), requireUniqueMaximum=true, epsilon=0.0) shouldBe (20.0, 1)
   }
 }
