@@ -486,6 +486,19 @@ class VanillaUmiConsensusCallerTest extends UnitSpec with OptionValues {
     recs should have size 1
   }
 
+  it should "preserve input order regardless of read length" in {
+    // Create reads with different lengths in a specific non-length-sorted order
+    // Internal sorting by length would reorder these, but output should match input order
+    val cigars = Seq("30M", "50M", "20M", "40M", "10M", "45M")
+    val srcs = cigars.zipWithIndex.map { case (cigar, i) =>
+      val len = Cigar(cigar).lengthOnQuery
+      SourceRead(id=s"read$i", bases=("A"*len).getBytes, quals=Array.fill(len)(30.toByte), cigar=Cigar(cigar))
+    }
+    val recs = cc().filterToMostCommonAlignment(srcs)
+    recs should have size 6
+    recs.map(_.id) shouldBe Seq("read0", "read1", "read2", "read3", "read4", "read5")
+  }
+
   "VanillaConsensusCaller.toSourceRead" should "mask bases that are below the quality threshold" in {
     val builder = new SamBuilder(readLength=10)
     val rec     = builder.addFrag(start=1, bases="AAAAAAAAAA").map { r => r.quals = Array[Byte](2,30,19,21,18,20,0,30,2,30); r}.value
