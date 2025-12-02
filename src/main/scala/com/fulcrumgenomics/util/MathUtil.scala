@@ -30,7 +30,11 @@ package com.fulcrumgenomics.util
   */
 object MathUtil {
 
-  val epsilon: Double = 2.2204460492503131E-16
+  /** The difference between 1.0 and the next larger representable number.
+    *
+    * @see https://doc.rust-lang.org/std/primitive.f64.html#associatedconstant.EPSILON
+    */
+  val epsilon: Double = 1.0 / Math.pow(2, 52)
 
   /** Calculates the arithmetic mean of an array of bytes. The computation is performed
     * in integer space and the result will therefore always round down.
