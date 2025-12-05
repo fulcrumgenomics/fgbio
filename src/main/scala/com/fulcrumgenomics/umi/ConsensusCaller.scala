@@ -29,7 +29,6 @@ import com.fulcrumgenomics.util.NumericTypes._
 import htsjdk.samtools.util.SequenceUtil
 
 import java.util
-import scala.collection.mutable.ArrayBuffer
 
 object ConsensusCaller {
   type Base = Byte
@@ -83,14 +82,19 @@ class ConsensusCaller(errorRatePreLabeling:  PhredScore,
   class ConsensusBaseBuilder {
     private val observations = new Array[Int](DnaBaseCount)
 
-    // Note: to ensure numerical stability, we store the terms we want to eventually sum, rather than storing the sum
-    // itself. We can then sum smallest (in magnitude) to largest (in magnitude) for numerical stability.
-    private val likelihoods = Range.inclusive(1, DnaBaseCount).map { _ => new ArrayBuffer[LogProbability](256) }.toArray
+    // Note: to ensure numerical stability, we use Kahan (compensated) summation to accumulate the likelihoods.
+    // This tracks rounding errors in a separate compensation array and corrects for them on each addition.
+    private val likelihoods  = new Array[LogProbability](DnaBaseCount)
+    private val compensation = new Array[LogProbability](DnaBaseCount)
+
+    // Initialize on construction
+    reset()
 
     /** Resets the likelihoods to p=1 so that the builder can be re-used. */
     def reset(): Unit = {
       util.Arrays.fill(observations, 0)
-      this.likelihoods.foreach { arr => arr.clear() }
+      util.Arrays.fill(likelihoods, LnOne)
+      util.Arrays.fill(compensation, 0.0)
     }
 
     /** Adds a base and un-adjusted base quality to the consensus likelihoods. */
@@ -108,16 +112,24 @@ class ConsensusCaller(errorRatePreLabeling:  PhredScore,
         while (i < DnaBaseCount) {
           val candidateBase = DnaBasesUpperCase(i)
           if (base == candidateBase) {
-            likelihoods(i) += pTruth
+            kahanAdd(i, pTruth)
             observations(i) += 1
           }
           else {
-            likelihoods(i) += pErrorPerBase
+            kahanAdd(i, pErrorPerBase)
           }
 
           i += 1
         }
       }
+    }
+
+    /** Adds a term to the likelihood at the given index using Kahan (compensated) summation. */
+    private def kahanAdd(index: Int, term: LogProbability): Unit = {
+      val compensatedTerm = term - compensation(index)
+      val newSum          = likelihoods(index) + compensatedTerm
+      compensation(index) = (newSum - likelihoods(index)) - compensatedTerm
+      likelihoods(index)  = newSum
     }
 
     /**
@@ -137,19 +149,12 @@ class ConsensusCaller(errorRatePreLabeling:  PhredScore,
       case x   => throw new IllegalArgumentException("Unsupported base: " + x.toChar)
     }
 
-    /** Produces the final likelihoods per base by sorting the accumulated likelihood terms from smallest
-     * (in magnitude) to largest (in magnitude) and then summing them in that order.  The values can be
-     * negated as we are operating using log probabilities, which should always be either zero or negative.*/
-    private def finalLikelihoods: Array[LogProbability] = {
-      likelihoods.map(_.sortInPlaceBy(v => -v).sum)
-    }
-
     /** Call the consensus base and quality score given the current set of likelihoods. */
     def call() : (Base, PhredScore) = {
-      // sum the likelihood terms in a numerically stable way
+      // likelihoods are accumulated using Kahan summation for numerical stability
       // pick the base with the maximum posterior
-      val lls = finalLikelihoods
-      val likelihoodSum   = LogProbability.or(lls)
+      val lls = likelihoods
+      val likelihoodSum  = LogProbability.or(lls)
       val (maxLikelihood, maxLlIndex) = MathUtil.maxWithIndex(lls, requireUniqueMaximum=true)
 
       maxLlIndex match {
@@ -177,7 +182,7 @@ class ConsensusCaller(errorRatePreLabeling:  PhredScore,
       * labels.
       */
     private[umi] def logLikelihoods: Array[LogProbability] = {
-      val lls             = finalLikelihoods
+      val lls             = likelihoods
       val likelihoodSum   = LogProbability.or(lls)
       val posteriors      = lls.map(l => LogProbability.normalizeByLogProbability(l, likelihoodSum))
       val errors          = posteriors.map(LogProbability.not)
