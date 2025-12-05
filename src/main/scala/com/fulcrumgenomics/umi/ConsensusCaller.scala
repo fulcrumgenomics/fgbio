@@ -29,6 +29,7 @@ import com.fulcrumgenomics.util.NumericTypes._
 import htsjdk.samtools.util.SequenceUtil
 
 import java.util
+import scala.collection.mutable.ArrayBuffer
 
 object ConsensusCaller {
   type Base = Byte
@@ -81,12 +82,15 @@ class ConsensusCaller(errorRatePreLabeling:  PhredScore,
     */
   class ConsensusBaseBuilder {
     private val observations = new Array[Int](DnaBaseCount)
-    private val likelihoods = new Array[LogProbability](DnaBaseCount)
+
+    // Note: to ensure numerical stability, we store the terms we want to eventually sum, rather than storing the sum
+    // itself. We can then sum smallest (in magnitude) to largest (in magnitude) for numerical stability.
+    private val likelihoods = Range.inclusive(1, DnaBaseCount).map { _ => new ArrayBuffer[LogProbability](256) }.toArray
 
     /** Resets the likelihoods to p=1 so that the builder can be re-used. */
     def reset(): Unit = {
       util.Arrays.fill(observations, 0)
-      util.Arrays.fill(this.likelihoods, LnOne)
+      this.likelihoods.foreach { arr => arr.clear() }
     }
 
     /** Adds a base and un-adjusted base quality to the consensus likelihoods. */
@@ -97,7 +101,7 @@ class ConsensusCaller(errorRatePreLabeling:  PhredScore,
       * Adds a base with adjusted error and truth probabilities to the consensus likelihoods.
       *
       */
-    private def add(base: Base, pErrorPerBase: LogProbability, pTruth: LogProbability) = {
+    private def add(base: Base, pErrorPerBase: LogProbability, pTruth: LogProbability): Unit = {
       val b = SequenceUtil.upperCase(base)
       if (b != 'N') {
         var i = 0
@@ -133,11 +137,18 @@ class ConsensusCaller(errorRatePreLabeling:  PhredScore,
       case x   => throw new IllegalArgumentException("Unsupported base: " + x.toChar)
     }
 
+    /** Produces the final likelihoods per base by sorting the accumulated likelihood terms from smallest
+     * (in magnitude) to largest (in magnitude) and then summing them in that order.  The values can be
+     * negated as we are operating using log probabilities, which should always be either zero or negative.*/
+    private def finalLikelihoods: Array[LogProbability] = {
+      likelihoods.map(_.sortInPlaceBy(v => -v).sum)
+    }
+
     /** Call the consensus base and quality score given the current set of likelihoods. */
     def call() : (Base, PhredScore) = {
-      // get the sum of the likelihoods
+      // sum the likelihood terms in a numerically stable way
       // pick the base with the maximum posterior
-      val lls  = likelihoods
+      val lls = finalLikelihoods
       val likelihoodSum   = LogProbability.or(lls)
       val (maxLikelihood, maxLlIndex) = MathUtil.maxWithIndex(lls, requireUniqueMaximum=true)
 
@@ -165,8 +176,8 @@ class ConsensusCaller(errorRatePreLabeling:  PhredScore,
       * returned factor in both the base observations and the probability of error prior to applying the
       * labels.
       */
-    def logLikelihoods: Array[LogProbability] = {
-      val lls             = likelihoods
+    private[umi] def logLikelihoods: Array[LogProbability] = {
+      val lls             = finalLikelihoods
       val likelihoodSum   = LogProbability.or(lls)
       val posteriors      = lls.map(l => LogProbability.normalizeByLogProbability(l, likelihoodSum))
       val errors          = posteriors.map(LogProbability.not)
