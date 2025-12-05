@@ -244,8 +244,8 @@ class VanillaUmiConsensusCaller(override val readNamePrefix: String,
    *
    * The source reads returned as part of the consensus read are the _filtered_ set of source reads that are used to
    * create the consensus call.  The read may be filtered for reasons including but not limited to: if the read is too
-   * short after quality trimming, or if the read does not share the most common alignment of the read sequence to the
-   * reference.
+   * short after quality trimming, if the read does not share the most common alignment of the read sequence to the
+   * reference, or if the number of reads are capped.
    * */
   protected[umi] def consensusFromSamRecords(records: Seq[SamRecord]): Option[VanillaConsensusRead] = {
     if (records.size < this.options.minReads) {
@@ -351,7 +351,7 @@ class VanillaUmiConsensusCaller(override val readNamePrefix: String,
         quals       = consensusQuals,
         depths      = consensusDepths,
         errors      = consensusErrors,
-        sourceReads = Some(reads)))
+        sourceReads = Some(capped)))
     }
   }
 
