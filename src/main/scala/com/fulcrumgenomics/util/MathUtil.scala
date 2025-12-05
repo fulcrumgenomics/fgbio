@@ -29,6 +29,13 @@ package com.fulcrumgenomics.util
   * in efficient albeit non-idiomatic scala.
   */
 object MathUtil {
+
+  /** The difference between 1.0 and the next larger representable number.
+    *
+    * @see https://doc.rust-lang.org/std/primitive.f64.html#associatedconstant.EPSILON
+    */
+  val epsilon: Double = 1.0 / Math.pow(2, 52)
+
   /** Calculates the arithmetic mean of an array of bytes. The computation is performed
     * in integer space and the result will therefore always round down.
     *
@@ -61,10 +68,11 @@ object MathUtil {
     * @param requireUniqueMinimum When false the earliest index at which the minimum value occurs is
     *                             reported. When true, if there are multiple indices with the minimum
     *                             value then -1 will be returned for the index.
+    * @param epsilon The epsilon for comparison of equality
     * @throws java.util.NoSuchElementException if either the input array is zero length or the array
     *                                contains only invalid values (NaN and possibly NegativeInfinity)
     */
-  def minWithIndex(ds: Array[Double], allowNegativeInfinity: Boolean=false, requireUniqueMinimum: Boolean=false): (Double,Int) = {
+  def minWithIndex(ds: Array[Double], allowNegativeInfinity: Boolean=false, requireUniqueMinimum: Boolean=false, epsilon: Double = MathUtil.epsilon): (Double, Int) = {
     if (ds.length == 0) throw new NoSuchElementException("Cannot find the min of a zero length array.")
     var min      = Double.MaxValue
     var minIndex = -1
@@ -79,7 +87,7 @@ object MathUtil {
           minIndex = idx
           assigned = true
         }
-        else if (v == min && requireUniqueMinimum) {
+        else if (Math.abs(v - min) <= epsilon  && requireUniqueMinimum) {
           minIndex = -1
         }
       }
@@ -102,10 +110,11 @@ object MathUtil {
     * @param requireUniqueMaximum When false the earliest index at which the maximum value occurs is
     *                             reported. When true, if there are multiple indices with the maximum
     *                             value then -1 will be returned for the index.
+    * @param epsilon The epsilon for comparison of equality
     * @throws java.util.NoSuchElementException if either the input array is zero length or the array
     *                                contains only invalid values (NaN)
     */
-  def maxWithIndex(ds: Array[Double], requireUniqueMaximum: Boolean=false): (Double,Int) = {
+  def maxWithIndex(ds: Array[Double], requireUniqueMaximum: Boolean=false, epsilon: Double = MathUtil.epsilon): (Double,Int) = {
     if (ds.length == 0) throw new NoSuchElementException("Cannot find the max of a zero length array.")
     var max      =  Double.MinValue
     var maxIndex = -1
@@ -120,7 +129,7 @@ object MathUtil {
           maxIndex = idx
           assigned = true
         }
-        else if (v == max && requireUniqueMaximum) {
+        else if (Math.abs(v - max) <= epsilon && requireUniqueMaximum) {
           maxIndex = -1
         }
       }
