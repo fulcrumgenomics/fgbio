@@ -105,12 +105,14 @@ class CallDuplexConsensusReadsTest extends UnitSpec {
       // Add the original UMI bases to each read
       builder.foreach { rec =>
         val mi = rec[String](MI)
-        // first of pair ABs and second of pair BAs
-        if ((rec.firstOfPair && mi.endsWith("/A")) || (rec.secondOfPair && mi.endsWith("/B"))) {
-          rec(RX) = "AAT-CCG"
-        }
-        else {
-          rec(RX) = "CCG-AAT"
+        // The UMIs for ABR1s+BAR2s are called together, and the UMIs for ABR2s and BAR1s are called together.  But
+        // before they are called together, they BAR1s and ABR2s have their UMI swapped, so we have to swap them here
+        // too.
+        (rec.firstOfPair, mi.endsWith("/A")) match {
+          case (true,  true)  => rec(RX) = "AAT-CCG" // ABR1
+          case (false, false) => rec(RX) = "CCG-AAT" // BAR2
+          case (false,  true) => rec(RX) = "CCG-AAT" // ABR2
+          case (true,  false) => rec(RX) = "AAT-CCG" // BAR1
         }
       }
 
