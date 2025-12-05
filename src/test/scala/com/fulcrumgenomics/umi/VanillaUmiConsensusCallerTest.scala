@@ -272,7 +272,7 @@ class VanillaUmiConsensusCallerTest extends UnitSpec with OptionValues {
 
     cc(opts).consensusFromSamRecords(builder.toSeq) match {
       case None => fail()
-      case Some((consensus, _)) =>
+      case Some(consensus) =>
         consensus.baseString shouldBe "GATTACA"
         consensus.quals.foreach(q => q shouldBe 30.toByte)
     }
@@ -298,7 +298,7 @@ class VanillaUmiConsensusCallerTest extends UnitSpec with OptionValues {
 
     cc(opts).consensusFromSamRecords(builder.toSeq) match {
       case None => fail()
-      case Some((consensus, _)) =>
+      case Some(consensus) =>
         consensus.baseString shouldBe "NNNNNNN"
         consensus.quals.foreach(q => q shouldBe 2.toByte)
         consensus.errors.foreach(d => d shouldBe 0)
