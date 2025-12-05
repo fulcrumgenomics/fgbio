@@ -103,4 +103,34 @@ class ConsensusCallerTest extends UnitSpec {
     builder.call() shouldBe ('C'.toByte, 20.toByte)
     builder.contributions shouldBe 1
   }
+
+  it should "call a no-call regardless of the order in which the bases are added for 4A/4C" in {
+    val caller = new ConsensusCaller(errorRatePreLabeling=45.toByte, errorRatePostLabeling=40.toByte)
+    val builder = caller.builder()
+    builder.add('C'.toByte, 38.toByte)
+    builder.add('A'.toByte, 38.toByte)
+    builder.add('C'.toByte, 38.toByte)
+    builder.add('C'.toByte, 38.toByte)
+    builder.add('C'.toByte, 38.toByte)
+    builder.add('A'.toByte, 38.toByte)
+    builder.add('A'.toByte, 38.toByte)
+    builder.add('A'.toByte, 38.toByte)
+    builder.call() shouldBe ('N'.toByte, 2.toByte)
+    builder.contributions shouldBe 8
+
+    builder.reset()
+    builder.add('A'.toByte, 38.toByte)
+    builder.add('C'.toByte, 38.toByte)
+    builder.add('C'.toByte, 38.toByte)
+    builder.add('C'.toByte, 38.toByte)
+    builder.add('A'.toByte, 38.toByte)
+    builder.add('A'.toByte, 38.toByte)
+    builder.add('A'.toByte, 38.toByte)
+    builder.add('C'.toByte, 38.toByte)
+    val (base, qual) = builder.call()
+    withClue(f"Expected N/2 but called ${base.toChar}/$qual:") {
+      builder.call() shouldBe('N'.toByte, 2.toByte)
+    }
+    builder.contributions shouldBe 8
+  }
 }
