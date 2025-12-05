@@ -175,7 +175,7 @@ class ConsensusCaller(errorRatePreLabeling:  PhredScore,
     }
   }
 
-  /** Pre-computes the the log-scale probabilities of an error for each a phred-scaled base quality from 0-127. */
+  /** Pre-computes the log-scale probabilities of an error for each a phred-scaled base quality from 0-127. */
   private val phredToAdjustedLogProbError: Array[LogProbability] = Range(0, Byte.MaxValue).toArray.map(q => {
     val e1 = LnErrorRatePostLabeling
     val e2 = LogProbability.fromPhredScore(q.toByte)
@@ -186,7 +186,7 @@ class ConsensusCaller(errorRatePreLabeling:  PhredScore,
   private val phredToOneThirdAdjustedLogProbError: Array[LogProbability] =
     phredToAdjustedLogProbError.map(e => LogProbability.normalizeByScalar(e, 3))
 
-  /** Pre-computes the the log-scale probabilities of an not an error for each a phred-scaled base quality from 0-127. */
+  /** Pre-computes the log-scale probabilities of an not an error for each a phred-scaled base quality from 0-127. */
   private val phredToAdjustedLogProbCorrect: Array[Double] = phredToAdjustedLogProbError.map(LogProbability.not)
 
   /**
