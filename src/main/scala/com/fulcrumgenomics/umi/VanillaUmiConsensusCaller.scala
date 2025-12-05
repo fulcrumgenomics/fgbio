@@ -96,7 +96,7 @@ case class VanillaConsensusRead(id: String, bases: Array[Byte], quals: Array[Byt
   }
 
   /**
-    * Modifies all of the bases, quals, depths and errors arrays *in place* to reverse complement the sequence
+    * Modifies all the bases, quals, depths and errors arrays *in place* to reverse complement the sequence
     * and related information in the consensus read instance.
     *
     * WARNING: modifies the record in place!
@@ -138,11 +138,12 @@ case class VanillaConsensusRead(id: String, bases: Array[Byte], quals: Array[Byt
       util.Arrays.fill(newQuals, startIndex, startIndex + addedLength, qual)
 
       VanillaConsensusRead(
-        id     = this.id,
-        bases  = newBases,
-        quals  = newQuals,
-        depths = newDepths,
-        errors = newErrors,
+        id          = this.id,
+        bases       = newBases,
+        quals       = newQuals,
+        depths      = newDepths,
+        errors      = newErrors,
+        sourceReads = sourceReads,
       )
     }
   }
@@ -344,7 +345,13 @@ class VanillaUmiConsensusCaller(override val readNamePrefix: String,
         }
       }
 
-      Some(VanillaConsensusRead(id=capped.head.id, bases=consensusBases, quals=consensusQuals, depths=consensusDepths, errors=consensusErrors, sourceReads=Some(reads)))
+      Some(VanillaConsensusRead(
+        id          = capped.head.id,
+        bases       = consensusBases,
+        quals       = consensusQuals,
+        depths      = consensusDepths,
+        errors      = consensusErrors,
+        sourceReads = Some(reads)))
     }
   }
 
