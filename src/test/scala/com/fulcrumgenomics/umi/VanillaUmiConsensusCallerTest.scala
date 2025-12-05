@@ -637,6 +637,23 @@ class VanillaUmiConsensusCallerTest extends UnitSpec with OptionValues {
     consensuses.length shouldBe 2
   }
 
+  it should "only call the consensus UMI (RX) on filtered reads" in {
+    val builder = new SamBuilder(readLength=10)
+
+    // All UMI bases have disagreement across the reads, but due to filtering to the most common alignment, only
+    // Read 1 and Read 3 are kept.  They disagree at the middle base.
+    builder.addFrag("READ1", start=1, cigar="10M",    attrs=Map(DefaultTag -> "AAA", ConsensusTags.UmiBases -> "TTT"))
+    builder.addFrag("READ2", start=1, cigar="5M5D5M", attrs=Map(DefaultTag -> "AAA", ConsensusTags.UmiBases -> "ATT"))
+    builder.addFrag("READ3", start=1, cigar="10M",    attrs=Map(DefaultTag -> "AAA", ConsensusTags.UmiBases -> "TAT"))
+    builder.addFrag("READ2", start=1, cigar="4M2I4M", attrs=Map(DefaultTag -> "AAA", ConsensusTags.UmiBases -> "TTA"))
+
+    val consensusCaller = cc(cco(minReads = 1, minInputBaseQuality = 2.toByte))
+    val consensuses = consensusCaller.consensusReadsFromSamRecords(builder.toSeq)
+    consensuses.length shouldBe 1
+    val consensus = consensuses.headOption.value
+    consensus[String](ConsensusTags.UmiBases) shouldBe "TNT"
+  }
+
   "VanillaUmiConsensusRead.padded" should "pad reads to the left of the existing sequence" in {
     val bases = "AACCGGTT"
     val read = VanillaConsensusRead(

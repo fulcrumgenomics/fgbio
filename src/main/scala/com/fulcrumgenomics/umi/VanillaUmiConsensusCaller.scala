@@ -82,8 +82,9 @@ case class VanillaUmiConsensusCallerOptions
   * @param quals the calculated phred-scaled quality scores of the bases
   * @param depths the number of raw reads that contributed to the consensus call at each position
   * @param errors the number of contributing raw reads that disagree with the final consensus base at each position
+  * @param sourceReads optionally the source reads that went into calling this consensus
   */
-case class VanillaConsensusRead(id: String, bases: Array[Byte], quals: Array[Byte], depths: Array[Short], errors: Array[Short]) extends SimpleRead {
+case class VanillaConsensusRead(id: String, bases: Array[Byte], quals: Array[Byte], depths: Array[Short], errors: Array[Short], sourceReads: Option[Seq[SourceRead]] = None) extends SimpleRead {
   require(bases.length == quals.length,  "Bases and qualities are not the same length.")
   require(bases.length == depths.length, "Bases and depths are not the same length.")
   require(bases.length == errors.length, "Bases and errors are not the same length.")
@@ -95,7 +96,7 @@ case class VanillaConsensusRead(id: String, bases: Array[Byte], quals: Array[Byt
   }
 
   /**
-    * Modifies all of the bases, quals, depths and errors arrays *in place* to reverse complement the sequence
+    * Modifies all the bases, quals, depths and errors arrays *in place* to reverse complement the sequence
     * and related information in the consensus read instance.
     *
     * WARNING: modifies the record in place!
@@ -137,11 +138,12 @@ case class VanillaConsensusRead(id: String, bases: Array[Byte], quals: Array[Byt
       util.Arrays.fill(newQuals, startIndex, startIndex + addedLength, qual)
 
       VanillaConsensusRead(
-        id     = this.id,
-        bases  = newBases,
-        quals  = newQuals,
-        depths = newDepths,
-        errors = newErrors,
+        id          = this.id,
+        bases       = newBases,
+        quals       = newQuals,
+        depths      = newDepths,
+        errors      = newErrors,
+        sourceReads = sourceReads,
       )
     }
   }
@@ -206,11 +208,11 @@ class VanillaUmiConsensusCaller(override val readNamePrefix: String,
     val builder = IndexedSeq.newBuilder[SamRecord]
 
     // fragment
-    consensusFromSamRecords(records=fragments).map { frag =>
+    consensusFromSamRecords(records=fragments).map { case frag =>
       builder += createSamRecord(
         read        = frag,
         readType    = Fragment,
-        umis        = fragments.flatMap(_.get[String](ConsensusTags.UmiBases)),
+        umis        = frag.sourceReads.getOrElse(Seq.empty).flatMap(rec => rec.sam.flatMap(_.get[String](ConsensusTags.UmiBases))),
         cellBarcode = cellBarcode,
       )
     }
@@ -220,17 +222,17 @@ class VanillaUmiConsensusCaller(override val readNamePrefix: String,
       case (None, Some(_))      => rejectRecords(secondOfPair, RejectionReason.OrphanConsensus)
       case (Some(_), None)      => rejectRecords(firstOfPair,  RejectionReason.OrphanConsensus)
       case (None, None)         => rejectRecords(firstOfPair ++ secondOfPair, RejectionReason.OrphanConsensus)
-      case (Some(r1), Some(r2)) =>
+      case (Some(read1), Some(read2)) =>
         builder += createSamRecord(
-          read        = r1,
+          read        = read1,
           readType    = FirstOfPair,
-          umis        = firstOfPair.flatMap(_.get[String](ConsensusTags.UmiBases)),
+          umis        = read1.sourceReads.getOrElse(Seq.empty).flatMap(rec => rec.sam.flatMap(_.get[String](ConsensusTags.UmiBases))),
           cellBarcode = cellBarcode,
         )
         builder += createSamRecord(
-          read        = r2,
+          read        = read2,
           readType    = SecondOfPair,
-          umis        = secondOfPair.flatMap(_.get[String](ConsensusTags.UmiBases)),
+          umis        = read2.sourceReads.getOrElse(Seq.empty).flatMap(rec => rec.sam.flatMap(_.get[String](ConsensusTags.UmiBases))),
           cellBarcode = cellBarcode,
         )
     }
@@ -238,7 +240,13 @@ class VanillaUmiConsensusCaller(override val readNamePrefix: String,
     builder.result()
   }
 
-  /** Creates a consensus read from the given records.  If no consensus read was created, None is returned. */
+  /** Creates a consensus read from the given records.  If no consensus read was created, None is returned.
+   *
+   * The source reads returned as part of the consensus read are the _filtered_ set of source reads that are used to
+   * create the consensus call.  The read may be filtered for reasons including but not limited to: if the read is too
+   * short after quality trimming, if the read does not share the most common alignment of the read sequence to the
+   * reference, or if the number of reads are capped.
+   * */
   protected[umi] def consensusFromSamRecords(records: Seq[SamRecord]): Option[VanillaConsensusRead] = {
     if (records.size < this.options.minReads) {
       rejectRecords(records, RejectionReason.InsufficientSupport)
@@ -256,7 +264,9 @@ class VanillaUmiConsensusCaller(override val readNamePrefix: String,
         logger.debug("Discarded ", discards, "/", records.size, " records due to mismatched alignments for ", m, n)
       }
 
-      if (filteredRecords.size >= this.options.minReads) consensusCall(filteredRecords) else {
+      if (filteredRecords.size >= this.options.minReads) {
+        consensusCall(filteredRecords)
+      } else {
         rejectRecords(filteredRecords.flatMap(_.sam), RejectionReason.InsufficientSupport)
         None
       }
@@ -335,7 +345,13 @@ class VanillaUmiConsensusCaller(override val readNamePrefix: String,
         }
       }
 
-      Some(VanillaConsensusRead(id=capped.head.id, bases=consensusBases, quals=consensusQuals, depths=consensusDepths, errors=consensusErrors))
+      Some(VanillaConsensusRead(
+        id          = capped.head.id,
+        bases       = consensusBases,
+        quals       = consensusQuals,
+        depths      = consensusDepths,
+        errors      = consensusErrors,
+        sourceReads = Some(capped)))
     }
   }
 
