@@ -399,17 +399,19 @@ trait UmiConsensusCaller[ConsensusRead <: SimpleRead] {
     * NOTE: filtered out reads are sent to the `rejectsMethod` method and do not need further handling
     */
   protected[umi] def filterToMostCommonAlignment(recs: Seq[SourceRead]): Seq[SourceRead] = if (recs.size < 2) recs else {
-    val groups = new ArrayBuffer[AlignmentGroup]
-    val sorted = recs.sortBy(r => -r.length).toIndexedSeq
+    val recsIndexed = recs.toIndexedSeq
+    // Sort indices by record length (descending) - avoids allocating a sorted copy of records
+    val sortedIndices: Array[Int] = recsIndexed.indices.sortBy(i => -recsIndexed(i).length).toArray
 
-    forloop (from=0, until=sorted.length) { i =>
-      val simpleCigar = simplifyCigar(sorted(i).cigar)
+    val groups = new ArrayBuffer[AlignmentGroup]
+    forloop (from=0, until=sortedIndices.length) { si =>
+      val simpleCigar = simplifyCigar(recsIndexed(sortedIndices(si)).cigar)
       var found = false
-      groups.foreach { g => if (simpleCigar.isPrefixOf(g.cigar)) { g.add(i); found = true } }
+      groups.foreach { g => if (simpleCigar.isPrefixOf(g.cigar)) { g.add(si); found = true } }
 
       if (!found) {
-        val newGroup = new AlignmentGroup(simpleCigar, new mutable.BitSet(sorted.size))
-        newGroup.add(i)
+        val newGroup = new AlignmentGroup(simpleCigar, new mutable.BitSet(sortedIndices.length))
+        newGroup.add(si)
         groups += newGroup
       }
     }
@@ -419,12 +421,19 @@ trait UmiConsensusCaller[ConsensusRead <: SimpleRead] {
     }
     else {
       val bestGroup = groups.maxBy(_.size)
-      val keepers = new ArrayBuffer[SourceRead](bestGroup.size)
-      forloop (from=0, until=sorted.length) { i =>
-        if (bestGroup.contains(i)) keepers += sorted(i)
-        else sorted(i).sam.foreach(rejectRecords(RejectionReason.MinorityAlignment, _))
+      // BitSet tracking which original indices are kept - allows O(n) reconstruction in original order
+      val keptIndices = new mutable.BitSet(recsIndexed.length)
+      forloop (from=0, until=sortedIndices.length) { si =>
+        val origIdx = sortedIndices(si)
+        if (bestGroup.contains(si)) keptIndices += origIdx
+        else recsIndexed(origIdx).sam.foreach(rejectRecords(RejectionReason.MinorityAlignment, _))
       }
 
+      // Reconstruct in original order with a linear scan
+      val keepers = new ArrayBuffer[SourceRead](keptIndices.size)
+      forloop (from=0, until=recsIndexed.length) { i =>
+        if (keptIndices.contains(i)) keepers += recsIndexed(i)
+      }
       keepers.toIndexedSeq
     }
   }
