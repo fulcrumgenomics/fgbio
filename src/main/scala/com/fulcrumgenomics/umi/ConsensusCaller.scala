@@ -81,12 +81,20 @@ class ConsensusCaller(errorRatePreLabeling:  PhredScore,
     */
   class ConsensusBaseBuilder {
     private val observations = new Array[Int](DnaBaseCount)
-    private val likelihoods = new Array[LogProbability](DnaBaseCount)
+
+    // Note: to ensure numerical stability, we use Kahan (compensated) summation to accumulate the likelihoods.
+    // This tracks rounding errors in a separate compensation array and corrects for them on each addition.
+    private val likelihoods  = new Array[LogProbability](DnaBaseCount)
+    private val compensation = new Array[LogProbability](DnaBaseCount)
+
+    // Initialize on construction
+    reset()
 
     /** Resets the likelihoods to p=1 so that the builder can be re-used. */
     def reset(): Unit = {
       util.Arrays.fill(observations, 0)
-      util.Arrays.fill(this.likelihoods, LnOne)
+      util.Arrays.fill(likelihoods, LnOne)
+      util.Arrays.fill(compensation, 0.0)
     }
 
     /** Adds a base and un-adjusted base quality to the consensus likelihoods. */
@@ -97,23 +105,31 @@ class ConsensusCaller(errorRatePreLabeling:  PhredScore,
       * Adds a base with adjusted error and truth probabilities to the consensus likelihoods.
       *
       */
-    private def add(base: Base, pErrorPerBase: LogProbability, pTruth: LogProbability) = {
+    private def add(base: Base, pErrorPerBase: LogProbability, pTruth: LogProbability): Unit = {
       val b = SequenceUtil.upperCase(base)
       if (b != 'N') {
         var i = 0
         while (i < DnaBaseCount) {
           val candidateBase = DnaBasesUpperCase(i)
           if (base == candidateBase) {
-            likelihoods(i) += pTruth
+            kahanAdd(i, pTruth)
             observations(i) += 1
           }
           else {
-            likelihoods(i) += pErrorPerBase
+            kahanAdd(i, pErrorPerBase)
           }
 
           i += 1
         }
       }
+    }
+
+    /** Adds a term to the likelihood at the given index using Kahan (compensated) summation. */
+    private def kahanAdd(index: Int, term: LogProbability): Unit = {
+      val compensatedTerm = term - compensation(index)
+      val newSum          = likelihoods(index) + compensatedTerm
+      compensation(index) = (newSum - likelihoods(index)) - compensatedTerm
+      likelihoods(index)  = newSum
     }
 
     /**
@@ -135,10 +151,10 @@ class ConsensusCaller(errorRatePreLabeling:  PhredScore,
 
     /** Call the consensus base and quality score given the current set of likelihoods. */
     def call() : (Base, PhredScore) = {
-      // get the sum of the likelihoods
+      // likelihoods are accumulated using Kahan summation for numerical stability
       // pick the base with the maximum posterior
-      val lls  = likelihoods
-      val likelihoodSum   = LogProbability.or(lls)
+      val lls = likelihoods
+      val likelihoodSum  = LogProbability.or(lls)
       val (maxLikelihood, maxLlIndex) = MathUtil.maxWithIndex(lls, requireUniqueMaximum=true)
 
       maxLlIndex match {
@@ -165,7 +181,7 @@ class ConsensusCaller(errorRatePreLabeling:  PhredScore,
       * returned factor in both the base observations and the probability of error prior to applying the
       * labels.
       */
-    def logLikelihoods: Array[LogProbability] = {
+    private[umi] def logLikelihoods: Array[LogProbability] = {
       val lls             = likelihoods
       val likelihoodSum   = LogProbability.or(lls)
       val posteriors      = lls.map(l => LogProbability.normalizeByLogProbability(l, likelihoodSum))
