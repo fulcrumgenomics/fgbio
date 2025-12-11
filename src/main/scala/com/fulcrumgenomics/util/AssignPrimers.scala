@@ -49,7 +49,7 @@ import htsjdk.samtools.SAMFileHeader.{GroupOrder, SortOrder}
     |produced by the aligner, with the supplementary alignment containing the primer end of the read (5' sequencing order).
     |In this case, the primer may not be assigned for this end of the read pair.  Therefore, it is recommended to prefer
     |or choose the primary alignment that has the closest aligned read base to the 5' end of the read in sequencing order.
-    |For example, from `bwa` version `0.7.16` onwards, the `-5` option may be used.  Consider also using the `-q` option 
+    |For example, from `bwa` version `0.7.16` onwards, the `-5` option may be used.  Consider also using the `-q` option
     |for `bwa` `0.7.16` as well, which is standard in `0.7.17` onwards when the `-5` option is used.
     |
     |The `--annotate-all` option may be used to annotate all alignments for a given read end (eg. R1) with
@@ -69,6 +69,7 @@ class AssignPrimers
  @arg(doc="The SAM tag for the assigned amplicon identifier.") val ampliconIdentifierTag: String = AssignPrimers.AmpliconIdentifierTag,
  @arg(doc="The SAM tag for the mate's assigned amplicon identifier.") val mateAmpliconIdentifierTag: String = AssignPrimers.MateAmpliconIdentifierTag,
  @arg(doc="Annotate all R1 (or R2) with same value.") val annotateAll: Boolean = false
+ @arg(flag="r", doc="Reference fasta, only needed if reading/writing CRAM.") val ref: Option[PathToFasta] = None,
 ) extends FgBioTool with LazyLogging {
 
   Io.assertReadable(input)
@@ -76,8 +77,8 @@ class AssignPrimers
   Io.assertCanWriteFile(output)
 
   override def execute(): Unit = {
-    val reader    = SamSource(input)
-    val writer    = SamWriter(output, reader.header)
+    val reader    = SamSource(input, ref=ref)
+    val writer    = SamWriter(output, reader.header, ref=ref)
     val progress  = ProgressLogger(logger=logger, unit=250000)
     val amplicons = Metric.read[Amplicon](path=primers)
     val detector  = new AmpliconDetector(
