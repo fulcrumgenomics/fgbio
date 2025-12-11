@@ -1,6 +1,6 @@
 package com.fulcrumgenomics.util
 
-import com.fulcrumgenomics.FgBioDef.{FilePath, PathToBam, SafelyClosable}
+import com.fulcrumgenomics.FgBioDef.{FilePath, PathToBam, SafelyClosable, PathToFasta}
 import com.fulcrumgenomics.bam.Bams
 import com.fulcrumgenomics.bam.api.{SamOrder, SamRecord, SamSource, SamWriter}
 import com.fulcrumgenomics.cmdline.{ClpGroups, FgBioTool}
@@ -63,13 +63,13 @@ class AssignPrimers
  @arg(flag='m', doc="Output metrics file.") val metrics: FilePath,
  @arg(flag='p', doc="File with primer locations.") val primers: FilePath,
  @arg(flag='S', doc="Match to primer locations +/- this many bases.") val slop: Int = 5,
+ @arg(flag='r', doc="Reference fasta, only needed if reading/writing CRAM.") val ref: Option[PathToFasta] = None,
  @arg(flag='U', doc="True to based on the unclipped coordinates (adjust based on hard/soft clipping), otherwise the aligned bases") val unclippedCoordinates: Boolean = true,
  @arg(doc="The SAM tag for the assigned primer coordinate.") val primerCoordinatesTag: String = AssignPrimers.PrimerCoordinateTag,
  @arg(doc="The SAM tag for the mate's assigned primer coordinate.") val matePrimerCoordinatesTag: String = AssignPrimers.MatePrimerCoordinateTag,
  @arg(doc="The SAM tag for the assigned amplicon identifier.") val ampliconIdentifierTag: String = AssignPrimers.AmpliconIdentifierTag,
  @arg(doc="The SAM tag for the mate's assigned amplicon identifier.") val mateAmpliconIdentifierTag: String = AssignPrimers.MateAmpliconIdentifierTag,
  @arg(doc="Annotate all R1 (or R2) with same value.") val annotateAll: Boolean = false
- @arg(flag="r", doc="Reference fasta, only needed if reading/writing CRAM.") val ref: Option[PathToFasta] = None,
 ) extends FgBioTool with LazyLogging {
 
   Io.assertReadable(input)
