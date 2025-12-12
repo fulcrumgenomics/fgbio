@@ -69,34 +69,34 @@ class ClpTests extends UnitSpec {
     ioTmpDir: DirPath,
     loggerLevel: LogLevel,
     samSourceValidation: ValidationStringency,
-    javaIoTmpDir: String,
-    fgBioArgs: FgBioCommonArgs
+    fgBioArgs: FgBioCommonArgs,
+    javaIoTmpDir: String
   )
 
   /** Captures the current state of all global variables. */
   private def captureGlobalState(): GlobalStateSnapshot = GlobalStateSnapshot(
-    samSourceAsyncIo = SamSource.DefaultUseAsyncIo,
-    samWriterAsyncIo = SamWriter.DefaultUseAsyncIo,
+    samSourceAsyncIo     = SamSource.DefaultUseAsyncIo,
+    samWriterAsyncIo     = SamWriter.DefaultUseAsyncIo,
     samWriterCompression = SamWriter.DefaultCompressionLevel,
-    ioCompression = Io.compressionLevel,
-    ioTmpDir = Io.tmpDir,
-    loggerLevel = Logger.level,
-    samSourceValidation = SamSource.DefaultValidationStringency,
-    javaIoTmpDir = System.getProperty("java.io.tmpdir"),
-    fgBioArgs = FgBioCommonArgs.args
+    ioCompression        = Io.compressionLevel,
+    ioTmpDir             = Io.tmpDir,
+    loggerLevel          = Logger.level,
+    samSourceValidation  = SamSource.DefaultValidationStringency,
+    fgBioArgs            = FgBioCommonArgs.args,
+    javaIoTmpDir         = System.getProperty("java.io.tmpdir")
   )
 
   /** Restores the global state from a snapshot. */
   private def restoreGlobalState(snapshot: GlobalStateSnapshot): Unit = {
-    SamSource.DefaultUseAsyncIo = snapshot.samSourceAsyncIo
-    SamWriter.DefaultUseAsyncIo = snapshot.samWriterAsyncIo
-    SamWriter.DefaultCompressionLevel = snapshot.samWriterCompression
-    Io.compressionLevel = snapshot.ioCompression
-    Io.tmpDir = snapshot.ioTmpDir
-    Logger.level = snapshot.loggerLevel
+    SamSource.DefaultUseAsyncIo           = snapshot.samSourceAsyncIo
+    SamWriter.DefaultUseAsyncIo           = snapshot.samWriterAsyncIo
+    SamWriter.DefaultCompressionLevel     = snapshot.samWriterCompression
+    Io.compressionLevel                   = snapshot.ioCompression
+    Io.tmpDir                             = snapshot.ioTmpDir
+    Logger.level                          = snapshot.loggerLevel
     SamSource.DefaultValidationStringency = snapshot.samSourceValidation
-    System.setProperty("java.io.tmpdir", snapshot.javaIoTmpDir)
-    FgBioCommonArgs.args = snapshot.fgBioArgs
+    FgBioCommonArgs.args                  = snapshot.fgBioArgs
+    val _ = System.setProperty("java.io.tmpdir", snapshot.javaIoTmpDir)
   }
 
   "FgBioMain" should "find a CLP and successfully set it up and execute it" in {
@@ -225,48 +225,57 @@ class ClpTests extends UnitSpec {
       restoreGlobalState(snapshot)
     }
   }
+  
+  it should "use fail writing and reading CRAM files when no reference is given" in {
+    // Create a small reference sequence (500bp chr1)
+    val refSequence = "N" * 500  // Simple 500bp sequence of N's
+    val refLen = refSequence.length
 
-  it should "allow explicit ref to override cramRefFasta when reading CRAM files" in {
-    val snapshot = captureGlobalState()
-    try {
-      // Create a small reference sequence (500bp chr1)
-      val refSequence = "N" * 500
-      val refLen = refSequence.length
+    // Create synthetic reference FASTA file
+    val ref = makeTempFile("reference.", ".fasta")
+    val refWriter = Io.toWriter(ref)
+    refWriter.write(s">chr1\n")
+    refWriter.write(refSequence + "\n")
+    refWriter.close()
 
-      // Create synthetic reference FASTA file
-      val ref = makeTempFile("reference.", ".fasta")
-      val refWriter = Io.toWriter(ref)
-      refWriter.write(s">chr1\n")
-      refWriter.write(refSequence + "\n")
-      refWriter.close()
+    // Create .fai index file for the reference
+    val fai = Paths.get(ref.toString + ".fai")
+    val faiWriter = Io.toWriter(fai)
+    faiWriter.write(s"chr1\t$refLen\t6\t$refLen\t${refLen + 1}\n")  // name, length, offset, basesPerLine, bytesPerLine
+    faiWriter.close()
 
-      // Create .fai index file for the reference
-      val fai = Paths.get(ref.toString + ".fai")
-      val faiWriter = Io.toWriter(fai)
-      faiWriter.write(s"chr1\t$refLen\t6\t$refLen\t${refLen + 1}\n")
-      faiWriter.close()
+    // Create test data with custom sequence dictionary matching our small reference
+    val dict = SequenceDictionary(SequenceMetadata(name="chr1", length=refLen))
+    val builder = new SamBuilder(sd = Some(dict))
+    builder.addPair(name="q1", start1=100, start2=200)  // Coordinates within 500bp
+    val cram = makeTempFile("test.", ".cram")
 
-      // Set common args with a DIFFERENT path (which would fail if used)
-      FgBioCommonArgs.args = new FgBioCommonArgs(cramRefFasta = Some(Paths.get("/nonexistent/ref.fasta")))
-
-      // Create test data with custom sequence dictionary
-      val dict = SequenceDictionary(SequenceMetadata(name="chr1", length=refLen))
-      val builder = new SamBuilder(sd = Some(dict))
-      builder.addPair(name="q1", start1=100, start2=200)
-      val cram = makeTempFile("test.", ".cram")
-
-      // Write to CRAM with explicit ref (overriding the broken common arg)
-      val writer = SamWriter(cram, builder.header, ref = Some(ref))
+    // Write to CRAM without a ref - this should fail
+    an[IllegalArgumentException] shouldBe thrownBy {
+      val writer = SamWriter(cram, builder.header)
       writer ++= builder.iterator
       writer.close()
+    }
+    
+    // Write to CRAM with explicitly passing ref - this should pass
+    val writer = SamWriter(cram, builder.header, ref=Some(ref))
+    writer ++= builder.iterator
+    writer.close()
 
-      // Read from CRAM with explicit ref (overriding the broken common arg)
-      val reader = SamSource(cram, ref = Some(ref))
+    // Read from CRAM without a reference
+    an[IllegalArgumentException] shouldBe thrownBy {
+      val reader = SamSource(cram)
       val records = reader.toSeq
       records.size shouldBe 2
+      records.head.name shouldBe "q1"
       reader.close()
-    } finally {
-      restoreGlobalState(snapshot)
     }
+    
+    // Read from CRAM with a reference
+    val reader = SamSource(cram, ref=Some(ref))
+    val records = reader.toSeq
+    records.size shouldBe 2
+    records.head.name shouldBe "q1"
+    reader.close()
   }
 }

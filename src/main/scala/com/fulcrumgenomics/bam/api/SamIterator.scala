@@ -35,8 +35,8 @@ final class SamIterator(val header: SAMFileHeader, underlying: SAMRecordIterator
   extends SelfClosingIterator[SamRecord](
     underlying.map { rec =>
       rec match {
-        case sr: SamRecord => sr  // Already enhanced (BAM/SAM)
-        case plain: SAMRecord => SamRecord.fromPlainSAMRecord(plain, header)  // CRAM
+        case rec: SamRecord => rec// Already enhanced (BAM/SAM)
+        case rec: SAMRecord => SamRecord.fromPlainSAMRecord(rec, header)  // CRAM
       }
     },
     () => underlying.close()
