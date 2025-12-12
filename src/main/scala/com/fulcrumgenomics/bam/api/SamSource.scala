@@ -58,7 +58,7 @@ object SamSource {
     * @param path the path to read the SAM/BAM/CRAM from
     * @param index an optional path to read the index from
     * @param ref an optional reference sequence for decoding CRAM files;
-    *            defaults to [[FgBioCommonArgs.args.cramRefFasta]] when not specified
+    *            defaults to [[com.fulcrumgenomics.cmdline.FgBioCommonArgs.cramRefFasta]] when not specified
     * @param async if true use extra thread(s) to speed up reading
     * @param stringency the validation stringency to apply when reading the data
     * @param factory a [[SamRecord.Factory]]; MUST return classes that mix in [[SamRecord]]
