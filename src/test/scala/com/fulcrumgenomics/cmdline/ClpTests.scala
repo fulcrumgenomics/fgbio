@@ -24,11 +24,12 @@
 
 package com.fulcrumgenomics.cmdline
 
+import com.fulcrumgenomics.bam.api.{SamSource, SamWriter}
 import com.fulcrumgenomics.sopt.{arg, clp}
-import com.fulcrumgenomics.testing.UnitSpec
+import com.fulcrumgenomics.testing.{SamBuilder, UnitSpec}
 import com.fulcrumgenomics.util.Metric
 
-import java.nio.file.Path
+import java.nio.file.{Path, Paths}
 
 /* This a silly CLP. */
 @clp(group=ClpGroups.Utilities, description="A test class")
@@ -90,7 +91,7 @@ class ClpTests extends UnitSpec {
     metric.commandLineWithDefaults should include ("TestClp")
     metric.commandLineWithDefaults should include (s"--info-path $tmpPath")
     metric.commandLineWithDefaults should include ("--print-me :none:") // a default argument
-    metric.commandLineWithDefaults shouldBe f"fgbio --async-io true --compression 5 --tmp-dir ${FgBioCommonArgs.args.tmpDir} --log-level Info --sam-validation-stringency SILENT TestClp --info-path ${tmpPath} --exit-code :none: --message :none: --print-me :none:"
+    metric.commandLineWithDefaults shouldBe f"fgbio --async-io true --compression 5 --tmp-dir ${FgBioCommonArgs.args.tmpDir} --log-level Info --sam-validation-stringency SILENT --cram-ref-fasta :none: TestClp --info-path ${tmpPath} --exit-code :none: --message :none: --print-me :none:"
 
     // description
     metric.description shouldBe "A test class"
@@ -98,5 +99,64 @@ class ClpTests extends UnitSpec {
     // version
     // Since the JAR has not been backaged yet, we cannot get the implementation version.
     metric.version shouldBe "null" // not set in scalatest, so unable to test
+  }
+
+  "FgBioCommonArgs" should "store and retrieve cramRefFasta value" in {
+    val refPath = Some(Paths.get("/path/to/reference.fasta"))
+    val args = new FgBioCommonArgs(cramRefFasta = refPath)
+    args.cramRefFasta shouldBe refPath
+  }
+
+  it should "default cramRefFasta to None" in {
+    val args = new FgBioCommonArgs()
+    args.cramRefFasta shouldBe None
+  }
+
+  it should "provide cramRefFasta as default to SamSource and SamWriter" in {
+    val originalArgs = FgBioCommonArgs.args
+    try {
+      // Set common args with None (testing with BAM, not CRAM)
+      FgBioCommonArgs.args = new FgBioCommonArgs(cramRefFasta = None)
+
+      // Create test data
+      val builder = new SamBuilder()
+      builder.addPair(name="q1", start1=100, start2=300)
+      val bam = makeTempFile("test.", ".bam")
+
+      // Write and read should use common arg default
+      val writer = SamWriter(bam, builder.header)
+      writer ++= builder.iterator
+      writer.close()
+
+      val reader = SamSource(bam)
+      val records = reader.toSeq
+      records.size shouldBe 2
+      reader.close()
+    } finally {
+      FgBioCommonArgs.args = originalArgs
+    }
+  }
+
+  it should "allow explicit ref parameters to override cramRefFasta in SamSource and SamWriter" in {
+    val originalArgs = FgBioCommonArgs.args
+    try {
+      // Set common args with None
+      FgBioCommonArgs.args = new FgBioCommonArgs(cramRefFasta = None)
+
+      val builder = new SamBuilder()
+      builder.addPair(name="q1", start1=100, start2=300)
+      val bam = makeTempFile("test.", ".bam")
+
+      // Explicitly pass None to both writer and reader
+      val writer = SamWriter(bam, builder.header, ref = None)
+      writer ++= builder.iterator
+      writer.close()
+
+      val reader = SamSource(bam, ref = None)
+      reader.toSeq.size shouldBe 2
+      reader.close()
+    } finally {
+      FgBioCommonArgs.args = originalArgs
+    }
   }
 }

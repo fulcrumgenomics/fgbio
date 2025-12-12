@@ -26,6 +26,7 @@ package com.fulcrumgenomics.bam.api
 
 import com.fulcrumgenomics.FgBioDef._
 import com.fulcrumgenomics.bam.api.QueryType.QueryType
+import com.fulcrumgenomics.cmdline.FgBioCommonArgs
 import htsjdk.samtools._
 import htsjdk.samtools.util.{Interval, Locatable}
 
@@ -63,7 +64,7 @@ object SamSource {
     */
   def apply(path: PathToBam,
             index: Option[FilePath] = None,
-            ref: Option[PathToFasta] = None,
+            ref: Option[PathToFasta] = FgBioCommonArgs.args.cramRefFasta,
             async: Boolean = DefaultUseAsyncIo,
             stringency: ValidationStringency = DefaultValidationStringency,
             factory: SAMRecordFactory = SamRecord.Factory): SamSource = {

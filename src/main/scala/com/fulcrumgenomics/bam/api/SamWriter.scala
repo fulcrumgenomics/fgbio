@@ -25,6 +25,7 @@
 package com.fulcrumgenomics.bam.api
 
 import com.fulcrumgenomics.FgBioDef._
+import com.fulcrumgenomics.cmdline.FgBioCommonArgs
 import com.fulcrumgenomics.commons.io.Writer
 import com.fulcrumgenomics.commons.util.LazyLogging
 import com.fulcrumgenomics.util.{ProgressLogger, Sorter}
@@ -62,7 +63,7 @@ object SamWriter extends LazyLogging {
   def apply(path: PathToBam,
             header: SAMFileHeader,
             sort: Option[SamOrder]   = None,
-            ref: Option[PathToFasta] = None,
+            ref: Option[PathToFasta] = FgBioCommonArgs.args.cramRefFasta,
             async: Boolean           = DefaultUseAsyncIo,
             buffer: Int              = Defaults.NON_ZERO_BUFFER_SIZE,
             compression: Int         = DefaultCompressionLevel,
