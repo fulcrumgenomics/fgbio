@@ -26,10 +26,18 @@ package com.fulcrumgenomics.bam.api
 
 import com.fulcrumgenomics.commons.CommonsDef._
 import com.fulcrumgenomics.commons.collection.SelfClosingIterator
-import htsjdk.samtools.{SAMFileHeader, SAMRecordIterator}
+import htsjdk.samtools.{SAMFileHeader, SAMRecordIterator, SAMRecord}
 
 /** An iterator over [[com.fulcrumgenomics.bam.api.SamRecord]]s that will automatically close the underlying iterator at
   * the end of iteration, and provides access to the [[htsjdk.samtools.SAMFileHeader]] from the associated source.
   */
 final class SamIterator(val header: SAMFileHeader, underlying: SAMRecordIterator)
-  extends SelfClosingIterator[SamRecord](underlying.map(_.asInstanceOf[SamRecord]), () => underlying.close()) with HeaderHelper
+  extends SelfClosingIterator[SamRecord](
+    underlying.map { rec =>
+      rec match {
+        case sr: SamRecord => sr  // Already enhanced (BAM/SAM)
+        case plain: SAMRecord => SamRecord.fromPlainSAMRecord(plain, header)  // CRAM
+      }
+    },
+    () => underlying.close()
+  ) with HeaderHelper

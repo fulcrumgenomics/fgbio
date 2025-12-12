@@ -49,7 +49,8 @@ object SamWriter extends LazyLogging {
     * @param sort an optional SamOrder into which to sort the reads. If no order is provided the reads are
     *             assumed to be in the order described in the header. If an order is provided the reads are
     *             _always_ sorted using that SamOrder before being emitted.
-    * @param ref an optional reference sequence for use in writing CRAM
+    * @param ref an optional reference sequence for use in writing CRAM;
+    *            defaults to [[FgBioCommonArgs.args.cramRefFasta]] when not specified
     * @param async if true use multiple threads to increase writing throughput
     * @param buffer the buffer size, in bytes, to use for the writer
     * @param compression the GZIP compression level to use when compressing data
