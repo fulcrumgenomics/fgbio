@@ -26,18 +26,41 @@ package com.fulcrumgenomics.bam.api
 
 import com.fulcrumgenomics.commons.CommonsDef._
 import com.fulcrumgenomics.commons.collection.SelfClosingIterator
-import htsjdk.samtools.{SAMFileHeader, SAMRecordIterator, SAMRecord}
+import htsjdk.samtools.{BAMRecordCodec, SAMFileHeader, SAMRecordIterator, SAMRecord}
+
+import java.io.{ByteArrayInputStream, ByteArrayOutputStream}
 
 /** An iterator over [[com.fulcrumgenomics.bam.api.SamRecord]]s that will automatically close the underlying iterator at
   * the end of iteration, and provides access to the [[htsjdk.samtools.SAMFileHeader]] from the associated source.
   */
 final class SamIterator(val header: SAMFileHeader, underlying: SAMRecordIterator)
-  extends SelfClosingIterator[SamRecord](
+  extends SelfClosingIterator[SamRecord](SamIterator.buildIterator(underlying, header), () => underlying.close())
+  with HeaderHelper
+
+object SamIterator {
+  // Lazy-initialized reusable resources for CRAM conversion (per iterator instance)
+  private class CramConverter(header: SAMFileHeader) {
+    private lazy val codec = new BAMRecordCodec(header, SamRecord.Factory)
+    private lazy val buffer = new ByteArrayOutputStream(128 * 1024)
+
+    def convert(plain: SAMRecord): SamRecord = {
+      buffer.reset()
+      codec.setOutputStream(buffer)
+      codec.encode(plain)
+      codec.setInputStream(new ByteArrayInputStream(buffer.toByteArray))
+      codec.decode().asInstanceOf[SamRecord]
+    }
+  }
+
+  private def buildIterator(underlying: SAMRecordIterator, header: SAMFileHeader): Iterator[SamRecord] = {
+    // Create converter once per iterator - lazy vals inside will only initialize if CRAM records are encountered
+    val converter = new CramConverter(header)
+
     underlying.map { rec =>
       rec match {
-        case rec: SamRecord => rec// Already enhanced (BAM/SAM)
-        case rec: SAMRecord => SamRecord.fromPlainSAMRecord(rec, header)  // CRAM
+        case rec: SamRecord => rec  // Already enhanced (BAM/SAM) - no overhead
+        case rec: SAMRecord => converter.convert(rec)  // CRAM - reuses codec and buffer
       }
-    },
-    () => underlying.close()
-  ) with HeaderHelper
+    }
+  }
+}

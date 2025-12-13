@@ -31,7 +31,6 @@ import htsjdk.samtools
 import htsjdk.samtools.SamPairUtil.PairOrientation
 import htsjdk.samtools._
 import htsjdk.samtools.util.CoordMath
-import java.io.{ByteArrayInputStream, ByteArrayOutputStream}
 
 // TODO long-term: methods for 5'end, 3' end, unclipped 5' end and unclipped 3' end
 // TODO long-term: replacement for alignment blocks?
@@ -354,20 +353,5 @@ object SamRecord {
                                  variableLengthBlock: Array[Byte]): BAMRecord =
       new EnhancedBamRecord(header, refIndex, alignmentStart, readNameLength, mapq, indexingBin, cigarLen,
         flags, readLen, mateRefIndex, mateAlignmentStart, insertSize, variableLengthBlock)
-  }
-
-  /**
-   * Converts a plain SAMRecord to an enhanced SamRecord.
-   * Needed for CRAM files where htsjdk ignores the custom factory.
-   */
-  def fromPlainSAMRecord(plain: SAMRecord, header: SAMFileHeader): SamRecord = {
-    val codec = new BAMRecordCodec(header, SamRecord.Factory)
-    val buffer = new ByteArrayOutputStream(128 * 1024)
-
-    codec.setOutputStream(buffer)
-    codec.encode(plain)
-
-    codec.setInputStream(new ByteArrayInputStream(buffer.toByteArray))
-    codec.decode().asInstanceOf[SamRecord]
   }
 }
