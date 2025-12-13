@@ -24,11 +24,16 @@
 
 package com.fulcrumgenomics.cmdline
 
+import com.fulcrumgenomics.FgBioDef.DirPath
+import com.fulcrumgenomics.bam.api.{SamSource, SamWriter}
+import com.fulcrumgenomics.commons.util.{LogLevel, Logger}
+import com.fulcrumgenomics.fasta.{SequenceDictionary, SequenceMetadata}
 import com.fulcrumgenomics.sopt.{arg, clp}
-import com.fulcrumgenomics.testing.UnitSpec
-import com.fulcrumgenomics.util.Metric
+import com.fulcrumgenomics.testing.{SamBuilder, UnitSpec}
+import com.fulcrumgenomics.util.{Io, Metric}
+import htsjdk.samtools.ValidationStringency
 
-import java.nio.file.Path
+import java.nio.file.{Path, Paths}
 
 /* This a silly CLP. */
 @clp(group=ClpGroups.Utilities, description="A test class")
@@ -54,6 +59,46 @@ class TestClp
 
 /** Some basic test for the CLP classes. */
 class ClpTests extends UnitSpec {
+
+  /** Captures the state of all global variables that FgBioCommonArgs mutates. */
+  private case class GlobalStateSnapshot(
+    samSourceAsyncIo: Boolean,
+    samWriterAsyncIo: Boolean,
+    samWriterCompression: Int,
+    ioCompression: Int,
+    ioTmpDir: DirPath,
+    loggerLevel: LogLevel,
+    samSourceValidation: ValidationStringency,
+    fgBioArgs: FgBioCommonArgs,
+    javaIoTmpDir: String
+  )
+
+  /** Captures the current state of all global variables. */
+  private def captureGlobalState(): GlobalStateSnapshot = GlobalStateSnapshot(
+    samSourceAsyncIo     = SamSource.DefaultUseAsyncIo,
+    samWriterAsyncIo     = SamWriter.DefaultUseAsyncIo,
+    samWriterCompression = SamWriter.DefaultCompressionLevel,
+    ioCompression        = Io.compressionLevel,
+    ioTmpDir             = Io.tmpDir,
+    loggerLevel          = Logger.level,
+    samSourceValidation  = SamSource.DefaultValidationStringency,
+    fgBioArgs            = FgBioCommonArgs.args,
+    javaIoTmpDir         = System.getProperty("java.io.tmpdir")
+  )
+
+  /** Restores the global state from a snapshot. */
+  private def restoreGlobalState(snapshot: GlobalStateSnapshot): Unit = {
+    SamSource.DefaultUseAsyncIo           = snapshot.samSourceAsyncIo
+    SamWriter.DefaultUseAsyncIo           = snapshot.samWriterAsyncIo
+    SamWriter.DefaultCompressionLevel     = snapshot.samWriterCompression
+    Io.compressionLevel                   = snapshot.ioCompression
+    Io.tmpDir                             = snapshot.ioTmpDir
+    Logger.level                          = snapshot.loggerLevel
+    SamSource.DefaultValidationStringency = snapshot.samSourceValidation
+    FgBioCommonArgs.args                  = snapshot.fgBioArgs
+    val _ = System.setProperty("java.io.tmpdir", snapshot.javaIoTmpDir)
+  }
+
   "FgBioMain" should "find a CLP and successfully set it up and execute it" in {
     new FgBioMain().makeItSo("TestClp --print-me=hello".split(' ')) shouldBe 0
   }
@@ -90,7 +135,7 @@ class ClpTests extends UnitSpec {
     metric.commandLineWithDefaults should include ("TestClp")
     metric.commandLineWithDefaults should include (s"--info-path $tmpPath")
     metric.commandLineWithDefaults should include ("--print-me :none:") // a default argument
-    metric.commandLineWithDefaults shouldBe f"fgbio --async-io true --compression 5 --tmp-dir ${FgBioCommonArgs.args.tmpDir} --log-level Info --sam-validation-stringency SILENT TestClp --info-path ${tmpPath} --exit-code :none: --message :none: --print-me :none:"
+    metric.commandLineWithDefaults shouldBe s"fgbio --async-io true --compression 5 --tmp-dir ${FgBioCommonArgs.args.tmpDir} --log-level Info --sam-validation-stringency SILENT --cram-ref-fasta :none: TestClp --info-path ${tmpPath} --exit-code :none: --message :none: --print-me :none:"
 
     // description
     metric.description shouldBe "A test class"
@@ -98,5 +143,139 @@ class ClpTests extends UnitSpec {
     // version
     // Since the JAR has not been backaged yet, we cannot get the implementation version.
     metric.version shouldBe "null" // not set in scalatest, so unable to test
+  }
+
+  "FgBioCommonArgs" should "store and retrieve cramRefFasta value" in {
+    val refPath = Some(Paths.get("/path/to/reference.fasta"))
+    val args = new FgBioCommonArgs(cramRefFasta = refPath)
+    args.cramRefFasta shouldBe refPath
+  }
+
+  it should "default cramRefFasta to None" in {
+    val args = new FgBioCommonArgs()
+    args.cramRefFasta shouldBe None
+  }
+
+  it should "provide cramRefFasta as default to SamSource and SamWriter" in {
+    val snapshot = captureGlobalState()
+    try {
+      // Set common args with None (testing with BAM, not CRAM)
+      FgBioCommonArgs.args = new FgBioCommonArgs(cramRefFasta = None)
+
+      // Create test data
+      val builder = new SamBuilder()
+      builder.addPair(name="q1", start1=100, start2=300)
+      val bam = makeTempFile("test.", ".bam")
+
+      // Write and read should use common arg default
+      val writer = SamWriter(bam, builder.header)
+      writer ++= builder.iterator
+      writer.close()
+
+      val reader = SamSource(bam)
+      val records = reader.toSeq
+      records.size shouldBe 2
+      reader.close()
+    } finally {
+      restoreGlobalState(snapshot)
+    }
+  }
+
+  it should "use cramRefFasta from common args when writing and reading CRAM files" in {
+    val snapshot = captureGlobalState()
+    try {
+      // Create a small reference sequence (500bp chr1)
+      val refSequence = "N" * 500  // Simple 500bp sequence of N's
+      val refLen = refSequence.length
+
+      // Create synthetic reference FASTA file
+      val ref = makeTempFile("reference.", ".fasta")
+      val refWriter = Io.toWriter(ref)
+      refWriter.write(s">chr1\n")
+      refWriter.write(refSequence + "\n")
+      refWriter.close()
+
+      // Create .fai index file for the reference
+      val fai = Paths.get(ref.toString + ".fai")
+      val faiWriter = Io.toWriter(fai)
+      faiWriter.write(s"chr1\t$refLen\t6\t$refLen\t${refLen + 1}\n")  // name, length, offset, basesPerLine, bytesPerLine
+      faiWriter.close()
+
+      // Set common args with the reference path
+      FgBioCommonArgs.args = new FgBioCommonArgs(cramRefFasta = Some(ref))
+
+      // Create test data with custom sequence dictionary matching our small reference
+      val dict = SequenceDictionary(SequenceMetadata(name="chr1", length=refLen))
+      val builder = new SamBuilder(sd = Some(dict))
+      builder.addPair(name="q1", start1=100, start2=200)  // Coordinates within 500bp
+      val cram = makeTempFile("test.", ".cram")
+
+      // Write to CRAM without explicitly passing ref - should use cramRefFasta from common args
+      val writer = SamWriter(cram, builder.header)
+      writer ++= builder.iterator
+      writer.close()
+
+      // Read from CRAM without explicitly passing ref - should use cramRefFasta from common args
+      val reader = SamSource(cram)
+      val records = reader.toSeq
+      records.size shouldBe 2
+      records.head.name shouldBe "q1"
+      reader.close()
+    } finally {
+      restoreGlobalState(snapshot)
+    }
+  }
+  
+  it should "use fail writing and reading CRAM files when no reference is given" in {
+    // Create a small reference sequence (500bp chr1)
+    val refSequence = "N" * 500  // Simple 500bp sequence of N's
+    val refLen = refSequence.length
+
+    // Create synthetic reference FASTA file
+    val ref = makeTempFile("reference.", ".fasta")
+    val refWriter = Io.toWriter(ref)
+    refWriter.write(s">chr1\n")
+    refWriter.write(refSequence + "\n")
+    refWriter.close()
+
+    // Create .fai index file for the reference
+    val fai = Paths.get(ref.toString + ".fai")
+    val faiWriter = Io.toWriter(fai)
+    faiWriter.write(s"chr1\t$refLen\t6\t$refLen\t${refLen + 1}\n")  // name, length, offset, basesPerLine, bytesPerLine
+    faiWriter.close()
+
+    // Create test data with custom sequence dictionary matching our small reference
+    val dict = SequenceDictionary(SequenceMetadata(name="chr1", length=refLen))
+    val builder = new SamBuilder(sd = Some(dict))
+    builder.addPair(name="q1", start1=100, start2=200)  // Coordinates within 500bp
+    val cram = makeTempFile("test.", ".cram")
+
+    // Write to CRAM without a ref - this should fail
+    an[IllegalArgumentException] shouldBe thrownBy {
+      val writer = SamWriter(cram, builder.header)
+      writer ++= builder.iterator
+      writer.close()
+    }
+    
+    // Write to CRAM with explicitly passing ref - this should pass
+    val writer = SamWriter(cram, builder.header, ref=Some(ref))
+    writer ++= builder.iterator
+    writer.close()
+
+    // Read from CRAM without a reference
+    an[IllegalArgumentException] shouldBe thrownBy {
+      val reader = SamSource(cram)
+      val records = reader.toSeq
+      records.size shouldBe 2
+      records.head.name shouldBe "q1"
+      reader.close()
+    }
+    
+    // Read from CRAM with a reference
+    val reader = SamSource(cram, ref=Some(ref))
+    val records = reader.toSeq
+    records.size shouldBe 2
+    records.head.name shouldBe "q1"
+    reader.close()
   }
 }

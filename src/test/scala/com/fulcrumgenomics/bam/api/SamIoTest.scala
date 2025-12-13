@@ -208,8 +208,8 @@ class SamIoTest extends UnitSpec {
       // test a query both before and after the contig start and end respectively
       source.query("chr1", -100, contigEnd+100, queryType).length shouldBe 10
 
-      // at the start and end     
-      source.query("chr1", 1, 1000, queryType).length shouldBe 10 
+      // at the start and end
+      source.query("chr1", 1, 1000, queryType).length shouldBe 10
       source.query("chr1", 100, contigEnd, queryType).length shouldBe 10
       source.query("chr1", 1, contigEnd, queryType).length shouldBe 10
 

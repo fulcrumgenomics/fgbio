@@ -26,6 +26,7 @@ package com.fulcrumgenomics.bam.api
 
 import com.fulcrumgenomics.FgBioDef._
 import com.fulcrumgenomics.bam.api.QueryType.QueryType
+import com.fulcrumgenomics.cmdline.FgBioCommonArgs
 import htsjdk.samtools._
 import htsjdk.samtools.util.{Interval, Locatable}
 
@@ -56,14 +57,17 @@ object SamSource {
     *
     * @param path the path to read the SAM/BAM/CRAM from
     * @param index an optional path to read the index from
-    * @param ref an optional reference sequence for decoding CRAM files
+    * @param ref an optional reference sequence for decoding CRAM files;
+    *            defaults to [[com.fulcrumgenomics.cmdline.FgBioCommonArgs]]`.args.cramRefFasta` when not specified.
+    *            Note: this reads from global CLI state which is initialized by fgbio's command-line interface.
+    *            For programmatic use outside of fgbio tools, explicitly provide the reference via this parameter.
     * @param async if true use extra thread(s) to speed up reading
     * @param stringency the validation stringency to apply when reading the data
     * @param factory a [[SamRecord.Factory]]; MUST return classes that mix in [[SamRecord]]
     */
   def apply(path: PathToBam,
             index: Option[FilePath] = None,
-            ref: Option[PathToFasta] = None,
+            ref: Option[PathToFasta] = FgBioCommonArgs.args.cramRefFasta,
             async: Boolean = DefaultUseAsyncIo,
             stringency: ValidationStringency = DefaultValidationStringency,
             factory: SAMRecordFactory = SamRecord.Factory): SamSource = {

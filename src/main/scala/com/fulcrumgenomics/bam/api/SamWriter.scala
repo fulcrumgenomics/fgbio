@@ -25,6 +25,7 @@
 package com.fulcrumgenomics.bam.api
 
 import com.fulcrumgenomics.FgBioDef._
+import com.fulcrumgenomics.cmdline.FgBioCommonArgs
 import com.fulcrumgenomics.commons.io.Writer
 import com.fulcrumgenomics.commons.util.LazyLogging
 import com.fulcrumgenomics.util.{ProgressLogger, Sorter}
@@ -48,7 +49,10 @@ object SamWriter extends LazyLogging {
     * @param sort an optional SamOrder into which to sort the reads. If no order is provided the reads are
     *             assumed to be in the order described in the header. If an order is provided the reads are
     *             _always_ sorted using that SamOrder before being emitted.
-    * @param ref an optional reference sequence for use in writing CRAM
+    * @param ref an optional reference sequence for use in writing CRAM;
+    *            defaults to [[com.fulcrumgenomics.cmdline.FgBioCommonArgs]]`.args.cramRefFasta` when not specified.
+    *            Note: this reads from global CLI state which is initialized by fgbio's command-line interface.
+    *            For programmatic use outside of fgbio tools, explicitly provide the reference via this parameter.
     * @param async if true use multiple threads to increase writing throughput
     * @param buffer the buffer size, in bytes, to use for the writer
     * @param compression the GZIP compression level to use when compressing data
@@ -62,7 +66,7 @@ object SamWriter extends LazyLogging {
   def apply(path: PathToBam,
             header: SAMFileHeader,
             sort: Option[SamOrder]   = None,
-            ref: Option[PathToFasta] = None,
+            ref: Option[PathToFasta] = FgBioCommonArgs.args.cramRefFasta,
             async: Boolean           = DefaultUseAsyncIo,
             buffer: Int              = Defaults.NON_ZERO_BUFFER_SIZE,
             compression: Int         = DefaultCompressionLevel,
