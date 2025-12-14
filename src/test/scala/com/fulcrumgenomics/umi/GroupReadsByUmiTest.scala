@@ -134,15 +134,16 @@ class GroupReadsByUmiTest extends UnitSpec with OptionValues with PrivateMethodT
       // Without lexicographic tie-breaking in the sort, the order of equal-count UMIs
       // depends on HashMap iteration order, causing non-deterministic groupings.
       it should f"produce deterministic groupings when UMIs have equal counts with $threads thread(s)" in {
-        // Setup: AAAAAA and AAAAAG both have count=2, AAAAAC has count=1
-        // Both AAAAAA and AAAAAG are within 1 edit of AAAAAC (can capture it)
+        // Setup: AAAAAA and AAAGAC both have count=2, AAAAAC has count=1
+        // Both AAAAAA and AAAGAC are within 1 edit of AAAAAC (can capture it)
+        // AAAGAC is 2 edits from AAAAAA (positions 3 and 5), so they won't be grouped together
         // With deterministic sorting, AAAAAA (lexicographically first) should capture AAAAAC
-        val umis = n("AAAAAA", 2) ++ n("AAAAAG", 2) ++ n("AAAAAC", 1)
+        val umis = n("AAAAAA", 2) ++ n("AAAGAC", 2) ++ n("AAAAAC", 1)
         val groups = group(new AdjacencyUmiAssigner(maxMismatches=1, threads=threads).assign(umis))
 
-        // AAAAAA should capture AAAAAC because AAAAAA < AAAAAG lexicographically
-        // AAAAAG should be in its own group
-        groups shouldBe Set(Set("AAAAAA", "AAAAAC"), Set("AAAAAG"))
+        // AAAAAA should capture AAAAAC because AAAAAA < AAAGAC lexicographically
+        // AAAGAC should be in its own group
+        groups shouldBe Set(Set("AAAAAA", "AAAAAC"), Set("AAAGAC"))
 
         // Verify determinism: run again and ensure same result
         val groups2 = group(new AdjacencyUmiAssigner(maxMismatches=1, threads=threads).assign(umis))
