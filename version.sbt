@@ -4,5 +4,5 @@ gitHeadCommitSha in ThisBuild := scala.sys.process.Process("git rev-parse --shor
 // *** IMPORTANT ***
 val _version = "3.1.1"
 // One of the two "version" lines below needs to be uncommented.
-//ThisBuild / version := _version // the release version
-ThisBuild / version := s"${_version}-${gitHeadCommitSha.value}-SNAPSHOT" // the snapshot version
+ThisBuild / version := _version // the release version
+//ThisBuild / version := s"${_version}-${gitHeadCommitSha.value}-SNAPSHOT" // the snapshot version
