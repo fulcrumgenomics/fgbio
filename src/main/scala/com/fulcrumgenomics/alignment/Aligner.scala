@@ -192,7 +192,7 @@ object Aligner {
                       initTargetLength: Int = 1024) extends Aligner(scorer=scorer, useEqualsAndX=useEqualsAndX, mode=mode) {
     import CachedAligner.CachedAlignmentMatrix
 
-    private var matrices: Array[AlignmentMatrix] = AllDirectionsSorted.map { dir =>
+    private var matrices: Array[CachedAlignmentMatrix] = AllDirectionsSorted.map { dir =>
       val matrix = CachedAlignmentMatrix(
         direction = dir,
         scoring   = Matrix[Int](initQueryLength+1, initTargetLength+1),
@@ -228,9 +228,9 @@ object Aligner {
           matrix
         }
       } else {
-        this.matrices.foreach(_.asInstanceOf[CachedAlignmentMatrix].setLengths(query.length, target.length))
+        this.matrices.foreach(_.setLengths(query.length, target.length))
       }
-      this.matrices
+      this.matrices.asInstanceOf[Array[AlignmentMatrix]]
     }
   }
 
