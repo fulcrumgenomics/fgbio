@@ -4,7 +4,7 @@ title: fgbio tools
 
 # fgbio tools
 
-The following tools are available in fgbio version 2.5.22-7c8775e-SNAPSHOT.
+The following tools are available in fgbio version 3.1.1.
 ## Basecalling
 
 Tools for manipulating basecalling data.
@@ -79,6 +79,7 @@ Tools for manipulating UMIs & reads tagged with UMIs
 
 |Tool|Description|
 |----|-----------|
+|[CallCodecConsensusReads](CallCodecConsensusReads.md)|Calls consensus sequences from reads generated from the the CODEC protocol|
 |[CallDuplexConsensusReads](CallDuplexConsensusReads.md)|Calls duplex consensus sequences from reads generated from the same double-stranded source molecule|
 |[CallMolecularConsensusReads](CallMolecularConsensusReads.md)|Calls consensus sequences from reads with the same unique molecular tag|
 |[CollectDuplexSeqMetrics](CollectDuplexSeqMetrics.md)|Collects a suite of metrics to QC duplex sequencing data|
