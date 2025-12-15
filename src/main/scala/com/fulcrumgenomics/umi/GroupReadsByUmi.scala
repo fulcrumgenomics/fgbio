@@ -272,7 +272,7 @@ object GroupReadsByUmi {
 
     override def assign(rawUmis: Seq[Umi]): Map[Umi, MoleculeId] = {
       // Make a list of counts of all UMIs in order from most to least abundant; we'll consume from this buffer
-      val orderedNodes = count(rawUmis).map{ case(umi,count) => new Node(umi, count.toInt) }.toIndexedSeq.sortBy((n:Node) => -n.count)
+      val orderedNodes = count(rawUmis).map{ case(umi,count) => new Node(umi, count.toInt) }.toIndexedSeq.sortBy((n:Node) => (-n.count, n.umi))
 
       if (orderedNodes.length == 1) {
         orderedNodes.head.assigned = true
