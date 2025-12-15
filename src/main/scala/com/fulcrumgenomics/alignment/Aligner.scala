@@ -50,9 +50,16 @@ object Mode extends FgBioEnum[Mode] {
 }
 
 object Aligner {
-  /** Creates a NW aligner with fixed match and mismatch scores. */
-  def apply(matchScore: Int, mismatchScore: Int, gapOpen: Int, gapExtend: Int, mode: Mode = Global): Aligner = {
-    val scorer: AlignmentScorer = new AlignmentScorer {
+  /** Creates an AlignmentScorer with fixed match and mismatch scores.
+    *
+    * @param matchScore the score for a matching base pair
+    * @param mismatchScore the score for a mismatching base pair
+    * @param gapOpen the penalty for opening a gap
+    * @param gapExtend the penalty for extending a gap
+    * @return an AlignmentScorer using the provided scoring parameters
+    */
+  def scorer(matchScore: Int, mismatchScore: Int, gapOpen: Int, gapExtend: Int): AlignmentScorer = {
+    new AlignmentScorer {
       private val matching      = matchScore
       private val mismatch      = mismatchScore
       private val open          = gapOpen
@@ -66,8 +73,11 @@ object Aligner {
         if (extend) this.extend else this.openAndExtend
       }
     }
+  }
 
-    new Aligner(scorer, mode=mode)
+  /** Creates a NW aligner with fixed match and mismatch scores. */
+  def apply(matchScore: Int, mismatchScore: Int, gapOpen: Int, gapExtend: Int, mode: Mode = Global): Aligner = {
+    new Aligner(scorer(matchScore, mismatchScore, gapOpen, gapExtend), mode=mode)
   }
 
   /** Directions within the trace back matrix. */
@@ -78,7 +88,8 @@ object Aligner {
   private final val Diagonal = 2
   private final val Done     = 3
 
-  private val AllDirections: Seq[Direction]   = Seq(Diagonal, Left, Up)
+  private val AllDirections: Seq[Direction]        = Seq(Diagonal, Left, Up)
+  private val AllDirectionsSorted: Array[Direction] = AllDirections.sorted.toArray
 
   /** The minimum score allowed to start an alignment.  This prevents underflow. */
   val MinStartScore: Int = Int.MinValue / 2
@@ -92,11 +103,22 @@ object Aligner {
     }
   }
 
+  /** Base class for alignment matrices that store scoring and traceback information.
+    *
+    * An alignment matrix represents the dynamic programming matrices used during sequence alignment,
+    * storing both the scores computed at each cell and the traceback directions needed to reconstruct
+    * the optimal alignment.
+    */
   abstract class AlignmentMatrix {
+    /** The direction (Left, Up, or Diagonal) this matrix represents. */
     def direction: Direction
+    /** The scoring matrix containing alignment scores at each cell. */
     def scoring: Matrix[Int]
+    /** The traceback matrix containing the direction to follow for alignment reconstruction. */
     def trace: Matrix[Direction]
+    /** The length of the query sequence. */
     def queryLength: Int
+    /** The length of the target sequence. */
     def targetLength: Int
   }
 
@@ -108,24 +130,61 @@ object Aligner {
 
   object CachedAligner {
 
-    case class CachedAlignmentMatrix
-    (direction: Direction,
-     scoring: Matrix[Int],
-     trace: Matrix[Direction],
-     queryLength: Int,
-     targetLength: Int) extends AlignmentMatrix {
-      require(queryLength < scoring.x)
-      require(queryLength < trace.x)
-      require(targetLength < scoring.y)
-      require(targetLength < trace.y)
+    /** An alignment matrix that can be reused across alignments by updating the query and target lengths.
+      *
+      * @param direction the direction (Left, Up, or Diagonal) this matrix represents
+      * @param scoring the scoring matrix
+      * @param trace the traceback matrix
+      */
+    private[alignment] case class CachedAlignmentMatrix(
+      direction: Direction,
+      scoring: Matrix[Int],
+      trace: Matrix[Direction]
+    ) extends AlignmentMatrix {
+      private var _queryLength: Int  = scoring.x - 1
+      private var _targetLength: Int = scoring.y - 1
+
+      override def queryLength: Int  = _queryLength
+      override def targetLength: Int = _targetLength
+
+      /** Updates the effective query and target lengths for this matrix. */
+      def setLengths(queryLength: Int, targetLength: Int): Unit = {
+        require(queryLength < scoring.x, s"queryLength ($queryLength) must be < scoring.x (${scoring.x})")
+        require(queryLength < trace.x, s"queryLength ($queryLength) must be < trace.x (${trace.x})")
+        require(targetLength < scoring.y, s"targetLength ($targetLength) must be < scoring.y (${scoring.y})")
+        require(targetLength < trace.y, s"targetLength ($targetLength) must be < trace.y (${trace.y})")
+        _queryLength  = queryLength
+        _targetLength = targetLength
+      }
     }
 
+    /** Creates a CachedAligner with fixed match and mismatch scores.
+      *
+      * @param matchScore the score for a matching base pair
+      * @param mismatchScore the score for a mismatching base pair
+      * @param gapOpen the penalty for opening a gap
+      * @param gapExtend the penalty for extending a gap
+      * @param mode the alignment mode (Global, Glocal, or Local)
+      */
     def apply(matchScore: Int, mismatchScore: Int, gapOpen: Int, gapExtend: Int, mode: Mode = Global): CachedAligner = {
-      val aligner = Aligner(matchScore, mismatchScore, gapOpen, gapExtend, mode)
-      new CachedAligner(scorer=aligner.scorer, mode=aligner.mode)
+      new CachedAligner(scorer=Aligner.scorer(matchScore, mismatchScore, gapOpen, gapExtend), mode=mode)
     }
   }
 
+  /** A cached version of [[Aligner]] that reuses alignment matrices across calls to reduce memory allocation.
+    *
+    * This class stores alignment matrices and only reallocates them when necessary (i.e., when the query
+    * or target sequence is larger than the current matrix capacity). For sequences that fit within the
+    * existing matrices, no allocation occurs.
+    *
+    * '''Note: This class is NOT thread-safe.''' Each thread should have its own instance.
+    *
+    * @param scorer the AlignmentScorer to use to score base pairings and gaps
+    * @param useEqualsAndX if true use the = and X cigar operators for matches and mismatches
+    * @param mode alignment mode to use when generating alignments
+    * @param initQueryLength initial capacity for query sequence length
+    * @param initTargetLength initial capacity for target sequence length
+    */
   class CachedAligner(scorer: AlignmentScorer,
                       useEqualsAndX: Boolean = true,
                       mode: Mode = Global,
@@ -133,35 +192,45 @@ object Aligner {
                       initTargetLength: Int = 1024) extends Aligner(scorer=scorer, useEqualsAndX=useEqualsAndX, mode=mode) {
     import CachedAligner.CachedAlignmentMatrix
 
-    private var matrices: Array[CachedAlignmentMatrix] = AllDirections.sorted.map { dir =>
-      CachedAlignmentMatrix(
-        direction    = dir,
-        scoring      = Matrix[Int](initQueryLength+1, initTargetLength+1),
-        trace        = Matrix[Direction](initQueryLength+1, initTargetLength+1),
-        queryLength  = initQueryLength,
-        targetLength = initTargetLength
+    private var matrices: Array[AlignmentMatrix] = AllDirectionsSorted.map { dir =>
+      val matrix = CachedAlignmentMatrix(
+        direction = dir,
+        scoring   = Matrix[Int](initQueryLength+1, initTargetLength+1),
+        trace     = Matrix[Direction](initQueryLength+1, initTargetLength+1)
       )
-    }.toArray
+      matrix.setLengths(initQueryLength, initTargetLength)
+      matrix
+    }
 
+    /** Allocates or reuses alignment matrices for the given query and target sequences.
+      *
+      * If the current matrices are large enough to accommodate the sequences, they are reused
+      * with updated lengths. Otherwise, new matrices are allocated with sufficient capacity.
+      *
+      * @param query the query sequence as a byte array
+      * @param target the target sequence as a byte array
+      * @return an array of cached alignment matrices indexed by direction
+      */
     override protected def allocMatrices(query: Array[Byte], target: Array[Byte]): Array[AlignmentMatrix] = {
-      if (query.length + 1 > this.matrices(0).scoring.x || target.length + 1 > this.matrices(0).scoring.y) {
-        val xLength = math.max(query.length + 1, this.matrices(0).scoring.x)
-        val yLength = math.max(target.length + 1, this.matrices(0).scoring.y)
-        this.matrices = AllDirections.sorted.map { dir =>
-          CachedAlignmentMatrix(
-            direction    = dir,
-            scoring      = Matrix[Int](xLength, yLength),
-            trace        = Matrix[Direction](xLength, yLength),
-            queryLength  = query.length,
-            targetLength = target.length
+      val currentX = this.matrices(0).scoring.x
+      val currentY = this.matrices(0).scoring.y
+
+      if (query.length + 1 > currentX || target.length + 1 > currentY) {
+        val xLength = math.max(query.length + 1, currentX)
+        val yLength = math.max(target.length + 1, currentY)
+        this.matrices = AllDirectionsSorted.map { dir =>
+          val matrix = CachedAlignmentMatrix(
+            direction = dir,
+            scoring   = Matrix[Int](xLength, yLength),
+            trace     = Matrix[Direction](xLength, yLength)
           )
-        }.toArray
-      } else if (this.matrices(0).queryLength != query.length || this.matrices(0).targetLength != target.length) {
-        this.matrices = this.matrices.map { matrix =>
-          matrix.copy(queryLength=query.length, targetLength=target.length)
+          matrix.setLengths(query.length, target.length)
+          matrix
         }
+      } else {
+        this.matrices.foreach(_.asInstanceOf[CachedAlignmentMatrix].setLengths(query.length, target.length))
       }
-      this.matrices.map(_.asInstanceOf[AlignmentMatrix])
+      this.matrices
     }
   }
 
@@ -283,8 +352,17 @@ class Aligner(val scorer: AlignmentScorer,
     locations.map(l => generateAlignment(query, target, matrices, l))
   }
 
+  /** Allocates the alignment matrices for the given query and target sequences.
+    *
+    * Subclasses can override this method to provide custom matrix allocation strategies,
+    * such as caching matrices for reuse across multiple alignments.
+    *
+    * @param query the query sequence as a byte array
+    * @param target the target sequence as a byte array
+    * @return an array of alignment matrices indexed by direction
+    */
   protected def allocMatrices(query: Array[Byte], target: Array[Byte]): Array[AlignmentMatrix] = {
-    AllDirections.sorted.map(dir => AlignmentMatrix(direction=dir, queryLength=query.length, targetLength=target.length)).toArray
+    AllDirectionsSorted.map(dir => AlignmentMatrix(direction=dir, queryLength=query.length, targetLength=target.length))
   }
 
   /**
@@ -303,7 +381,6 @@ class Aligner(val scorer: AlignmentScorer,
     * @param target the target sequence
     * @return an array of alignment matrices, where the indices to the array are the Directions
     */
-
   protected def buildMatrices(query: Array[Byte], target: Array[Byte]): Array[AlignmentMatrix] = {
     val matrices = allocMatrices(query=query, target=target)
 

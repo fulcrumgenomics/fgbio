@@ -30,6 +30,33 @@ import com.fulcrumgenomics.alignment.Mode.{Global, Glocal, Local}
 import com.fulcrumgenomics.commons.util.NumericCounter
 import com.fulcrumgenomics.testing.UnitSpec
 
+/** Factory trait for creating aligners, allowing tests to run against both Aligner and CachedAligner. */
+private sealed trait AlignerFactory {
+  def name: String
+  def apply(matchScore: Int, mismatchScore: Int, gapOpen: Int, gapExtend: Int, mode: Mode = Global): Aligner
+  def create(scorer: AlignmentScorer, mode: Mode = Global): Aligner
+}
+
+private object AlignerFactory {
+  case object StandardAligner extends AlignerFactory {
+    val name = "Aligner"
+    def apply(matchScore: Int, mismatchScore: Int, gapOpen: Int, gapExtend: Int, mode: Mode = Global): Aligner =
+      Aligner(matchScore, mismatchScore, gapOpen, gapExtend, mode)
+    def create(scorer: AlignmentScorer, mode: Mode = Global): Aligner =
+      new Aligner(scorer, mode=mode)
+  }
+
+  case object CachedAlignerFactory extends AlignerFactory {
+    val name = "CachedAligner"
+    def apply(matchScore: Int, mismatchScore: Int, gapOpen: Int, gapExtend: Int, mode: Mode = Global): Aligner =
+      CachedAligner(matchScore, mismatchScore, gapOpen, gapExtend, mode)
+    def create(scorer: AlignmentScorer, mode: Mode = Global): Aligner =
+      new CachedAligner(scorer=scorer, mode=mode)
+  }
+
+  val All: Seq[AlignerFactory] = Seq(StandardAligner, CachedAlignerFactory)
+}
+
 class AlignerTest extends UnitSpec {
   /** Upper-cases and remove display-related characters from a string. */
   def s(str: String): String = str.filterNot(ch => ch == '-').toUpperCase
@@ -59,478 +86,480 @@ class AlignerTest extends UnitSpec {
     alignment.score       should be >= 0
   }
 
-  "Aligner.align(Global)" should "align two identical sequences with all matches" in {
-    val result = Aligner(1, -1, -3, -1).align(s("ACGTAACC"), s("ACGTAACC"))
-    assertValidGlobalAlignment(result)
-    result.cigar.toString() shouldBe "8="
-    result.score shouldBe 8
-  }
-
-  it should "align two sequences with a single mismatch in them" in {
-    val q = s("AACCGGTT")
-    val t = s("AACCGtTT")
-    val result = Aligner(1, -1, -3, -1).align(q, t)
-    assertValidGlobalAlignment(result)
-    result.cigar.toString() shouldBe "5=1X2="
-    result.score shouldBe 6
-  }
-
-  it should "align two sequences with a single small deletion in the query sequence" in {
-    val q = s("AACC-GTT")
-    val t = s("AACCGGTT")
-    val result = Aligner(1, -1, -3, -1).align(q, t)
-    assertValidGlobalAlignment(result)
-    result.cigar.toString() shouldBe "4=1D3="
-    result.score shouldBe 7 - 4
-  }
-
-  it should "align two sequences with a single small insertion in the query sequence" in {
-    val q = s("AACCGGGTT")
-    val t = s("AACC-GGTT")
-    val result = Aligner(1, -1, -3, -1).align(q, t)
-    assertValidGlobalAlignment(result)
-    result.cigar.toString() shouldBe "4=1I4="
-    result.score shouldBe 8 - 4
-  }
-
-  it should "align two sequences with compensating insertions and deletions" in {
-    val q = s("AAACGCGCGCGCG-TT")
-    val t = s("-AACGCGCGCGCGTTT")
-    val result = Aligner(1, -1, -3, -1).align(q, t)
-    assertValidGlobalAlignment(result)
-    result.cigar.toString() shouldBe "1I12=1D2="
-    result.score shouldBe 14 - 4 - 4
-  }
-
-  it should "align two sequences with a leading insertion" in {
-    val q = s("ATTTTTTTTTTT")
-    val t = s( "TTTTTTTTTTT")
-    val result = Aligner(1, -1, -3, -1).align(q, t)
-    assertValidGlobalAlignment(result)
-    result.cigar.toString() shouldBe "1I11="
-    result.score shouldBe 11 - 4
-  }
-
-  it should "align two sequences with a trailing insertion" in {
-    val q = s("TTTTTTTTTTTA")
-    val t = s("TTTTTTTTTTT")
-    val result = Aligner(1, -1, -3, -1).align(q, t)
-    assertValidGlobalAlignment(result)
-    result.cigar.toString() shouldBe "11=1I"
-    result.score shouldBe 11 - 4
-  }
-
-  it should "align two sequences with a leading deletion" in {
-    val q = s( "TTTTTTTTTTT")
-    val t = s("ATTTTTTTTTTT")
-    val result = Aligner(1, -1, -3, -1).align(q, t)
-    assertValidGlobalAlignment(result)
-    result.cigar.toString() shouldBe "1D11="
-    result.score shouldBe 11 - 4
-  }
-
-  it should "align two sequences with a trailing deletion" in {
-    val q = s("TTTTTTTTTTT")
-    val t = s("TTTTTTTTTTTA")
-    val result = Aligner(1, -1, -3, -1).align(q, t)
-    assertValidGlobalAlignment(result)
-    result.cigar.toString() shouldBe "11=1D"
-    result.score shouldBe 11 - 4
-  }
-
-  it should "align two sequences preferring a 2bp insertion and mismatch vs two small insertions" in {
-    val q = s("ATTTTTTTTTTTA")
-    val t = s( "TTTTTTTTTTT")
-    // NB: a leading and trailing 1b insertion ("1I11=1I") has score: 11 - 4 - 4 = 3, where as a leading 2bp
-    // insertion with the last base a mismatch ("2I10=1X") has score: 10 - 4 - 1 - 1 = 4.
-    val result = Aligner(1, -1, -3, -1).align(q, t)
-    assertValidGlobalAlignment(result)
-    result.cigar.toString() shouldBe "2I10=1X"
-    result.score shouldBe 10 - 4 - 1 - 1
-  }
-
-  it should "align two sequences preferring two small insertions vs a 2bp insertion and mismatch" in {
-    val q = s("ATTTTTTTTTTTA")
-    val t = s( "TTTTTTTTTTT")
-    // NB: a leading 2bp insertion with the last base a mismatch ("2I10=1X") has score: 10 - 4 - 1 - 2 = 3, whereas a
-    // leading and trailing 1b insertion ("1I11=1I") has score: 11 - 4 - 4 = 3
-    val result = Aligner(1, -3, -3, -1).align(q, t)
-    assertValidGlobalAlignment(result)
-    result.cigar.toString() shouldBe "1I11=1I"
-    result.score shouldBe 11 - 4 - 4
-  }
-
-  it should "align two sequences preferring a mismatch and a 2bp insertion vs two small deletions when they have the same score" in {
-    val q = s("ATTTTTTTTTTTA")
-    val t = s( "TTTTTTTTTTT")
-    // NB: both have the same score, but we must consistently choose one over the other.
-    val result = Aligner(1, -1, -3, -1).align(q, t)
-    assertValidGlobalAlignment(result)
-    result.cigar.toString() shouldBe "2I10=1X"
-    result.score shouldBe 10 - 4 - 1 - 1
-  }
-
-  it should "align a homopolymer insertion and left-justify the insertion" in {
-    val q = s("GTTTTTTTTTTA")
-    val t = s("GTTTTTTTTTA")
-    // NB: both have the same score, but we must consistently choose one over the other.
-    val result = Aligner(1, -1, -3, -1).align(q, t)
-    assertValidGlobalAlignment(result)
-    result.cigar.toString() shouldBe "1=1I10="
-    result.score shouldBe 11 - 4
-  }
-
-  it should "align a simple triplet insertion and left-justify the insertion" in {
-    val q = s("GACGACGACGACGA")
-    val t = s("GACGACGACGA")
-    val result = Aligner(1, -1, -3, -1).align(q, t)
-    assertValidGlobalAlignment(result)
-    result.cigar.toString() shouldBe "3I11="
-    result.score shouldBe 11 - 4 - 1 - 1
-  }
-
-  it should "align a simple triplet insertion with leading matches and left-justify the insertion" in {
-    val q = s("TTTGACGACGACGACGA")
-    val t = s("TTTGACGACGACGA")
-    val result = Aligner(1, -1, -3, -1).align(q, t)
-    assertValidGlobalAlignment(result)
-    result.cigar.toString() shouldBe "3=3I11="
-    result.score shouldBe 14 - 4 - 1 - 1
-  }
-
-  it should "align a simple triplet deletion with leading matches and left-justify the deletion" in {
-    val q = s("TTTGACGACGACGA")
-    val t = s("TTTGACGACGACGACGA")
-    val result = Aligner(1, -1, -3, -1).align(q, t)
-    assertValidGlobalAlignment(result)
-    result.cigar.toString() shouldBe "3=3D11="
-    result.score shouldBe 14 - 4 - 1 - 1
-  }
-
-  it should "prefer a mismatch over an insertion and deletion when the mismatch score is less than than two times the gap open + gap extend scores" in {
-    val q = s("AAACCC")
-    val t = s("AACCCC")
-    // NB: could be either "1I2=1D3=" or "2=1X3="
-    val result = Aligner(1, -3, -1, -1).align(q, t)
-    assertValidGlobalAlignment(result)
-    result.cigar.toString() shouldBe "2=1X3="
-    result.score shouldBe 5 - 3
-  }
-
-  it should "prefer a mismatch over an insertion and deletion when the alignments have the same score" in {
-    val q = s("AAACCC")
-    val t = s("AACCCC")
-    // NB: could be either "1I2=1D3=" or "2=1X3="
-    val result = Aligner(1, -4, -1, -1).align(q, t)
-    assertValidGlobalAlignment(result)
-    result.cigar.toString() shouldBe "2=1X3="
-    result.score shouldBe 5 - 4
-  }
-
-  it should "prefer an insertion and deletion over a mismatch when the mismatch score is greater than two times the gap open + gap extend scores" in {
-    val q = s("AAACCC")
-    val t = s("AACCCC")
-    // NB: could be either "1I2=1D3=" or "2=1X3="
-    val result = Aligner(1, -5, -1, -1).align(q, t)
-    assertValidGlobalAlignment(result)
-    result.cigar.toString() shouldBe "1I2=1D3="
-    result.score shouldBe 5 - 2 - 2
-  }
-
-  it should "prefer one insertion when the gap open penalty is much larger than the gap extend penalty" in {
-    val q = s("ATTTTTTTTTTTA")
-    val t = s( "TTTTTTTTTTT")
-    val result = Aligner(1, -5, -100, -1).align(q, t)
-    assertValidGlobalAlignment(result)
-    result.cigar.toString() shouldBe "2I10=1X"
-    result.score shouldBe 10 - 100 - 1 - 1 - 5
-  }
-
-  it should "prefer two small insertions when the gap open penalty is much less than the gap extend penalty" in {
-    val q = s("ATTTTTTTTTTTA")
-    val t = s( "TTTTTTTTTTT")
-    val result = Aligner(1, -5, -1, -100).align(q, t)
-    assertValidGlobalAlignment(result)
-    result.cigar.toString() shouldBe "1I11=1I"
-    result.score shouldBe 11 - 100 - 1 - 100 - 1
-  }
-
-  it should "use the correct gap penalties when the alignment starts/ends with gap on query or target" in {
-    val scorer = new AlignmentScorer {
-      override def scorePairing(q: Byte, t: Byte): Int = if (q == t) 5 else -4
-      override def scoreGap(query: Array[Byte], target: Array[Byte], qOffset: Int, tOffset: Int, inQuery: Boolean, extend: Boolean): Int = {
-        if (inQuery) -3 else -4
-      }
+  AlignerFactory.All.foreach { factory =>
+    s"${factory.name}.align(Global)" should "align two identical sequences with all matches" in {
+      val result = factory(1, -1, -3, -1).align(s("ACGTAACC"), s("ACGTAACC"))
+      assertValidGlobalAlignment(result)
+      result.cigar.toString() shouldBe "8="
+      result.score shouldBe 8
     }
 
-    val aligner = new Aligner(scorer, mode=Mode.Global)
-    val r1 = aligner.align(  "TTTTTTTTTT",  "AATTTTTTTTTTAA") // gaps are in query
-    val r2 = aligner.align("AATTTTTTTTTTAA",  "TTTTTTTTTT")  // gaps are in target
+    it should "align two sequences with a single mismatch in them" in {
+      val q = s("AACCGGTT")
+      val t = s("AACCGtTT")
+      val result = factory(1, -1, -3, -1).align(q, t)
+      assertValidGlobalAlignment(result)
+      result.cigar.toString() shouldBe "5=1X2="
+      result.score shouldBe 6
+    }
 
-    r1.cigar.toString shouldBe "2D10=2D"
-    r1.score shouldBe (10 * 5) + (-3 * 4)
+    it should "align two sequences with a single small deletion in the query sequence" in {
+      val q = s("AACC-GTT")
+      val t = s("AACCGGTT")
+      val result = factory(1, -1, -3, -1).align(q, t)
+      assertValidGlobalAlignment(result)
+      result.cigar.toString() shouldBe "4=1D3="
+      result.score shouldBe 7 - 4
+    }
 
-    r2.cigar.toString shouldBe "2I10=2I"
-    r2.score shouldBe (10 * 5) + (-4 * 4)
-  }
+    it should "align two sequences with a single small insertion in the query sequence" in {
+      val q = s("AACCGGGTT")
+      val t = s("AACC-GGTT")
+      val result = factory(1, -1, -3, -1).align(q, t)
+      assertValidGlobalAlignment(result)
+      result.cigar.toString() shouldBe "4=1I4="
+      result.score shouldBe 8 - 4
+    }
 
-  // Glocal alignment tests
-  "Aligner.align(Glocal)" should "align two identical sequences with all matches" in {
-    val result = Aligner(1, -1, -3, -1, mode=Glocal).align(s("ACGTAACC"), s("ACGTAACC"))
-    assertValidGlocalAlignment(result)
-    result.cigar.toString() shouldBe "8="
-    result.score shouldBe 8
-  }
+    it should "align two sequences with compensating insertions and deletions" in {
+      val q = s("AAACGCGCGCGCG-TT")
+      val t = s("-AACGCGCGCGCGTTT")
+      val result = factory(1, -1, -3, -1).align(q, t)
+      assertValidGlobalAlignment(result)
+      result.cigar.toString() shouldBe "1I12=1D2="
+      result.score shouldBe 14 - 4 - 4
+    }
 
-  it should "correctly align an identical subsequence" in {
-    val result = Aligner(1, -1, -3, -1, mode=Glocal).align(s("CCGG"), s("AACCGGTT"))
-    assertValidGlocalAlignment(result)
-    result.queryStart shouldBe 1
-    result.targetStart shouldBe 3
-    result.cigar.toString() shouldBe "4="
-    result.score shouldBe 4
-  }
+    it should "align two sequences with a leading insertion" in {
+      val q = s("ATTTTTTTTTTT")
+      val t = s( "TTTTTTTTTTT")
+      val result = factory(1, -1, -3, -1).align(q, t)
+      assertValidGlobalAlignment(result)
+      result.cigar.toString() shouldBe "1I11="
+      result.score shouldBe 11 - 4
+    }
 
-  it should "correctly align a sub-sequence with a mismatch" in {
-    val result = Aligner(1, -1, -3, -1, mode=Glocal).align(s("-------CGCGTCGTATACGTCGTT"), s("AAGATATCGCGTCGTATACGTCGTA"))
-    assertValidGlocalAlignment(result)
-    result.queryStart shouldBe 1
-    result.targetStart shouldBe 8
-    result.cigar.toString() shouldBe "17=1X"
-    result.score shouldBe 16
-  }
+    it should "align two sequences with a trailing insertion" in {
+      val q = s("TTTTTTTTTTTA")
+      val t = s("TTTTTTTTTTT")
+      val result = factory(1, -1, -3, -1).align(q, t)
+      assertValidGlobalAlignment(result)
+      result.cigar.toString() shouldBe "11=1I"
+      result.score shouldBe 11 - 4
+    }
 
-  it should "correctly align a sub-sequence with a gap" in {
-    val result = Aligner(1, -1, -3, -1, mode=Glocal).align(s("CGCGCGCG"), s("AACGCGACGCGTT"))
-    assertValidGlocalAlignment(result)
-    result.queryStart shouldBe 1
-    result.targetStart shouldBe 3
-    result.cigar.toString() shouldBe "4=1D4="
-    result.score shouldBe 4
-  }
+    it should "align two sequences with a leading deletion" in {
+      val q = s( "TTTTTTTTTTT")
+      val t = s("ATTTTTTTTTTT")
+      val result = factory(1, -1, -3, -1).align(q, t)
+      assertValidGlobalAlignment(result)
+      result.cigar.toString() shouldBe "1D11="
+      result.score shouldBe 11 - 4
+    }
 
-  it should "align a query that is longer than the target, creating an insertion" in {
-    val result = Aligner(1, -1, -3, -1, mode=Glocal).align("AAAAGGGGTTTT", "AAAATTTT")
-    assertValidGlocalAlignment(result)
-    result.queryStart shouldBe 1
-    result.targetStart shouldBe 1
-    result.cigar.toString shouldBe "4=4I4="
-  }
+    it should "align two sequences with a trailing deletion" in {
+      val q = s("TTTTTTTTTTT")
+      val t = s("TTTTTTTTTTTA")
+      val result = factory(1, -1, -3, -1).align(q, t)
+      assertValidGlobalAlignment(result)
+      result.cigar.toString() shouldBe "11=1D"
+      result.score shouldBe 11 - 4
+    }
 
-  it should "align a query with leading and trailing gaps" in {
-    val q = s("-------------------GGTTTTAGAGCTAGAAATAGCAAGTTAAAATAAGGCTAGTCCGTTATCAACTTG---------------------------")
-    val t = s("AGGGCTATAGACTGCTAGAGGTTTTAGAGCTAGAAATAGCAAGTTAAAATAAGGCTAGTCCGTTATCAACTTGAAATGAGCTATTAGTCATGACGCTTTT")
-    val result = Aligner(1, -3, -3, -1).align(q, t)
-    assertValidGlobalAlignment(result)
-    result.cigar.toString() shouldBe "19D54=27D"
-    result.score shouldBe 54 - (1*19 + 3) - (1*27 + 3)
-  }
+    it should "align two sequences preferring a 2bp insertion and mismatch vs two small insertions" in {
+      val q = s("ATTTTTTTTTTTA")
+      val t = s( "TTTTTTTTTTT")
+      // NB: a leading and trailing 1b insertion ("1I11=1I") has score: 11 - 4 - 4 = 3, where as a leading 2bp
+      // insertion with the last base a mismatch ("2I10=1X") has score: 10 - 4 - 1 - 1 = 4.
+      val result = factory(1, -1, -3, -1).align(q, t)
+      assertValidGlobalAlignment(result)
+      result.cigar.toString() shouldBe "2I10=1X"
+      result.score shouldBe 10 - 4 - 1 - 1
+    }
 
-  it should "work correctly with a custom scoring function" in {
-    val scorer  = new AlignmentScorer {
-      /** Matches case insensitive, but score is doubled if query is lower case! */
-      override def scorePairing(queryBase: Byte, targetBase: Byte): Int = {
-        val q = queryBase.toChar.toUpper
-        val t = targetBase.toChar.toUpper
-        if (queryBase.toChar.isLower) {
-          if (q == t) 10 else -10
-        }
-        else {
-          if (q == t) 5 else -5
+    it should "align two sequences preferring two small insertions vs a 2bp insertion and mismatch" in {
+      val q = s("ATTTTTTTTTTTA")
+      val t = s( "TTTTTTTTTTT")
+      // NB: a leading 2bp insertion with the last base a mismatch ("2I10=1X") has score: 10 - 4 - 1 - 2 = 3, whereas a
+      // leading and trailing 1b insertion ("1I11=1I") has score: 11 - 4 - 4 = 3
+      val result = factory(1, -3, -3, -1).align(q, t)
+      assertValidGlobalAlignment(result)
+      result.cigar.toString() shouldBe "1I11=1I"
+      result.score shouldBe 11 - 4 - 4
+    }
+
+    it should "align two sequences preferring a mismatch and a 2bp insertion vs two small deletions when they have the same score" in {
+      val q = s("ATTTTTTTTTTTA")
+      val t = s( "TTTTTTTTTTT")
+      // NB: both have the same score, but we must consistently choose one over the other.
+      val result = factory(1, -1, -3, -1).align(q, t)
+      assertValidGlobalAlignment(result)
+      result.cigar.toString() shouldBe "2I10=1X"
+      result.score shouldBe 10 - 4 - 1 - 1
+    }
+
+    it should "align a homopolymer insertion and left-justify the insertion" in {
+      val q = s("GTTTTTTTTTTA")
+      val t = s("GTTTTTTTTTA")
+      // NB: both have the same score, but we must consistently choose one over the other.
+      val result = factory(1, -1, -3, -1).align(q, t)
+      assertValidGlobalAlignment(result)
+      result.cigar.toString() shouldBe "1=1I10="
+      result.score shouldBe 11 - 4
+    }
+
+    it should "align a simple triplet insertion and left-justify the insertion" in {
+      val q = s("GACGACGACGACGA")
+      val t = s("GACGACGACGA")
+      val result = factory(1, -1, -3, -1).align(q, t)
+      assertValidGlobalAlignment(result)
+      result.cigar.toString() shouldBe "3I11="
+      result.score shouldBe 11 - 4 - 1 - 1
+    }
+
+    it should "align a simple triplet insertion with leading matches and left-justify the insertion" in {
+      val q = s("TTTGACGACGACGACGA")
+      val t = s("TTTGACGACGACGA")
+      val result = factory(1, -1, -3, -1).align(q, t)
+      assertValidGlobalAlignment(result)
+      result.cigar.toString() shouldBe "3=3I11="
+      result.score shouldBe 14 - 4 - 1 - 1
+    }
+
+    it should "align a simple triplet deletion with leading matches and left-justify the deletion" in {
+      val q = s("TTTGACGACGACGA")
+      val t = s("TTTGACGACGACGACGA")
+      val result = factory(1, -1, -3, -1).align(q, t)
+      assertValidGlobalAlignment(result)
+      result.cigar.toString() shouldBe "3=3D11="
+      result.score shouldBe 14 - 4 - 1 - 1
+    }
+
+    it should "prefer a mismatch over an insertion and deletion when the mismatch score is less than than two times the gap open + gap extend scores" in {
+      val q = s("AAACCC")
+      val t = s("AACCCC")
+      // NB: could be either "1I2=1D3=" or "2=1X3="
+      val result = factory(1, -3, -1, -1).align(q, t)
+      assertValidGlobalAlignment(result)
+      result.cigar.toString() shouldBe "2=1X3="
+      result.score shouldBe 5 - 3
+    }
+
+    it should "prefer a mismatch over an insertion and deletion when the alignments have the same score" in {
+      val q = s("AAACCC")
+      val t = s("AACCCC")
+      // NB: could be either "1I2=1D3=" or "2=1X3="
+      val result = factory(1, -4, -1, -1).align(q, t)
+      assertValidGlobalAlignment(result)
+      result.cigar.toString() shouldBe "2=1X3="
+      result.score shouldBe 5 - 4
+    }
+
+    it should "prefer an insertion and deletion over a mismatch when the mismatch score is greater than two times the gap open + gap extend scores" in {
+      val q = s("AAACCC")
+      val t = s("AACCCC")
+      // NB: could be either "1I2=1D3=" or "2=1X3="
+      val result = factory(1, -5, -1, -1).align(q, t)
+      assertValidGlobalAlignment(result)
+      result.cigar.toString() shouldBe "1I2=1D3="
+      result.score shouldBe 5 - 2 - 2
+    }
+
+    it should "prefer one insertion when the gap open penalty is much larger than the gap extend penalty" in {
+      val q = s("ATTTTTTTTTTTA")
+      val t = s( "TTTTTTTTTTT")
+      val result = factory(1, -5, -100, -1).align(q, t)
+      assertValidGlobalAlignment(result)
+      result.cigar.toString() shouldBe "2I10=1X"
+      result.score shouldBe 10 - 100 - 1 - 1 - 5
+    }
+
+    it should "prefer two small insertions when the gap open penalty is much less than the gap extend penalty" in {
+      val q = s("ATTTTTTTTTTTA")
+      val t = s( "TTTTTTTTTTT")
+      val result = factory(1, -5, -1, -100).align(q, t)
+      assertValidGlobalAlignment(result)
+      result.cigar.toString() shouldBe "1I11=1I"
+      result.score shouldBe 11 - 100 - 1 - 100 - 1
+    }
+
+    it should "use the correct gap penalties when the alignment starts/ends with gap on query or target" in {
+      val scorer = new AlignmentScorer {
+        override def scorePairing(q: Byte, t: Byte): Int = if (q == t) 5 else -4
+        override def scoreGap(query: Array[Byte], target: Array[Byte], qOffset: Int, tOffset: Int, inQuery: Boolean, extend: Boolean): Int = {
+          if (inQuery) -3 else -4
         }
       }
 
-      /** Gap open and extend are 5-fold higher if within lower case query sequence. */
-      override def scoreGap(query: Array[Byte], target: Array[Byte], qOffset: Int, tOffset: Int, inQuery: Boolean, extend: Boolean): Int = {
-        if (query(qOffset).toChar.isLower) {
-          if (extend) -25 else -60
+      val aligner = factory.create(scorer, mode=Mode.Global)
+      val r1 = aligner.align(  "TTTTTTTTTT",  "AATTTTTTTTTTAA") // gaps are in query
+      val r2 = aligner.align("AATTTTTTTTTTAA",  "TTTTTTTTTT")  // gaps are in target
+
+      r1.cigar.toString shouldBe "2D10=2D"
+      r1.score shouldBe (10 * 5) + (-3 * 4)
+
+      r2.cigar.toString shouldBe "2I10=2I"
+      r2.score shouldBe (10 * 5) + (-4 * 4)
+    }
+
+    // Glocal alignment tests
+    s"${factory.name}.align(Glocal)" should "align two identical sequences with all matches" in {
+      val result = factory(1, -1, -3, -1, mode=Glocal).align(s("ACGTAACC"), s("ACGTAACC"))
+      assertValidGlocalAlignment(result)
+      result.cigar.toString() shouldBe "8="
+      result.score shouldBe 8
+    }
+
+    it should "correctly align an identical subsequence" in {
+      val result = factory(1, -1, -3, -1, mode=Glocal).align(s("CCGG"), s("AACCGGTT"))
+      assertValidGlocalAlignment(result)
+      result.queryStart shouldBe 1
+      result.targetStart shouldBe 3
+      result.cigar.toString() shouldBe "4="
+      result.score shouldBe 4
+    }
+
+    it should "correctly align a sub-sequence with a mismatch" in {
+      val result = factory(1, -1, -3, -1, mode=Glocal).align(s("-------CGCGTCGTATACGTCGTT"), s("AAGATATCGCGTCGTATACGTCGTA"))
+      assertValidGlocalAlignment(result)
+      result.queryStart shouldBe 1
+      result.targetStart shouldBe 8
+      result.cigar.toString() shouldBe "17=1X"
+      result.score shouldBe 16
+    }
+
+    it should "correctly align a sub-sequence with a gap" in {
+      val result = factory(1, -1, -3, -1, mode=Glocal).align(s("CGCGCGCG"), s("AACGCGACGCGTT"))
+      assertValidGlocalAlignment(result)
+      result.queryStart shouldBe 1
+      result.targetStart shouldBe 3
+      result.cigar.toString() shouldBe "4=1D4="
+      result.score shouldBe 4
+    }
+
+    it should "align a query that is longer than the target, creating an insertion" in {
+      val result = factory(1, -1, -3, -1, mode=Glocal).align("AAAAGGGGTTTT", "AAAATTTT")
+      assertValidGlocalAlignment(result)
+      result.queryStart shouldBe 1
+      result.targetStart shouldBe 1
+      result.cigar.toString shouldBe "4=4I4="
+    }
+
+    it should "align a query with leading and trailing gaps" in {
+      val q = s("-------------------GGTTTTAGAGCTAGAAATAGCAAGTTAAAATAAGGCTAGTCCGTTATCAACTTG---------------------------")
+      val t = s("AGGGCTATAGACTGCTAGAGGTTTTAGAGCTAGAAATAGCAAGTTAAAATAAGGCTAGTCCGTTATCAACTTGAAATGAGCTATTAGTCATGACGCTTTT")
+      val result = factory(1, -3, -3, -1).align(q, t)
+      assertValidGlobalAlignment(result)
+      result.cigar.toString() shouldBe "19D54=27D"
+      result.score shouldBe 54 - (1*19 + 3) - (1*27 + 3)
+    }
+
+    it should "work correctly with a custom scoring function" in {
+      val scorer  = new AlignmentScorer {
+        /** Matches case insensitive, but score is doubled if query is lower case! */
+        override def scorePairing(queryBase: Byte, targetBase: Byte): Int = {
+          val q = queryBase.toChar.toUpper
+          val t = targetBase.toChar.toUpper
+          if (queryBase.toChar.isLower) {
+            if (q == t) 10 else -10
+          }
+          else {
+            if (q == t) 5 else -5
+          }
         }
-        else {
-          if (extend) -5 else -12
+
+        /** Gap open and extend are 5-fold higher if within lower case query sequence. */
+        override def scoreGap(query: Array[Byte], target: Array[Byte], qOffset: Int, tOffset: Int, inQuery: Boolean, extend: Boolean): Int = {
+          if (query(qOffset).toChar.isLower) {
+            if (extend) -25 else -60
+          }
+          else {
+            if (extend) -5 else -12
+          }
         }
       }
+      val aligner = factory.create(scorer, mode=Mode.Glocal)
+
+      val q1 = "ACGTTACGcccccc"
+      val t1 = "ACGTTACGCCCAAACCC"
+      aligner.align(q1.toUpperCase, t1.toUpperCase).cigar.toString shouldBe "11=3D3=" // upper case will prefer to insert a gap
+      aligner.align(q1, t1).cigar.toString shouldBe "11=3X"                           // lower case should give mismatches
     }
-    val aligner = new Aligner(scorer, mode=Mode.Glocal)
 
-    val q1 = "ACGTTACGcccccc"
-    val t1 = "ACGTTACGCCCAAACCC"
-    aligner.align(q1.toUpperCase, t1.toUpperCase).cigar.toString shouldBe "11=3D3=" // upper case will prefer to insert a gap
-    aligner.align(q1, t1).cigar.toString shouldBe "11=3X"                           // lower case should give mismatches
-  }
-
-  it should "force a gap to before or after a G when gaps at G are penalized" in {
-    val scorer = new AlignmentScorer {
-      override def scorePairing(queryBase: Byte, targetBase: Byte): Int = if (queryBase == targetBase) 5 else -4
-      override def scoreGap(query: Array[Byte], target: Array[Byte], qOffset: Int, tOffset: Int, inQuery: Boolean, extend: Boolean): Int = {
-        if (query(qOffset) == 'G') -100
-        else if (extend) -5
-        else -12
+    it should "force a gap to before or after a G when gaps at G are penalized" in {
+      val scorer = new AlignmentScorer {
+        override def scorePairing(queryBase: Byte, targetBase: Byte): Int = if (queryBase == targetBase) 5 else -4
+        override def scoreGap(query: Array[Byte], target: Array[Byte], qOffset: Int, tOffset: Int, inQuery: Boolean, extend: Boolean): Int = {
+          if (query(qOffset) == 'G') -100
+          else if (extend) -5
+          else -12
+        }
       }
+
+      val aligner = factory.create(scorer, mode=Mode.Glocal)
+      val q = s("ACACGTACTCA")
+      val t = s("ACAC-TACTCA")
+      aligner.align(q, t).cigar.toString shouldBe "3=1I1X6="  // the gap is moved over the C, and a G/C mismatch created
     }
 
-    val aligner = new Aligner(scorer, mode=Mode.Glocal)
-    val q = s("ACACGTACTCA")
-    val t = s("ACAC-TACTCA")
-    aligner.align(q, t).cigar.toString shouldBe "3=1I1X6="  // the gap is moved over the C, and a G/C mismatch created
-  }
-
-  it should "charge the correct gap penalty based on whether the gap is in the query or target" in {
-    val scorer = new AlignmentScorer {
-      override def scorePairing(q: Byte, t: Byte): Int = if (q == t) 5 else -4
-      override def scoreGap(query: Array[Byte], target: Array[Byte], qOffset: Int, tOffset: Int, inQuery: Boolean, extend: Boolean): Int = {
-        if (inQuery) -3 else -4
+    it should "charge the correct gap penalty based on whether the gap is in the query or target" in {
+      val scorer = new AlignmentScorer {
+        override def scorePairing(q: Byte, t: Byte): Int = if (q == t) 5 else -4
+        override def scoreGap(query: Array[Byte], target: Array[Byte], qOffset: Int, tOffset: Int, inQuery: Boolean, extend: Boolean): Int = {
+          if (inQuery) -3 else -4
+        }
       }
+
+      val aligner = factory.create(scorer, mode=Mode.Glocal)
+      val r1 = aligner.align("AACCGGTT", "AACCGGTT") // exact
+      val r2 = aligner.align("AACGGTT",  "AACCGGTT")  // gap in query
+      val r3 = aligner.align("AACCGGTT", "AACGGTT")  // gap in target
+
+      r1.cigar.toString shouldBe "8="
+      r1.score shouldBe 40
+
+      r2.cigar.toString shouldBe "2=1D5="
+      r2.score shouldBe 32
+
+      r3.cigar.toString shouldBe "2=1I5="
+      r3.score shouldBe 31
     }
 
-    val aligner = new Aligner(scorer, mode=Mode.Glocal)
-    val r1 = aligner.align("AACCGGTT", "AACCGGTT") // exact
-    val r2 = aligner.align("AACGGTT",  "AACCGGTT")  // gap in query
-    val r3 = aligner.align("AACCGGTT", "AACGGTT")  // gap in target
-
-    r1.cigar.toString shouldBe "8="
-    r1.score shouldBe 40
-
-    r2.cigar.toString shouldBe "2=1D5="
-    r2.score shouldBe 32
-
-    r3.cigar.toString shouldBe "2=1I5="
-    r3.score shouldBe 31
-  }
-
-  "Aligner.align(Local)" should "align two identical sequences with all matches" in {
-    val result = Aligner(1, -1, -3, -1, mode=Local).align(s("ACGTAACC"), s("ACGTAACC"))
-    assertValidLocalAlignment(result)
-    result.cigar.toString() shouldBe "8="
-    result.score shouldBe 8
-  }
-
-  it should "correctly align an identical subsequence (query in target)" in {
-    val result = Aligner(1, -1, -3, -1, mode=Local).align(s("CCGG"), s("AACCGGTT"))
-    assertValidLocalAlignment(result)
-    result.queryStart shouldBe 1
-    result.targetStart shouldBe 3
-    result.queryEnd shouldBe 4
-    result.targetEnd shouldBe 6
-    result.cigar.toString() shouldBe "4="
-    result.score shouldBe 4
-  }
-
-  it should "correctly align an identical subsequence (target in query)" in {
-    val result = Aligner(1, -1, -3, -1, mode=Local).align(s("AACCGGTT"), s("CCGG"))
-    assertValidLocalAlignment(result)
-    result.queryStart shouldBe 3
-    result.targetStart shouldBe 1
-    result.cigar.toString() shouldBe "4="
-    result.score shouldBe 4
-  }
-
-  it should "correctly align a sub-sequence with a leading mismatch" in {
-    val result = Aligner(1, -1, -3, -1, mode=Local).align(s("AGCGTCGTATACGTCGTA-------"), s("CGCGTCGTATACGTCGTAAAGATAT"))
-    assertValidLocalAlignment(result)
-    result.queryStart shouldBe 2
-    result.targetStart shouldBe 2
-    result.queryEnd shouldBe 18
-    result.targetEnd shouldBe 18
-    result.cigar.toString() shouldBe "17="
-    result.score shouldBe 17
-  }
-
-
-  it should "correctly align a sub-sequence with a trailing mismatch" in {
-    val result = Aligner(1, -1, -3, -1, mode=Local).align(s("-------CGCGTCGTATACGTCGTT"), s("AAGATATCGCGTCGTATACGTCGTA"))
-    assertValidLocalAlignment(result)
-    result.queryStart shouldBe 1
-    result.targetStart shouldBe 8
-    result.queryEnd shouldBe 17
-    result.targetEnd shouldBe 24
-    result.cigar.toString() shouldBe "17="
-    result.score shouldBe 17
-  }
-
-  it should "correctly align a sub-sequence with a gap in the query" in {
-    val result = Aligner(1, -1, -3, -1, mode=Local).align(s("CCGCGCGCGC"), s("AACCGCGACGCGCTT"))
-    assertValidLocalAlignment(result)
-    result.queryStart shouldBe 1
-    result.targetStart shouldBe 3
-    result.queryEnd shouldBe 10
-    result.targetEnd shouldBe 13
-    result.cigar.toString() shouldBe "5=1D5="
-    result.score shouldBe 6
-  }
-
-  it should "correctly align a sub-sequence with a gap in the target" in {
-    val result = Aligner(1, -1, -3, -1, mode=Local).align(s("AACCGCGACGCGCTT"), s("CCGCGCGCGC"))
-    assertValidLocalAlignment(result)
-    result.queryStart shouldBe 3
-    result.targetStart shouldBe 1
-    result.queryEnd shouldBe 13
-    result.targetEnd shouldBe 10
-    result.cigar.toString() shouldBe "5=1I5="
-    result.score shouldBe 6
-  }
-
-  it should "prefer a match over an indel" in {
-    val result = Aligner(1, -1, -3, -1, mode=Local).align(s("CGCGCGCG"), s("AACGCGACGCGTT"))
-    assertValidLocalAlignment(result)
-    result.queryStart shouldBe 1
-    result.targetStart shouldBe 3
-    result.queryEnd shouldBe 4
-    result.targetEnd shouldBe 6
-    result.cigar.toString() shouldBe "4="
-    result.score shouldBe 4
-  }
-
-  it should "generate a cigar string that gives matches for Us and IUPAC codes" in {
-    val query  = "AGCGCUGACGUCGUUGACnrg"
-    val target = "AGCaCTGACGTCGTTGACGGG"
-    val result = Aligner(5, -3, -2, -4, mode=Global).align(query, target)
-    result.cigar.toString() shouldBe "3=1X17="
-
-    val Seq(_, aln, _) = result.paddedString()
-    aln shouldBe "|||.|||||||||||||||||"
-  }
-
-   "Aligner.align(minScore)" should "return at least the perfect alignment" in {
-    val results = Aligner(5, -4, -5, -3, mode=Glocal).align("ACGTTTGCAT", "ACGTTTGCAT", 20).sortBy(- _.score)
-    results.size should be >= 1
-    results.head.cigar.toString shouldBe "10="
-  }
-
-  it should "produce multiple alignments" in {
-    val query = "TTTTT"
-    val target = "AAAAATTTTTGGGGGTTTTT"
-    val results = Aligner(5, -4, -10, -5, mode=Glocal).align(query, target, 25).sortBy(- _.score)
-    results should have size 2
-    results.foreach { r =>
-      r.score shouldBe 25
-      r.cigar.toString() shouldBe "5="
-    }
-  }
-
-  it should "ignore zero-length alignments" in {
-    val query  = "TTTTT"
-    val target = "AAAAA"
-
-    // all by score
-    {
-      val results = Aligner(5, -4, -10, -5, mode = Local).align(query, target, 0).sortBy(-_.score)
-      results.foreach { r =>
-        r.queryStart should be <= r.queryEnd
-        r.targetStart should be <= r.targetEnd
-        r.score should be >= 0
-      }
+    s"${factory.name}.align(Local)" should "align two identical sequences with all matches" in {
+      val result = factory(1, -1, -3, -1, mode=Local).align(s("ACGTAACC"), s("ACGTAACC"))
+      assertValidLocalAlignment(result)
+      result.cigar.toString() shouldBe "8="
+      result.score shouldBe 8
     }
 
-    // only the best, which is actually an empty alignment
-    {
-      val result = Aligner(5, -4, -10, -5, mode = Local).align(query, target)
+    it should "correctly align an identical subsequence (query in target)" in {
+      val result = factory(1, -1, -3, -1, mode=Local).align(s("CCGG"), s("AACCGGTT"))
+      assertValidLocalAlignment(result)
+      result.queryStart shouldBe 1
+      result.targetStart shouldBe 3
+      result.queryEnd shouldBe 4
+      result.targetEnd shouldBe 6
+      result.cigar.toString() shouldBe "4="
+      result.score shouldBe 4
+    }
+
+    it should "correctly align an identical subsequence (target in query)" in {
+      val result = factory(1, -1, -3, -1, mode=Local).align(s("AACCGGTT"), s("CCGG"))
+      assertValidLocalAlignment(result)
+      result.queryStart shouldBe 3
+      result.targetStart shouldBe 1
+      result.cigar.toString() shouldBe "4="
+      result.score shouldBe 4
+    }
+
+    it should "correctly align a sub-sequence with a leading mismatch" in {
+      val result = factory(1, -1, -3, -1, mode=Local).align(s("AGCGTCGTATACGTCGTA-------"), s("CGCGTCGTATACGTCGTAAAGATAT"))
+      assertValidLocalAlignment(result)
       result.queryStart shouldBe 2
-      result.queryEnd shouldBe 1
       result.targetStart shouldBe 2
-      result.targetEnd shouldBe 1
-      result.score shouldBe 0
+      result.queryEnd shouldBe 18
+      result.targetEnd shouldBe 18
+      result.cigar.toString() shouldBe "17="
+      result.score shouldBe 17
     }
-  }
+
+
+    it should "correctly align a sub-sequence with a trailing mismatch" in {
+      val result = factory(1, -1, -3, -1, mode=Local).align(s("-------CGCGTCGTATACGTCGTT"), s("AAGATATCGCGTCGTATACGTCGTA"))
+      assertValidLocalAlignment(result)
+      result.queryStart shouldBe 1
+      result.targetStart shouldBe 8
+      result.queryEnd shouldBe 17
+      result.targetEnd shouldBe 24
+      result.cigar.toString() shouldBe "17="
+      result.score shouldBe 17
+    }
+
+    it should "correctly align a sub-sequence with a gap in the query" in {
+      val result = factory(1, -1, -3, -1, mode=Local).align(s("CCGCGCGCGC"), s("AACCGCGACGCGCTT"))
+      assertValidLocalAlignment(result)
+      result.queryStart shouldBe 1
+      result.targetStart shouldBe 3
+      result.queryEnd shouldBe 10
+      result.targetEnd shouldBe 13
+      result.cigar.toString() shouldBe "5=1D5="
+      result.score shouldBe 6
+    }
+
+    it should "correctly align a sub-sequence with a gap in the target" in {
+      val result = factory(1, -1, -3, -1, mode=Local).align(s("AACCGCGACGCGCTT"), s("CCGCGCGCGC"))
+      assertValidLocalAlignment(result)
+      result.queryStart shouldBe 3
+      result.targetStart shouldBe 1
+      result.queryEnd shouldBe 13
+      result.targetEnd shouldBe 10
+      result.cigar.toString() shouldBe "5=1I5="
+      result.score shouldBe 6
+    }
+
+    it should "prefer a match over an indel" in {
+      val result = factory(1, -1, -3, -1, mode=Local).align(s("CGCGCGCG"), s("AACGCGACGCGTT"))
+      assertValidLocalAlignment(result)
+      result.queryStart shouldBe 1
+      result.targetStart shouldBe 3
+      result.queryEnd shouldBe 4
+      result.targetEnd shouldBe 6
+      result.cigar.toString() shouldBe "4="
+      result.score shouldBe 4
+    }
+
+    it should "generate a cigar string that gives matches for Us and IUPAC codes" in {
+      val query  = "AGCGCUGACGUCGUUGACnrg"
+      val target = "AGCaCTGACGTCGTTGACGGG"
+      val result = factory(5, -3, -2, -4, mode=Global).align(query, target)
+      result.cigar.toString() shouldBe "3=1X17="
+
+      val Seq(_, aln, _) = result.paddedString()
+      aln shouldBe "|||.|||||||||||||||||"
+    }
+
+    s"${factory.name}.align(minScore)" should "return at least the perfect alignment" in {
+      val results = factory(5, -4, -5, -3, mode=Glocal).align("ACGTTTGCAT", "ACGTTTGCAT", 20).sortBy(- _.score)
+      results.size should be >= 1
+      results.head.cigar.toString shouldBe "10="
+    }
+
+    it should "produce multiple alignments" in {
+      val query = "TTTTT"
+      val target = "AAAAATTTTTGGGGGTTTTT"
+      val results = factory(5, -4, -10, -5, mode=Glocal).align(query, target, 25).sortBy(- _.score)
+      results should have size 2
+      results.foreach { r =>
+        r.score shouldBe 25
+        r.cigar.toString() shouldBe "5="
+      }
+    }
+
+    it should "ignore zero-length alignments" in {
+      val query  = "TTTTT"
+      val target = "AAAAA"
+
+      // all by score
+      {
+        val results = factory(5, -4, -10, -5, mode = Local).align(query, target, 0).sortBy(-_.score)
+        results.foreach { r =>
+          r.queryStart should be <= r.queryEnd
+          r.targetStart should be <= r.targetEnd
+          r.score should be >= 0
+        }
+      }
+
+      // only the best, which is actually an empty alignment
+      {
+        val result = factory(5, -4, -10, -5, mode = Local).align(query, target)
+        result.queryStart shouldBe 2
+        result.queryEnd shouldBe 1
+        result.targetStart shouldBe 2
+        result.targetEnd shouldBe 1
+        result.score shouldBe 0
+      }
+    }
+  } // end AlignerFactory.All.foreach
 
   /** Timing test - change "ignore" to "it" to enable. */
   ignore should "perform lots of glocal alignments" in {
@@ -552,36 +581,36 @@ class AlignerTest extends UnitSpec {
     System.out.println(s"Run median=${counter.median()}, mean=${counter.mean()}")
   }
 
-  Seq(true, false).foreach { useDefault =>
-    "CachedAligner.align(Global)" should f"align two identical sequences with all matches (default constructor: $useDefault)" in {
+  "CachedAligner" should "correctly reuse matrices when aligning sequences of varying sizes" in {
+    // Start with small initial capacity to force matrix resizing
+    val aligner = new CachedAligner(
+      scorer          = Aligner.scorer(1, -1, -3, -1),
+      initQueryLength = 8,
+      initTargetLength = 8
+    )
 
-      val aligner = if (useDefault) CachedAligner(1, -1, -3, -1) else {
-        val aligner = Aligner(1, -1, -3, -1)
-        new CachedAligner(scorer=aligner.scorer, mode=aligner.mode, initQueryLength=8, initTargetLength=8)
-      }
+    // First alignment - fits in initial capacity
+    val result0 = aligner.align(s("ACGTAACC"), s("ACGTAACC"))
+    assertValidGlobalAlignment(result0)
+    result0.cigar.toString() shouldBe "8="
+    result0.score shouldBe 8
 
-      val result0 = aligner.align(s("ACGTAACC"), s("ACGTAACC"))
-      assertValidGlobalAlignment(result0)
-      result0.cigar.toString() shouldBe "8="
-      result0.score shouldBe 8
+    // Same sequence again - reuses existing matrices
+    val result1 = aligner.align(s("ACGTAACC"), s("ACGTAACC"))
+    assertValidGlobalAlignment(result1)
+    result1.cigar.toString() shouldBe "8="
+    result1.score shouldBe 8
 
-      // same sequence
-      val result1 = aligner.align(s("ACGTAACC"), s("ACGTAACC"))
-      assertValidGlobalAlignment(result1)
-      result1.cigar.toString() shouldBe "8="
-      result1.score shouldBe 8
+    // Longer sequence - forces matrix reallocation
+    val result2 = aligner.align(s("ACGTAACCACGTAACC"), s("ACGTAACCACGTAACC"))
+    assertValidGlobalAlignment(result2)
+    result2.cigar.toString() shouldBe "16="
+    result2.score shouldBe 16
 
-      // longer
-      val result2 = aligner.align(s("ACGTAACCACGTAACC"), s("ACGTAACCACGTAACC"))
-      assertValidGlobalAlignment(result2)
-      result2.cigar.toString() shouldBe "16="
-      result2.score shouldBe 16
-
-      // shorter
-      val result3 = aligner.align(s("ACGT"), s("ACGT"))
-      assertValidGlobalAlignment(result3)
-      result3.cigar.toString() shouldBe "4="
-      result3.score shouldBe 4
-    }
+    // Shorter sequence - reuses enlarged matrices
+    val result3 = aligner.align(s("ACGT"), s("ACGT"))
+    assertValidGlobalAlignment(result3)
+    result3.cigar.toString() shouldBe "4="
+    result3.score shouldBe 4
   }
 }
