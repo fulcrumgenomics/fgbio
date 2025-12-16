@@ -42,7 +42,6 @@ import java.net.InetAddress
 import java.nio.file.Paths
 import java.text.DecimalFormat
 import scala.annotation.unused
-import java.lang.Runtime
 
 /**
   * Main program for fgbio that loads everything up and runs the appropriate sub-command
@@ -171,8 +170,11 @@ class FgBioMain extends LazyLogging {
     val snappy     = if (new SnappyLoader().isSnappyAvailable) "with snappy" else "without snappy"
     val inflater   = if (IntelCompressionLibrarySupported) "IntelInflater" else "JdkInflater"
     val deflater   = if (IntelCompressionLibrarySupported) "IntelDeflater" else "JdkDeflater"
-    val maxMemory  = Runtime.getRuntime().maxMemory()
-    logger.info(s"Executing $tool from $name version $version as $user@$host on JRE $jreVersion with Max Heap Memory (-Xmx) $maxMemory with $snappy, $inflater, and $deflater")
+    val maxMemory  = {
+      val mib = Runtime.getRuntime.maxMemory() / (1024 * 1024)
+      if (mib >= 1024) f"${mib / 1024.0}%.1fg" else s"${mib}m"
+    }
+    logger.info(s"Executing $tool from $name version $version as $user@$host on JRE $jreVersion with max heap memory $maxMemory, $snappy, $inflater, and $deflater")
   }
 
   /** Prints a line of useful information when a tool stops executing. */
