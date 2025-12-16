@@ -171,7 +171,11 @@ class FgBioMain extends LazyLogging {
     val snappy     = if (new SnappyLoader().isSnappyAvailable) "with snappy" else "without snappy"
     val inflater   = if (IntelCompressionLibrarySupported) "IntelInflater" else "JdkInflater"
     val deflater   = if (IntelCompressionLibrarySupported) "IntelDeflater" else "JdkDeflater"
-    logger.info(s"Executing $tool from $name version $version as $user@$host on JRE $jreVersion $snappy, $inflater, and $deflater")
+    val maxMemory  = {
+      val mib = Runtime.getRuntime.maxMemory() / (1024 * 1024)
+      if (mib >= 1024) f"${mib / 1024.0}%.1fg" else s"${mib}m"
+    }
+    logger.info(s"Executing $tool from $name version $version as $user@$host on JRE $jreVersion with max heap memory $maxMemory, $snappy, $inflater, and $deflater")
   }
 
   /** Prints a line of useful information when a tool stops executing. */
