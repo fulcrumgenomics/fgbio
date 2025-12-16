@@ -327,6 +327,7 @@ class SamRecordTest extends UnitSpec with OptionValues {
     // leading soft-clipping
     TestCase("3S9M",    Some(1),     None), // no reference base, start of soft-clipping
     TestCase("3S9M",    Some(3),     None), // no reference base, end of soft-clipping
+    TestCase("3S9M",    Some(1),     None, returnLastBaseIfInserted=true), // soft-clipping should not return a reference base even with returnLastBaseIfInserted=true
     TestCase("3S9M",          4,        1), // start of aligned bases
     TestCase("3S9M",         10,        7), // end of aligned bases
     // leading hard-clipping
@@ -370,6 +371,7 @@ class SamRecordTest extends UnitSpec with OptionValues {
     TestCase("9M3S",          9,        9), // last aligned base
     TestCase("9M3S",   Some(10),     None), // no reference base, first base of soft-clipping
     TestCase("9M3S",   Some(12),     None), // no reference base, last base of soft-clipping
+    TestCase("9M3S",   Some(10),     None, returnLastBaseIfInserted=true), // soft-clipping should not return a reference base even with returnLastBaseIfInserted=true
     // trailing hard-clipping
     TestCase("9M3H",          1,        1), // start of aligned bases
     TestCase("9M3S3H",        9,        9), // end of aligned bases
@@ -433,7 +435,8 @@ class SamRecordTest extends UnitSpec with OptionValues {
   // now run the test cases
   testCases.filter(_.doRefPosAtReadPos).foreach { testCase =>
     testCase.readPos.foreach { pos: Int =>
-      it should s"return ref position ${testCase.refPos} for read position ${testCase.readPos} with cigar ${testCase.cigar}" in {
+      val insertedSuffix = if (testCase.returnLastBaseIfInserted) " with returnLastBaseIfInserted=true" else ""
+      it should s"return ref position ${testCase.refPos} for read position ${testCase.readPos} with cigar ${testCase.cigar}$insertedSuffix" in {
         val frag   = new SamBuilder(readLength=Cigar(testCase.cigar).lengthOnQuery).addFrag(start=1, cigar=testCase.cigar).value
         val refPos = frag.referencePosAtReadPos(pos=pos, returnLastBaseIfInserted=testCase.returnLastBaseIfInserted)
         withClue(testCase) {

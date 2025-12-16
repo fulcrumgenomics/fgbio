@@ -270,7 +270,7 @@ trait SamRecord {
         val end = readPos + elem.length - 1
         if (pos <= end) {
           if (!elem.operator.consumesReferenceBases()) {
-            if (returnLastBaseIfInserted) {
+            if (returnLastBaseIfInserted && elem.operator == CigarOperator.INSERTION) {
               result = Some(refPos - 1)
             }
           }
