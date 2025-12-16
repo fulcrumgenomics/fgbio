@@ -387,7 +387,7 @@ class SamRecordTest extends UnitSpec with OptionValues {
     // reference skip
     TestCase("5M6N5M", Some(5),  Some(10), returnLastBaseIfSkipped=true), // returns the previous read base
     TestCase("4M6N4M", Some(4),  Some(4)),
-    TestCase("4M6N4M", None,     Some(5)), // returns the previous read base
+    TestCase("4M6N4M", None,     Some(5)), // in a skip region
     TestCase("4M6N4M", Some(5),  Some(11)),
     TestCase("5M6N5M", None,     Some(10)), // does not return the read base
   )
