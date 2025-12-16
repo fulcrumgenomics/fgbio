@@ -254,7 +254,7 @@ trait SamRecord {
     * @param returnLastBaseIfInserted if the reference is an insertion, true to return the previous reference base,
     *                                 false to return None
     * */
-  @inline final def referencePosAtReadPos(pos: Int, returnLastBaseIfInserted: Boolean = false): Option[Int] = {
+  final def referencePosAtReadPos(pos: Int, returnLastBaseIfInserted: Boolean = false): Option[Int] = {
     require(this.mapped, s"read was not mapped: ${this}")
     require(1 <= pos, s"position given '$pos' was less than one: ${this}")
     require(pos <= cigar.lengthOnQuery , s"position given '$pos' was longer than the # of read bases '${cigar.lengthOnQuery}': ${this}")
@@ -297,9 +297,9 @@ trait SamRecord {
     * @param returnLastBaseIfSkipped if the reference is a skip, true to return the previous read base, false to
     *                                return None
     * */
-  @inline final def readPosAtReferencePos(pos: Int,
-                                          returnLastBaseIfDeleted: Boolean = false,
-                                          returnLastBaseIfSkipped: Boolean = false): Option[Int] = {
+  final def readPosAtReferencePos(pos: Int,
+                                  returnLastBaseIfDeleted: Boolean = false,
+                                  returnLastBaseIfSkipped: Boolean = false): Option[Int] = {
     require(this.mapped, s"read was not mapped: ${this}")
     require(this.start <= pos, s"position given '$pos' was before the start of the alignment '${this.start}': ${this}")
     require(pos <= this.end , s"position given '$pos' was past the end of the alignment '${this.end}': ${this}")
