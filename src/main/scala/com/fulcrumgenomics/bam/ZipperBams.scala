@@ -185,6 +185,9 @@ private[bam] object ZipperBams extends LazyLogging {
     |and the names of tag sets, which will be expanded into sets of tag names.  Currently the only named tag set
     |is "Consensus" which contains all the per-base consensus tags produced by fgbio consensus callers.
     |
+    |By default, reads present in the unmapped BAM but absent from the aligned BAM (e.g., removed by adapter
+    |trimming) are written to the output as unmapped. Use `--exclude-missing-reads` to exclude them entirely.
+    |
     |By default the mapped BAM is read from standard input (stdin) and the output BAM is written to standard
     |output (stdout). This can be changed using the `--input/-i` and `--output/-o` options.
     |
