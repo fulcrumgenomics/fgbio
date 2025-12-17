@@ -207,7 +207,8 @@ class ZipperBams
   @arg(doc="Set of optional tags to reverse complement on reads mapped to the negative strand.", minElements=0)
   val tagsToRevcomp: IndexedSeq[String] = IndexedSeq.empty,
   @arg(flag='s', doc="Sort the output BAM into the given order.") val sort: Option[SamOrder] = None,
-  @arg(flag='b', doc="Buffer this many read-pairs while reading the input BAMs.") val buffer: Int = 5000
+  @arg(flag='b', doc="Buffer this many read-pairs while reading the input BAMs.") val buffer: Int = 5000,
+  @arg(doc="Exclude reads from the unmapped BAM that are not present in the aligned BAM.") val excludeMissingReads: Boolean = false
 ) extends FgBioTool {
   import ZipperBams._
 
@@ -240,7 +241,9 @@ class ZipperBams
       }
       else {
         logger.debug(s"Found an unmapped read with no corresponding mapped read: ${template.name}")
-        out ++= template.allReads
+        if (!excludeMissingReads) {
+          out ++= template.allReads
+        }
       }
     }
 
@@ -254,7 +257,7 @@ class ZipperBams
         |order, and reads with the same name are consecutive (grouped) in each input""".stripMargin
       )
     }
-    
+
     unmappedSource.safelyClose()
     mappedSource.safelyClose()
   }

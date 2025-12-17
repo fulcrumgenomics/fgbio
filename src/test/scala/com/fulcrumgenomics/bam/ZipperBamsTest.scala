@@ -84,7 +84,8 @@ class ZipperBamsTest extends UnitSpec {
                   reverse: Iterable[String] = Nil,
                   revcomp: Iterable[String] = Nil,
                   sort: Option[SamOrder] = None,
-                  buffer: Int = 5000
+                  buffer: Int = 5000,
+                  excludeMissingReads: Boolean = false
                  ): SamSource = {
     val dir      = Io.makeTempDir("zipper-bams-test")
     val uBam     = dir.resolve("unmapped.bam")
@@ -110,7 +111,8 @@ class ZipperBamsTest extends UnitSpec {
       tagsToReverse = reverse.toIndexedSeq,
       tagsToRevcomp = revcomp.toIndexedSeq,
       sort          = sort,
-      buffer        = buffer
+      buffer        = buffer,
+      excludeMissingReads = excludeMissingReads
     )
 
     executeFgbioTool(zipper)
@@ -320,5 +322,41 @@ class ZipperBamsTest extends UnitSpec {
     val recs = zippered.toIndexedSeq
     recs should have length 3
     recs.map(_.name) should contain theSameElementsInOrderAs Seq("q1", "q2", "q3")
+  }
+
+  it should "exclude unmapped reads that are not present in the aligned BAM when excludeMissingReads is true" in {
+    val unmapped = uBuilder()
+    unmapped.addFrag(name="q1", unmapped=true, attrs=Map("RX" -> "ACGT", "xy" -> 1234))
+    unmapped.addFrag(name="q2", unmapped=true, attrs=Map("RX" -> "GATA", "xy" -> 3456))
+    unmapped.addFrag(name="q3", unmapped=true, attrs=Map("RX" -> "GGCG", "xy" -> 5678))
+    unmapped.addFrag(name="q4", unmapped=true, attrs=Map("RX" -> "TTTT", "xy" -> 9999))
+
+    val mapped   = mBuilder()
+    mapped.addFrag(name="q1", start=100, strand=Plus,  attrs=Map("PG" -> mappedPg.getId, "AS" -> 77))
+    mapped.addFrag(name="q3", start=200, strand=Minus, attrs=Map("PG" -> mappedPg.getId, "AS" -> 77))
+
+    val zippered = run(unmapped, mapped, excludeMissingReads=true)
+    val recs = zippered.toIndexedSeq
+    recs should have length 2
+    recs.map(_.name) should contain theSameElementsInOrderAs Seq("q1", "q3")
+    recs.exists(_.name == "q2") shouldBe false
+    recs.exists(_.name == "q4") shouldBe false
+  }
+
+  it should "work with paired-end reads when excludeMissingReads is true" in {
+    val unmapped = uBuilder()
+    unmapped.addPair(name="q1", unmapped1=true, unmapped2=true, attrs=Map("RX" -> "ACGT", "xy" -> 1234))
+    unmapped.addPair(name="q2", unmapped1=true, unmapped2=true, attrs=Map("RX" -> "GGTA", "xy" -> 4567))
+    unmapped.addPair(name="q3", unmapped1=true, unmapped2=true, attrs=Map("RX" -> "TTTT", "xy" -> 9999))
+
+    val mapped   = mBuilder()
+    mapped.addPair(name="q1", start1=100, start2=200, attrs=Map("PG" -> mappedPg.getId, "AS" -> 77))
+    mapped.addPair(name="q3", start1=500, start2=700, attrs=Map("PG" -> mappedPg.getId, "AS" -> 16))
+
+    val zippered = run(unmapped, mapped, excludeMissingReads=true)
+    val recs = zippered.toIndexedSeq
+    recs should have length 4  // 2 pairs x 2 reads
+    recs.map(_.name).distinct should contain theSameElementsAs Seq("q1", "q3")
+    recs.exists(_.name == "q2") shouldBe false
   }
 }
