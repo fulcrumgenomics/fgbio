@@ -239,13 +239,18 @@ class ZipperBams
     val unmappedIter = templateIterator(unmappedSource, bufferSize=buffer)
     val mappedIter   = templateIterator(mappedSource, bufferSize=buffer)
 
+    var templatesNotInMappedBam = 0L
+
     unmappedIter.foreach { template =>
       if (mappedIter.hasNext && mappedIter.head.name == template.name) {
         out ++= merge(unmapped=template, mapped=mappedIter.next(), tagInfo=tagInfo).allReads
       }
       else {
         logger.debug(s"Found an unmapped read with no corresponding mapped read: ${template.name}")
-        if (!excludeMissingReads) {
+        if (excludeMissingReads) {
+          templatesNotInMappedBam += 1
+        }
+        else {
           out ++= template.allReads
         }
       }
@@ -260,6 +265,10 @@ class ZipperBams
         |Please ensure the unmapped and mapped reads have the same set of read names in the same
         |order, and reads with the same name are consecutive (grouped) in each input""".stripMargin
       )
+    }
+
+    if (excludeMissingReads && templatesNotInMappedBam > 0) {
+      logger.info(f"Excluded $templatesNotInMappedBam%,d templates that were not present in the aligned BAM.")
     }
 
     unmappedSource.safelyClose()
