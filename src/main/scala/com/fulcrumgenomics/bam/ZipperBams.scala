@@ -185,6 +185,9 @@ private[bam] object ZipperBams extends LazyLogging {
     |and the names of tag sets, which will be expanded into sets of tag names.  Currently the only named tag set
     |is "Consensus" which contains all the per-base consensus tags produced by fgbio consensus callers.
     |
+    |By default, reads present in the unmapped BAM but absent from the aligned BAM (e.g., removed by adapter
+    |trimming) are written to the output as unmapped. Use `--exclude-missing-reads` to exclude them entirely.
+    |
     |By default the mapped BAM is read from standard input (stdin) and the output BAM is written to standard
     |output (stdout). This can be changed using the `--input/-i` and `--output/-o` options.
     |
@@ -207,7 +210,8 @@ class ZipperBams
   @arg(doc="Set of optional tags to reverse complement on reads mapped to the negative strand.", minElements=0)
   val tagsToRevcomp: IndexedSeq[String] = IndexedSeq.empty,
   @arg(flag='s', doc="Sort the output BAM into the given order.") val sort: Option[SamOrder] = None,
-  @arg(flag='b', doc="Buffer this many read-pairs while reading the input BAMs.") val buffer: Int = 5000
+  @arg(flag='b', doc="Buffer this many read-pairs while reading the input BAMs.") val buffer: Int = 5000,
+  @arg(doc="Exclude reads from the unmapped BAM that are not present in the aligned BAM. Useful when reads were intentionally removed (e.g., by adapter trimming) prior to alignment.") val excludeMissingReads: Boolean = false
 ) extends FgBioTool {
   import ZipperBams._
 
@@ -234,13 +238,20 @@ class ZipperBams
     val unmappedIter = templateIterator(unmappedSource, bufferSize=buffer)
     val mappedIter   = templateIterator(mappedSource, bufferSize=buffer)
 
+    var templatesNotInMappedBam = 0L
+
     unmappedIter.foreach { template =>
       if (mappedIter.hasNext && mappedIter.head.name == template.name) {
         out ++= merge(unmapped=template, mapped=mappedIter.next(), tagInfo=tagInfo).allReads
       }
       else {
         logger.debug(s"Found an unmapped read with no corresponding mapped read: ${template.name}")
-        out ++= template.allReads
+        if (excludeMissingReads) {
+          templatesNotInMappedBam += 1
+        }
+        else {
+          out ++= template.allReads
+        }
       }
     }
 
@@ -254,7 +265,11 @@ class ZipperBams
         |order, and reads with the same name are consecutive (grouped) in each input""".stripMargin
       )
     }
-    
+
+    if (excludeMissingReads && templatesNotInMappedBam > 0) {
+      logger.info(f"Excluded $templatesNotInMappedBam%,d templates that were not present in the aligned BAM.")
+    }
+
     unmappedSource.safelyClose()
     mappedSource.safelyClose()
   }
