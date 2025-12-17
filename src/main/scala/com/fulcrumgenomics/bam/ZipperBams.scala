@@ -208,7 +208,8 @@ class ZipperBams
   val tagsToRevcomp: IndexedSeq[String] = IndexedSeq.empty,
   @arg(flag='s', doc="Sort the output BAM into the given order.") val sort: Option[SamOrder] = None,
   @arg(flag='b', doc="Buffer this many read-pairs while reading the input BAMs.") val buffer: Int = 5000,
-  @arg(doc="Exclude reads from the unmapped BAM that are not present in the aligned BAM.") val excludeMissingReads: Boolean = false
+  @arg(doc="Exclude reads from the unmapped BAM that are not present in the aligned BAM. " +                                                               
+           "Useful when reads may have been removed (e.g., by adapter trimming) prior to mapping.")   
 ) extends FgBioTool {
   import ZipperBams._
 
