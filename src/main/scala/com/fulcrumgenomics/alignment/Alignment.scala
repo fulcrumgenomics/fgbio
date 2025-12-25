@@ -25,6 +25,7 @@
 package com.fulcrumgenomics.alignment
 
 import com.fulcrumgenomics.FgBioDef._
+import com.fulcrumgenomics.util.Sequences
 import htsjdk.samtools.{CigarElement, CigarOperator, SAMRecord, Cigar => HtsJdkCigar}
 
 import scala.collection.mutable.ArrayBuffer
@@ -483,5 +484,19 @@ case class Alignment(query: Array[Byte],
     }
 
     copy(queryStart=qStart, targetStart=tStart, cigar=Cigar(elems.result()), score=0)
+  }
+
+  /** Returns a version of the alignment where both sequences have been reverse complemented
+    * and the alignment has been reversed to match.
+    */
+  def revcomped: Alignment = {
+    val query = this.query.clone()
+    val target = this.target.clone()
+    Sequences.revcomp(query)
+    Sequences.revcomp(target)
+    val cigar = this.cigar.reverse
+    val qs = query.length  - (this.queryStart + this.cigar.lengthOnQuery - 1) + 1
+    val ts = target.length - (this.targetStart + this.cigar.lengthOnTarget - 1) + 1
+    Alignment(query, target, qs, ts, cigar, this.score)
   }
 }

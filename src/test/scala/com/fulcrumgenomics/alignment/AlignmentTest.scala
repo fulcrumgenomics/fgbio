@@ -279,6 +279,28 @@ class AlignmentTest extends UnitSpec {
     alignment.subByTarget(6, 10).cigar.toString() shouldBe "5D"
     alignment.subByTarget(6, 11).cigar.toString() shouldBe "5D1="
   }
+
+  "Alignment.revcomped" should "reverse complement a simple alignment" in {
+    val in = Alignment("TTTTT", "TTTTT", 1, 1, Cigar("5M"), 5)
+    val rc = in.revcomped
+    rc.query.map(_.toChar).mkString shouldBe "AAAAA"
+    rc.target.map(_.toChar).mkString shouldBe "AAAAA"
+    rc.queryStart shouldBe 1
+    rc.targetStart shouldBe 1
+    rc.cigar.toString shouldBe "5M"
+    rc.score shouldBe 5
+  }
+
+  it should "correctly reverse a non-global alignment" in {
+    val in = Alignment("..GTAACCGGTT".filter(_ != '.'), "ACGTAA.CGGTTCCCCC".filter(_ != '.'), 1, 3, Cigar("5M1I4M"), 10)
+    val rc = in.revcomped
+    rc.query.map(_.toChar).mkString shouldBe "AACCGGTTAC"
+    rc.target.map(_.toChar).mkString shouldBe "GGGGGAACCGTTACGT"
+    rc.queryStart shouldBe 1
+    rc.targetStart shouldBe 6
+    rc.cigar.toString shouldBe "4M1I5M"
+    rc.score shouldBe 10
+  }
 }
 
 class CigarStatsTest extends UnitSpec {
