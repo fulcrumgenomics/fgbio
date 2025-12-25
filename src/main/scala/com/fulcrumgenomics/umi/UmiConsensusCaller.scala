@@ -287,12 +287,12 @@ trait UmiConsensusCaller[ConsensusRead <: SimpleRead] {
       var index = if (!rec.isFrPair) trimToLength - 1 else {
         // Get the number of mapped bases to clip that maps beyond the mate's end, including any soft-clipped bases. Use
         // that to compute where in the read to keep.
-        val mateUnclippedStart = rec.mateUnclippedStart.getOrElse(throw new IllegalArgumentException(f"Mate cigar (MC SAM tag) needed for read: ${rec.name}"))
-        val mateUnclippedEnd   = rec.mateUnclippedEnd.getOrElse(throw new IllegalArgumentException(f"Mate cigar (MC SAM tag) needed for read: ${rec.name}"))
+        val mateUnSoftClippedStart = rec.mateUnSoftClippedStart.getOrElse(throw new IllegalArgumentException(f"Mate cigar (MC SAM tag) needed for read: ${rec.name}"))
+        val mateUnSoftClippedEnd   = rec.mateUnSoftClippedEnd.getOrElse(throw new IllegalArgumentException(f"Mate cigar (MC SAM tag) needed for read: ${rec.name}"))
         val clipPosition = rec.length - this.clipper.numBasesExtendingPastMate(
-          rec                = rec,
-          mateUnclippedStart = mateUnclippedStart,
-          mateUnclippedEnd   = mateUnclippedEnd
+          rec                    = rec,
+          mateUnSoftClippedStart = mateUnSoftClippedStart,
+          mateUnSoftClippedEnd   = mateUnSoftClippedEnd,
         )
         min(clipPosition, trimToLength) - 1
       }
