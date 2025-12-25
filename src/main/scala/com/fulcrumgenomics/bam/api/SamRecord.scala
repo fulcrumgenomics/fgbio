@@ -234,9 +234,107 @@ trait SamRecord {
   // transient attributes
   @inline final val transientAttrs: TransientAttrs = new TransientAttrs(this)
 
-  // TODO long-term: replace these two methods with methods on [[Cigar]] to save creating alignment blocks in memory
-  @inline final def refPosAtReadPos(pos: Int) = getReferencePositionAtReadPosition(pos)
-  @inline final def readPosAtRefPos(pos: Int, returnLastBaseIfDeleted: Boolean) = getReadPositionAtReferencePosition(pos, returnLastBaseIfDeleted)
+  @deprecated(message="Use referencePosAtReadPos instead", since="2.0.0")
+  @inline final def refPosAtReadPos(pos: Int): Int = referencePosAtReadPos(pos).getOrElse(0)
+  @deprecated(message="Use readPosAtReferencePos instead", since="2.0.0")
+  @inline final def readPosAtRefPos(pos: Int, returnLastBaseIfDeleted: Boolean): Int = {
+    readPosAtReferencePos(pos, returnLastBaseIfDeleted=returnLastBaseIfDeleted).getOrElse(0)
+  }
+
+  /** Returns the 1-based reference position for the 1-based position in the read, or [[scala.None]] if
+    * the given base in the read does not align to a reference base (e.g. due to soft-clipping,
+    * or an insertion).
+    *
+    * If the requested read position is less than or equal to zero, or greater than the read length [[com.fulcrumgenomics.bam.api.SamRecord.length]], then
+    * an exception will be thrown.
+    *
+    * Hard-clipping (`H`) is ignored and not counted as part of the read.
+    *
+    * @param pos the 1-based read position to query
+    * @param returnLastBaseIfInserted if the reference is an insertion, true to return the previous reference base,
+    *                                 false to return None
+    * */
+  final def referencePosAtReadPos(pos: Int, returnLastBaseIfInserted: Boolean = false): Option[Int] = {
+    require(this.mapped, s"read was not mapped: ${this}")
+    require(1 <= pos, s"position given '$pos' was less than one: ${this}")
+    require(pos <= cigar.lengthOnQuery , s"position given '$pos' was longer than the # of read bases '${cigar.lengthOnQuery}': ${this}")
+
+    val elems   = this.cigar.elems.iterator
+    var readPos = 1
+    var refPos  = this.start
+    var result: Option[Int] = None
+
+    while (elems.hasNext && readPos <= pos) {
+      val elem = elems.next()
+      if (elem.operator.consumesReadBases()) {
+        val end = readPos + elem.length - 1
+        if (pos <= end) {
+          if (!elem.operator.consumesReferenceBases()) {
+            if (returnLastBaseIfInserted && elem.operator == CigarOperator.INSERTION) {
+              result = Some(refPos - 1)
+            }
+          }
+          else {
+            result = Some(refPos + (pos - readPos))
+          }
+        }
+      }
+
+      readPos += elem.lengthOnQuery
+      refPos += elem.lengthOnTarget
+    }
+
+    result
+  }
+
+  /** Returns the 1-based read position for the 1-based position in the reference, or [[scala.None]] if
+    * the given base in the read does not align to a read base (e.g. due to soft-clipping,
+    * or a deletion).
+    *
+    * @param pos the 1-based reference position to query
+    * @param returnLastBaseIfDeleted if the reference is a deletion, true to return the previous read base, false to
+    *                                return None
+    * @param returnLastBaseIfSkipped if the reference is a skip, true to return the previous read base, false to
+    *                                return None
+    * */
+  final def readPosAtReferencePos(pos: Int,
+                                  returnLastBaseIfDeleted: Boolean = false,
+                                  returnLastBaseIfSkipped: Boolean = false): Option[Int] = {
+    require(this.mapped, s"read was not mapped: ${this}")
+    require(this.start <= pos, s"position given '$pos' was before the start of the alignment '${this.start}': ${this}")
+    require(pos <= this.end , s"position given '$pos' was past the end of the alignment '${this.end}': ${this}")
+
+    val elems   = this.cigar.elems.iterator
+    var readPos = 1
+    var refPos  = this.start
+    var result: Option[Int] = None
+
+    while (elems.hasNext && refPos <= pos) {
+      val elem = elems.next()
+      if (elem.operator.consumesReferenceBases()) {
+        val end = refPos + elem.length - 1
+        if (pos <= end) {
+          if (!elem.operator.consumesReadBases()) {
+            if (returnLastBaseIfDeleted && elem.operator == CigarOperator.DELETION) {
+              result = Some(readPos - 1)
+            }
+            else if (returnLastBaseIfSkipped && elem.operator == CigarOperator.SKIPPED_REGION) {
+              result = Some(readPos - 1)
+            }
+          }
+          else {
+            result = Some(readPos + (pos - refPos))
+          }
+        }
+      }
+
+      readPos += elem.lengthOnQuery
+      refPos += elem.lengthOnTarget
+    }
+
+    result
+  }
+
 
   ////////////////////////////////////////////////////////////////////////////
   // Non-wrapper methods.

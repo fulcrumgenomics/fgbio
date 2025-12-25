@@ -307,16 +307,22 @@ class SamRecordClipper(val mode: ClippingMode, val autoClipAttributes: Boolean) 
       // Pick the mid point in the reference window between the 5' ends of the record and its mate.  The read ends at the
       // mid point, or if the mid point is in a deletion, the base prior to the deletion.  The mate ends at the mid
       // point, or if the mid point is in a deletion, the base after the deletion.
+
       val midPoint  = { // Need to ensure the midpoint between 5' ends actually occurs in the overlapped region
         val retval = (rec.start + mate.end) / 2
         if (retval > rec.end) rec.end // trim only the minus strand read
         else if (retval < mate.start) mate.start - 1 // trim only positive-strand read
         else retval
       }
-      val readEnd   = rec.readPosAtRefPos(pos=midPoint, returnLastBaseIfDeleted=true)
+      val readEnd   = rec.readPosAtReferencePos(pos=midPoint, returnLastBaseIfDeleted=true).getOrElse(
+        unreachable("Expected to find reference position in read")
+      )
       val mateStart = { // NB: need to be careful if the midpoint falls in a deletion
-        val retval = mate.readPosAtRefPos(pos=midPoint + 1, returnLastBaseIfDeleted=false)
-        if (retval != 0) retval else mate.readPosAtRefPos(pos=midPoint + 1, returnLastBaseIfDeleted=true) + 1
+        mate.readPosAtReferencePos(pos=midPoint + 1, returnLastBaseIfDeleted=false).getOrElse(
+          1 + mate.readPosAtReferencePos(pos=midPoint + 1, returnLastBaseIfDeleted=true).getOrElse(
+            unreachable("Expected to find reference position in a deletion in mate")
+          )
+        )
       }
       val numOverlappingBasesRead = this.clip3PrimeEndOfRead(rec, rec.cigar.trailingHardClippedBases + rec.length - readEnd)
       val numOverlappingBasesMate = this.clip3PrimeEndOfRead(mate, mate.cigar.leadingHardClippedBases + mateStart - 1)
@@ -334,7 +340,7 @@ class SamRecordClipper(val mode: ClippingMode, val autoClipAttributes: Boolean) 
     if (!rec.isFrPair) 0 else rec.positiveStrand match {
       case true if rec.end >= mateUnclippedEnd =>
         // positive strand record is aligned to/past the mate alignment end: count any bases aligned/softclipped after
-        Math.max(0, rec.length - rec.readPosAtRefPos(pos=mateUnclippedEnd, returnLastBaseIfDeleted=false))
+        Math.max(0, rec.length - rec.readPosAtReferencePos(pos=mateUnclippedEnd, returnLastBaseIfDeleted=false).getOrElse(0))
       case true =>
         // positive strand record alignment ends before the mate alignment end: remove any excess soft-clipped reads
         Math.max(0, rec.cigar.trailingSoftClippedBases - (mateUnclippedEnd - rec.end))
@@ -343,7 +349,7 @@ class SamRecordClipper(val mode: ClippingMode, val autoClipAttributes: Boolean) 
         Math.max(0, rec.cigar.leadingSoftClippedBases - (rec.start - mateUnclippedStart))
       case false =>
         // negative strand record alignment starts at or before the mate start: count up to and including one base before
-        Math.max(0, rec.readPosAtRefPos(pos=mateUnclippedStart, returnLastBaseIfDeleted=false) - 1)
+        Math.max(0, rec.readPosAtReferencePos(pos=mateUnclippedStart, returnLastBaseIfDeleted=false).getOrElse(1) - 1)
     }
   }
 
