@@ -168,7 +168,9 @@ class FgBioMain extends LazyLogging {
     val host       = try { InetAddress.getLocalHost.getHostName } catch { case _: Exception => "unknown-host" }
     val user       = System.getProperty("user.name")
     val jreVersion = System.getProperty("java.runtime.version")
-    val snappy     = if (new SnappyLoader().isSnappyAvailable) "with snappy" else "without snappy"
+    val snappy     = try {
+      if (new SnappyLoader().isSnappyAvailable) "with snappy" else "without snappy"
+    } catch { case _: Throwable => "without snappy" }
     val inflater   = if (IntelCompressionLibrarySupported) "IntelInflater" else "JdkInflater"
     val deflater   = if (IntelCompressionLibrarySupported) "IntelDeflater" else "JdkDeflater"
     val maxMemory  = {
