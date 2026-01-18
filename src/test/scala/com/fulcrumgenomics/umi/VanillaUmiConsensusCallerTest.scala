@@ -499,6 +499,103 @@ class VanillaUmiConsensusCallerTest extends UnitSpec with OptionValues {
     recs.map(_.id) shouldBe Seq("read0", "read1", "read2", "read3", "read4", "read5")
   }
 
+  it should "select deterministically when alignment groups have equal sizes" in {
+    // Create two groups with equal sizes but different CIGARs
+    // Group 1: 25M1D24M (2 reads)
+    // Group 2: 50M (2 reads)
+    // Tie-breaker compares element-by-element: 25M < 50M (by length), so 25M1D24M wins
+
+    val cigars1 = Seq("25M1D24M", "25M1D24M", "50M", "50M")
+    val cigars2 = Seq("50M", "50M", "25M1D24M", "25M1D24M")
+
+    def makeReads(cigars: Seq[String]): Seq[SourceRead] = cigars.zipWithIndex.map { case (c, i) =>
+      val cig = Cigar(c)
+      val len = cig.lengthOnQuery
+      SourceRead(id=s"read$i", bases=("A"*len).getBytes, quals=Array.fill(len)(30.toByte), cigar=cig)
+    }
+
+    val result1 = cc().filterToMostCommonAlignment(makeReads(cigars1))
+    val result2 = cc().filterToMostCommonAlignment(makeReads(cigars2))
+
+    // Both should select the same group (25M1D24M) regardless of input order
+    result1.map(_.cigar.toString()).distinct shouldBe Seq("25M1D24M")
+    result2.map(_.cigar.toString()).distinct shouldBe Seq("25M1D24M")
+    result1 should have size 2
+    result2 should have size 2
+  }
+
+  it should "break ties by operator type when element lengths are equal" in {
+    // 25M1I24M vs 25M1D24M - same element lengths but I(ordinal=1) < D(ordinal=2)
+    // So 25M1I24M should win
+    val cigars1 = Seq("25M1I24M", "25M1I24M", "25M1D24M", "25M1D24M")
+    val cigars2 = Seq("25M1D24M", "25M1D24M", "25M1I24M", "25M1I24M")
+
+    def makeReads(cigars: Seq[String]): Seq[SourceRead] = cigars.zipWithIndex.map { case (c, i) =>
+      val cig = Cigar(c)
+      val len = cig.lengthOnQuery
+      SourceRead(id=s"read$i", bases=("A"*len).getBytes, quals=Array.fill(len)(30.toByte), cigar=cig)
+    }
+
+    val result1 = cc().filterToMostCommonAlignment(makeReads(cigars1))
+    val result2 = cc().filterToMostCommonAlignment(makeReads(cigars2))
+
+    // Both should select 25M1I24M (I < D in operator ordering)
+    result1.map(_.cigar.toString()).distinct shouldBe Seq("25M1I24M")
+    result2.map(_.cigar.toString()).distinct shouldBe Seq("25M1I24M")
+    result1 should have size 2
+    result2 should have size 2
+  }
+
+  it should "break ties by number of elements when prefixes match" in {
+    // 50M vs 40M1D9M - first element: 50M vs 40M, length 50 > 40, so 40M1D9M wins
+    // This tests that we correctly compare by length first
+    val cigars1 = Seq("50M", "50M", "40M1D9M", "40M1D9M")
+    val cigars2 = Seq("40M1D9M", "40M1D9M", "50M", "50M")
+
+    def makeReads(cigars: Seq[String]): Seq[SourceRead] = cigars.zipWithIndex.map { case (c, i) =>
+      val cig = Cigar(c)
+      val len = cig.lengthOnQuery
+      SourceRead(id=s"read$i", bases=("A"*len).getBytes, quals=Array.fill(len)(30.toByte), cigar=cig)
+    }
+
+    val result1 = cc().filterToMostCommonAlignment(makeReads(cigars1))
+    val result2 = cc().filterToMostCommonAlignment(makeReads(cigars2))
+
+    // Both should select 40M1D9M (40 < 50 in first element length)
+    result1.map(_.cigar.toString()).distinct shouldBe Seq("40M1D9M")
+    result2.map(_.cigar.toString()).distinct shouldBe Seq("40M1D9M")
+    result1 should have size 2
+    result2 should have size 2
+  }
+
+  it should "select deterministically among three or more tied groups" in {
+    // Three groups with equal sizes: 30M1D19M, 30M1I19M, 50M
+    // Comparison: 30M1D19M vs 30M1I19M: first elem equal (30M), second elem 1D vs 1I, I(1) < D(2), so 30M1I19M < 30M1D19M
+    // Comparison: 30M1I19M vs 50M: first elem 30M vs 50M, length 30 < 50, so 30M1I19M < 50M
+    // Winner: 30M1I19M
+    val cigars1 = Seq("30M1D19M", "30M1D19M", "30M1I19M", "30M1I19M", "50M", "50M")
+    val cigars2 = Seq("50M", "50M", "30M1D19M", "30M1D19M", "30M1I19M", "30M1I19M")
+    val cigars3 = Seq("30M1I19M", "50M", "30M1D19M", "30M1I19M", "50M", "30M1D19M")
+
+    def makeReads(cigars: Seq[String]): Seq[SourceRead] = cigars.zipWithIndex.map { case (c, i) =>
+      val cig = Cigar(c)
+      val len = cig.lengthOnQuery
+      SourceRead(id=s"read$i", bases=("A"*len).getBytes, quals=Array.fill(len)(30.toByte), cigar=cig)
+    }
+
+    val result1 = cc().filterToMostCommonAlignment(makeReads(cigars1))
+    val result2 = cc().filterToMostCommonAlignment(makeReads(cigars2))
+    val result3 = cc().filterToMostCommonAlignment(makeReads(cigars3))
+
+    // All should select 30M1I19M (smallest by element-by-element comparison)
+    result1.map(_.cigar.toString()).distinct shouldBe Seq("30M1I19M")
+    result2.map(_.cigar.toString()).distinct shouldBe Seq("30M1I19M")
+    result3.map(_.cigar.toString()).distinct shouldBe Seq("30M1I19M")
+    result1 should have size 2
+    result2 should have size 2
+    result3 should have size 2
+  }
+
   "VanillaConsensusCaller.toSourceRead" should "mask bases that are below the quality threshold" in {
     val builder = new SamBuilder(readLength=10)
     val rec     = builder.addFrag(start=1, bases="AAAAAAAAAA").map { r => r.quals = Array[Byte](2,30,19,21,18,20,0,30,2,30); r}.value

@@ -48,6 +48,15 @@ case class CigarElem(operator: CigarOperator, length: Int) {
   def lengthOnTarget: Int = if (operator.consumesReferenceBases()) length else 0
 }
 
+/** Companion object for [[CigarElem]]. */
+object CigarElem {
+  /** Ordering for CigarOperator based on its declaration order (M, I, D, N, S, H, P, EQ, X). */
+  implicit val cigarOperatorOrdering: Ordering[CigarOperator] = Ordering.by(_.ordinal)
+
+  /** Ordering for [[CigarElem]]: compares by length first, then by operator. */
+  implicit val cigarElemOrdering: Ordering[CigarElem] = Ordering.by(e => (e.length, e.operator))
+}
+
 /** Companion object for Cigar that offers alternative constructors. */
 object Cigar {
   private val ZeroCharAsInt = '0'.toInt
@@ -88,6 +97,19 @@ object Cigar {
 
   /** Constructs a Cigar objects from the HTSJDK class of the same name. */
   def apply(ciggy: HtsJdkCigar): Cigar = Cigar(ciggy.iterator().map(e => CigarElem(e.getOperator, e.getLength)).toIndexedSeq)
+
+  /** Ordering for [[Cigar]]: compares element-by-element, then by number of elements. */
+  implicit val cigarOrdering: Ordering[Cigar] = (a: Cigar, b: Cigar) => {
+    val aElems = a.elems
+    val bElems = b.elems
+    var i = 0
+    var result = 0
+    while (result == 0 && i < aElems.length && i < bElems.length) {
+      result = CigarElem.cigarElemOrdering.compare(aElems(i), bElems(i))
+      i += 1
+    }
+    if (result != 0) result else Integer.compare(aElems.length, bElems.length)
+  }
 }
 
 /** A data class for holding statistics about a [[Cigar]]. */
