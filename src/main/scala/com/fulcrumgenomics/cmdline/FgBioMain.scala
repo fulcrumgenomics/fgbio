@@ -114,6 +114,9 @@ class FgBioMain extends LazyLogging {
     val startTime = System.currentTimeMillis()
     val parser    = new CommandLineParser[FgBioTool](name)  // Keep a reference to the parser so we can get the command line
     val exit      = parser.parseCommandAndSubCommand[FgBioCommonArgs](args.toIndexedSeq, Sopt.find[FgBioTool](packageList)) match {
+      case Sopt.Version(version) =>
+        System.out.println(version())
+        0
       case Sopt.Failure(usage) =>
         System.err.print(usage())
         1
