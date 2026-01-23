@@ -115,7 +115,7 @@ lazy val commonSettings = Seq(
     "-Ycache-macro-class-loader:last-modified", // and macro definitions. This can lead to performance improvements.
     "-Ycache-plugin-class-loader:last-modified", // Enables caching of classloaders for compiler plugins
     "-Yopt-inline-heuristics:at-inline-annotated", // Tells the inliner to use your `@inliner` tags.
-    "-Yopt-log-inline", "_", // Optional, logs the inliner activity so you know it is doing something.
+    // "-Yopt-log-inline", "_", // Optional, logs the inliner activity so you know it is doing something. // NB: this is really noisy, so turning off for now
     "-Ywarn-dead-code", // Warn when dead code is identified.
     "-Ywarn-extra-implicit", // Warn when more than one implicit parameter section is defined.
     "-Ywarn-numeric-widen", // Warn on obsolete octal syntax.
@@ -194,7 +194,7 @@ lazy val root = Project(id="fgbio", base=file("."))
       "org.scala-lang"            %  "scala-compiler" % scalaVersion.value,
       "org.scala-lang.modules"    %% "scala-xml"      % "2.1.0",
       "com.fulcrumgenomics"       %% "commons"        % "1.8.0",
-      "com.fulcrumgenomics"       %% "sopt"           % "1.1.0",
+      "com.fulcrumgenomics"       %% "sopt"           % "1.2.0-bd89568-SNAPSHOT",
       "com.github.samtools"       %  "htsjdk"         % "3.0.5" excludeAll(htsjdkExcludes: _*),
       "org.apache.commons"        %  "commons-math3"  % "3.6.1",
       "com.beachape"              %% "enumeratum"     % "1.7.0",
