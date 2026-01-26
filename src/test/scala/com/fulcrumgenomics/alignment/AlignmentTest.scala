@@ -299,4 +299,38 @@ class CigarStatsTest extends UnitSpec {
   it should "fail on an invalid cigar" in {
     an[Exception] should be thrownBy CigarStats("100M10S100M")
   }
+
+  /////////////////////////////////////////////////////////////////////////////
+  // Tests for CigarElem and Cigar Orderings
+  /////////////////////////////////////////////////////////////////////////////
+  "CigarElem.cigarOperatorOrdering" should "order operators by declaration order (M < I < D < N < S < H < P < EQ < X)" in {
+    val operators = Seq(Op.X, Op.M, Op.D, Op.I, Op.N, Op.S, Op.H, Op.P, Op.EQ)
+    val sorted = operators.sorted(CigarElem.cigarOperatorOrdering)
+    sorted shouldBe Seq(Op.M, Op.I, Op.D, Op.N, Op.S, Op.H, Op.P, Op.EQ, Op.X)
+  }
+
+  "CigarElem.cigarElemOrdering" should "order by length first" in {
+    val elems = Seq(CigarElem(Op.M, 50), CigarElem(Op.M, 25), CigarElem(Op.M, 75))
+    elems.sorted(CigarElem.cigarElemOrdering) shouldBe Seq(CigarElem(Op.M, 25), CigarElem(Op.M, 50), CigarElem(Op.M, 75))
+  }
+
+  it should "order by operator when lengths are equal" in {
+    val elems = Seq(CigarElem(Op.D, 10), CigarElem(Op.I, 10), CigarElem(Op.M, 10))
+    elems.sorted(CigarElem.cigarElemOrdering) shouldBe Seq(CigarElem(Op.M, 10), CigarElem(Op.I, 10), CigarElem(Op.D, 10))
+  }
+
+  "Cigar.cigarOrdering" should "order by first differing element" in {
+    val cigars = Seq(Cigar("50M"), Cigar("25M1D24M"), Cigar("40M1I9M"))
+    cigars.sorted(Cigar.cigarOrdering) shouldBe Seq(Cigar("25M1D24M"), Cigar("40M1I9M"), Cigar("50M"))
+  }
+
+  it should "order by operator when element lengths match" in {
+    val cigars = Seq(Cigar("25M1D24M"), Cigar("25M1I24M"))
+    cigars.sorted(Cigar.cigarOrdering) shouldBe Seq(Cigar("25M1I24M"), Cigar("25M1D24M"))
+  }
+
+  it should "order shorter cigars before longer ones when prefix matches" in {
+    val cigars = Seq(Cigar("25M1D24M"), Cigar("25M1D"))
+    cigars.sorted(Cigar.cigarOrdering) shouldBe Seq(Cigar("25M1D"), Cigar("25M1D24M"))
+  }
 }

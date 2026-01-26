@@ -420,7 +420,8 @@ trait UmiConsensusCaller[ConsensusRead <: SimpleRead] {
       Seq.empty
     }
     else {
-      val bestGroup = groups.maxBy(_.size)
+      // Select group with largest size; use smallest CIGAR as tie-breaker for determinism
+      val bestGroup = groups.maxBy(g => (g.size, g.cigar))(Ordering.Tuple2(Ordering.Int, Cigar.cigarOrdering.reverse))
       // BitSet tracking which original indices are kept - allows O(n) reconstruction in original order
       val keptIndices = new mutable.BitSet(recsIndexed.length)
       forloop (from=0, until=sortedIndices.length) { si =>
