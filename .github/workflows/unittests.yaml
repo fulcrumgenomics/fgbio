@@ -116,6 +116,8 @@ jobs:
     name: Generate tool and metric markdown docs
     needs: test
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
     if: ${{ github.event_name != 'workflow_call' && (github.event_name == 'pull_request' || (github.repository == 'fulcrumgenomics/fgbio' && github.ref == 'refs/heads/main')) }}
     steps:
       - name: Checkout
