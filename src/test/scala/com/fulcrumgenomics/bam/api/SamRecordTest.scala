@@ -290,4 +290,163 @@ class SamRecordTest extends UnitSpec with OptionValues {
     rec1.matesOverlap shouldBe None // Mate's start is not enclosed by rec, and mate's end cannot be determined
     rec2.matesOverlap.value shouldBe true // Mate's start is enclosed by rec, regardless of where mate end is
   }
+
+  /** A single test case for [[SamRecord.readPosAtReferencePos()]] and/or [[SamRecord.referencePosAtReadPos()]].
+    *
+    * If `returnLastBaseIfInserted` is `true`, then [[SamRecord.referencePosAtReadPos()]] should not be tested.  Similarly,
+    * if either `returnLastBaseIfDeleted` or `returnLastBaseIfSkipped` is `true`, then [[SamRecord.readPosAtReferencePos()]]
+    * should not be tested.
+    *
+    * @param cigar the cigar
+    * @param readPos the read position; empty if the reference position does not map to a read base
+    * @param refPos the reference position; empty if the read position does not map to a reference base
+    * @param returnLastBaseIfInserted passed to [[SamRecord.readPosAtReferencePos()]]
+    * @param returnLastBaseIfDeleted passed to [[SamRecord.referencePosAtReadPos()]]
+    * @param returnLastBaseIfSkipped passed to [[SamRecord.referencePosAtReadPos()]]
+    */
+  case class TestCase(cigar: String, readPos: Option[Int], refPos: Option[Int],
+                      returnLastBaseIfInserted: Boolean = false,
+                      returnLastBaseIfDeleted: Boolean = false,
+                      returnLastBaseIfSkipped: Boolean = false) {
+    require(readPos.isDefined || refPos.isDefined)
+    val doRefPosAtReadPos: Boolean = !returnLastBaseIfDeleted && !returnLastBaseIfSkipped
+    val doReadPosAtRefPos: Boolean = !returnLastBaseIfInserted
+    require(doRefPosAtReadPos || doReadPosAtRefPos)
+  }
+  object TestCase {
+    def apply(cigar: String, readPos: Int, refPos: Int): TestCase = {
+      TestCase(cigar=cigar, readPos=Some(readPos), refPos=Some(refPos))
+    }
+  }
+
+  /** Test cases for [[SamRecord.readPosAtReferencePos()]] and [[SamRecord.referencePosAtReadPos()]]. */
+  private val testCases = Seq(
+    // all mapped bases
+    TestCase("10M",          10,       10),
+    TestCase("10M",           1,        1),
+    // leading soft-clipping
+    TestCase("3S9M",    Some(1),     None), // no reference base, start of soft-clipping
+    TestCase("3S9M",    Some(3),     None), // no reference base, end of soft-clipping
+    TestCase("3S9M",    Some(1),     None, returnLastBaseIfInserted=true), // soft-clipping should not return a reference base even with returnLastBaseIfInserted=true
+    TestCase("3S9M",          4,        1), // start of aligned bases
+    TestCase("3S9M",         10,        7), // end of aligned bases
+    // leading hard-clipping
+    TestCase("3H9M",          1,        1), // start of aligned bases
+    TestCase("3H3S9M",        4,        1), // start of aligned bases
+    TestCase("3H3S9M",  Some(3),     None), // no reference base, end of soft-clipping
+    // leading padding
+    TestCase("3P9M",          1,        1), // start of aligned bases
+    TestCase("3P9M",          9,        9), // end of aligned bases
+    // leading skip
+    TestCase("3N9M",       None,  Some(1)), // no reference base, start of padding
+    TestCase("3N9M",       None,  Some(3)), // no reference base, end of padding
+    TestCase("3N9M",          1,        4), // start of aligned bases
+    TestCase("3N9M",          9,       12), // end of aligned bases
+    // deletions
+    TestCase("4M1D6M",        4,        4), // before the deletion
+    TestCase("4M1D6M",     None,  Some(5)), // in a deletion
+    TestCase("4M1D6M",        5,        6), // after the deletion
+    TestCase("4M1D6M",  Some(4),   Some(5), returnLastBaseIfDeleted=true), // returns the previous mapped base
+    TestCase("4M2D6M",        4,        4), // before the deletion
+    TestCase("4M2D6M",     None,  Some(5)), // in a deletion
+    TestCase("4M2D6M",     None,  Some(6)), // in a deletion
+    TestCase("4M2D6M",  Some(4),   Some(5), returnLastBaseIfDeleted=true), // returns the previous mapped base
+    TestCase("4M2D6M",  Some(4),   Some(6), returnLastBaseIfDeleted=true), // returns the previous mapped base
+    TestCase("4M2D6M",        5,        7), // after the deletion
+    TestCase("20M10D20M",    21,       31), // first base of the deletion
+    // insertions
+    TestCase("4M1I6M",        4,        4), // before the insertion
+    TestCase("4M1I6M",  Some(5),     None), // in an insertion
+    TestCase("4M1I6M",  Some(5),   Some(4), returnLastBaseIfInserted=true), // returns the previous mapped base
+    TestCase("4M1I6M",        6,        5), // after the insertion
+    TestCase("4M2I6M",        4,        4), // before the insertion
+    TestCase("4M2I6M",  Some(5),     None), // in an insertion
+    TestCase("4M2I6M",  Some(6),     None), // in an insertion
+    TestCase("4M2I6M",  Some(5),   Some(4), returnLastBaseIfInserted=true), // returns the previous mapped base
+    TestCase("4M2I6M",  Some(6),   Some(4), returnLastBaseIfInserted=true), // returns the previous mapped base
+    TestCase("4M2I6M",       7,         5), // after the insertion
+    TestCase("20M10I20M",    31,       21), // first base of the insertion
+    // trailing soft-clipping
+    TestCase("9M3S",          1,        1), // first aligned base
+    TestCase("9M3S",          9,        9), // last aligned base
+    TestCase("9M3S",   Some(10),     None), // no reference base, first base of soft-clipping
+    TestCase("9M3S",   Some(12),     None), // no reference base, last base of soft-clipping
+    TestCase("9M3S",   Some(10),     None, returnLastBaseIfInserted=true), // soft-clipping should not return a reference base even with returnLastBaseIfInserted=true
+    // trailing hard-clipping
+    TestCase("9M3H",          1,        1), // start of aligned bases
+    TestCase("9M3S3H",        9,        9), // end of aligned bases
+    TestCase("9M3S3H", Some(10),     None), /// no reference base, first base of soft-clipping
+    TestCase("9M3S3H", Some(12),     None), // no reference base, last base of soft-clipping
+    // trailing padding
+    TestCase("9M3P",          1,        1), // start of aligned bases
+    TestCase("9M3P",          9,        9), // end of aligned bases
+    // trailing skip
+    TestCase("9M3N",       None, Some(10)), // no reference base, start of padding
+    TestCase("9M3N",       None, Some(12)), // no reference base, end of padding
+    TestCase("9M3N",          9,        9), // end of aligned bases
+    // reference skip
+    TestCase("5M6N5M", Some(5),  Some(10), returnLastBaseIfSkipped=true), // returns the previous read base
+    TestCase("4M6N4M", Some(4),  Some(4)),
+    TestCase("4M6N4M", None,     Some(5)), // in a skip region
+    TestCase("4M6N4M", Some(5),  Some(11)),
+    TestCase("5M6N5M", None,     Some(10)), // does not return the read base
+  )
+
+  "SamRecord.readPosAtReferencePos" should "throw an exception when the read position is OOB" in {
+    val frag1 = new SamBuilder(readLength=10).addFrag(start=1, cigar="10M").value
+    an[Exception] should be thrownBy frag1.readPosAtReferencePos(pos=0)
+    an[Exception] should be thrownBy frag1.readPosAtReferencePos(pos=11)
+
+    // request a base in the trailing hard-clipping should throw an exception
+    val frag2 = new SamBuilder(readLength=10).addFrag(start=1, cigar="10M10H").value
+    an[Exception] should be thrownBy frag2.readPosAtReferencePos(pos=11)
+
+    // request a base in the trailing soft-clipping should throw an exception
+    val frag3 = new SamBuilder(readLength=20).addFrag(start=1, cigar="10M10S").value
+    an[Exception] should be thrownBy frag3.readPosAtReferencePos(pos=11)
+  }
+
+  // now run the test cases
+  testCases.filter(_.doReadPosAtRefPos).foreach { testCase =>
+    testCase.refPos.foreach { pos =>
+      it should s"return read position ${testCase.readPos} for reference position ${testCase.refPos} with cigar ${testCase.cigar}" in {
+        val frag    = new SamBuilder(readLength=Cigar(testCase.cigar).lengthOnQuery).addFrag(start=1, cigar=testCase.cigar).value
+        val readPos = frag.readPosAtReferencePos(pos=pos, returnLastBaseIfDeleted=testCase.returnLastBaseIfDeleted, testCase.returnLastBaseIfSkipped)
+        withClue(testCase) {
+          readPos shouldBe testCase.readPos
+          if (!testCase.returnLastBaseIfSkipped) {
+            readPos.getOrElse(0) shouldBe frag.asSam.getReadPositionAtReferencePosition(pos, testCase.returnLastBaseIfDeleted)
+          }
+        }
+      }
+    }
+  }
+
+  "SamRecord.referencePosAtReadPos" should "throw an exception when the read position is OOB" in {
+    val frag1 = new SamBuilder(readLength=10).addFrag(start=1, cigar="10M").value
+    an[Exception] should be thrownBy frag1.referencePosAtReadPos(pos=0)
+    an[Exception] should be thrownBy frag1.referencePosAtReadPos(pos=11)
+
+    // request a base in the trailing hard-clipping should throw an exception
+    val frag2 = new SamBuilder(readLength=10).addFrag(start=1, cigar="10M10H").value
+    an[Exception] should be thrownBy frag2.referencePosAtReadPos(pos=11)
+  }
+
+  // now run the test cases
+  testCases.filter(_.doRefPosAtReadPos).foreach { testCase =>
+    testCase.readPos.foreach { pos: Int =>
+      val insertedSuffix = if (testCase.returnLastBaseIfInserted) " with returnLastBaseIfInserted=true" else ""
+      it should s"return ref position ${testCase.refPos} for read position ${testCase.readPos} with cigar ${testCase.cigar}$insertedSuffix" in {
+        val frag   = new SamBuilder(readLength=Cigar(testCase.cigar).lengthOnQuery).addFrag(start=1, cigar=testCase.cigar).value
+        val refPos = frag.referencePosAtReadPos(pos=pos, returnLastBaseIfInserted=testCase.returnLastBaseIfInserted)
+        withClue(testCase) {
+          refPos shouldBe testCase.refPos
+          if (!testCase.returnLastBaseIfInserted) {
+            refPos.getOrElse(0) shouldBe frag.asSam.getReferencePositionAtReadPosition(pos)
+          }
+        }
+      }
+    }
+  }
+
 }

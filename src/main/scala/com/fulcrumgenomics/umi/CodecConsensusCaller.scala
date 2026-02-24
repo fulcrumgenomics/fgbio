@@ -203,11 +203,11 @@ class CodecConsensusCaller(readNamePrefix: String,
         else if (
           // Check that the start and end of the overlap are in phase with one another in the longest alignments -
           // i.e. that the length of the overlapping region, in query bases, is the same in both R1 and R2
-          longestR1Alignment.readPosAtRefPos(overlapStart, returnLastBaseIfDeleted = true)
-            - longestR2Alignment.readPosAtRefPos(overlapStart, returnLastBaseIfDeleted = true)
+          longestR1Alignment.readPosAtReferencePos(overlapStart, returnLastBaseIfDeleted = true).getOrElse(0)
+            - longestR2Alignment.readPosAtReferencePos(overlapStart, returnLastBaseIfDeleted = true).getOrElse(0)
             !=
-            longestR1Alignment.readPosAtRefPos(overlapEnd, returnLastBaseIfDeleted = true)
-              - longestR2Alignment.readPosAtRefPos(overlapEnd, returnLastBaseIfDeleted = true)) {
+            longestR1Alignment.readPosAtReferencePos(overlapEnd, returnLastBaseIfDeleted = true).getOrElse(0)
+              - longestR2Alignment.readPosAtReferencePos(overlapEnd, returnLastBaseIfDeleted = true).getOrElse(0)) {
           rejectRecords((r1s.view ++ r2s.view).flatMap(_.sam), RejectionReason.IndelErrorBetweenStrands)
           Nil
         }
@@ -270,8 +270,8 @@ class CodecConsensusCaller(readNamePrefix: String,
     */
   private def computeConsensusLength(pos: SamRecord, neg: SamRecord): Int = {
     val refOverlapEnd = pos.end
-    val posReadPos = pos.readPosAtRefPos(refOverlapEnd, returnLastBaseIfDeleted=false)
-    val negReadPos = neg.readPosAtRefPos(refOverlapEnd, returnLastBaseIfDeleted=false)
+    val posReadPos = pos.readPosAtReferencePos(refOverlapEnd, returnLastBaseIfDeleted=false).getOrElse(0)
+    val negReadPos = neg.readPosAtReferencePos(refOverlapEnd, returnLastBaseIfDeleted=false).getOrElse(0)
     if (posReadPos == 0 || negReadPos == 0) -1 else {
       posReadPos + neg.length - negReadPos
     }
