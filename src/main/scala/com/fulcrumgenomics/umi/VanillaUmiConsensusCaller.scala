@@ -208,7 +208,7 @@ class VanillaUmiConsensusCaller(override val readNamePrefix: String,
     val builder = IndexedSeq.newBuilder[SamRecord]
 
     // fragment
-    consensusFromSamRecords(records=fragments).map { case frag =>
+    consensusFromSamRecords(records=fragments).foreach { frag =>
       builder += createSamRecord(
         read        = frag,
         readType    = Fragment,

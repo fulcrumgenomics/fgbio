@@ -53,6 +53,9 @@ object UmiConsensusCaller {
     val ReadTypeKey: String = "__read_type__"
   }
 
+  /** SAM tag used to record the rejection reason on rejected records. */
+  val RejectReasonTag: String = "rr"
+
   /** Enum entry type for why we reject SamRecords during consensus calling. */
   sealed trait RejectionReason extends EnumEntry {
     val code: String
@@ -222,11 +225,12 @@ trait UmiConsensusCaller[ConsensusRead <: SimpleRead] {
 
   /** Records that the supplied records were rejected, and not used to build a consensus read. */
   protected def rejectRecords(recs: Iterable[SamRecord], reason: RejectionReason) : Unit = {
-    this._filteredReads.count(reason, recs.size.toLong)
+    val toReject = recs.filterNot(_.contains(UmiConsensusCaller.RejectReasonTag)).toIndexedSeq
+    toReject.foreach(_(UmiConsensusCaller.RejectReasonTag) = reason.code)
+    this._filteredReads.count(reason, toReject.size.toLong)
     this.rejectsWriter.foreach { writer =>
-      recs.foreach(_("rr") = reason.code)
       writer.synchronized {
-        writer ++= recs
+        writer ++= toReject
       }
     }
   }

@@ -764,6 +764,73 @@ class VanillaUmiConsensusCallerTest extends UnitSpec with OptionValues {
     consensus[String](ConsensusTags.UmiBases) shouldBe "TNT"
   }
 
+  it should "not double-count rejected reads when both ends of a pair fail consensus calling (issue #1135)" in {
+    val len = 10
+    val builder = new SamBuilder(readLength=len)
+
+    // 3 read pairs, all with the same UMI family.
+    // Both R1 and R2 have all-N bases -> ZeroPostAfterTrimming -> both consensuses fail.
+    // Bug: (None, None) case rejects all records again with OrphanConsensus,
+    // causing totalFiltered (12) > totalReads (6) and negative raw_reads_used.
+    for (i <- 1 to 3) {
+      val Seq(r1, r2) = builder.addPair(
+        name = s"READ$i",
+        start1 = 1,
+        start2 = 100,
+        attrs = Map(DefaultTag -> "AAA")
+      )
+      r1.bases = Array.fill(len)('N'.toByte)
+      r1.quals = Array.fill(len)(2.toByte)
+      r2.bases = Array.fill(len)('N'.toByte)
+      r2.quals = Array.fill(len)(2.toByte)
+    }
+
+    val caller = cc(cco(minReads = 2, minInputBaseQuality = 10.toByte))
+    val consensuses = caller.consensusReadsFromSamRecords(builder.toSeq)
+
+    consensuses shouldBe empty
+    caller.totalReads shouldBe 6
+    caller.totalFiltered shouldBe 6
+  }
+
+  it should "not double-count rejected reads when one end of a pair fails and the other has individual rejections (issue #1135)" in {
+    val len = 10
+    val builder = new SamBuilder(readLength=len)
+
+    // 3 read pairs, same UMI family.
+    // R1: all have all-N bases -> ZeroPostAfterTrimming -> R1 consensus fails (None)
+    // R2: 2 have good quality, 1 has all-N -> R2 consensus succeeds from 2 reads (Some)
+    // Bug: (None, Some) case rejects ALL R2 records as OrphanConsensus,
+    // but the R2 read with all-N was already rejected with ZeroPostAfterTrimming.
+    for (i <- 1 to 3) {
+      val Seq(r1, r2) = builder.addPair(
+        name = s"READ$i",
+        start1 = 1,
+        start2 = 100,
+        attrs = Map(DefaultTag -> "AAA")
+      )
+      r1.bases = Array.fill(len)('N'.toByte)
+      r1.quals = Array.fill(len)(2.toByte)
+
+      if (i <= 2) {
+        r2.bases = Array.fill(len)('A'.toByte)
+        r2.quals = Array.fill(len)(30.toByte)
+      } else {
+        r2.bases = Array.fill(len)('N'.toByte)
+        r2.quals = Array.fill(len)(2.toByte)
+      }
+    }
+
+    val caller = cc(cco(minReads = 2, minInputBaseQuality = 10.toByte))
+    val consensuses = caller.consensusReadsFromSamRecords(builder.toSeq)
+
+    consensuses shouldBe empty
+    caller.totalReads shouldBe 6
+    // Before fix: 3 (R1 ZeroPostAfterTrimming) + 1 (R2 ZeroPostAfterTrimming) + 3 (R2 OrphanConsensus) = 7 > 6
+    // After fix: 3 (R1 ZeroPostAfterTrimming) + 1 (R2 ZeroPostAfterTrimming) + 2 (R2 OrphanConsensus) = 6
+    caller.totalFiltered shouldBe 6
+  }
+
   "VanillaUmiConsensusRead.padded" should "pad reads to the left of the existing sequence" in {
     val bases = "AACCGGTT"
     val read = VanillaConsensusRead(
