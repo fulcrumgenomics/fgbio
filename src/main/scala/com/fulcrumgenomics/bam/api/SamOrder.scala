@@ -27,7 +27,7 @@ package com.fulcrumgenomics.bam.api
 import com.fulcrumgenomics.umi.ConsensusTags
 import htsjdk.samtools.SAMFileHeader.{GroupOrder, SortOrder}
 import htsjdk.samtools.util.Murmur3
-import htsjdk.samtools.{SAMFileHeader, SAMUtils}
+import htsjdk.samtools.{SAMFileHeader, SAMTag, SAMUtils}
 
 /** Trait for specifying BAM orderings. */
 sealed trait SamOrder extends Product {
@@ -181,7 +181,7 @@ object SamOrder {
       val readPos   = if (rec.unmapped)     Int.MaxValue else if (readNeg) rec.unclippedEnd else rec.unclippedStart
       val matePos   = if (rec.unpaired || rec.mateUnmapped) Int.MaxValue else if (mateNeg) SAMUtils.getMateUnclippedEnd(rec.asSam) else SAMUtils.getMateUnclippedStart(rec.asSam)
       val lib       = Option(rec.readGroup).flatMap(rg => Option(rg.getLibrary)).getOrElse("Unknown")
-      val cid       = rec.getOrElse[String]("CB", "")
+      val cid       = rec.getOrElse[String](SAMTag.CB.name, "")
       val mid       = rec.get[String](ConsensusTags.MolecularId).map { m =>
         val index: Int = m.lastIndexOf('/')
         if (index >= 0) m.substring(0, index) else m
