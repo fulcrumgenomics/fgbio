@@ -27,8 +27,7 @@ package com.fulcrumgenomics.bam.api
 import com.fulcrumgenomics.umi.ConsensusTags
 import htsjdk.samtools.SAMFileHeader.{GroupOrder, SortOrder}
 import htsjdk.samtools.util.Murmur3
-import htsjdk.samtools.{SAMFileHeader, SAMTag, SAMUtils}
-
+import htsjdk.samtools.{SAMFileHeader, SAMTag}
 
 /** Trait for specifying BAM orderings. */
 sealed trait SamOrder extends Product {
