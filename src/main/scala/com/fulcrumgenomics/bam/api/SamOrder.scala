@@ -164,9 +164,9 @@ object SamOrder {
 
   /**
     * The sort order used by GroupReadByUmi. Sorts reads by the earlier unclipped 5' coordinate of the read
-    * pair, the higher unclipped 5' coordinate of the read pair, library, cellular barcode, the molecular identifier
-    * (see [[com.fulcrumgenomics.umi.ConsensusTags.MolecularId]]), read name, and if R1 has the lower coordinates of
-    * the pair.
+    * pair, the higher unclipped 5' coordinate of the read pair, cellular barcode, the molecular identifier
+    * (see [[com.fulcrumgenomics.umi.ConsensusTags.MolecularId]]), read name, library, and if R1 has the lower
+    * coordinates of the pair.
     */
   case object TemplateCoordinate extends SamOrder {
     override type A = TemplateCoordinateKey
