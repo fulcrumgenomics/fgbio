@@ -42,7 +42,7 @@ import com.fulcrumgenomics.util.Io
     |4. **RandomQuery**: sorts the reads into a random order but keeps reads with the same
     |   queryname together. The ordering is deterministic for any given input.
     |5. **TemplateCoordinate**: The sort order used by `GroupReadByUmi`. Sorts reads by
-    |   the earlier unclipped 5' coordinate of the read pair, the higher unclipped 5' coordinate of the
+    |   the earlier un-soft-clipped 5' coordinate of the read pair, the higher un-soft-clipped 5' coordinate of the
     |   read pair, the cellular barcode (CB tag), the molecular identifier (MI tag), read name, library,
     |   and if R1 has the lower coordinates of the pair.
     |

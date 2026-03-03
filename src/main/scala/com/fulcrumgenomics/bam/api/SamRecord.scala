@@ -154,7 +154,10 @@ trait SamRecord {
   @inline final def end: Int = if (unmapped) SAMRecord.NO_ALIGNMENT_START else start + cigar.lengthOnTarget - 1
 
   @inline final def unclippedStart: Int = if (unmapped) SAMRecord.NO_ALIGNMENT_START else getUnclippedStart
-  @inline final def unclippedEnd  : Int = if (unmapped) SAMRecord.NO_ALIGNMENT_START else getUnclippedEnd
+  @inline final def unclippedEnd: Int   = if (unmapped) SAMRecord.NO_ALIGNMENT_START else getUnclippedEnd
+
+  @inline final def unSoftClippedStart: Int = if (unmapped) SAMRecord.NO_ALIGNMENT_START else start - cigar.leadingSoftClippedBases
+  @inline final def unSoftClippedEnd: Int   = if (unmapped) SAMRecord.NO_ALIGNMENT_START else end + cigar.trailingSoftClippedBases
 
   @inline final def mapq: Int = getMappingQuality
   @inline final def mapq_=(q: Int):Unit = setMappingQuality(q)
@@ -186,13 +189,30 @@ trait SamRecord {
   }
   @inline final def mateUnclippedStart: Option[Int] = {
     require(paired && mateMapped, "Cannot get mate unclipped start position on read without a mapped mate.")
-    get[String]("MC").map(cig => mateStart - Cigar(cig).iterator.takeWhile(_.operator.isClipping).map(_.length).sum)
+    get[String]("MC").map { cig =>
+      val cigar = Cigar(cig)
+      mateStart - cigar.leadingClippedBases
+    }
   }
   @inline final def mateUnclippedEnd: Option[Int] = {
     require(paired && mateMapped, "Cannot get mate unclipped end position on read without a mapped mate.")
     get[String]("MC").map { cig =>
       val cigar = Cigar(cig)
-      mateStart + cigar.lengthOnTarget - 1 + cigar.reverseIterator.takeWhile(_.operator.isClipping).map(_.length).sum
+      mateStart + cigar.lengthOnTarget - 1 + cigar.trailingClippedBases
+    }
+  }
+  @inline final def mateUnSoftClippedStart: Option[Int] = {
+    require(paired && mateMapped, "Cannot get mate un-soft-clipped start position on read without a mapped mate.")
+    get[String]("MC").map { cig =>
+      val cigar = Cigar(cig)
+      mateStart - cigar.leadingSoftClippedBases
+    }
+  }
+  @inline final def mateUnSoftClippedEnd: Option[Int] = {
+    require(paired && mateMapped, "Cannot get mate un-soft-clipped end position on read without a mapped mate.")
+    get[String]("MC").map { cig =>
+      val cigar = Cigar(cig)
+      mateStart + cigar.lengthOnTarget - 1 + cigar.trailingSoftClippedBases
     }
   }
   @inline final def matesOverlap: Option[Boolean] = {
