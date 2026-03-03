@@ -98,7 +98,7 @@ object GroupReadsByUmi {
         val lib = library(rec)
         val (ref1, start1, strand1) = positionOf(rec)
         val (ref2, start2, strand2) = if (rec.unpaired || rec.mateUnmapped) (UnknownRef, UnknownPos, UnknownStrand) else {
-          val start = (if (rec.matePositiveStrand) rec.mateUnclippedStart else rec.mateUnclippedEnd)
+          val start = (if (rec.matePositiveStrand) rec.mateUnSoftClippedStart else rec.mateUnSoftClippedEnd)
             .getOrElse(throw new IllegalStateException(s"Missing mate cigar tag (MC) for read $rec."))
           (rec.mateRefIndex, start, strandToByte(rec.matePositiveStrand))
         }
@@ -133,10 +133,10 @@ object GroupReadsByUmi {
       })
     }
 
-    /** Extracts the refIndex, unclipped 5' end and strand of the read, or Unknown values for unmapped reads. */
+    /** Extracts the refIndex, un-soft-clipped 5' end and strand of the read, or Unknown values for unmapped reads. */
     private def positionOf(r: SamRecord): (Int, Int, Byte) = {
       if (r.unmapped) (UnknownRef, UnknownPos, UnknownStrand) else {
-        val start = if (r.positiveStrand) r.unclippedStart else r.unclippedEnd
+        val start = if (r.positiveStrand) r.unSoftClippedStart else r.unSoftClippedEnd
         (r.refIndex, start, strandToByte(r.positiveStrand))
       }
     }
@@ -860,8 +860,8 @@ class GroupReadsByUmi
 
     (t.r1, t.r2, this.assigner) match {
       case (Some(r1), Some(r2), paired: PairedUmiAssigner) =>
-        val pos1 = if (r1.positiveStrand) r1.unclippedStart else r1.unclippedEnd
-        val pos2 = if (r2.positiveStrand) r2.unclippedStart else r2.unclippedEnd
+        val pos1 = if (r1.positiveStrand) r1.unSoftClippedStart else r1.unSoftClippedEnd
+        val pos2 = if (r2.positiveStrand) r2.unSoftClippedStart else r2.unSoftClippedEnd
         val r1Lower = r1.refIndex < r2.refIndex || (r1.refIndex == r2.refIndex && (pos1 < pos2 || (pos1 == pos2 && r1.positiveStrand)))
         val umis = umi.split("-", -1) // Split and ensure we return empty strings for missing UMIs.
         require(umis.length == 2, s"Paired strategy used but umi did not contain 2 segments delimited by a '-': $umi")

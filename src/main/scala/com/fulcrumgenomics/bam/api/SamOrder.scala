@@ -27,7 +27,7 @@ package com.fulcrumgenomics.bam.api
 import com.fulcrumgenomics.umi.ConsensusTags
 import htsjdk.samtools.SAMFileHeader.{GroupOrder, SortOrder}
 import htsjdk.samtools.util.Murmur3
-import htsjdk.samtools.{SAMFileHeader, SAMUtils}
+import htsjdk.samtools.SAMFileHeader
 
 /** Trait for specifying BAM orderings. */
 sealed trait SamOrder extends Product {
@@ -164,7 +164,7 @@ object SamOrder {
 
   /**
     * The sort order used by GroupReadByUmi. Sorts reads by the earlier unclipped 5' coordinate of the read
-    * pair, the higher unclipped 5' coordinate of the read pair, library, the molecular identifier (see
+    * pair, the higher un-soft-clipped 5' coordinate of the read pair, library, the molecular identifier (see
     * [[com.fulcrumgenomics.umi.ConsensusTags.MolecularId]]), read name, and if R1 has the lower coordinates of the pair.
     */
   case object TemplateCoordinate extends SamOrder {
@@ -177,8 +177,12 @@ object SamOrder {
       val mateChrom = if (rec.unpaired || rec.mateUnmapped) Int.MaxValue else rec.mateRefIndex
       val readNeg   = rec.negativeStrand
       val mateNeg   = if (rec.paired) rec.mateNegativeStrand else false
-      val readPos   = if (rec.unmapped)     Int.MaxValue else if (readNeg) rec.unclippedEnd else rec.unclippedStart
-      val matePos   = if (rec.unpaired || rec.mateUnmapped) Int.MaxValue else if (mateNeg) SAMUtils.getMateUnclippedEnd(rec.asSam) else SAMUtils.getMateUnclippedStart(rec.asSam)
+      val readPos   = if (rec.unmapped) Int.MaxValue else if (readNeg) rec.unSoftClippedEnd else rec.unSoftClippedStart
+      val matePos   = {
+        if (rec.unpaired || rec.mateUnmapped) Int.MaxValue
+        else if (mateNeg) { rec.mateUnSoftClippedEnd.getOrElse(throw new IllegalArgumentException("Record does not have a mate cigar!")) }
+        else { rec.mateUnSoftClippedStart.getOrElse(throw new IllegalArgumentException("Record does not have a mate cigar!")) }
+      }
       val lib       = Option(rec.readGroup).flatMap(rg => Option(rg.getLibrary)).getOrElse("Unknown")
       val mid       = rec.get[String](ConsensusTags.MolecularId).map { m =>
         val index: Int = m.lastIndexOf('/')
