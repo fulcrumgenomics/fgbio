@@ -74,7 +74,7 @@ import htsjdk.samtools.SamPairUtil
     |1. Upgrade of clipping if `--upgrade-clipping` is specified
     |2. Any fixed 5-prime or 3-prime clippings for R1 and/or R2
     |3. Clipping of overlapping bases in paired reads if `--clip-overlapping-reads` is specified
-    |4. Clipping of bases extending past mates if `--clip-bases-past-mate` is specified
+    |4. Clipping of bases extending past mates in `FR` pairs if `--clip-bases-past-mate` is specified
   """)
 class ClipBam
 ( @arg(flag='i', doc="Input SAM or BAM file of aligned reads in coordinate order.") val input: PathToBam,
