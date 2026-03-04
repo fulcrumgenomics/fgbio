@@ -41,6 +41,13 @@ The `--upgrade-clipping` parameter will convert all existing clipping in the inp
 from `Soft` to either `SoftWithMask` or `Hard`, and `SoftWithMask` to `Hard`. In all other cases, clipping remains
 the same prior to applying any other clipping criteria.
 
+The order of operations for clipping is:
+
+1. Upgrade of clipping if `--upgrade-clipping` is specified
+2. Any fixed 5-prime or 3-prime clippings for R1 and/or R2
+3. Clipping of overlapping bases in paired reads if `--clip-overlapping-reads` is specified
+4. Clipping of bases extending past mates in `FR` pairs if `--clip-bases-past-mate` is specified
+
 ## Arguments
 
 |Name|Flag|Type|Description|Required?|Max # of Values|Default Value(s)|
