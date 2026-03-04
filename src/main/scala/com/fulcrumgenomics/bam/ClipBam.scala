@@ -69,7 +69,7 @@ import htsjdk.samtools.SamPairUtil
     |from `Soft` to either `SoftWithMask` or `Hard`, and `SoftWithMask` to `Hard`. In all other cases, clipping remains
     |the same prior to applying any other clipping criteria.
     |
-    |The order of operations for clipping are:
+    |The order of operations for clipping is:
     |
     |1. Upgrade of clipping if `--upgrade-clipping` is specified
     |2. Any fixed 5-prime or 3-prime clippings for R1 and/or R2
