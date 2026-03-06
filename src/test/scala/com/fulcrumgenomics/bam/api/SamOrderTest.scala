@@ -198,6 +198,37 @@ class SamOrderTest extends UnitSpec {
     }
   }
 
+  it should "group molecules within cells when the CB tag is defined" in {
+    // Two cells (AAAA, BBBB), each with two molecules sharing the same coordinates.
+    // Without CB the sort degenerates to MI-only ordering, which interleaves molecules
+    // across cells (AAAA/mol1 adjacent to BBBB/mol1, etc.).  With CB present, reads
+    // must be grouped by cell first, then by molecule within the cell.
+    val addFuncs: Seq[SamBuilder => Unit] = Seq(
+      b => { val _ = b.addPair(name="aa1", start1=100, start2=200, attrs=Map("MI" -> "1/A", "CB" -> "AAAA"), bases1="AAAAAAAAAA", bases2="AAAAAAAAAA") },
+      b => { val _ = b.addPair(name="bb1", start1=100, start2=200, attrs=Map("MI" -> "1/A", "CB" -> "BBBB"), bases1="AAAAAAAAAA", bases2="AAAAAAAAAA") },
+      b => { val _ = b.addPair(name="aa2", start1=100, start2=200, attrs=Map("MI" -> "2/A", "CB" -> "AAAA"), bases1="AAAAAAAAAA", bases2="AAAAAAAAAA") },
+      b => { val _ = b.addPair(name="bb2", start1=100, start2=200, attrs=Map("MI" -> "2/A", "CB" -> "BBBB"), bases1="AAAAAAAAAA", bases2="AAAAAAAAAA") },
+    )
+
+    def seq(n: Int, str: String): Seq[String] = IndexedSeq.fill[String](n)(str)
+
+    Range.inclusive(start=1, end=10).foreach { _ =>
+      val builder = new SamBuilder(readLength=10)
+      scala.util.Random.shuffle(addFuncs).foreach { func => func(builder) }
+      val f    = SamOrder.TemplateCoordinate.sortkey
+      val recs = builder.iterator.toSeq.sortBy(f(_))
+      recs should have length 8
+
+      // All reads from cell AAAA must precede all reads from cell BBBB.
+      recs.take(4).map(_.apply[String]("CB")).foreach(_ shouldBe "AAAA")
+      recs.drop(4).map(_.apply[String]("CB")).foreach(_ shouldBe "BBBB")
+
+      // Within each cell, molecules are ordered by MI.
+      recs.take(4).map(_.apply[String]("MI")) should contain theSameElementsInOrderAs (seq(2, "1/A") ++ seq(2, "2/A"))
+      recs.drop(4).map(_.apply[String]("MI")) should contain theSameElementsInOrderAs (seq(2, "1/A") ++ seq(2, "2/A"))
+    }
+  }
+
   it should "sort pairs by the 'lower' 5' position of the pair" in {
     val builder = new SamBuilder(readLength=100, sort=Some(SamOrder.Coordinate))
     val exp = ListBuffer[SamRecord]()
