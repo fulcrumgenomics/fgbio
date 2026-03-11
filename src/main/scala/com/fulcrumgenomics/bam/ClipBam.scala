@@ -126,6 +126,9 @@ class ClipBam
         case (Some(r1), Some(r2)) =>
           clipPair(r1=r1, r2=r2, r1Metric=metricsMap.get(ReadType.ReadOne), r2Metric=metricsMap.get(ReadType.ReadTwo))
           SamPairUtil.setMateInfo(r1.asSam, r2.asSam, true)
+          // SamPairUtil.setMateInfo does not clear the proper-pair (0x2) flag when one read becomes unmapped
+          // Although we could call SamPairUtil.setProperPairAndMateInfo, that would overzealously reset every read's proper-pair flag
+          if (r1.unmapped || r2.unmapped) { r1.properlyPaired = false; r2.properlyPaired = false }
           template.r1Supplementals.foreach(s => SamPairUtil.setMateInformationOnSupplementalAlignment(s.asSam, r2.asSam, true))
           template.r2Supplementals.foreach(s => SamPairUtil.setMateInformationOnSupplementalAlignment(s.asSam, r1.asSam, true))
         case (Some(frag), None) =>

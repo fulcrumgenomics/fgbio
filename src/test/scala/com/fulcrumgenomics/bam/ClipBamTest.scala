@@ -618,6 +618,296 @@ class ClipBamTest extends UnitSpec with ErrorLogLevel with OptionValues {
     r2.end shouldBe 90 + 200 - 1 // 289: the original end of R2
   }
 
+  /** Helper that asserts two reads have the same start, end, and CIGAR. */
+  private def assertSameClipping(got: SamRecord, expected: SamRecord, label: String): Unit = {
+    withClue(s"$label start:") { got.start shouldBe expected.start }
+    withClue(s"$label end:")   { got.end shouldBe expected.end }
+    withClue(s"$label cigar:") { got.cigar.toString shouldBe expected.cigar.toString }
+    ()
+  }
+
+  // Tests for the ordering issue raised in https://github.com/fulcrumgenomics/fgbio/issues/1141#issuecomment-3998369518
+  // The order of --clip-overlapping-reads and --clip-bases-past-mate should not affect the final result.
+  // Each test runs the two operations in both orderings and asserts they produce identical results.
+
+  private val samClipper = new SamRecordClipper(mode = ClippingMode.Hard, autoClipAttributes = false)
+
+  it should "produce the same result for clip-overlapping-reads then clip-bases-past-mate as the reverse order for symmetrically overlapping reads" in {
+    // R1 and R2 overlap symmetrically: each extends 10 bp past the other's 5' start
+    val Seq(r1a, r2a) = new SamBuilder(readLength = 100).addPair(start1 = 100, start2 = 90)
+    val Seq(r1b, r2b) = new SamBuilder(readLength = 100).addPair(start1 = 100, start2 = 90)
+
+    // Order A (current production order): overlapping → past-mate
+    samClipper.clipOverlappingReads(r1a, r2a)
+    samClipper.clipExtendingPastMateEnds(r1a, r2a)
+
+    // Order B (reversed): past-mate → overlapping
+    samClipper.clipExtendingPastMateEnds(r1b, r2b)
+    samClipper.clipOverlappingReads(r1b, r2b)
+
+    assertSameClipping(r1a, r1b, "R1")
+    assertSameClipping(r2a, r2b, "R2")
+  }
+
+  it should "produce the same result for clip-overlapping-reads then clip-bases-past-mate as the reverse order for heavily overlapping reads" in {
+    // R1 and R2 overlap heavily: R2 starts 50 bp before R1's 5' start
+    val Seq(r1a, r2a) = new SamBuilder(readLength = 100).addPair(start1 = 100, start2 = 50)
+    val Seq(r1b, r2b) = new SamBuilder(readLength = 100).addPair(start1 = 100, start2 = 50)
+
+    // Order A: overlapping → past-mate
+    samClipper.clipOverlappingReads(r1a, r2a)
+    samClipper.clipExtendingPastMateEnds(r1a, r2a)
+
+    // Order B: past-mate → overlapping
+    samClipper.clipExtendingPastMateEnds(r1b, r2b)
+    samClipper.clipOverlappingReads(r1b, r2b)
+
+    assertSameClipping(r1a, r1b, "R1")
+    assertSameClipping(r2a, r2b, "R2")
+  }
+
+  it should "produce the same result for clip-overlapping-reads then clip-bases-past-mate as the reverse order when R2 is much longer and extends past both ends of R1" in {
+    // R2 is much longer than R1 and overlaps, extending past both R1.start and R1.end.
+    // This is the scenario eboyden described where the shorter read could be clipped to zero length.
+    // R1 is 20 bases long; R2 is 100 bases long.
+    val bases20  = "A" * 20
+    val quals20  = "F" * 20
+    val bases100 = "A" * 100
+    val quals100 = "F" * 100
+    val Seq(r1a, r2a) = new SamBuilder(readLength = 100).addPair(
+      start1 = 100, start2 = 80, cigar1 = "20M", cigar2 = "100M",
+      bases1 = bases20, quals1 = quals20, bases2 = bases100, quals2 = quals100,
+    )
+    val Seq(r1b, r2b) = new SamBuilder(readLength = 100).addPair(
+      start1 = 100, start2 = 80, cigar1 = "20M", cigar2 = "100M",
+      bases1 = bases20, quals1 = quals20, bases2 = bases100, quals2 = quals100,
+    )
+
+    // Order A: overlapping → past-mate
+    samClipper.clipOverlappingReads(r1a, r2a)
+    samClipper.clipExtendingPastMateEnds(r1a, r2a)
+
+    // Order B: past-mate → overlapping
+    samClipper.clipExtendingPastMateEnds(r1b, r2b)
+    samClipper.clipOverlappingReads(r1b, r2b)
+
+    assertSameClipping(r1a, r1b, "R1")
+    assertSameClipping(r2a, r2b, "R2")
+  }
+
+  it should "produce the same result for clip-overlapping-reads then clip-bases-past-mate as the reverse order when R1 is much longer and contains a short R2" in {
+    // R1 is much longer; R2 is short and starts late within R1's range.
+    // The concern is that clipOverlappingReads clips the midpoint to well before R2.start,
+    // dramatically shortening R1 but leaving R2 nearly intact.
+    val bases100 = "A" * 100
+    val quals100 = "F" * 100
+    val bases20  = "A" * 20
+    val quals20  = "F" * 20
+    val Seq(r1a, r2a) = new SamBuilder(readLength = 100).addPair(
+      start1 = 100, start2 = 180, cigar1 = "100M", cigar2 = "20M",
+      bases1 = bases100, quals1 = quals100, bases2 = bases20, quals2 = quals20,
+    )
+    val Seq(r1b, r2b) = new SamBuilder(readLength = 100).addPair(
+      start1 = 100, start2 = 180, cigar1 = "100M", cigar2 = "20M",
+      bases1 = bases100, quals1 = quals100, bases2 = bases20, quals2 = quals20,
+    )
+
+    // Order A: overlapping → past-mate
+    samClipper.clipOverlappingReads(r1a, r2a)
+    samClipper.clipExtendingPastMateEnds(r1a, r2a)
+
+    // Order B: past-mate → overlapping
+    samClipper.clipExtendingPastMateEnds(r1b, r2b)
+    samClipper.clipOverlappingReads(r1b, r2b)
+
+    assertSameClipping(r1a, r1b, "R1")
+    assertSameClipping(r2a, r2b, "R2")
+  }
+
+  it should "produce the same result for clip-overlapping-reads then clip-bases-past-mate as the reverse order with 5-prime hard-clipped reads (issue 1141 scenario)" in {
+    // Reproduces the asymmetric hard-clipped scenario from issue #1141:
+    //   - R1 has 25H at its 5' (left) end
+    //   - R2 has 25H at its 5' (right/trailing-CIGAR) end
+    //   - Both reads overlap: R2 starts before R1's reference start
+    // In this scenario the mate's hard-clipped 5' region must be ignored when determining
+    // clipping boundaries (fixed in PR #1065). The order of the two operations should not matter.
+    val readLen = 89 // bases after removing 25 hard-clipped
+    val Seq(r1a, r2a) = new SamBuilder(readLength = readLen).addPair(
+      start1  = 100,
+      start2  = 75,
+      cigar1  = s"25H${readLen}M",
+      cigar2  = s"${readLen}M25H",
+    )
+    val Seq(r1b, r2b) = new SamBuilder(readLength = readLen).addPair(
+      start1  = 100,
+      start2  = 75,
+      cigar1  = s"25H${readLen}M",
+      cigar2  = s"${readLen}M25H",
+    )
+
+    // Order A: overlapping → past-mate
+    samClipper.clipOverlappingReads(r1a, r2a)
+    samClipper.clipExtendingPastMateEnds(r1a, r2a)
+
+    // Order B: past-mate → overlapping
+    samClipper.clipExtendingPastMateEnds(r1b, r2b)
+    samClipper.clipOverlappingReads(r1b, r2b)
+
+    assertSameClipping(r1a, r1b, "R1")
+    assertSameClipping(r2a, r2b, "R2")
+  }
+
+  it should "produce the same result for clip-overlapping-reads then clip-bases-past-mate as the reverse order for soft-clipped overlapping reads" in {
+    // R2 has 10 soft-clipped bases at its 3' (left reference) end extending the footprint to
+    // the left. Both reads overlap: R2's soft-clipped bases reach R1.start.
+    // cigar2 = "10S90M" has lengthOnQuery=100, matching readLength=100.
+    val Seq(r1a, r2a) = new SamBuilder(readLength = 100).addPair(
+      start1  = 100,
+      start2  = 110, // R2 aligned start is 110; the leading 10S extend to ref position 100
+      cigar1  = "100M",
+      cigar2  = "10S90M",
+    )
+    val Seq(r1b, r2b) = new SamBuilder(readLength = 100).addPair(
+      start1  = 100,
+      start2  = 110,
+      cigar1  = "100M",
+      cigar2  = "10S90M",
+    )
+
+    // Order A: overlapping → past-mate
+    samClipper.clipOverlappingReads(r1a, r2a)
+    samClipper.clipExtendingPastMateEnds(r1a, r2a)
+
+    // Order B: past-mate → overlapping
+    samClipper.clipExtendingPastMateEnds(r1b, r2b)
+    samClipper.clipOverlappingReads(r1b, r2b)
+
+    assertSameClipping(r1a, r1b, "R1")
+    assertSameClipping(r2a, r2b, "R2")
+  }
+
+  it should "produce a 1bp R1 and an unmapped R2 when both 5-prime ends are at the same reference position and R2 has leading soft-clips" in {
+    // R1 is 1bp at ref 100. R2 has 5 soft-clipped bases followed by 1 aligned base, also starting at ref 100.
+    // The midpoint falls at mate.end (ref 100), so clipOverlappingReads clips all of R2, unmapping it.
+    // clipExtendingPastMateEnds is then a no-op because the mate is already unmapped.
+    val builder = new SamBuilder(readLength = 1)
+    val Seq(r1, r2) = builder.addPair(
+      start1 = 100,
+      start2 = 100,
+      cigar1 = "1M",
+      cigar2 = "5S1M",
+      bases1 = "A",
+      quals1 = "F",
+      bases2 = "AAAAAA",
+      quals2 = "FFFFFF",
+    )
+
+    samClipper.clipOverlappingReads(r1, r2)
+    samClipper.clipExtendingPastMateEnds(r1, r2)
+
+    r1.start    shouldBe 100
+    r1.end      shouldBe 100
+    r2.unmapped shouldBe true
+  }
+
+  it should "produce a 1bp R1 and an unmapped R2 when both reads are 1bp and fully co-located" in {
+    // When two 1bp reads are at the same reference position, the midpoint equals mate.end,
+    // so clipOverlappingReads clips all of R2, resulting in R2 being unmapped.
+    val Seq(r1a, r2a) = new SamBuilder(readLength = 1).addPair(start1 = 100, start2 = 100)
+    val Seq(r1b, r2b) = new SamBuilder(readLength = 1).addPair(start1 = 100, start2 = 100)
+
+    // Order A: overlapping → past-mate
+    samClipper.clipOverlappingReads(r1a, r2a)
+    samClipper.clipExtendingPastMateEnds(r1a, r2a)
+
+    // Order B: past-mate → overlapping
+    samClipper.clipExtendingPastMateEnds(r1b, r2b)
+    samClipper.clipOverlappingReads(r1b, r2b)
+
+    r1a.start    shouldBe 100
+    r1a.end      shouldBe 100
+    r2a.unmapped shouldBe true
+
+    r1b.start    shouldBe 100
+    r1b.end      shouldBe 100
+    r2b.unmapped shouldBe true
+  }
+
+  it should "clear the proper-pair flag on the surviving read when its mate is clipped to unmapped" in {
+    val builder = new SamBuilder(readLength = 1, sort = Some(Queryname))
+    builder.addPair(start1 = 100, start2 = 100)
+
+    val out = makeTempFile("out.", ".bam")
+    new ClipBam(input = builder.toTempFile(), output = out, ref = ref, clipOverlappingReads = true).execute()
+
+    val clipped = SamSource(out).toSeq
+    clipped should have length 2
+
+    val mapped   = clipped.find(_.mapped).value
+    val unmapped = clipped.find(_.unmapped).value
+
+    unmapped.unmapped       shouldBe true
+    mapped.mateUnmapped     shouldBe true
+    mapped.properlyPaired   shouldBe false
+    unmapped.properlyPaired shouldBe false
+  }
+
+  // Tests for issue #1090: numBasesExtendingPastMate uses reference-coordinate arithmetic to decide
+  // how many query bases to clip, which gives wrong answers when reads contain indels.
+  // The correct algorithm should find the last shared reference position between the two reads
+  // and equalise query-base counts past that position.  These tests document the bug and are
+  // expected to FAIL until the algorithm is rewritten.
+
+  it should "clip the correct number of bases from R1 when R1 has an insertion (issue #1090)" in {
+    // Setup:
+    //   R1 (+): 5M2I3M4S   ref 100-107   query len=14
+    //   R2 (−): 5M3S       ref 100-104   unSoftClippedEnd = 104+3 = 107
+    //
+    // Bug path (rec.end(107) >= mateUnSoftClippedEnd(107)):
+    //   readPosAtRefPos(107) on R1 = 10  →  rec.length(14) − 10 = 4  →  clips only the 4S
+    //   R1.end stays at 107  (UNDER-clipped by 2 = insertion length)
+    //
+    // Correct (query-coordinate):
+    //   last shared ref pos = min(R1.end, R2.end) = 104
+    //   R1 query bases past 104: 2I + 3M + 4S = 9
+    //   R2 query bases past 104: 3S = 3
+    //   clip 9 − 3 = 6 from R1  →  5M2I1M6H, R1.end = 105
+    val Seq(r1, r2) = new SamBuilder(readLength = 14).addPair(
+      start1 = 100, start2 = 100,
+      cigar1 = "5M2I3M4S", cigar2 = "5M3S",
+      bases1 = "A" * 14, quals1 = "F" * 14,
+      bases2 = "A" * 8,  quals2 = "F" * 8,
+    )
+    samClipper.clipExtendingPastMateEnds(r1, r2)
+    r1.start shouldBe 100
+    r1.end   shouldBe 105 // correct; bug gives 107 (under-clipped by insertion length)
+  }
+
+  it should "clip the correct number of bases from R1 when R1 has a deletion (issue #1090)" in {
+    // Setup:
+    //   R1 (+): 5M2D3M4S   ref 100-109   query len=12  (deletion spans ref 105-106)
+    //   R2 (−): 5M3S       ref 100-104   unSoftClippedEnd = 104+3 = 107
+    //
+    // Bug path (rec.end(109) >= mateUnSoftClippedEnd(107)):
+    //   readPosAtRefPos(107) on R1 = 6  →  rec.length(12) − 6 = 6  →  clips 4S + 2 from 3M
+    //   R1.end drops to 107  (OVER-clipped by 2 = deletion length)
+    //
+    // Correct (query-coordinate):
+    //   last shared ref pos = min(R1.end, R2.end) = 104
+    //   R1 query bases past 104: 2D→0 + 3M + 4S = 7
+    //   R2 query bases past 104: 3S = 3
+    //   clip 7 − 3 = 4 from R1  →  5M2D3M4H, R1.end = 109
+    val Seq(r1, r2) = new SamBuilder(readLength = 12).addPair(
+      start1 = 100, start2 = 100,
+      cigar1 = "5M2D3M4S", cigar2 = "5M3S",
+      bases1 = "A" * 12, quals1 = "F" * 12,
+      bases2 = "A" * 8,  quals2 = "F" * 8,
+    )
+    samClipper.clipExtendingPastMateEnds(r1, r2)
+    r1.start shouldBe 100
+    r1.end   shouldBe 109 // correct; bug gives 107 (over-clipped by deletion length)
+  }
+
   it should "unmap reads when the hard clipping length requested is greater than the length of the reads" in {
     val builder = new SamBuilder(readLength = 100, sort = Some(Queryname))
     val clipper = new ClipBam(

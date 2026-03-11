@@ -304,7 +304,7 @@ class SamRecordClipper(val mode: ClippingMode, val autoClipAttributes: Boolean) 
     else if (!rec.isFrPair) (0, 0)
     else if (rec.negativeStrand) clipOverlappingReads(rec=mate, mate=rec).swap // don't for get to swap the results since we swapped inputs
     else {
-      // Pick the mid point in the reference window between the 5' ends of the record and its mate.  The read ends at the
+      // Pick the mid point in the reference window between the 5' end of the record and its mate.  The read ends at the
       // mid point, or if the mid point is in a deletion, the base prior to the deletion.  The mate ends at the mid
       // point, or if the mid point is in a deletion, the base after the deletion.
       val midPoint  = { // Need to ensure the midpoint between 5' ends actually occurs in the overlapped region
@@ -313,11 +313,21 @@ class SamRecordClipper(val mode: ClippingMode, val autoClipAttributes: Boolean) 
         else if (retval < mate.start) mate.start - 1 // trim only positive-strand read
         else retval
       }
-      val readEnd   = rec.readPosAtRefPos(pos=midPoint, returnLastBaseIfDeleted=true)
-      val mateStart = { // NB: need to be careful if the midpoint falls in a deletion
-        val retval = mate.readPosAtRefPos(pos=midPoint + 1, returnLastBaseIfDeleted=false)
-        if (retval != 0) retval else mate.readPosAtRefPos(pos=midPoint + 1, returnLastBaseIfDeleted=true) + 1
+      val mateStart = { // NB: need to be careful if the midpoint falls in a deletion or past the end of the mate
+        if (midPoint >= mate.end) {
+          // The midpoint is at or past the mate's last aligned base, so clip the entire mate.
+          // CIGAR operations (e.g. leading soft-clips on the mate) can shrink the mate's aligned
+          // reference span so that the midpoint, computed from the first non-soft-clipped reference
+          // position of each read's 5′ end (rec.start for the +strand read; mate.end for the -strand
+          // read), lands at or past mate.end — e.g. R1=1M at pos 100 (+) and R2=5S1M at pos 100 (-)
+          // gives midpoint (100+100)/2=100=mate.end, so all of R2 is clipped.
+          mate.length + 1
+        } else {
+          val retval = mate.readPosAtRefPos(pos=midPoint + 1, returnLastBaseIfDeleted=false)
+          if (retval != 0) retval else mate.readPosAtRefPos(pos=midPoint + 1, returnLastBaseIfDeleted=true) + 1
+        }
       }
+      val readEnd                 = rec.readPosAtRefPos(pos=midPoint, returnLastBaseIfDeleted=true)
       val numOverlappingBasesRead = this.clip3PrimeEndOfRead(rec, rec.cigar.trailingHardClippedBases + rec.length - readEnd)
       val numOverlappingBasesMate = this.clip3PrimeEndOfRead(mate, mate.cigar.leadingHardClippedBases + mateStart - 1)
       (numOverlappingBasesRead, numOverlappingBasesMate)
@@ -326,24 +336,37 @@ class SamRecordClipper(val mode: ClippingMode, val autoClipAttributes: Boolean) 
 
   /** Returns the number of bases extending past the mate end for FR pairs including any soft-clipped bases, zero otherwise.
     *
+    * The comparison is done in query-coordinate space to correctly handle reads with insertions or deletions: the
+    * clip count is the number of query bases in `rec` that extend past the mate's last (or first) aligned reference
+    * position, minus the mate's soft-clipped bases that already overlap the same region.
+    *
     * @param rec the record to examine
-    * @param mateUnSoftClippedStart the smallest mapped genomic coordinate considering *ONLY* soft-clipping
-    * @param mateUnSoftClippedEnd the largest mapped genomic coordinate considering *ONLY* soft-clipping
+    * @param mateStart the smallest aligned (non-clipped) genomic coordinate of the mate
+    * @param mateEnd the largest aligned (non-clipped) genomic coordinate of the mate
+    * @param mateLeadingSoftClips the number of leading soft-clipped bases on the mate
+    * @param mateTrailingSoftClips the number of trailing soft-clipped bases on the mate
     */
-  def numBasesExtendingPastMate(rec: SamRecord, mateUnSoftClippedStart: Int, mateUnSoftClippedEnd: Int): Int = {
+  def numBasesExtendingPastMate(rec: SamRecord, mateStart: Int, mateEnd: Int,
+                                mateLeadingSoftClips: Int, mateTrailingSoftClips: Int): Int = {
+    val mateUnSoftClippedStart = mateStart - mateLeadingSoftClips
+    val mateUnSoftClippedEnd   = mateEnd   + mateTrailingSoftClips
     if (!rec.isFrPair) 0 else rec.positiveStrand match {
-      case true if rec.end >= mateUnSoftClippedEnd =>
-        // positive strand record is aligned to/past the mate alignment end: count any bases aligned/soft-clipped after
-        Math.max(0, rec.length - rec.readPosAtRefPos(pos=mateUnSoftClippedEnd, returnLastBaseIfDeleted=false))
+      case true if rec.end > mateEnd =>
+        // positive strand record is aligned past the mate's last aligned base: count query bases in rec after mateEnd,
+        // minus the mate's trailing soft clips which cover the same virtual region
+        Math.max(0, rec.length - rec.readPosAtRefPos(pos=mateEnd, returnLastBaseIfDeleted=true) - mateTrailingSoftClips)
       case true =>
-        // positive strand record alignment ends before the mate alignment end: remove any excess soft-clipped reads
+        // positive strand record ends at or before the mate's last aligned base: only trailing soft clips of rec can
+        // extend past the mate's un-soft-clipped end
         Math.max(0, rec.cigar.trailingSoftClippedBases - (mateUnSoftClippedEnd - rec.end))
-      case false if rec.start > mateUnSoftClippedStart =>
-        // negative strand record alignment starts after the mate alignment start: remove any excess soft-clipped reads
-        Math.max(0, rec.cigar.leadingSoftClippedBases - (rec.start - mateUnSoftClippedStart))
+      case false if rec.start < mateStart =>
+        // negative strand record alignment starts before the mate's first aligned base: count query bases in rec before
+        // mateStart, minus the mate's leading soft clips which cover the same virtual region
+        Math.max(0, rec.readPosAtRefPos(pos=mateStart, returnLastBaseIfDeleted=false) - 1 - mateLeadingSoftClips)
       case false =>
-        // negative strand record alignment starts at or before the mate start: count up to and including one base before
-        Math.max(0, rec.readPosAtRefPos(pos=mateUnSoftClippedStart, returnLastBaseIfDeleted=false) - 1)
+        // negative strand record alignment starts at or after the mate's first aligned base: only leading soft clips of
+        // rec can extend past the mate's un-soft-clipped start
+        Math.max(0, rec.cigar.leadingSoftClippedBases - (rec.start - mateUnSoftClippedStart))
     }
   }
 
@@ -354,17 +377,9 @@ class SamRecordClipper(val mode: ClippingMode, val autoClipAttributes: Boolean) 
     * @return the additional number of bases clipped (3' end in sequencing order) for the read and mate respectively
     */
   def clipExtendingPastMateEnds(rec: SamRecord, mate: SamRecord): (Int, Int) = {
-    if (rec.isFrPair) {
-      val basesClipped1 = clipExtendingPastMateEnd(
-        rec                    = rec,
-        mateUnSoftClippedStart = mate.unSoftClippedStart,
-        mateUnSoftClippedEnd   = mate.unSoftClippedEnd,
-      )
-      val basesClipped2 = clipExtendingPastMateEnd(
-        rec                    = mate,
-        mateUnSoftClippedStart = rec.unSoftClippedStart,
-        mateUnSoftClippedEnd   = rec.unSoftClippedEnd,
-      )
+    if (rec.isFrPair && rec.mapped && mate.mapped) {
+      val basesClipped1 = clipExtendingPastMateEnd(rec=rec, mate=mate)
+      val basesClipped2 = clipExtendingPastMateEnd(rec=mate, mate=rec)
       (basesClipped1, basesClipped2)
     }
     else {
@@ -375,21 +390,22 @@ class SamRecordClipper(val mode: ClippingMode, val autoClipAttributes: Boolean) 
   /** Clips the read in FR read pairs whose alignments extend beyond the far end of their mate's alignment.
     *
     * @param rec the record to clip
-    * @param mateUnSoftClippedStart the smallest mapped genomic coordinate considering *ONLY* soft-clipping
-    * @param mateUnSoftClippedEnd the largest mapped genomic coordinate considering *ONLY* soft-clipping
+    * @param mate the full mate record
     * @return the additional number of bases clipped (3' end in sequencing order)
     */
-  private def clipExtendingPastMateEnd(rec: SamRecord, mateUnSoftClippedStart: Int, mateUnSoftClippedEnd: Int): Int = {
-    if (!rec.isFrPair) 0 // do not overlap, don't clip
+  private def clipExtendingPastMateEnd(rec: SamRecord, mate: SamRecord): Int = {
+    if (!rec.isFrPair) 0 // reads do not overlap, don't clip
     else {
       val totalClippedBases = numBasesExtendingPastMate(
-        rec                    = rec,
-        mateUnSoftClippedStart = mateUnSoftClippedStart,
-        mateUnSoftClippedEnd   = mateUnSoftClippedEnd,
+        rec                   = rec,
+        mateStart             = mate.start,
+        mateEnd               = mate.end,
+        mateLeadingSoftClips  = mate.cigar.leadingSoftClippedBases,
+        mateTrailingSoftClips = mate.cigar.trailingSoftClippedBases,
       )
       if (totalClippedBases == 0) 0 else {
-       if (rec.positiveStrand) this.clipEndOfRead(rec, totalClippedBases)
-       else this.clipStartOfRead(rec, totalClippedBases)
+        if (rec.positiveStrand) this.clipEndOfRead(rec, totalClippedBases)
+        else this.clipStartOfRead(rec, totalClippedBases)
       }
     }
   }
