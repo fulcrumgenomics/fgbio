@@ -892,12 +892,14 @@ class SamRecordClipperTest extends UnitSpec with OptionValues {
 
   /** Convenience method for testing numBasesExtendingPastMate */
   def numBasesExtendingPastMate(clipper: SamRecordClipper, rec: SamRecord): Int = {
-    val mateUnSoftClippedStart = rec.mateUnSoftClippedStart.getOrElse(throw new IllegalStateException(f"Mate cigar (MC SAM tag) needed for read: ${rec.name}"))
-    val mateUnSoftClippedEnd   = rec.mateUnSoftClippedEnd.getOrElse(throw new IllegalStateException(f"Mate cigar (MC SAM tag) needed for read: ${rec.name}"))
+    val mateCig   = rec.mateCigar.getOrElse(throw new IllegalStateException(f"Mate cigar (MC SAM tag) needed for read: ${rec.name}"))
+    val mateEndPos = rec.mateStart + mateCig.lengthOnTarget - 1
     clipper.numBasesExtendingPastMate(
-      rec                    = rec,
-      mateUnSoftClippedStart = mateUnSoftClippedStart,
-      mateUnSoftClippedEnd   = mateUnSoftClippedEnd,
+      rec                   = rec,
+      mateStart             = rec.mateStart,
+      mateEnd               = mateEndPos,
+      mateLeadingSoftClips  = mateCig.leadingSoftClippedBases,
+      mateTrailingSoftClips = mateCig.trailingSoftClippedBases,
     )
   }
 
