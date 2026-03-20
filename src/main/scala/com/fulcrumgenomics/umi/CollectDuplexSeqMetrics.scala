@@ -276,7 +276,7 @@ class CollectDuplexSeqMetrics
   @arg(flag='b', doc="Minimum BA reads to call a tag family a 'duplex'.") val minBaReads: Int = 1,
   @arg(flag='t', doc="The tag containing the raw UMI.")  val umiTag: String = ConsensusTags.UmiBases,
   @arg(flag='T', doc="The output tag for UMI grouping.") val miTag: String = ConsensusTags.MolecularId,
-  @arg(flag='c', doc="The tag containing the cell barcode.") val cellTag: String = SAMTag.CB.name,
+  @arg(flag='c', doc="The tag containing the cell barcode. When set, reads are partitioned by cell barcode when computing metrics, ensuring reads from different cells are analyzed independently.") val cellTag: String = SAMTag.CB.name,
   private val generatePlots: Boolean = true // not a CLP arg - here to allow disabling of plots to speed up testing
 ) extends FgBioTool with LazyLogging {
   import CollectDuplexSeqMetrics._

@@ -57,7 +57,8 @@ The first phase deals with going from FASTQ files through to aligned and grouped
 ```mermaid
 graph TD;
 A["fgbio FastqToBam"]-->B["samtools fastq | bwa mem | fgbio ZipperBam"];
-B-->C["fgbio GroupReadsByUmi"];
+B-->C["samtools sort --template-coordinate"];
+C-->D["fgbio GroupReadsByUmi"];
 ```
 
 In this example we'll use a single sample with paired-end fastq files and an inline 8bp UMI at the beginning of read one (see the fgbio [Read Structure](https://github.com/fulcrumgenomics/fgbio/wiki/Read-Structures) page for how to specify other UMI setups).
@@ -122,14 +123,36 @@ Some important `bwa mem` options used here are:
 Under no circumstances should `-M` be used to `mark shorter split hits as secondary` as this will cause problems with downstream tools.
 
 
-### Step 1.3: Mapped BAM -> Grouped BAM
+### Step 1.3: Mapped BAM -> Sorted BAM
+
+`GroupReadsByUmi` requires input in template-coordinate sort order.  While it will sort internally if needed, pre-sorting is recommended as it is significantly faster.
+
+For most data, use `samtools sort --template-coordinate` which supports multi-threaded sorting:
+
+```bash
+# Sort into template-coordinate order for GroupReadsByUmi
+samtools sort --template-coordinate --threads 8 \
+  -o s1.mapped.sorted.bam \
+  s1.mapped.bam
+```
+
+For data with cell barcodes, use `fgbio SortBam` instead, as `samtools sort --template-coordinate` does not currently include the cell barcode (CB tag) in its sort key:
+
+```bash
+fgbio -Xmx8g --async-io SortBam \
+  --input s1.mapped.bam \
+  --sort-order TemplateCoordinate \
+  --output s1.mapped.sorted.bam
+```
+
+### Step 1.4: Sorted BAM -> Grouped BAM
 
 This step identifies reads or read pairs that originate from the same source molecule based on genomic positions and UMI.  For _most_ data this is the recommended way to run grouping:
 
-```  
+```bash
 # Group the reads by position and UMI
 fgbio -Xmx8g --compression 1 --async-io GroupReadsByUmi \
-  --input s1.mapped.bam \
+  --input s1.mapped.sorted.bam \
   --strategy Adjacency \
   --edits 1 \
   --output s1.grouped.bam \
@@ -140,6 +163,10 @@ However:
 
 1. If UMIs are significantly longer (e.g. 20bp) or have more errors, `--edits` can be increased
 2. For multiplex PCR and similar data where reads' genomic positions are fixed by the primers it is recommended to use `--strategy Identity` to reduce runtime at the expense of lower accuracy
+
+### Single-Cell / Cell Barcode Data
+
+When processing data with cell barcodes (e.g. single-cell or single-nuclei sequencing), pass `--cell-tag CB` (or the appropriate tag) to `GroupReadsByUmi` and the consensus caller.  This partitions reads by cell barcode before UMI grouping, so reads from different cells are never grouped together.  The cell barcode is validated and propagated to consensus reads.  You do not need to split your BAM by cell before running the pipeline.
 
 
 ## Phase 2(a): GroupedBam -> Filtered Consensus, R&D Version
