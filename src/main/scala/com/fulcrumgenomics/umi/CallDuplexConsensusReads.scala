@@ -83,6 +83,12 @@ import htsjdk.samtools.SAMTag
     |The per base depths and errors are both capped at 32,767. In all cases no-calls (Ns) and bases below the
     |min-input-base-quality are not counted in tag value calculations.
     |
+    |## Single-Cell / Cell Barcode Support
+    |
+    |When processing data with cell barcodes, the `--cell-tag` option specifies the SAM tag containing the cell
+    |barcode (default: `CB`). All source reads (both AB and BA strands) in a duplex group are validated to have the
+    |same cell barcode, and the barcode is propagated to the output consensus read.
+    |
     |The --min-reads option can take 1-3 values similar to `FilterConsensusReads`. For example:
     |
     |```
@@ -113,7 +119,7 @@ class CallDuplexConsensusReads
             |present in a tag family, the family is randomly downsampled to exactly max-reads reads.
           """)
  val maxReadsPerStrand: Option[Int] = None,
- @arg(flag='c', doc="Tag containing the cellular barcodes.") val cellTag: Option[String] = Some(SAMTag.CB.name),
+ @arg(flag='c', doc="Tag containing the cell barcode.") val cellTag: Option[String] = Some(SAMTag.CB.name),
  @arg(doc="The number of threads to use while consensus calling.") val threads: Int = 1,
  @arg(doc="Consensus call overlapping bases in mapped paired end reads") val consensusCallOverlappingBases: Boolean = true,
 ) extends FgBioTool with LazyLogging {
