@@ -521,9 +521,11 @@ object Strategy extends FgBioEnum[Strategy] {
     |Accepts reads in any order (including `unsorted`) and outputs reads sorted by:
     |
     |   1. The lower genome coordinate of the two outer ends of the templates (strand-aware)
-    |   2. The sequencing library
-    |   3. The assigned UMI tag
-    |   4. Read Name
+    |   2. Strand orientation
+    |   3. The cellular barcode (CB tag)
+    |   4. The assigned UMI tag
+    |   5. Read Name
+    |   6. The sequencing library
     |
     |It is recommended to sort the reads into template-coordinate (i.e. `SO:unsorted GO:query SS:unsorted:template-coordinate`)
     |prior to running this tool to avoid this tool re-sorting the input.  It is recommended to use
@@ -580,6 +582,17 @@ object Strategy extends FgBioEnum[Strategy] {
     |strategies. Additionally the only operation that is multi-threaded is the comparisons of UMIs at the same genomic
     |position.  Running with e.g. `--threads 8` can provide a _substantial_ reduction in runtime when there are many
     |UMIs observed at the same genomic location, such as can occur in amplicon sequencing or ultra-deep coverage data.
+    |
+    |## Single-Cell / Cell Barcode Support
+    |
+    |When processing data with cell barcodes (e.g. single-cell or single-nuclei sequencing), the `--cell-tag` option
+    |controls how cell identity is incorporated into grouping. Reads at the same genomic coordinates are partitioned
+    |by cell barcode _before_ UMI assignment, so reads from different cells will never be grouped together even if
+    |they share a UMI and mapping position. No correction is performed on the cell barcode itself; it is treated as a
+    |known/fixed value. The default tag is `CB`.
+    |
+    |This means you do not need to split your BAM by cell barcode before running the consensus calling pipeline.
+    |Simply ensure your reads have cell barcodes in the appropriate tag and run the full BAM through the pipeline.
   """
 )
 class GroupReadsByUmi
@@ -589,7 +602,7 @@ class GroupReadsByUmi
  @arg(flag='g', doc="Optional output of UMI grouping metrics.") val groupingMetrics: Option[FilePath] = None,
  @arg(flag='t', doc="The tag containing the raw UMI.")  val rawTag: String    = ConsensusTags.UmiBases,
  @arg(flag='T', doc="The output tag for UMI grouping.") val assignTag: String = ConsensusTags.MolecularId,
- @arg(flag='c', doc="The tag containing the cell barcode.") val cellTag: String = SAMTag.CB.name,
+ @arg(flag='c', doc="The tag containing the cell barcode. When set, reads are partitioned by cell barcode before UMI grouping, ensuring reads from different cells are never grouped together.") val cellTag: String = SAMTag.CB.name,
  @arg(flag='d', doc="Turn on duplicate marking mode.") val markDuplicates: Boolean = false,
  @arg(flag='m', doc="Minimum mapping quality for mapped reads.") val minMapQ: Option[Int] = None,
  @arg(flag='n', doc="Include non-PF reads.")            val includeNonPfReads: Boolean = false,
