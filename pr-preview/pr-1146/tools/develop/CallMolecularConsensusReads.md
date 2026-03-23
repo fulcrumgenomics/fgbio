@@ -74,7 +74,7 @@ The per base depths and errors are both capped at 32,767. In all cases no-calls 
 
 When processing data with cell barcodes, the `--cell-tag` option specifies the SAM tag containing the cell
 barcode (default: `CB`). All source reads in a consensus group are validated to have the same cell barcode,
-and the barcode is propagated to the output consensus read. Set `--cell-tag` to null to disable cell barcode
+and the barcode is propagated to the output consensus read. Set `--cell-tag` to :none: to disable cell barcode
 handling.
 
 ## Arguments
@@ -96,7 +96,7 @@ handling.
 |output-per-base-tags|B|Boolean|If true produce tags on consensus reads that contain per-base information.|Optional|1|true|
 |sort-order|S|SamOrder|The sort order of the output, the same as the input if not given.|Optional|1||
 |debug|D|Boolean|Turn on debug logging.|Optional|1|false|
-|cell-tag|c|String|Tag containing the cell barcode. All reads in a group must share the same barcode, which is propagated to the consensus read. Set to null to disable.|Optional|1|CB|
+|cell-tag|c|String|Tag containing the cell barcode. Set to :none: to disable.|Optional|1|CB|
 |threads||Int|The number of threads to use while consensus calling.|Optional|1|1|
 |consensus-call-overlapping-bases||Boolean|Consensus call overlapping bases in mapped paired end reads|Optional|1|true|
 

@@ -81,12 +81,9 @@ UMIs observed at the same genomic location, such as can occur in amplicon sequen
 
 When processing data with cell barcodes (e.g. single-cell or single-nuclei sequencing), the `--cell-tag` option
 controls how cell identity is incorporated into grouping. Reads at the same genomic coordinates are partitioned
-by cell barcode _before_ UMI assignment, so reads from different cells will never be grouped together even if
-they share a UMI and mapping position. No correction is performed on the cell barcode itself; it is treated as a
-known/fixed value. The default tag is `CB`.
-
-This means you do not need to split your BAM by cell barcode before running the consensus calling pipeline.
-Simply ensure your reads have cell barcodes in the appropriate tag and run the full BAM through the pipeline.
+by cell barcode _before_ molecular index assignment, so reads from different cells will never be grouped together
+even if they share a UMI and mapping position. No correction is performed on the cell barcode itself; it is
+treated as a known/fixed value. The default tag is `CB`.
 
 ## Arguments
 
@@ -98,7 +95,7 @@ Simply ensure your reads have cell barcodes in the appropriate tag and run the f
 |grouping-metrics|g|FilePath|Optional output of UMI grouping metrics.|Optional|1||
 |raw-tag|t|String|The tag containing the raw UMI.|Optional|1|RX|
 |assign-tag|T|String|The output tag for UMI grouping.|Optional|1|MI|
-|cell-tag|c|String|The tag containing the cell barcode. When set, reads are partitioned by cell barcode before UMI grouping, ensuring reads from different cells are never grouped together.|Optional|1|CB|
+|cell-tag|c|String|The tag containing the cell barcode.|Optional|1|CB|
 |mark-duplicates|d|Boolean|Turn on duplicate marking mode.|Optional|1|false|
 |min-map-q|m|Int|Minimum mapping quality for mapped reads.|Optional|1||
 |include-non-pf-reads|n|Boolean|Include non-PF reads.|Optional|1|false|

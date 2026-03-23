@@ -56,7 +56,7 @@ min-input-base-quality are not counted in tag value calculations.
 
 When processing data with cell barcodes, the `--cell-tag` option specifies the SAM tag containing the cell
 barcode (default: `CB`). All source reads (both AB and BA strands) in a duplex group are validated to have the
-same cell barcode, and the barcode is propagated to the output consensus read. Set `--cell-tag` to null to
+same cell barcode, and the barcode is propagated to the output consensus read. Set `--cell-tag` to :none: to
 disable cell barcode handling.
 
 The --min-reads option can take 1-3 values similar to `FilterConsensusReads`. For example:
@@ -87,7 +87,7 @@ the _more stringent value comes earlier_.
 |sort-order|S|SamOrder|The sort order of the output, the same as the input if not given.|Optional|1||
 |min-reads|M|Int|The minimum number of input reads to a consensus read.|Required|3|1|
 |max-reads-per-strand||Int|The maximum number of reads to use when building a single-strand consensus. If more than this many reads are present in a tag family, the family is randomly downsampled to exactly max-reads reads.|Optional|1||
-|cell-tag|c|String|Tag containing the cell barcode. All reads in a group must share the same barcode, which is propagated to the consensus read. Set to null to disable.|Optional|1|CB|
+|cell-tag|c|String|Tag containing the cell barcode. Set to :none: to disable.|Optional|1|CB|
 |threads||Int|The number of threads to use while consensus calling.|Optional|1|1|
 |consensus-call-overlapping-bases||Boolean|Consensus call overlapping bases in mapped paired end reads|Optional|1|true|
 
