@@ -521,9 +521,11 @@ object Strategy extends FgBioEnum[Strategy] {
     |Accepts reads in any order (including `unsorted`) and outputs reads sorted by:
     |
     |   1. The lower genome coordinate of the two outer ends of the templates (strand-aware)
-    |   2. The sequencing library
-    |   3. The assigned UMI tag
-    |   4. Read Name
+    |   2. Strand orientation
+    |   3. The cellular barcode (CB tag)
+    |   4. The assigned UMI tag
+    |   5. Read Name
+    |   6. The sequencing library
     |
     |It is recommended to sort the reads into template-coordinate (i.e. `SO:unsorted GO:query SS:unsorted:template-coordinate`)
     |prior to running this tool to avoid this tool re-sorting the input.  It is recommended to use
@@ -580,6 +582,14 @@ object Strategy extends FgBioEnum[Strategy] {
     |strategies. Additionally the only operation that is multi-threaded is the comparisons of UMIs at the same genomic
     |position.  Running with e.g. `--threads 8` can provide a _substantial_ reduction in runtime when there are many
     |UMIs observed at the same genomic location, such as can occur in amplicon sequencing or ultra-deep coverage data.
+    |
+    |## Single-Cell / Cell Barcode Support
+    |
+    |When processing data with cell barcodes (e.g. single-cell or single-nuclei sequencing), the `--cell-tag` option
+    |controls how cell identity is incorporated into grouping. Reads at the same genomic coordinates are partitioned
+    |by cell barcode _before_ molecular index assignment, so reads from different cells will never be grouped together
+    |even if they share a UMI and mapping position. No correction is performed on the cell barcode itself; it is
+    |treated as a known/fixed value. The default tag is `CB`.
   """
 )
 class GroupReadsByUmi
