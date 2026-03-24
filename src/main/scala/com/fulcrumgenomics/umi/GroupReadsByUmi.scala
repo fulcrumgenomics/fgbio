@@ -813,11 +813,25 @@ class GroupReadsByUmi
         if (this.truncate) truncateUmis(ts.map { t => umiForRead(t) })
         else { ts.map { t => umiForRead(t) } }
       }
-      val rawToId = umis
-        .groupBy(u => u.split("-").map(_.length).sorted.toSeq)
-        .values
-        .flatMap { _umis => this.assigner.assign(_umis) }
-        .toMap
+      val rawToId = this.assigner match {
+        case paired: PairedUmiAssigner =>
+          umis
+            .groupBy { u =>
+              val segs = u.split("-")
+              val aLen = segs.find(_.startsWith(paired.lowerReadUmiPrefix)).map(_.stripPrefix(paired.lowerReadUmiPrefix).length).getOrElse(0)
+              val bLen = segs.find(_.startsWith(paired.higherReadUmiPrefix)).map(_.stripPrefix(paired.higherReadUmiPrefix).length).getOrElse(0)
+              (aLen, bLen)
+            }
+            .values
+            .flatMap { _umis => paired.assign(_umis) }
+            .toMap
+        case _ =>
+          umis
+            .groupBy(u => u.split("-").map(_.length).toSeq)
+            .values
+            .flatMap { _umis => this.assigner.assign(_umis) }
+            .toMap
+      }
 
       ts.iterator.zip(umis.iterator).foreach { case (template, umi) =>
         val id  = rawToId(umi)
