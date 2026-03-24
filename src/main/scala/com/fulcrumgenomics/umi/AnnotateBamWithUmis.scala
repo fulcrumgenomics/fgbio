@@ -90,7 +90,7 @@ class AnnotateBamWithUmis(
   )
   private val structures: Seq[ReadStructure] = {
     if (readStructure.length == fastq.length) readStructure
-    else Seq.tabulate(3)(_ => readStructure.head)
+    else Seq.tabulate(fastq.length)(_ => readStructure.head)
   }
 
   private var missingUmis: Long = 0
