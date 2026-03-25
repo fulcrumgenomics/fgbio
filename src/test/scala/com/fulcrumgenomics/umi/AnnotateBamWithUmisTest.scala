@@ -207,6 +207,16 @@ class AnnotateBamWithUmisTest extends UnitSpec {
     an[FailureException] shouldBe thrownBy { annotator.execute() }
   }
 
+  it should "successfully add UMIs to a BAM using all bases from more than 3 FASTQs with a single read structure" in {
+    val out = makeTempFile("with_umis.", ".bam")
+    val annotator = new AnnotateBamWithUmis(input=sam, fastq=Seq(fq, fq, fq, fq), readStructure=Seq(ReadStructure("2B+M")), output=out, attribute=umiTag)
+    annotator.execute()
+    SamSource(out).foreach { rec =>
+      val bases = rec.basesString.substring(2, 8)
+      rec[String](umiTag) shouldBe s"${bases}-${bases}-${bases}-${bases}"
+    }
+  }
+
   it should "fail if FASTQs are not sorted the same" in {
     val out = makeTempFile("with_umis.", ".bam")
     val reverseFq = makeTempFile(s"reverse_umis.", ".fq.gz")
