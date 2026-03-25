@@ -758,6 +758,27 @@ class GroupReadsByUmiTest extends UnitSpec with OptionValues with PrivateMethodT
   }
 
   Strategy.values.filterNot(_ == Strategy.Paired).foreach { strategy =>
+    it should s"truncate all UMIs to --min-umi-length even when all UMIs are longer than --min-umi-length with the $strategy strategy" in {
+      val builder = new SamBuilder(readLength = 100, sort = Some(SamOrder.Coordinate))
+      builder.addPair(name = "a01", start1 = 100, start2 = 300, strand1 = Plus, strand2 = Minus, attrs = Map("RX" -> "ACTACTC"))
+      builder.addPair(name = "a02", start1 = 100, start2 = 300, strand1 = Plus, strand2 = Minus, attrs = Map("RX" -> "ACTACTC"))
+      builder.addPair(name = "a03", start1 = 100, start2 = 300, strand1 = Plus, strand2 = Minus, attrs = Map("RX" -> "ACTACTG"))
+      builder.addPair(name = "a04", start1 = 100, start2 = 300, strand1 = Plus, strand2 = Minus, attrs = Map("RX" -> "ACTACTG"))
+
+      val in  = builder.toTempFile()
+      val out = Files.createTempFile("umi_grouped.", ".sam")
+      // All UMIs are 7-mers, above minUmiLength=6. They differ only at position 7, so truncating
+      // to 6 should merge them into one group. Without the fix they would remain as two groups.
+      new GroupReadsByUmi(input = in, output = out, rawTag = "RX", assignTag = "MI", strategy = strategy, edits = 0, minUmiLength = Some(6), truncate = true).execute()
+
+      val recs   = readBamRecs(out)
+      val groups = recs.groupBy(r => r[String]("MI")).values.map(rs => rs.map(_.name).toSet).toSet
+      groups should have size 1
+      groups should contain theSameElementsAs Seq(Set("a01", "a02", "a03", "a04"))
+    }
+  }
+
+  Strategy.values.filterNot(_ == Strategy.Paired).foreach { strategy =>
     val edits = if (strategy == Strategy.Identity) 0 else 1
 
     it should s"correctly group together reads with symmetric duplex UMIs of different lengths with the $strategy strategy" in {

@@ -848,7 +848,7 @@ class GroupReadsByUmi
     }
   }
 
-  /** When a minimum UMI length is specified and truncate is set to true, truncates all the UMIs to the length of the shortest UMI.
+  /** When a minimum UMI length is specified and truncate is set to true, truncates all the UMIs to `--min-umi-length`.
     * Not supported for the paired assigner. */
   private def truncateUmis(umis: Seq[Umi]): Seq[Umi] = this.minUmiLength match {
     case None => umis
@@ -859,7 +859,7 @@ class GroupReadsByUmi
         case _ =>
           val minLength = umis.map(_.length).min
           require(length <= minLength, s"Bug: UMI found that had shorter length than expected ($minLength < $length)")
-          umis.map(_.substring(0, minLength))
+          umis.map(_.substring(0, length))
       }
   }
 
