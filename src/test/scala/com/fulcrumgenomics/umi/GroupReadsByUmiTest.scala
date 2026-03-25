@@ -756,4 +756,130 @@ class GroupReadsByUmiTest extends UnitSpec with OptionValues with PrivateMethodT
       groups should contain theSameElementsAs Seq(Set("a01", "a01"), Set("a02", "a02"), Set("a03", "a03"))
     }
   }
+
+  Strategy.values.filterNot(_ == Strategy.Paired).foreach { strategy =>
+    val edits = if (strategy == Strategy.Identity) 0 else 1
+
+    it should s"correctly group together reads with symmetric duplex UMIs of different lengths with the $strategy strategy" in {
+      val builder = new SamBuilder(readLength = 100, sort = Some(SamOrder.Coordinate))
+      builder.addPair(name = "a01", start1 = 100, start2 = 300, strand1 = Plus, strand2 = Minus, attrs = Map("RX" -> "AAAAAAAA-CCCCCCCC"))
+      builder.addPair(name = "a02", start1 = 100, start2 = 300, strand1 = Plus, strand2 = Minus, attrs = Map("RX" -> "AAAAAAAA-CCCCCCCC"))
+      builder.addPair(name = "a03", start1 = 100, start2 = 300, strand1 = Plus, strand2 = Minus, attrs = Map("RX" -> "AAAAAAAA-CCCCCCCG"))
+      builder.addPair(name = "b01", start1 = 100, start2 = 300, strand1 = Plus, strand2 = Minus, attrs = Map("RX" -> "AAAAAAA-CCCCCCC"))
+      builder.addPair(name = "b02", start1 = 100, start2 = 300, strand1 = Plus, strand2 = Minus, attrs = Map("RX" -> "AAAAAAA-CCCCCCC"))
+      builder.addPair(name = "b03", start1 = 100, start2 = 300, strand1 = Plus, strand2 = Minus, attrs = Map("RX" -> "AAAAAAA-CCCCCCG"))
+
+      val in  = builder.toTempFile()
+      val out = Files.createTempFile("umi_grouped.", ".sam")
+      new GroupReadsByUmi(input = in, output = out, rawTag = "RX", assignTag = "MI", strategy = strategy, edits = edits).execute()
+
+      val recs   = readBamRecs(out)
+      val groups = recs.groupBy(r => r[String]("MI")).values.map(rs => rs.map(_.name).toSet).toSet
+
+      if (strategy == Strategy.Identity) {
+        // Identity does not error-correct, so a03 and b03 each form their own family
+        groups should have size 4
+        groups should contain theSameElementsAs Seq(Set("a01", "a02"), Set("a03"), Set("b01", "b02"), Set("b03"))
+      } else {
+        // Edit and Adjacency error-correct within each length group
+        groups should have size 2
+        groups should contain theSameElementsAs Seq(Set("a01", "a02", "a03"), Set("b01", "b02", "b03"))
+      }
+    }
+
+    it should s"correctly group together reads with asymmetric duplex UMIs of different lengths with the $strategy strategy" in {
+      val builder = new SamBuilder(readLength = 100, sort = Some(SamOrder.Coordinate))
+      builder.addPair(name = "a01", start1 = 100, start2 = 300, strand1 = Plus, strand2 = Minus, attrs = Map("RX" -> "ACTACT-GGG"))
+      builder.addPair(name = "a02", start1 = 100, start2 = 300, strand1 = Plus, strand2 = Minus, attrs = Map("RX" -> "ACTACT-GGG"))
+      builder.addPair(name = "b01", start1 = 100, start2 = 300, strand1 = Plus, strand2 = Minus, attrs = Map("RX" -> "GGG-ACTACT"))
+      builder.addPair(name = "b02", start1 = 100, start2 = 300, strand1 = Plus, strand2 = Minus, attrs = Map("RX" -> "GGG-ACTACT"))
+
+      val in  = builder.toTempFile()
+      val out = Files.createTempFile("umi_grouped.", ".sam")
+      new GroupReadsByUmi(input = in, output = out, rawTag = "RX", assignTag = "MI", strategy = strategy, edits = edits).execute()
+
+      val recs   = readBamRecs(out)
+      val groups = recs.groupBy(r => r[String]("MI")).values.map(rs => rs.map(_.name).toSet).toSet
+
+      // "ACTACT-GGG" (shape [6,3]) and "GGG-ACTACT" (shape [3,6]) are different UMI length shapes
+      // and must not be compared against each other
+      groups should have size 2
+      groups should contain theSameElementsAs Seq(Set("a01", "a02"), Set("b01", "b02"))
+    }
+  }
+
+  it should "correctly group together reads with the paired assigner when paired UMIs are of different lengths (symmetric)" in {
+    val builder = new SamBuilder(readLength = 100, sort = Some(SamOrder.Coordinate))
+    // Molecule 1: 6+6 UMIs. F1R2 (r1 lower) and F2R1 (r1 higher) from same source molecule.
+    builder.addPair(name = "a01", start1 = 100, start2 = 300, strand1 = Plus,  strand2 = Minus, attrs = Map("RX" -> "ACTACT-GGGGGG"))
+    builder.addPair(name = "a02", start1 = 100, start2 = 300, strand1 = Plus,  strand2 = Minus, attrs = Map("RX" -> "ACTACT-GGGGGG"))
+    builder.addPair(name = "a03", start1 = 100, start2 = 300, strand1 = Plus,  strand2 = Minus, attrs = Map("RX" -> "ACTACT-GGGGGG"))
+    builder.addPair(name = "a04", start1 = 100, start2 = 300, strand1 = Plus,  strand2 = Minus, attrs = Map("RX" -> "ACTACT-GGGGGG"))
+    builder.addPair(name = "b01", start1 = 300, start2 = 100, strand1 = Minus, strand2 = Plus,  attrs = Map("RX" -> "GGGGGG-ACTACT"))
+    builder.addPair(name = "b02", start1 = 300, start2 = 100, strand1 = Minus, strand2 = Plus,  attrs = Map("RX" -> "GGGGGG-ACTACT"))
+    builder.addPair(name = "b03", start1 = 300, start2 = 100, strand1 = Minus, strand2 = Plus,  attrs = Map("RX" -> "GGGGGG-ACTACT"))
+    builder.addPair(name = "b04", start1 = 300, start2 = 100, strand1 = Minus, strand2 = Plus,  attrs = Map("RX" -> "GGGGGG-ACTACT"))
+    // Molecule 2: 3+3 UMIs. Separate family from molecule 1.
+    builder.addPair(name = "c01", start1 = 100, start2 = 300, strand1 = Plus,  strand2 = Minus, attrs = Map("RX" -> "ACT-GGG"))
+    builder.addPair(name = "c02", start1 = 100, start2 = 300, strand1 = Plus,  strand2 = Minus, attrs = Map("RX" -> "ACT-GGG"))
+    builder.addPair(name = "c03", start1 = 100, start2 = 300, strand1 = Plus,  strand2 = Minus, attrs = Map("RX" -> "ACT-GGG"))
+    builder.addPair(name = "c04", start1 = 100, start2 = 300, strand1 = Plus,  strand2 = Minus, attrs = Map("RX" -> "ACT-GGG"))
+    builder.addPair(name = "d01", start1 = 300, start2 = 100, strand1 = Minus, strand2 = Plus,  attrs = Map("RX" -> "GGG-ACT"))
+    builder.addPair(name = "d02", start1 = 300, start2 = 100, strand1 = Minus, strand2 = Plus,  attrs = Map("RX" -> "GGG-ACT"))
+    builder.addPair(name = "d03", start1 = 300, start2 = 100, strand1 = Minus, strand2 = Plus,  attrs = Map("RX" -> "GGG-ACT"))
+    builder.addPair(name = "d04", start1 = 300, start2 = 100, strand1 = Minus, strand2 = Plus,  attrs = Map("RX" -> "GGG-ACT"))
+
+    val in  = builder.toTempFile()
+    val out = Files.createTempFile("umi_grouped.", ".sam")
+    new GroupReadsByUmi(input = in, output = out, rawTag = "RX", assignTag = "MI", strategy = Strategy.Paired, edits = 1).execute()
+
+    val recs = readBamRecs(out)
+    val aIds = recs.filter(_.name.startsWith("a")).map(r => r[String]("MI")).distinct
+    val bIds = recs.filter(_.name.startsWith("b")).map(r => r[String]("MI")).distinct
+    val cIds = recs.filter(_.name.startsWith("c")).map(r => r[String]("MI")).distinct
+    val dIds = recs.filter(_.name.startsWith("d")).map(r => r[String]("MI")).distinct
+
+    // a and b are the same molecule (6+6), on opposite strands
+    aIds should have size 1
+    bIds should have size 1
+    aIds.head.takeWhile(_ != '/') shouldBe bIds.head.takeWhile(_ != '/')
+    aIds.head should not equal bIds.head
+
+    // c and d are the same molecule (3+3), on opposite strands
+    cIds should have size 1
+    dIds should have size 1
+    cIds.head.takeWhile(_ != '/') shouldBe dIds.head.takeWhile(_ != '/')
+    cIds.head should not equal dIds.head
+
+    // the two molecules are different families
+    aIds.head.takeWhile(_ != '/') should not equal cIds.head.takeWhile(_ != '/')
+  }
+
+  it should "correctly group together reads with the paired assigner when paired UMIs are of different lengths (asymmetric)" in {
+    val builder = new SamBuilder(readLength = 100, sort = Some(SamOrder.Coordinate))
+    // F1R2 (r1 lower): "ACTACT-GGG" encoded as "aa:ACTACT-bb:GGG", key (a=6, b=3)
+    builder.addPair(name = "a01", start1 = 100, start2 = 300, strand1 = Plus,  strand2 = Minus, attrs = Map("RX" -> "ACTACT-GGG"))
+    builder.addPair(name = "a02", start1 = 100, start2 = 300, strand1 = Plus,  strand2 = Minus, attrs = Map("RX" -> "ACTACT-GGG"))
+    builder.addPair(name = "a03", start1 = 100, start2 = 300, strand1 = Plus,  strand2 = Minus, attrs = Map("RX" -> "ACTACT-GGG"))
+    builder.addPair(name = "a04", start1 = 100, start2 = 300, strand1 = Plus,  strand2 = Minus, attrs = Map("RX" -> "ACTACT-GGG"))
+    // F2R1 (r1 higher): "GGG-ACTACT" encoded as "bb:GGG-aa:ACTACT", key (a=6, b=3) -- same key as F1R2
+    builder.addPair(name = "b01", start1 = 300, start2 = 100, strand1 = Minus, strand2 = Plus,  attrs = Map("RX" -> "GGG-ACTACT"))
+    builder.addPair(name = "b02", start1 = 300, start2 = 100, strand1 = Minus, strand2 = Plus,  attrs = Map("RX" -> "GGG-ACTACT"))
+    builder.addPair(name = "b03", start1 = 300, start2 = 100, strand1 = Minus, strand2 = Plus,  attrs = Map("RX" -> "GGG-ACTACT"))
+    builder.addPair(name = "b04", start1 = 300, start2 = 100, strand1 = Minus, strand2 = Plus,  attrs = Map("RX" -> "GGG-ACTACT"))
+
+    val in  = builder.toTempFile()
+    val out = Files.createTempFile("umi_grouped.", ".sam")
+    new GroupReadsByUmi(input = in, output = out, rawTag = "RX", assignTag = "MI", strategy = Strategy.Paired, edits = 1).execute()
+
+    val recs = readBamRecs(out)
+    val aIds = recs.filter(_.name.startsWith("a")).map(r => r[String]("MI")).distinct
+    val bIds = recs.filter(_.name.startsWith("b")).map(r => r[String]("MI")).distinct
+
+    aIds should have size 1
+    bIds should have size 1
+    // a and b are the same source molecule, so they share a family ID and differ only in strand suffix
+    aIds.head shouldBe "0/A"
+    bIds.head shouldBe "0/B"
+  }
 }
