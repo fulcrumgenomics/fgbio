@@ -209,7 +209,7 @@ class AnnotateBamWithUmisTest extends UnitSpec {
 
   it should "successfully add UMIs to a BAM using all bases from more than 3 FASTQs with a single read structure" in {
     val out = makeTempFile("with_umis.", ".bam")
-    val annotator = new AnnotateBamWithUmis(input=sam, fastq=Seq(fq, fq, fq, fq), readStructure=Seq(ReadStructure("2B+M")), output=out, attribute=umiTag)
+    val annotator = new AnnotateBamWithUmis(input=sam, fastq=Seq(fq, fq, fq, fq), readStructure=Seq(ReadStructure("2B6M")), output=out, attribute=umiTag)
     annotator.execute()
     SamSource(out).foreach { rec =>
       val bases = rec.basesString.substring(2, 8)
