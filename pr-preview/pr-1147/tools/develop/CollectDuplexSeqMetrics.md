@@ -71,5 +71,5 @@ install.packages("ggplot2", repos="http://cran.us.r-project.org", dependencies=T
 |min-ba-reads|b|Int|Minimum BA reads to call a tag family a 'duplex'.|Optional|1|1|
 |umi-tag|t|String|The tag containing the raw UMI.|Optional|1|RX|
 |mi-tag|T|String|The output tag for UMI grouping.|Optional|1|MI|
-|cell-tag|c|String|The tag containing the cell barcode.|Optional|1|CB|
+|cell-tag|c|String|The tag containing the cell barcode. When set, reads are partitioned by cell barcode when computing metrics, ensuring reads from different cells are analyzed independently.|Optional|1|CB|
 

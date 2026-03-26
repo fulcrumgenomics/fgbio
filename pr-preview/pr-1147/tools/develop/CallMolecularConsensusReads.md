@@ -70,6 +70,12 @@ consensus errors [ce] (short[]): the number of bases from raw reads disagreeing 
 The per base depths and errors are both capped at 32,767. In all cases no-calls (`N`s) and bases below the
 `--min-input-base-quality` are not counted in tag value calculations.
 
+## Single-Cell / Cell Barcode Support
+
+When processing data with cell barcodes, the `--cell-tag` option specifies the SAM tag containing the cell
+barcode (default: `CB`). All source reads in a consensus group are validated to have the same cell barcode,
+and the barcode is propagated to the output consensus read.
+
 ## Arguments
 
 |Name|Flag|Type|Description|Required?|Max # of Values|Default Value(s)|
@@ -89,7 +95,7 @@ The per base depths and errors are both capped at 32,767. In all cases no-calls 
 |output-per-base-tags|B|Boolean|If true produce tags on consensus reads that contain per-base information.|Optional|1|true|
 |sort-order|S|SamOrder|The sort order of the output, the same as the input if not given.|Optional|1||
 |debug|D|Boolean|Turn on debug logging.|Optional|1|false|
-|cell-tag|c|String|Tag containing the cellular barcodes.|Optional|1|CB|
+|cell-tag|c|String|Tag containing the cell barcode.|Optional|1|CB|
 |threads||Int|The number of threads to use while consensus calling.|Optional|1|1|
 |consensus-call-overlapping-bases||Boolean|Consensus call overlapping bases in mapped paired end reads|Optional|1|true|
 
