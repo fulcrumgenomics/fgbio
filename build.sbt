@@ -236,7 +236,7 @@ val customMergeStrategy: String => MergeStrategy = {
         MergeStrategy.filterDistinctLines
       case ("spring.schemas" :: Nil) | ("spring.handlers" :: Nil) =>
         MergeStrategy.filterDistinctLines
-      case ("versions" :: "9" :: "module-info.class" :: Nil) =>
+      case ("versions" :: _ :: "module-info.class" :: Nil) =>
         MergeStrategy.discard
       case _ => MergeStrategy.deduplicate
     }
