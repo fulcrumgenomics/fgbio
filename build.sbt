@@ -240,7 +240,7 @@ val customMergeStrategy: String => MergeStrategy = {
         MergeStrategy.discard
       case _ => MergeStrategy.deduplicate
     }
-  case "asm-license.txt" | "overview.html "| "module-info.class"  =>
+  case "asm-license.txt" | "overview.html" | "module-info.class"  =>
     MergeStrategy.discard
   case "logback.xml" =>
     MergeStrategy.first
