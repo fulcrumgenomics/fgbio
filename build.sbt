@@ -195,7 +195,7 @@ lazy val root = Project(id="fgbio", base=file("."))
       "org.scala-lang.modules"    %% "scala-xml"      % "2.1.0",
       "com.fulcrumgenomics"       %% "commons"        % "1.9.0",
       "com.fulcrumgenomics"       %% "sopt"           % "1.2.0",
-      "com.github.samtools"       %  "htsjdk"         % "3.0.5" excludeAll(htsjdkExcludes: _*),
+      "com.github.samtools"       %  "htsjdk"         % "4.2.0" excludeAll(htsjdkExcludes: _*),
       "org.apache.commons"        %  "commons-math3"  % "3.6.1",
       "com.beachape"              %% "enumeratum"     % "1.7.0",
       "com.intel.gkl"             %  "gkl"            % "0.8.10",
@@ -236,9 +236,11 @@ val customMergeStrategy: String => MergeStrategy = {
         MergeStrategy.filterDistinctLines
       case ("spring.schemas" :: Nil) | ("spring.handlers" :: Nil) =>
         MergeStrategy.filterDistinctLines
+      case ("versions" :: "9" :: "module-info.class" :: Nil) =>
+        MergeStrategy.discard
       case _ => MergeStrategy.deduplicate
     }
-  case "asm-license.txt" | "overview.html" =>
+  case "asm-license.txt" | "overview.html "| "module-info.class"  =>
     MergeStrategy.discard
   case "logback.xml" =>
     MergeStrategy.first

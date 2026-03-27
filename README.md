@@ -183,7 +183,7 @@ Contributions are welcome and encouraged.
 We will do our best to provide an initial response to any pull request or issue within one-week.
 For urgent matters, please contact us directly.
 
-See [Contributing](Contributing.md) for more details.
+See [Contributing](CONTRIBUTING.md) for more details.
 
 ## Authors
 
