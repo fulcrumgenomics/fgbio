@@ -12,8 +12,8 @@
 
 | Field | Current Value |
 |-------|---------------|
-| **Next Release Version** | 3.1.3 |
-| **Last Release** | 3.1.2 (March 6, 2026) |
+| **Next Release Version** | 4.0.1 |
+| **Last Release** | 4.0.0 (March 30, 2026) |
 | **Version File** | `version.sbt` |
 
 ---
@@ -167,6 +167,7 @@ git push -f origin main && git push origin X.Y.Z
 
 | Version | Date | Key Changes |
 |---------|------|-------------|
+| 4.0.0 | 2026-03-30 | Java 17 minimum, htsjdk 4.2.0, Scala 2.13.16 |
 | 3.1.2 | 2026-03-06 | Cell barcode sort support, clip overlapping reads fix, consensus stats fix |
 | 3.1.1 | 2025-12-15 | CRAM support, consensus caller fixes, UMI assigner determinism |
 | 3.1.0 | 2025-11-20 | Cell barcode support, streaming input, CorrectUmis speedup |
