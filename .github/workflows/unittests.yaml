@@ -22,7 +22,7 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        jvm: ["temurin:1.8.0-442", "temurin:1.11.0.27", "temurin:1.17.0.15", "temurin:1.21.0.7", "temurin:1.22.0.2"]
+        jvm: ["temurin:1.17.0.15", "temurin:1.21.0.7", "temurin:1.22.0.2"]
     steps:
       - name: Checkout
         uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
@@ -36,7 +36,7 @@ jobs:
       - name: setup Scala
         uses: coursier/setup-action@039f736548afa5411c1382f40a5bd9c2d30e0383 # v1.3.9
         with:
-          apps: scala:2.13.14 scalac:2.13.14 scaladoc:2.13.14 sbt:1.11.2
+          apps: scala:2.13.16 scalac:2.13.16 scaladoc:2.13.16 sbt:1.11.2
           jvm: ${{ matrix.jvm }}
       - name: Unit Tests
         run: |
@@ -105,8 +105,8 @@ jobs:
       - name: setup Scala
         uses: coursier/setup-action@039f736548afa5411c1382f40a5bd9c2d30e0383 # v1.3.9
         with:
-          apps: scala:2.13.14 scalac:2.13.14 scaladoc:2.13.14 sbt:1.11.2
-          jvm: "temurin:1.8.0-442"
+          apps: scala:2.13.16 scalac:2.13.16 scaladoc:2.13.16 sbt:1.11.2
+          jvm: "temurin:1.17.0.15"
       - name: Build and sign artifacts
         shell: bash -l {0}
         run: |
