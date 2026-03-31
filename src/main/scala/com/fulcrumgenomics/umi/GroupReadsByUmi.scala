@@ -561,11 +561,10 @@ object Strategy extends FgBioEnum[Strategy] {
     |Strategies `edit`, `adjacency`, and `paired` make use of the `--edits` parameter to control the matching of
     |non-identical UMIs.
     |
-    |By default, all UMIs must be the same length. If `--min-umi-length=len` is specified then reads that have a UMI
-    |shorter than `len` will be discarded, and when comparing UMIs of different lengths, the first len bases will be
-    |compared, where `len` is the length of the shortest UMI. The UMI length is the number of [ACGT] bases in the UMI
-    |(i.e. does not count dashes and other non-ACGT characters). This option is not implemented for reads with UMI pairs
-    |(i.e. using the paired assigner).
+    |UMIs may have different lengths and only UMIs with the same length will be compared.  If `--min-umi-length=len` is
+    |specified then reads that have a UMI shorter than `len` will be discarded. To truncate any UMIs to `--min-umi-length`,
+    |specify `--truncate=true`. The UMI length is the number of [ACGT] bases in the UMI (i.e. does not count dashes
+    |and other non-ACGT characters). Truncating is not implemented for reads with UMI pairs (i.e. using the paired assigner).
     |
     |If the `--mark-duplicates` option is given, reads will also have their duplicate flag set in the BAM file.
     |Each tag-family is treated separately, and a single template within the tag family is chosen to be the "unique"
@@ -605,15 +604,17 @@ class GroupReadsByUmi
  @arg(flag='n', doc="Include non-PF reads.")            val includeNonPfReads: Boolean = false,
  @arg(flag='s', doc="The UMI assignment strategy.")     val strategy: Strategy,
  @arg(flag='e', doc="The allowable number of edits between UMIs.") val edits: Int = 1,
- @arg(flag='l', doc= """The minimum UMI length. If not specified then all UMIs must have the same length,
-                         |otherwise discard reads with UMIs shorter than this length and allow for differing UMI lengths.
-                         |""")
-    val minUmiLength: Option[Int] = None,
+ @arg(flag='l', doc="The minimum UMI length. Discard reads with UMIs shorter than this length.")
+                                                                   val minUmiLength: Option[Int] = None,
+ @arg(flag='r', doc=
+   """Whether to shorten all UMIs above `--min-umi-length` to the specified minimum length.""")
+                                                                   val truncate: Boolean = false,
  @arg(flag='@', doc="Number of threads to use when comparing UMIs. Only recommended for amplicon or similar data.") val threads: Int = 1,
 )extends FgBioTool with LazyLogging {
   import GroupReadsByUmi._
 
   require(this.minUmiLength.forall(_ => this.strategy != Strategy.Paired), "Paired strategy cannot be used with --min-umi-length")
+  require(!truncate || minUmiLength.isDefined, "Cannot truncate UMIs unless a minimum UMI length is specified")
 
   private val assigner = strategy.newStrategy(this.edits, this.threads)
 
@@ -818,8 +819,29 @@ class GroupReadsByUmi
     }
 
     val umisGrouped = subgroups.sumBy { ts =>
-      val umis    = truncateUmis(ts.map { t => umiForRead(t) })
-      val rawToId = this.assigner.assign(umis)
+      val umis    = { 
+        if (this.truncate) truncateUmis(ts.map { t => umiForRead(t) })
+        else { ts.map { t => umiForRead(t) } }
+      }
+      val rawToId = this.assigner match {
+        case paired: PairedUmiAssigner =>
+          umis
+            .groupBy { u =>
+              val segs = u.split("-")
+              val aLen = segs.find(_.startsWith(paired.lowerReadUmiPrefix)).map(_.stripPrefix(paired.lowerReadUmiPrefix).length).getOrElse(0)
+              val bLen = segs.find(_.startsWith(paired.higherReadUmiPrefix)).map(_.stripPrefix(paired.higherReadUmiPrefix).length).getOrElse(0)
+              (aLen, bLen)
+            }
+            .values
+            .flatMap { _umis => paired.assign(_umis) }
+            .toMap
+        case _ =>
+          umis
+            .groupBy(u => u.split("-").map(_.length).toSeq)
+            .values
+            .flatMap { _umis => this.assigner.assign(_umis) }
+            .toMap
+      }
 
       ts.iterator.zip(umis.iterator).foreach { case (template, umi) =>
         val id  = rawToId(umi)
@@ -836,8 +858,8 @@ class GroupReadsByUmi
     }
   }
 
-  /** When a minimum UMI length is specified, truncates all the UMIs to the length of the shortest UMI.  For the paired
-    * assigner, truncates the first UMI and second UMI separately.*/
+  /** When a minimum UMI length is specified and truncate is set to true, truncates all the UMIs to `--min-umi-length`.
+    * Not supported for the paired assigner. */
   private def truncateUmis(umis: Seq[Umi]): Seq[Umi] = this.minUmiLength match {
     case None => umis
     case Some(length) =>
@@ -847,7 +869,7 @@ class GroupReadsByUmi
         case _ =>
           val minLength = umis.map(_.length).min
           require(length <= minLength, s"Bug: UMI found that had shorter length than expected ($minLength < $length)")
-          umis.map(_.substring(0, minLength))
+          umis.map(_.substring(0, length))
       }
   }
 
