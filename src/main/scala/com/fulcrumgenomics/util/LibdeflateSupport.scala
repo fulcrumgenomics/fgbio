@@ -24,7 +24,7 @@
 
 package com.fulcrumgenomics.util
 
-import com.fulcrumgenomics.jlibdeflate.{LibdeflateCompressor, LibdeflateDecompressor}
+import com.fulcrumgenomics.jlibdeflate.{LibdeflateCompressor, LibdeflateDecompressor, DecompressionResult}
 import htsjdk.samtools.util.zip.{DeflaterFactory, InflaterFactory}
 
 import java.util.zip.{Deflater, Inflater}
@@ -70,9 +70,17 @@ class LibdeflateDeflater(level: Int, nowrap: Boolean) extends Deflater(level, no
 
   /** Compresses the input into the output buffer in a single call. Returns the number of compressed
     * bytes written, or 0 if the output buffer was too small (in which case [[finished]] returns false).
+    *
+    * When `nowrap=true`, produces raw DEFLATE. When `nowrap=false`, produces zlib-wrapped output
+    * (2-byte zlib header + DEFLATE data + 4-byte Adler-32 checksum), matching `java.util.zip.Deflater`.
     */
   override def deflate(output: Array[Byte], off: Int, len: Int): Int = {
-    val result = compressor.deflateCompress(inputBuf, inputOff, inputLen, output, off, len)
+    val result = if (nowrap) {
+      compressor.deflateCompress(inputBuf, inputOff, inputLen, output, off, len)
+    } else {
+      compressor.zlibCompress(inputBuf, inputOff, inputLen, output, off, len)
+    }
+
     if (result == -1) {
       _finished = false
       0
@@ -124,13 +132,19 @@ class LibdeflateInflater(nowrap: Boolean) extends Inflater(nowrap) {
     inputLen = len
   }
 
-  /** Decompresses the input into the output buffer in a single call. The caller must provide
-    * the exact expected uncompressed size as `len` (as HTSJDK does from the BGZF block footer).
-    * Returns `len` on success.
+  /** Decompresses the input into the output buffer in a single call. Returns the number of
+    * decompressed bytes written to the output buffer.
+    *
+    * When `nowrap=true`, expects raw DEFLATE input. When `nowrap=false`, expects zlib-wrapped input
+    * (2-byte zlib header + DEFLATE data + 4-byte Adler-32 checksum), matching `java.util.zip.Inflater`.
     */
   override def inflate(output: Array[Byte], off: Int, len: Int): Int = {
-    decompressor.deflateDecompress(inputBuf, inputOff, inputLen, output, off, len)
-    len
+    val result: DecompressionResult = if (nowrap) {
+      decompressor.deflateDecompressEx(inputBuf, inputOff, inputLen, output, off, len)
+    } else {
+      decompressor.zlibDecompressEx(inputBuf, inputOff, inputLen, output, off, len)
+    }
+    result.outputBytesProduced()
   }
 
   /** Releases the native jlibdeflate decompressor resources. */

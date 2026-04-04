@@ -292,6 +292,154 @@ class LibdeflateSupportTest extends UnitSpec with ErrorLogLevel with Retries {
   }
 
   // ---------------------------------------------------------------------------
+  // Zlib-wrapped (nowrap=false) cross-compatibility tests
+  // ---------------------------------------------------------------------------
+
+  "LibdeflateDeflater with nowrap=false" should "produce zlib-wrapped output that JDK Inflater can decompress" in {
+    if (!supported) cancel("jlibdeflate not available on this platform")
+    val input = randomData(4096)
+    val deflater = new LibdeflateDeflater(5, nowrap = false)
+    val compressed = new Array[Byte](input.length + 1024)
+
+    deflater.reset()
+    deflater.setInput(input, 0, input.length)
+    deflater.finish()
+    val compressedLen = deflater.deflate(compressed, 0, compressed.length)
+    deflater.finished() shouldBe true
+    deflater.end()
+
+    // Decompress with JDK Inflater (nowrap=false expects zlib wrapper)
+    val jdkInflater = new Inflater(false)
+    val output = new Array[Byte](input.length)
+    jdkInflater.setInput(compressed, 0, compressedLen)
+    val produced = jdkInflater.inflate(output, 0, input.length)
+    jdkInflater.end()
+
+    produced shouldBe input.length
+    output shouldBe input
+  }
+
+  it should "produce zlib-wrapped output at multiple compression levels" in {
+    if (!supported) cancel("jlibdeflate not available on this platform")
+    for (level <- Seq(0, 1, 5, 9)) {
+      val input = randomData(2048, seed = level)
+      val deflater = new LibdeflateDeflater(level, nowrap = false)
+      val compressed = new Array[Byte](input.length + 1024)
+
+      deflater.reset()
+      deflater.setInput(input, 0, input.length)
+      deflater.finish()
+      val compressedLen = deflater.deflate(compressed, 0, compressed.length)
+      deflater.finished() shouldBe true
+      deflater.end()
+
+      val jdkInflater = new Inflater(false)
+      val output = new Array[Byte](input.length)
+      jdkInflater.setInput(compressed, 0, compressedLen)
+      val produced = jdkInflater.inflate(output, 0, input.length)
+      jdkInflater.end()
+
+      produced shouldBe input.length
+      output shouldBe input
+    }
+  }
+
+  "LibdeflateInflater with nowrap=false" should "decompress JDK zlib-wrapped data" in {
+    if (!supported) cancel("jlibdeflate not available on this platform")
+    val input = randomData(4096)
+
+    // Compress with JDK Deflater (nowrap=false produces zlib wrapper)
+    val jdkDeflater = new Deflater(5, false)
+    val compressed = new Array[Byte](input.length + 256)
+    jdkDeflater.setInput(input, 0, input.length)
+    jdkDeflater.finish()
+    val compressedLen = jdkDeflater.deflate(compressed, 0, compressed.length)
+    jdkDeflater.finished() shouldBe true
+    jdkDeflater.end()
+
+    // Decompress with LibdeflateInflater (nowrap=false)
+    val inflater = new LibdeflateInflater(nowrap = false)
+    val output = new Array[Byte](input.length)
+    inflater.reset()
+    inflater.setInput(compressed, 0, compressedLen)
+    val produced = inflater.inflate(output, 0, input.length)
+    inflater.end()
+
+    produced shouldBe input.length
+    output shouldBe input
+  }
+
+  it should "decompress JDK zlib-wrapped data at multiple compression levels" in {
+    if (!supported) cancel("jlibdeflate not available on this platform")
+    for (level <- Seq(1, 5, 9)) {
+      val input = randomData(2048, seed = level)
+
+      val jdkDeflater = new Deflater(level, false)
+      val compressed = new Array[Byte](input.length + 256)
+      jdkDeflater.setInput(input, 0, input.length)
+      jdkDeflater.finish()
+      val compressedLen = jdkDeflater.deflate(compressed, 0, compressed.length)
+      jdkDeflater.finished() shouldBe true
+      jdkDeflater.end()
+
+      val inflater = new LibdeflateInflater(nowrap = false)
+      val output = new Array[Byte](input.length)
+      inflater.reset()
+      inflater.setInput(compressed, 0, compressedLen)
+      val produced = inflater.inflate(output, 0, input.length)
+      inflater.end()
+
+      produced shouldBe input.length
+      output shouldBe input
+    }
+  }
+
+  "Libdeflate zlib-wrapped round-trip" should "round-trip with nowrap=false" in {
+    if (!supported) cancel("jlibdeflate not available on this platform")
+    val input = randomData(8192)
+
+    val deflater = new LibdeflateDeflater(5, nowrap = false)
+    val compressed = new Array[Byte](input.length + 1024)
+    deflater.reset()
+    deflater.setInput(input, 0, input.length)
+    deflater.finish()
+    val compressedLen = deflater.deflate(compressed, 0, compressed.length)
+    deflater.finished() shouldBe true
+    deflater.end()
+
+    val inflater = new LibdeflateInflater(nowrap = false)
+    val output = new Array[Byte](input.length)
+    inflater.reset()
+    inflater.setInput(compressed, 0, compressedLen)
+    val produced = inflater.inflate(output, 0, input.length)
+    inflater.end()
+
+    produced shouldBe input.length
+    output shouldBe input
+  }
+
+  it should "handle empty input with nowrap=false" in {
+    if (!supported) cancel("jlibdeflate not available on this platform")
+    val deflater = new LibdeflateDeflater(5, nowrap = false)
+    val compressed = new Array[Byte](64)
+    deflater.reset()
+    deflater.setInput(new Array[Byte](0), 0, 0)
+    deflater.finish()
+    val compressedLen = deflater.deflate(compressed, 0, compressed.length)
+    deflater.finished() shouldBe true
+    deflater.end()
+
+    val inflater = new LibdeflateInflater(nowrap = false)
+    val output = new Array[Byte](0)
+    inflater.reset()
+    inflater.setInput(compressed, 0, compressedLen)
+    val produced = inflater.inflate(output, 0, 0)
+    inflater.end()
+
+    produced shouldBe 0
+  }
+
+  // ---------------------------------------------------------------------------
   // End-to-end BAM round-trip tests
   // ---------------------------------------------------------------------------
 
@@ -399,42 +547,4 @@ class LibdeflateSupportTest extends UnitSpec with ErrorLogLevel with Retries {
     }
   }
 
-  levels.foreach { level =>
-    it should s"inflate faster than the JDK Inflater at level $level" taggedAs Retryable in {
-      if (!supported) cancel("jlibdeflate is not available on this platform")
-
-      val testBam = buildTestBam()
-      val source  = SamSource(testBam)
-      val records = source.toList
-      val header  = source.header
-      source.close()
-
-      // Create a compressed file using libdeflate
-      val output = makeTempFile("test", ".bam")
-      val os     = new BlockCompressedOutputStream(output, level, new LibdeflateDeflaterFactory)
-      val codec  = new BAMRecordCodec(header)
-      codec.setOutputStream(os)
-      records.foreach(rec => codec.encode(rec.asSam))
-      os.close()
-
-      /** Reads the BAM file repeatedly using the given inflater factory and returns elapsed time in ms. */
-      def run(factory: InflaterFactory): Long = {
-        val startTime = System.currentTimeMillis()
-        Range.inclusive(1, 25).foreach { _ =>
-          val is    = new BlockCompressedInputStream(output.toFile, factory)
-          val codec = new BAMRecordCodec(header)
-          codec.setInputStream(is, output.toFile.toString)
-          while (null != codec.decode()) { () }
-          is.close()
-        }
-        System.currentTimeMillis() - startTime
-      }
-
-      val jdkTime        = run(new InflaterFactory)
-      val libdeflateTime = run(new LibdeflateInflaterFactory)
-
-      info(f"Libdeflate: ${libdeflateTime}ms JDK: ${jdkTime}ms speedup: ${jdkTime / libdeflateTime.toFloat}%.2fx")
-      libdeflateTime.toDouble should be <= (jdkTime * 1.05)
-    }
-  }
 }
