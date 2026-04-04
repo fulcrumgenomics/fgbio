@@ -58,14 +58,14 @@ class LibdeflateDeflater(level: Int, nowrap: Boolean) extends Deflater(level, no
     _finished = false
   }
 
-  /** Stores the input data to be compressed on the next call to [[deflate]]. */
+  /** Stores the input data to be compressed on the next call to [[deflate(output:Array[Byte],off:Int,len:Int)*]]. */
   override def setInput(input: Array[Byte], off: Int, len: Int): Unit = {
     inputBuf = input
     inputOff = off
     inputLen = len
   }
 
-  /** No-op: jlibdeflate compresses the entire buffer in one call in [[deflate]]. */
+  /** No-op: jlibdeflate compresses the entire buffer in one call in [[deflate(output:Array[Byte],off:Int,len:Int)*]]. */
   override def finish(): Unit = { }
 
   /** Compresses the input into the output buffer in a single call. Returns the number of compressed
@@ -90,7 +90,7 @@ class LibdeflateDeflater(level: Int, nowrap: Boolean) extends Deflater(level, no
     }
   }
 
-  /** Returns true if the last call to [[deflate]] successfully compressed all the input. */
+  /** Returns true if the last call to [[deflate(output:Array[Byte],off:Int,len:Int)*]] successfully compressed all the input. */
   override def finished(): Boolean = _finished
 
   /** Releases the native jlibdeflate compressor resources. */
@@ -125,7 +125,7 @@ class LibdeflateInflater(nowrap: Boolean) extends Inflater(nowrap) {
     inputLen = 0
   }
 
-  /** Stores the compressed input data to be decompressed on the next call to [[inflate]]. */
+  /** Stores the compressed input data to be decompressed on the next call to [[inflate(output:Array[Byte],off:Int,len:Int)*]]. */
   override def setInput(input: Array[Byte], off: Int, len: Int): Unit = {
     inputBuf = input
     inputOff = off
