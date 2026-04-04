@@ -27,13 +27,11 @@ package com.fulcrumgenomics.cmdline
 import com.fulcrumgenomics.bam.api.{SamSource, SamWriter}
 import com.fulcrumgenomics.cmdline.FgBioMain.FailureException
 import com.fulcrumgenomics.commons.CommonsDef._
-import com.fulcrumgenomics.commons.util.SystemUtil.IntelCompressionLibrarySupported
 import com.fulcrumgenomics.commons.util.{LazyLogging, LogLevel, Logger}
 import com.fulcrumgenomics.sopt.cmdline.{CommandLineParser, CommandLineProgramParserStrings}
 import com.fulcrumgenomics.sopt.{Sopt, arg}
-import com.fulcrumgenomics.util.Io
+import com.fulcrumgenomics.util.{Io, LibdeflateDeflaterFactory, LibdeflateInflaterFactory, LibdeflateSupport}
 import com.fulcrumgenomics.vcf.api.VcfWriter
-import com.intel.gkl.compression.{IntelDeflaterFactory, IntelInflaterFactory}
 import htsjdk.samtools.ValidationStringency
 import htsjdk.samtools.util.{BlockCompressedOutputStream, BlockGunzipper, IOUtil, SnappyLoader}
 
@@ -105,10 +103,10 @@ class FgBioMain extends LazyLogging {
     // Turn down HTSJDK logging
     htsjdk.samtools.util.Log.setGlobalLogLevel(htsjdk.samtools.util.Log.LogLevel.WARNING)
 
-    // Use the Intel Inflater/Deflater if available
-    if (IntelCompressionLibrarySupported) {
-      BlockCompressedOutputStream.setDefaultDeflaterFactory(new IntelDeflaterFactory)
-      BlockGunzipper.setDefaultInflaterFactory(new IntelInflaterFactory)
+    // Use jlibdeflate for accelerated compression/decompression if available
+    if (LibdeflateSupport.isSupported) {
+      BlockCompressedOutputStream.setDefaultDeflaterFactory(new LibdeflateDeflaterFactory)
+      BlockGunzipper.setDefaultInflaterFactory(new LibdeflateInflaterFactory)
     }
 
     val startTime = System.currentTimeMillis()
@@ -172,8 +170,8 @@ class FgBioMain extends LazyLogging {
     val user       = System.getProperty("user.name")
     val jreVersion = System.getProperty("java.runtime.version")
     val snappy     = if (new SnappyLoader().isSnappyAvailable) "with snappy" else "without snappy"
-    val inflater   = if (IntelCompressionLibrarySupported) "IntelInflater" else "JdkInflater"
-    val deflater   = if (IntelCompressionLibrarySupported) "IntelDeflater" else "JdkDeflater"
+    val inflater   = if (LibdeflateSupport.isSupported) "LibdeflateInflater" else "JdkInflater"
+    val deflater   = if (LibdeflateSupport.isSupported) "LibdeflateDeflater" else "JdkDeflater"
     val maxMemory  = {
       val mib = Runtime.getRuntime.maxMemory() / (1024 * 1024)
       if (mib >= 1024) f"${mib / 1024.0}%.1fg" else s"${mib}m"
