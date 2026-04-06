@@ -536,7 +536,7 @@ class GroupReadsByUmiTest extends UnitSpec with OptionValues with PrivateMethodT
   }
 
   it should "correctly group together single-end reads with UMIs of different lengths when " +
-    "--min-umi-length is specified and --truncated is false" in {
+    "--min-umi-length is specified and --truncate is false" in {
     val builder = new SamBuilder(readLength=100, sort=Some(SamOrder.Coordinate))
     builder.addFrag(name="a01", start=100, attrs=Map("RX" -> "AGTAGGCC"))
     builder.addFrag(name="a02", start=100, attrs=Map("RX" -> "AGTAGGCC"))
@@ -589,7 +589,7 @@ class GroupReadsByUmiTest extends UnitSpec with OptionValues with PrivateMethodT
     val in  = builder.toTempFile()
     val out = Files.createTempFile("umi_grouped.", ".sam")
     val hist = Files.createTempFile("umi_grouped.", ".histogram.txt")
-    val error = intercept[Exception] { new GroupReadsByUmi(input=in, output=out, familySizeHistogram=Some(hist), rawTag="RX", assignTag="MI", strategy=Strategy.Edit, edits=1, truncate=true).execute() }
+    val error = intercept[IllegalArgumentException] { new GroupReadsByUmi(input=in, output=out, familySizeHistogram=Some(hist), rawTag="RX", assignTag="MI", strategy=Strategy.Edit, edits=1, truncate=true).execute() }
     error.getMessage should include ("unless a minimum UMI length is specified")
   }
 

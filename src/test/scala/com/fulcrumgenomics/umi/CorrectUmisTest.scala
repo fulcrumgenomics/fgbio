@@ -331,4 +331,20 @@ class CorrectUmisTest extends UnitSpec {
     metricsByUmi("NNNNNN")  shouldBe UmiCorrectionMetrics(umi="NNNNNN",  total_matches=1, perfect_matches=0, one_mismatch_matches=0, two_mismatch_matches=0, other_matches=0, fraction_of_matches = 1/10.0, representation = 1.0 / (8.0 / 2))
     metricsByUmi("NNNNNNN") shouldBe UmiCorrectionMetrics(umi="NNNNNNN", total_matches=1, perfect_matches=0, one_mismatch_matches=0, two_mismatch_matches=0, other_matches=0, fraction_of_matches = 1/10.0, representation = 1.0 / (8.0 / 2))
   }
+
+  it should "reject reads whose UMI length matches no fixed UMI length" in {
+    val builder = new SamBuilder(readLength = 10)
+    builder.addFrag(name="match6",  start=1, attrs=Map(ConsensusTags.UmiBases -> "AAAAAA"))
+    builder.addFrag(name="match7",  start=1, attrs=Map(ConsensusTags.UmiBases -> "CCCCCCC"))
+    builder.addFrag(name="short4",  start=1, attrs=Map(ConsensusTags.UmiBases -> "ACGT"))
+
+    val input     = builder.toTempFile()
+    val corrected = makeTempFile("corrected.", ".bam")
+    val rejects   = makeTempFile("rejects.",   ".bam")
+
+    new CorrectUmis(input=input, output=corrected, rejects=Some(rejects), maxMismatches=1, minDistanceDiff=1, umis=Seq("AAAAAA", "CCCCCCC")).execute()
+
+    readBamRecs(corrected).map(_.name) should contain theSameElementsAs Seq("match6", "match7")
+    readBamRecs(rejects).map(_.name)   should contain theSameElementsAs Seq("short4")
+  }
 }

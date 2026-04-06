@@ -259,7 +259,8 @@ class CorrectUmis
     // Finalize the metrics
     val sortedMetrics        = umiMetrics.values.toSeq.sortBy(_.umi)
     val totalWithUnmatched   = sortedMetrics.map(_.total_matches).sum.toDouble
-    val meanWithoutUnmatched = sortedMetrics.filter(m => m.umi != unmatchedUmiByLength(m.umi.length)).map(_.total_matches).sum / (sortedMetrics.size - unmatchedUmiByLength.size.toDouble)
+    val numReal = sortedMetrics.size - unmatchedUmiByLength.size
+    val meanWithoutUnmatched = if (numReal == 0) 0d else sortedMetrics.filter(m => m.umi != unmatchedUmiByLength(m.umi.length)).map(_.total_matches).sum / numReal.toDouble
     sortedMetrics.foreach { m =>
       m.fraction_of_matches = m.total_matches / totalWithUnmatched
       m.representation      = m.total_matches / meanWithoutUnmatched
