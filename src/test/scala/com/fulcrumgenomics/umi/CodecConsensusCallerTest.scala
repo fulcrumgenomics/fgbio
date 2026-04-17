@@ -207,6 +207,38 @@ class CodecConsensusCallerTest extends UnitSpec with OptionValues {
     caller.consensusReadsFromSamRecords(rfPair) shouldBe Seq()
   }
 
+  it should "not throw on an FR dovetail pair whose aligned ends coincide (htsjdk asymmetric isFrPair)" in {
+    // Reproduces a real template from a HEK293T CODEC dataset in which the aligned end of the
+    // reverse-strand read coincides with the aligned start of the forward-strand read and
+    // soft-clipping produces TLEN=+/-1. For this geometry htsjdk's
+    // `SamPairUtil.getPairOrientation` returns FR for R1 and RF for R2, which previously caused
+    // `CodecConsensusCaller` to drop R2 via a per-record `isFrPair` filter and then throw
+    // `scala.MatchError` on the resulting singleton read-name bucket.
+    val builder = new SamBuilder(readLength=129, baseQuality=35)
+    val raw = builder.addPair(
+      contig = 0, start1 = 96, start2 = 49,
+      cigar1 = "68S53M8S", cigar2 = "28S48M53S",
+      attrs  = Map(("RX", "ACC-TGA"), ("MI", "hi"))
+    ).tapEach(setReadSequence)
+
+    val caller = new CodecConsensusCaller(readNamePrefix="codec", minReadsPerStrand=1, minDuplexLength=1)
+    noException should be thrownBy caller.consensusReadsFromSamRecords(raw)
+  }
+
+  it should "not throw on a template whose primary read-name bucket has only one record" in {
+    // Exercise the defensive path for a degenerate template that reaches the CODEC caller with
+    // only one primary record per read name (e.g. an orphan introduced upstream). Previously
+    // the `Seq(rec, mate)` pattern match at line 176 crashed with MatchError.
+    val builder = new SamBuilder(readLength=30, baseQuality=35)
+    val pair    = builder.addPair(
+      contig=0, start1=1, start2=11, attrs=Map(("RX", "ACC-TGA"), ("MI", "hi"))
+    ).tapEach(setReadSequence)
+    val onlyR1 = pair.filter(_.firstOfPair)
+
+    val caller = new CodecConsensusCaller(readNamePrefix="codec", minReadsPerStrand=1, minDuplexLength=1)
+    caller.consensusReadsFromSamRecords(onlyR1) shouldBe Seq()
+  }
+
   it should "not emit a consensus when the reads are a cross-chromosomal chimeric pair" in {
     val builder = new SamBuilder(readLength=30, baseQuality=35)
     val caller = new CodecConsensusCaller(readNamePrefix="codec", minReadsPerStrand=1, minDuplexLength=1)
@@ -288,6 +320,86 @@ class CodecConsensusCallerTest extends UnitSpec with OptionValues {
       .consensusReadsFromSamRecords(raw) should have length 1
     new CodecConsensusCaller(readNamePrefix="codec", minReadsPerStrand=1, minDuplexLength=1, maxDuplexDisagreementRate=0.05999)
       .consensusReadsFromSamRecords(raw) should have length 0
+  }
+
+  //////////////////////////////////////////////////////////////////////////////
+  // Tests for orderedPrimaryPairs
+  //////////////////////////////////////////////////////////////////////////////
+
+  "CodecConsensusCaller.orderedPrimaryPairs" should "order templates by first-occurrence BAM-iteration order" in {
+    // Names chosen so that Scala's `HashMap` iteration order on `groupBy(_.name).toSeq` is
+    // extremely unlikely to coincide with insertion order; the helper must return them in the
+    // order they were observed in the input regardless of hash layout.
+    val builder = new SamBuilder(readLength=30, baseQuality=35)
+    val names   = Seq("zulu", "alpha", "mike", "bravo", "yankee")
+    names.foreach { n =>
+      builder.addPair(name=n, contig=0, start1=1, start2=11).tapEach(setReadSequence)
+    }
+    val ordered = CodecConsensusCaller.orderedPrimaryPairs(builder.toSeq)
+    ordered.map(_._1) shouldBe names
+    ordered.foreach { case (_, recs) => recs should have size 2 }
+  }
+
+  it should "ignore secondary/supplementary records only when the caller pre-filters them" in {
+    // The helper itself does not filter; callers pass pre-filtered primaries. This test documents
+    // that contract by passing records that include a supplementary alignment and verifying it is
+    // grouped alongside the primary under the same read name.
+    val builder = new SamBuilder(readLength=30, baseQuality=35)
+    val pair    = builder.addPair(name="t1", contig=0, start1=1, start2=11).tapEach(setReadSequence)
+    pair.head.supplementary = true
+    val ordered = CodecConsensusCaller.orderedPrimaryPairs(builder.toSeq)
+    ordered.map(_._1) shouldBe Seq("t1")
+    ordered.head._2 should have size 2
+  }
+
+  //////////////////////////////////////////////////////////////////////////////
+  // Tests for isPrimaryFrPair
+  //////////////////////////////////////////////////////////////////////////////
+
+  "CodecConsensusCaller.isPrimaryFrPair" should "return the same answer regardless of argument order" in {
+    val builder = new SamBuilder(readLength=129, baseQuality=35)
+    val pair = builder.addPair(
+      contig=0, start1=96, start2=49, cigar1="68S53M8S", cigar2="28S48M53S"
+    ).tapEach(setReadSequence)
+    val r1 = pair.head
+    val r2 = pair.last
+    CodecConsensusCaller.isPrimaryFrPair(r1, r2) shouldBe CodecConsensusCaller.isPrimaryFrPair(r2, r1)
+  }
+
+  it should "classify a typical FR pair as FR" in {
+    val builder = new SamBuilder(readLength=30, baseQuality=35)
+    val Seq(r1, r2) = builder.addPair(contig=0, start1=10, start2=50).toSeq
+    CodecConsensusCaller.isPrimaryFrPair(r1, r2) shouldBe true
+  }
+
+  it should "classify an RF pair as not FR" in {
+    val builder = new SamBuilder(readLength=30, baseQuality=35)
+    val Seq(r1, r2) = builder.addPair(
+      contig=0, start1=50, start2=100, strand1=Minus, strand2=Plus
+    ).toSeq
+    CodecConsensusCaller.isPrimaryFrPair(r1, r2) shouldBe false
+  }
+
+  it should "reject cross-chromosomal pairs" in {
+    val builder = new SamBuilder(readLength=30, baseQuality=35)
+    val Seq(r1, r2) = builder.addPair(contig=0, start1=10, start2=50).toSeq
+    r1.refIndex = 0
+    r2.refIndex = 1
+    CodecConsensusCaller.isPrimaryFrPair(r1, r2) shouldBe false
+  }
+
+  it should "reject a pair with one mate unmapped" in {
+    val builder = new SamBuilder(readLength=30, baseQuality=35)
+    val Seq(r1, r2) = builder.addPair(contig=0, start1=10, start2=10, unmapped2=true).toSeq
+    CodecConsensusCaller.isPrimaryFrPair(r1, r2) shouldBe false
+  }
+
+  it should "reject a tandem pair" in {
+    val builder = new SamBuilder(readLength=30, baseQuality=35)
+    val Seq(r1, r2) = builder.addPair(
+      contig=0, start1=10, start2=50, strand1=Plus, strand2=Plus
+    ).toSeq
+    CodecConsensusCaller.isPrimaryFrPair(r1, r2) shouldBe false
   }
 
   //////////////////////////////////////////////////////////////////////////////
