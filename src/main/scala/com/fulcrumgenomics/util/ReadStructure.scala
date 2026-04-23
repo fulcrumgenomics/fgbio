@@ -24,7 +24,6 @@
 
 package com.fulcrumgenomics.util
 
-import com.fulcrumgenomics.FgBioDef._
 import com.fulcrumgenomics.util.ReadStructure.{SubReadWithQuals, SubReadWithoutQuals}
 
 import scala.collection.immutable
@@ -48,26 +47,29 @@ object ReadStructure {
   case class SubReadWithoutQuals(bases: String, segment: ReadSegment) extends SubRead
   case class SubReadWithQuals(bases: String, quals: String, segment: ReadSegment) extends SubRead
 
-  /** Creates a new ReadStructure, optionally resetting the offsets on each of the segments. */
-  def apply(segments: Seq[ReadSegment], resetOffsets: Boolean = false): ReadStructure = {
-    // Check that none but the last segment has an indefinite length
-    require(segments.dropRight(1).forall(_.hasFixedLength), s"Variable length ($AnyLengthChar) can only be used in the last segment: ${segments.mkString}")
-
-    val segs = if (!resetOffsets) segments else {
-      var off = 0
-      segments.map { s => yieldAndThen(s.copy(offset=off)) { off += s.length.getOrElse(0) } }
-    }
-
-    segments.filter(_.length.exists(_ <= 0)) match {
-      case Seq() => new ReadStructure(segs)
-      case _ => throw new IllegalArgumentException(s"Read structure contained zero length segments: ${segments.mkString}")
+  /** Creates a new ReadStructure from a sequence of segments. At most one segment may be the
+    * indefinite-length (`+`) segment, and it may appear at any position. */
+  def apply(segments: Seq[ReadSegment]): ReadStructure = {
+    require(segments.nonEmpty, "Can't create a read structure with zero segments.")
+    val indefiniteCount = segments.count(!_.hasFixedLength)
+    require(
+      indefiniteCount <= 1,
+      s"At most one segment may have indefinite length ($AnyLengthChar): ${segments.mkString}"
+    )
+    segments.find(_.length.exists(_ <= 0)) match {
+      case Some(bad) =>
+        throw new IllegalArgumentException(s"Read structure contained a zero or negative length segment: $bad in ${segments.mkString}")
+      case None =>
+        new ReadStructure(segments.toIndexedSeq)
     }
   }
 
-  /** Creates a read structure from a string */
+  /** Creates a read structure from its string form (e.g. `"8B+M10T"`), in which each segment is a
+    * length (either an integer or `+` for indefinite length) followed by a one-character segment-type
+    * code.  Whitespace is ignored. */
   def apply(readStructure: String): ReadStructure = {
     val tidied = readStructure.toUpperCase.filterNot(Character.isWhitespace)
-    ReadStructure(segments=segments(rs=tidied), resetOffsets=true)
+    ReadStructure(segments(rs=tidied))
   }
 
   /** Creates a sequence of read segments from a string. */
@@ -98,7 +100,7 @@ object ReadStructure {
       else {
         val code = rs.charAt(i)
         i += 1
-        try   { segs += ReadSegment(0, segLength, SegmentType(code)) }
+        try   { segs += ReadSegment(segLength, SegmentType(code)) }
         catch { case _: Exception => invalid("Read structure segment had unknown type", rs, parsePosition, i) }
       }
     }
@@ -122,25 +124,79 @@ object ReadStructure {
 }
 
 /**
-  * Describes the structure of a give read.  A read contains one or more read segments. A read segment describes
-  * a contiguous stretch of bases of the same type (ex. template bases) of some length and some offset from the start
-  * of the read.
+  * Describes the structure of a given read.  A read contains one or more read segments. A read segment
+  * describes a contiguous stretch of bases of the same type (e.g. template bases) and some length.
+  *
+  * At most one segment may be the indefinite-length (`+`) segment, meaning "whatever is left of the read".
+  * The `+` segment may appear at any position, not only at the end.
   *
   * @param segments the segments composing this read structure.
   */
-class ReadStructure private(val segments: Seq[ReadSegment]) extends immutable.Seq[ReadSegment] {
-  require(segments.nonEmpty, "Can't create a read structure with zero segments.")
+class ReadStructure private(val segments: IndexedSeq[ReadSegment]) extends immutable.Seq[ReadSegment] {
+  import ReadStructure.AnyLengthChar
 
-  /** The minimum length read that this read structure can process. */
-  private val minLength = segments.flatMap(_.length).sum
+  /** The index of the indefinite-length segment, if any. */
+  private val plusIndex: Option[Int] = segments.indexWhere(!_.hasFixedLength) match {
+    case -1 => None
+    case i  => Some(i)
+  }
+
+  /** Sum of lengths across all fixed-length segments. */
+  private val fixedLengthSum: Int = segments.iterator.flatMap(_.length).sum
+
+  /** Sum of fixed-length segment lengths strictly AFTER the `+` segment (zero when there is no `+`
+    * or the `+` is trailing). Used to resolve the end of the `+` segment at extract time. */
+  private val postPlusLen: Int = plusIndex match {
+    case Some(p) => segments.drop(p + 1).iterator.flatMap(_.length).sum
+    case None    => 0
+  }
+
+  /** Signed per-segment start offset.
+    *
+    *  - `>= 0` — offset from the start of the read. Used for segments before or at the `+`, and for
+    *    every segment when there is no `+`.
+    *  - `<  0` — distance from the end of the read, stored as a negative number. Used for segments
+    *    strictly after a non-terminal `+`. The actual start position in a read of length `L` is
+    *    `L + offset` (i.e. `L - (-offset)`).
+    */
+  private val offsets: IndexedSeq[Int] = {
+    val n   = segments.length
+    val out = Array.fill[Int](n)(0)
+
+    // Forward pass up to and including the `+` (or the whole vec if no `+`).
+    val forwardEnd = plusIndex.map(_ + 1).getOrElse(n)
+    var off        = 0
+    var i          = 0
+    while (i < forwardEnd) {
+      out(i) = off
+      off += segments(i).length.getOrElse(0)
+      i += 1
+    }
+
+    // Backward pass for segments strictly after the `+`, if any.
+    plusIndex.foreach { p =>
+      var distFromEnd = 0
+      var j           = n - 1
+      while (j > p) {
+        val len = segments(j).length.getOrElse(
+          throw new IllegalStateException(s"Post-$AnyLengthChar segment must have a fixed length; got ${segments(j)}")
+        )
+        distFromEnd += len
+        out(j)      = -distFromEnd
+        j          -= 1
+      }
+    }
+
+    out.toIndexedSeq
+  }
 
   /** Returns true if the ReadStructure has a fixed (i.e. non-variable) length. */
-  def hasFixedLength: Boolean = segments.last.hasFixedLength
+  def hasFixedLength: Boolean = plusIndex.isEmpty
 
-  /** Returns the fixed length if there is one. Throws an exception on segments without fixed lengths! */
+  /** Returns the fixed length if there is one. Throws an exception on structures with an indefinite segment! */
   def fixedLength: Int = {
-    require(hasFixedLength, s"fixedLength called on variable length segment: $this")
-    this.minLength
+    require(hasFixedLength, s"fixedLength called on variable length structure: $this")
+    fixedLengthSum
   }
 
   /** Length is defined as the number of segments (not bases!) in the read structure. */
@@ -153,23 +209,95 @@ class ReadStructure private(val segments: Seq[ReadSegment]) extends immutable.Se
   override def iterator: Iterator[ReadSegment] = segments.iterator
 
   /** Generates the String format of the ReadStructure that can be re-parsed. */
-  override def toString: String = segments.map(_.toString).mkString
+  override def toString: String = segments.iterator.map(_.toString).mkString
 
-  /** Generates a new ReadStucture that is the same as this one except that the last segment has undefined length. */
+  /** Generates a new ReadStructure that is the same as this one except that the last segment has undefined length.
+    * If the structure already has a `+` segment (in any position), it is returned unchanged, since it already
+    * handles reads of variable length. */
   def withVariableLastSegment: ReadStructure =
-    if (this.segments.last.hasFixedLength) new ReadStructure(segments.dropRight(1) :+ segments.last.copy(length=None)) else this
+    if (this.hasFixedLength) ReadStructure(segments.dropRight(1) :+ segments.last.copy(length = None)) else this
 
-  /** Splits the given bases into tuples with its associated read segment.  If strict is false then only return
-    * tuples for which we have bases in `bases`, otherwise throw an exception.
-    **/
-  def extract(bases: String): Seq[SubReadWithoutQuals] = segments.map(_.extract(bases))
+  /** Validates that a read of the given length can be extracted by this structure.
+    * For fixed-length structures we require an exact length match; silent truncation of trailing
+    * bases is almost always a bug (wrong structure, stray adapter, etc.), so we require the caller
+    * to either supply an exact-length read or convert the structure via [[withVariableLastSegment]]. */
+  private def validateReadLength(readLen: Int): Unit = {
+    if (plusIndex.isDefined) {
+      require(
+        readLen >= fixedLengthSum,
+        s"Read length $readLen is shorter than required $fixedLengthSum for read structure $this"
+      )
+    }
+    else {
+      require(
+        readLen == fixedLengthSum,
+        s"Read length $readLen does not match fixed read structure length $fixedLengthSum for $this"
+      )
+    }
+  }
 
-  /** Splits the given bases and qualities into triples with its associated read segment.  If strict is false then only
-    * return tuples for which we have bases in `bases`, otherwise throw an exception.
-    **/
-  def extract(bases: String, quals: String): Seq[SubReadWithQuals] = {
-    assert(bases.length == quals.length)
-    segments.map(s => s.extract(bases, quals))
+  /** Returns the `[start, end)` span within a read of length `readLen` that corresponds to the
+    * segment at index `i`. */
+  private def spanOf(i: Int, readLen: Int): (Int, Int) = {
+    if (plusIndex.contains(i)) {
+      // The indefinite-length segment: runs from its stored start offset to just before the post-`+` region.
+      (offsets(i), readLen - postPlusLen)
+    }
+    else {
+      val off   = offsets(i)
+      val start = if (off >= 0) off else readLen + off
+      (start, start + segments(i).length.get)
+    }
+  }
+
+  /** Extracts the bases corresponding to each read segment.  [[SegmentType.Skip]] segments are omitted
+    * from the returned sequence because callers almost always throw those bases away; use the two-argument
+    * overload with `includeSkips = true` to keep them. */
+  def extract(bases: String): Seq[SubReadWithoutQuals] = extract(bases, includeSkips = false)
+
+  /** Extracts the bases corresponding to each read segment.
+    *
+    * @param bases the raw read bases
+    * @param includeSkips whether to include [[SegmentType.Skip]] segments in the returned sequence
+    */
+  def extract(bases: String, includeSkips: Boolean): Seq[SubReadWithoutQuals] = {
+    validateReadLength(bases.length)
+    val readLen = bases.length
+    val builder = IndexedSeq.newBuilder[SubReadWithoutQuals]
+    var i       = 0
+    while (i < segments.length) {
+      val seg = segments(i)
+      if (includeSkips || seg.kind != SegmentType.Skip) {
+        val (start, end) = spanOf(i, readLen)
+        builder += SubReadWithoutQuals(bases.substring(start, end), seg)
+      }
+      i += 1
+    }
+    builder.result()
+  }
+
+  /** Extracts the bases and qualities corresponding to each read segment.
+    *
+    * @param bases the raw read bases
+    * @param quals the raw read qualities; must be the same length as `bases`
+    * @param includeSkips whether to include [[SegmentType.Skip]] segments in the returned sequence;
+    *                     defaults to `false` because callers almost always throw those bases away.
+    */
+  def extract(bases: String, quals: String, includeSkips: Boolean = false): Seq[SubReadWithQuals] = {
+    require(bases.length == quals.length, s"Bases and quals differ in length: ${bases.length} vs ${quals.length}")
+    validateReadLength(bases.length)
+    val readLen = bases.length
+    val builder = IndexedSeq.newBuilder[SubReadWithQuals]
+    var i       = 0
+    while (i < segments.length) {
+      val seg = segments(i)
+      if (includeSkips || seg.kind != SegmentType.Skip) {
+        val (start, end) = spanOf(i, readLen)
+        builder += SubReadWithQuals(bases.substring(start, end), quals.substring(start, end), seg)
+      }
+      i += 1
+    }
+    builder.result()
   }
 
   /** Returns just the segments of a given kind. */
@@ -205,53 +333,13 @@ object SegmentType {
   }
 }
 
-object ReadSegment {
-  val Types: Seq[Char] = Seq('T', 'B', 'M', 'C', 'S') // TODO: this is never used, can we delete it?
-
-  /** Creates a new ReadSegment with undefined length (i.e. length=0 or more). */
-  def apply(offset: Int, c: Char): ReadSegment = new ReadSegment(offset, None, kind=SegmentType(c))
-
-  /** Constructs a ReadSegment with a definite length using Char c to find the segment type. */
-  def apply(offset: Int, length: Int, c: Char): ReadSegment = new ReadSegment(offset=offset, length=Some(length), kind=SegmentType(c))
-}
-
 /**
   * Encapsulates all the information about a segment within a read structure. A segment can either
   * have a definite length, in which case length must be Some(Int), or an indefinite length (can be
-  * any length, 0 or more) in which case length must be None.
+  * any length, 0 or more) in which case length must be None.  The position of a segment's bases
+  * within a read is tracked by the enclosing [[ReadStructure]], not here.
   */
-case class ReadSegment (offset: Int, length: Option[Int], kind: SegmentType) {
-  /** Checks some requirements and then calculates the end position for the segment for the given read. */
-  private def calculateEnd(bases: String): Int = {
-    require(bases.length >= offset, s"Read ends before read segment starts: $this")
-    length.foreach(l => require(bases.length >= offset + l, s"Read ends before end of segment: $this"))
-
-    if (hasFixedLength) math.min(offset + fixedLength, bases.length)
-    else bases.length
-  }
-
-  /** Gets the bases associated with this read segment.  If strict is false then only return
-    * the sub-sequence for which we have bases in `bases`, otherwise throw an exception.
-    **/
-  private[util] def extract(bases: String): SubReadWithoutQuals = {
-    val end = calculateEnd(bases)
-    SubReadWithoutQuals(bases=bases.substring(offset, end), segment=resized(end))
-  }
-
-  /** Gets the bases and qualities associated with this read segment.  If strict is false then only return
-    * the sub-sequence for which we have bases in `bases`, otherwise throw an exception.
-    **/
-  private[util] def extract(bases: String, quals: String): SubReadWithQuals = {
-    require(bases.length == quals.length, s"Bases and quals differ in length: $bases $quals")
-    val end = calculateEnd(bases)
-    SubReadWithQuals(bases=bases.substring(offset, end), quals=quals.substring(offset, end), segment=resized(end))
-  }
-
-  private def resized(end: Int): ReadSegment = {
-    val newLength = end - offset
-    if (length.contains(newLength)) this else this.copy(length=Some(newLength))
-  }
-
+case class ReadSegment(length: Option[Int], kind: SegmentType) {
   /** Returns true if the read segment has a defined length. */
   def hasFixedLength: Boolean = this.length.nonEmpty
 
@@ -260,4 +348,9 @@ case class ReadSegment (offset: Int, length: Option[Int], kind: SegmentType) {
 
   /** Provides a string representation of this segment (ex. "23T" or "4M"). */
   override def toString: String = s"${length.getOrElse(ReadStructure.AnyLengthChar)}${kind.code}"
+}
+
+object ReadSegment {
+  /** Constructs a [[ReadSegment]] from a length and a segment type character. */
+  def apply(length: Int, c: Char): ReadSegment = ReadSegment(length = Some(length), kind = SegmentType(c))
 }

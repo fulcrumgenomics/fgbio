@@ -55,10 +55,10 @@ import java.util
     |4. `C` identifies a cell barcode read
     |5. `S` identifies a set of bases that should be skipped or ignored
     |
-    |The last `<number><operator>` pair may be specified using a `+` sign instead of number to denote "all remaining
-    |bases". This is useful if, e.g., FASTQs have been trimmed and contain reads of varying length.  For example
-    |to convert a paired-end run with an index read and where the first 5 bases of R1 are a UMI and the second
-    |five bases are monotemplate you might specify:
+    |At most one `<number><operator>` pair in a read structure may use a `+` sign in place of the number to denote
+    |"all remaining bases", and it may appear at any position in the read structure.  This is useful if, e.g., FASTQs
+    |have been trimmed and contain reads of varying length.  For example to convert a paired-end run with an index
+    |read and where the first 5 bases of R1 are a UMI and the second five bases are monotemplate you might specify:
     |
     |```
     |--input r1.fq r2.fq i1.fq --read-structures 5M5S+T +T +B

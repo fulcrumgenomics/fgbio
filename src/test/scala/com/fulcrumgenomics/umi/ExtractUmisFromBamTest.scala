@@ -427,5 +427,25 @@ class ExtractUmisFromBamTest extends UnitSpec with OptionValues {
     record("XT") = 80
     ExtractUmisFromBam.updateClippingInformation(record, Some("XT"), ReadStructure("75T10S15T"))
     record[Int]("XT") shouldBe 75
+
+    // molecular-barcode prefix that gets stripped: a clip past the 10M should shift down by 10
+    record("XT") = 50
+    ExtractUmisFromBam.updateClippingInformation(record, Some("XT"), ReadStructure("10M90T"))
+    record[Int]("XT") shouldBe 40
+
+    // clip position exactly on a segment boundary (end of the skip)
+    record("XT") = 30
+    ExtractUmisFromBam.updateClippingInformation(record, Some("XT"), ReadStructure("20T10S70T"))
+    record[Int]("XT") shouldBe 20
+
+    // clip position exactly on the next segment's start when that segment is a template
+    record("XT") = 20
+    ExtractUmisFromBam.updateClippingInformation(record, Some("XT"), ReadStructure("10M10T80T"))
+    record[Int]("XT") shouldBe 10
+
+    // multiple template segments with a mol barcode between them; clip lands in the second template
+    record("XT") = 40
+    ExtractUmisFromBam.updateClippingInformation(record, Some("XT"), ReadStructure("20T10M70T"))
+    record[Int]("XT") shouldBe 30
   }
 }
