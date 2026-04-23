@@ -244,9 +244,10 @@ object DemuxFastqs {
       |3. `M` identifies a unique molecular index read
       |4. `S` identifies a set of bases that should be skipped or ignored
       |
-      |The last `<number><operator>` pair may be specified using a `+` sign instead of number to denote "all remaining
-      |bases". This is useful if, e.g., fastqs have been trimmed and contain reads of varying length. Both reads must
-      |have template bases.  Any molecular identifiers will be concatenated using
+      |At most one `<number><operator>` pair in a read structure may use a `+` sign in place of the number to denote
+      |"all remaining bases", and it may appear at any position in the read structure.  This is useful if, e.g.,
+      |fastqs have been trimmed and contain reads of varying length. Both reads must have template bases.  Any
+      |molecular identifiers will be concatenated using
       |the `-` delimiter and placed in the given SAM record tag (`RX` by default).  Similarly, the sample barcode bases
       |from the given read will be placed in the `BC` tag.
       |

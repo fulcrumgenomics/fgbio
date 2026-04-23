@@ -74,9 +74,9 @@ object RunInfo {
     val segments        = (xml \\ "RunInfo" \\ "Run" \\ "Reads" \\ "Read").map { read =>
       val isIndexedRead = (read \ "@IsIndexedRead").text.equals("Y")
       val numCycles     = (read \ "@NumCycles").text.toInt
-      ReadSegment(offset=0, length=Some(numCycles), kind=if (isIndexedRead) SegmentType.SampleBarcode else SegmentType.Template)
+      ReadSegment(length=Some(numCycles), kind=if (isIndexedRead) SegmentType.SampleBarcode else SegmentType.Template)
     }
-    val readStructure = ReadStructure(segments, resetOffsets=true)
+    val readStructure = ReadStructure(segments)
     val numLanes = (xml \\ "RunInfo" \\ "Run" \\ "FlowcellLayout" \ "@LaneCount").text.toInt
 
     RunInfo(
