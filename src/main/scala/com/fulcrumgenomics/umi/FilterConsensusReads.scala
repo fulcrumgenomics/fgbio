@@ -302,11 +302,17 @@ class FilterConsensusReads
   private def filterDuplexConsensusRead(rec: SamRecord): FilterResult = {
     val failsReadLevelChecks = {
       import ConsensusTags.PerRead._
-      val Seq(baMaxDepth, abMaxDepth) = Seq(AbRawReadCount,     BaRawReadCount    ).map(rec.apply[Int]).sorted
-      val Seq(abError, baError)       = Seq(AbRawReadErrorRate, BaRawReadErrorRate).map(rec.apply[Float]).sorted
+      // Pick the best (more favorable) and worst (less favorable) value per
+      // metric, independently. More depth is better; lower error rate is
+      // better. `abFilters` is the stricter tier, checked against the best
+      // value per metric; `baFilters` is the lenient tier, checked against
+      // the worst. These are per-metric extremes across the two strands —
+      // NOT the biological AB / BA strand values.
+      val Seq(worstDepth, bestDepth) = Seq(AbRawReadCount,     BaRawReadCount    ).map(rec.apply[Int]).sorted
+      val Seq(bestError, worstError) = Seq(AbRawReadErrorRate, BaRawReadErrorRate).map(rec.apply[Float]).sorted
 
-      abMaxDepth < abFilters.minReads || abError > abFilters.maxReadErrorRate ||
-        baMaxDepth < baFilters.minReads || baError > baFilters.maxReadErrorRate
+      bestDepth < abFilters.minReads || bestError > abFilters.maxReadErrorRate ||
+        worstDepth < baFilters.minReads || worstError > baFilters.maxReadErrorRate
     }
 
     if (failsReadLevelChecks) {
@@ -422,16 +428,19 @@ object DuplexConsensusPerBaseValues {
   /** Returns true if the base at the given index should be masked. */
   def maskBaseAt(abValues: DuplexConsensusPerBaseValues, baValues: DuplexConsensusPerBaseValues, idx: Int,
                  ccFilters: ConsensusReadFilter, abFilters: ConsensusReadFilter, baFilters: ConsensusReadFilter): Boolean = {
-    val abDepth    = max(abValues.depths(idx).toInt, baValues.depths(idx).toInt)
-    val baDepth    = min(abValues.depths(idx).toInt, baValues.depths(idx).toInt)
-    val abError    = min(abValues.errors(idx)/abValues.depths(idx).toDouble, baValues.errors(idx) / baValues.depths(idx).toDouble)
-    val baError    = max(abValues.errors(idx)/abValues.depths(idx).toDouble, baValues.errors(idx) / baValues.depths(idx).toDouble)
-    val totalDepth = abDepth + baDepth
+    // Best/worst per metric (see `filterDuplexConsensusRead` for the tier
+    // semantics): `abFilters` tier = stricter, checked against best;
+    // `baFilters` tier = lenient, checked against worst.
+    val bestDepth  = max(abValues.depths(idx).toInt, baValues.depths(idx).toInt)
+    val worstDepth = min(abValues.depths(idx).toInt, baValues.depths(idx).toInt)
+    val bestError  = min(abValues.errors(idx)/abValues.depths(idx).toDouble, baValues.errors(idx) / baValues.depths(idx).toDouble)
+    val worstError = max(abValues.errors(idx)/abValues.depths(idx).toDouble, baValues.errors(idx) / baValues.depths(idx).toDouble)
+    val totalDepth = bestDepth + worstDepth
     val totalError = (abValues.errors(idx) + baValues.errors(idx)) / totalDepth.toDouble
 
     totalDepth < ccFilters.minReads || totalError > ccFilters.maxBaseErrorRate ||
-      abDepth  < abFilters.minReads || abError    > abFilters.maxBaseErrorRate ||
-      baDepth  < baFilters.minReads || baError    > baFilters.maxBaseErrorRate
+      bestDepth  < abFilters.minReads || bestError  > abFilters.maxBaseErrorRate ||
+      worstDepth < baFilters.minReads || worstError > baFilters.maxBaseErrorRate
   }
 }
 
