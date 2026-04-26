@@ -85,6 +85,7 @@ object UmiConsensusCaller {
     case object IndelErrorBetweenStrands extends _RejectionReason("indel_error_between_strands", "Indel error between top/bottom strands", false, false, true)
     case object HighDuplexDisagreement   extends _RejectionReason("high_duplex_disagreement",    "Too many errors between top/bottoms strands", false, false, true)
     case object ClipOverlapFailed        extends _RejectionReason("clip_overlap_failed",         "See https://github.com/fulcrumgenomics/fgbio/issues/1090", false, false, true)
+    case object NotPrimaryFrPair         extends _RejectionReason("not_primary_fr_pair",         "Template did not have a single primary FR pair of reads", false, false, true)
   }
 
   /** Metric class for outputting consensus calling statistics. */
