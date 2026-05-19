@@ -59,9 +59,8 @@ import htsjdk.samtools.util._
     |it will lead to an BAM with inconsistent records.
     |
     |The read structure describes the structure of a given read as one or more read segments. A read segment describes
-    |a contiguous stretch of bases of the same type (ex. template bases) of some length and some offset from the start
-    |of the read.  Read structures are made up of `<number><operator>` pairs much like the CIGAR string in BAM files.
-    |Five kinds of operators are recognized:
+    |a contiguous stretch of bases of the same type (ex. template bases) of some length.  Read structures are made up
+    |of `<number><operator>` pairs much like the CIGAR string in BAM files.  Five kinds of operators are recognized:
     |
     |1. `T` identifies a template read
     |2. `B` identifies a sample barcode read
@@ -69,8 +68,12 @@ import htsjdk.samtools.util._
     |4. `C` identifies a cell barcode read
     |5. `S` identifies a set of bases that should be skipped or ignored
     |
-    |The last `<number><operator>` pair may be specified using a '+' sign instead of number to denote "all remaining
-    |bases". This is useful if, e.g., fastqs have been trimmed and contain reads of varying length.
+    |At most one `<number><operator>` pair may use a `+` sign in place of the number to denote "all remaining bases",
+    |and it may appear at any position in the read structure.  This is useful if, e.g., fastqs have been trimmed and
+    |contain reads of varying length.
+    |
+    |Note that when a clipping attribute is given via `--clipping-attribute`, every segment except possibly the last
+    |must have a fixed length.
     |
     |An example would be `10B3M7S100T` which describes 120 bases, with the first ten bases being a sample barcode,
     |bases 11-13 being a molecular index, bases 14-20 ignored, and bases 21-120 being template bases. See
@@ -254,19 +257,33 @@ object ExtractUmisFromBam {
   /**
     * Update the clipping information produced by Picard's MarkIlluminaAdapters to account for any non-template bases
     * that will be removed from the read.
+    *
+    * Only the last segment of the read structure may be indefinite-length; stripping non-template bases
+    * from past a non-terminal `+` would require knowing the read length, which is not a use case we support.
     */
   private[umi] def updateClippingInformation(record: SamRecord,
                                              clippingAttribute: Option[String],
                                              readStructure: ReadStructure): Unit = {
-    clippingAttribute.map(tag => (tag, record.get[Int](tag))) match {
+    clippingAttribute.flatMap(tag => record.get[Int](tag).map(pos => (tag, pos))) match {
       case None => ()
-      case Some((_, None)) => ()
-      case Some((tag, Some(clippingPosition))) =>
-        val newClippingPosition = readStructure.takeWhile(_.offset < clippingPosition).filter(_.kind == SegmentType.Template).map { t =>
-          if (t.length.exists(l => t.offset + l < clippingPosition)) t.length.get
-          else clippingPosition - t.offset
-        }.sum
-        record(tag) = newClippingPosition
+      case Some((tag, clippingPosition)) =>
+        require(
+          readStructure.dropRight(1).forall(_.hasFixedLength),
+          s"Clipping update requires fixed lengths for all segments except possibly the last; got $readStructure"
+        )
+        // Walk the segments in read order, summing lengths of non-template segments that fall before the
+        // clipping position. The new clipping position is the old one minus the number of bases stripped.
+        var stripped = 0
+        var offset   = 0
+        val iter     = readStructure.iterator
+        while (offset < clippingPosition && iter.hasNext) {
+          val seg    = iter.next()
+          val segLen = seg.length.getOrElse(clippingPosition - offset) // `+` is absorbent: only the last segment
+          val covered = math.min(segLen, clippingPosition - offset)
+          if (seg.kind != SegmentType.Template) stripped += covered
+          offset += segLen
+        }
+        record(tag) = clippingPosition - stripped
     }
   }
 }

@@ -25,7 +25,6 @@
 package com.fulcrumgenomics.util
 
 import com.fulcrumgenomics.testing.UnitSpec
-import com.fulcrumgenomics.util.ReadStructure.SubReadWithQuals
 import com.fulcrumgenomics.util.SegmentType._
 import org.scalatest.OptionValues
 
@@ -34,31 +33,26 @@ import scala.util.Try
 class ReadStructureTest extends UnitSpec with OptionValues {
 
   private def compareReadStructures(actual: ReadStructure, expected: Seq[ReadSegment]) = {
-    // make sure the segments match
     actual shouldBe expected
-    // make sure the string representations are the same
     actual.toString shouldBe ReadStructure(expected).toString
   }
 
-  private def compareReadStructuresResetOffset(actual: Seq[ReadSegment], expected: ReadStructure) = {
-    val actualReadStructure = ReadStructure(actual, resetOffsets=true)
-    compareReadStructures(actualReadStructure, expected)
-  }
-
-  private def T(off: Int, len: Int) = ReadSegment(offset=off, length=Some(len), kind=SegmentType.Template)
-  private def B(off: Int, len: Int) = ReadSegment(offset=off, length=Some(len), kind=SegmentType.SampleBarcode)
-  private def M(off: Int, len: Int) = ReadSegment(offset=off, length=Some(len), kind=SegmentType.MolecularBarcode)
-  private def S(off: Int, len: Int) = ReadSegment(offset=off, length=Some(len), kind=SegmentType.Skip)
+  private def T(len: Int) = ReadSegment(length = Some(len), kind = Template)
+  private def B(len: Int) = ReadSegment(length = Some(len), kind = SampleBarcode)
+  private def M(len: Int) = ReadSegment(length = Some(len), kind = MolecularBarcode)
+  private def S(len: Int) = ReadSegment(length = Some(len), kind = Skip)
+  private val AnyT = ReadSegment(length = None, kind = Template)
+  private val AnyM = ReadSegment(length = None, kind = MolecularBarcode)
 
   "ReadStructure" should "be built from a string" in {
-    compareReadStructures(ReadStructure("1T"), Seq(T(0, 1)))
-    compareReadStructures(ReadStructure("1B"), Seq(B(0, 1)))
-    compareReadStructures(ReadStructure("1M"), Seq(M(0, 1)))
-    compareReadStructures(ReadStructure("1S"), Seq(S(0, 1)))
-    compareReadStructures(ReadStructure("101T"), Seq(T(0, 101)))
-    compareReadStructures(ReadStructure("5B101T"), Seq(B(0, 5), T(5, 101)))
-    compareReadStructures(ReadStructure("123456789T"), Seq(T(0, 123456789)))
-    compareReadStructures(ReadStructure("10T10B10B10S10M"), Seq(T(0, 10), B(10, 10), B(20, 10), S(30, 10), M(40, 10)))
+    compareReadStructures(ReadStructure("1T"), Seq(T(1)))
+    compareReadStructures(ReadStructure("1B"), Seq(B(1)))
+    compareReadStructures(ReadStructure("1M"), Seq(M(1)))
+    compareReadStructures(ReadStructure("1S"), Seq(S(1)))
+    compareReadStructures(ReadStructure("101T"), Seq(T(101)))
+    compareReadStructures(ReadStructure("5B101T"), Seq(B(5), T(101)))
+    compareReadStructures(ReadStructure("123456789T"), Seq(T(123456789)))
+    compareReadStructures(ReadStructure("10T10B10B10S10M"), Seq(T(10), B(10), B(10), S(10), M(10)))
   }
 
   it should "allow whitespace within the read structure and strip it" in {
@@ -66,26 +60,31 @@ class ReadStructureTest extends UnitSpec with OptionValues {
     ReadStructure(" 75T  8B   8B     75T  ").toString shouldBe "75T8B8B75T"
   }
 
-  it should "allow + only once and only for the last segment of the read" in {
-    import SegmentType._
-    ReadStructure("5M+T") shouldBe Seq(ReadSegment(0, Some(5), MolecularBarcode), ReadSegment(5, None, Template))
-    ReadStructure("+M")   shouldBe Seq(ReadSegment(0, None, MolecularBarcode))
+  it should "accept the + segment at any position, at most once" in {
+    ReadStructure("5M+T") shouldBe Seq(M(5), AnyT)
+    ReadStructure("+M")   shouldBe Seq(AnyM)
+    ReadStructure("+M70T") shouldBe Seq(AnyM, T(70))
+    ReadStructure("8B+M10T") shouldBe Seq(B(8), AnyM, T(10))
+    ReadStructure("10T8B+M10T") shouldBe Seq(T(10), B(8), AnyM, T(10))
+
     an[Exception] shouldBe thrownBy { ReadStructure("++M") }
     an[Exception] shouldBe thrownBy { ReadStructure("5M++T") }
     an[Exception] shouldBe thrownBy { ReadStructure("5M70+T") }
     an[Exception] shouldBe thrownBy { ReadStructure("+M+T") }
-    an[Exception] shouldBe thrownBy { ReadStructure("+M70T") }
+    an[Exception] shouldBe thrownBy { ReadStructure("5M+T+B") }
   }
 
-  it should "be built from segments while resetting their offset" in {
-    compareReadStructuresResetOffset(Seq(T(Int.MaxValue, 1)), ReadStructure("1T"))
-    compareReadStructuresResetOffset(Seq(B(Int.MaxValue, 1)), ReadStructure("1B"))
-    compareReadStructuresResetOffset(Seq(M(Int.MaxValue, 1)), ReadStructure("1M"))
-    compareReadStructuresResetOffset(Seq(S(Int.MaxValue, 1)), ReadStructure("1S"))
-    compareReadStructuresResetOffset(Seq(T(Int.MaxValue, 101)), ReadStructure("101T"))
-    compareReadStructuresResetOffset(Seq(B(Int.MaxValue, 5), T(5, 101)), ReadStructure("5B101T"))
-    compareReadStructuresResetOffset(Seq(T(Int.MaxValue, 123456789)), ReadStructure("123456789T"))
-    compareReadStructuresResetOffset(Seq(T(Int.MaxValue, 10), B(Int.MaxValue, 10), B(Int.MaxValue, 10), S(Int.MaxValue, 10), M(Int.MaxValue, 10)), ReadStructure("10T10B10B10S10M"))
+  it should "round-trip non-terminal + structures through toString" in {
+    Seq("8B+M10T", "+B10T", "10T8B+M10T", "5M+T", "+M", "+T").foreach { s =>
+      ReadStructure(s).toString shouldBe s
+    }
+  }
+
+  it should "be built from a sequence of segments" in {
+    ReadStructure(Seq(T(1))) shouldBe Seq(T(1))
+    ReadStructure(Seq(B(5), T(101))) shouldBe Seq(B(5), T(101))
+    ReadStructure(Seq(T(10), B(10), B(10), S(10), M(10))) shouldBe Seq(T(10), B(10), B(10), S(10), M(10))
+    ReadStructure(Seq(B(8), AnyM, T(10))) shouldBe Seq(B(8), AnyM, T(10))
   }
 
   it should "not be built from invalid structures" in {
@@ -97,12 +96,21 @@ class ReadStructureTest extends UnitSpec with OptionValues {
     Try { ReadStructure("23T2TT23T") }.failed.get.getMessage should include ("23T2T[T]23T")
   }
 
+  it should "reject segments with zero or negative length" in {
+    an[Exception] shouldBe thrownBy { ReadStructure(Seq(ReadSegment(length = Some(0), kind = Template))) }
+    an[Exception] shouldBe thrownBy { ReadStructure(Seq(ReadSegment(length = Some(-1), kind = Template))) }
+  }
+
+  it should "reject construction with multiple + segments via the segments constructor" in {
+    an[Exception] shouldBe thrownBy { ReadStructure(Seq(AnyM, AnyT)) }
+  }
+
   it should "collect segments of a single type" in {
     val rs = ReadStructure("10M9T8B7S10M9T8B7S")
-    rs.templateSegments         should contain theSameElementsInOrderAs Seq(T(10, 9), T(44, 9))
-    rs.molecularBarcodeSegments should contain theSameElementsInOrderAs Seq(M(0, 10), M(34, 10))
-    rs.sampleBarcodeSegments    should contain theSameElementsInOrderAs Seq(B(19, 8), B(53, 8))
-    rs.skipSegments             should contain theSameElementsInOrderAs Seq(S(27, 7), S(61, 7))
+    rs.templateSegments         should contain theSameElementsInOrderAs Seq(T(9), T(9))
+    rs.molecularBarcodeSegments should contain theSameElementsInOrderAs Seq(M(10), M(10))
+    rs.sampleBarcodeSegments    should contain theSameElementsInOrderAs Seq(B(8), B(8))
+    rs.skipSegments             should contain theSameElementsInOrderAs Seq(S(7), S(7))
   }
 
   "ReadStructure.withVariableLastSegment" should "convert the last segment to a variant length segment" in {
@@ -112,9 +120,31 @@ class ReadStructureTest extends UnitSpec with OptionValues {
     ReadStructure("5B+T").withVariableLastSegment.toString  shouldBe "5B+T"
   }
 
-  "ReadStructure.extract" should "get extract the bases for each segment" in {
+  it should "return itself unchanged when a non-terminal + segment is present" in {
+    // A non-terminal + already makes the structure variable-length; the result must not have two + segments.
+    ReadStructure("8B+M10T").withVariableLastSegment.toString  shouldBe "8B+M10T"
+    ReadStructure("+B10T").withVariableLastSegment.toString    shouldBe "+B10T"
+    ReadStructure("5T+M5B").withVariableLastSegment.toString   shouldBe "5T+M5B"
+  }
+
+  it should "correctly extract bases after withVariableLastSegment on a non-terminal + structure" in {
+    // Simulates the DemuxFastqs.variableReadStructures path: calling withVariableLastSegment on a
+    // structure that already has a non-terminal + must leave the structure unchanged so that extract
+    // still resolves spans correctly.
+    val rs        = ReadStructure("8B+M10T")
+    val converted = rs.withVariableLastSegment
+    converted.toString shouldBe "8B+M10T"  // must be identical — no extra + added
+    val bases = "BBBBBBBBUUUUUUUUUUUUTTTTTTTTTT"
+    val out   = converted.extract(bases)
+    out should have size 3
+    out(0).kind  shouldBe SampleBarcode;    out(0).bases shouldBe "BBBBBBBB"
+    out(1).kind  shouldBe MolecularBarcode; out(1).bases shouldBe "UUUUUUUUUUUU"
+    out(2).kind  shouldBe Template;         out(2).bases shouldBe "TTTTTTTTTT"
+  }
+
+  "ReadStructure.extract" should "extract the bases for each segment" in {
     val rs = ReadStructure("2T2B2M2C2S")
-    rs.extract("AACCGGNNTT").foreach { r =>
+    rs.extract("AACCGGNNTT", includeSkips = true).foreach { r =>
       r.kind match {
         case Template         => r.bases shouldBe "AA"
         case SampleBarcode    => r.bases shouldBe "CC"
@@ -126,8 +156,8 @@ class ReadStructureTest extends UnitSpec with OptionValues {
 
     an[Exception] should be thrownBy rs.extract("AAAAAAA")
 
-    // the last segment is truncated
-    rs.withVariableLastSegment.extract("AACCGGNNT").foreach { r =>
+    // trailing variable segment absorbs the short read's remaining base
+    rs.withVariableLastSegment.extract("AACCGGNNT", includeSkips = true).foreach { r =>
       r.kind match {
         case Template         => r.bases shouldBe "AA"
         case SampleBarcode    => r.bases shouldBe "CC"
@@ -136,8 +166,9 @@ class ReadStructureTest extends UnitSpec with OptionValues {
         case Skip             => r.bases shouldBe "T"
       }
     }
-    // the last segment is skipped
-    rs.withVariableLastSegment.extract("AACCGGNN").foreach { r =>
+    // trailing + can be zero-length: a read that ends exactly at the end of the fixed portion
+    // produces an empty bases string for the + segment (this pins the "0 or more" semantics for +).
+    rs.withVariableLastSegment.extract("AACCGGNN", includeSkips = true).foreach { r =>
       r.kind match {
         case Template         => r.bases shouldBe "AA"
         case SampleBarcode    => r.bases shouldBe "CC"
@@ -148,10 +179,23 @@ class ReadStructureTest extends UnitSpec with OptionValues {
     }
   }
 
+  it should "omit Skip segments from the result by default" in {
+    val rs  = ReadStructure("2T2B2M2C2S")
+    val out = rs.extract("AACCGGNNTT")
+    out.map(_.segment.kind) should contain noElementsOf Seq(Skip)
+    out.map(_.segment.kind) should contain theSameElementsInOrderAs Seq(Template, SampleBarcode, MolecularBarcode, CellBarcode)
+    rs.extract("AACCGGNNTT", "1122334455").map(_.segment.kind) should contain noElementsOf Seq(Skip)
+  }
 
-  "ReadStructure.extract(bases, quals)" should "get extract the bases and qualities for each segment" in {
+  it should "include Skip segments when includeSkips is true" in {
     val rs = ReadStructure("2T2B2M2C2S")
-    rs.extract("AACCGGNNTT", "1122334455").foreach { r =>
+    rs.extract("AACCGGNNTT", includeSkips = true).map(_.segment.kind).last shouldBe Skip
+    rs.extract("AACCGGNNTT", "1122334455", includeSkips = true).map(_.segment.kind).last shouldBe Skip
+  }
+
+  "ReadStructure.extract(bases, quals)" should "extract the bases and qualities for each segment" in {
+    val rs = ReadStructure("2T2B2M2C2S")
+    rs.extract("AACCGGNNTT", "1122334455", includeSkips = true).foreach { r =>
       r.kind match {
         case Template         => r.bases shouldBe "AA"; r.quals shouldBe "11"
         case SampleBarcode    => r.bases shouldBe "CC"; r.quals shouldBe "22"
@@ -162,8 +206,8 @@ class ReadStructureTest extends UnitSpec with OptionValues {
     }
     an[Exception] should be thrownBy rs.extract("AAAAAAA", "AAAAAAA")
 
-    // the last segment is truncated
-    rs.withVariableLastSegment.extract("AACCGGNNT", "112233445").foreach { r =>
+    // the last segment is truncated to match the read length
+    rs.withVariableLastSegment.extract("AACCGGNNT", "112233445", includeSkips = true).foreach { r =>
       r.kind match {
         case Template         => r.bases shouldBe "AA"; r.quals shouldBe "11"
         case SampleBarcode    => r.bases shouldBe "CC"; r.quals shouldBe "22"
@@ -172,8 +216,8 @@ class ReadStructureTest extends UnitSpec with OptionValues {
         case Skip             => r.bases shouldBe "T";  r.quals shouldBe "5"
       }
     }
-    // the last segment is skipped
-    rs.withVariableLastSegment.extract("AACCGGNN", "11223344").foreach { r =>
+    // the last segment is zero-length (pins 0-or-more semantics for +)
+    rs.withVariableLastSegment.extract("AACCGGNN", "11223344", includeSkips = true).foreach { r =>
       r.kind match {
         case Template         => r.bases shouldBe "AA"; r.quals shouldBe "11"
         case SampleBarcode    => r.bases shouldBe "CC"; r.quals shouldBe "22"
@@ -182,6 +226,75 @@ class ReadStructureTest extends UnitSpec with OptionValues {
         case Skip             => r.bases shouldBe ""  ; r.quals shouldBe ""
       }
     }
+  }
+
+  it should "require bases and quals to be the same length" in {
+    an[IllegalArgumentException] should be thrownBy ReadStructure("2T2B").extract("AACC", "111")
+    an[IllegalArgumentException] should be thrownBy ReadStructure("2T2B").extract("AACC", "11111")
+    an[IllegalArgumentException] should be thrownBy ReadStructure("+T").extract("AACC", "111")
+  }
+
+  it should "reject reads that are longer than a fixed-length structure" in {
+    val rs = ReadStructure("2T2B")
+    an[Exception] should be thrownBy rs.extract("AACCXX")
+    an[Exception] should be thrownBy rs.extract("AACCXX", "111111")
+  }
+
+  "ReadStructure.extract with non-terminal +" should "extract bases around a middle + segment" in {
+    val rs    = ReadStructure("8B+M10T")
+    val bases = "BBBBBBBBUUUUUUUUUUUUTTTTTTTTTT"
+    val quals = "!!!!!!!!@@@@@@@@@@@@##########"
+    bases.length shouldBe 30
+    val out = rs.extract(bases, quals)
+    out should have size 3
+    out(0).kind shouldBe SampleBarcode;    out(0).bases shouldBe "BBBBBBBB";     out(0).quals shouldBe "!!!!!!!!"
+    out(1).kind shouldBe MolecularBarcode; out(1).bases shouldBe "UUUUUUUUUUUU"; out(1).quals shouldBe "@@@@@@@@@@@@"
+    out(2).kind shouldBe Template;         out(2).bases shouldBe "TTTTTTTTTT";   out(2).quals shouldBe "##########"
+  }
+
+  it should "extract bases around a leading + segment" in {
+    val rs    = ReadStructure("+B10T")
+    val bases = "BBBBBTTTTTTTTTT"
+    val out   = rs.extract(bases)
+    out should have size 2
+    out(0).kind  shouldBe SampleBarcode; out(0).bases shouldBe "BBBBB"
+    out(1).kind  shouldBe Template;      out(1).bases shouldBe "TTTTTTTTTT"
+  }
+
+  it should "extract bases with fixed segments before and after the +" in {
+    val rs    = ReadStructure("10T8B+M10T")
+    val bases = "TTTTTTTTTTBBBBBBBBUUUUUUUUUUUUTTTTTTTTTT"
+    bases.length shouldBe 40
+    val out   = rs.extract(bases)
+    out.map(_.bases) shouldBe Seq("TTTTTTTTTT", "BBBBBBBB", "UUUUUUUUUUUU", "TTTTTTTTTT")
+  }
+
+  it should "handle a + segment with multiple fixed segments following it" in {
+    val rs    = ReadStructure("8B+M5T5S")
+    val bases = "BBBBBBBBUUUUUUUUUUUUTTTTTSSSSS"
+    bases.length shouldBe 30
+    val out   = rs.extract(bases, includeSkips = true)
+    out.map(_.bases) shouldBe Seq("BBBBBBBB", "UUUUUUUUUUUU", "TTTTT", "SSSSS")
+  }
+
+  it should "accept reads where the + segment has zero width" in {
+    val rs    = ReadStructure("8B+M10T")
+    val bases = "BBBBBBBBTTTTTTTTTT"
+    bases.length shouldBe 18
+    val out   = rs.extract(bases)
+    out.map(_.bases) shouldBe Seq("BBBBBBBB", "", "TTTTTTTTTT")
+  }
+
+  "ReadStructure.hasFixedLength / fixedLength" should "reflect whether a + segment is present" in {
+    val fixed    = ReadStructure("10T8B")
+    val variable = ReadStructure("10T+B")
+    val middle   = ReadStructure("8B+M10T")
+    fixed.hasFixedLength shouldBe true
+    fixed.fixedLength shouldBe 18
+    variable.hasFixedLength shouldBe false
+    middle.hasFixedLength shouldBe false
+    an[Exception] should be thrownBy variable.fixedLength
+    an[Exception] should be thrownBy middle.fixedLength
   }
 
   "ReadStructure.length" should "return the number of segments" in {
@@ -194,47 +307,36 @@ class ReadStructureTest extends UnitSpec with OptionValues {
     ReadStructure("123456789T").length shouldBe 1
     ReadStructure("10T10B10B10S10M").length shouldBe 5
     ReadStructure("10T10B10B10S10M10C").length shouldBe 6
+    ReadStructure("8B+M10T").length shouldBe 3
   }
 
   "ReadStructure.apply(idx: Int)" should "return the segment at the 0-based index" in {
-    ReadStructure("1T")(0) shouldBe T(0, 1)
-    ReadStructure("1B")(0) shouldBe B(0, 1)
-    ReadStructure("1M")(0) shouldBe M(0, 1)
-    ReadStructure("1S")(0) shouldBe S(0, 1)
-    ReadStructure("101T")(0) shouldBe T(0, 101)
+    ReadStructure("1T")(0) shouldBe T(1)
+    ReadStructure("1B")(0) shouldBe B(1)
+    ReadStructure("1M")(0) shouldBe M(1)
+    ReadStructure("1S")(0) shouldBe S(1)
+    ReadStructure("101T")(0) shouldBe T(101)
 
-    ReadStructure("5B101T")(0) shouldBe B(0, 5)
-    ReadStructure("5B101T")(1) shouldBe T(5, 101)
+    ReadStructure("5B101T")(0) shouldBe B(5)
+    ReadStructure("5B101T")(1) shouldBe T(101)
 
-    ReadStructure("123456789T")(0) shouldBe T(0, 123456789)
+    ReadStructure("123456789T")(0) shouldBe T(123456789)
 
-    ReadStructure("10T10B10B10S10M")(0) shouldBe T(0, 10)
-    ReadStructure("10T10B10B10S10M")(1) shouldBe B(10, 10)
-    ReadStructure("10T10B10B10S10M")(2) shouldBe B(20, 10)
-    ReadStructure("10T10B10B10S10M")(3) shouldBe S(30, 10)
-    ReadStructure("10T10B10B10S10M")(4) shouldBe M(40, 10)
+    ReadStructure("10T10B10B10S10M")(0) shouldBe T(10)
+    ReadStructure("10T10B10B10S10M")(1) shouldBe B(10)
+    ReadStructure("10T10B10B10S10M")(2) shouldBe B(10)
+    ReadStructure("10T10B10B10S10M")(3) shouldBe S(10)
+    ReadStructure("10T10B10B10S10M")(4) shouldBe M(10)
 
     an[Exception] should be thrownBy ReadStructure("101T")(1)
   }
 
-  "ReadSegment.apply(offset: Int, length: Int, ch: Char)" should "create a new ReadSegment" in {
-    ReadSegment(1, 2, 'T') shouldBe T(1, 2)
-    ReadSegment(1, 2, 'M') shouldBe M(1, 2)
-    ReadSegment(1, 2, 'S') shouldBe S(1, 2)
-    ReadSegment(1, 2, 'B') shouldBe B(1, 2)
-    an[Exception] should be thrownBy ReadSegment(1, 2, 'G')
-  }
-
-  "ReadSegment.extract(bases)" should "get extract the bases and qualities for a segment" in {
-    val molecularBarcodeSegment = ReadStructure("2T2B2M2S").segments(MolecularBarcode).head
-    molecularBarcodeSegment.extract("AACCGGTT").bases shouldBe "GG"
-  }
-
-  "ReadSegment.extract(bases, quals)" should "get extract the bases and qualities for a segment" in {
-    val molecularBarcodeSegment = ReadStructure("2T2B2M2S").segments(MolecularBarcode).head
-    molecularBarcodeSegment.extract("AACCGGTT", "11223344") match {
-      case SubReadWithQuals(bases, quals, _) =>  bases shouldBe "GG"; quals shouldBe "33"
-    }
+  "ReadSegment.apply(length, char)" should "create a new ReadSegment" in {
+    ReadSegment(2, 'T') shouldBe T(2)
+    ReadSegment(2, 'M') shouldBe M(2)
+    ReadSegment(2, 'S') shouldBe S(2)
+    ReadSegment(2, 'B') shouldBe B(2)
+    an[Exception] should be thrownBy ReadSegment(2, 'G')
   }
 
   "SegmentType.toString" should "return the String value of the segment code letter" in {
