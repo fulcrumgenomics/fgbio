@@ -356,14 +356,15 @@ class CodecConsensusCallerTest extends UnitSpec with OptionValues {
   // Tests for isPrimaryFrPair
   //////////////////////////////////////////////////////////////////////////////
 
-  "CodecConsensusCaller.isPrimaryFrPair" should "return the same answer regardless of argument order" in {
+  "CodecConsensusCaller.isPrimaryFrPair" should "classify a dovetail FR pair as FR regardless of argument order" in {
     val builder = new SamBuilder(readLength=129, baseQuality=35)
     val pair = builder.addPair(
       contig=0, start1=96, start2=49, cigar1="68S53M8S", cigar2="28S48M53S"
     ).tapEach(setReadSequence)
     val r1 = pair.head
     val r2 = pair.last
-    CodecConsensusCaller.isPrimaryFrPair(r1, r2) shouldBe CodecConsensusCaller.isPrimaryFrPair(r2, r1)
+    CodecConsensusCaller.isPrimaryFrPair(r1, r2) shouldBe true
+    CodecConsensusCaller.isPrimaryFrPair(r2, r1) shouldBe true
   }
 
   it should "classify a typical FR pair as FR" in {
