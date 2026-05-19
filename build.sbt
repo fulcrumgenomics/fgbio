@@ -172,12 +172,6 @@ lazy val commonSettings = Seq(
 ////////////////////////////////////////////////////////////////////////////////////////////////
 // root project
 ////////////////////////////////////////////////////////////////////////////////////////////////
-lazy val htsjdkExcludes = Seq(
-  ExclusionRule(organization="org.apache.ant"),
-  ExclusionRule(organization="gov.nih.nlm.ncbi"),
-  ExclusionRule(organization="org.testng"),
-  ExclusionRule(organization="com.google.cloud.genomics")
-)
 
 lazy val assemblySettings = Seq(
   assembly / test     := {},
@@ -195,7 +189,7 @@ lazy val root = Project(id="fgbio", base=file("."))
       "org.scala-lang.modules"    %% "scala-xml"      % "2.1.0",
       "com.fulcrumgenomics"       %% "commons"        % "1.9.0",
       "com.fulcrumgenomics"       %% "sopt"           % "1.2.0",
-      "com.github.samtools"       %  "htsjdk"         % "4.2.0" excludeAll(htsjdkExcludes: _*),
+      "com.github.samtools"       %  "htsjdk"         % "5.0.0",
       "org.apache.commons"        %  "commons-math3"  % "3.6.1",
       "com.beachape"              %% "enumeratum"     % "1.7.0",
       "com.fulcrumgenomics"       %  "jlibdeflate"    % "0.1.0",
