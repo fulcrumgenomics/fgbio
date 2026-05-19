@@ -188,13 +188,14 @@ lazy val root = Project(id="fgbio", base=file("."))
       "org.scala-lang"            %  "scala-compiler" % scalaVersion.value,
       "org.scala-lang.modules"    %% "scala-xml"      % "2.4.0",
       "com.fulcrumgenomics"       %% "commons"        % "1.9.0",
-      "com.fulcrumgenomics"       %% "sopt"           % "1.2.0",
+      "com.fulcrumgenomics"       %% "sopt"           % "1.2.1",
       "com.github.samtools"       %  "htsjdk"         % "5.0.0",
       "org.apache.commons"        %  "commons-math3"  % "3.6.1",
       "com.beachape"              %% "enumeratum"     % "1.9.0",
 
       //---------- Test libraries -------------------//
-      "org.scalatest"             %% "scalatest"     % "3.1.3"  % "test->*" excludeAll ExclusionRule(organization="org.junit", name="junit")
+      "org.scalatest"             %% "scalatest"     % "3.2.20" % "test->*" excludeAll ExclusionRule(organization="org.junit", name="junit"),
+      "com.vladsch.flexmark"      %  "flexmark-all"  % "0.64.8" % "test"
   ))
   .settings(dependencyOverrides ++= Seq(
       "org.apache.logging.log4j" % "log4j-api"   % "[2.26.0,)",
