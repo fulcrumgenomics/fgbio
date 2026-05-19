@@ -32,6 +32,9 @@ import com.fulcrumgenomics.umi.UmiConsensusCaller.{ConsensusKvMetric, ReadType, 
 import com.fulcrumgenomics.util.NumericTypes.PhredScore
 import com.fulcrumgenomics.util.Sequences
 import htsjdk.samtools.SAMTag
+import htsjdk.samtools.SamPairUtil.PairOrientation
+
+import scala.collection.mutable
 
 /**
   * Consensus caller for CODEC sequencing[1].  In CODEC each read-pair has an R1 which is generated from one
@@ -170,10 +173,25 @@ class CodecConsensusCaller(readNamePrefix: String,
       Nil
     }
     else {
-      // Extract just the primary alignments and then clip where they extend past the ends of their mates
-      // TODO: Remove the isFrPair here and handle chimeric reads or reads with one unmapped etc.
-      val primaries = pairs.filterNot(r => r.secondary || r.supplementary).filter(_.isFrPair)
-      primaries.groupBy(_.name).foreach { case (_, Seq(rec, mate)) => clipper.clipExtendingPastMateEnds(rec, mate) }
+      // Group the primary alignments by read name and retain only templates that form a single
+      // primary FR pair. The FR check is performed at the pair level (via `isPrimaryFrPair`)
+      // because htsjdk's per-record `SamPairUtil.getPairOrientation` historically disagreed
+      // between mates on dovetail pairs whose aligned ends coincided, which previously caused a
+      // `scala.MatchError` on a singleton read-name bucket here. See
+      // https://github.com/samtools/htsjdk/pull/1771 for the upstream fix (htsjdk 5.0.0+).
+      // Template order is preserved from BAM-iteration order (not hash order) so that downstream
+      // `maxBy` tie-breaks on `cigar.lengthOnTarget` are stable across JVMs.
+      // TODO: handle chimeric reads or reads with one unmapped etc.
+      val primaryPairs = CodecConsensusCaller.orderedPrimaryPairs(
+        pairs.filterNot(r => r.secondary || r.supplementary)
+      )
+      val (frPairs, nonFrPairs) = primaryPairs.partition {
+        case (_, Seq(a, b)) => CodecConsensusCaller.isPrimaryFrPair(a, b)
+        case _              => false
+      }
+      rejectRecords(nonFrPairs.flatMap(_._2), RejectionReason.NotPrimaryFrPair)
+      frPairs.foreach { case (_, Seq(rec, mate)) => clipper.clipExtendingPastMateEnds(rec, mate) }
+      val primaries = frPairs.flatMap(_._2)
 
       val r1s = filterToMostCommonAlignment(primaries.filter(_.firstOfPair).map(toSourceReadForCodec))
       val r2s = filterToMostCommonAlignment(primaries.filter(_.secondOfPair).map(toSourceReadForCodec))
@@ -373,5 +391,44 @@ class CodecConsensusCaller(readNamePrefix: String,
       ConsensusKvMetric("duplex_disagreement_base_count", this.duplexErrorBases, "Number of consensus bases at which the top and bottom strands disagreed"),
       ConsensusKvMetric("duplex_disagreement_rate", duplexErrorRate, "Rate of top/bottom strand disagreement within duplex regions of consensus reads")
     )
+  }
+}
+
+object CodecConsensusCaller {
+  /** Groups primary records by read name while preserving BAM-iteration order of templates.
+    *
+    * Scala's `Seq.groupBy` returns a hash-keyed `Map`, so calling `.toSeq` on it produces a
+    * template order that depends on the JVM's `String#hashCode` and the `HashMap` layout.
+    * Downstream code selects the longest R1 and R2 via `maxBy(_.cigar.lengthOnTarget)`, which
+    * returns the first element in iteration order on ties; relying on hash order there yields
+    * non-obvious, JVM-dependent winners. This helper instead orders templates by the first
+    * occurrence of each read name in the input (i.e. BAM-iteration order), so tie-breaks are
+    * stable and match the order the records were observed.
+    */
+  private[umi] def orderedPrimaryPairs(records: Seq[SamRecord]): Seq[(String, Seq[SamRecord])] = {
+    val byName = mutable.LinkedHashMap.empty[String, mutable.ArrayBuffer[SamRecord]]
+    records.foreach { rec => byName.getOrElseUpdate(rec.name, mutable.ArrayBuffer.empty) += rec }
+    byName.iterator.map { case (name, recs) => (name, recs.toSeq) }.toSeq
+  }
+
+  /** Returns true if the two records form an FR pair, computing the answer symmetrically in
+    * its arguments. After validating that both records are mapped to the same contig on
+    * opposite strands, delegates to htsjdk's `SamPairUtil.getPairOrientation` evaluated on
+    * the reverse-strand record: that branch derives both 5' positions from CIGARs
+    * (`mate.alignmentStart` vs `record.alignmentEnd`) and is independent of MC/TLEN, so the
+    * answer is consistent regardless of which record of the pair this is called with. See
+    * https://github.com/samtools/htsjdk/pull/1771 (htsjdk 5.0.0+) for the underlying
+    * per-record asymmetry this avoids; once we no longer need to support older htsjdk
+    * versions for this caller, this helper can be replaced with `SamRecord.isFrPair`.
+    */
+  private[umi] def isPrimaryFrPair(a: SamRecord, b: SamRecord): Boolean = {
+    if (!a.mapped || !b.mapped) false
+    else if (!a.mateMapped || !b.mateMapped) false
+    else if (a.refIndex != b.refIndex) false
+    else if (a.positiveStrand == b.positiveStrand) false
+    else {
+      val rev = if (a.positiveStrand) b else a
+      rev.pairOrientation == PairOrientation.FR
+    }
   }
 }
