@@ -30,9 +30,8 @@ Mapping information will not be adjusted, as such, this tool should not be used 
 it will lead to an BAM with inconsistent records.
 
 The read structure describes the structure of a given read as one or more read segments. A read segment describes
-a contiguous stretch of bases of the same type (ex. template bases) of some length and some offset from the start
-of the read.  Read structures are made up of `<number><operator>` pairs much like the CIGAR string in BAM files.
-Five kinds of operators are recognized:
+a contiguous stretch of bases of the same type (ex. template bases) of some length.  Read structures are made up
+of `<number><operator>` pairs much like the CIGAR string in BAM files.  Five kinds of operators are recognized:
 
 1. `T` identifies a template read
 2. `B` identifies a sample barcode read
@@ -40,8 +39,12 @@ Five kinds of operators are recognized:
 4. `C` identifies a cell barcode read
 5. `S` identifies a set of bases that should be skipped or ignored
 
-The last `<number><operator>` pair may be specified using a '+' sign instead of number to denote "all remaining
-bases". This is useful if, e.g., fastqs have been trimmed and contain reads of varying length.
+At most one `<number><operator>` pair may use a `+` sign in place of the number to denote "all remaining bases",
+and it may appear at any position in the read structure.  This is useful if, e.g., fastqs have been trimmed and
+contain reads of varying length.
+
+Note that when a clipping attribute is given via `--clipping-attribute`, every segment except possibly the last
+must have a fixed length.
 
 An example would be `10B3M7S100T` which describes 120 bases, with the first ten bases being a sample barcode,
 bases 11-13 being a molecular index, bases 14-20 ignored, and bases 21-120 being template bases. See
