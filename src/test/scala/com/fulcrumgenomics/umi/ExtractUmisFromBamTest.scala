@@ -447,5 +447,17 @@ class ExtractUmisFromBamTest extends UnitSpec with OptionValues {
     record("XT") = 40
     ExtractUmisFromBam.updateClippingInformation(record, Some("XT"), ReadStructure("20T10M70T"))
     record[Int]("XT") shouldBe 30
+
+    // terminal `+` is the only positive `+` case allowed; clip should shift by the same 10 as `10M90T`
+    record("XT") = 50
+    ExtractUmisFromBam.updateClippingInformation(record, Some("XT"), ReadStructure("10M+T"))
+    record[Int]("XT") shouldBe 40
+
+    // a non-terminal `+` cannot be combined with a clipping attribute, since translating the clip
+    // position would require knowing the read length
+    record("XT") = 30
+    an[Exception] should be thrownBy {
+      ExtractUmisFromBam.updateClippingInformation(record, Some("XT"), ReadStructure("10M+M5T"))
+    }
   }
 }
