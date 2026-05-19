@@ -34,6 +34,8 @@ import com.fulcrumgenomics.util.Sequences
 import htsjdk.samtools.SAMTag
 import htsjdk.samtools.SamPairUtil.PairOrientation
 
+import scala.collection.mutable
+
 /**
   * Consensus caller for CODEC sequencing[1].  In CODEC each read-pair has an R1 which is generated from one
   * strand of the original duplex and an R2 which is generated from the opposite strand of the original duplex.
@@ -404,8 +406,9 @@ object CodecConsensusCaller {
     * stable and match the order the records were observed.
     */
   private[umi] def orderedPrimaryPairs(records: Seq[SamRecord]): Seq[(String, Seq[SamRecord])] = {
-    val byName = records.groupBy(_.name)
-    records.iterator.map(_.name).distinct.map(name => (name, byName(name))).toSeq
+    val byName = mutable.LinkedHashMap.empty[String, mutable.ArrayBuffer[SamRecord]]
+    records.foreach { rec => byName.getOrElseUpdate(rec.name, mutable.ArrayBuffer.empty) += rec }
+    byName.iterator.map { case (name, recs) => (name, recs.toSeq) }.toSeq
   }
 
   /** Returns true if the two records form an FR pair, computing the answer symmetrically in
