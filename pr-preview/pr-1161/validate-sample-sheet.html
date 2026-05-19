@@ -1,0 +1,66 @@
+---
+---
+<!doctype html>
+<html lang="en">
+
+	<head>
+		{% include head.html title="Validate a Sample Sheet" %}
+		<script type="text/javascript" src="https://code.jquery.com/jquery-1.12.4.js"></script>
+		<script type="text/javascript" src="js/validate-sample-sheet.js"></script>
+	</head>
+
+	<noscript>This page requires JavaScript. Please enable it in your browser settings.</noscript>
+
+	<body>
+		<div class="wrapper">
+			{% include header.html %}
+			<section>
+				<h2>Validate a Sample Sheet for <a href="http://fulcrumgenomics.github.io/fgbio/tools/latest/DemuxFastqs.html">DemuxFastqs</a></h2>
+				<p>This utility validates a Sample Sheet or Metadata CSV file used as input to <a href="http://fulcrumgenomics.github.io/fgbio/tools/latest/DemuxFastqs.html">DemuxFastqs</a>.</p>
+
+				<p>This utility does not validate all Illumina Experiment Manager sample sheets!</p>
+							
+				<p>The Sample Barcode Column below corresponds to the <code>--column-for-sample-barcode</code> option.</p>
+
+				<table>
+					<col align="left" width="20%">
+					<col align="left" width="80%">
+					<tr>
+						<td><label>Sample Barcode Column: </label></td>
+						<td><input type="text" id="sample-sheet-column" value="Sample_Barcode"/></td>
+					</tr>
+					<tr>
+					<td><label>SampleSheet or Metadata CSV: </label></td>
+					<td><textarea rows="10", cols="120" id="sample-sheet-input" ></textarea></td>
+					</tr>
+					<tr>
+						<td><input type="submit" id="submit-sample-sheet"/></td>
+						<td></td>
+					</tr>
+					<tr>
+						<td>Result: </td>
+						<td><div id="sample-sheet-result"></div></td>
+					</tr>
+				</table>
+			</section>
+		</div>
+		{% include footer.html %}
+		<script type="text/javascript">
+$( "#submit-sample-sheet" ).click(function() {
+  var sampleSheet   = $( "#sample-sheet-input" ).val();
+  var column        = $( "#sample-sheet-column" ).val();
+  var message       = validateSampleSheet(sampleSheet, column);
+  var targetMessage = "div#sample-sheet-result";
+  if (message == null) {
+	  $( targetMessage ).text("Valid!");
+	  $( targetMessage ).css('color', '#1E8449');
+  }
+  else {
+	  $( targetMessage ).text(message);
+	  $( targetMessage ).css('color', '#922B21');
+  }
+  $( targetMessage ).css("font-weight","Bold");
+});
+		</script>
+	</body>
+</html
