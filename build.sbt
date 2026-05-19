@@ -186,20 +186,20 @@ lazy val root = Project(id="fgbio", base=file("."))
     libraryDependencies ++= Seq(
       "org.scala-lang"            %  "scala-reflect"  % scalaVersion.value,
       "org.scala-lang"            %  "scala-compiler" % scalaVersion.value,
-      "org.scala-lang.modules"    %% "scala-xml"      % "2.1.0",
+      "org.scala-lang.modules"    %% "scala-xml"      % "2.4.0",
       "com.fulcrumgenomics"       %% "commons"        % "1.9.0",
       "com.fulcrumgenomics"       %% "sopt"           % "1.2.0",
       "com.github.samtools"       %  "htsjdk"         % "5.0.0",
       "org.apache.commons"        %  "commons-math3"  % "3.6.1",
-      "com.beachape"              %% "enumeratum"     % "1.7.0",
+      "com.beachape"              %% "enumeratum"     % "1.9.0",
 
       //---------- Test libraries -------------------//
       "org.scalatest"             %% "scalatest"     % "3.1.3"  % "test->*" excludeAll ExclusionRule(organization="org.junit", name="junit")
   ))
   .settings(dependencyOverrides ++= Seq(
-      "org.apache.logging.log4j" % "log4j-api"   % "[2.17.0,)",
-      "org.apache.logging.log4j" % "log4j-core"  % "[2.17.0,)",
-      "org.xerial.snappy"        % "snappy-java" % "[1.1.8.4,)"
+      "org.apache.logging.log4j" % "log4j-api"   % "[2.26.0,)",
+      "org.apache.logging.log4j" % "log4j-core"  % "[2.26.0,)",
+      "org.xerial.snappy"        % "snappy-java" % "[1.1.10.7,)"
   ))
 
 
