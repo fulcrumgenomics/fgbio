@@ -30,10 +30,10 @@ import com.fulcrumgenomics.commons.CommonsDef._
 import com.fulcrumgenomics.commons.util.{LazyLogging, LogLevel, Logger}
 import com.fulcrumgenomics.sopt.cmdline.{CommandLineParser, CommandLineProgramParserStrings}
 import com.fulcrumgenomics.sopt.{Sopt, arg}
-import com.fulcrumgenomics.util.{Io, LibdeflateDeflaterFactory, LibdeflateInflaterFactory, LibdeflateSupport}
+import com.fulcrumgenomics.util.Io
 import com.fulcrumgenomics.vcf.api.VcfWriter
 import htsjdk.samtools.ValidationStringency
-import htsjdk.samtools.util.{BlockCompressedOutputStream, BlockGunzipper, IOUtil, SnappyLoader}
+import htsjdk.samtools.util.{BlockCompressedOutputStream, IOUtil, SnappyLoader}
 
 import java.io.IOException
 import java.net.InetAddress
@@ -103,12 +103,6 @@ class FgBioMain extends LazyLogging {
     // Turn down HTSJDK logging
     htsjdk.samtools.util.Log.setGlobalLogLevel(htsjdk.samtools.util.Log.LogLevel.WARNING)
 
-    // Use jlibdeflate for accelerated compression/decompression if available
-    if (LibdeflateSupport.isSupported) {
-      BlockCompressedOutputStream.setDefaultDeflaterFactory(new LibdeflateDeflaterFactory)
-      BlockGunzipper.setDefaultInflaterFactory(new LibdeflateInflaterFactory)
-    }
-
     val startTime = System.currentTimeMillis()
     val parser    = new CommandLineParser[FgBioTool](name)  // Keep a reference to the parser so we can get the command line
     val exit      = parser.parseCommandAndSubCommand[FgBioCommonArgs](args.toIndexedSeq, Sopt.find[FgBioTool](packageList)) match {
@@ -170,13 +164,11 @@ class FgBioMain extends LazyLogging {
     val user       = System.getProperty("user.name")
     val jreVersion = System.getProperty("java.runtime.version")
     val snappy     = if (new SnappyLoader().isSnappyAvailable) "with snappy" else "without snappy"
-    val inflater   = if (LibdeflateSupport.isSupported) "LibdeflateInflater" else "JdkInflater"
-    val deflater   = if (LibdeflateSupport.isSupported) "LibdeflateDeflater" else "JdkDeflater"
     val maxMemory  = {
       val mib = Runtime.getRuntime.maxMemory() / (1024 * 1024)
       if (mib >= 1024) f"${mib / 1024.0}%.1fg" else s"${mib}m"
     }
-    logger.info(s"Executing $tool from $name version $version as $user@$host on JRE $jreVersion with max heap memory $maxMemory, $snappy, $inflater, and $deflater")
+    logger.info(s"Executing $tool from $name version $version as $user@$host on JRE $jreVersion with max heap memory $maxMemory, $snappy")
   }
 
   /** Prints a line of useful information when a tool stops executing. */
