@@ -32,6 +32,7 @@ import com.fulcrumgenomics.commons.collection.BetterBufferedIterator
 import com.fulcrumgenomics.commons.util.{LazyLogging, NumericCounter, SimpleCounter}
 import com.fulcrumgenomics.sopt.{arg, clp}
 import com.fulcrumgenomics.util.Metric.{Count, Proportion}
+import com.fulcrumgenomics.util.NumericTypes.PhredScore
 import com.fulcrumgenomics.util._
 import htsjdk.samtools.SAMTag
 import htsjdk.samtools.util.{Interval, IntervalList, Murmur3, OverlapDetector}
@@ -277,6 +278,8 @@ class CollectDuplexSeqMetrics
   @arg(flag='t', doc="The tag containing the raw UMI.")  val umiTag: String = ConsensusTags.UmiBases,
   @arg(flag='T', doc="The output tag for UMI grouping.") val miTag: String = ConsensusTags.MolecularId,
   @arg(flag='c', doc="The tag containing the cell barcode. When set, reads are partitioned by cell barcode when computing metrics, ensuring reads from different cells are analyzed independently.") val cellTag: String = SAMTag.CB.name,
+  @arg(flag='1', doc="The Phred-scaled error rate for an error prior to the UMIs being integrated.") val errorRatePreUmi: PhredScore = DuplexConsensusCaller.ErrorRatePreUmi,
+  @arg(flag='2', doc="The Phred-scaled error rate for an error post the UMIs have been integrated.") val errorRatePostUmi: PhredScore = DuplexConsensusCaller.ErrorRatePostUmi,
   private val generatePlots: Boolean = true // not a CLP arg - here to allow disabling of plots to speed up testing
 ) extends FgBioTool with LazyLogging {
   import CollectDuplexSeqMetrics._
@@ -288,6 +291,8 @@ class CollectDuplexSeqMetrics
   validate(minAbReads >= 1, "min-ab-reads must be >= 1")
   validate(minBaReads >= 0, "min-ba-reads must be >= 0")
   validate(minBaReads <= minAbReads, "min-ab-reads must be >= min-ba-reads")
+  validate(errorRatePreUmi  > 0, "Phred-scaled error rate pre UMI must be > 0")
+  validate(errorRatePostUmi > 0, "Phred-scaled error rate post UMI must be > 0")
 
   // Setup a whole bunch of counters for various things!
   private val dsLevels               = Range.inclusive(1, 20).toArray.map(_ * 0.05)
@@ -297,7 +302,10 @@ class CollectDuplexSeqMetrics
   private val duplexUmiMetricsMap    = mutable.Map[String,DuplexUmiMetric]()
 
   // A consensus caller used to generate consensus UMI sequences
-  private val consensusBuilder = new SimpleConsensusCaller()
+  private val consensusBuilder = new SimpleConsensusCaller(
+    errorRatePreLabeling  = this.errorRatePreUmi,
+    errorRatePostLabeling = this.errorRatePostUmi,
+  )
 
   // A Murmur3 hash used to do the downsampling of the reads by generating an int hash of the read name
   // scaling it into the range 0-1 and then storing it a a transient attribute on the SAMRecord
