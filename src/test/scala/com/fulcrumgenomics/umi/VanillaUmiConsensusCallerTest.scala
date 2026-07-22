@@ -764,6 +764,33 @@ class VanillaUmiConsensusCallerTest extends UnitSpec with OptionValues {
     consensus[String](ConsensusTags.UmiBases) shouldBe "TNT"
   }
 
+  it should "use the configured post-UMI error rate when calling the consensus UMI (RX)" in {
+    /** Calls the consensus over a family whose UMI bases disagree two-to-one, with the given post-UMI error rate. */
+    def consensusUmi(errorRatePostUmi: PhredScore): String = {
+      val builder = new SamBuilder(readLength=10)
+      Seq("A", "A", "C").zipWithIndex.foreach { case (umi, index) =>
+        builder.addFrag(s"READ$index", start=1, attrs=Map(DefaultTag -> "AAA", ConsensusTags.UmiBases -> umi))
+      }
+
+      val options = cco(
+        errorRatePreUmi         = PhredScore.MaxValue,
+        errorRatePostUmi        = errorRatePostUmi,
+        minInputBaseQuality     = 2.toByte,
+        minConsensusBaseQuality = 0.toByte,
+        minReads                = 1,
+      )
+      val consensuses = cc(options).consensusReadsFromSamRecords(builder.toSeq)
+
+      consensuses.length shouldBe 1
+      consensuses.head[String](ConsensusTags.UmiBases)
+    }
+
+    // A high error rate post-UMI makes the two-to-one majority uninformative, so the UMI base is not called.
+    consensusUmi(errorRatePostUmi=1.toByte) shouldBe "N"
+    // A low error rate post-UMI lets the two-to-one majority stand.
+    consensusUmi(errorRatePostUmi=45.toByte) shouldBe "A"
+  }
+
   it should "not double-count rejected reads when both ends of a pair fail consensus calling (issue #1135)" in {
     val len = 10
     val builder = new SamBuilder(readLength=len)
