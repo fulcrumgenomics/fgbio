@@ -55,13 +55,45 @@ object MathUtil {
     if (a == b) 0L
     else if (java.lang.Double.isNaN(a) || java.lang.Double.isNaN(b)) Long.MaxValue
     else if (a.isInfinite || b.isInfinite) Long.MaxValue
-    else if ((a < 0) != (b < 0)) Long.MaxValue
-    else Math.abs(java.lang.Double.doubleToLongBits(a) - java.lang.Double.doubleToLongBits(b))
+    else {
+      val aBits = java.lang.Double.doubleToLongBits(a)
+      val bBits = java.lang.Double.doubleToLongBits(b)
+      // The sign of the *representation* is compared rather than the sign of the value: -0.0 is not `< 0`, but its
+      // representation is Long.MinValue, so treating it as non-negative would overflow the subtraction below.
+      // Representations that share a sign bit lie in the same half of the long range, so the subtraction is safe.
+      if ((aBits < 0) != (bBits < 0)) Long.MaxValue else Math.abs(aBits - bBits)
+    }
   }
 
   /** True if `a` and `b` are within either an absolute `epsilon` or `maxUlps` ulps of one another. */
   private def approximatelyEqual(a: Double, b: Double, epsilon: Double, maxUlps: Int): Boolean = {
     Math.abs(a - b) <= epsilon || ulpsBetween(a, b) <= maxUlps
+  }
+
+  /** True if more than one eligible entry of `ds` is approximately equal to `target`.
+    *
+    * `NaN`s are always ineligible, and `-Infinity` is ineligible unless `allowNegativeInfinity` is set, mirroring
+    * the entries that were candidates for the extremum in the first place. The scan stops as soon as a second
+    * match is seen; these functions sit on the consensus calling hot path, so neither the predicate nor the count
+    * is worth materialising.
+    */
+  private def hasApproximateTie(ds: Array[Double],
+                                target: Double,
+                                epsilon: Double,
+                                maxUlps: Int,
+                                allowNegativeInfinity: Boolean): Boolean = {
+    var seen = false
+    var idx  = 0
+    while (idx < ds.length) {
+      val v = ds(idx)
+      if (!java.lang.Double.isNaN(v) && (Double.NegativeInfinity != v || allowNegativeInfinity) &&
+          approximatelyEqual(v, target, epsilon, maxUlps)) {
+        if (seen) return true
+        seen = true
+      }
+      idx += 1
+    }
+    false
   }
 
   /** Calculates the arithmetic mean of an array of bytes. The computation is performed
@@ -104,10 +136,6 @@ object MathUtil {
     */
   def minWithIndex(ds: Array[Double], allowNegativeInfinity: Boolean=false, requireUniqueMinimum: Boolean=false, epsilon: Double = MathUtil.epsilon, maxUlps: Int = MathUtil.maxUlps): (Double, Int) = {
     if (ds.length == 0) throw new NoSuchElementException("Cannot find the min of a zero length array.")
-    def eligible(v: Double): Boolean = {
-      !java.lang.Double.isNaN(v) && (Double.NegativeInfinity != v || allowNegativeInfinity)
-    }
-
     var min      = Double.MaxValue
     var minIndex = -1
     var assigned = false
@@ -115,7 +143,8 @@ object MathUtil {
     var idx      = 0
     while (idx < len) {
       val v = ds(idx)
-      if (eligible(v) && (!assigned || v < min)) {
+      if (!java.lang.Double.isNaN(v) && (Double.NegativeInfinity != v || allowNegativeInfinity) &&
+          (!assigned || v < min)) {
         min = v
         minIndex = idx
         assigned = true
@@ -126,26 +155,10 @@ object MathUtil {
 
     if (!assigned) throw new NoSuchElementException("All values are NaNs or negative infinity.")
 
-    // Ties are counted against the final minimum, not a running one: a near-tie is a property of the values, and
+    // Ties are detected against the final minimum, not a running one: a near-tie is a property of the values, and
     // comparing against a running minimum would only detect it when the tied value happens to appear later.
-    if (requireUniqueMinimum && countApproximatelyEqual(ds, min, epsilon, maxUlps, eligible) > 1) (min, -1)
+    if (requireUniqueMinimum && hasApproximateTie(ds, min, epsilon, maxUlps, allowNegativeInfinity)) (min, -1)
     else (min, minIndex)
-  }
-
-  /** Counts the eligible entries of `ds` that are approximately equal to `target`. */
-  private def countApproximatelyEqual(ds: Array[Double],
-                                      target: Double,
-                                      epsilon: Double,
-                                      maxUlps: Int,
-                                      eligible: Double => Boolean): Int = {
-    var count = 0
-    var idx   = 0
-    while (idx < ds.length) {
-      val v = ds(idx)
-      if (eligible(v) && approximatelyEqual(v, target, epsilon, maxUlps)) count += 1
-      idx += 1
-    }
-    count
   }
 
 
@@ -167,8 +180,6 @@ object MathUtil {
     */
   def maxWithIndex(ds: Array[Double], requireUniqueMaximum: Boolean=false, epsilon: Double = MathUtil.epsilon, maxUlps: Int = MathUtil.maxUlps): (Double,Int) = {
     if (ds.length == 0) throw new NoSuchElementException("Cannot find the max of a zero length array.")
-    def eligible(v: Double): Boolean = !java.lang.Double.isNaN(v)
-
     var max      =  Double.MinValue
     var maxIndex = -1
     var assigned = false
@@ -176,7 +187,7 @@ object MathUtil {
     var idx = 0
     while (idx < len) {
       val v = ds(idx)
-      if (eligible(v) && (!assigned || v > max)) {
+      if (!java.lang.Double.isNaN(v) && (!assigned || v > max)) {
         max = v
         maxIndex = idx
         assigned = true
@@ -186,9 +197,10 @@ object MathUtil {
 
     if (!assigned) throw new NoSuchElementException("Array contained only NaNs.")
 
-    // Ties are counted against the final maximum, not a running one: a near-tie is a property of the values, and
+    // Ties are detected against the final maximum, not a running one: a near-tie is a property of the values, and
     // comparing against a running maximum would only detect it when the tied value happens to appear later.
-    if (requireUniqueMaximum && countApproximatelyEqual(ds, max, epsilon, maxUlps, eligible) > 1) (max, -1)
+    // Negative infinities are eligible here: unlike the minimum, they are never excluded from the maximum.
+    if (requireUniqueMaximum && hasApproximateTie(ds, max, epsilon, maxUlps, allowNegativeInfinity=true)) (max, -1)
     else (max, maxIndex)
   }
 }

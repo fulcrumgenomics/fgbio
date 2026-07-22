@@ -147,6 +147,24 @@ class MathUtilTest extends UnitSpec {
     }
   }
 
+  it should "honour an explicit maxUlps" in {
+    val value  = -500.0
+    val oneUlp = Math.ulp(value)
+
+    // No ulps of tolerance: only exactly equal values tie, and the absolute epsilon is far too small to match here.
+    maxWithIndex(Array(value, value - oneUlp, -1e9, -1e9), requireUniqueMaximum=true, maxUlps=0) shouldBe (value, 0)
+
+    // A wider tolerance ties values several ulps apart.
+    maxWithIndex(Array(value, value - (oneUlp * 3), -1e9, -1e9), requireUniqueMaximum=true, maxUlps=8) shouldBe (value, -1)
+  }
+
+  it should "not treat negative zero as tied with a distant value of the opposite sign" in {
+    // -0.0 is not `< 0`, but its bit representation is Long.MinValue. Comparing the sign of the value rather than
+    // of the representation would put these in the same branch and overflow the ulp subtraction.
+    maxWithIndex(Array(1.0, -0.0), requireUniqueMaximum=true) shouldBe (1.0, 0)
+    minWithIndex(Array(-0.0, 1.0), requireUniqueMinimum=true) shouldBe (-0.0, 0)
+  }
+
   it should "detect a near-tie regardless of order when finding the minimum" in {
     val value  = 20.0
     val oneUlp = Math.ulp(value)
