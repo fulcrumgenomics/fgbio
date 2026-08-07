@@ -94,8 +94,9 @@ class CallCodecConsensusReads
  @arg(flag='S', doc="The sort order of the output, the same as the input if not given.") val sortOrder: Option[SamOrder] = None,
  @arg(flag='M', doc="The minimum number of codec read pairs to form a consensus read.") val minReadPairs: Int = 1,
  @arg(doc="""
-            |The maximum number of reads to use when building a single-strand consensus. If more than this many reads are
-            |present in a tag family, the family is randomly downsampled to exactly max-reads-pairs reads.
+            |The maximum number of reads to use when building a single-strand consensus. If more than this many read
+            |pairs are present in a tag family, the family is randomly but deterministically downsampled to exactly
+            |max-read-pairs read pairs; the same reads are selected on every run and for any number of threads.
           """)
  val maxReadPairs: Option[Int] = None,
  @arg(flag='d', doc="Minimum length of the duplex region (where R1 and R2 overlap).") val minDuplexLength: Int = 1,

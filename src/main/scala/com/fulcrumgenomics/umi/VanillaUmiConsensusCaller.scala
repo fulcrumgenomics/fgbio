@@ -25,7 +25,7 @@
 
 package com.fulcrumgenomics.umi
 
-import com.fulcrumgenomics.FgBioDef.forloop
+import com.fulcrumgenomics.FgBioDef.{forloop, unreachable}
 import com.fulcrumgenomics.bam.api.{SamRecord, SamWriter}
 import com.fulcrumgenomics.commons.util.LazyLogging
 import com.fulcrumgenomics.umi.ConsensusCaller.Base
@@ -35,9 +35,9 @@ import com.fulcrumgenomics.umi.VanillaUmiConsensusCallerOptions._
 import com.fulcrumgenomics.util.NumericTypes._
 import com.fulcrumgenomics.util.Sequences
 import htsjdk.samtools.SAMTag
+import htsjdk.samtools.util.Murmur3
 
 import java.util
-import scala.util.Random
 
 /**
   * Holds the defaults for consensus caller options.
@@ -178,7 +178,31 @@ class VanillaUmiConsensusCaller(override val readNamePrefix: String,
     PhredScore.fromLogProbability(LogProbability.probabilityOfErrorTwoTrials(lnProbOne, lnProbTwo))
   }.toArray
 
-  private val random = new Random(42)
+  /** Hasher used to rank reads when downsampling a family to at most [[VanillaUmiConsensusCallerOptions.maxReads]]. */
+  private val hasher = new Murmur3(42)
+
+  /** Ranks a source read for downsampling.  The rank is derived from the read's name so that a given set of reads
+    * always downsamples to the same subset, independent of how many families this caller has previously downsampled
+    * and therefore independent of how work is divided across threads.  Because both ends of a template share a read
+    * name, they receive the same rank and so are retained or discarded together.
+    *
+    * Every [[SourceRead]] built by fgbio carries its source record, so a read without one cannot be ranked and is
+    * treated as a programming error rather than given a placeholder rank.  A placeholder would tie such reads
+    * together and let the stable sort select them by input order, which is the order dependence this ranking exists
+    * to remove. */
+  private def downsampleRank(read: SourceRead): Int = read.sam
+    .map(rec => this.hasher.hashUnencodedChars(rec.name))
+    .getOrElse(unreachable("Cannot downsample a source read with no source record."))
+
+  /** Downsamples the reads to at most `maxReads` reads, retaining those with the lowest ranks.  The rank is computed
+    * once per read rather than passed to `sortBy`, which would re-hash on every comparison. */
+  private def downsample(reads: Seq[SourceRead], maxReads: Int): Seq[SourceRead] = {
+    if (reads.length <= maxReads) reads else {
+      val ranked = reads.iterator.map(read => (downsampleRank(read), read)).toArray
+      ranked.sortInPlaceBy { case (rank, _) => rank }
+      ranked.iterator.take(maxReads).map { case (_, read) => read }.toIndexedSeq
+    }
+  }
 
   /** Returns a clone of this consensus caller in a state where no previous reads were processed.  I.e. all counters
     * are set to zero.*/
@@ -285,7 +309,7 @@ class VanillaUmiConsensusCaller(override val readNamePrefix: String,
     }
     else {
       // First limit to max reads if necessary
-      val capped  = if (reads.size <= this.options.maxReads) reads else this.random.shuffle(reads).take(this.options.maxReads)
+      val capped  = downsample(reads, this.options.maxReads)
       // get the most likely consensus bases and qualities
       val consensusLength = consensusReadLength(capped, this.options.minReads)
       val consensusBases  = new Array[Base](consensusLength)

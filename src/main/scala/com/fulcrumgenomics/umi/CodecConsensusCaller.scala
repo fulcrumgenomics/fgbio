@@ -69,7 +69,7 @@ import scala.collection.mutable
   * @param errorRatePostUmi the estimated rate of errors in the DNA post attaching UMIs
   * @param minReadsPerStrand the minimum number of reads to form a single strand consensus from R1 or R2
   * @param maxReadsPerStrand the maximum number of reads to use when building a single strand consensus read before
-  *                          triggering random downsampling
+  *                          triggering downsampling
   * @param minDuplexLength the minimum length of the duplex region of a consensus read for the consensus read to be
   *                        built and emitted
   * @param singleStrandQual Reduce quality scores in single stranded regions of the consensus read to the given quality

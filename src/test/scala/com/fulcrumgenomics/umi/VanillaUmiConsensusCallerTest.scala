@@ -62,6 +62,19 @@ class VanillaUmiConsensusCallerTest extends UnitSpec with OptionValues {
     SourceRead(id="x", ("A"*len).getBytes, Array.tabulate(len)(_ => 30.toByte), cigar=cig)
   }
 
+  /** Builds `n` source reads of length `n`, each backed by a [[com.fulcrumgenomics.bam.api.SamRecord]] with a unique
+    * read name, where the read at index `i` carries a single mismatching base at offset `i`.  The `errors` array of a
+    * consensus built from a subset of these reads therefore identifies exactly which reads went into it. */
+  def srcsWithUniqueErrors(n: Int, namePrefix: String): IndexedSeq[SourceRead] = {
+    val builder = new SamBuilder(readLength=n)
+    val caller  = cc()
+    IndexedSeq.tabulate(n) { i =>
+      val bases = ("A" * n).updated(i, 'C')
+      val rec   = builder.addFrag(name=f"$namePrefix$i", start=100, bases=bases, attrs=Map(ConsensusTags.MolecularId -> "1")).value
+      caller.toSourceRead(rec, minBaseQuality=2.toByte, qualityTrim=false).value
+    }
+  }
+
   /**
     * Function to calculated the expected quality of a consensus base in non-log math, that should work for
     * modest values of Q and N.
@@ -163,10 +176,11 @@ class VanillaUmiConsensusCallerTest extends UnitSpec with OptionValues {
   }
 
   it should "downsample input reads so that each consensus is made from <= max reads" in {
-    val r = src("AAAAAAAAAA", "##########")
+    // Source reads must carry their source record to be ranked for downsampling, so build them from SamRecords.
+    val reads = srcsWithUniqueErrors(n=10, namePrefix="q")
 
     for (max <- Seq(3, 1000); n <- Range.inclusive(1, 10)) {
-      val srcs      = Seq.tabulate(n)(_ => r)
+      val srcs      = reads.take(n)
       val caller    = cc(cco(minReads=1, maxReads=max))
       val consensus = caller.consensusCall(srcs)
 
@@ -176,6 +190,73 @@ class VanillaUmiConsensusCallerTest extends UnitSpec with OptionValues {
         case Some(c)             => c.depths.forall(_ <= max) shouldBe true
       }
     }
+  }
+
+  it should "downsample to the same reads no matter how many families the caller downsampled previously" in {
+    val options = cco(minReads=1, maxReads=3)
+
+    // A caller that has not downsampled anything yet
+    val freshCaller = cc(options)
+    val srcs        = srcsWithUniqueErrors(n=10, namePrefix="q")
+    val expected    = freshCaller.consensusCall(srcs).value
+
+    // A caller that downsampled an unrelated family first
+    val usedCaller  = cc(options)
+    usedCaller.consensusCall(srcsWithUniqueErrors(n=10, namePrefix="p")).value
+    val actual      = usedCaller.consensusCall(srcs).value
+
+    // Sanity check that the family really was downsampled, otherwise there's nothing to be non-deterministic about
+    expected.depths.forall(_ == 3) shouldBe true
+    expected.errors.count(_ > 0) shouldBe 3
+
+    actual.errors shouldBe expected.errors
+    actual.quals  shouldBe expected.quals
+  }
+
+  it should "downsample to the same reads no matter what order the reads are given in" in {
+    val options = cco(minReads=1, maxReads=3)
+    val srcs    = srcsWithUniqueErrors(n=10, namePrefix="q")
+
+    val inOrder  = cc(options).consensusCall(srcs).value
+    val reversed = cc(options).consensusCall(srcs.reverse).value
+
+    inOrder.errors.count(_ > 0) shouldBe 3
+    reversed.errors shouldBe inOrder.errors
+  }
+
+  it should "retain the reads whose names hash lowest when downsampling" in {
+    val srcs      = srcsWithUniqueErrors(n=10, namePrefix="q")
+    val consensus = cc(cco(minReads=1, maxReads=3)).consensusCall(srcs).value
+
+    // Read i carries its only mismatch at offset i, so the offsets with errors name the reads that were retained.
+    // Independently derived from htsjdk's Murmur3(42) hashes of "q0".."q9": q0, q2 and q3 rank lowest.
+    val retained = consensus.errors.toIndexedSeq.zipWithIndex.collect { case (errors, offset) if errors > 0 => offset }
+    retained shouldBe Seq(0, 2, 3)
+  }
+
+  it should "fail rather than silently tie ranks when downsampling a read with no source record" in {
+    // A SourceRead built without a backing SamRecord cannot be ranked.  Ranking it with a placeholder would tie such
+    // reads together and let the stable sort pick by input order, reintroducing the order dependence the hash removes.
+    val srcs = IndexedSeq.tabulate(6) { i => src(("A" * 6).updated(i, 'C'), Seq.fill(6)(30)) }
+    an[IllegalStateException] shouldBe thrownBy { cc(cco(minReads=1, maxReads=3)).consensusCall(srcs) }
+  }
+
+  it should "retain the same templates on both ends of a pair when downsampling" in {
+    val caller  = cc(cco(minReads=1, maxReads=3))
+    val builder = new SamBuilder(readLength=10)
+    // Both ends on the plus strand so that neither is reverse complemented, keeping mismatch offsets comparable.
+    Range.inclusive(0, 9).foreach { i =>
+      val bases = ("A" * 10).updated(i, 'C')
+      builder.addPair(name=f"t$i", start1=100, start2=200, strand1=Plus, strand2=Plus,
+        bases1=bases, bases2=bases, attrs=Map(ConsensusTags.MolecularId -> "1"))
+    }
+    val recs = builder.toSeq
+
+    val read1 = caller.consensusFromSamRecords(recs.filter(_.firstOfPair)).value
+    val read2 = caller.consensusFromSamRecords(recs.filter(_.secondOfPair)).value
+
+    read1.errors.count(_ > 0) shouldBe 3
+    read2.errors shouldBe read1.errors
   }
 
   it should "mask bases with too low of a consensus quality" in {
