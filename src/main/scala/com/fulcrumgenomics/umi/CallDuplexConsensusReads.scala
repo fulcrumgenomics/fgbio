@@ -131,6 +131,7 @@ class CallDuplexConsensusReads
   stats.foreach(Io.assertCanWriteFile(_))
   validate(errorRatePreUmi  > 0, "Phred-scaled error rate pre UMI must be > 0")
   validate(errorRatePostUmi > 0, "Phred-scaled error rate post UMI must be > 0")
+  validate(maxReadsPerStrand.forall(_ >= 1), "--max-reads-per-strand must be >= 1.")
 
   override def execute(): Unit = {
     val in = SamSource(input)

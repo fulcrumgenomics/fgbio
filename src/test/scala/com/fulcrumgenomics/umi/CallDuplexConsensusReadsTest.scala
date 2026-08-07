@@ -26,6 +26,7 @@ package com.fulcrumgenomics.umi
 
 import com.fulcrumgenomics.FgBioDef._
 import com.fulcrumgenomics.bam.api.{SamOrder, SamRecord, SamSource}
+import com.fulcrumgenomics.sopt.cmdline.ValidationException
 import com.fulcrumgenomics.testing.SamBuilder.{Minus, Plus}
 import com.fulcrumgenomics.testing.{SamBuilder, UnitSpec}
 
@@ -54,6 +55,16 @@ class CallDuplexConsensusReadsTest extends UnitSpec {
       val out = makeTempFile("out.", ".bam")
     an[Exception] should be thrownBy { new CallDuplexConsensusReads(input=in, output=out, errorRatePreUmi=0.toByte).execute() }
     an[Exception] should be thrownBy { new CallDuplexConsensusReads(input=in, output=out, errorRatePostUmi=0.toByte).execute() }
+  }
+
+  it should "throw a validation exception if --max-reads-per-strand is less than one" in {
+    val in  = makeTempFile("in.", ".bam")
+    val out = makeTempFile("out.", ".bam")
+    // Validation happens at construction, so this fails only when the validation exists - not because the
+    // empty input file is unreadable.
+    an[ValidationException] should be thrownBy { new CallDuplexConsensusReads(input=in, output=out, maxReadsPerStrand=Some(0)) }
+    an[ValidationException] should be thrownBy { new CallDuplexConsensusReads(input=in, output=out, maxReadsPerStrand=Some(-1)) }
+    noException should be thrownBy { new CallDuplexConsensusReads(input=in, output=out, maxReadsPerStrand=Some(1)) }
   }
 
   it should "have working CLP and arg annotations" in {
