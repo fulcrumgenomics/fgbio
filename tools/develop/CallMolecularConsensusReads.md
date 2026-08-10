@@ -91,7 +91,7 @@ and the barcode is propagated to the output consensus read.
 |error-rate-post-umi|2|PhredScore|The Phred-scaled error rate for an error post the UMIs have been integrated.|Optional|1|40|
 |min-input-base-quality|m|PhredScore|Ignore bases in raw reads that have Q below this value.|Optional|1|10|
 |min-reads|M|Int|The minimum number of reads to produce a consensus base.|Required|1||
-|max-reads||Int|The maximum number of reads to use when building a consensus. If more than this many reads are present in a tag family, the family is randomly downsampled to exactly max-reads reads.|Optional|1||
+|max-reads||Int|The maximum number of reads to use when building a consensus. If more than this many reads are present in a tag family, the family is randomly but deterministically downsampled to exactly max-reads reads; the same reads are selected on every run and for any number of threads.|Optional|1||
 |output-per-base-tags|B|Boolean|If true produce tags on consensus reads that contain per-base information.|Optional|1|true|
 |sort-order|S|SamOrder|The sort order of the output, the same as the input if not given.|Optional|1||
 |debug|D|Boolean|Turn on debug logging.|Optional|1|false|
