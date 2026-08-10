@@ -65,7 +65,7 @@ min-input-base-quality are not counted in tag value calculations.
 |min-input-base-quality|m|PhredScore|Ignore bases in raw reads that have Q below this value.|Optional|1|10|
 |sort-order|S|SamOrder|The sort order of the output, the same as the input if not given.|Optional|1||
 |min-read-pairs|M|Int|The minimum number of codec read pairs to form a consensus read.|Optional|1|1|
-|max-read-pairs||Int|The maximum number of reads to use when building a single-strand consensus. If more than this many read pairs are present in a tag family, the family is downsampled to exactly max-read-pairs read pairs.  The cap is applied independently to each end.  Which reads are retained is determined by a hash of the read names, so the selection is reproducible across runs and independent of the number of threads used, and both ends of a template are retained or discarded together.|Optional|1||
+|max-read-pairs||Int|The maximum number of reads to use when building a single-strand consensus. If more than this many read pairs are present in a tag family, the family is randomly but deterministically downsampled to exactly max-read-pairs read pairs; the same reads are selected on every run and for any number of threads.|Optional|1||
 |min-duplex-length|d|Int|Minimum length of the duplex region (where R1 and R2 overlap).|Optional|1|1|
 |single-strand-qual|q|PhredScore|Reduce quality scores in single stranded regions of the consensus read to the given quality.|Optional|1||
 |outer-bases-qual|Q|PhredScore|Reduce the first and last `outer-bases-length` bases to the given quality.|Optional|1||

@@ -85,7 +85,7 @@ the _more stringent value comes earlier_.
 |trim|t|Boolean|If true, quality trim input reads in addition to masking low Q bases.|Optional|1|false|
 |sort-order|S|SamOrder|The sort order of the output, the same as the input if not given.|Optional|1||
 |min-reads|M|Int|The minimum number of input reads to a consensus read.|Required|3|1|
-|max-reads-per-strand||Int|The maximum number of reads to use when building a single-strand consensus. If more than this many reads are present for a strand, that strand is downsampled to exactly max-reads-per-strand reads.  The cap is applied independently to each end of each strand.  Which reads are retained is determined by a hash of the read names, so the selection is reproducible across runs and independent of the number of threads used, and both ends of a template are retained or discarded together.|Optional|1||
+|max-reads-per-strand||Int|The maximum number of reads to use when building a single-strand consensus. If more than this many reads are present for a strand, that strand is randomly but deterministically downsampled to exactly max-reads-per-strand reads; the same reads are selected on every run and for any number of threads.|Optional|1||
 |cell-tag|c|String|Tag containing the cell barcode.|Optional|1|CB|
 |threads||Int|The number of threads to use while consensus calling.|Optional|1|1|
 |consensus-call-overlapping-bases||Boolean|Consensus call overlapping bases in mapped paired end reads|Optional|1|true|
