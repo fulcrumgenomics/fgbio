@@ -126,4 +126,27 @@ class CallCodecConsensusReadsTest extends UnitSpec with OptionValues {
       metric.value.toString.toInt shouldBe 2
     }
   }
+
+  it should "not use either end of a half-mapped pair when calling a consensus" in {
+    val builder = new SamBuilder(readLength=30, sort=Some(SamOrder.TemplateCoordinate))
+    val attrs   = Map(("RX", "ACC-TGA"), ("MI", "hi"))
+    builder.addPair(name="mapped1", start1=100, start2=100, bases1="AC" * 15, bases2="AC" * 15, attrs=attrs)
+    builder.addPair(name="mapped2", start1=100, start2=100, bases1="AC" * 15, bases2="AC" * 15, attrs=attrs)
+    // A template whose R2 is unmapped is not a primary FR pair, so neither end may contribute to the consensus.
+    builder.addPair(name="halfmapped", start1=100, start2=100, bases1="AC" * 15, bases2="GT" * 15, unmapped2=true, attrs=attrs)
+
+    val out = makeTempFile("codec.", ".bam")
+    val rej = makeTempFile("rejects.", ".bam")
+    new CallCodecConsensusReads(input=builder.toTempFile(), output=out, readGroupId="ZZ", rejects=Some(rej)).execute()
+
+    val recs = readBamRecs(out)
+    recs should have size 1
+
+    // Only the two fully mapped templates contribute to each single-strand consensus.
+    recs.head[Int](ConsensusTags.PerRead.AbRawReadCount) shouldBe 2
+    recs.head[Int](ConsensusTags.PerRead.BaRawReadCount) shouldBe 2
+
+    // Every rejected record belongs to the half-mapped template.
+    readBamRecs(rej).foreach { rec => rec.name shouldBe "halfmapped" }
+  }
 }

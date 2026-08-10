@@ -110,4 +110,54 @@ class CallMolecularConsensusReadsTest extends UnitSpec {
       rec[String](specialCellTag) shouldBe "AB"
     }
   }
+
+  /** Builds a tag family of three read pairs at the same coordinates, two with both ends mapped and one whose R2 is
+    * unmapped.
+    *
+    * The two mapped R2s carry `G`s while the unmapped R2 carries `T`s, so the consensus R2 shows which reads
+    * contributed to it.  R2s are placed on the negative strand by [[SamBuilder]], so `toSourceRead` reverse
+    * complements them and a consensus built from the mapped R2s alone reads as `C`s. */
+  private def halfMappedFamily(rlen: Int): SamBuilder = {
+    val builder = new SamBuilder(baseQuality=30, readLength=rlen, readGroupId=Some("ABC"), sort=Some(SamOrder.TemplateCoordinate))
+    val attrs   = Map(DefaultTag -> "GATTACA:1")
+    builder.addPair(name="mapped:1",     start1=100, start2=300, bases1="A"*rlen, bases2="G"*rlen, attrs=attrs)
+    builder.addPair(name="mapped:2",     start1=100, start2=300, bases1="A"*rlen, bases2="G"*rlen, attrs=attrs)
+    builder.addPair(name="halfmapped:3", start1=100, start2=300, bases1="A"*rlen, bases2="T"*rlen, unmapped2=true, attrs=attrs)
+    builder
+  }
+
+  Seq(2, 3).foreach { maxReads =>
+    it should f"cap R1 at max-reads and build R2 from the mapped reads only with --max-reads=$maxReads" in {
+      val rlen    = 100
+      val output  = newBam
+      val rejects = newBam
+
+      new CallMolecularConsensusReads(
+        input       = halfMappedFamily(rlen).toTempFile(),
+        output      = output,
+        minReads    = 1,
+        maxReads    = Some(maxReads),
+        rejects     = Some(rejects),
+        readGroupId = "ABC"
+      ).execute()
+
+      // Exactly one consensus read pair is produced.
+      val records = readBamRecs(output)
+      records.size shouldBe 2
+      val r1 = records.find(_.firstOfPair).value
+      val r2 = records.find(_.secondOfPair).value
+
+      // All three R1s are mapped and eligible, so R1 is capped at max-reads.
+      r1[Int](ConsensusTags.PerRead.RawReadCount) shouldBe math.min(3, maxReads)
+      r1.basesString shouldBe "A" * rlen
+
+      // Only the two mapped R2s may contribute, whether or not the cap binds.  The unmapped R2's `C`s must not reach
+      // the consensus, and it must not be counted towards the consensus depth.
+      r2[Int](ConsensusTags.PerRead.RawReadCount) shouldBe 2
+      r2.basesString shouldBe "C" * rlen
+
+      // The unmapped R2 must not have been used, whether it was rejected by the caller or filtered before reaching it.
+      readBamRecs(rejects).foreach { rec => rec.name shouldBe "halfmapped:3" }
+    }
+  }
 }
