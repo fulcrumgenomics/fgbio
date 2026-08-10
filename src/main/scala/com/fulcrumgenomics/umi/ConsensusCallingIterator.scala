@@ -53,13 +53,12 @@ class ConsensusCallingIterator[ConsensusRead <: SimpleRead](sourceIterator: Iter
   private var collectedStats: Boolean = false
 
   protected val iter: Iterator[SamRecord] = {
-    // Only mapped reads may contribute to a consensus.  An unmapped read has no cigar, and an empty cigar is a prefix
-    // of every cigar, so `filterToMostCommonAlignment` would match it against whichever alignment group it was tested
-    // against first rather than rejecting it as a minority alignment.  Note that the mapped end of a half-mapped pair
-    // is still used; only the unmapped end is dropped.
+    // Templates with no mapped read at all are dropped here; the unmapped end of a half-mapped pair is passed through
+    // to the caller, which rejects it as `RejectionReason.Unmapped` so that it is counted and written to the rejects
+    // output rather than silently discarded.
     val filteredIterator = sourceIterator
       .filterNot (r => r.secondary || r.supplementary)
-      .filter(r => r.mapped)
+      .filter(r => r.mapped || (r.paired && r.mateMapped))
 
     // Wrap our input iterator in a progress logging iterator if we have a progress logger
     val progressIterator = progress match {

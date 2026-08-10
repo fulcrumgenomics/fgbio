@@ -27,6 +27,8 @@ package com.fulcrumgenomics.umi
 
 import com.fulcrumgenomics.bam.api.SamOrder
 import com.fulcrumgenomics.testing.{SamBuilder, UnitSpec}
+import com.fulcrumgenomics.umi.UmiConsensusCaller.{ConsensusKvMetric, RejectionReason}
+import com.fulcrumgenomics.util.Metric
 import com.fulcrumgenomics.umi.VanillaUmiConsensusCallerOptions._
 
 /**
@@ -131,6 +133,7 @@ class CallMolecularConsensusReadsTest extends UnitSpec {
       val rlen    = 100
       val output  = newBam
       val rejects = newBam
+      val stats   = makeTempFile("call_molecular_consensus_reads_test.", ".txt")
 
       new CallMolecularConsensusReads(
         input       = halfMappedFamily(rlen).toTempFile(),
@@ -138,6 +141,7 @@ class CallMolecularConsensusReadsTest extends UnitSpec {
         minReads    = 1,
         maxReads    = Some(maxReads),
         rejects     = Some(rejects),
+        stats       = Some(stats),
         readGroupId = "ABC"
       ).execute()
 
@@ -156,8 +160,14 @@ class CallMolecularConsensusReadsTest extends UnitSpec {
       r2[Int](ConsensusTags.PerRead.RawReadCount) shouldBe 2
       r2.basesString shouldBe "C" * rlen
 
-      // The unmapped R2 must not have been used, whether it was rejected by the caller or filtered before reaching it.
-      readBamRecs(rejects).foreach { rec => rec.name shouldBe "halfmapped:3" }
+      // The unmapped R2 must not have been used, and must be accounted for rather than vanishing:
+      // it is written to the rejects BAM and counted under its own rejection reason.
+      val rejected = readBamRecs(rejects)
+      rejected.map(rec => (rec.name, rec.secondOfPair)) should contain theSameElementsAs Seq(("halfmapped:3", true))
+
+      val metrics = Metric.read[ConsensusKvMetric](stats).map(m => m.key -> m.value.toString).toMap
+      metrics(s"raw_reads_rejected_for_${RejectionReason.Unmapped.code}") shouldBe "1"
+      metrics("raw_reads_considered") shouldBe "6"
     }
   }
 }
