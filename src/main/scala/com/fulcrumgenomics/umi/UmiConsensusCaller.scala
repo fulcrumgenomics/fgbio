@@ -86,6 +86,7 @@ object UmiConsensusCaller {
     case object HighDuplexDisagreement   extends _RejectionReason("high_duplex_disagreement",    "Too many errors between top/bottoms strands", false, false, true)
     case object ClipOverlapFailed        extends _RejectionReason("clip_overlap_failed",         "See https://github.com/fulcrumgenomics/fgbio/issues/1090", false, false, true)
     case object NotPrimaryFrPair         extends _RejectionReason("not_primary_fr_pair",         "Template did not have a single primary FR pair of reads", false, false, true)
+    case object Unmapped                 extends _RejectionReason("unmapped",                    "Read is unmapped", true, true, true)
   }
 
   /** Metric class for outputting consensus calling statistics. */
@@ -351,10 +352,18 @@ trait UmiConsensusCaller[ConsensusRead <: SimpleRead] {
     */
   final def consensusReadsFromSamRecords(recs: Seq[SamRecord]): Seq[SamRecord] = {
     this._totalReads += recs.size
+
+    // Unmapped reads cannot contribute to a consensus: they have no cigar, and an empty cigar is a prefix of every
+    // cigar, so `filterToMostCommonAlignment` would match one against whichever alignment group it was tested against
+    // first rather than rejecting it.  Rejecting here rather than filtering upstream keeps them visible in the rejects
+    // output and in the rejection counts.  The mapped end of a half-mapped pair is unaffected.
+    val (mapped, unmapped) = recs.partition(_.mapped)
+    if (unmapped.nonEmpty) rejectRecords(unmapped, RejectionReason.Unmapped)
+
     // Ensure that mate cigar is set on all read pairs.  This is needed when using
     // `clipper.numBasesExtendingPastMate` subsequently
-    updateMateCigars(recs)
-    val result = consensusSamRecordsFromSamRecords(recs)
+    updateMateCigars(mapped)
+    val result = consensusSamRecordsFromSamRecords(mapped)
     this._consensusReadsConstructed += result.size
     result
   }
