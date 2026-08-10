@@ -132,4 +132,31 @@ class CallDuplexConsensusReadsTest extends UnitSpec {
       }
     }
   }
+
+  it should "not use the unmapped end of a half-mapped pair when calling a single-strand consensus" in {
+    val builder = new SamBuilder(readLength=10, sort=Some(SamOrder.TemplateCoordinate))
+    // Three AB templates, the third of which has an unmapped R2 carrying different bases to the mapped R2s.
+    builder.addPair(name="ab1", start1=100, start2=100, attrs=Map(MI -> "1/A"), bases1="AAAAAAAAAA", bases2="AAAAAAAAAA")
+    builder.addPair(name="ab2", start1=100, start2=100, attrs=Map(MI -> "1/A"), bases1="AAAAAAAAAA", bases2="AAAAAAAAAA")
+    builder.addPair(name="ab3", start1=100, start2=100, attrs=Map(MI -> "1/A"), bases1="AAAAAAAAAA", bases2="CCCCCCCCCC", unmapped2=true)
+    // Two fully mapped BA templates.
+    builder.addPair(name="ba1", start1=100, start2=100, strand1=Minus, strand2=Plus, attrs=Map(MI -> "1/B"), bases1="AAAAAAAAAA", bases2="AAAAAAAAAA")
+    builder.addPair(name="ba2", start1=100, start2=100, strand1=Minus, strand2=Plus, attrs=Map(MI -> "1/B"), bases1="AAAAAAAAAA", bases2="AAAAAAAAAA")
+
+    val out = makeTempFile("duplex.", ".bam")
+    new CallDuplexConsensusReads(input=builder.toTempFile(), output=out, readGroupId="ZZ").execute()
+
+    val recs = readBamRecs(out)
+    recs should have size 2
+    val r1 = recs.find(_.firstOfPair).value
+    val r2 = recs.find(_.secondOfPair).value
+
+    // The AB-R1s are all mapped, so all three contribute to the AB single-strand consensus for R1.
+    r1[Int](ConsensusTags.PerRead.AbRawReadCount) shouldBe 3
+    r1[Int](ConsensusTags.PerRead.BaRawReadCount) shouldBe 2
+
+    // Only the two mapped AB-R2s may contribute to the AB single-strand consensus for R2; the unmapped one must not.
+    r2[Int](ConsensusTags.PerRead.AbRawReadCount) shouldBe 2
+    r2[Int](ConsensusTags.PerRead.BaRawReadCount) shouldBe 2
+  }
 }
