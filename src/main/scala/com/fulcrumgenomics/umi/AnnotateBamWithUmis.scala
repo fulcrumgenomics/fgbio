@@ -54,7 +54,8 @@ import com.fulcrumgenomics.util.{ProgressLogger, ReadStructure, SegmentType}
     |sorted in the same order as the BAM file.
     |
     |At the end of execution, reports how many records were processed and how many were
-    |missing UMIs. If any read from the BAM file did not have a matching UMI read in the
+    |missing UMIs.  All records are written to the output, whether or not a UMI was found.
+    |If any read from the BAM file did not have a matching UMI read in the
     |FASTQ file, the program will exit with a non-zero exit status.  The `--fail-fast` option
     |may be specified to cause the program to terminate the first time it finds a records
     |without a matching UMI.
@@ -65,7 +66,7 @@ import com.fulcrumgenomics.util.{ProgressLogger, ReadStructure, SegmentType}
     |files assuming they are in the same order.  More precisely, the UMI fastq file will be
     |traversed first, reading in the next set of BAM reads with same read name as the
     |UMI's read name.  Those BAM reads will be annotated.  If no BAM reads exist for the UMI,
-    |no logging or error will be reported.
+    |the UMI is skipped and counted, but is not an error.
   """,
   group = ClpGroups.SamOrBam)
 class AnnotateBamWithUmis(
@@ -93,10 +94,14 @@ class AnnotateBamWithUmis(
     else Seq.tabulate(fastq.length)(_ => readStructure.head)
   }
 
+  /** The number of BAM records with no UMI in the FASTQ(s); an error. */
   private var missingUmis: Long = 0
 
+  /** The number of UMIs skipped for having no BAM records; `--sorted` only, and not an error. */
+  private var skippedUmis: Long = 0
+
   /** Updates the count of missing UMI records, and throws an exception if fail-fast is true. */
-  private def logMissingUmi(readName: String): Unit = {
+  private def countMissingUmi(readName: String): Unit = {
     missingUmis += 1
     if (failFast) fail("Record '" + readName + "' in BAM file not found in FASTQ file.")
   }
@@ -124,11 +129,11 @@ class AnnotateBamWithUmis(
       val fastqIter = FastqSource.zipped(sources=fqSources)
       val samIter   = in.iterator.bufferBetter
 
-      while (samIter.hasNext) {
-        if (fastqIter.isEmpty) fail(s"No more FASTQ records but more SAM records. Next SAM record: ${samIter.next().name}")
+      while (samIter.hasNext && fastqIter.hasNext) {
         val fqRecs  = fastqIter.next()
         val records = samIter.takeWhile(_.name == fqRecs.head.name).toIndexedSeq
-        if (records.isEmpty) logMissingUmi(fqRecs.head.name) else {
+        if (records.isEmpty) skippedUmis += 1
+        else {
           val umis = fqRecs.zip(structures).flatMap { case (rec, structure) =>
             extractUmis(rec=rec, structure=structure)
           }
@@ -141,9 +146,10 @@ class AnnotateBamWithUmis(
         }
       }
       fqSources.foreach(_.close())
-      // Log any BAM records that were not annotated
+      // Any remaining BAM records have no UMI; write them out un-annotated
       samIter.foreach { rec =>
-        logMissingUmi(rec.name)
+        countMissingUmi(rec.name)
+        out += rec
         progress.record(rec)
       }
     } else {
@@ -161,7 +167,7 @@ class AnnotateBamWithUmis(
           case Some(umis) =>
             rec(attribute) = umis.map(_.bases).mkString("-")
             qualAttribute.foreach(qtag => rec(qtag) = umis.map(_.quals).mkString(" "))
-          case None       => logMissingUmi(name)
+          case None       => countMissingUmi(name)
         }
         out += rec
         progress.record(rec)
@@ -171,6 +177,7 @@ class AnnotateBamWithUmis(
     // Finish up
     out.close()
     logger.info(s"Processed ${progress.getCount} records with $missingUmis missing UMIs.")
-    if (missingUmis > 0) fail(exit=missingUmis.toInt)
+    if (skippedUmis > 0) logger.info(s"Skipped $skippedUmis UMIs with no corresponding records.")
+    if (missingUmis > 0) fail(s"Found $missingUmis BAM record(s) with no UMI in the FASTQ(s).")
   }
 }
