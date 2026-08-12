@@ -165,6 +165,9 @@ class VanillaUmiConsensusCaller(override val readNamePrefix: String,
 
   initializeRejectCounts(_.usedByVanilla)
 
+  override protected def errorRatePreUmi: PhredScore = this.options.errorRatePreUmi
+  override protected def errorRatePostUmi: PhredScore = this.options.errorRatePostUmi
+
   private val NotEnoughReadsQual: PhredScore = 0.toByte // Score output when masking to N due to insufficient input reads
   private val TooLowQualityQual: PhredScore = 2.toByte  // Score output when masking to N due to too low consensus quality
 
