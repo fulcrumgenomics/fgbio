@@ -179,6 +179,57 @@ class CodecConsensusCallerTest extends UnitSpec with OptionValues {
     cons.head[String](ConsensusTags.UmiBases) shouldBe "ACC-TGA"
   }
 
+  it should "make a consensus from a dovetailed pair whose alignments have no indels" in {
+    // Both reads sequenced the same 40 base insert, but the aligner soft-clipped a different end of
+    // each, so each alignment extends past the far end of the other: R2 starts before R1 starts _and_
+    // R1 ends after R2 ends. There is no indel in either cigar, so nothing about this pair is out of
+    // phase; the two alignments simply overlap over a narrower region (111-130, 20 bases) than the
+    // 40 base span that runs from R2's start to R1's end.
+    val insert = RefBases.substring(100, 140)
+    def dovetailedPair: Seq[SamRecord] = new SamBuilder(readLength=insert.length, baseQuality=35).addPair(
+      contig=0, start1=111, start2=101, cigar1="10S30M", cigar2="30M10S",
+      bases1=insert, bases2=insert, attrs=Map(("RX", "ACC-TGA"), ("MI", "hi"))
+    )
+    val cons = new CodecConsensusCaller(readNamePrefix="codec", minReadsPerStrand=1, minDuplexLength=1)
+      .consensusReadsFromSamRecords(dovetailedPair)
+
+    cons should have length 1
+    cons.head.length shouldBe insert.length
+    cons.head.basesString shouldBe insert
+    cons.head[String](ConsensusTags.UmiBases) shouldBe "ACC-TGA"
+
+    // The duplex region is gated on the 20 reference bases the two alignments share, not on the wider
+    // span they jointly cover.
+    new CodecConsensusCaller(readNamePrefix="codec", minReadsPerStrand=1, minDuplexLength=20)
+      .consensusReadsFromSamRecords(dovetailedPair) should have length 1
+
+    new CodecConsensusCaller(readNamePrefix="codec", minReadsPerStrand=1, minDuplexLength=21)
+      .consensusReadsFromSamRecords(dovetailedPair) shouldBe Seq()
+  }
+
+  it should "make a consensus when one strand's alignment runs through a deletion past the other's aligned end" in {
+    // Both reads sequenced the same 127 base insert plus two bases of read-through, which the clipper
+    // removes. The positive strand alignment runs through a single base deletion that sits beyond the
+    // aligned end of the negative strand alignment, which soft-clipped its last two bases instead. The
+    // two alignments therefore agree exactly everywhere they are both aligned, and the deletion is not
+    // evidence that the strands disagree.
+    val posBases = RefBases.substring(98, 224) + RefBases.substring(225, 228)
+    val negBases = RefBases.substring(96, 224) + RefBases.substring(225, 226)
+    val expected = RefBases.substring(98, 224) + RefBases.substring(225, 226)
+    val builder  = new SamBuilder(readLength=posBases.length, baseQuality=35)
+    val caller   = new CodecConsensusCaller(readNamePrefix="codec", minReadsPerStrand=1, minDuplexLength=1)
+    val raw      = builder.addPair(
+      contig=0, start1=101, start2=100, cigar1="2S124M1D3M", cigar2="3S124M2S",
+      bases1=posBases, bases2=negBases, attrs=Map(("RX", "ACC-TGA"), ("MI", "hi"))
+    )
+    val cons = caller.consensusReadsFromSamRecords(raw)
+
+    cons should have length 1
+    cons.head.length shouldBe expected.length
+    cons.head.basesString shouldBe expected
+    cons.head[String](ConsensusTags.UmiBases) shouldBe "ACC-TGA"
+  }
+
   it should "emit the consensus in the orientation of R1" in {
     val builder = new SamBuilder(readLength=30, baseQuality=35)
     val caller  = new CodecConsensusCaller(readNamePrefix="codec", minReadsPerStrand=1, minDuplexLength=1)
@@ -291,6 +342,22 @@ class CodecConsensusCallerTest extends UnitSpec with OptionValues {
 
     new CodecConsensusCaller(readNamePrefix="codec", minReadsPerStrand=1, minDuplexLength=1)
       .consensusReadsFromSamRecords(raw) shouldBe Seq()
+  }
+
+  it should "not emit a consensus when the alignments disagree by an indel inside their overlap" in {
+    // The deletion sits strictly inside the region both alignments are aligned over, so the two strands
+    // genuinely disagree about how many query bases span it and the reads cannot be brought into phase.
+    val builder = new SamBuilder(readLength=60, baseQuality=35)
+    val raw = builder.addPair(
+      contig=0, start1=101, start2=103, cigar1="60M", cigar2="30M2D30M", attrs=Map(("RX", "ACC-TGA"), ("MI", "hi"))
+    ).tapEach(setReadSequence)
+
+    new CodecConsensusCaller(readNamePrefix="codec", minReadsPerStrand=1, minDuplexLength=1)
+      .consensusReadsFromSamRecords(raw) shouldBe Seq()
+    raw.foreach { rec =>
+      rec[String](UmiConsensusCaller.RejectReasonTag) shouldBe
+        UmiConsensusCaller.RejectionReason.IndelErrorBetweenStrands.code
+    }
   }
 
   it should "not emit a consensus when there are a lot of disagreements between strands of the duplex" in {
