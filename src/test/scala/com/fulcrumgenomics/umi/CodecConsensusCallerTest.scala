@@ -188,6 +188,212 @@ class CodecConsensusCallerTest extends UnitSpec with OptionValues {
     cons.head[String](ConsensusTags.UmiBases) shouldBe "ACC-TGA"
   }
 
+  it should "make a consensus from a dovetailed pair whose alignments have no indels" in {
+    // Both reads sequenced the same 40 base insert, but the aligner soft-clipped a different end of
+    // each, so each alignment extends past the far end of the other: R2 starts before R1 starts _and_
+    // R1 ends after R2 ends. There is no indel in either cigar, so nothing about this pair is out of
+    // phase; the two alignments simply overlap over a narrower region (111-130, 20 bases) than the
+    // 40 base span that runs from R2's start to R1's end.
+    val insert = RefBases.substring(100, 140)
+    def dovetailedPair: Seq[SamRecord] = new SamBuilder(readLength=insert.length, baseQuality=35).addPair(
+      contig=0, start1=111, start2=101, cigar1="10S30M", cigar2="30M10S",
+      bases1=insert, bases2=insert, attrs=Map(("RX", "ACC-TGA"), ("MI", "hi"))
+    )
+    val cons = new CodecConsensusCaller(readNamePrefix="codec", minReadsPerStrand=1, minDuplexLength=1)
+      .consensusReadsFromSamRecords(dovetailedPair)
+
+    cons should have length 1
+    cons.head.length shouldBe insert.length
+    cons.head.basesString shouldBe insert
+    cons.head[String](ConsensusTags.UmiBases) shouldBe "ACC-TGA"
+  }
+
+  Seq(30, 40, 41).foreach { minDuplexLength =>
+    it should s"count all 40 supported dovetail bases with minDuplexLength=$minDuplexLength" in {
+      // Only 20 reference bases overlap, but both SS consensuses support all 40 query positions.
+      val insert = RefBases.substring(100, 140)
+      val raw = new SamBuilder(readLength=insert.length, baseQuality=35).addPair(
+        contig=0, start1=111, start2=101, cigar1="10S30M", cigar2="30M10S",
+        bases1=insert, bases2=insert, attrs=Map(("RX", "ACC-TGA"), ("MI", "hi"))
+      )
+      val caller = new CodecConsensusCaller(readNamePrefix="codec", minDuplexLength=minDuplexLength)
+      val cons = caller.consensusReadsFromSamRecords(raw)
+      if (minDuplexLength <= insert.length) {
+        cons should have length 1
+        cons.head.basesString shouldBe insert
+        caller.statistics.find(_.key == "consensus_duplex_bases_emitted").value.value shouldBe 40L
+      }
+      else {
+        cons shouldBe Seq()
+        raw.foreach { rec =>
+          rec[String](UmiConsensusCaller.RejectReasonTag) shouldBe
+            UmiConsensusCaller.RejectionReason.R1R2OverlapTooShort.code
+        }
+      }
+    }
+  }
+
+  for (lowQuality <- Seq(false, true); minDuplexLength <- Seq(27, 28)) {
+    it should s"exclude SS no-calls from duplex length with lowQuality=$lowQuality and minDuplexLength=$minDuplexLength" in {
+      val builder = new SamBuilder(readLength=30, baseQuality=35)
+      val raw = (1 to 2).flatMap { i =>
+        val pair = builder.addPair(name=s"pair$i", contig=0, start1=1, start2=1,
+          bases1="A" * 30, bases2="A" * 30, attrs=Map(("RX", "ACC-TGA"), ("MI", "hi")))
+        Seq(pair.head -> Seq(5, 10), pair.last -> Seq(10, 15)).foreach { case (rec, indices) =>
+          indices.foreach { index =>
+            if (lowQuality) rec.quals(index) = 0 else rec.bases(index) = 'N'
+          }
+        }
+        pair
+      }
+      val caller = new CodecConsensusCaller(readNamePrefix="codec", minDuplexLength=minDuplexLength)
+      val cons = caller.consensusReadsFromSamRecords(raw)
+      if (minDuplexLength == 27) {
+        cons should have length 1
+        cons.head[String](ConsensusTags.PerBase.AbConsensusBases) shouldBe
+          ("A" * 5 + "N" + "A" * 4 + "N" + "A" * 19)
+        cons.head[String](ConsensusTags.PerBase.BaConsensusBases) shouldBe
+          ("A" * 10 + "N" + "A" * 4 + "N" + "A" * 14)
+        caller.statistics.find(_.key == "consensus_duplex_bases_emitted").value.value shouldBe 27L
+      }
+      else {
+        cons shouldBe Seq()
+        raw.foreach { rec =>
+          rec[String](UmiConsensusCaller.RejectReasonTag) shouldBe
+            UmiConsensusCaller.RejectionReason.R1R2OverlapTooShort.code
+        }
+      }
+    }
+  }
+
+  Seq(false, true).foreach { missingStrand =>
+    it should s"reject zero supported duplex bases with missingStrand=$missingStrand" in {
+      val raw = new SamBuilder(readLength=30, baseQuality=35).addPair(
+        contig=0, start1=1, start2=1,
+        bases1=if (missingStrand) "N" * 30 else "A" * 15 + "N" * 15,
+        bases2=if (missingStrand) "A" * 30 else "N" * 15 + "A" * 15,
+        attrs=Map(("RX", "ACC-TGA"), ("MI", "hi"))
+      )
+      new CodecConsensusCaller(readNamePrefix="codec", minDuplexLength=1)
+        .consensusReadsFromSamRecords(raw) shouldBe Seq()
+      raw.foreach { rec =>
+        rec[String](UmiConsensusCaller.RejectReasonTag) shouldBe
+          UmiConsensusCaller.RejectionReason.R1R2OverlapTooShort.code
+      }
+    }
+  }
+
+  Seq((1, 0.025), (0, 1.0), (1, 0.02499)).foreach { case (maxCount, maxRate) =>
+    it should s"count disagreements toward duplex length independently of maxCount=$maxCount and maxRate=$maxRate" in {
+      val raw = new SamBuilder(readLength=40, baseQuality=35).addPair(
+        contig=0, start1=111, start2=101, cigar1="10S30M", cigar2="30M10S",
+        bases1="A" * 40, bases2="A" * 5 + "C" + "A" * 34,
+        attrs=Map(("RX", "ACC-TGA"), ("MI", "hi"))
+      )
+      val caller = new CodecConsensusCaller(readNamePrefix="codec", minDuplexLength=40,
+        maxDuplexDisagreements=maxCount, maxDuplexDisagreementRate=maxRate)
+      val cons = caller.consensusReadsFromSamRecords(raw)
+      if (maxCount == 1 && maxRate == 0.025) {
+        cons should have length 1
+        cons.head.basesString shouldBe "A" * 5 + "N" + "A" * 34
+        caller.statistics.find(_.key == "consensus_duplex_bases_emitted").value.value shouldBe 40L
+        caller.statistics.find(_.key == "duplex_disagreement_base_count").value.value shouldBe 1L
+      }
+      else {
+        cons shouldBe Seq()
+        raw.foreach { rec =>
+          rec[String](UmiConsensusCaller.RejectReasonTag) shouldBe
+            UmiConsensusCaller.RejectionReason.HighDuplexDisagreement.code
+        }
+      }
+    }
+  }
+
+  Seq(false, true).foreach { dovetailed =>
+    it should s"make a consensus from a single-base overlap with dovetailed=$dovetailed" in {
+      val insert = RefBases.substring(100, 159)
+      val raw = if (dovetailed) {
+        new SamBuilder(readLength=insert.length, baseQuality=35).addPair(
+          contig=0, start1=130, start2=101, cigar1="29S30M", cigar2="30M29S",
+          bases1=insert, bases2=insert, attrs=Map(("RX", "ACC-TGA"), ("MI", "hi"))
+        )
+      }
+      else {
+        new SamBuilder(readLength=30, baseQuality=35).addPair(
+          contig=0, start1=101, start2=130, bases1=insert.take(30), bases2=insert.takeRight(30),
+          attrs=Map(("RX", "ACC-TGA"), ("MI", "hi"))
+        )
+      }
+      val caller = new CodecConsensusCaller(readNamePrefix="codec", minReadsPerStrand=1, minDuplexLength=1,
+        singleStrandQual=Some(4), outerBasesQual=Some(5), outerBasesLength=1)
+      val cons = caller.consensusReadsFromSamRecords(raw)
+
+      cons should have length 1
+      cons.head.basesString shouldBe insert
+      cons.head.quals.length shouldBe insert.length
+      if (dovetailed) {
+        cons.head.quals.head shouldBe 5.toByte
+        cons.head.quals.last shouldBe 5.toByte
+        cons.head.quals.slice(1, insert.length - 1).foreach(_ should be > 5.toByte)
+      }
+      else {
+        cons.head.quals(29) should be > 5.toByte
+        cons.head.quals.take(29).foreach(_ shouldBe 4.toByte)
+        cons.head.quals.drop(30).foreach(_ shouldBe 4.toByte)
+      }
+    }
+  }
+
+  Seq("D", "N").foreach { operator =>
+    it should s"use the prior aligned base when the overlap starts in an internal $operator" in {
+      val raw = new SamBuilder(readLength=30, baseQuality=35).addPair(
+        contig=0, start1=1, start2=12, cigar1=s"10M2${operator}20M", cigar2="30M",
+        bases1="A" * 30, bases2="A" * 30, attrs=Map(("RX", "ACC-TGA"), ("MI", "hi"))
+      )
+      val cons = new CodecConsensusCaller(readNamePrefix="codec", minReadsPerStrand=1, minDuplexLength=1)
+        .consensusReadsFromSamRecords(raw)
+
+      cons should have length 1
+      cons.head.basesString shouldBe "A" * 39
+    }
+
+    it should s"reject an overlap ending in a terminal $operator in both alignments" in {
+      val raw = new SamBuilder(readLength=30, baseQuality=35).addPair(
+        contig=0, start1=1, start2=1, cigar1=s"30M2$operator", cigar2=s"30M2$operator",
+        bases1="A" * 30, bases2="A" * 30, attrs=Map(("RX", "ACC-TGA"), ("MI", "hi"))
+      )
+      new CodecConsensusCaller(readNamePrefix="codec", minReadsPerStrand=1, minDuplexLength=1)
+        .consensusReadsFromSamRecords(raw) shouldBe Seq()
+      raw.foreach { rec =>
+        rec[String](UmiConsensusCaller.RejectReasonTag) shouldBe
+          UmiConsensusCaller.RejectionReason.IndelErrorBetweenStrands.code
+      }
+    }
+  }
+
+  it should "make a consensus when one strand's alignment runs through a deletion past the other's aligned end" in {
+    // Both reads sequenced the same 127 base insert plus two bases of read-through, which the clipper
+    // removes. The positive strand alignment runs through a single base deletion that sits beyond the
+    // aligned end of the negative strand alignment, which soft-clipped its last two bases instead. The
+    // two alignments therefore agree exactly everywhere they are both aligned, and the deletion is not
+    // evidence that the strands disagree.
+    val posBases = RefBases.substring(98, 224) + RefBases.substring(225, 228)
+    val negBases = RefBases.substring(96, 224) + RefBases.substring(225, 226)
+    val expected = RefBases.substring(98, 224) + RefBases.substring(225, 226)
+    val builder  = new SamBuilder(readLength=posBases.length, baseQuality=35)
+    val caller   = new CodecConsensusCaller(readNamePrefix="codec", minReadsPerStrand=1, minDuplexLength=1)
+    val raw      = builder.addPair(
+      contig=0, start1=101, start2=100, cigar1="2S124M1D3M", cigar2="3S124M2S",
+      bases1=posBases, bases2=negBases, attrs=Map(("RX", "ACC-TGA"), ("MI", "hi"))
+    )
+    val cons = caller.consensusReadsFromSamRecords(raw)
+
+    cons should have length 1
+    cons.head.length shouldBe expected.length
+    cons.head.basesString shouldBe expected
+    cons.head[String](ConsensusTags.UmiBases) shouldBe "ACC-TGA"
+  }
+
   it should "emit the consensus in the orientation of R1" in {
     val builder = new SamBuilder(readLength=30, baseQuality=35)
     val caller  = new CodecConsensusCaller(readNamePrefix="codec", minReadsPerStrand=1, minDuplexLength=1)
@@ -218,7 +424,7 @@ class CodecConsensusCallerTest extends UnitSpec with OptionValues {
 
   Seq(true, false).foreach { withMateCigar =>
     val label = if (withMateCigar) "with" else "without"
-    it should s"retain both reads of an FR dovetail pair $label MC tags until overlap validation" in {
+    it should s"emit a consensus from an FR dovetail pair $label MC tags" in {
       val (r1, r2) = DovetailPairs.pair(withMateCigar=withMateCigar)
       val raw = IndexedSeq(r1, r2).tapEach { rec =>
         rec("RX") = "ACC-TGA"
@@ -228,11 +434,11 @@ class CodecConsensusCallerTest extends UnitSpec with OptionValues {
 
       raw.foreach(_.contains("MC") shouldBe withMateCigar)
       val caller = new DirectCodecConsensusCaller
-      // This geometry is FR, but its alignments cannot be synchronized for duplex consensus calling.
-      caller.consensusSamRecordsFromSamRecords(raw) shouldBe empty
+      // Measuring phase only within the alignment intersection keeps this dovetail pair in register.
+      caller.consensusSamRecordsFromSamRecords(raw) should have size 1
       val statistics = caller.statistics.map(metric => metric.key -> metric.value).toMap
       statistics("raw_reads_rejected_for_not_primary_fr_pair") shouldBe 0L
-      statistics("raw_reads_rejected_for_indel_error_between_strands") shouldBe 2L
+      statistics("raw_reads_rejected_for_indel_error_between_strands") shouldBe 0L
       raw.foreach(_.contains("MC") shouldBe withMateCigar)
     }
   }
@@ -295,6 +501,22 @@ class CodecConsensusCallerTest extends UnitSpec with OptionValues {
       .consensusReadsFromSamRecords(raw) shouldBe Seq()
   }
 
+  Seq(31, 41).foreach { start2 =>
+    it should s"reject nonoverlapping FR reads at start2=$start2 with minDuplexLength=0" in {
+      val raw = new SamBuilder(readLength=30, baseQuality=35).addPair(
+        contig=0, start1=1, start2=start2, bases1="A" * 30, bases2="A" * 30,
+        attrs=Map(("RX", "ACC-TGA"), ("MI", "hi"))
+      )
+      SamRecord.isFrPair(raw.head, raw.last) shouldBe true
+      new CodecConsensusCaller(readNamePrefix="codec", minReadsPerStrand=1, minDuplexLength=0)
+        .consensusReadsFromSamRecords(raw) shouldBe Seq()
+      raw.foreach { rec =>
+        rec[String](UmiConsensusCaller.RejectReasonTag) shouldBe
+          UmiConsensusCaller.RejectionReason.R1R2OverlapTooShort.code
+      }
+    }
+  }
+
   it should "not emit a consensus when R1's end lands in an indel in R2" in {
     val builder = new SamBuilder(readLength=30, baseQuality=35)
     val raw = builder.addPair(
@@ -303,6 +525,22 @@ class CodecConsensusCallerTest extends UnitSpec with OptionValues {
 
     new CodecConsensusCaller(readNamePrefix="codec", minReadsPerStrand=1, minDuplexLength=1)
       .consensusReadsFromSamRecords(raw) shouldBe Seq()
+  }
+
+  it should "not emit a consensus when the alignments disagree by an indel inside their overlap" in {
+    // The deletion sits strictly inside the region both alignments are aligned over, so the two strands
+    // genuinely disagree about how many query bases span it and the reads cannot be brought into phase.
+    val builder = new SamBuilder(readLength=60, baseQuality=35)
+    val raw = builder.addPair(
+      contig=0, start1=101, start2=103, cigar1="60M", cigar2="30M2D30M", attrs=Map(("RX", "ACC-TGA"), ("MI", "hi"))
+    ).tapEach(setReadSequence)
+
+    new CodecConsensusCaller(readNamePrefix="codec", minReadsPerStrand=1, minDuplexLength=1)
+      .consensusReadsFromSamRecords(raw) shouldBe Seq()
+    raw.foreach { rec =>
+      rec[String](UmiConsensusCaller.RejectReasonTag) shouldBe
+        UmiConsensusCaller.RejectionReason.IndelErrorBetweenStrands.code
+    }
   }
 
   it should "not emit a consensus when there are a lot of disagreements between strands of the duplex" in {

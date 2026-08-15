@@ -85,6 +85,38 @@ class CallCodecConsensusReadsTest extends UnitSpec with OptionValues {
     recs should have size 1
   }
 
+  it should "filter on supported duplex bases rather than reference overlap through the CLI path" in {
+    for (minDuplexLength <- Seq(30, 40, 41)) {
+      val builder = new SamBuilder(readLength=40, baseQuality=35, sort=Some(SamOrder.TemplateCoordinate))
+      builder.addPair(start1=111, start2=101, cigar1="10S30M", cigar2="30M10S",
+        bases1="AC" * 20, bases2="AC" * 20, attrs=Map(("RX", "ACC-TGA"), ("MI", "hi")))
+      val in = builder.toTempFile()
+      val out = makeTempFile("codec.", ".bam")
+      val rej = makeTempFile("rejects.", ".bam")
+      val stats = makeTempFile("stats.", ".txt")
+      new CallCodecConsensusReads(input=in, output=out, rejects=Some(rej), stats=Some(stats),
+        minDuplexLength=minDuplexLength).execute()
+
+      val consensus = readBamRecs(out)
+      val rejected = readBamRecs(rej)
+      val metrics = Metric.read[ConsensusKvMetric](stats).map(m => m.key -> m.value).toMap
+      if (minDuplexLength <= 40) {
+        consensus should have size 1
+        consensus.head.basesString shouldBe "AC" * 20
+        rejected shouldBe empty
+        metrics("consensus_duplex_bases_emitted").toString.toInt shouldBe 40
+      }
+      else {
+        consensus shouldBe empty
+        rejected should have size 2
+        rejected.foreach { rec =>
+          rec[String](UmiConsensusCaller.RejectReasonTag) shouldBe RejectionReason.R1R2OverlapTooShort.code
+        }
+        metrics("raw_reads_rejected_for_r1_r2_overlap_too_short").toString.toInt shouldBe 2
+      }
+    }
+  }
+
   it should "emit statistics and a reject BAM" in {
     val specialCellTag = "XX"
     for (threads <- Seq(1, 4)) {

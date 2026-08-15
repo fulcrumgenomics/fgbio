@@ -99,7 +99,7 @@ class CallCodecConsensusReads
             |max-read-pairs read pairs; the same reads are selected on every run and for any number of threads.
           """)
  val maxReadPairs: Option[Int] = None,
- @arg(flag='d', doc="Minimum length of the duplex region (where R1 and R2 overlap).") val minDuplexLength: Int = 1,
+ @arg(flag='d', doc="Minimum number of positions with non-N calls in both single-strand consensus reads, including disagreements.") val minDuplexLength: Int = 1,
  @arg(flag='q', doc="Reduce quality scores in single stranded regions of the consensus read to the given quality.") val singleStrandQual: Option[PhredScore] = None,
  @arg(flag='Q', doc="Reduce the first and last `outer-bases-length` bases to the given quality.") val outerBasesQual: Option[PhredScore] = None,
  @arg(flag='O', doc="The number of bases at the start and end of the read to reduce quality over *if* `outer-bases-qual` is specified.") val outerBasesLength: Int = 5,
