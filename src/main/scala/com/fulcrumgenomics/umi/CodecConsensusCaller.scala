@@ -208,9 +208,15 @@ class CodecConsensusCaller(readNamePrefix: String,
           if (longestR1Alignment.positiveStrand) (longestR1Alignment, longestR2Alignment)
           else (longestR2Alignment, longestR1Alignment)
 
-        // Calculate the overlapping region in reference space; this calculation only works because we
-        // can assert from checks above that we have an FR pair that sequences towards each other.
-        val (overlapStart, overlapEnd) = (longestNegAln.start, longestPosAln.end)
+        // Calculate the overlapping region in reference space, which is the intersection of the aligned
+        // spans of the two alignments.  The checks above assert that we have an FR pair that sequences
+        // towards each other, but that does not stop the two alignments from dovetailing (each ending
+        // past the far end of the other), so the intersection must be taken rather than assumed to run
+        // from the negative strand alignment's start to the positive strand alignment's end.  Reference
+        // positions outside the intersection are aligned over by at most one of the two reads, so
+        // neither the phase check nor the consensus length below can be evaluated there.
+        val overlapStart  = Math.max(longestPosAln.start, longestNegAln.start)
+        val overlapEnd    = Math.min(longestPosAln.end, longestNegAln.end)
         val overlapLength = overlapEnd - overlapStart + 1
 
         // If the overlap isn't long enough then reject the records and return no consensus reads
@@ -238,7 +244,7 @@ class CodecConsensusCaller(readNamePrefix: String,
           if (longestR1Alignment.negativeStrand) r1Consensus.revcomp() else r2Consensus.revcomp()
 
           // Calculate the length of the consensus
-          computeConsensusLength(longestPosAln, longestNegAln) match {
+          computeConsensusLength(longestPosAln, longestNegAln, overlapEnd) match {
             case -1 =>
               rejectRecords((r1s.view ++ r2s.view).flatMap(_.sam), RejectionReason.IndelErrorBetweenStrands)
               Nil
@@ -281,13 +287,16 @@ class CodecConsensusCaller(readNamePrefix: String,
   }
 
   /**
-    * Computes the length of the consensus read that should be generated. The provided positive and
-    * negative strand alignments _must_ overlap.
+    * Computes the length of the consensus read that should be generated.
     *
     * Returns -1 if the length couldn't be computed because the overlap of the reads ends on an indel.
+    *
+    * @param pos the positive strand alignment
+    * @param neg the negative strand alignment
+    * @param refOverlapEnd the last reference position that both alignments are aligned over; both
+    *                      alignments _must_ span it
     */
-  private def computeConsensusLength(pos: SamRecord, neg: SamRecord): Int = {
-    val refOverlapEnd = pos.end
+  private def computeConsensusLength(pos: SamRecord, neg: SamRecord, refOverlapEnd: Int): Int = {
     val posReadPos = pos.readPosAtRefPos(refOverlapEnd, returnLastBaseIfDeleted=false)
     val negReadPos = neg.readPosAtRefPos(refOverlapEnd, returnLastBaseIfDeleted=false)
     if (posReadPos == 0 || negReadPos == 0) -1 else {
