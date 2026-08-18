@@ -197,6 +197,7 @@ class VanillaUmiConsensusCaller(override val readNamePrefix: String,
 
   /** Takes in all the SamRecords for a single source molecule and produces consensus records. */
   override protected def consensusSamRecordsFromSamRecords(recs: Seq[SamRecord]): Seq[SamRecord] = {
+    val rawCounts = rawSourceCounts(recs)
     val cellBarcode: Option[String] = this.cellTag.flatMap { tag =>
       val barcodes = recs.flatMap(_.get[String](tag)).distinct
       require(barcodes.length <= 1, s"Multiple different cell barcodes found for tag $tag: $barcodes")
@@ -209,12 +210,13 @@ class VanillaUmiConsensusCaller(override val readNamePrefix: String,
 
     // fragment
     consensusFromSamRecords(records=fragments).foreach { frag =>
-      builder += createSamRecord(
+      val rec = createSamRecord(
         read        = frag,
         readType    = Fragment,
         umis        = frag.sourceReads.getOrElse(Seq.empty).flatMap(rec => rec.sam.flatMap(_.get[String](ConsensusTags.UmiBases))),
         cellBarcode = cellBarcode,
       )
+      builder += addRawSourceCounts(rec, rawCounts)
     }
 
     // pairs
@@ -223,18 +225,20 @@ class VanillaUmiConsensusCaller(override val readNamePrefix: String,
       case (Some(_), None)      => rejectRecords(firstOfPair,  RejectionReason.OrphanConsensus)
       case (None, None)         => rejectRecords(firstOfPair ++ secondOfPair, RejectionReason.OrphanConsensus)
       case (Some(read1), Some(read2)) =>
-        builder += createSamRecord(
+        val rec1 = createSamRecord(
           read        = read1,
           readType    = FirstOfPair,
           umis        = read1.sourceReads.getOrElse(Seq.empty).flatMap(rec => rec.sam.flatMap(_.get[String](ConsensusTags.UmiBases))),
           cellBarcode = cellBarcode,
         )
-        builder += createSamRecord(
+        val rec2 = createSamRecord(
           read        = read2,
           readType    = SecondOfPair,
           umis        = read2.sourceReads.getOrElse(Seq.empty).flatMap(rec => rec.sam.flatMap(_.get[String](ConsensusTags.UmiBases))),
           cellBarcode = cellBarcode,
         )
+        builder += addRawSourceCounts(rec1, rawCounts)
+        builder += addRawSourceCounts(rec2, rawCounts)
     }
 
     builder.result()

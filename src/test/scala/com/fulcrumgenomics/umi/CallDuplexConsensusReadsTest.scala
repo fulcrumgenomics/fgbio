@@ -59,6 +59,26 @@ class CallDuplexConsensusReadsTest extends UnitSpec {
     checkClpAnnotations[CallDuplexConsensusReads]
   }
 
+  it should "write raw family count tags that survive a BAM round-trip" in {
+    val builder = new SamBuilder(readLength=10, baseQuality=30, sort=Some(SamOrder.TemplateCoordinate))
+    // Two AB templates and one BA template for a single source molecule.
+    builder.addPair(name="ab1", start1=100, start2=200, strand1=Plus,  strand2=Minus, bases1="AAAAAAAAAA", bases2="CCCCCCCCCC", attrs=Map(MI -> "foo/A"))
+    builder.addPair(name="ab2", start1=100, start2=200, strand1=Plus,  strand2=Minus, bases1="AAAAAAAAAA", bases2="CCCCCCCCCC", attrs=Map(MI -> "foo/A"))
+    builder.addPair(name="ba1", start1=200, start2=100, strand1=Minus, strand2=Plus,  bases1="CCCCCCCCCC", bases2="AAAAAAAAAA", attrs=Map(MI -> "foo/B"))
+
+    val output = makeTempFile("duplex_consensus.", ".bam")
+    new CallDuplexConsensusReads(input=builder.toTempFile(), output=output, minReads=Seq(1)).execute()
+
+    val records = readBamRecs(output)
+    records should have size 2
+    records.foreach { rec =>
+      rec[Int](ConsensusTags.PerRead.RawTemplateCount)   shouldBe 3
+      rec[Int](ConsensusTags.PerRead.RawRecordCount)     shouldBe 6
+      rec[Int](ConsensusTags.PerRead.AbRawTemplateCount) shouldBe 2
+      rec[Int](ConsensusTags.PerRead.BaRawTemplateCount) shouldBe 1
+    }
+  }
+
   it should "not generate a consensus if AB-R1s are not on the same strand ads BA-R2s" in {
     val builder = new SamBuilder(readLength=10, sort=Some(SamOrder.TemplateCoordinate))
     builder.addPair(name="ab1", start1=100, start2=200, attrs=Map(MI -> "1/A"), bases1="AAAAAAAAAA", bases2="AAAAAAAAAA", strand1=Plus, strand2=Plus)

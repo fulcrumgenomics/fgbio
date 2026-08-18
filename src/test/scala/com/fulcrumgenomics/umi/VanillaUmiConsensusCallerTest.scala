@@ -764,6 +764,72 @@ class VanillaUmiConsensusCallerTest extends UnitSpec with OptionValues {
     consensus[String](ConsensusTags.UmiBases) shouldBe "TNT"
   }
 
+  it should "tag consensus records with pre-selection raw template and record counts" in {
+    val builder = new SamBuilder(readLength=10, baseQuality=30)
+
+    builder.addPair("READ1", start1=1, start2=100, cigar1="10M",    cigar2="10M", attrs=Map(DefaultTag -> "AAA"))
+    builder.addPair("READ2", start1=1, start2=100, cigar1="10M",    cigar2="10M", attrs=Map(DefaultTag -> "AAA"))
+    builder.addPair("READ3", start1=1, start2=100, cigar1="5M1D5M", cigar2="10M", attrs=Map(DefaultTag -> "AAA"))
+
+    val consensusCaller = cc(cco(minReads = 1, minInputBaseQuality = 2.toByte))
+    val consensuses = consensusCaller.consensusReadsFromSamRecords(builder.toSeq)
+
+    consensuses should have size 2
+    val r1 = consensuses.find(_.firstOfPair).value
+    val r2 = consensuses.find(_.secondOfPair).value
+
+    r1[Int](ConsensusTags.PerRead.RawTemplateCount) shouldBe 3
+    r1[Int](ConsensusTags.PerRead.RawRecordCount)   shouldBe 6
+    r1[Int](ConsensusTags.PerRead.RawReadCount)     shouldBe 2
+
+    r2[Int](ConsensusTags.PerRead.RawTemplateCount) shouldBe 3
+    r2[Int](ConsensusTags.PerRead.RawRecordCount)   shouldBe 6
+    r2[Int](ConsensusTags.PerRead.RawReadCount)     shouldBe 3
+  }
+
+  it should "not reduce raw template and record counts when downsampling to --max-reads" in {
+    val builder = new SamBuilder(readLength=10, baseQuality=30)
+
+    // Six identical templates; maxReads=2 will downsample the consensus support to 2 per end.
+    Range(0, 6).foreach { idx =>
+      builder.addPair(s"READ$idx", start1=1, start2=100, cigar1="10M", cigar2="10M", attrs=Map(DefaultTag -> "AAA"))
+    }
+
+    val consensusCaller = cc(cco(minReads = 1, maxReads = 2, minInputBaseQuality = 2.toByte))
+    val consensuses = consensusCaller.consensusReadsFromSamRecords(builder.toSeq)
+
+    consensuses should have size 2
+    val r1 = consensuses.find(_.firstOfPair).value
+
+    // Consensus depth is capped by --max-reads ...
+    r1[Int](ConsensusTags.PerRead.RawReadCount)     shouldBe 2
+    // ... but the raw family counts still describe the full input family.
+    r1[Int](ConsensusTags.PerRead.RawTemplateCount) shouldBe 6
+    r1[Int](ConsensusTags.PerRead.RawRecordCount)   shouldBe 12
+  }
+
+  it should "tag fragment consensus records with raw template and record counts" in {
+    val builder = new SamBuilder(readLength=10, baseQuality=30)
+
+    // Two clean fragments plus one carrying a minority deletion that is discarded by family selection.
+    builder.addFrag(name="FRAG1", start=1, cigar="10M",    attrs=Map(DefaultTag -> "AAA"))
+    builder.addFrag(name="FRAG2", start=1, cigar="10M",    attrs=Map(DefaultTag -> "AAA"))
+    builder.addFrag(name="FRAG3", start=1, cigar="5M1D5M", attrs=Map(DefaultTag -> "AAA"))
+
+    val consensusCaller = cc(cco(minReads = 1, minInputBaseQuality = 2.toByte))
+    val consensuses = consensusCaller.consensusReadsFromSamRecords(builder.toSeq)
+
+    consensuses should have size 1
+    val frag = consensuses.head
+    frag.paired shouldBe false
+
+    // Fragments are one record per template, so both counts are 3 ...
+    frag[Int](ConsensusTags.PerRead.RawTemplateCount) shouldBe 3
+    frag[Int](ConsensusTags.PerRead.RawRecordCount)   shouldBe 3
+    // ... and the discarded minority alignment is not deducted, unlike the consensus depth.
+    frag[Int](ConsensusTags.PerRead.RawReadCount)     shouldBe 2
+  }
+
   it should "not double-count rejected reads when both ends of a pair fail consensus calling (issue #1135)" in {
     val len = 10
     val builder = new SamBuilder(readLength=len)
