@@ -112,6 +112,9 @@ object UmiConsensusCaller {
     require(bases.length == quals.length, "Bases and qualities are not the same length.")
   }
 
+  /** Stores raw input-family sizes before consensus-family selection. */
+  case class RawSourceCounts(templateCount: Int, recordCount: Int)
+
   /**
     * Attempts to construct a String that can be used as a prefix for consensus read names based
     * on the contents of the incoming SAMFileHeader.
@@ -222,6 +225,37 @@ trait UmiConsensusCaller[ConsensusRead <: SimpleRead] {
 
   protected def initializeRejectCounts(pred: RejectionReason => Boolean): Unit = {
     RejectionReason.values.filter(pred).foreach(this._filteredReads.count(_, 0))
+  }
+
+  /** Counts raw input templates and records before filtering down to a consensus-forming family. */
+  protected def rawSourceCounts(recs: Seq[SamRecord]): RawSourceCounts = {
+    RawSourceCounts(templateCount=recs.iterator.map(_.name).toSet.size, recordCount=recs.size)
+  }
+
+  /** Adds raw input-family count tags to a consensus record.
+    *
+    * The optional `ab` and `ba` counts add the per-strand tags and should only be supplied by duplex-style
+    * callers that can attribute raw records to a single source strand.
+    *
+    * NOTE: this is invoked from each caller's `consensusSamRecordsFromSamRecords` implementation. Any subclass
+    * that overrides `consensusSamRecordsFromSamRecords` without calling this method will silently emit consensus
+    * records with no raw-family count tags. [[CodecConsensusCaller]] does exactly that, deliberately.
+    */
+  protected def addRawSourceCounts(rec: SamRecord,
+                                   counts: RawSourceCounts,
+                                   ab: Option[RawSourceCounts] = None,
+                                   ba: Option[RawSourceCounts] = None): SamRecord = {
+    rec(ConsensusTags.PerRead.RawTemplateCount) = counts.templateCount
+    rec(ConsensusTags.PerRead.RawRecordCount)   = counts.recordCount
+    ab.foreach { c =>
+      rec(ConsensusTags.PerRead.AbRawTemplateCount) = c.templateCount
+      rec(ConsensusTags.PerRead.AbRawRecordCount)   = c.recordCount
+    }
+    ba.foreach { c =>
+      rec(ConsensusTags.PerRead.BaRawTemplateCount) = c.templateCount
+      rec(ConsensusTags.PerRead.BaRawRecordCount)   = c.recordCount
+    }
+    rec
   }
 
   /** Records that the supplied records were rejected, and not used to build a consensus read. */

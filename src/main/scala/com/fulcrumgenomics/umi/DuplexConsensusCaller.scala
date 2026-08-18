@@ -217,7 +217,14 @@ class DuplexConsensusCaller(override val readNamePrefix: String,
       val y = groups.lift(1).getOrElse(Seq.empty)
 
       if (hasMinimumNumberOfReads(x, y)) {
+        // Raw family sizes are captured here, before filtering to the most common alignment and before
+        // any downsampling to --max-reads-per-strand, so they describe the family as it was grouped.
+        val rawCounts   = rawSourceCounts(pairs)
+        val abRawCounts = rawSourceCounts(x)
+        val baRawCounts = rawSourceCounts(y)
+
         val consensus = callDuplexConsensusRead(x, y)
+          .map(addRawSourceCounts(_, rawCounts, ab=Some(abRawCounts), ba=Some(baRawCounts)))
         if (consensus.forall(duplexHasMinimumNumberOfReads)) {
           consensus
         } else {
