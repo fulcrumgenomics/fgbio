@@ -57,6 +57,15 @@ class SamRecordTest extends UnitSpec with OptionValues {
     builder.addPair(start1=100, start2=200, strand1=Plus, strand2=Minus).forall(_.isFrPair)  shouldBe true
   }
 
+  it should "return true symmetrically on a dovetail FR pair whose aligned ends coincide" in {
+    // htsjdk 5.0.0 (samtools/htsjdk#1771) fixed the per-record getPairOrientation asymmetry, so
+    // isFrPair now agrees for both mates of a dovetail pair. Before 5.0.0 the forward read, whose
+    // branch derived the mate 5' position from TLEN, reported non-FR here.
+    val builder = new SamBuilder(readLength=129, baseQuality=20)
+    builder.addPair(contig=0, start1=96, start2=49, cigar1="68S53M8S", cigar2="28S48M53S")
+      .forall(_.isFrPair) shouldBe true
+  }
+
   "SamRecord.cigar" should "always return the latest/correct cigar, when when SAMRecord methods are used" in {
     val builder = new SamBuilder(readLength=50)
     val rec = builder.addFrag(start=10, cigar="50M").get

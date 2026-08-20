@@ -32,7 +32,6 @@ import com.fulcrumgenomics.umi.UmiConsensusCaller.{ConsensusKvMetric, ReadType, 
 import com.fulcrumgenomics.util.NumericTypes.PhredScore
 import com.fulcrumgenomics.util.Sequences
 import htsjdk.samtools.SAMTag
-import htsjdk.samtools.SamPairUtil.PairOrientation
 
 import scala.collection.mutable
 
@@ -174,11 +173,10 @@ class CodecConsensusCaller(readNamePrefix: String,
     }
     else {
       // Group the primary alignments by read name and retain only templates that form a single
-      // primary FR pair. The FR check is performed at the pair level (via `isPrimaryFrPair`)
-      // because htsjdk's per-record `SamPairUtil.getPairOrientation` historically disagreed
-      // between mates on dovetail pairs whose aligned ends coincided, which previously caused a
-      // `scala.MatchError` on a singleton read-name bucket here. See
-      // https://github.com/samtools/htsjdk/pull/1771 for the upstream fix (htsjdk 5.0.0+).
+      // FR pair. `SamRecord.isFrPair` is symmetric between mates on dovetail pairs whose aligned
+      // ends coincide as of htsjdk 5.0.0, which fixed the per-record `SamPairUtil.getPairOrientation`
+      // asymmetry (samtools/htsjdk#1771), so it is evaluated on `a` directly here. The `case _`
+      // arm keeps a singleton read-name bucket from raising a `scala.MatchError`.
       // Template order is preserved from BAM-iteration order (not hash order) so that downstream
       // `maxBy` tie-breaks on `cigar.lengthOnTarget` are stable across JVMs.
       // TODO: handle chimeric reads or reads with one unmapped etc.
@@ -186,7 +184,7 @@ class CodecConsensusCaller(readNamePrefix: String,
         pairs.filterNot(r => r.secondary || r.supplementary)
       )
       val (frPairs, nonFrPairs) = primaryPairs.partition {
-        case (_, Seq(a, b)) => CodecConsensusCaller.isPrimaryFrPair(a, b)
+        case (_, Seq(a, _)) => a.isFrPair
         case _              => false
       }
       rejectRecords(nonFrPairs.flatMap(_._2), RejectionReason.NotPrimaryFrPair)
@@ -409,26 +407,5 @@ object CodecConsensusCaller {
     val byName = mutable.LinkedHashMap.empty[String, mutable.ArrayBuffer[SamRecord]]
     records.foreach { rec => byName.getOrElseUpdate(rec.name, mutable.ArrayBuffer.empty) += rec }
     byName.iterator.map { case (name, recs) => (name, recs.toSeq) }.toSeq
-  }
-
-  /** Returns true if the two records form an FR pair, computing the answer symmetrically in
-    * its arguments. After validating that both records are mapped to the same contig on
-    * opposite strands, delegates to htsjdk's `SamPairUtil.getPairOrientation` evaluated on
-    * the reverse-strand record: that branch derives both 5' positions from CIGARs
-    * (`mate.alignmentStart` vs `record.alignmentEnd`) and is independent of MC/TLEN, so the
-    * answer is consistent regardless of which record of the pair this is called with. See
-    * https://github.com/samtools/htsjdk/pull/1771 (htsjdk 5.0.0+) for the underlying
-    * per-record asymmetry this avoids; once we no longer need to support older htsjdk
-    * versions for this caller, this helper can be replaced with `SamRecord.isFrPair`.
-    */
-  private[umi] def isPrimaryFrPair(a: SamRecord, b: SamRecord): Boolean = {
-    if (!a.mapped || !b.mapped) false
-    else if (!a.mateMapped || !b.mateMapped) false
-    else if (a.refIndex != b.refIndex) false
-    else if (a.positiveStrand == b.positiveStrand) false
-    else {
-      val rev = if (a.positiveStrand) b else a
-      rev.pairOrientation == PairOrientation.FR
-    }
   }
 }
