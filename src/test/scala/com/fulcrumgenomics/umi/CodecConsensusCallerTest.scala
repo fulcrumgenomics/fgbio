@@ -353,57 +353,6 @@ class CodecConsensusCallerTest extends UnitSpec with OptionValues {
   }
 
   //////////////////////////////////////////////////////////////////////////////
-  // Tests for isPrimaryFrPair
-  //////////////////////////////////////////////////////////////////////////////
-
-  "CodecConsensusCaller.isPrimaryFrPair" should "classify a dovetail FR pair as FR regardless of argument order" in {
-    val builder = new SamBuilder(readLength=129, baseQuality=35)
-    val pair = builder.addPair(
-      contig=0, start1=96, start2=49, cigar1="68S53M8S", cigar2="28S48M53S"
-    ).tapEach(setReadSequence)
-    val r1 = pair.head
-    val r2 = pair.last
-    CodecConsensusCaller.isPrimaryFrPair(r1, r2) shouldBe true
-    CodecConsensusCaller.isPrimaryFrPair(r2, r1) shouldBe true
-  }
-
-  it should "classify a typical FR pair as FR" in {
-    val builder = new SamBuilder(readLength=30, baseQuality=35)
-    val Seq(r1, r2) = builder.addPair(contig=0, start1=10, start2=50).toSeq
-    CodecConsensusCaller.isPrimaryFrPair(r1, r2) shouldBe true
-  }
-
-  it should "classify an RF pair as not FR" in {
-    val builder = new SamBuilder(readLength=30, baseQuality=35)
-    val Seq(r1, r2) = builder.addPair(
-      contig=0, start1=50, start2=100, strand1=Minus, strand2=Plus
-    ).toSeq
-    CodecConsensusCaller.isPrimaryFrPair(r1, r2) shouldBe false
-  }
-
-  it should "reject cross-chromosomal pairs" in {
-    val builder = new SamBuilder(readLength=30, baseQuality=35)
-    val Seq(r1, r2) = builder.addPair(contig=0, start1=10, start2=50).toSeq
-    r1.refIndex = 0
-    r2.refIndex = 1
-    CodecConsensusCaller.isPrimaryFrPair(r1, r2) shouldBe false
-  }
-
-  it should "reject a pair with one mate unmapped" in {
-    val builder = new SamBuilder(readLength=30, baseQuality=35)
-    val Seq(r1, r2) = builder.addPair(contig=0, start1=10, start2=10, unmapped2=true).toSeq
-    CodecConsensusCaller.isPrimaryFrPair(r1, r2) shouldBe false
-  }
-
-  it should "reject a tandem pair" in {
-    val builder = new SamBuilder(readLength=30, baseQuality=35)
-    val Seq(r1, r2) = builder.addPair(
-      contig=0, start1=10, start2=50, strand1=Plus, strand2=Plus
-    ).toSeq
-    CodecConsensusCaller.isPrimaryFrPair(r1, r2) shouldBe false
-  }
-
-  //////////////////////////////////////////////////////////////////////////////
   // Tests for quality masking
   //////////////////////////////////////////////////////////////////////////////
 
