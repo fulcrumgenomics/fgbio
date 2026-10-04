@@ -54,6 +54,13 @@ object SamRecordClipper {
   /** The set of tags that should be invalidated if a read undergoes clipping. */
   val TagsToInvalidate: Seq[String] = Bams.AlignmentTags
 
+  /** SAM tags whose values are never per-base, so they are not auto-clipped even when their length equals the read's. */
+  val TagsNeverAutoClipped: Set[String] = Set(
+    "RG", "LB", "PU", "PG", "CO", "MI",
+    "BC", "QT", "RX", "QX", "OX", "BZ", "CB", "CR", "CY", "UB", "UR", "UY",
+    "MC", "SA", "OA", "OC"
+  )
+
   private val NoCallBase = 'N'.toByte
   private val NoCallQual = 2.toByte
 }
@@ -76,7 +83,8 @@ object SamRecordClipper {
   * @param autoClipAttributes if true attributes that are the same length as the bases
   *                           and qualities be automatically clipped in the same way as
   *                           the bases and qualities, otherwise attributes are not
-  *                           touched.
+  *                           touched. Tags in [[SamRecordClipper.TagsNeverAutoClipped]]
+  *                           are never clipped.
   */
 class SamRecordClipper(val mode: ClippingMode, val autoClipAttributes: Boolean) {
   import SamRecordClipper._
@@ -491,6 +499,7 @@ class SamRecordClipper(val mode: ClippingMode, val autoClipAttributes: Boolean) 
       val newLength = rec.length
       val oldLength = newLength + remove
       rec.attributes.foreach {
+        case (tag, _) if TagsNeverAutoClipped.contains(tag) => ()
         case (tag, s: String)   if s.length == oldLength => rec(tag) = if (fromStart) s.drop(remove) else s.take(newLength)
         case (tag, a: Array[_]) if a.length == oldLength => rec(tag) = if (fromStart) a.drop(remove) else a.take(newLength)
         case _  => ()

@@ -189,6 +189,17 @@ class SamRecordClipperTest extends UnitSpec with OptionValues {
     }
   }
 
+  it should "not auto-clip identifier, barcode or alignment tags whose length equals the read length" in {
+    val rec   = r(10, "20M")
+    val value = "ACGTACGTACGTACGTACGT"
+    SamRecordClipper.TagsNeverAutoClipped.foreach(tag => rec(tag) = value)
+    rec("XB") = value
+
+    clipper(Hard, autoClip=true).clipStartOfAlignment(rec, 5) shouldBe 5
+    SamRecordClipper.TagsNeverAutoClipped.foreach(tag => rec[String](tag) shouldBe value)
+    rec[String]("XB") shouldBe value.drop(5)
+  }
+
   //////////////////////////////////////////////////////////////////////////////
 
   "SamRecordClipper.clipEndOfAlignment" should "soft-clip 10 matched bases" in {
