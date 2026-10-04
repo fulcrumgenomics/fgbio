@@ -82,7 +82,7 @@ class ClipBam
   @arg(flag='m', doc="Optional output of clipping metrics.") val metrics: Option[FilePath] = None,
   @arg(flag='r', doc="Reference sequence fasta file.") val ref: PathToFasta,
   @arg(flag='c', doc="The type of clipping to perform.") val clippingMode: ClippingMode = ClippingMode.Hard,
-  @arg(flag='a', doc="Automatically clip extended attributes that are the same length as bases.") val autoClipAttributes: Boolean = false,
+  @arg(flag='a', doc="Automatically clip extended attributes that are the same length as bases, except identifier, barcode and alignment tags such as RG, MI and RX.") val autoClipAttributes: Boolean = false,
   @arg(flag='H', doc="Upgrade all existing clipping in the input to the given clipping mode prior to applying any other clipping criteria.") val upgradeClipping: Boolean = false,
   @arg(          doc="Require at least this number of bases to be clipped on the 5' end of R1") val readOneFivePrime: Int  = 0,
   @arg(          doc="Require at least this number of bases to be clipped on the 3' end of R1") val readOneThreePrime: Int = 0,
