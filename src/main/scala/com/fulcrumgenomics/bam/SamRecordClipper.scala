@@ -54,12 +54,15 @@ object SamRecordClipper {
   /** The set of tags that should be invalidated if a read undergoes clipping. */
   val TagsToInvalidate: Seq[String] = Bams.AlignmentTags
 
-  /** SAM tags whose values are not this read's per-base data, so they are not auto-clipped even when their length equals the read's. */
+  /** Tags whose values are not this read's per-base data, so they are not auto-clipped even when their length equals
+    * the read's. Best-effort: an unlisted tag whose length matches the read's is still clipped. */
   val TagsNeverAutoClipped: Set[String] = Set(
     "RG", "LB", "PU", "PG", "CO", "MI",
-    "BC", "QT", "RX", "QX", "OX", "BZ", "CB", "CR", "CY", "UB", "UR", "UY",
-    "MC", "SA", "OA", "OC", "CC", "CT", "FS", "PT",
-    "R2", "Q2", "FZ", "MM", "ML", "CG"
+    "BC", "QT", "RX", "QX", "OX", "BZ", "CB", "CR", "CY", "UB", "UR", "UY", "BX",
+    "MC", "MD", "SA", "OA", "OC", "CG", "XA", "cs", "jM", "jI",
+    "CC", "CT", "FS", "PT", "GX", "GN",
+    "R2", "Q2",
+    "FZ", "MM", "ML", "mv", "pi", "st", "fn"
   )
 
   private val NoCallBase = 'N'.toByte

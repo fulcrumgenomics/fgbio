@@ -189,25 +189,6 @@ class SamRecordClipperTest extends UnitSpec with OptionValues {
     }
   }
 
-  it should "not auto-clip SAM tags that are not this read's per-base data, even when their length equals the read's" in {
-    val expected = Set(
-      "RG", "LB", "PU", "PG", "CO", "MI",
-      "BC", "QT", "RX", "QX", "OX", "BZ", "CB", "CR", "CY", "UB", "UR", "UY",
-      "MC", "SA", "OA", "OC", "CC", "CT", "FS", "PT",
-      "R2", "Q2", "FZ", "MM", "ML", "CG"
-    )
-    SamRecordClipper.TagsNeverAutoClipped shouldBe expected
-
-    val rec   = r(10, "20M")
-    val value = "ACGTACGTACGTACGTACGT"
-    expected.foreach(tag => rec(tag) = value)
-    rec("XB") = value
-
-    clipper(Hard, autoClip=true).clipStartOfAlignment(rec, 5) shouldBe 5
-    expected.foreach(tag => rec[String](tag) shouldBe value)
-    rec[String]("XB") shouldBe value.drop(5)
-  }
-
   //////////////////////////////////////////////////////////////////////////////
 
   "SamRecordClipper.clipEndOfAlignment" should "soft-clip 10 matched bases" in {
@@ -552,6 +533,31 @@ class SamRecordClipperTest extends UnitSpec with OptionValues {
     withAuto.cigar.toString shouldBe "10H35M15H"
     withAuto.bases.length   shouldBe 35
     withAuto[String]("az")  shouldBe "67890123456789012345678901234567890"
+  }
+
+  it should "not auto-clip tags that are not this read's per-base data, even when their length equals the read's" in {
+    val expected = Set(
+      "RG", "LB", "PU", "PG", "CO", "MI",
+      "BC", "QT", "RX", "QX", "OX", "BZ", "CB", "CR", "CY", "UB", "UR", "UY", "BX",
+      "MC", "MD", "SA", "OA", "OC", "CG", "XA", "cs", "jM", "jI",
+      "CC", "CT", "FS", "PT", "GX", "GN",
+      "R2", "Q2",
+      "FZ", "MM", "ML", "mv", "pi", "st", "fn"
+    )
+    SamRecordClipper.TagsNeverAutoClipped shouldBe expected
+
+    val rec     = r(10, "5S10M5S")
+    val value   = "ACGTACGTACGTACGTACGT"
+    val depth   = Array.tabulate[Short](20)(_.toShort)
+    val perBase = Seq("OQ", "E2", "XB")
+    expected.foreach(tag => rec(tag) = value)
+    perBase.foreach(tag => rec(tag) = value)
+    rec("cd") = depth
+
+    clipper(Hard, autoClip=true).upgradeAllClipping(rec) shouldBe (5, 5)
+    expected.foreach(tag => rec[String](tag) shouldBe value)
+    perBase.foreach(tag => rec[String](tag) shouldBe value.slice(5, 15))
+    rec[Array[Short]]("cd") shouldBe depth.slice(5, 15)
   }
 
   it should "not convert reads that have no soft-clipping" in {
