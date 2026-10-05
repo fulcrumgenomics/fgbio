@@ -1,0 +1,631 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <meta charset="utf-8">
+  </head>
+  <body>
+	<div class="wrapper">
+	
+	{% include header.html %}
+
+	<section>
+	<h2>Assembly Report to Sequence Dictionary</h2>
+
+	<p>This utility aids in creating a sequence dictionary from an NCBI assembly report.
+	See <a href="https://github.com/fulcrumgenomics/fgbio/wiki/Use-an-NCBI-Assembly-Report-to-Update-Contig-Names-in-FASTA-VCF-GFF-BED-IntervalList-Delimited-Files">the fgbio wiki</a> for more details.</p>
+	<p>Select an assembly to get started.  Toggle between the Table view and the output Sequence Dictionary.
+	The Table view allows you to select the primary and alternate contig names based on the assembly report.</p>
+
+	<!-- the dropdown with the list of assemblies to pick from -->
+	<div id="assembly-form-div">
+	<form id="assembly-form">
+	  <label for="assembly">Assembly:</label>
+	  <select id="assembly" name="assembly">
+		  <optgroup label="GRCh38">
+		  <option value="https://ftp.ncbi.nlm.nih.gov/genomes/all/GCA/000/001/405/GCA_000001405.28_GRCh38.p13/GCA_000001405.28_GRCh38.p13_assembly_report.txt">GRCh38.p13 (GCA_000001405.28)</option>
+		  <option selected="selected" value="https://ftp.ncbi.nlm.nih.gov/genomes/all/GCA/000/001/405/GCA_000001405.29_GRCh38.p14/GCA_000001405.29_GRCh38.p14_assembly_report.txt">GRCh38.p14 (GCA_000001405.29)</option>
+	  </select>
+	  <input type="submit" value="Submit">
+	</form>
+	</div>
+
+	<!-- the radio buttons for choosing to display the assembly report table or the sequence dictionary --> 
+	<br/>
+	<div id="output-radio-div"></div>
+
+	<!-- the text for the assembly stats (number of contigs and total length -->
+	<br/>
+	<pre id="assembly-stats"></pre>
+	<br/>
+
+	<!-- the divider for the assembly report table -->
+	<div id="assembly-table-div">
+	<table border=1 id="assembly-table"></table>
+	</div>
+
+	<!-- the divider for the sequence dictionary textarea-->
+	<div id="sequence-dictionary-div">
+	<textarea id="sequence-dictionary"></textarea>
+	</div>
+
+	{% include footer.html %}
+
+	</div>
+
+	<script>
+	// elements for later
+	const form = document.getElementById('assembly-form');
+	const table = document.getElementById('assembly-table');
+	const textArea = document.getElementById('sequence-dictionary');
+	let assemblyReport = [];
+	let assemblyRoles = [];
+	const MissingColumnValue = "na";
+					
+	// hide both the table and sequence dictionary until we pick the assembly
+	document.getElementById('assembly-table-div').style.display = 'none';
+	document.getElementById('sequence-dictionary-div').style.display = 'none';
+
+    /**
+	 * Enum to represent columns in a NCBI assembly report.
+	 * @readonly
+	 * @enum {{key: string, tag: string, alias: boolean}}
+	 */
+	const AssemblyReportColumn = Object.freeze({
+	  SequenceName:     { key: "Sequence-Name", tag: "sn", alias: true },
+	  AssignedMolecule: { key: "Assigned-Molecule", tag: "am", alias: true },
+	  GenBankAccession: { key: "GenBank-Accn", tag: "ga", alias: true },
+	  RefSeqAccession:  { key: "RefSeq-Accn", tag: "ra", alias: true },
+	  UcscName:         { key: "UCSC-style-name", tag: "un", alias: true },
+	  SequenceRole:     { key: "Sequence-Role", tag: "sr", alias: false },
+	  SequenceLength:   { key: "Sequence-Length", tag: "sl", alias: false }
+	});
+	
+	/**
+	 * Function to lookup the AssemblyReportColumn by key.
+	 */
+	function getAssemblyReportColumn(key) {
+		switch (key) {
+			case AssemblyReportColumn.SequenceName.key:
+				return AssemblyReportColumn.SequenceName;
+			case AssemblyReportColumn.AssignedMolecule.key:
+				return AssemblyReportColumn.AssignedMolecule;
+			case AssemblyReportColumn.GenBankAccession.key:
+				return AssemblyReportColumn.GenBankAccession;
+			case AssemblyReportColumn.RefSeqAccession.key:
+				return AssemblyReportColumn.RefSeqAccession;
+			case AssemblyReportColumn.UcscName.key:
+				return AssemblyReportColumn.UcscName;
+			case AssemblyReportColumn.SequenceRole.key:
+				return AssemblyReportColumn.SequenceRole;
+			case AssemblyReportColumn.SequenceLength.key:
+				return AssemblyReportColumn.SequenceLength;
+			default:
+				return null;
+		}
+	};
+
+    /**
+	 * Enum to represent the various types of sequence-roles in NCBI assembly report. 
+	 * @readonly
+	 * @enum {{key: string}}
+	 */
+	const SequenceRole = Object.freeze({
+	  AssembledMolecule:   { key: "assembled-molecule" },
+	  AltScaffold:         { key: "alt-scaffold" },
+	  FixPatch:            { key: "fix-patch" },
+	  NovelPatch:          { key: "novel-patch" },
+	  UnlocalizedScaffold: { key: "unlocalized-scaffold" },
+	  UnplacedScaffold:    { key: "unplaced-scaffold" }
+	});
+
+	/**
+	 * Function to lookup the SequenceRole by key.
+	 */
+	function getSequenceRole(key) {
+		switch (key) {
+			case SequenceRole.AssembledMolecule.key:
+				return SequenceRole.AssembledMolecule;
+			case SequenceRole.AltScaffold.key:
+				return SequenceRole.AltScaffold;
+			case SequenceRole.FixPatch.key:
+				return SequenceRole.FixPatch;
+			case SequenceRole.NovelPatch.key:
+				return SequenceRole.NovelPatch;
+			case SequenceRole.UnlocalizedScaffold.key:
+				return SequenceRole.UnlocalizedScaffold;
+			case SequenceRole.UnplacedScaffold.key:
+				return SequenceRole.UnplacedScaffold;
+			default:
+				return null;
+		}
+	};
+
+	function error(message) {
+		console.log(`Error: ${message}`);
+		alert(`Error: ${message}`);
+		return False;
+	}
+	
+
+	/**
+	 * Function to parse the NCBI Assembly Report text.
+	 *
+	 * Stores the result in assemblyReport.  The result will be an array
+	 * of maps, with each mapping AssemblyReportColumn(s) to a value.  The
+	 * SequenceRole column will be converted from text to an instance of
+	 * SequenceRole.
+	 */
+	function parseAssemblyReport(data) {
+		let lines = data.split('\n');
+		for(var i = 0;i < lines.length;i++){
+			lines[i] = lines[i].trim();
+		}
+
+		// find the last line starting with a '#'
+		var header_i = 0;
+		for (;header_i < lines.length;header_i++) {
+			if (lines[header_i][0] != '#') {
+				header_i--;
+				break;
+			}
+		}
+		if (header_i == lines.length) {
+			return error(`Error: malformed assembly report (no header)`);
+		}
+		let header = lines[header_i].slice(1).trim().split('\t');
+
+		// parse the remaining lines
+		const values = [];
+		for (var i = header_i + 1; i < lines.length; i++) {
+			if (lines[i] == '') {
+				continue;
+			}
+			let fields = lines[i].split('\t');
+			if (header.length != fields.length) {
+				return error(`Error: malformed line #${i+1}: ${lines[i]}`);
+			}
+			const dict = new Map()
+			for (var j = 0; j < header.length; j++) {
+				let column = getAssemblyReportColumn(header[j]);
+				if (column !== null) {
+					if (column === AssemblyReportColumn.SequenceRole) {
+						dict.set(column, getSequenceRole(fields[j]));
+					} else {
+						dict.set(column, fields[j]);
+					}
+				}
+
+			}
+			values.push(dict);
+		}
+
+		assemblyReport = values;
+
+	};
+
+	/**
+	 * Function to add a dropdown menu for the primary contig name column.
+	 *
+	 * Adds an event listener to update the table when a column is selected.
+	 */
+	function addPrimaryDropdown(cell, primaryColumn) {
+		const primarySelector = document.createElement("select");
+		primarySelector.id = "primary-selector";
+		let columns = [
+			AssemblyReportColumn.SequenceName,
+			AssemblyReportColumn.AssignedMolecule,
+			AssemblyReportColumn.GenBankAccession,
+			AssemblyReportColumn.RefSeqAccession,
+			AssemblyReportColumn.UcscName
+		];
+		for (var i = 0; i < columns.length; i++) {
+			const option = document.createElement("option");
+			if (columns[i] == primaryColumn) {
+				option.selected = true;
+			} else {
+				option.selected = false;
+			}
+			option.value = columns[i].key;
+			option.text = columns[i].key;
+			primarySelector.appendChild(option);
+		}
+		cell.appendChild(primarySelector);
+
+		primarySelector.addEventListener('change', function(event) {
+			event.preventDefault();
+			drawTableFromSelectors();
+		});
+
+		return cell;
+	};
+	
+	/**
+	 * Function to add a dropdown menu for the alternate contig name columns.
+	 *
+	 * Adds an event listener to update the table when a column is selected/deselected.
+	 */
+	function addAlternatesDropdown(cell, alternates) {
+		const alternatesSelector = document.createElement("select");
+		alternatesSelector.id = "alternates-selector";
+		alternatesSelector.multiple = "true";
+		let values = [
+			AssemblyReportColumn.SequenceName,
+			AssemblyReportColumn.AssignedMolecule,
+			AssemblyReportColumn.GenBankAccession,
+			AssemblyReportColumn.RefSeqAccession,
+			AssemblyReportColumn.UcscName
+		];
+		for (var i = 0; i < values.length; i++) {
+			const option = document.createElement("option");
+			if (alternates.includes(values[i])) {
+				option.selected = true;
+			} else {
+				option.selected = false;
+			}
+			option.value = values[i].key;
+			option.text = values[i].key;
+			alternatesSelector.appendChild(option);
+		}
+		cell.appendChild(alternatesSelector);
+
+		alternatesSelector.addEventListener('change', function(event) {
+			event.preventDefault();
+			drawTableFromSelectors();
+		});
+		
+		return cell;
+	};
+	
+	/**
+	 * Function to add a dropdown menu for the sequence role(s).
+	 *
+	 * Adds an event listener to update the table when a role is selected/deselected.
+	 */
+	function addSequenceRoleDropdown(cell, roles) {
+		const selector = document.createElement("select");
+		selector.id = "sequence-roles-selector";
+		selector.multiple = "true";
+		let values = [
+			SequenceRole.AssembledMolecule,
+			SequenceRole.AltScaffold,
+			SequenceRole.FixPatch,
+			SequenceRole.NovelPatch,
+			SequenceRole.UnlocalizedScaffold,
+			SequenceRole.UnplacedScaffold
+		];
+		const options = []
+		for (var i = 0; i < values.length; i++) {
+			const option = document.createElement("option");
+			if (roles.includes(values[i])) {
+				option.selected = true;
+			} else {
+				option.selected = false;
+			}
+			option.value = values[i].key;
+			option.text = values[i].key;
+			selector.appendChild(option);
+		}
+		cell.appendChild(selector);
+
+		selector.addEventListener('change', function(event) {
+			event.preventDefault();
+			drawTableFromSelectors();
+		});
+		
+		return cell;
+	};
+
+	/** Converts an integer to string, adding a thousands delimiter. **/
+	function intToThousands(value) {
+		return value.toString().replace(/\B(?=(\d{3})+(?!\d))/g, ",");
+	}
+
+	/** Sets the given rowSpan on the cell, returning the cell. **/
+	function withRowSpan(cell, rowSpan) {
+		cell.rowSpan = rowSpan;
+		return cell;
+	}
+	
+	/** Sets the given colSpan on the cell, returning the cell. **/
+	function withColSpan(cell, colSpan) {
+		cell.colSpan = colSpan;
+		return cell;
+	}
+
+	/**
+	  * Draws the assembly report table.
+	  *
+	  * The primayColumn, alternates, and roles may be null, in which case defaults
+	  * matching the fgbio defaults are used.
+	  */
+	function drawTable(primaryColumn, alternates, roles) {
+		if (primaryColumn === null) {
+			return drawTable(AssemblyReportColumn.UcscName, alternates, roles);
+		}
+		if (alternates == null) {
+			const alternates = [
+				AssemblyReportColumn.RefSeqAccession,
+				AssemblyReportColumn.GenBankAccession,
+				AssemblyReportColumn.AssignedMolecule
+			];
+			return drawTable(primaryColumn, alternates, roles);
+		}
+		if (roles == null) {
+			let roles = [
+				SequenceRole.AssembledMolecule,
+				SequenceRole.UnlocalizedScaffold,
+				SequenceRole.UnplacedScaffold,
+				SequenceRole.AltScaffold
+			];
+			return drawTable(primaryColumn, alternates, roles);
+		}
+
+		// header: primary, alternates, role, length
+		let tableHead = table.querySelector('thead');
+		if (tableHead != null) {
+			table.removeChild(tableHead);
+		}
+		tableHead = document.createElement("thead");
+		table.appendChild(tableHead);
+		
+		let row1 = document.createElement("tr");
+		row1.insertCell().appendChild(document.createTextNode("Primary Name"));
+		withColSpan(row1.insertCell(), alternates.length).appendChild(document.createTextNode("Alternate Names"));
+		row1.insertCell().appendChild(document.createTextNode("Sequence Role"));
+		withRowSpan(row1.insertCell(), 3).appendChild(document.createTextNode("Length"));
+		tableHead.appendChild(row1);
+		
+		let row2 = document.createElement("tr");
+		addPrimaryDropdown(withRowSpan(row2.insertCell(), 2), primaryColumn); // primary column
+		addAlternatesDropdown(withColSpan(row2.insertCell(), alternates.length), alternates); // alternates column
+		addSequenceRoleDropdown(withRowSpan(row2.insertCell(), 2), roles); // sequence role column
+		tableHead.appendChild(row2);
+
+		let row3 = document.createElement("tr");
+		for (var i = 0; i < alternates.length; i++) {
+			row3.insertCell().appendChild(document.createTextNode(alternates[i].key));
+		}
+		tableHead.appendChild(row3);
+		
+		// sort the assemblyReport by roles
+		assemblyReport.sort(function(a, b) {
+			let roleA = a.get(AssemblyReportColumn.SequenceRole);
+			let roleB = b.get(AssemblyReportColumn.SequenceRole);
+
+			let roleAIndex = roles.indexOf(roleA);
+			let roleBIndex = roles.indexOf(roleB);
+			if (roleAIndex === -1 && roleBIndex == -1) {
+				return roleA.key.localeCompare(roleB.key.localeCompare);
+			} else if (roleAIndex === -1) {
+				return 1;
+			} else if (roleBIndex === -1) {
+				return -1;
+			} else if (roleAIndex == roleBIndex) {
+				let roleAIndex = assemblyReport.indexOf(a);
+				let roleBIndex = assemblyReport.indexOf(b);
+				return (roleAIndex - roleBIndex);
+			} else {
+				return (roleAIndex - roleBIndex);
+			}
+		});
+
+		// rows
+		let tableBody = table.querySelector('tbody');
+		if (tableBody != null) {
+			table.removeChild(tableBody);
+		}
+		tableBody = document.createElement("tbody");
+		table.appendChild(tableBody)
+		var numContigs = 0;
+		var totalLength = 0;
+		var sequenceDictionary = "@HD\tVN:1.6\n";
+		var sequenceDictionaryMaxLineLength = 0;
+		for(var i=0; i < assemblyReport.length; i++) {
+			let obj = assemblyReport[i];
+			let role = obj.get(AssemblyReportColumn.SequenceRole);
+
+			// skip contigs missing the primary name
+			const primaryName = obj.get(primaryColumn);
+			if (primaryName === MissingColumnValue) {
+				console.log(`Info: skipping contig with missing value for column: ${primayColumn.key}`)
+				continue;
+			}
+
+			// only keep contigs with one of the specified roles
+			if (roles.length > 0 && !roles.includes(role)) {
+				console.log(`Info: skipping contig '${primaryName}' with role: '${role.key}'`)
+				continue;
+			}
+
+			const sequenceLength = obj.get(AssemblyReportColumn.SequenceLength);
+
+			// TODO: AS
+			sequenceDictionaryLine = `@SQ\tSN:${primaryName}\tLN:${sequenceLength}\tAN:`;
+			
+			const row = tableBody.insertRow();
+			row.insertCell().appendChild(document.createTextNode(primaryName));
+
+			var alternatesText = "";
+			for (var j=0; j < alternates.length; j++) {
+				// Developer note: the values in the Assigned-Molecule column (e.g. "1" or "chr1") make sense for molecules
+				// with Sequence-Role "assembled-molecule".  But for others, e.g. "unlocalized-scaffold" and "alt-scaffold",
+				// the Assigned-Molecule points to the primary/assembled molecule (e.g. chr1_gl000191_random -> 1).
+				// Only use Assigned-Molecule to generate alias(es) for "assembled-molecules" in order not to generate
+				// multiple records with the same alias.  Perhaps this is better represented as an alternate locus, but that is
+				// not implemented here.
+				if (alternates[j] === AssemblyReportColumn.AssignedMolecule && role !== SequenceRole.AssembledMolecule) {
+					row.insertCell();
+					continue;
+				}
+				let alternate = obj.get(alternates[j]);
+				if (alternate === MissingColumnValue) {
+					row.insertCell();
+					continue;
+				}
+				row.insertCell().appendChild(document.createTextNode(alternate));
+				if (alternatesText.length > 0) {
+					alternatesText += ",";
+				}
+				alternatesText += alternate;
+			}
+			sequenceDictionaryLine += alternatesText;
+			row.insertCell().appendChild(document.createTextNode(role.key));
+			row.insertCell().appendChild(document.createTextNode(intToThousands(sequenceLength)));
+
+			numContigs++;
+			totalLength += parseInt(sequenceLength);
+
+			let columns = [
+				AssemblyReportColumn.SequenceName,
+				AssemblyReportColumn.AssignedMolecule,
+				AssemblyReportColumn.GenBankAccession,
+				AssemblyReportColumn.RefSeqAccession,
+				AssemblyReportColumn.UcscName,
+				AssemblyReportColumn.SequenceRole,
+				AssemblyReportColumn.SequenceLength
+			];
+			for (var j = 0; j < columns.length; j++) {
+				if (columns[j] === AssemblyReportColumn.SequenceRole) {
+					sequenceDictionaryLine += `\t${columns[j].tag}:${obj.get(columns[j]).key}`;
+				} else {
+					sequenceDictionaryLine += `\t${columns[j].tag}:${obj.get(columns[j])}`;
+				}
+
+			}
+			sequenceDictionary += sequenceDictionaryLine + "\n";
+			
+			// add four more columns for every tab (seems to work out)
+			var sequenceDictionaryLineLength = sequenceDictionaryLine.length;
+			for (var j = 0; j < sequenceDictionaryLine.length; j++) {
+				if (sequenceDictionaryLine[j] === '\t') {
+					sequenceDictionaryLineLength += 4;
+				}
+			}
+
+			if (sequenceDictionaryLineLength > sequenceDictionaryMaxLineLength) {
+				sequenceDictionaryMaxLineLength = sequenceDictionaryLineLength;
+			}
+		}
+		
+		// summary stats:
+		// - # of contigs
+		// - total sequence length
+		let pre = document.getElementById("assembly-stats");
+		pre.textContent = `Displaying ${numContigs} contigs with total length ${intToThousands(totalLength)} bases...`;
+
+		// sequence dictionary
+		textArea.value = sequenceDictionary.slice(0, -1); 
+		textArea.cols = sequenceDictionaryMaxLineLength;
+		textArea.rows = numContigs + 1;
+	}
+
+	/**
+	  * Draws the assembly report table.
+	  *
+	  * This calls `drawTable` using values from the corresponding selectors.
+	  */
+	function drawTableFromSelectors() {
+		const primarySelector = document.getElementById("primary-selector");
+		let primaryColumn = getAssemblyReportColumn(primarySelector.value);
+
+		const alternatesSelector = document.getElementById("alternates-selector");
+		var alternates = [];
+		for (var i = 0; i < alternatesSelector.options.length; i++) {
+			if (alternatesSelector.options[i].selected) {
+				alternates.push(getAssemblyReportColumn(alternatesSelector.options[i].value));
+			}
+		}
+
+		const rolesSelector = document.getElementById("sequence-roles-selector");
+		var roles = []
+		for (var i = 0; i < rolesSelector.options.length; i++) {
+			if (rolesSelector.options[i].selected) {
+				roles.push(getSequenceRole(rolesSelector.options[i].value));
+			}
+		}
+
+		return drawTable(primaryColumn, alternates, roles);
+	}
+
+	/**
+	  * Creates radio buttons for choosing to display the assembly report table or the sequence dictionary.
+	  */
+	function createRadioButton(name, value, labelText, checked) {
+		const radio = document.createElement('input');
+		radio.type = 'radio';
+		radio.name = name;
+		radio.value = value;
+		radio.id = `radio-${value}`;
+		radio.checked = checked;
+
+		const label = document.createElement('label');
+		label.htmlFor = value;
+		label.textContent = labelText;
+
+		const container = document.getElementById('output-radio-div')
+		container.appendChild(radio);
+		container.appendChild(label);
+
+		return radio;
+	}
+
+	// Adds an event listener to retrieve the chosen NCBI assembly report and draw the
+	// assembly report table and fill in the sequence dictionary.
+	form.addEventListener('submit', function(event) {
+		event.preventDefault();
+		var formData = new FormData(form);
+		let target = formData.get("assembly");
+		const xhr = new XMLHttpRequest();
+		xhr.open("GET", target);
+		xhr.send();
+		xhr.responseType = "txt";
+		xhr.onload = () => {
+			if (xhr.readyState == 4 && xhr.status == 200) {
+				const data = xhr.response;
+				console.log(data);
+
+				// add the button to toggle the table vs sequence dictionary (textarea) 
+				if (document.getElementById('radio-table') === null) {
+					let radio1 = createRadioButton('output-radio', 'table', 'Table', true);
+					let radio2 = createRadioButton('output-radio', 'dict', 'Sequence Dictionary', false);
+					let radios = [radio1, radio2];
+					radios.forEach(radio => {
+						radio.addEventListener('change', function() {
+							console.log('Selected value:', this.value);
+							if (this.value == "table") {
+								document.getElementById('assembly-table-div').style.display = 'block';
+								document.getElementById('sequence-dictionary-div').style.display = 'none';
+							} else {
+								document.getElementById('assembly-table-div').style.display = 'none';
+								document.getElementById('sequence-dictionary-div').style.display = 'block';
+							}
+						});
+					});
+					document.getElementById('assembly-table-div').style.display = 'block';
+					document.getElementById('sequence-dictionary-div').style.display = 'none';
+				}
+
+				// parse the report
+				parseAssemblyReport(data)
+
+				// create the table
+				const alternates = [
+					AssemblyReportColumn.RefSeqAccession,
+					AssemblyReportColumn.GenBankAccession,
+					AssemblyReportColumn.AssignedMolecule
+				];
+				let roles = [
+					SequenceRole.AssembledMolecule,
+					SequenceRole.UnlocalizedScaffold,
+					SequenceRole.UnplacedScaffold,
+					SequenceRole.AltScaffold
+				];
+				return drawTable(AssemblyReportColumn.UcscName, alternates, roles);
+			} else {
+				return error(`Error: ${xhr.status}`);
+			}
+		};
+	});
+	</script>
+  </body>
+</html>
