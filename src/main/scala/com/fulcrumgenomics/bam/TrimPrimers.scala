@@ -82,7 +82,7 @@ class TrimPrimers
   @arg(flag='S', doc="Match to primer locations +/- this many bases.") val slop: Int = 5,
   @arg(flag='s', doc="Sort order of output BAM file (defaults to input sort order).") val sortOrder: Option[SamOrder] = None,
   @arg(flag='r', doc="Optional reference fasta for recalculating NM, MD and UQ tags.") val ref: Option[PathToFasta] = None,
-  @arg(flag='a', doc="Automatically trim extended attributes that are the same length as bases.") val autoTrimAttributes: Boolean = false,
+  @arg(flag='a', doc="Automatically trim extended attributes that are the same length as bases, except listed tags that are not per-base data for the read, such as RG.") val autoTrimAttributes: Boolean = false,
   @arg(doc="Trim only first of pair reads (R1s) or fragment reads, otherwise both ends of a pair.") val firstOfPair: Boolean = false
 
 )extends FgBioTool with LazyLogging {
