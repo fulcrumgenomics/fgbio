@@ -16,10 +16,14 @@ concurrency:
   group: unittest-${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
+permissions: {}
+
 jobs:
   test:
     name: Unit Tests
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
     strategy:
       matrix:
         jvm: ["temurin:1.17.0.15", "temurin:1.21.0.7", "temurin:1.22.0.2"]
@@ -29,6 +33,7 @@ jobs:
         with:
           fetch-depth: 0
           lfs: true
+          persist-credentials: false
       - name: Checkout LFS objects
         run: git lfs checkout        
       - name: Setup cache
@@ -60,6 +65,8 @@ jobs:
     if: ${{ github.repository == 'fulcrumgenomics/fgbio' && github.ref == 'refs/heads/main' && github.event_name != 'workflow_call' }}
     needs: test
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
     environment: github-actions
     env:
       SONATYPE_USER: ${{ secrets.SONATYPE_USER }}
@@ -100,6 +107,7 @@ jobs:
           fetch-depth: 0
           # To work with the `pull_request` or any other non-`push` even with git-auto-commit
           ref: ${{ github.head_ref }}
+          persist-credentials: false
       - name: Setup cache
         uses: coursier/cache-action@4e2615869d13561d626ed48655e1a39e5b192b3c # v6.4.7
       - name: setup Scala
@@ -117,15 +125,17 @@ jobs:
     needs: test
     runs-on: ubuntu-latest
     permissions:
-      contents: write
-      pull-requests: write
+      contents: write # pushes generated docs and the docs preview to gh-pages
+      pull-requests: write # comments the docs preview link on the pull request
     if: ${{ github.event_name != 'workflow_call' && (github.event_name == 'pull_request' || (github.repository == 'fulcrumgenomics/fgbio' && github.ref == 'refs/heads/main')) }}
     steps:
       - name: Checkout
         id: checkout
         uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
       - name: Generate the docs
-        uses: ./.github/actions/docs/
+        uses: $/.github/actions/docs/
         with:
           build-dir: ./build
           latest: false
