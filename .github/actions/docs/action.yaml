@@ -37,10 +37,7 @@ runs:
         sparse-checkout: |
           /*
           !/pr-preview/
-    # Note: we use sdkman to install java and scala as other actions do not provide support for
-    # Java 8 and scaladoc
-    # Note: we could use coursier/setup-action, but we could not get it working with scaladoc
-    # (generated a ClassNotFoundException)
+    # Note: scaladoc is not installed here; run_metrics_doclet.sh runs it from the build's scala-compiler
     - name: Setup sdkman
       shell: bash -l {0}
       run: |
@@ -52,7 +49,6 @@ runs:
       shell: bash -l {0}
       run: |
         sdk install java 17.0.13-amzn
-        sdk install scala 2.13.16
         sdk install sbt 1.11.2
     - name: Cache .ivy2
       uses: actions/cache@5a3ec84eff668545956fd18022155c47e93e2684 # v4.2.3
