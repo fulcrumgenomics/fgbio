@@ -1,0 +1,78 @@
+---
+---
+<!doctype html>
+<html lang="en">
+
+	<head>
+		{% include head.html title="Validate Read Structures" %}
+		<script type="text/javascript" src="https://code.jquery.com/jquery-1.12.4.js"></script>
+		<script type="text/javascript" src="js/validate-read-structure.js"></script>
+	</head>
+
+	<noscript>This page requires JavaScript. Please enable it in your browser settings.</noscript>
+
+	<body>
+		<div class="wrapper">
+			{% include header.html %}
+			<section>
+				<h2>Validate Read Structures</h2>
+				<p>This utility validates one or more <a href="https://github.com/fulcrumgenomics/fgbio/wiki/Read-Structures">Read Structures</a> for use with <a href="http://fulcrumgenomics.github.io/fgbio/">fgbio</a>.</p>
+
+				<p>Enter in a read structure below. Multiple read structures can be entered separated by spaces.</p>
+
+				<table>
+					<col align="left" width="20%">
+					<col align="left" width="80%">
+					<tr>
+						<td><label>Read Structure: </label></td>
+						<td>
+							<input type="text" id="read-structure-input" />
+							<input type="submit" id="submit-read-structure" value="Validate"/>
+						</td>
+					</tr>
+					<tr>
+						<td><label>Result: </label></td>
+						<td>
+							<div id="read-structure-result"></div>
+							<div id="read-structure-table"></div>
+						</td>
+					</tr>
+				</table>
+			</section>
+		</div>
+		{% include footer.html %}
+		<script type="text/javascript">
+
+function validate() {
+	var readStructure = $( "#read-structure-input" ).val();
+	var result        = validateReadStructures(readStructure);
+	var message       = result['message'];
+	var table         = result['table'];
+	var targetMessage = "div#read-structure-result";
+	var targetTable   = "div#read-structure-table";
+	if (message == null) {
+		$( targetMessage ).text("");
+		$( targetMessage ).css('color', '#1E8449');
+		$( targetTable).html( table );
+	}
+	else {
+		$( targetMessage ).text(message + "");
+		$( targetMessage ).css('color', '#922B21');
+		$( targetTable).html( "" );
+	}
+	$( targetMessage ).css("font-weight","Bold");
+	$( targetMessage ).attr('size', $( targetMessage ).val().length);
+}
+
+$("input#read-structure-input").keypress(function (e) {
+	if(e.which == 13) {
+		validate();
+		e.preventDefault();
+	}
+});
+$( "#submit-read-structure" ).click(function() {
+	validate();
+});
+		</script>
+	</body>
+</html
