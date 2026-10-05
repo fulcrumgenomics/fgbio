@@ -59,7 +59,7 @@ object SamRecordClipper {
     "RG", "LB", "PU", "PG", "CO", "MI",
     "BC", "QT", "RX", "QX", "OX", "BZ", "CB", "CR", "CY", "UB", "UR", "UY",
     "MC", "SA", "OA", "OC", "CC", "CT", "FS", "PT",
-    "R2", "Q2", "FZ", "MM", "ML"
+    "R2", "Q2", "FZ", "MM", "ML", "CG"
   )
 
   private val NoCallBase = 'N'.toByte
