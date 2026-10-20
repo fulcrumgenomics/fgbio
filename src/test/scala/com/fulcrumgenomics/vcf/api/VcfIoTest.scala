@@ -318,8 +318,7 @@ class VcfIoTest extends UnitSpec with OptionValues {
     NewNumberCodeCounts.foreach { case (id, count) => counts(id) shouldBe count }
   }
 
-  // Pending until the header written by VcfWriter declares a version that can carry these lines (it is always 4.2)
-  it should "write back FORMAT lines that use the VCF 4.4 and 4.5 Number codes" in pendingUntilFixed {
+  it should "write back FORMAT lines that use the VCF 4.4 and 4.5 Number codes" in {
     val source = VcfSource(writeVcf45WithNewNumberCodes())
     val output = makeTempFile(getClass.getSimpleName, VcfExtension)
     VcfWriter(output, source.header).close()
@@ -329,5 +328,39 @@ class VcfIoTest extends UnitSpec with OptionValues {
     val counts = reread.header.formats.map(f => f.id -> f.count).toMap
     reread.safelyClose()
     NewNumberCodeCounts.foreach { case (id, count) => counts(id) shouldBe count }
+  }
+
+  it should "keep the version a VCF header declares when reading" in {
+    val source = VcfSource(writeVcf45WithNewNumberCodes())
+    source.header.version.value shouldBe "VCFv4.5"
+    source.safelyClose()
+  }
+
+  it should "write a VCF at the version its header declares" in {
+    val output = makeTempFile(getClass.getSimpleName, VcfExtension)
+    VcfWriter(output, VcfIoTest.Header.copy(version = Some("VCFv4.3"))).close()
+    Io.readLines(output).next() shouldBe "##fileformat=VCFv4.3"
+  }
+
+  it should "write a VCF as VCFv4.2 when its header declares no version" in {
+    val output = makeTempFile(getClass.getSimpleName, VcfExtension)
+    VcfWriter(output, VcfIoTest.Header.copy(version = None)).close()
+    Io.readLines(output).next() shouldBe "##fileformat=VCFv4.2"
+  }
+
+  it should "write a BCF at the version its header declares" in {
+    val source = VcfSource(writeVcf45WithNewNumberCodes())
+    val output = makeTempFile(getClass.getSimpleName, BcfExtension)
+    VcfWriter(output, source.header).close()
+    source.safelyClose()
+
+    val reread = VcfSource(output)
+    reread.header.version.value shouldBe "VCFv4.5"
+    reread.header.formats.find(_.id == "XLA").value.count shouldBe VcfCount.OnePerLocalAltAllele
+    reread.safelyClose()
+  }
+
+  "VcfHeader" should "not allow a version that is not a known VCF version" in {
+    an[IllegalArgumentException] shouldBe thrownBy { VcfIoTest.Header.copy(version = Some("VCFv9.9")) }
   }
 }

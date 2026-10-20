@@ -78,8 +78,9 @@ private[api] object VcfConversions {
         VcfGeneralHeader(line.getKey, line.getID, attrs)
       case line: VCFHeaderLine if line.getValue.startsWith("<") && line.getValue.endsWith(">") =>
         // This is a horrible hack necessary because HTSJDK doesn't parse compound header lines unless
-        // they are one of INFO/CONTIG/FILTER/ALT, and there's no way to get HTSJDK to report the version of the file!
-        val attrs = VCFHeaderLineTranslator.parseLine(VCFHeaderVersion.VCF4_2, line.getValue, util.Collections.emptyList())
+        // they are one of INFO/CONTIG/FILTER/ALT
+        val version = Option(in.getVCFHeaderVersion).getOrElse(VCFHeaderVersion.VCF4_2)
+        val attrs   = VCFHeaderLineTranslator.parseLine(version, line.getValue, util.Collections.emptyList())
         val scalaAttrs = attrs.entrySet().filter(_.getKey != "ID").map(entry => entry.getKey -> entry.getValue).toMap
         VcfGeneralHeader(line.getKey, attrs.get("ID"), scalaAttrs)
       case line: VCFHeaderLine =>
@@ -92,7 +93,8 @@ private[api] object VcfConversions {
       formats = formats,
       filters = in.getFilterLines.toIndexedSeq.sortBy(_.getID).map(f => VcfFilterHeader(f.getID, f.getDescription)),
       others   = others,
-      samples = in.getGenotypeSamples.toIndexedSeq
+      samples = in.getGenotypeSamples.toIndexedSeq,
+      version = Option(in.getVCFHeaderVersion).map(_.getVersionString)
     )
   }
 
@@ -100,6 +102,7 @@ private[api] object VcfConversions {
   /** Converts the scala VCF header back into a Java VCF header. */
   def toJavaHeader(in: VcfHeader): VCFHeader = {
     val out = new VCFHeader(new java.util.HashSet[VCFHeaderLine](), in.samples.iterator.toJavaList)
+    in.version.foreach(v => out.setVCFHeaderVersion(VCFHeaderVersion.toHeaderVersion(v)))
 
     in.infos.foreach { i =>
       val j = toJavaCount(i.count) match {

@@ -27,6 +27,7 @@ package com.fulcrumgenomics.vcf.api
 import com.fulcrumgenomics.FgBioDef._
 import com.fulcrumgenomics.fasta.{SequenceDictionary, SequenceMetadata}
 import enumeratum.EnumEntry
+import htsjdk.variant.vcf.VCFHeaderVersion
 
 import scala.collection.immutable
 
@@ -153,14 +154,18 @@ case class VcfGeneralHeader(headerType: String, id: String, data: Map[String, St
   * @param filters the list of FILTER entries in the header
   * @param others the list of all other header entries
   * @param samples the ordered list of samples that appear in the VCF
+  * @param version the VCF version the header declares (e.g. `VCFv4.3`), if any.  A VCF is written at this version,
+  *                or at `VCFv4.2` if it is older or absent.
   */
 case class VcfHeader(contigs: IndexedSeq[VcfContigHeader],
                      infos: Seq[VcfInfoHeader],
                      formats: Seq[VcfFormatHeader],
                      filters: Seq[VcfFilterHeader],
                      others: Seq[VcfGeneralHeader],
-                     samples: IndexedSeq[String]
+                     samples: IndexedSeq[String],
+                     version: Option[String] = None
                     ) {
+  version.foreach(v => require(VCFHeaderVersion.isVersionString(v), s"Not a known VCF version: $v"))
 
   /** A mapping of sample name to the index in samples. */
   private[api] val sampleIndex = samples.zipWithIndex.toMap
