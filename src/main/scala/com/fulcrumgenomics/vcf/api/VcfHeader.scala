@@ -35,16 +35,28 @@ sealed trait VcfCount { }
 
 object VcfCount {
   /** VcfCount that indicates there should be exactly one value per alternate allele on the Variant. */
-  case object OnePerAltAllele  extends VcfCount
+  case object OnePerAltAllele        extends VcfCount
   /** VcfCount that indicates there should be exactly one value per allele, including reference, on the Variant. */
-  case object OnePerAllele     extends VcfCount
+  case object OnePerAllele           extends VcfCount
   /** VcfCount that indicates there should be exactly one value per possible genotype.  E.g. for a variant with a
     * ref allele and one alt allele, and a diploid sample, there would be three values. */
-  case object OnePerGenotype   extends VcfCount
+  case object OnePerGenotype         extends VcfCount
+  /** VcfCount that indicates there should be one value per allele in the sample's GT, e.g. two for a diploid call
+    * (`Number=P`, VCF 4.4). */
+  case object OnePerGtAllele         extends VcfCount
+  /** As [[OnePerAltAllele]], counting only the alternate alleles named by the sample's LAA (`Number=LA`, VCF 4.5). */
+  case object OnePerLocalAltAllele   extends VcfCount
+  /** As [[OnePerAllele]], counting only the alternate alleles named by the sample's LAA (`Number=LR`, VCF 4.5). */
+  case object OnePerLocalAllele      extends VcfCount
+  /** As [[OnePerGenotype]], counting only the alternate alleles named by the sample's LAA (`Number=LG`, VCF 4.5). */
+  case object OnePerLocalGenotype    extends VcfCount
+  /** VcfCount that indicates there should be one value per possible base modification in the alleles of the sample's
+    * GT (`Number=M`, VCF 4.5). */
+  case object OnePerBaseModification extends VcfCount
   /** The attribute may have any number of values. */
-  case object Unknown          extends VcfCount
+  case object Unknown                extends VcfCount
   /** The attribute must have a fixed number of values, indicated by `count`. */
-  case class Fixed(count: Int) extends VcfCount
+  case class Fixed(count: Int)       extends VcfCount
 }
 
 /** Trait for the set of acceptable atomic types that can appear in VCF's INFO and genotype fields. */

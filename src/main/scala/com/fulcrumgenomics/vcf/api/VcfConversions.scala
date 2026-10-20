@@ -150,6 +150,11 @@ private[api] object VcfConversions {
       case VCFHeaderLineCount.A         => VcfCount.OnePerAltAllele
       case VCFHeaderLineCount.G         => VcfCount.OnePerGenotype
       case VCFHeaderLineCount.R         => VcfCount.OnePerAllele
+      case VCFHeaderLineCount.P         => VcfCount.OnePerGtAllele
+      case VCFHeaderLineCount.LA        => VcfCount.OnePerLocalAltAllele
+      case VCFHeaderLineCount.LR        => VcfCount.OnePerLocalAllele
+      case VCFHeaderLineCount.LG        => VcfCount.OnePerLocalGenotype
+      case VCFHeaderLineCount.M         => VcfCount.OnePerBaseModification
       case VCFHeaderLineCount.UNBOUNDED => VcfCount.Unknown
       case VCFHeaderLineCount.INTEGER   => VcfCount.Fixed(in.getCount)
     }
@@ -174,11 +179,16 @@ private[api] object VcfConversions {
     */
   def toJavaCount(in: VcfCount): Either[VCFHeaderLineCount, Int] = {
     in match {
-      case VcfCount.OnePerAltAllele    => Left(VCFHeaderLineCount.A)
-      case VcfCount.OnePerGenotype     => Left(VCFHeaderLineCount.G)
-      case VcfCount.OnePerAllele       => Left(VCFHeaderLineCount.R)
-      case VcfCount.Unknown            => Left(VCFHeaderLineCount.UNBOUNDED)
-      case VcfCount.Fixed(n)           => Right(n)
+      case VcfCount.OnePerAltAllele        => Left(VCFHeaderLineCount.A)
+      case VcfCount.OnePerGenotype         => Left(VCFHeaderLineCount.G)
+      case VcfCount.OnePerAllele           => Left(VCFHeaderLineCount.R)
+      case VcfCount.OnePerGtAllele         => Left(VCFHeaderLineCount.P)
+      case VcfCount.OnePerLocalAltAllele   => Left(VCFHeaderLineCount.LA)
+      case VcfCount.OnePerLocalAllele      => Left(VCFHeaderLineCount.LR)
+      case VcfCount.OnePerLocalGenotype    => Left(VCFHeaderLineCount.LG)
+      case VcfCount.OnePerBaseModification => Left(VCFHeaderLineCount.M)
+      case VcfCount.Unknown                => Left(VCFHeaderLineCount.UNBOUNDED)
+      case VcfCount.Fixed(n)               => Right(n)
     }
   }
 
