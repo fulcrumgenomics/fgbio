@@ -47,7 +47,7 @@ object ReviewConsensusVariantsTest {
       |>chr2
       |CCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCC
       |CCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCC
-    """.stripMargin.linesIterator.toSeq
+    """.stripMargin.linesIterator.map(_.trim).filter(_.nonEmpty).toSeq
 
   val Fai : Seq[String] =
     """

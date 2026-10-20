@@ -29,10 +29,14 @@ import com.fulcrumgenomics.bam.api.SamOrder.Coordinate
 import com.fulcrumgenomics.bam.pileup.PileupBuilder.BamAccessPattern
 import com.fulcrumgenomics.bam.pileup.PileupBuilder.BamAccessPattern.Streaming
 import com.fulcrumgenomics.commons.CommonsDef._
+import com.fulcrumgenomics.commons.io.{Io, PathUtil}
 import com.fulcrumgenomics.testing.VcfBuilder.Gt
 import com.fulcrumgenomics.testing.{SamBuilder, UnitSpec, VcfBuilder}
 import com.fulcrumgenomics.vcf.api.Variant.PassingFilters
 import com.fulcrumgenomics.vcf.api._
+import htsjdk.samtools.util.FileExtensions
+
+import java.nio.file.Files
 
 /** Unit tests for [[FilterSomaticVcf]]. */
 class FilterSomaticVcfTest extends UnitSpec {
@@ -150,9 +154,13 @@ class FilterSomaticVcfTest extends UnitSpec {
 
     val writer = VcfWriter(input, VcfBuilder.DefaultHeader.copy(samples = IndexedSeq("sample1")))
 
-    writer.write(Variant(builder.dict.head.name, pos = 2, alleles = alleles, genotypes = Map("sample1" -> gt)))
+    // HTSJDK refuses to index records written out of order, so write them in order and then reverse them on disk
     writer.write(Variant(builder.dict.head.name, pos = 1, alleles = alleles, genotypes = Map("sample1" -> gt)))
+    writer.write(Variant(builder.dict.head.name, pos = 2, alleles = alleles, genotypes = Map("sample1" -> gt)))
     writer.close()
+    val (headerLines, records) = Io.readLines(input).toIndexedSeq.partition(_.startsWith("#"))
+    Io.writeLines(input, headerLines ++ records.reverse)
+    Files.delete(PathUtil.pathTo(input.toString + FileExtensions.TRIBBLE_INDEX))
 
     an[IllegalArgumentException] shouldBe  thrownBy {
       new FilterSomaticVcf(
