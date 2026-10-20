@@ -91,24 +91,24 @@ class AssessPhasing
     // check the sequence dictionaries.
     val dict = {
       import com.fulcrumgenomics.fasta.Converters.FromSAMSequenceDictionary
-      val calledReader = new VCFFileReader(calledVcf.toFile, true)
-      val truthReader = new VCFFileReader(truthVcf.toFile, true)
+      val calledReader = new VCFFileReader(calledVcf, true)
+      val truthReader = new VCFFileReader(truthVcf, true)
       calledReader.getFileHeader.getSequenceDictionary.assertSameDictionary(truthReader.getFileHeader.getSequenceDictionary)
       calledReader.close()
       truthReader.close()
       calledReader.getFileHeader.getSequenceDictionary.fromSam
     }
 
-    val knownIntervalList        = knownIntervals.map { intv => IntervalList.fromFile(intv.toFile).uniqued() }
+    val knownIntervalList        = knownIntervals.map { intv => IntervalList.fromPath(intv).uniqued() }
     val calledBlockLengthCounter = new NumericCounter[Long]()
     val truthBlockLengthCounter  = new NumericCounter[Long]()
     val metric                   = new AssessPhasingMetric
     val writer = if (!debugVcf) None else {
       val path    = Paths.get(output.toString + AssessPhasing.AnnotatedVcfExtension)
-      val reader  = new VCFFileReader(calledVcf.toFile, true)
+      val reader  = new VCFFileReader(calledVcf, true)
       val header  = reader.getFileHeader
       val builder = new VariantContextWriterBuilder()
-        .setOutputFile(path.toFile)
+        .setOutputPath(path)
         .setReferenceDictionary(header.getSequenceDictionary)
         .setOption(Options.INDEX_ON_THE_FLY)
         .modifyOption(Options.ALLOW_MISSING_FIELDS_IN_HEADER, true)
@@ -121,7 +121,7 @@ class AssessPhasing
       Some(writer)
     }
     val chromosomes = intervals.map { intv =>
-      val intervalList = IntervalList.fromFile(intv.toFile)
+      val intervalList = IntervalList.fromPath(intv)
       // Developer Note: warn the user if the supplied intervals do not span entire chromosomes.
       intervalList.getIntervals.find { interval =>
         interval.getStart != 1 || interval.getEnd != dict(interval.getContig).length
@@ -206,7 +206,7 @@ class AssessPhasing
     // get the phased blocks
     logger.info("Getting the called phase blocks")
     val calledPhaseBlockDetector = {
-      val calledReader = new VCFFileReader(calledVcf.toFile, true)
+      val calledReader = new VCFFileReader(calledVcf, true)
       val detector = PhaseBlock.buildOverlapDetector(
         iterator     = toVariantContextIterator(calledReader, contig, contigLength),
         modifyBlocks = modifyBlocks
@@ -216,7 +216,7 @@ class AssessPhasing
     }
     logger.info("Getting the known phase blocks")
     val truthPhaseBlockDetector = {
-      val truthReader = new VCFFileReader(truthVcf.toFile, true)
+      val truthReader = new VCFFileReader(truthVcf, true)
       val detector = PhaseBlock.buildOverlapDetector(
         iterator     = toVariantContextIterator(truthReader, contig, contigLength, intervalList=intervalListForContig),
         modifyBlocks = modifyBlocks
@@ -226,8 +226,8 @@ class AssessPhasing
     }
 
     // get an iterator of the pairs
-    val calledReader   = new VCFFileReader(calledVcf.toFile, true)
-    val truthReader    = new VCFFileReader(truthVcf.toFile, true)
+    val calledReader   = new VCFFileReader(calledVcf, true)
+    val truthReader    = new VCFFileReader(truthVcf, true)
     val pairedIterator = JointVariantContextIterator(
       iters = Seq(toVariantContextIterator(truthReader, contig, contigLength, intervalList=intervalListForContig), toVariantContextIterator(calledReader, contig, contigLength)),
       dict = dict

@@ -325,7 +325,7 @@ class CollectDuplexSeqMetrics
     val iterator = intervals match {
       case None       => _filteredIterator
       case Some(path) =>
-        val ilist    = IntervalList.fromFile(path.toFile).uniqued(false)
+        val ilist    = IntervalList.fromPath(path).uniqued(false)
         val detector = new OverlapDetector[Interval](0,0)
         detector.addAll(ilist.getIntervals, ilist.getIntervals)
         _filteredIterator.filter { rec =>

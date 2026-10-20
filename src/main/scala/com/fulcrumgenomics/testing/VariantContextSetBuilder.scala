@@ -204,7 +204,7 @@ class VariantContextSetBuilder(sampleNames: Seq[String] = List("Sample")) extend
   def write(path: PathToVcf) : Unit = {
     val writer = new VariantContextWriterBuilder()
       .setReferenceDictionary(this.header.getSequenceDictionary)
-      .setOutputFile(path.toFile)
+      .setOutputPath(path)
       .setOption(Options.INDEX_ON_THE_FLY)
       .setOption(Options.ALLOW_MISSING_FIELDS_IN_HEADER)
       .build()
@@ -225,7 +225,7 @@ class VariantContextSetBuilder(sampleNames: Seq[String] = List("Sample")) extend
     * provides a [VCFFileReader]. */
   def toVcfFileReader(deleteOnExit: Boolean = true): VCFFileReader = {
     val path = toTempFile(deleteOnExit=deleteOnExit)
-    new VCFFileReader(path.toFile, true)
+    new VCFFileReader(path, true)
   }
 
   /** Given a list of alleles as strings, typically for a genotype, gives a list of alleles of type [Allele].  If

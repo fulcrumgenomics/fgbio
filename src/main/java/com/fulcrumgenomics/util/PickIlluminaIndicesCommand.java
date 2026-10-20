@@ -330,7 +330,7 @@ class PickIlluminaIndicesCommand {
         log.info("Ended with " + count + " indices with a min edit distance of " + rankedIndexes.first().minEditDistance());
         try {
             final int adapters = this.INDEX_ADAPTER.size();
-            final BufferedWriter out = IOUtil.openFileForBufferedWriting(OUTPUT);
+            final BufferedWriter out = IOUtil.openFileForBufferedWriting(OUTPUT.toPath());
             final NumberFormat fmt = NumberFormat.getIntegerInstance();
             final NumberFormat pct = NumberFormat.getPercentInstance();
             final NumberFormat dec = new DecimalFormat("0.00");

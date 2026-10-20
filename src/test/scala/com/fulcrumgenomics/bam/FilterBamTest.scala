@@ -106,7 +106,7 @@ class FilterBamTest extends UnitSpec {
   it should "only return matching reads within the intervals" in {
     val out = newBam
     val ilist = makeTempFile("filter_bam_test.", ".interval_list")
-    intervals.write(ilist.toFile)
+    intervals.write(ilist)
 
     new FilterBam(input=builder.toTempFile(), output=out, minMapQ=20, intervals=Some(ilist)).execute()
     val recs = readBamRecs(out)

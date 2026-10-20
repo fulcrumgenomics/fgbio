@@ -33,7 +33,7 @@ import scala.collection.mutable
 
 object VariantMask {
   /** Generate a variant mask from the provided VCF. */
-  def apply(path: PathToVcf): VariantMask = apply(new VCFFileReader(path.toFile))
+  def apply(path: PathToVcf): VariantMask = apply(new VCFFileReader(path))
 
   /** Generate a variant mask from the provided VCF reader. */
   def apply(reader: VCFFileReader): VariantMask = {

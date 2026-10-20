@@ -41,7 +41,7 @@ class Io(var compressionLevel: Int = 5,
   /** Adds the automatic handling of gzipped files when opening files for writing. */
   override def toOutputStream(path: Path): OutputStream = {
     PathUtil.extensionOf(path) match {
-      case Some(".bgz") | Some(".bgzip") => new BlockCompressedOutputStream(super.toOutputStream(path), path.toFile, compressionLevel)
+      case Some(".bgz") | Some(".bgzip") => new BlockCompressedOutputStream(super.toOutputStream(path), path, compressionLevel)
       case _           => super.toOutputStream(path)
     }
   }

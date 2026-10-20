@@ -122,7 +122,7 @@ class FilterBam
   protected def buildInputIterator(in: SamSource, intervalListFile: Option[Path]): Iterator[SamRecord] = {
     intervalListFile match {
       case None       => in.iterator
-      case Some(file) => in.query(IntervalList.fromFile(file.toFile).uniqued)
+      case Some(file) => in.query(IntervalList.fromPath(file).uniqued)
     }
   }
 

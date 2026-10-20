@@ -151,7 +151,7 @@ class TrimPrimers
     // If we had a reference and re-sorted above, reset the NM/UQ/MD tags as we push to the final output
     (sorter, ref) match {
       case (Some(sorter), Some(path)) =>
-        val walker = new ReferenceSequenceFileWalker(path.toFile)
+        val walker = new ReferenceSequenceFileWalker(path)
         val progress = ProgressLogger(this.logger, "Written")
 
         sorter.foreach { rec =>

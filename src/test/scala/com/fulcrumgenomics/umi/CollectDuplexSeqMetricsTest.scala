@@ -301,7 +301,7 @@ class CollectDuplexSeqMetricsTest extends UnitSpec {
     intervals.add(new Interval(builder.dict(0).name, 3150, 3500)) // Captures the third insert by overlapping R1
     intervals.add(new Interval(builder.dict(1).name, 5050, 6050)) // Captures the fifth and sixth inserts
     val path = makeTempFile("targets.", ".interval_list")
-    intervals.write(path.toFile)
+    intervals.write(path)
 
     val duplexFamilies = exec(builder, intervals=Some(path)).duplexFamilyMetrics
     duplexFamilies.size shouldBe 4

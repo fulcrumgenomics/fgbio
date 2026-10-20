@@ -168,7 +168,7 @@ class ErrorRateByReadPositionTest extends UnitSpec with OptionValues {
     intervals.add(new Interval("chr1", 100, 275))
     intervals.add(new Interval("chr1", 400, 500))
     val intervalPath = makeTempFile("regions.", ".interval_list")
-    intervals.write(intervalPath.toFile)
+    intervals.write(intervalPath)
 
     val (_, pre) = outputAndPrefix
     val metrics = new ErrorRateByReadPosition(input=builder.toTempFile(), output=Some(pre), ref=ref, intervals=Some(intervalPath)).computeMetrics()
@@ -273,7 +273,7 @@ class ErrorRateByReadPositionTest extends UnitSpec with OptionValues {
     intervals.add(new Interval(dict(1).name, 1,  1000))
 
     val intervalsPath = makeTempFile("regions.", ".interval_list")
-    intervals.write(intervalsPath.toFile)
+    intervals.write(intervalsPath)
 
     val (out, pre) = outputAndPrefix
     new ErrorRateByReadPosition(input=builder.toTempFile(), intervals=Some(intervalsPath), output=Some(pre), ref=ref, variants=Some(vcf)).execute()
