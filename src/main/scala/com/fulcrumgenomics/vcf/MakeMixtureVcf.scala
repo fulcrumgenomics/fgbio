@@ -76,6 +76,7 @@ object MakeMixtureVcf {
   /** Builds a header that can be used to write a mixture VCF. */
   def makeWriter(output: PathToVcf, in: VCFHeader, lines: Seq[VCFHeaderLine], samples: String*): VariantContextWriter = {
     val header = new VCFHeader(Collections.emptySet[VCFHeaderLine](), util.Arrays.asList(samples:_*))
+    header.setVCFHeaderVersion(in.getVCFHeaderVersion)
 
     in.getFilterLines.foreach(header.addMetaDataLine)
     in.getFormatHeaderLines.foreach(header.addMetaDataLine)
