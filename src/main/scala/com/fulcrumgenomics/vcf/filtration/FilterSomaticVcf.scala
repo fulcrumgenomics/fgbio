@@ -26,7 +26,7 @@ package com.fulcrumgenomics.vcf.filtration
 
 import com.fulcrumgenomics.bam.api.SamSource
 import com.fulcrumgenomics.bam.pileup.PileupBuilder
-import com.fulcrumgenomics.bam.pileup.PileupBuilder.BamAccessPattern.RandomAccess
+import com.fulcrumgenomics.bam.pileup.PileupBuilder.BamAccessPattern.{RandomAccess, Streaming}
 import com.fulcrumgenomics.bam.pileup.PileupBuilder.{BamAccessPattern, PileupDefaults}
 import com.fulcrumgenomics.cmdline.{ClpGroups, FgBioTool}
 import com.fulcrumgenomics.commons.CommonsDef._
@@ -113,7 +113,7 @@ import scala.collection.mutable.ListBuffer
       |random access. Random access is mandatory if the input VCF is not coordinate sorted. If random access is not
       |requested and the input VCF is not coordinate sorted, then an exception will be raised on the first
       |non-coordinate increasing VCF record found. The BAM must be coordinate sorted in all cases and additionally be
-      |indexed if random access is requested.
+      |indexed if random access is requested. The output VCF is indexed only when `--access-pattern` is `Streaming`.
       |
       |Often, a VCF file will contain a sparse set of records that are scattered across a given territory within a
       |genome (or the records will be sparsely scattered genome-wide). If the territory of the VCF records is markedly
@@ -176,7 +176,8 @@ import scala.collection.mutable.ListBuffer
       s"There is no genotype with the following sample in the input VCF/BCF: $sample"
     )
 
-    val writer = VcfWriter(output, header = header)
+    // Only a streamed VCF is known to be coordinate sorted, which indexing the output on the fly requires
+    val writer = VcfWriter(output, header = header, index = accessPattern == Streaming)
 
     source.tapEach(progress.record).foreach { variant =>
       val updated = somaticFilters.filter(_.appliesTo(variant.genotypes(name))) match {

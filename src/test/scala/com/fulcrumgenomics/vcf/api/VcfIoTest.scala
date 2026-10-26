@@ -274,6 +274,28 @@ class VcfIoTest extends UnitSpec with OptionValues {
     source.safelyClose()
   }
 
+  it should "not write a sibling index when asked not to index" in {
+    val builder = VcfBuilder(samples = Seq("sample"))
+    val output  = makeTempFile(getClass.getSimpleName, VcfExtension)
+    VcfWriter(output, header = builder.header, index = false).close()
+    val source = VcfSource(output)
+    source.isQueryable shouldBe false
+    source.safelyClose()
+  }
+
+  it should "write variants out of coordinate order when asked not to index" in {
+    val builder = VcfBuilder(samples = Seq("sample"))
+    builder.add(chrom = "chr1", pos = 200, alleles = Seq("A", "C"), gts = Seq(Gt(sample = "sample", gt = "0/1")))
+    builder.add(chrom = "chr1", pos = 100, alleles = Seq("A", "C"), gts = Seq(Gt(sample = "sample", gt = "0/1")))
+    val output = makeTempFile(getClass.getSimpleName, VcfExtension)
+    val writer = VcfWriter(output, header = builder.header, index = false)
+    writer.write(builder.toSeq.sortBy(-_.pos))
+    writer.close()
+    val source = VcfSource(output)
+    source.map(_.pos).toList shouldBe List(200, 100)
+    source.safelyClose()
+  }
+
   it should "not attempt to write a sibling index when streaming to a named pipe like '/dev/null'" in {
     val samples = Seq("sample")
     val builder = VcfBuilder(samples = samples)

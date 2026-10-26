@@ -56,15 +56,17 @@ object VcfWriter {
     *   - `.vcf.gz`: to create a block-gzipped VCF file
     *   - `.bcf`: to create a binary BCF file
     *
-    * If the path is meant to point to a regular file, then indexing will occur automatically. However, if the path
-    * already exists and the path is not a file or symbolic link, then this function will assume the path is a named
-    * pipe or device (such as `/dev/null`) and indexing will not occur.
+    * If `index` is true and the path is meant to point to a regular file, then the output is indexed on the fly, which
+    * requires that variants be written in coordinate order. However, if the path already exists and the path is not a
+    * file or symbolic link, then this function will assume the path is a named pipe or device (such as `/dev/null`)
+    * and indexing will not occur.
     *
     * @param path the path to write to
     * @param header the header of the VCF
+    * @param index if true, index the output while writing; must be false to write variants out of coordinate order
     * @return a VCF writer to write to the given path
     */
-  def apply(path: PathToVcf, header: VcfHeader, async: Boolean = DefaultUseAsyncIo): VcfWriter = {
+  def apply(path: PathToVcf, header: VcfHeader, async: Boolean = DefaultUseAsyncIo, index: Boolean = true): VcfWriter = {
     val javaHeader = VcfConversions.toJavaHeader(header)
     require(!Files.isDirectory(path), s"Path cannot be a directory! Found $path")
 
@@ -76,8 +78,8 @@ object VcfWriter {
 
     if (async) builder.setOption(Options.USE_ASYNC_IO) else builder.unsetOption(Options.USE_ASYNC_IO)
 
-    // If the path exists and is not a file or symbolic link, then assume it is a named pipe and do not index.
-    if (Files.exists(path) && Files.readAttributes(path, classOf[BasicFileAttributes]).isOther) {
+    // Don't index if asked not to, or if the path exists and is not a file or symbolic link (assumed a named pipe).
+    if (!index || (Files.exists(path) && Files.readAttributes(path, classOf[BasicFileAttributes]).isOther)) {
       builder.unsetOption(Options.INDEX_ON_THE_FLY)
       builder.setIndexCreator(null)
     } else {

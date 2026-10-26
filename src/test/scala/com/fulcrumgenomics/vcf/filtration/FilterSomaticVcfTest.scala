@@ -27,16 +27,12 @@ package com.fulcrumgenomics.vcf.filtration
 import com.fulcrumgenomics.bam.api.SamOrder
 import com.fulcrumgenomics.bam.api.SamOrder.Coordinate
 import com.fulcrumgenomics.bam.pileup.PileupBuilder.BamAccessPattern
-import com.fulcrumgenomics.bam.pileup.PileupBuilder.BamAccessPattern.Streaming
+import com.fulcrumgenomics.bam.pileup.PileupBuilder.BamAccessPattern.{RandomAccess, Streaming}
 import com.fulcrumgenomics.commons.CommonsDef._
-import com.fulcrumgenomics.commons.io.{Io, PathUtil}
 import com.fulcrumgenomics.testing.VcfBuilder.Gt
 import com.fulcrumgenomics.testing.{SamBuilder, UnitSpec, VcfBuilder}
 import com.fulcrumgenomics.vcf.api.Variant.PassingFilters
 import com.fulcrumgenomics.vcf.api._
-import htsjdk.samtools.util.FileExtensions
-
-import java.nio.file.Files
 
 /** Unit tests for [[FilterSomaticVcf]]. */
 class FilterSomaticVcfTest extends UnitSpec {
@@ -140,29 +136,29 @@ class FilterSomaticVcfTest extends UnitSpec {
     reader.safelyClose()
   }
 
-  it should "raise an exception when stream BAM is true and variant records are not coordinate ordered" in {
+  /** Writes a VCF of `sample1` with variants at positions 2 and then 1 on `chrom`, so not coordinate ordered. */
+  private def writeUnorderedVcf(chrom: String): PathToVcf = {
     val alleles = AlleleSet(Allele("C"), Allele("A"))
     val attrs   = Map("AD" -> Seq(8, 2))
     val gt      = Genotype(alleles, sample = "sample1", calls = alleles.toIndexedSeq, attrs = attrs)
 
+    val vcf    = makeTempFile(getClass.getSimpleName, ".vcf")
+    val writer = VcfWriter(vcf, VcfBuilder.DefaultHeader.copy(samples = IndexedSeq("sample1")), index = false)
+    writer.write(Variant(chrom, pos = 2, alleles = alleles, genotypes = Map("sample1" -> gt)))
+    writer.write(Variant(chrom, pos = 1, alleles = alleles, genotypes = Map("sample1" -> gt)))
+    writer.close()
+    vcf
+  }
+
+  it should "raise an exception when stream BAM is true and variant records are not coordinate ordered" in {
     val builder = new SamBuilder(sort = Some(Coordinate))
     builder.addFrag(start = 1)
 
-    val input  = makeTempFile(getClass.getSimpleName, ".vcf")
+    val input  = writeUnorderedVcf(builder.dict.head.name)
     val output = makeTempFile(getClass.getSimpleName, ".vcf")
     val bam    = builder.toTempFile()
 
-    val writer = VcfWriter(input, VcfBuilder.DefaultHeader.copy(samples = IndexedSeq("sample1")))
-
-    // HTSJDK refuses to index records written out of order, so write them in order and then reverse them on disk
-    writer.write(Variant(builder.dict.head.name, pos = 1, alleles = alleles, genotypes = Map("sample1" -> gt)))
-    writer.write(Variant(builder.dict.head.name, pos = 2, alleles = alleles, genotypes = Map("sample1" -> gt)))
-    writer.close()
-    val (headerLines, records) = Io.readLines(input).toIndexedSeq.partition(_.startsWith("#"))
-    Io.writeLines(input, headerLines ++ records.reverse)
-    Files.delete(PathUtil.pathTo(input.toString + FileExtensions.TRIBBLE_INDEX))
-
-    an[IllegalArgumentException] shouldBe  thrownBy {
+    val exception = the[IllegalArgumentException] thrownBy {
       new FilterSomaticVcf(
         input         = input,
         output        = output,
@@ -170,6 +166,22 @@ class FilterSomaticVcfTest extends UnitSpec {
         accessPattern = Streaming
       ).execute()
     }
+    exception.getMessage should include ("is behind the previous pileup")
+  }
+
+  it should "filter variant records that are not coordinate ordered when random access is used" in {
+    val builder = new SamBuilder(sort = Some(Coordinate))
+    builder.addFrag(start = 1)
+
+    val input  = writeUnorderedVcf(builder.dict.head.name)
+    val output = makeTempFile(getClass.getSimpleName, ".vcf")
+    val bam    = builder.toTempFile()
+
+    new FilterSomaticVcf(input = input, output = output, bam = bam, accessPattern = RandomAccess).execute()
+
+    val reader = VcfSource(output)
+    reader.map(_.pos).toList shouldBe List(2, 1)
+    reader.safelyClose()
   }
 
   it should s"not change existing INFO data when adding new INFO data" in {
