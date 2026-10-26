@@ -168,7 +168,8 @@ case class VcfGeneralHeader(headerType: String, id: String, data: Map[String, St
   * @param others the list of all other header entries
   * @param samples the ordered list of samples that appear in the VCF
   * @param version the VCF version the header declares, if any.  A VCF is written at this version, or at
-  *                [[VcfVersion.V4_2]] if it is older.  A header that declares no version is written at the oldest
+  *                [[VcfVersion.V4_2]] if it is older, and a version too old to express all of the header's lines is
+  *                refused when the VCF is written.  A header that declares no version is written at the oldest
   *                version that can express all of its lines, and at least [[VcfVersion.V4_2]].
   */
 case class VcfHeader(contigs: IndexedSeq[VcfContigHeader],
