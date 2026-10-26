@@ -79,7 +79,7 @@ By default `--access-pattern` will be set to `RandomAccess` and the input BAM wi
 random access. Random access is mandatory if the input VCF is not coordinate sorted. If random access is not
 requested and the input VCF is not coordinate sorted, then an exception will be raised on the first
 non-coordinate increasing VCF record found. The BAM must be coordinate sorted in all cases and additionally be
-indexed if random access is requested.
+indexed if random access is requested. The output VCF is indexed only when `--access-pattern` is `Streaming`.
 
 Often, a VCF file will contain a sparse set of records that are scattered across a given territory within a
 genome (or the records will be sparsely scattered genome-wide). If the territory of the VCF records is markedly
