@@ -175,10 +175,9 @@ class CodecConsensusCaller(readNamePrefix: String,
     else {
       // Group the primary alignments by read name and retain only templates that form a single
       // primary FR pair. The FR check is performed at the pair level (via `isPrimaryFrPair`)
-      // because htsjdk's per-record `SamPairUtil.getPairOrientation` historically disagreed
-      // between mates on dovetail pairs whose aligned ends coincided, which previously caused a
-      // `scala.MatchError` on a singleton read-name bucket here. See
-      // https://github.com/samtools/htsjdk/pull/1771 for the upstream fix (htsjdk 5.0.0+).
+      // because htsjdk's per-record `SamPairUtil.getPairOrientation` falls back to TLEN when the
+      // forward-strand record has no MC tag, and can then disagree between the mates of a dovetail
+      // pair, which would leave a singleton read-name bucket here.
       // Template order is preserved from BAM-iteration order (not hash order) so that downstream
       // `maxBy` tie-breaks on `cigar.lengthOnTarget` are stable across JVMs.
       // TODO: handle chimeric reads or reads with one unmapped etc.
@@ -416,10 +415,9 @@ object CodecConsensusCaller {
     * opposite strands, delegates to htsjdk's `SamPairUtil.getPairOrientation` evaluated on
     * the reverse-strand record: that branch derives both 5' positions from CIGARs
     * (`mate.alignmentStart` vs `record.alignmentEnd`) and is independent of MC/TLEN, so the
-    * answer is consistent regardless of which record of the pair this is called with. See
-    * https://github.com/samtools/htsjdk/pull/1771 (htsjdk 5.0.0+) for the underlying
-    * per-record asymmetry this avoids; once we no longer need to support older htsjdk
-    * versions for this caller, this helper can be replaced with `SamRecord.isFrPair`.
+    * answer is consistent regardless of which record of the pair this is called with.
+    * `SamRecord.isFrPair` is not used because, on the forward-strand record, htsjdk falls back to
+    * TLEN when there is no MC tag, which can give the mates of a dovetail pair different answers.
     */
   private[umi] def isPrimaryFrPair(a: SamRecord, b: SamRecord): Boolean = {
     if (!a.mapped || !b.mapped) false

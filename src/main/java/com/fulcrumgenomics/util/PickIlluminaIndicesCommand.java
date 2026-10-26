@@ -32,6 +32,7 @@ import htsjdk.samtools.util.*;
 import java.io.BufferedWriter;
 import java.io.File;
 import java.io.IOException;
+import java.nio.file.Path;
 import java.text.DecimalFormat;
 import java.text.NumberFormat;
 import java.util.*;
@@ -60,7 +61,7 @@ class PickIlluminaIndicesCommand {
     public int MAX_HOMOPOLYMER;
     public double MIN_GC;
     public double MAX_GC;
-    public File OUTPUT;
+    public Path OUTPUT;
     public int NUM_THREADS;
     public File VIENNA_RNA_DIR;
     public double MIN_DELTAG;
@@ -330,7 +331,7 @@ class PickIlluminaIndicesCommand {
         log.info("Ended with " + count + " indices with a min edit distance of " + rankedIndexes.first().minEditDistance());
         try {
             final int adapters = this.INDEX_ADAPTER.size();
-            final BufferedWriter out = IOUtil.openFileForBufferedWriting(OUTPUT.toPath());
+            final BufferedWriter out = IOUtil.openFileForBufferedWriting(OUTPUT);
             final NumberFormat fmt = NumberFormat.getIntegerInstance();
             final NumberFormat pct = NumberFormat.getPercentInstance();
             final NumberFormat dec = new DecimalFormat("0.00");

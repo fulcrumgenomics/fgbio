@@ -297,7 +297,7 @@ class ReviewConsensusVariants
     val buffer = ListBuffer[Variant]()
 
     if (VcfExtensions.exists(ext => path.getFileName.toString.endsWith(ext))) {
-      val in = new VCFFileReader(input, false)
+      val in = new VCFFileReader(path, false)
       val sample = this.sample.orElse {
         if (in.getFileHeader.getSampleNamesInOrder.size() == 1) Some(in.getFileHeader.getSampleNamesInOrder.get(0))
         else None
@@ -310,6 +310,7 @@ class ReviewConsensusVariants
         genotype = sample.map(v.getGenotype(_).getGenotypeString),
         filters  = if (v.isFiltered) Some(v.getFilters.toSeq.sorted.mkString(",")) else None
       )}
+      in.close()
     }
     else {
       val list = IntervalList.fromPath(path).uniqued(false)

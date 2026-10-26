@@ -209,7 +209,13 @@ class VariantContextSetBuilder(sampleNames: Seq[String] = List("Sample")) extend
       .setOption(Options.ALLOW_MISSING_FIELDS_IN_HEADER)
       .build()
     writer.writeHeader(_header)
-    this.iterator.foreach(writer.add)
+    // Indexing on the fly needs the variants in coordinate order, which may not be the order they were added in.  A
+    // header without contig lines defines no order, so its variants are written in the order they were added.
+    val ordered = {
+      if (_header.getContigLines.isEmpty) this.variants
+      else this.variants.sorted(Ordering.comparatorToOrdering(_header.getVCFRecordComparator))
+    }
+    ordered.foreach(writer.add)
     writer.close()
   }
 
