@@ -77,10 +77,9 @@ private[api] object VcfConversions {
         val attrs = line.getGenericFields.entrySet().filter(_.getKey != "ID").map(entry => entry.getKey -> entry.getValue).toMap
         VcfGeneralHeader(line.getKey, line.getID, attrs)
       case line: VCFHeaderLine if line.getValue.startsWith("<") && line.getValue.endsWith(">") =>
-        // This is a horrible hack necessary because HTSJDK doesn't parse compound header lines unless
-        // they are one of INFO/CONTIG/FILTER/ALT
-        val version = Option(in.getVCFHeaderVersion).getOrElse(VCFHeaderVersion.VCF4_2)
-        val attrs   = VCFHeaderLineTranslator.parseLine(version, line.getValue, util.Collections.emptyList())
+        // This is a horrible hack necessary because HTSJDK only parses compound header lines of the types it knows.
+        // VCF 4 parsing is used whatever the file's version, as the VCF 3 parser needs the list of expected tags.
+        val attrs = VCFHeaderLineTranslator.parseLine(VCFHeaderVersion.VCF4_2, line.getValue, util.Collections.emptyList())
         val scalaAttrs = attrs.entrySet().filter(_.getKey != "ID").map(entry => entry.getKey -> entry.getValue).toMap
         VcfGeneralHeader(line.getKey, attrs.get("ID"), scalaAttrs)
       case line: VCFHeaderLine =>
@@ -94,7 +93,7 @@ private[api] object VcfConversions {
       filters = in.getFilterLines.toIndexedSeq.sortBy(_.getID).map(f => VcfFilterHeader(f.getID, f.getDescription)),
       others   = others,
       samples = in.getGenotypeSamples.toIndexedSeq,
-      version = Option(in.getVCFHeaderVersion).map(_.getVersionString)
+      version = Option(in.getVCFHeaderVersion).map(toScalaVersion)
     )
   }
 
@@ -102,7 +101,6 @@ private[api] object VcfConversions {
   /** Converts the scala VCF header back into a Java VCF header. */
   def toJavaHeader(in: VcfHeader): VCFHeader = {
     val out = new VCFHeader(new java.util.HashSet[VCFHeaderLine](), in.samples.iterator.toJavaList)
-    in.version.foreach(v => out.setVCFHeaderVersion(VCFHeaderVersion.toHeaderVersion(v)))
 
     in.infos.foreach { i =>
       val j = toJavaCount(i.count) match {
@@ -137,6 +135,13 @@ private[api] object VcfConversions {
       out.addMetaDataLine(new VCFContigHeaderLine(fields, i.index))
     }
 
+    // Set after adding the lines, since HTSJDK takes the version from any fileformat line added.  Without a declared
+    // version, HTSJDK writes VCF 4.2 and refuses lines that need a newer one, so declare the version they need.
+    val required = out.getMetaDataInInputOrder.iterator().map(_.minimumVersion).maxByOption(_.ordinal)
+    in.version.map(toJavaVersion)
+      .orElse(required.filter(VCFHeaderVersion.DEFAULT_VERSION.isOlderThan))
+      .foreach(out.setVCFHeaderVersion)
+
     out
   }
 
@@ -161,6 +166,30 @@ private[api] object VcfConversions {
       case VCFHeaderLineCount.UNBOUNDED => VcfCount.Unknown
       case VCFHeaderLineCount.INTEGER   => VcfCount.Fixed(in.getCount)
     }
+  }
+
+  /** Converts an HTSJDK VCF version to the scala [[VcfVersion]]. */
+  def toScalaVersion(in: VCFHeaderVersion): VcfVersion = in match {
+    case VCFHeaderVersion.VCF3_2 => VcfVersion.V3_2
+    case VCFHeaderVersion.VCF3_3 => VcfVersion.V3_3
+    case VCFHeaderVersion.VCF4_0 => VcfVersion.V4_0
+    case VCFHeaderVersion.VCF4_1 => VcfVersion.V4_1
+    case VCFHeaderVersion.VCF4_2 => VcfVersion.V4_2
+    case VCFHeaderVersion.VCF4_3 => VcfVersion.V4_3
+    case VCFHeaderVersion.VCF4_4 => VcfVersion.V4_4
+    case VCFHeaderVersion.VCF4_5 => VcfVersion.V4_5
+  }
+
+  /** Converts the scala [[VcfVersion]] back into the HTSJDK equivalent. */
+  def toJavaVersion(in: VcfVersion): VCFHeaderVersion = in match {
+    case VcfVersion.V3_2 => VCFHeaderVersion.VCF3_2
+    case VcfVersion.V3_3 => VCFHeaderVersion.VCF3_3
+    case VcfVersion.V4_0 => VCFHeaderVersion.VCF4_0
+    case VcfVersion.V4_1 => VCFHeaderVersion.VCF4_1
+    case VcfVersion.V4_2 => VCFHeaderVersion.VCF4_2
+    case VcfVersion.V4_3 => VCFHeaderVersion.VCF4_3
+    case VcfVersion.V4_4 => VCFHeaderVersion.VCF4_4
+    case VcfVersion.V4_5 => VCFHeaderVersion.VCF4_5
   }
 
   /**

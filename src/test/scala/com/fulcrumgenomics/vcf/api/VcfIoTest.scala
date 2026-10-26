@@ -354,13 +354,13 @@ class VcfIoTest extends UnitSpec with OptionValues {
 
   it should "keep the version a VCF header declares when reading" in {
     val source = VcfSource(writeVcf45WithNewNumberCodes())
-    source.header.version.value shouldBe "VCFv4.5"
+    source.header.version.value shouldBe VcfVersion.V4_5
     source.safelyClose()
   }
 
   it should "write a VCF at the version its header declares" in {
     val output = makeTempFile(getClass.getSimpleName, VcfExtension)
-    VcfWriter(output, VcfIoTest.Header.copy(version = Some("VCFv4.3"))).close()
+    VcfWriter(output, VcfIoTest.Header.copy(version = Some(VcfVersion.V4_3))).close()
     Io.readLines(output).next() shouldBe "##fileformat=VCFv4.3"
   }
 
@@ -370,6 +370,14 @@ class VcfIoTest extends UnitSpec with OptionValues {
     Io.readLines(output).next() shouldBe "##fileformat=VCFv4.2"
   }
 
+  it should "write a VCF at the version its lines need when its header declares no version" in {
+    val local  = VcfFormatHeader(id="XLA", count=VcfCount.OnePerLocalAltAllele, kind=VcfFieldType.Integer, description="x")
+    val header = VcfIoTest.Header.copy(formats = VcfIoTest.Header.formats :+ local, version = None)
+    val output = makeTempFile(getClass.getSimpleName, VcfExtension)
+    VcfWriter(output, header).close()
+    Io.readLines(output).next() shouldBe "##fileformat=VCFv4.5"
+  }
+
   it should "write a BCF at the version its header declares" in {
     val source = VcfSource(writeVcf45WithNewNumberCodes())
     val output = makeTempFile(getClass.getSimpleName, BcfExtension)
@@ -377,12 +385,8 @@ class VcfIoTest extends UnitSpec with OptionValues {
     source.safelyClose()
 
     val reread = VcfSource(output)
-    reread.header.version.value shouldBe "VCFv4.5"
+    reread.header.version.value shouldBe VcfVersion.V4_5
     reread.header.formats.find(_.id == "XLA").value.count shouldBe VcfCount.OnePerLocalAltAllele
     reread.safelyClose()
-  }
-
-  "VcfHeader" should "not allow a version that is not a known VCF version" in {
-    an[IllegalArgumentException] shouldBe thrownBy { VcfIoTest.Header.copy(version = Some("VCFv9.9")) }
   }
 }

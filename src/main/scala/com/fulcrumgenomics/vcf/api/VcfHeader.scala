@@ -27,7 +27,6 @@ package com.fulcrumgenomics.vcf.api
 import com.fulcrumgenomics.FgBioDef._
 import com.fulcrumgenomics.fasta.{SequenceDictionary, SequenceMetadata}
 import enumeratum.EnumEntry
-import htsjdk.variant.vcf.VCFHeaderVersion
 
 import scala.collection.immutable
 
@@ -58,6 +57,20 @@ object VcfCount {
   case object Unknown                extends VcfCount
   /** The attribute must have a fixed number of values, indicated by `count`. */
   case class Fixed(count: Int)       extends VcfCount
+}
+
+/** A version of the VCF specification that a VCF header can declare. */
+sealed trait VcfVersion { }
+
+object VcfVersion {
+  case object V3_2 extends VcfVersion
+  case object V3_3 extends VcfVersion
+  case object V4_0 extends VcfVersion
+  case object V4_1 extends VcfVersion
+  case object V4_2 extends VcfVersion
+  case object V4_3 extends VcfVersion
+  case object V4_4 extends VcfVersion
+  case object V4_5 extends VcfVersion
 }
 
 /** Trait for the set of acceptable atomic types that can appear in VCF's INFO and genotype fields. */
@@ -154,8 +167,9 @@ case class VcfGeneralHeader(headerType: String, id: String, data: Map[String, St
   * @param filters the list of FILTER entries in the header
   * @param others the list of all other header entries
   * @param samples the ordered list of samples that appear in the VCF
-  * @param version the VCF version the header declares (e.g. `VCFv4.3`), if any.  A VCF is written at this version,
-  *                or at `VCFv4.2` if it is older or absent.
+  * @param version the VCF version the header declares, if any.  A VCF is written at this version, or at
+  *                [[VcfVersion.V4_2]] if it is older.  A header that declares no version is written at the oldest
+  *                version that can express all of its lines, and at least [[VcfVersion.V4_2]].
   */
 case class VcfHeader(contigs: IndexedSeq[VcfContigHeader],
                      infos: Seq[VcfInfoHeader],
@@ -163,10 +177,8 @@ case class VcfHeader(contigs: IndexedSeq[VcfContigHeader],
                      filters: Seq[VcfFilterHeader],
                      others: Seq[VcfGeneralHeader],
                      samples: IndexedSeq[String],
-                     version: Option[String] = None
+                     version: Option[VcfVersion] = None
                     ) {
-  version.foreach(v => require(VCFHeaderVersion.isVersionString(v), s"Not a known VCF version: $v"))
-
   /** A mapping of sample name to the index in samples. */
   private[api] val sampleIndex = samples.zipWithIndex.toMap
 
