@@ -11,9 +11,10 @@ Applies one or more filters to a VCF of somatic variants. The VCF must contain g
 tumor sample. If the VCF also contains genotypes for one or more other samples, the `--sample` option must be
 provided to specify the sample whose genotypes to examine and whose reads are present in the BAM file.
 
-The VCF must be coordinate sorted, with its contigs in the order of its header's contig lines, as produced by
-`bcftools sort` or Picard's `SortVcf`. The tool fails at the first variant that is out of order. The output VCF
-is written in the same order and indexed.
+The VCF's header must have a contig line for every contig with a variant, and the VCF must be coordinate sorted,
+with its contigs in the order of those contig lines, as produced by `bcftools sort` or Picard's `SortVcf`. The
+tool fails at the first variant that breaks either rule. The output VCF is written in the same order and
+indexed.
 
 Various options are available for filtering the reads coming from the BAM file, including
 `--min-mapping-quality`, `--min-base-quality` and `--paired-reads-only`. The latter filters to only paired end
