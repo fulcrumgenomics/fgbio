@@ -203,6 +203,20 @@ class FilterSomaticVcfTest extends UnitSpec {
     exception.message.value should include (s"not coordinate sorted: $chr1:1 follows $chr2:1")
   }
 
+  it should "raise an exception when a variant's contig has no contig line in the VCF header" in {
+    val builder = new SamBuilder(sort = Some(Coordinate))
+    builder.addFrag(start = 1)
+
+    val input  = writeVcf(builder.dict(0).name -> 1, "undeclared" -> 1)
+    val output = makeTempFile(getClass.getSimpleName, ".vcf")
+    val bam    = builder.toTempFile()
+
+    val exception = the[FailureException] thrownBy {
+      new FilterSomaticVcf(input = input, output = output, bam = bam, accessPattern = RandomAccess).execute()
+    }
+    exception.message.value should include ("no contig line for undeclared")
+  }
+
   it should "index the output VCF when random access is used" in {
     val output = makeTempFile("filtered.", ".vcf")
     new FilterSomaticVcf(input = tumorOnlyVcf, output = output, bam = bam, accessPattern = RandomAccess).execute()

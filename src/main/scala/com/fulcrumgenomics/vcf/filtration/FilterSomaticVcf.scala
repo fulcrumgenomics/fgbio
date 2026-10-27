@@ -37,7 +37,6 @@ import com.fulcrumgenomics.util.ProgressLogger
 import com.fulcrumgenomics.vcf.api.Variant.PassingFilters
 import com.fulcrumgenomics.vcf.api.{Variant, VcfSource, VcfWriter}
 
-import scala.collection.mutable
 import scala.collection.mutable.ListBuffer
 import scala.math.Ordering.Implicits._
 
@@ -47,9 +46,10 @@ import scala.math.Ordering.Implicits._
       |tumor sample. If the VCF also contains genotypes for one or more other samples, the `--sample` option must be
       |provided to specify the sample whose genotypes to examine and whose reads are present in the BAM file.
       |
-      |The VCF must be coordinate sorted, with its contigs in the order of its header's contig lines, as produced by
-      |`bcftools sort` or Picard's `SortVcf`. The tool fails at the first variant that is out of order. The output VCF
-      |is written in the same order and indexed.
+      |The VCF's header must have a contig line for every contig with a variant, and the VCF must be coordinate sorted,
+      |with its contigs in the order of those contig lines, as produced by `bcftools sort` or Picard's `SortVcf`. The
+      |tool fails at the first variant that breaks either rule. The output VCF is written in the same order and
+      |indexed.
       |
       |Various options are available for filtering the reads coming from the BAM file, including
       |`--min-mapping-quality`, `--min-base-quality` and `--paired-reads-only`. The latter filters to only paired end
@@ -182,13 +182,17 @@ import scala.math.Ordering.Implicits._
 
     val writer = VcfWriter(output, header = header)
 
-    // Indexing the output requires coordinate order: contigs in the order of the header's contig lines (any others
-    // after them, in the order first seen), and positions ascending within each contig.
-    val contigOrder = mutable.HashMap(header.dict.iterator.map(s => s.name -> s.index).toSeq: _*)
-    def sortKey(v: Variant): (Int, Int) = (contigOrder.getOrElseUpdate(v.chrom, contigOrder.size), v.pos)
+    // Indexing the output requires every contig in the header and coordinate order: contigs in the order of the
+    // header's contig lines, and positions ascending within each contig.
+    def sortKey(v: Variant): (Int, Int) = (header.dict(v.chrom).index, v.pos)
     var previous: Option[Variant] = None
 
     source.tapEach(progress.record).foreach { variant =>
+      if (!header.dict.contains(variant.chrom)) fail(
+        s"The input VCF has a variant at ${variant.chrom}:${variant.pos}, but no contig line for ${variant.chrom} in " +
+        "its header. Add contig lines for all contigs, e.g. with Picard's UpdateVcfSequenceDictionary or bcftools " +
+        "reheader --fai, and run again."
+      )
       previous.filter(prev => sortKey(variant) < sortKey(prev)).foreach { prev =>
         fail(
           s"The input VCF is not coordinate sorted: ${variant.chrom}:${variant.pos} follows ${prev.chrom}:${prev.pos}. " +
