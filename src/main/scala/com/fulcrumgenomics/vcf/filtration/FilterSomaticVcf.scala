@@ -26,7 +26,7 @@ package com.fulcrumgenomics.vcf.filtration
 
 import com.fulcrumgenomics.bam.api.SamSource
 import com.fulcrumgenomics.bam.pileup.PileupBuilder
-import com.fulcrumgenomics.bam.pileup.PileupBuilder.BamAccessPattern.{RandomAccess, Streaming}
+import com.fulcrumgenomics.bam.pileup.PileupBuilder.BamAccessPattern.RandomAccess
 import com.fulcrumgenomics.bam.pileup.PileupBuilder.{BamAccessPattern, PileupDefaults}
 import com.fulcrumgenomics.cmdline.{ClpGroups, FgBioTool}
 import com.fulcrumgenomics.commons.CommonsDef._
@@ -35,15 +35,21 @@ import com.fulcrumgenomics.commons.util.LazyLogging
 import com.fulcrumgenomics.sopt.{arg, clp}
 import com.fulcrumgenomics.util.ProgressLogger
 import com.fulcrumgenomics.vcf.api.Variant.PassingFilters
-import com.fulcrumgenomics.vcf.api.{VcfSource, VcfWriter}
+import com.fulcrumgenomics.vcf.api.{Variant, VcfSource, VcfWriter}
 
+import scala.collection.mutable
 import scala.collection.mutable.ListBuffer
+import scala.math.Ordering.Implicits._
 
 @clp(
   description =
     """Applies one or more filters to a VCF of somatic variants. The VCF must contain genotype information for the
       |tumor sample. If the VCF also contains genotypes for one or more other samples, the `--sample` option must be
       |provided to specify the sample whose genotypes to examine and whose reads are present in the BAM file.
+      |
+      |The VCF must be coordinate sorted, with its contigs in the order of its header's contig lines, as produced by
+      |`bcftools sort` or Picard's `SortVcf`. The tool fails at the first variant that is out of order. The output VCF
+      |is written in the same order and indexed.
       |
       |Various options are available for filtering the reads coming from the BAM file, including
       |`--min-mapping-quality`, `--min-base-quality` and `--paired-reads-only`. The latter filters to only paired end
@@ -110,10 +116,8 @@ import scala.collection.mutable.ListBuffer
       |## Performance Expectations
       |
       |By default `--access-pattern` will be set to `RandomAccess` and the input BAM will be queried using index-based
-      |random access. Random access is mandatory if the input VCF is not coordinate sorted. If random access is not
-      |requested and the input VCF is not coordinate sorted, then an exception will be raised on the first
-      |non-coordinate increasing VCF record found. The BAM must be coordinate sorted in all cases and additionally be
-      |indexed if random access is requested. The output VCF is indexed only when `--access-pattern` is `Streaming`.
+      |random access. The BAM must be coordinate sorted in all cases and additionally be indexed if random access is
+      |requested.
       |
       |Often, a VCF file will contain a sparse set of records that are scattered across a given territory within a
       |genome (or the records will be sparsely scattered genome-wide). If the territory of the VCF records is markedly
@@ -176,10 +180,24 @@ import scala.collection.mutable.ListBuffer
       s"There is no genotype with the following sample in the input VCF/BCF: $sample"
     )
 
-    // Only a streamed VCF is known to be coordinate sorted, which indexing the output on the fly requires
-    val writer = VcfWriter(output, header = header, index = accessPattern == Streaming)
+    val writer = VcfWriter(output, header = header)
+
+    // Indexing the output requires coordinate order: contigs in the order of the header's contig lines (any others
+    // after them, in the order first seen), and positions ascending within each contig.
+    val contigOrder = mutable.HashMap(header.dict.iterator.map(s => s.name -> s.index).toSeq: _*)
+    def sortKey(v: Variant): (Int, Int) = (contigOrder.getOrElseUpdate(v.chrom, contigOrder.size), v.pos)
+    var previous: Option[Variant] = None
 
     source.tapEach(progress.record).foreach { variant =>
+      previous.filter(prev => sortKey(variant) < sortKey(prev)).foreach { prev =>
+        fail(
+          s"The input VCF is not coordinate sorted: ${variant.chrom}:${variant.pos} follows ${prev.chrom}:${prev.pos}. " +
+          "Sort it with its contigs in the order of its header's contig lines, e.g. with bcftools sort or Picard's " +
+          "SortVcf, and run again."
+        )
+      }
+      previous = Some(variant)
+
       val updated = somaticFilters.filter(_.appliesTo(variant.genotypes(name))) match {
         case Nil     => variant
         case filters =>

@@ -28,6 +28,7 @@ import com.fulcrumgenomics.bam.api.SamOrder
 import com.fulcrumgenomics.bam.api.SamOrder.Coordinate
 import com.fulcrumgenomics.bam.pileup.PileupBuilder.BamAccessPattern
 import com.fulcrumgenomics.bam.pileup.PileupBuilder.BamAccessPattern.{RandomAccess, Streaming}
+import com.fulcrumgenomics.cmdline.FgBioMain.FailureException
 import com.fulcrumgenomics.commons.CommonsDef._
 import com.fulcrumgenomics.testing.VcfBuilder.Gt
 import com.fulcrumgenomics.testing.{SamBuilder, UnitSpec, VcfBuilder}
@@ -136,16 +137,17 @@ class FilterSomaticVcfTest extends UnitSpec {
     reader.safelyClose()
   }
 
-  /** Writes a VCF of `sample1` with variants at positions 2 and then 1 on `chrom`, so not coordinate ordered. */
-  private def writeUnorderedVcf(chrom: String): PathToVcf = {
+  /** Writes an unindexed VCF of `sample1` with a variant at each of the given loci, in the order given. */
+  private def writeVcf(loci: (String, Int)*): PathToVcf = {
     val alleles = AlleleSet(Allele("C"), Allele("A"))
     val attrs   = Map("AD" -> Seq(8, 2))
     val gt      = Genotype(alleles, sample = "sample1", calls = alleles.toIndexedSeq, attrs = attrs)
 
     val vcf    = makeTempFile(getClass.getSimpleName, ".vcf")
     val writer = VcfWriter(vcf, VcfBuilder.DefaultHeader.copy(samples = IndexedSeq("sample1")), index = false)
-    writer.write(Variant(chrom, pos = 2, alleles = alleles, genotypes = Map("sample1" -> gt)))
-    writer.write(Variant(chrom, pos = 1, alleles = alleles, genotypes = Map("sample1" -> gt)))
+    loci.foreach { case (chrom, pos) =>
+      writer.write(Variant(chrom, pos = pos, alleles = alleles, genotypes = Map("sample1" -> gt)))
+    }
     writer.close()
     vcf
   }
@@ -154,11 +156,12 @@ class FilterSomaticVcfTest extends UnitSpec {
     val builder = new SamBuilder(sort = Some(Coordinate))
     builder.addFrag(start = 1)
 
-    val input  = writeUnorderedVcf(builder.dict.head.name)
+    val chrom  = builder.dict(0).name
+    val input  = writeVcf(chrom -> 2, chrom -> 1)
     val output = makeTempFile(getClass.getSimpleName, ".vcf")
     val bam    = builder.toTempFile()
 
-    val exception = the[IllegalArgumentException] thrownBy {
+    val exception = the[FailureException] thrownBy {
       new FilterSomaticVcf(
         input         = input,
         output        = output,
@@ -166,21 +169,45 @@ class FilterSomaticVcfTest extends UnitSpec {
         accessPattern = Streaming
       ).execute()
     }
-    exception.getMessage should include ("is behind the previous pileup")
+    exception.message.value should include (s"not coordinate sorted: $chrom:1 follows $chrom:2")
   }
 
-  it should "filter variant records that are not coordinate ordered when random access is used" in {
+  it should "raise an exception when random access is used and variant records are not coordinate ordered" in {
     val builder = new SamBuilder(sort = Some(Coordinate))
     builder.addFrag(start = 1)
 
-    val input  = writeUnorderedVcf(builder.dict.head.name)
+    val chrom  = builder.dict(0).name
+    val input  = writeVcf(chrom -> 2, chrom -> 1)
     val output = makeTempFile(getClass.getSimpleName, ".vcf")
     val bam    = builder.toTempFile()
 
-    new FilterSomaticVcf(input = input, output = output, bam = bam, accessPattern = RandomAccess).execute()
+    val exception = the[FailureException] thrownBy {
+      new FilterSomaticVcf(input = input, output = output, bam = bam, accessPattern = RandomAccess).execute()
+    }
+    exception.message.value should include (s"not coordinate sorted: $chrom:1 follows $chrom:2")
+    exception.message.value should include ("bcftools sort")
+  }
 
+  it should "raise an exception when contigs are not in the order of the VCF header's contig lines" in {
+    val builder = new SamBuilder(sort = Some(Coordinate))
+    builder.addFrag(start = 1)
+
+    val (chr1, chr2) = (builder.dict(0).name, builder.dict(1).name)
+    val input  = writeVcf(chr2 -> 1, chr1 -> 1)
+    val output = makeTempFile(getClass.getSimpleName, ".vcf")
+    val bam    = builder.toTempFile()
+
+    val exception = the[FailureException] thrownBy {
+      new FilterSomaticVcf(input = input, output = output, bam = bam, accessPattern = RandomAccess).execute()
+    }
+    exception.message.value should include (s"not coordinate sorted: $chr1:1 follows $chr2:1")
+  }
+
+  it should "index the output VCF when random access is used" in {
+    val output = makeTempFile("filtered.", ".vcf")
+    new FilterSomaticVcf(input = tumorOnlyVcf, output = output, bam = bam, accessPattern = RandomAccess).execute()
     val reader = VcfSource(output)
-    reader.map(_.pos).toList shouldBe List(2, 1)
+    reader.isQueryable shouldBe true
     reader.safelyClose()
   }
 
