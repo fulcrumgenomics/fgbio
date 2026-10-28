@@ -30,6 +30,7 @@ import com.fulcrumgenomics.bam.Template
 import com.fulcrumgenomics.bam.api.SamOrder
 import com.fulcrumgenomics.bam.api.SamOrder.TemplateCoordinate
 import com.fulcrumgenomics.cmdline.FgBioMain.FailureException
+import com.fulcrumgenomics.sopt.cmdline.ValidationException
 import com.fulcrumgenomics.testing.SamBuilder.{Minus, Plus}
 import com.fulcrumgenomics.testing.{SamBuilder, UnitSpec}
 import com.fulcrumgenomics.umi.GroupReadsByUmi._
@@ -613,6 +614,84 @@ class GroupReadsByUmiTest extends UnitSpec with OptionValues with PrivateMethodT
       recs should have length 4
       recs.map(_.name) should contain theSameElementsInOrderAs Seq("a01", "a01", "a02", "a02")
       recs.map(r => r[String]("MI")).distinct should have length 1 // all should be assigned to one molecule
+    }
+  }
+
+  /** Runs GroupReadsByUmi on single-end reads at the same position and returns the read names grouped by molecule ID.
+    * With `Coordinate` input the tool sorts the reads itself, while `TemplateCoordinate` input is used as given. */
+  private def groupFragsByMi(umis: Seq[(String, String)],
+                             strategy: Strategy,
+                             edits: Int,
+                             minUmiLength: Option[Int],
+                             sortOrder: SamOrder = SamOrder.Coordinate): Set[Set[String]] = {
+    val builder = new SamBuilder(readLength=100, sort=Some(sortOrder))
+    umis.foreach { case (name, umi) => builder.addFrag(name=name, start=100, attrs=Map("RX" -> umi)) }
+
+    val in   = builder.toTempFile()
+    val out  = Files.createTempFile("umi_grouped.", ".sam")
+    new GroupReadsByUmi(input=in, output=out, familySizeHistogram=None, rawTag="RX", assignTag="MI", strategy=strategy, edits=edits, minUmiLength=minUmiLength).execute()
+
+    readBamRecs(out).groupBy(r => r[String]("MI")).values.map(_.map(_.name).toSet).toSet
+  }
+
+  it should "reject a --min-umi-length less than one" in {
+    Seq(0, -1).foreach { minUmiLength =>
+      an[ValidationException] shouldBe thrownBy {
+        new GroupReadsByUmi(rawTag="RX", assignTag="MI", strategy=Strategy.Identity, minUmiLength=Some(minUmiLength))
+      }
+    }
+  }
+
+  it should "discard reads whose UMIs contain a lower-case n" in {
+    groupFragsByMi(Seq("a01" -> "ACGTn", "a02" -> "ACGTA"), strategy=Strategy.Identity, edits=0, minUmiLength=None) shouldBe Set(Set("a02"))
+  }
+
+  Seq(None, Some(8)).foreach { minUmiLength =>
+    it should s"group UMIs that differ only by case with the adjacency strategy and --min-umi-length=$minUmiLength" in {
+      groupFragsByMi(Seq("a01" -> "aaaaaaaa", "a02" -> "AAAAAAAA"), strategy=Strategy.Adjacency, edits=1, minUmiLength=minUmiLength) shouldBe Set(Set("a01", "a02"))
+    }
+  }
+
+  Strategy.values.filterNot(_ == Strategy.Paired).foreach { strategy =>
+    it should s"count only bases when rejecting UMIs containing dashes that are too short with the $strategy strategy" in {
+      // "ACG-TA" has six characters but only five bases
+      groupFragsByMi(Seq("a01" -> "ACG-TA", "a02" -> "ACG-TAC"), strategy=strategy, edits=0, minUmiLength=Some(6)) shouldBe Set(Set("a02"))
+    }
+  }
+
+  Seq(Strategy.Edit, Strategy.Adjacency).foreach { strategy =>
+    it should s"compare only the bases of UMIs containing dashes when truncating with the $strategy strategy" in {
+      // Comparing bases gives "ACGTT" vs "ACGTA" (one mismatch); comparing characters would align the dashes against
+      // bases, e.g. "AC-GTT" vs "ACGTA-" (four mismatches).
+      groupFragsByMi(Seq("a01" -> "AC-GTT", "a02" -> "ACGTA-T"), strategy=strategy, edits=1, minUmiLength=Some(5)) shouldBe Set(Set("a01", "a02"))
+      groupFragsByMi(Seq("a01" -> "ACGTAC-", "a02" -> "TCGTACG-TT"), strategy=strategy, edits=1, minUmiLength=Some(6)) shouldBe Set(Set("a01", "a02"))
+      // The shortest UMI has six bases, more than --min-umi-length: "ACGTTA" vs "ACGTAC" has two mismatches, so the
+      // reads must stay apart.  Truncating to five bases ("ACGTT" vs "ACGTA") would wrongly merge them.
+      groupFragsByMi(Seq("a01" -> "AC-GTTA", "a02" -> "ACGTA-C"), strategy=strategy, edits=1, minUmiLength=Some(5)) shouldBe Set(Set("a01"), Set("a02"))
+    }
+  }
+
+  // When only identical UMIs are grouped, UMIs are split by their first --min-umi-length bases and each split is
+  // truncated to its own shortest UMI, whether the tool sorts the input or the input is already TemplateCoordinate.
+  for (sortOrder <- Seq(SamOrder.Coordinate, SamOrder.TemplateCoordinate); (strategy, edits) <- Seq(Strategy.Identity -> 0, Strategy.Edit -> 0, Strategy.Adjacency -> 0)) {
+    val desc = s"the $strategy strategy, edits=$edits and $sortOrder input"
+
+    it should s"compare only the bases of UMIs containing dashes when truncating with $desc" in {
+      // The first eight bases are ACGTACGT for a01, a02 and a04, and ACGTACGA for a03.  Among a01, a02 and a04 the
+      // shortest UMI has nine bases, so a01 and a04 are identical regardless of where their dashes are.
+      val umis = Seq("a01" -> "ACG-TACGTA", "a02" -> "ACG-TACGTC", "a03" -> "ACG-TACGA", "a04" -> "ACGT-ACGTA")
+      groupFragsByMi(umis, strategy=strategy, edits=edits, minUmiLength=Some(8), sortOrder=sortOrder) shouldBe Set(Set("a01", "a04"), Set("a02"), Set("a03"))
+    }
+
+    it should s"truncate UMIs without dashes to the shortest UMI sharing their first bases with $desc" in {
+      // a03 does not share its first four bases with a01 and a02, so its length does not affect them
+      val umis = Seq("a01" -> "ACGTA", "a02" -> "ACGTC", "a03" -> "TTTT")
+      groupFragsByMi(umis, strategy=strategy, edits=edits, minUmiLength=Some(4), sortOrder=sortOrder) shouldBe Set(Set("a01"), Set("a02"), Set("a03"))
+    }
+
+    it should s"truncate UMIs without dashes to the minimum UMI length with $desc" in {
+      val umis = Seq("a01" -> "ACGTACGTA", "a02" -> "ACGTACGTC", "a03" -> "ACGTACGA", "a04" -> "ACGTACGT")
+      groupFragsByMi(umis, strategy=strategy, edits=edits, minUmiLength=Some(8), sortOrder=sortOrder) shouldBe Set(Set("a01", "a02", "a04"), Set("a03"))
     }
   }
 }
