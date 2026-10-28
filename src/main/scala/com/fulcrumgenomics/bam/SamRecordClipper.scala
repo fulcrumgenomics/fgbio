@@ -324,27 +324,150 @@ class SamRecordClipper(val mode: ClippingMode, val autoClipAttributes: Boolean) 
     }
   }
 
-  /** Returns the number of bases extending past the mate end for FR pairs including any soft-clipped bases, zero otherwise.
+  /** Returns the number of query bases at the 3' end of a record that extend past the 3' end of its mate, for FR pairs,
+    * and zero otherwise.
+    *
+    * The two reads of an FR pair sequence the same insert from opposite ends, so beyond the last reference position
+    * that both alignments cover they must have sequenced the same number of insert bases.  Any query bases a record has
+    * beyond that count are read-through past the end of the insert (i.e. into the adapter).  Both counts are taken in
+    * _query_ space so that an indel near the end of either alignment does not skew the comparison; the shared reference
+    * position is used only as the landmark from which to count.
+    *
+    * Soft-clipped bases are counted, since they are query bases that may still belong to the insert.  Hard-clipped
+    * bases are not, since they are not present in the record.
+    *
+    * When the two alignments share no reference position there is no landmark to count from, and the count falls back
+    * to `numBasesExtendingPastDisjointMate` below.
     *
     * @param rec the record to examine
-    * @param mateUnSoftClippedStart the smallest mapped genomic coordinate considering *ONLY* soft-clipping
-    * @param mateUnSoftClippedEnd the largest mapped genomic coordinate considering *ONLY* soft-clipping
+    * @param mateStart the alignment start of the mate
+    * @param mateCigar the alignment cigar of the mate
+    * @return the number of query bases to clip from the 3' end of the record (in sequencing order)
     */
-  def numBasesExtendingPastMate(rec: SamRecord, mateUnSoftClippedStart: Int, mateUnSoftClippedEnd: Int): Int = {
-    if (!rec.isFrPair) 0 else rec.positiveStrand match {
-      case true if rec.end >= mateUnSoftClippedEnd =>
-        // positive strand record is aligned to/past the mate alignment end: count any bases aligned/soft-clipped after
-        Math.max(0, rec.length - rec.readPosAtRefPos(pos=mateUnSoftClippedEnd, returnLastBaseIfDeleted=false))
-      case true =>
-        // positive strand record alignment ends before the mate alignment end: remove any excess soft-clipped reads
-        Math.max(0, rec.cigar.trailingSoftClippedBases - (mateUnSoftClippedEnd - rec.end))
-      case false if rec.start > mateUnSoftClippedStart =>
-        // negative strand record alignment starts after the mate alignment start: remove any excess soft-clipped reads
-        Math.max(0, rec.cigar.leadingSoftClippedBases - (rec.start - mateUnSoftClippedStart))
-      case false =>
-        // negative strand record alignment starts at or before the mate start: count up to and including one base before
-        Math.max(0, rec.readPosAtRefPos(pos=mateUnSoftClippedStart, returnLastBaseIfDeleted=false) - 1)
+  def numBasesExtendingPastMate(rec: SamRecord, mateStart: Int, mateCigar: Cigar): Int = {
+    if (!rec.isFrPair) 0 else {
+      val mateEnd      = mateStart + mateCigar.lengthOnTarget - 1
+      val overlapStart = Math.max(rec.start, mateStart)
+      val overlapEnd   = Math.min(rec.end, mateEnd)
+      if (overlapEnd < overlapStart) numBasesExtendingPastDisjointMate(rec, mateStart, mateCigar, mateEnd)
+      else if (rec.positiveStrand) {
+        // The 3' end of a positive strand record is its right-hand end, so count from the last shared position.
+        val recBases  = numQueryBasesAfter(start=rec.start, cigar=rec.cigar, refPos=overlapEnd)
+        val mateBases = numQueryBasesAfter(start=mateStart, cigar=mateCigar, refPos=overlapEnd)
+        Math.max(0, recBases - mateBases)
+      }
+      else {
+        // The 3' end of a negative strand record is its left-hand end, so count from the first shared position.
+        val recBases  = numQueryBasesBefore(start=rec.start, cigar=rec.cigar, refPos=overlapStart)
+        val mateBases = numQueryBasesBefore(start=mateStart, cigar=mateCigar, refPos=overlapStart)
+        Math.max(0, recBases - mateBases)
+      }
     }
+  }
+
+  /** Returns the number of query bases at the 3' end of a record that extend past the 3' end of its mate, when the two
+    * alignments cover no reference position in common.
+    *
+    * With no shared position there is no landmark to count query bases from, so the record's own soft-clipped tail is
+    * projected into reference space at one query base per reference base and compared against the mate's
+    * un-soft-clipped far end — the estimate this function has applied since #842.  Two reads can absolutely have read
+    * through into each other's adapter here: both alignments lie within the insert, so a short insert read from both
+    * ends leaves them disjoint whenever each alignment stops short of the other's, which soft clipping at a variant or
+    * a mis-called base is enough to produce.  The extrapolation is exact whenever the region between the two
+    * alignments is ungapped, and it is continuous with the query-space count above, which reduces to exactly this
+    * expression as the shared span shrinks to a single reference position.
+    *
+    * The reference/query conflation that the query-space count exists to avoid cannot bite here: neither alignment
+    * places a base between the two, so neither can place an indel between them either.  An indel in the sample that
+    * falls in that gap is invisible to both reads and shifts the estimate by its own length, in either direction; the
+    * result is capped by the record's soft clipping regardless, so no aligned base is ever removed on the strength of
+    * it.
+    *
+    * A record whose 3' end points away from its mate — a positive strand record lying entirely to the right of its
+    * mate, or a negative strand record entirely to its left — describes an outward-facing template rather than
+    * read-through, and nothing is clipped.
+    *
+    * @param rec the record to examine
+    * @param mateStart the alignment start of the mate
+    * @param mateCigar the alignment cigar of the mate
+    * @param mateEnd the alignment end of the mate, which the only caller has already computed
+    * @return the number of query bases to clip from the 3' end of the record (in sequencing order)
+    */
+  private def numBasesExtendingPastDisjointMate(rec: SamRecord, mateStart: Int, mateCigar: Cigar, mateEnd: Int): Int = {
+    if (rec.positiveStrand && rec.end < mateStart) {
+      val mateUnSoftClippedEnd = mateEnd + mateCigar.trailingSoftClippedBases
+      Math.max(0, rec.cigar.trailingSoftClippedBases - (mateUnSoftClippedEnd - rec.end))
+    }
+    else if (rec.negativeStrand && rec.start > mateEnd) {
+      val mateUnSoftClippedStart = mateStart - mateCigar.leadingSoftClippedBases
+      Math.max(0, rec.cigar.leadingSoftClippedBases - (rec.start - mateUnSoftClippedStart))
+    }
+    else 0
+  }
+
+  /** Returns the number of query bases in an alignment that lie to the right of the given reference position.
+    *
+    * Inserted and soft-clipped bases are counted when they follow the last query base at or before the given position.
+    * If the position falls within a deletion or skipped region then no query base is at the position, and every query
+    * base after the gap is counted.  Hard-clipped bases are never counted since they are not present in the record.
+    *
+    * @param start the alignment start of the alignment
+    * @param cigar the cigar of the alignment
+    * @param refPos the reference position, which must fall within the aligned span of the alignment
+    */
+  private def numQueryBasesAfter(start: Int, cigar: Cigar, refPos: Int): Int = {
+    require(start <= refPos && refPos <= start + cigar.lengthOnTarget - 1,
+      s"Reference position $refPos is outside the aligned span of $cigar at $start.")
+    var numAtOrBefore = 0
+    var refCur        = start
+    var done          = false
+    val iter          = cigar.iterator
+    while (!done && iter.hasNext) {
+      val elem = iter.next()
+      if (elem.operator.consumesReferenceBases()) {
+        val refLast = refCur + elem.length - 1
+        if (refLast <= refPos) { numAtOrBefore += elem.lengthOnQuery; refCur = refLast + 1 }
+        else { // the position falls within this element; count only the query bases up to and including it
+          if (elem.operator.consumesReadBases()) numAtOrBefore += refPos - refCur + 1
+          done = true
+        }
+      }
+      else if (refCur > refPos) done = true // the element lies to the right of the position
+      else numAtOrBefore += elem.lengthOnQuery
+    }
+    cigar.lengthOnQuery - numAtOrBefore
+  }
+
+  /** Returns the number of query bases in an alignment that lie to the left of the given reference position.
+    *
+    * Inserted and soft-clipped bases are counted when they precede the first query base at or after the given position.
+    * If the position falls within a deletion or skipped region then no query base is at the position, and every query
+    * base before the gap is counted.  Hard-clipped bases are never counted since they are not present in the record.
+    *
+    * @param start the alignment start of the alignment
+    * @param cigar the cigar of the alignment
+    * @param refPos the reference position, which must fall within the aligned span of the alignment
+    */
+  private def numQueryBasesBefore(start: Int, cigar: Cigar, refPos: Int): Int = {
+    require(start <= refPos && refPos <= start + cigar.lengthOnTarget - 1,
+      s"Reference position $refPos is outside the aligned span of $cigar at $start.")
+    var numBefore = 0
+    var refCur    = start
+    var done      = false
+    val iter      = cigar.iterator
+    while (!done && iter.hasNext) {
+      val elem = iter.next()
+      if (elem.operator.consumesReferenceBases()) {
+        val refLast = refCur + elem.length - 1
+        if (refLast < refPos) { numBefore += elem.lengthOnQuery; refCur = refLast + 1 }
+        else { // the position falls within this element; count only the query bases strictly before it
+          if (elem.operator.consumesReadBases()) numBefore += refPos - refCur
+          done = true
+        }
+      }
+      else numBefore += elem.lengthOnQuery // refCur is always <= refPos here, so the element lies to the left
+    }
+    numBefore
   }
 
   /** Clips the reads in FR read pairs whose alignments extend beyond the far end of their mate's alignment.
@@ -354,43 +477,29 @@ class SamRecordClipper(val mode: ClippingMode, val autoClipAttributes: Boolean) 
     * @return the additional number of bases clipped (3' end in sequencing order) for the read and mate respectively
     */
   def clipExtendingPastMateEnds(rec: SamRecord, mate: SamRecord): (Int, Int) = {
-    if (rec.isFrPair) {
-      val basesClipped1 = clipExtendingPastMateEnd(
-        rec                    = rec,
-        mateUnSoftClippedStart = mate.unSoftClippedStart,
-        mateUnSoftClippedEnd   = mate.unSoftClippedEnd,
-      )
-      val basesClipped2 = clipExtendingPastMateEnd(
-        rec                    = mate,
-        mateUnSoftClippedStart = rec.unSoftClippedStart,
-        mateUnSoftClippedEnd   = rec.unSoftClippedEnd,
-      )
-      (basesClipped1, basesClipped2)
-    }
+    if (!rec.isFrPair) (0, 0)
     else {
-      (0, 0)
+      // NB: both amounts must be computed before either read is clipped, otherwise the second read is compared against
+      // an alignment that has already been shortened (or, if the first read was clipped away entirely, un-mapped).
+      val numBases1 = numBasesExtendingPastMate(rec=rec, mateStart=mate.start, mateCigar=mate.cigar)
+      val numBases2 = numBasesExtendingPastMate(rec=mate, mateStart=rec.start, mateCigar=rec.cigar)
+      (clipExtendingPastMateEnd(rec, numBases1), clipExtendingPastMateEnd(mate, numBases2))
     }
   }
 
-  /** Clips the read in FR read pairs whose alignments extend beyond the far end of their mate's alignment.
+  /** Clips the given number of query bases from the 3' end of a read.
     *
     * @param rec the record to clip
-    * @param mateUnSoftClippedStart the smallest mapped genomic coordinate considering *ONLY* soft-clipping
-    * @param mateUnSoftClippedEnd the largest mapped genomic coordinate considering *ONLY* soft-clipping
+    * @param numBases the number of query bases present in the record to clip from its 3' end
     * @return the additional number of bases clipped (3' end in sequencing order)
     */
-  private def clipExtendingPastMateEnd(rec: SamRecord, mateUnSoftClippedStart: Int, mateUnSoftClippedEnd: Int): Int = {
-    if (!rec.isFrPair) 0 // do not overlap, don't clip
-    else {
-      val totalClippedBases = numBasesExtendingPastMate(
-        rec                    = rec,
-        mateUnSoftClippedStart = mateUnSoftClippedStart,
-        mateUnSoftClippedEnd   = mateUnSoftClippedEnd,
-      )
-      if (totalClippedBases == 0) 0 else {
-       if (rec.positiveStrand) this.clipEndOfRead(rec, totalClippedBases)
-       else this.clipStartOfRead(rec, totalClippedBases)
-      }
+  private def clipExtendingPastMateEnd(rec: SamRecord, numBases: Int): Int = {
+    if (numBases <= 0) 0 else {
+      // NB: clip3PrimeEndOfRead takes the total clipping desired _including_ any existing clipping, while numBases
+      // counts only bases present in the record, so any existing hard-clipping at that end must be added back in.
+      val cigar                = rec.cigar
+      val existingHardClipping = if (rec.negativeStrand) cigar.leadingHardClippedBases else cigar.trailingHardClippedBases
+      this.clip3PrimeEndOfRead(rec, numBases + existingHardClipping)
     }
   }
 

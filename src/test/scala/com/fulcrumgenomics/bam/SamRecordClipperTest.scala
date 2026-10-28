@@ -878,6 +878,78 @@ class SamRecordClipperTest extends UnitSpec with OptionValues {
     mate.cigar.toString shouldBe "40M20I40M"
   }
 
+  // The last reference position shared by the two reads is 149.  The record has 50 query bases after it (aligned) and
+  // the mate has 10 (soft-clipped), so 40 bases are removed from the record.  Symmetrically, the first shared
+  // reference position is 100, before which the record has no query bases and the mate has 40, so 40 bases are removed
+  // from the mate.  There are no indels here, so this is the control case that must be unaffected by the fix for
+  // https://github.com/fulcrumgenomics/fgbio/issues/1090.
+  it should "clip back to the mate's soft-clipped end when neither read contains an indel" in {
+    val (rec, mate) = pair(100, "100M", Plus, 60, "90M10S", Minus)
+    clipper(Soft).clipExtendingPastMateEnds(rec=rec, mate=mate) shouldBe (40, 40)
+    rec.start shouldBe 100
+    rec.cigar.toString shouldBe "60M40S"
+    mate.start shouldBe 100
+    mate.cigar.toString shouldBe "40S50M10S"
+  }
+
+  // Regression test for https://github.com/fulcrumgenomics/fgbio/issues/1090.  The mate's un-soft-clipped end
+  // (223 + 2 = 225) is a reference position built by adding a query distance (the mate's trailing soft-clipping) to a
+  // reference position, and it happens to land inside the record's deletion.  The reads share reference positions
+  // through 223; after it the record has four query bases and the mate has two, so only two bases may be clipped.
+  it should "clip using query distances when a deletion falls at the mate's un-soft-clipped end" in {
+    val (rec, mate) = pair(101, "2S124M1D3M", Plus, 100, "3S124M2S", Minus)
+    clipper(Soft).clipExtendingPastMateEnds(rec=rec, mate=mate) shouldBe (2, 0)
+    rec.mapped shouldBe true
+    rec.start shouldBe 101
+    rec.cigar.toString shouldBe "2S124M1D1M2S"
+    mate.mapped shouldBe true
+    mate.start shouldBe 100
+    mate.cigar.toString shouldBe "3S124M2S"
+  }
+
+  // A second regression test for https://github.com/fulcrumgenomics/fgbio/issues/1090 that pins the knock-on effect on
+  // the mate: over-clipping the record un-maps it, and the mate is then compared against an un-mapped record and so is
+  // left unclipped.  Both reads must be clipped here, and the amount clipped from each must not depend on the other
+  // read having been clipped first.
+  it should "clip the mate even when the record's deletion falls at the mate's un-soft-clipped end" in {
+    val (rec, mate) = pair(101, "2S124M1D3M", Plus, 97, "115M14S", Minus)
+    clipper(Soft).clipExtendingPastMateEnds(rec=rec, mate=mate) shouldBe (2, 2)
+    rec.mapped shouldBe true
+    rec.start shouldBe 101
+    rec.cigar.toString shouldBe "2S124M1D1M2S"
+    mate.mapped shouldBe true
+    mate.start shouldBe 99
+    mate.cigar.toString shouldBe "2S113M14S"
+  }
+
+  // The example from https://github.com/fulcrumgenomics/fgbio/issues/1090.  The reads share reference positions
+  // through 169; after it the record has 80 query bases (10 inserted, 23 aligned and 47 soft-clipped) and the mate has
+  // 30 (all soft-clipped), so 50 bases are removed from the record.  Comparing reference distances instead under-clips
+  // here, since the insertion makes the record's alignment end 10 reference bases short of where its query bases reach.
+  it should "clip using query distances when the record contains an insertion before the mate's end" in {
+    val (rec, mate) = pair(100, "70M10I23M47S", Plus, 100, "50S70M30S", Minus)
+    clipper(Hard).clipExtendingPastMateEnds(rec=rec, mate=mate) shouldBe (3, 0) // 3 aligned bases clipped from the record
+    rec.start shouldBe 100
+    rec.cigar.toString shouldBe "70M10I20M50H"
+    mate.start shouldBe 100
+    mate.cigar.toString shouldBe "50H70M30S"
+  }
+
+  // Bases already hard-clipped from the 3' end are not present in the record, so they must not be counted towards the
+  // clipping that is applied, otherwise the requested clipping is silently absorbed by the existing hard-clipping.
+  it should "clip past the mate's end when the read has already been hard-clipped at its 3' end" in {
+    val (rec, mate) = pair(100, "100M", Plus, 60, "90M10S", Minus)
+    clipper(Hard).clip3PrimeEndOfRead(rec, 10) shouldBe 10
+    clipper(Hard).clip3PrimeEndOfRead(mate, 10) shouldBe 10
+    rec.cigar.toString shouldBe "90M10H"
+    mate.cigar.toString shouldBe "10H80M10S"
+    clipper(Hard).clipExtendingPastMateEnds(rec=rec, mate=mate) shouldBe (30, 30)
+    rec.start shouldBe 100
+    rec.cigar.toString shouldBe "60M40H"
+    mate.start shouldBe 100
+    mate.cigar.toString shouldBe "40H50M10S"
+  }
+
   "SamRecordClipper.numBasesExtendingPastMate" should "return zero when reads do not extend past the end or are not FR pairs" in {
     val builder = new SamBuilder()
     val Seq(r1, r2) = builder.addPair(start1=100, start2=200, cigar1="20S80M", cigar2="10S90M")
@@ -892,13 +964,8 @@ class SamRecordClipperTest extends UnitSpec with OptionValues {
 
   /** Convenience method for testing numBasesExtendingPastMate */
   def numBasesExtendingPastMate(clipper: SamRecordClipper, rec: SamRecord): Int = {
-    val mateUnSoftClippedStart = rec.mateUnSoftClippedStart.getOrElse(throw new IllegalStateException(f"Mate cigar (MC SAM tag) needed for read: ${rec.name}"))
-    val mateUnSoftClippedEnd   = rec.mateUnSoftClippedEnd.getOrElse(throw new IllegalStateException(f"Mate cigar (MC SAM tag) needed for read: ${rec.name}"))
-    clipper.numBasesExtendingPastMate(
-      rec                    = rec,
-      mateUnSoftClippedStart = mateUnSoftClippedStart,
-      mateUnSoftClippedEnd   = mateUnSoftClippedEnd,
-    )
+    val mateCigar = rec.mateCigar.getOrElse(throw new IllegalStateException(f"Mate cigar (MC SAM tag) needed for read: ${rec.name}"))
+    clipper.numBasesExtendingPastMate(rec=rec, mateStart=rec.mateStart, mateCigar=mateCigar)
   }
 
   it should "return a return a positive value when reads extend past its mate" in {
@@ -932,5 +999,62 @@ class SamRecordClipperTest extends UnitSpec with OptionValues {
     val Seq(r9, r10) = builder.addPair(start1=100, start2=100, cigar1="30S70M", cigar2="50S50M")
     numBasesExtendingPastMate(clipper(Soft), r9) shouldBe 20
     numBasesExtendingPastMate(clipper(Soft), r10) shouldBe 20
+  }
+
+  it should "count query bases, not reference bases, when an indel is present near the end of an alignment" in {
+    val builder = new SamBuilder(readLength=129)
+
+    // The reads share reference positions through 223, after which r1 has four query bases (the last base of its 124M
+    // at 224 and the three bases of its trailing 3M at 226-228; the deleted position 225 contributes no query base)
+    // and r2 has two (its trailing 2S).  The first shared reference position is 101, before which r1 has two query
+    // bases (its leading 2S) and r2 has four (its leading 3S plus the base at 100).
+    val Seq(r1, r2) = builder.addPair(start1=101, start2=100, cigar1="2S124M1D3M", cigar2="3S124M2S")
+    numBasesExtendingPastMate(clipper(Soft), r1) shouldBe 2
+    numBasesExtendingPastMate(clipper(Soft), r2) shouldBe 2
+
+    // The reads share reference positions through 169, after which r3 has 80 query bases (10 inserted, 23 aligned and
+    // 47 soft-clipped) and r4 has 30 (all soft-clipped).  The first shared reference position is 100, before which r3
+    // has no query bases and r4 has 50.
+    val builder2    = new SamBuilder(readLength=150)
+    val Seq(r3, r4) = builder2.addPair(start1=100, start2=100, cigar1="70M10I23M47S", cigar2="50S70M30S")
+    numBasesExtendingPastMate(clipper(Soft), r3) shouldBe 50
+    numBasesExtendingPastMate(clipper(Soft), r4) shouldBe 50
+  }
+
+  // Both alignments lie within the insert, so a pair that reads through into the adapter can still leave them
+  // disjoint: here each 100 base read aligns only its first 20 bases and soft-clips the rest, over an insert of 39
+  // reference bases.  With the mate at 1019 the two alignments share exactly one reference position, 1019, past which
+  // the record has all 80 of its soft-clipped bases and the mate has 19, so 61 bases of read-through are clipped from
+  // each.  Moving the mate one base to the right removes that shared position, and the answer must not jump: the
+  // insert is one base longer, so one fewer base of each read is read-through.  Comparing the record's soft-clipped
+  // extent against the mate's un-soft-clipped end is what carries the count across that boundary, and no indel can lie
+  // between two alignments that place no bases between them.
+  it should "clip the read-through of a pair whose alignments share no reference position" in {
+    val Seq(r1, r2) = new SamBuilder(readLength=100).addPair(start1=1000, start2=1019, cigar1="20M80S", cigar2="80S20M")
+    numBasesExtendingPastMate(clipper(Soft), r1) shouldBe 61
+    numBasesExtendingPastMate(clipper(Soft), r2) shouldBe 61
+
+    val Seq(r3, r4) = new SamBuilder(readLength=100).addPair(start1=1000, start2=1020, cigar1="20M80S", cigar2="80S20M")
+    numBasesExtendingPastMate(clipper(Soft), r3) shouldBe 60
+    numBasesExtendingPastMate(clipper(Soft), r4) shouldBe 60
+
+    // The count is bounded by the record's own soft clipping, so applying it takes no aligned base: hard-clipping
+    // shows exactly which bases go, where soft-clipping them again would be invisible.
+    clipper(Hard).clipExtendingPastMateEnds(rec=r3, mate=r4) shouldBe (0, 0) // No aligned bases clipped
+    r3.start shouldBe 1000
+    r3.cigar.toString shouldBe "20M20S60H"
+    r4.start shouldBe 1020
+    r4.cigar.toString shouldBe "60H20S20M"
+  }
+
+  // The mate's alignment is supplied by the caller — from the MC tag in practice — and is never cross-checked against
+  // what the record's own flags say about the pair, so a record can be classified as one end of an FR pair while the
+  // mate alignment in hand lies entirely to its left.  Its 3' end then points away from that mate, which describes an
+  // outward-facing template rather than read-through, and nothing may be clipped: there is no estimate to make, and
+  // the record's aligned bases are not the ones to spend on a geometry this function cannot verify.
+  it should "not clip a record lying entirely past the mate alignment it is given" in {
+    val (rec, _) = pair(301, "15M", Plus, 300, "10M5S", Minus)
+    rec.isFrPair shouldBe true
+    clipper(Soft).numBasesExtendingPastMate(rec=rec, mateStart=101, mateCigar=Cigar("10M5S")) shouldBe 0
   }
 }
