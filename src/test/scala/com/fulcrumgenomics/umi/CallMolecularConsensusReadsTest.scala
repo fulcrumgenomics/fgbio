@@ -68,6 +68,9 @@ class CallMolecularConsensusReadsTest extends UnitSpec {
       rec.length shouldBe 100
       rec[String](DefaultTag).startsWith("GATTACA") shouldBe true
       rec[String](ConsensusTags.UmiBases) shouldBe "ACGT-TGCA"
+      // Each group had exactly 2 templates / 4 records, and the values survive the BAM round-trip.
+      rec[Int](ConsensusTags.PerRead.RawTemplateCount) shouldBe 2
+      rec[Int](ConsensusTags.PerRead.RawRecordCount)   shouldBe 4
     }
   }
 

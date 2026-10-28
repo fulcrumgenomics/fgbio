@@ -156,6 +156,12 @@ class CodecConsensusCaller(readNamePrefix: String,
     * Takes in all the reads for a source molecule and, if possible, generates one or more
     * output consensus reads as SAM records.
     *
+    * NOTE: this override does not set the raw-family count tags (`cT`/`cR`, and the per-strand `aT`/`bT`/`aR`/`bR`)
+    * that [[DuplexConsensusCaller]] and [[VanillaUmiConsensusCaller]] set via `addRawSourceCounts`.  This is
+    * deliberate rather than an oversight: in CODEC both strands are carried by a single read pair and a single
+    * fragment consensus is emitted, so the pair-collapsed "raw template" unit and the pre-selection boundary both
+    * need separate definition here.  Adding the tags requires settling those semantics first.
+    *
     * @param recs the full set of source SamRecords for a source molecule
     * @return a seq of consensus SAM records, may be empty
     */

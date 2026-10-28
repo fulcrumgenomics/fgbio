@@ -84,13 +84,20 @@ import htsjdk.samtools.SAMTag
     |consensus reads can be further filtered using the _FilterConsensusReads_ tool.  As such it is always safe to run
     |with `--min-reads=1` and filter later, but filtering at this step can improve performance significantly.
     |
-    |Consensus reads have a number of additional optional tags set in the resulting BAM file.  The tags break down into
-    |those that are single-valued per read:
+    |Consensus reads have a number of additional optional tags set in the resulting BAM file.  The tag names follow
+    |a pattern where the second letter is intended to capture the meaning of the tag (e.g. d=depth, m=min depth,
+    |e=errors/error-rate) and is upper case for values that are one per read and lower case for values that are one
+    |per base.  Two per-read tags (T=raw template count, R=raw record count) describe the _raw input family_ rather
+    |than the consensus itself.
+    |
+    |The tags break down into those that are single-valued per read:
     |
     |```
     |consensus depth      [cD] (int)  : the maximum depth of raw reads at any point in the consensus read
     |consensus min depth  [cM] (int)  : the minimum depth of raw reads at any point in the consensus read
     |consensus error rate [cE] (float): the fraction of bases in raw reads disagreeing with the final consensus calls
+    |raw template count   [cT] (int)  : the number of raw templates in the input family before consensus-family selection
+    |raw record count     [cR] (int)  : the number of raw primary records in the input family before consensus-family selection
     |```
     |
     |And those that have a value per base:
@@ -102,6 +109,12 @@ import htsjdk.samtools.SAMTag
     |
     |The per base depths and errors are both capped at 32,767. In all cases no-calls (`N`s) and bases below the
     |`--min-input-base-quality` are not counted in tag value calculations.
+    |
+    |The raw template and record counts (`cT` and `cR`) describe the tag family as it was grouped, before
+    |filtering to the most common alignment and before downsampling with `--max-reads`.  The template count is
+    |collapsed by read name, so a read and its mate count once; the record count is not.  Unlike
+    |`CallDuplexConsensusReads`, this tool supports fragment reads, and fragments are included in both counts.
+    |Secondary and supplementary records are excluded, as they are filtered out before consensus calling.
     |
     |## Single-Cell / Cell Barcode Support
     |
