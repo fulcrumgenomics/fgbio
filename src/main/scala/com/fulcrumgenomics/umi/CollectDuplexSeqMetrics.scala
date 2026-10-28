@@ -391,11 +391,16 @@ class CollectDuplexSeqMetrics
     *
     * @param ssGroups a Seq of length one or two containing the one or two single-stranded tag families
     *                 that comprise an individual double-stranded tag family.  If there are two single-stranded
-    *                 tag families, there is no guarantee of their ordering within the Seq.
+    *                 tag families they may be given in any order; this method orders them by MI so that the
+    *                 results do not depend on it.
     */
   private[umi] def updateUmiMetrics(ssGroups: Seq[Seq[SamRecord]]): Unit = {
-    // ab and ba are just names here and _don't_ imply top/bottom strand, just different strands
-    val (ab, ba) = ssGroups match {
+    // `ab` is the family whose MI sorts first (e.g. `1/A` before `1/B`), and `ba` the other, if any. Order them by MI
+    // rather than taking the order given, which is the iteration order of a HashMap and so depends on the hash of the
+    // MI: the UMI observations are summed in this order (`ab` then `ba`, each in input order), which resolves a tied
+    // consensus base, and for a pair whose reads map to the same strand (FF/RR) it also picks the orientation of the
+    // duplex UMI below.
+    val (ab, ba) = ssGroups.filter(_.nonEmpty).sortBy(_.head[String](this.miTag)) match {
       case Seq(a, b) => (a, b)
       case Seq(a)    => (a, Seq.empty)
       case _         => unreachable(s"Found ${ssGroups.size} single strand families in a double strand family!")
@@ -419,8 +424,10 @@ class CollectDuplexSeqMetrics
     if (this.duplexUmiCounts) {
       // Make both possible consensus duplex UMIs.  We want to normalize to the pairing/orientation that we'd
       // see on an F1R2 read-pair. We can get this either by direct observation in the `ab` set of reads,
-      // or by seeing an F2R1 in the `ba` set of reads.  This logic will pick more or less arbitrarily if the
-      // group of reads doesn't consist of the expected all F1R2s in one set and all F2R1s in the other set.
+      // or by seeing an F2R1 in the `ba` set of reads (only R1s reach here from `collect`, so in practice it is the
+      // former).  If the group of reads doesn't consist of the expected all F1R2s in one set and all F2R1s in the
+      // other set (e.g. FF/RR pairs), this is a deterministic convention following the `ab`/`ba` order above, not a
+      // property of the molecule.
       val duplexUmis = Seq(s"$abConsensusUmi-$baConsensusUmi", s"$baConsensusUmi-$abConsensusUmi")
       val duplexUmi  = if (ab.exists(r => r.firstOfPair && r.positiveStrand) || ba.exists(r => r.secondOfPair && r.positiveStrand)) duplexUmis(0) else duplexUmis(1)
 

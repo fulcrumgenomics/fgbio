@@ -327,12 +327,76 @@ class CollectDuplexSeqMetricsTest extends UnitSpec {
     an[IllegalArgumentException] shouldBe thrownBy { exec(builder) }
   }
 
+  /** Builds the R1/R2s of a duplex molecule with two templates per single-strand family, whose UMIs tie 2-vs-2 at the
+    * first base of the consensus UMI: the /A reads carry RX `aRx` and the /B reads RX `bRx`. */
+  private def tiedDuplex(miBase: String, aRx: String, bRx: String): SamBuilder = {
+    val builder = new SamBuilder(readLength=10)
+    Seq.fill(2)(builder.addPair(start1=100, start2=200, strand1=Plus,  strand2=Minus, attrs=Map(RX -> aRx, MI -> s"$miBase/A")))
+    Seq.fill(2)(builder.addPair(start1=200, start2=100, strand1=Minus, strand2=Plus,  attrs=Map(RX -> bRx, MI -> s"$miBase/B")))
+    builder
+  }
+
+  // The UMI and duplex UMI metrics as comparable tuples
+  private def umiCounts(o: Outputs): Seq[(String, Long, Long, Long)] =
+    o.umiMetrics.map(m => (m.umi, m.raw_observations, m.raw_observations_with_errors, m.unique_observations)).sortBy(_._1)
+  private def duplexUmiCounts(o: Outputs): Seq[(String, Long, Long, Long)] =
+    o.duplexUmiMetrics.map(m => (m.umi, m.raw_observations, m.raw_observations_with_errors, m.unique_observations)).sortBy(_._1)
+
+  it should "call the consensus UMI of a tied duplex independently of the hash of its MI" in {
+    // The single-strand families are visited in the order the UMI observations are summed, and that order resolves a
+    // 2-vs-2 tie. "0/A" and "1/A" sort the same way relative to their /B, but iterate in opposite orders in a HashMap.
+    // The expected UMI is the deterministic outcome of summing the /A reads before the /B reads.
+    Seq(("AAA-GGG", "GGG-TAA", "TAA"), ("TAA-GGG", "GGG-AAA", "AAA")).foreach { case (aRx, bRx, expected) =>
+      Seq("0", "1").foreach { miBase =>
+        val results = exec(tiedDuplex(miBase, aRx, bRx), duplexCounts=true)
+        withClue(s"/A RX $aRx, /B RX $bRx, MI base $miBase: ") {
+          umiCounts(results) shouldBe Seq((expected, 4L, 2L, 1L), ("GGG", 4L, 0L, 1L)).sortBy(_._1)
+          duplexUmiCounts(results) shouldBe Seq((s"$expected-GGG", 4L, 2L, 1L))
+        }
+      }
+    }
+  }
+
+  it should "orient the duplex UMI of a same-orientation (FF/RR) pair independently of hash order" in {
+    // Neither single-strand family of an FF or RR pair is F1R2-only, so the orientation follows which family is `ab`.
+    // The family whose MI sorts first (/A) is always `ab`: lead with its UMI if its R1 is on the positive strand.
+    Seq((Plus, "AAA-CAG"), (Minus, "CAG-AAA")).foreach { case (strand, expected) =>
+      Seq("0", "1").foreach { miBase =>
+        val builder = new SamBuilder(readLength=10)
+        builder.addPair(start1=100, start2=200, strand1=strand, strand2=strand, attrs=Map(RX -> "AAA-CAG", MI -> s"$miBase/A"))
+        builder.addPair(start1=200, start2=100, strand1=strand, strand2=strand, attrs=Map(RX -> "CAG-AAA", MI -> s"$miBase/B"))
+        val results = exec(builder, duplexCounts=true)
+        withClue(s"R1/R2 strand $strand, MI base $miBase: ") {
+          results.duplexFamilyMetrics.map(m => (m.ab_size, m.ba_size, m.count)) shouldBe Seq((1, 1, 1))
+          duplexUmiCounts(results) shouldBe Seq((expected, 2L, 0L, 1L))
+        }
+      }
+    }
+  }
+
   "CollectDuplexSeqMetrics.updateUmiMetrics" should "not count duplex umis" in collector(duplex=false).foreach { c =>
     val builder = new SamBuilder(readLength=10)
     builder.addPair(start1=100, start2=200, attrs=Map(RX -> "AAA-CCC", MI -> "1/A"))
     c.updateUmiMetrics(Seq(builder.toSeq))
     val metrics = c.duplexUmiMetrics(c.umiMetrics)
     metrics should have size 0
+  }
+
+  it should "give the same result whichever order the single-strand families are given in" in {
+    // Pass the families directly, in both orders, so this does not rely on how a HashMap happens to order their MIs
+    val reads = tiedDuplex("1", "AAA-GGG", "GGG-TAA").toSeq.filter(_.firstOfPair)
+    val (aReads, bReads) = reads.partition(_[String](MI).endsWith("/A"))
+    val Seq(abFirst, baFirst) = Seq(Seq(aReads, bReads), Seq(bReads, aReads)).map { ssGroups =>
+      val c = new CollectDuplexSeqMetrics(input=Io.DevNull, output=Io.DevNull, duplexUmiCounts=true)
+      c.updateUmiMetrics(ssGroups)
+      val umis = c.umiMetrics
+      (
+        umis.map(m => (m.umi, m.raw_observations, m.raw_observations_with_errors, m.unique_observations)).sortBy(_._1),
+        c.duplexUmiMetrics(umis).map(m => (m.umi, m.raw_observations, m.raw_observations_with_errors, m.unique_observations))
+      )
+    }
+    baFirst shouldBe abFirst
+    abFirst shouldBe ((Seq(("GGG", 4L, 0L, 1L), ("TAA", 4L, 2L, 1L)), Seq(("TAA-GGG", 4L, 2L, 1L))))
   }
 
   it should "count UMIs as if on F1R2 molecules" in collector(duplex=true).foreach { c =>
