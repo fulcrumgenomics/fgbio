@@ -11,6 +11,11 @@ Applies one or more filters to a VCF of somatic variants. The VCF must contain g
 tumor sample. If the VCF also contains genotypes for one or more other samples, the `--sample` option must be
 provided to specify the sample whose genotypes to examine and whose reads are present in the BAM file.
 
+The VCF's header must have a contig line for every contig with a variant, and the VCF must be coordinate sorted,
+with its contigs in the order of those contig lines, as produced by `bcftools sort` or Picard's `SortVcf`. The
+tool fails at the first variant that breaks either rule. The output VCF is written in the same order and
+indexed.
+
 Various options are available for filtering the reads coming from the BAM file, including
 `--min-mapping-quality`, `--min-base-quality` and `--paired-reads-only`. The latter filters to only paired end
 reads where both reads are mapped. Reads marked as duplicates, secondary alignments and supplemental alignments
@@ -76,10 +81,8 @@ Two options are available:
 ## Performance Expectations
 
 By default `--access-pattern` will be set to `RandomAccess` and the input BAM will be queried using index-based
-random access. Random access is mandatory if the input VCF is not coordinate sorted. If random access is not
-requested and the input VCF is not coordinate sorted, then an exception will be raised on the first
-non-coordinate increasing VCF record found. The BAM must be coordinate sorted in all cases and additionally be
-indexed if random access is requested.
+random access. The BAM must be coordinate sorted in all cases and additionally be indexed if random access is
+requested.
 
 Often, a VCF file will contain a sparse set of records that are scattered across a given territory within a
 genome (or the records will be sparsely scattered genome-wide). If the territory of the VCF records is markedly
