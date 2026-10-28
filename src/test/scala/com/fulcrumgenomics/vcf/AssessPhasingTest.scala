@@ -130,7 +130,7 @@ class AssessPhasingTest extends ErrorLogLevel {
     path.toFile.deleteOnExit()
     val writer = new VariantContextWriterBuilder()
       .setReferenceDictionary(Header.getSequenceDictionary)
-      .setOutputFile(path.toFile)
+      .setOutputPath(path)
       .setOption(Options.INDEX_ON_THE_FLY)
       .setOption(Options.ALLOW_MISSING_FIELDS_IN_HEADER)
       .build()
@@ -192,8 +192,8 @@ class AssessPhasingTest extends ErrorLogLevel {
     if (debugVcf) {
       val annotatedVcf         = Paths.get(output.toString + AssessPhasing.AnnotatedVcfExtension)
       val expectedAnnotatedVcf = PathUtil.pathTo(s"${expectedPrefix}${AssessPhasing.AnnotatedVcfExtension}")
-      val actualContexts = new VCFFileReader(annotatedVcf.toFile, false).iterator().toList
-      val expectedContexts = new VCFFileReader(expectedAnnotatedVcf.toFile, false).iterator().toList
+      val actualContexts = new VCFFileReader(annotatedVcf, false).iterator().toList
+      val expectedContexts = new VCFFileReader(expectedAnnotatedVcf, false).iterator().toList
       actualContexts.length shouldBe expectedContexts.length
       actualContexts.zip(expectedContexts).foreach { case (actualCtx, expectedCtx) =>
           actualCtx.toStringDecodeGenotypes shouldBe expectedCtx.toStringDecodeGenotypes
@@ -212,7 +212,7 @@ class AssessPhasingTest extends ErrorLogLevel {
     locally { val _ = end }
     // TODO: BUG!!! This is meant to be start and end, but that is not happening.
     intervalList.add(new Interval(contig, 1, 10))
-    intervalList.write(path.toFile)
+    intervalList.write(path)
     path
   }
 

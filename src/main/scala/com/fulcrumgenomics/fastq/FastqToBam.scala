@@ -188,7 +188,7 @@ class FastqToBam
       val umiFromReadName = if (extractUmisFromReadNames) Umis.extractUmisFromReadName(fqs.head.name, strict=true) else None
 
       templates.zipWithIndex.map { case (read, index) =>
-        // If the template read had no bases, we'll substitute in a single N @ Q2 below to keep htsjdk happy
+        // If the template read had no bases, we'll substitute in a single N @ Q2 below
         val empty = read.bases.isEmpty
 
         val rec = SamRecord(header)

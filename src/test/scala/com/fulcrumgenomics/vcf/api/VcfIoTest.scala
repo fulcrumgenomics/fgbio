@@ -32,7 +32,7 @@ import com.fulcrumgenomics.vcf.api.Allele.NoCallAllele
 import htsjdk.samtools.util.FileExtensions.{BCF => BcfExtension, COMPRESSED_VCF => VcfGzExtension, CSI => CsiExtensions, TABIX_INDEX => TbiExtension, TRIBBLE_INDEX => IdxExtension, VCF => VcfExtension}
 import org.scalatest.OptionValues
 
-import java.nio.file.Files
+import java.nio.file.{Files, Path}
 import scala.collection.compat._
 import scala.collection.immutable.ListMap
 
@@ -274,6 +274,28 @@ class VcfIoTest extends UnitSpec with OptionValues {
     source.safelyClose()
   }
 
+  it should "not write a sibling index when asked not to index" in {
+    val builder = VcfBuilder(samples = Seq("sample"))
+    val output  = makeTempFile(getClass.getSimpleName, VcfExtension)
+    VcfWriter(output, header = builder.header, index = false).close()
+    val source = VcfSource(output)
+    source.isQueryable shouldBe false
+    source.safelyClose()
+  }
+
+  it should "write variants out of coordinate order when asked not to index" in {
+    val builder = VcfBuilder(samples = Seq("sample"))
+    builder.add(chrom = "chr1", pos = 200, alleles = Seq("A", "C"), gts = Seq(Gt(sample = "sample", gt = "0/1")))
+    builder.add(chrom = "chr1", pos = 100, alleles = Seq("A", "C"), gts = Seq(Gt(sample = "sample", gt = "0/1")))
+    val output = makeTempFile(getClass.getSimpleName, VcfExtension)
+    val writer = VcfWriter(output, header = builder.header, index = false)
+    writer.write(builder.toSeq.sortBy(-_.pos))
+    writer.close()
+    val source = VcfSource(output)
+    source.map(_.pos).toList shouldBe List(200, 100)
+    source.safelyClose()
+  }
+
   it should "not attempt to write a sibling index when streaming to a named pipe like '/dev/null'" in {
     val samples = Seq("sample")
     val builder = VcfBuilder(samples = samples)
@@ -283,5 +305,88 @@ class VcfIoTest extends UnitSpec with OptionValues {
     Files.exists(PathUtil.pathTo(Io.DevNull.getFileName.toString + CsiExtensions)) shouldBe false
     Files.exists(PathUtil.pathTo(Io.DevNull.getFileName.toString + IdxExtension))  shouldBe false
     Files.exists(PathUtil.pathTo(Io.DevNull.getFileName.toString + TbiExtension))  shouldBe false
+  }
+
+  /** Writes a header-only VCF 4.5 whose FORMAT lines use each of the VCF 4.4 and 4.5 `Number=` codes. */
+  private def writeVcf45WithNewNumberCodes(): Path = {
+    val vcf = makeTempFile(getClass.getSimpleName, VcfExtension)
+    Io.writeLines(vcf, Seq(
+      "##fileformat=VCFv4.5",
+      "##contig=<ID=chr1,length=5000>",
+      "##FORMAT=<ID=GT,Number=1,Type=String,Description=\"Genotype\">",
+      "##FORMAT=<ID=XP,Number=P,Type=Integer,Description=\"One per GT allele\">",
+      "##FORMAT=<ID=XLA,Number=LA,Type=Integer,Description=\"One per local alt allele\">",
+      "##FORMAT=<ID=XLR,Number=LR,Type=Integer,Description=\"One per local allele\">",
+      "##FORMAT=<ID=XLG,Number=LG,Type=Integer,Description=\"One per local genotype\">",
+      "##FORMAT=<ID=XM,Number=M,Type=Integer,Description=\"One per base modification\">",
+      "#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\tFORMAT\ts1"
+    ))
+    vcf
+  }
+
+  /** The counts of the FORMAT lines written by [[writeVcf45WithNewNumberCodes()]], keyed by ID. */
+  private val NewNumberCodeCounts: Map[String, VcfCount] = Map(
+    "XP"  -> VcfCount.OnePerGtAllele,
+    "XLA" -> VcfCount.OnePerLocalAltAllele,
+    "XLR" -> VcfCount.OnePerLocalAllele,
+    "XLG" -> VcfCount.OnePerLocalGenotype,
+    "XM"  -> VcfCount.OnePerBaseModification
+  )
+
+  it should "read FORMAT lines that use the VCF 4.4 and 4.5 Number codes" in {
+    val source = VcfSource(writeVcf45WithNewNumberCodes())
+    val counts = source.header.formats.map(f => f.id -> f.count).toMap
+    source.safelyClose()
+    NewNumberCodeCounts.foreach { case (id, count) => counts(id) shouldBe count }
+  }
+
+  it should "write back FORMAT lines that use the VCF 4.4 and 4.5 Number codes" in {
+    val source = VcfSource(writeVcf45WithNewNumberCodes())
+    val output = makeTempFile(getClass.getSimpleName, VcfExtension)
+    VcfWriter(output, source.header).close()
+    source.safelyClose()
+
+    val reread = VcfSource(output)
+    val counts = reread.header.formats.map(f => f.id -> f.count).toMap
+    reread.safelyClose()
+    NewNumberCodeCounts.foreach { case (id, count) => counts(id) shouldBe count }
+  }
+
+  it should "keep the version a VCF header declares when reading" in {
+    val source = VcfSource(writeVcf45WithNewNumberCodes())
+    source.header.version.value shouldBe VcfVersion.V4_5
+    source.safelyClose()
+  }
+
+  it should "write a VCF at the version its header declares" in {
+    val output = makeTempFile(getClass.getSimpleName, VcfExtension)
+    VcfWriter(output, VcfIoTest.Header.copy(version = Some(VcfVersion.V4_3))).close()
+    Io.readLines(output).next() shouldBe "##fileformat=VCFv4.3"
+  }
+
+  it should "write a VCF as VCFv4.2 when its header declares no version" in {
+    val output = makeTempFile(getClass.getSimpleName, VcfExtension)
+    VcfWriter(output, VcfIoTest.Header.copy(version = None)).close()
+    Io.readLines(output).next() shouldBe "##fileformat=VCFv4.2"
+  }
+
+  it should "write a VCF at the version its lines need when its header declares no version" in {
+    val local  = VcfFormatHeader(id="XLA", count=VcfCount.OnePerLocalAltAllele, kind=VcfFieldType.Integer, description="x")
+    val header = VcfIoTest.Header.copy(formats = VcfIoTest.Header.formats :+ local, version = None)
+    val output = makeTempFile(getClass.getSimpleName, VcfExtension)
+    VcfWriter(output, header).close()
+    Io.readLines(output).next() shouldBe "##fileformat=VCFv4.5"
+  }
+
+  it should "write a BCF at the version its header declares" in {
+    val source = VcfSource(writeVcf45WithNewNumberCodes())
+    val output = makeTempFile(getClass.getSimpleName, BcfExtension)
+    VcfWriter(output, source.header).close()
+    source.safelyClose()
+
+    val reread = VcfSource(output)
+    reread.header.version.value shouldBe VcfVersion.V4_5
+    reread.header.formats.find(_.id == "XLA").value.count shouldBe VcfCount.OnePerLocalAltAllele
+    reread.safelyClose()
   }
 }

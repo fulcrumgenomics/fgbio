@@ -58,7 +58,7 @@ class MakeTwoSampleMixtureVcfTest extends UnitSpec {
     val out = makeTempFile("mixture.", ".vcf.gz")
     new MakeTwoSampleMixtureVcf(input=in, output=out, tumor="s1", normal="s2", tumorFraction=0.6, tumorOnly=true, noCallIsHomRef=false).execute()
 
-    val reader = new VCFFileReader(out.toFile, false)
+    val reader = new VCFFileReader(out, false)
     val variants = reader.toIndexedSeq
 
     variants.size shouldBe 8
@@ -111,7 +111,7 @@ class MakeTwoSampleMixtureVcfTest extends UnitSpec {
     val in = this.builder.toTempFile()
     val out = makeTempFile("mixture.", ".vcf.gz")
     new MakeTwoSampleMixtureVcf(input=in, output=out, tumor="s1", normal="s2", tumorFraction=0.5, tumorOnly=true, noCallIsHomRef=true).execute()
-    val reader = new VCFFileReader(out.toFile, false)
+    val reader = new VCFFileReader(out, false)
     val variants = reader.toIndexedSeq
     val variant = variants.find(_.getStart == 300).getOrElse(fail("Could not find expected variant"))
 
@@ -123,7 +123,7 @@ class MakeTwoSampleMixtureVcfTest extends UnitSpec {
     val in = this.builder.toTempFile()
     val out = makeTempFile("mixture.", ".vcf.gz")
     new MakeTwoSampleMixtureVcf(input=in, output=out, tumor="s1", normal="s2", tumorFraction=0.5, tumorOnly=false, noCallIsHomRef=true).execute()
-    val reader = new VCFFileReader(out.toFile, false)
+    val reader = new VCFFileReader(out, false)
     reader.getFileHeader.getGenotypeSamples.toSeq shouldBe Seq("tumor", "normal")
     val variants = reader.toIndexedSeq
 

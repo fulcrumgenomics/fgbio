@@ -27,7 +27,8 @@ package com.fulcrumgenomics.vcf.filtration
 import com.fulcrumgenomics.bam.api.SamOrder
 import com.fulcrumgenomics.bam.api.SamOrder.Coordinate
 import com.fulcrumgenomics.bam.pileup.PileupBuilder.BamAccessPattern
-import com.fulcrumgenomics.bam.pileup.PileupBuilder.BamAccessPattern.Streaming
+import com.fulcrumgenomics.bam.pileup.PileupBuilder.BamAccessPattern.{RandomAccess, Streaming}
+import com.fulcrumgenomics.cmdline.FgBioMain.FailureException
 import com.fulcrumgenomics.commons.CommonsDef._
 import com.fulcrumgenomics.testing.VcfBuilder.Gt
 import com.fulcrumgenomics.testing.{SamBuilder, UnitSpec, VcfBuilder}
@@ -136,25 +137,31 @@ class FilterSomaticVcfTest extends UnitSpec {
     reader.safelyClose()
   }
 
-  it should "raise an exception when stream BAM is true and variant records are not coordinate ordered" in {
+  /** Writes an unindexed VCF of `sample1` with a variant at each of the given loci, in the order given. */
+  private def writeVcf(loci: (String, Int)*): PathToVcf = {
     val alleles = AlleleSet(Allele("C"), Allele("A"))
     val attrs   = Map("AD" -> Seq(8, 2))
     val gt      = Genotype(alleles, sample = "sample1", calls = alleles.toIndexedSeq, attrs = attrs)
 
+    val vcf    = makeTempFile(getClass.getSimpleName, ".vcf")
+    val writer = VcfWriter(vcf, VcfBuilder.DefaultHeader.copy(samples = IndexedSeq("sample1")), index = false)
+    loci.foreach { case (chrom, pos) =>
+      writer.write(Variant(chrom, pos = pos, alleles = alleles, genotypes = Map("sample1" -> gt)))
+    }
+    writer.close()
+    vcf
+  }
+
+  it should "raise an exception when stream BAM is true and variant records are not coordinate ordered" in {
     val builder = new SamBuilder(sort = Some(Coordinate))
     builder.addFrag(start = 1)
 
-    val input  = makeTempFile(getClass.getSimpleName, ".vcf")
+    val chrom  = builder.dict(0).name
+    val input  = writeVcf(chrom -> 2, chrom -> 1)
     val output = makeTempFile(getClass.getSimpleName, ".vcf")
     val bam    = builder.toTempFile()
 
-    val writer = VcfWriter(input, VcfBuilder.DefaultHeader.copy(samples = IndexedSeq("sample1")))
-
-    writer.write(Variant(builder.dict.head.name, pos = 2, alleles = alleles, genotypes = Map("sample1" -> gt)))
-    writer.write(Variant(builder.dict.head.name, pos = 1, alleles = alleles, genotypes = Map("sample1" -> gt)))
-    writer.close()
-
-    an[IllegalArgumentException] shouldBe  thrownBy {
+    val exception = the[FailureException] thrownBy {
       new FilterSomaticVcf(
         input         = input,
         output        = output,
@@ -162,6 +169,60 @@ class FilterSomaticVcfTest extends UnitSpec {
         accessPattern = Streaming
       ).execute()
     }
+    exception.message.value should include (s"not coordinate sorted: $chrom:1 follows $chrom:2")
+  }
+
+  it should "raise an exception when random access is used and variant records are not coordinate ordered" in {
+    val builder = new SamBuilder(sort = Some(Coordinate))
+    builder.addFrag(start = 1)
+
+    val chrom  = builder.dict(0).name
+    val input  = writeVcf(chrom -> 2, chrom -> 1)
+    val output = makeTempFile(getClass.getSimpleName, ".vcf")
+    val bam    = builder.toTempFile()
+
+    val exception = the[FailureException] thrownBy {
+      new FilterSomaticVcf(input = input, output = output, bam = bam, accessPattern = RandomAccess).execute()
+    }
+    exception.message.value should include (s"not coordinate sorted: $chrom:1 follows $chrom:2")
+    exception.message.value should include ("bcftools sort")
+  }
+
+  it should "raise an exception when contigs are not in the order of the VCF header's contig lines" in {
+    val builder = new SamBuilder(sort = Some(Coordinate))
+    builder.addFrag(start = 1)
+
+    val (chr1, chr2) = (builder.dict(0).name, builder.dict(1).name)
+    val input  = writeVcf(chr2 -> 1, chr1 -> 1)
+    val output = makeTempFile(getClass.getSimpleName, ".vcf")
+    val bam    = builder.toTempFile()
+
+    val exception = the[FailureException] thrownBy {
+      new FilterSomaticVcf(input = input, output = output, bam = bam, accessPattern = RandomAccess).execute()
+    }
+    exception.message.value should include (s"not coordinate sorted: $chr1:1 follows $chr2:1")
+  }
+
+  it should "raise an exception when a variant's contig has no contig line in the VCF header" in {
+    val builder = new SamBuilder(sort = Some(Coordinate))
+    builder.addFrag(start = 1)
+
+    val input  = writeVcf(builder.dict(0).name -> 1, "undeclared" -> 1)
+    val output = makeTempFile(getClass.getSimpleName, ".vcf")
+    val bam    = builder.toTempFile()
+
+    val exception = the[FailureException] thrownBy {
+      new FilterSomaticVcf(input = input, output = output, bam = bam, accessPattern = RandomAccess).execute()
+    }
+    exception.message.value should include ("no contig line for undeclared")
+  }
+
+  it should "index the output VCF when random access is used" in {
+    val output = makeTempFile("filtered.", ".vcf")
+    new FilterSomaticVcf(input = tumorOnlyVcf, output = output, bam = bam, accessPattern = RandomAccess).execute()
+    val reader = VcfSource(output)
+    reader.isQueryable shouldBe true
+    reader.safelyClose()
   }
 
   it should s"not change existing INFO data when adding new INFO data" in {

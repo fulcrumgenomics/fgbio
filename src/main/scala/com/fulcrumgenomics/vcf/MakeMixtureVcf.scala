@@ -76,6 +76,7 @@ object MakeMixtureVcf {
   /** Builds a header that can be used to write a mixture VCF. */
   def makeWriter(output: PathToVcf, in: VCFHeader, lines: Seq[VCFHeaderLine], samples: String*): VariantContextWriter = {
     val header = new VCFHeader(Collections.emptySet[VCFHeaderLine](), util.Arrays.asList(samples:_*))
+    header.setVCFHeaderVersion(in.getVCFHeaderVersion)
 
     in.getFilterLines.foreach(header.addMetaDataLine)
     in.getFormatHeaderLines.foreach(header.addMetaDataLine)
@@ -85,7 +86,7 @@ object MakeMixtureVcf {
     header.setSequenceDictionary(in.getSequenceDictionary)
 
     val writer = new VariantContextWriterBuilder()
-      .setOutputFile(output.toFile)
+      .setOutputPath(output)
       .setOption(Options.INDEX_ON_THE_FLY)
       .setReferenceDictionary(in.getSequenceDictionary)
       .setOption(Options.ALLOW_MISSING_FIELDS_IN_HEADER)
@@ -179,7 +180,7 @@ class MakeMixtureVcf
 
   /** The main execute method that reads the inputs, mixes and writes the outputs. */
   override def execute(): Unit = {
-    val in            = new VCFFileReader(input.toFile, false)
+    val in            = new VCFFileReader(input, false)
     val samples       = determineSamples(in.getFileHeader)
     val sampleNameSet = CollectionUtil.makeSet(samples.map(_.name):_*)
     val out           = MakeMixtureVcf.makeWriter(output, in.getFileHeader, MakeMixtureVcf.HeaderLines, this.outputSampleName)

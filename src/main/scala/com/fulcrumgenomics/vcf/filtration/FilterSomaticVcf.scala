@@ -35,15 +35,21 @@ import com.fulcrumgenomics.commons.util.LazyLogging
 import com.fulcrumgenomics.sopt.{arg, clp}
 import com.fulcrumgenomics.util.ProgressLogger
 import com.fulcrumgenomics.vcf.api.Variant.PassingFilters
-import com.fulcrumgenomics.vcf.api.{VcfSource, VcfWriter}
+import com.fulcrumgenomics.vcf.api.{Variant, VcfSource, VcfWriter}
 
 import scala.collection.mutable.ListBuffer
+import scala.math.Ordering.Implicits._
 
 @clp(
   description =
     """Applies one or more filters to a VCF of somatic variants. The VCF must contain genotype information for the
       |tumor sample. If the VCF also contains genotypes for one or more other samples, the `--sample` option must be
       |provided to specify the sample whose genotypes to examine and whose reads are present in the BAM file.
+      |
+      |The VCF's header must have a contig line for every contig with a variant, and the VCF must be coordinate sorted,
+      |with its contigs in the order of those contig lines, as produced by `bcftools sort` or Picard's `SortVcf`. The
+      |tool fails at the first variant that breaks either rule. The output VCF is written in the same order and
+      |indexed.
       |
       |Various options are available for filtering the reads coming from the BAM file, including
       |`--min-mapping-quality`, `--min-base-quality` and `--paired-reads-only`. The latter filters to only paired end
@@ -110,10 +116,8 @@ import scala.collection.mutable.ListBuffer
       |## Performance Expectations
       |
       |By default `--access-pattern` will be set to `RandomAccess` and the input BAM will be queried using index-based
-      |random access. Random access is mandatory if the input VCF is not coordinate sorted. If random access is not
-      |requested and the input VCF is not coordinate sorted, then an exception will be raised on the first
-      |non-coordinate increasing VCF record found. The BAM must be coordinate sorted in all cases and additionally be
-      |indexed if random access is requested.
+      |random access. The BAM must be coordinate sorted in all cases and additionally be indexed if random access is
+      |requested.
       |
       |Often, a VCF file will contain a sparse set of records that are scattered across a given territory within a
       |genome (or the records will be sparsely scattered genome-wide). If the territory of the VCF records is markedly
@@ -178,7 +182,26 @@ import scala.collection.mutable.ListBuffer
 
     val writer = VcfWriter(output, header = header)
 
+    // Indexing the output requires every contig in the header and coordinate order: contigs in the order of the
+    // header's contig lines, and positions ascending within each contig.
+    def sortKey(v: Variant): (Int, Int) = (header.dict(v.chrom).index, v.pos)
+    var previous: Option[Variant] = None
+
     source.tapEach(progress.record).foreach { variant =>
+      if (!header.dict.contains(variant.chrom)) fail(
+        s"The input VCF has a variant at ${variant.chrom}:${variant.pos}, but no contig line for ${variant.chrom} in " +
+        "its header. Add contig lines for all contigs, e.g. with Picard's UpdateVcfSequenceDictionary or bcftools " +
+        "reheader --fai, and run again."
+      )
+      previous.filter(prev => sortKey(variant) < sortKey(prev)).foreach { prev =>
+        fail(
+          s"The input VCF is not coordinate sorted: ${variant.chrom}:${variant.pos} follows ${prev.chrom}:${prev.pos}. " +
+          "Sort it with its contigs in the order of its header's contig lines, e.g. with bcftools sort or Picard's " +
+          "SortVcf, and run again."
+        )
+      }
+      previous = Some(variant)
+
       val updated = somaticFilters.filter(_.appliesTo(variant.genotypes(name))) match {
         case Nil     => variant
         case filters =>

@@ -157,10 +157,10 @@ class EstimatePoolingFractions
   /** Loads up and merges all the interval lists provided. Returns None if no intervals were specified. */
   private def loadIntervals: Option[IntervalList] = this.intervals match {
     case head +: tail =>
-      val list = IntervalList.fromFile(head.toFile)
+      val list = IntervalList.fromPath(head)
       val dict = list.getHeader.getSequenceDictionary
       tail.foreach { f =>
-        val tmp = IntervalList.fromFile(f.toFile)
+        val tmp = IntervalList.fromPath(f)
         if (!SequenceUtil.areSequenceDictionariesEqual(dict, tmp.getHeader.getSequenceDictionary))
           fail(s"Sequence dictionaries differ between ${this.intervals.head} and ${f}")
         else

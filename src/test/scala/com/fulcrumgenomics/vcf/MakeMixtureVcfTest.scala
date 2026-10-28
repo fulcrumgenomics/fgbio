@@ -130,7 +130,7 @@ class MakeMixtureVcfTest extends UnitSpec {
     builder.addVariant(start=10, sampleName=Some("s1"), variantAlleles=List("A", "C"), genotypeAlleles=List("A"))
     builder.addVariant(start=10, sampleName=Some("s2"), variantAlleles=List("A", "C"), genotypeAlleles=List("A", "C"), genotypeAttributes=Map("AF" -> 0.4))
     val vcf   = builder.toTempFile()
-    val in    = new VCFFileReader(vcf.toFile, false)
+    val in    = new VCFFileReader(vcf, false)
     val ctx   = in.iterator().next()
     val mixer = new MakeMixtureVcf(input=vcf, output=dummyVcf, outputSampleName="mix", alleleFractionField=Some("AF"))
     val fractions = mutable.Map[Allele,Double](ctx.getAlleles.map(a => a -> 0d).toSeq:_*)
@@ -153,7 +153,7 @@ class MakeMixtureVcfTest extends UnitSpec {
       genotypeAttributes=Map("AF" -> Array[Double](0.4, 0.1)))
 
     val vcf   = builder.toTempFile()
-    val in    = new VCFFileReader(vcf.toFile, false)
+    val in    = new VCFFileReader(vcf, false)
     val ctx   = in.iterator().next()
     val mixer = new MakeMixtureVcf(input=vcf, output=dummyVcf, outputSampleName="mix", alleleFractionField=Some("AF"))
     val fractions = mutable.Map[Allele,Double](ctx.getAlleles.map(a => a -> 0d).toSeq:_*)
@@ -217,7 +217,7 @@ class MakeMixtureVcfTest extends UnitSpec {
         outputSampleName="mix", noCallIsHomRef=noCallsAreHomRef, alleleFractionField=Some("AF"))
       mixer.execute()
 
-      val Seq(ctx1, ctx2, ctx3, ctx4) = new VCFFileReader(out.toFile, false).toSeq
+      val Seq(ctx1, ctx2, ctx3, ctx4) = new VCFFileReader(out, false).toSeq
 
       ctx1.getStart shouldBe 10
       ctx1.getGenotype("mix").getGenotypeString(true) shouldBe "A/C"

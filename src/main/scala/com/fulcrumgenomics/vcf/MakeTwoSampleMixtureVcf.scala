@@ -101,7 +101,7 @@ class MakeTwoSampleMixtureVcf
   intervals.foreach(Io.assertCanWriteFile(_))
 
   override def execute(): Unit = {
-    val in = new VCFFileReader(input.toFile, true)
+    val in = new VCFFileReader(input, true)
     if (!in.getFileHeader.getSampleNamesInOrder.contains(tumor))  fail(s"VCF does not contain tumor sample ${tumor}")
     if (!in.getFileHeader.getSampleNamesInOrder.contains(normal)) fail(s"VCF does not contain normal sample ${normal}")
 
@@ -166,7 +166,7 @@ class MakeTwoSampleMixtureVcf
   def iterator(in: VCFFileReader, intervals: Option[PathToIntervals]): Iterator[VariantContext] = {
     intervals match {
       case None       => in.iterator()
-      case Some(path) => ByIntervalListVariantContextIterator(in, IntervalList.fromFile(path.toFile).uniqued(false))
+      case Some(path) => ByIntervalListVariantContextIterator(in, IntervalList.fromPath(path).uniqued(false))
     }
   }
 }

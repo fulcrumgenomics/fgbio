@@ -32,6 +32,7 @@ import htsjdk.samtools.util.*;
 import java.io.BufferedWriter;
 import java.io.File;
 import java.io.IOException;
+import java.nio.file.Path;
 import java.text.DecimalFormat;
 import java.text.NumberFormat;
 import java.util.*;
@@ -60,7 +61,7 @@ class PickIlluminaIndicesCommand {
     public int MAX_HOMOPOLYMER;
     public double MIN_GC;
     public double MAX_GC;
-    public File OUTPUT;
+    public Path OUTPUT;
     public int NUM_THREADS;
     public File VIENNA_RNA_DIR;
     public double MIN_DELTAG;

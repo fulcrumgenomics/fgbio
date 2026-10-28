@@ -77,8 +77,8 @@ private[api] object VcfConversions {
         val attrs = line.getGenericFields.entrySet().filter(_.getKey != "ID").map(entry => entry.getKey -> entry.getValue).toMap
         VcfGeneralHeader(line.getKey, line.getID, attrs)
       case line: VCFHeaderLine if line.getValue.startsWith("<") && line.getValue.endsWith(">") =>
-        // This is a horrible hack necessary because HTSJDK doesn't parse compound header lines unless
-        // they are one of INFO/CONTIG/FILTER/ALT, and there's no way to get HTSJDK to report the version of the file!
+        // This is a horrible hack necessary because HTSJDK only parses compound header lines of the types it knows.
+        // VCF 4 parsing is used whatever the file's version, as the VCF 3 parser needs the list of expected tags.
         val attrs = VCFHeaderLineTranslator.parseLine(VCFHeaderVersion.VCF4_2, line.getValue, util.Collections.emptyList())
         val scalaAttrs = attrs.entrySet().filter(_.getKey != "ID").map(entry => entry.getKey -> entry.getValue).toMap
         VcfGeneralHeader(line.getKey, attrs.get("ID"), scalaAttrs)
@@ -92,7 +92,8 @@ private[api] object VcfConversions {
       formats = formats,
       filters = in.getFilterLines.toIndexedSeq.sortBy(_.getID).map(f => VcfFilterHeader(f.getID, f.getDescription)),
       others   = others,
-      samples = in.getGenotypeSamples.toIndexedSeq
+      samples = in.getGenotypeSamples.toIndexedSeq,
+      version = Option(in.getVCFHeaderVersion).map(toScalaVersion)
     )
   }
 
@@ -134,6 +135,13 @@ private[api] object VcfConversions {
       out.addMetaDataLine(new VCFContigHeaderLine(fields, i.index))
     }
 
+    // Set after adding the lines, since HTSJDK takes the version from any fileformat line added.  Without a declared
+    // version, HTSJDK writes VCF 4.2 and refuses lines that need a newer one, so declare the version they need.
+    val required = out.getMetaDataInInputOrder.iterator().map(_.minimumVersion).maxByOption(_.ordinal)
+    in.version.map(toJavaVersion)
+      .orElse(required.filter(VCFHeaderVersion.DEFAULT_VERSION.isOlderThan))
+      .foreach(out.setVCFHeaderVersion)
+
     out
   }
 
@@ -150,9 +158,38 @@ private[api] object VcfConversions {
       case VCFHeaderLineCount.A         => VcfCount.OnePerAltAllele
       case VCFHeaderLineCount.G         => VcfCount.OnePerGenotype
       case VCFHeaderLineCount.R         => VcfCount.OnePerAllele
+      case VCFHeaderLineCount.P         => VcfCount.OnePerGtAllele
+      case VCFHeaderLineCount.LA        => VcfCount.OnePerLocalAltAllele
+      case VCFHeaderLineCount.LR        => VcfCount.OnePerLocalAllele
+      case VCFHeaderLineCount.LG        => VcfCount.OnePerLocalGenotype
+      case VCFHeaderLineCount.M         => VcfCount.OnePerBaseModification
       case VCFHeaderLineCount.UNBOUNDED => VcfCount.Unknown
       case VCFHeaderLineCount.INTEGER   => VcfCount.Fixed(in.getCount)
     }
+  }
+
+  /** Converts an HTSJDK VCF version to the scala [[VcfVersion]]. */
+  def toScalaVersion(in: VCFHeaderVersion): VcfVersion = in match {
+    case VCFHeaderVersion.VCF3_2 => VcfVersion.V3_2
+    case VCFHeaderVersion.VCF3_3 => VcfVersion.V3_3
+    case VCFHeaderVersion.VCF4_0 => VcfVersion.V4_0
+    case VCFHeaderVersion.VCF4_1 => VcfVersion.V4_1
+    case VCFHeaderVersion.VCF4_2 => VcfVersion.V4_2
+    case VCFHeaderVersion.VCF4_3 => VcfVersion.V4_3
+    case VCFHeaderVersion.VCF4_4 => VcfVersion.V4_4
+    case VCFHeaderVersion.VCF4_5 => VcfVersion.V4_5
+  }
+
+  /** Converts the scala [[VcfVersion]] back into the HTSJDK equivalent. */
+  def toJavaVersion(in: VcfVersion): VCFHeaderVersion = in match {
+    case VcfVersion.V3_2 => VCFHeaderVersion.VCF3_2
+    case VcfVersion.V3_3 => VCFHeaderVersion.VCF3_3
+    case VcfVersion.V4_0 => VCFHeaderVersion.VCF4_0
+    case VcfVersion.V4_1 => VCFHeaderVersion.VCF4_1
+    case VcfVersion.V4_2 => VCFHeaderVersion.VCF4_2
+    case VcfVersion.V4_3 => VCFHeaderVersion.VCF4_3
+    case VcfVersion.V4_4 => VCFHeaderVersion.VCF4_4
+    case VcfVersion.V4_5 => VCFHeaderVersion.VCF4_5
   }
 
   /**
@@ -174,11 +211,16 @@ private[api] object VcfConversions {
     */
   def toJavaCount(in: VcfCount): Either[VCFHeaderLineCount, Int] = {
     in match {
-      case VcfCount.OnePerAltAllele    => Left(VCFHeaderLineCount.A)
-      case VcfCount.OnePerGenotype     => Left(VCFHeaderLineCount.G)
-      case VcfCount.OnePerAllele       => Left(VCFHeaderLineCount.R)
-      case VcfCount.Unknown            => Left(VCFHeaderLineCount.UNBOUNDED)
-      case VcfCount.Fixed(n)           => Right(n)
+      case VcfCount.OnePerAltAllele        => Left(VCFHeaderLineCount.A)
+      case VcfCount.OnePerGenotype         => Left(VCFHeaderLineCount.G)
+      case VcfCount.OnePerAllele           => Left(VCFHeaderLineCount.R)
+      case VcfCount.OnePerGtAllele         => Left(VCFHeaderLineCount.P)
+      case VcfCount.OnePerLocalAltAllele   => Left(VCFHeaderLineCount.LA)
+      case VcfCount.OnePerLocalAllele      => Left(VCFHeaderLineCount.LR)
+      case VcfCount.OnePerLocalGenotype    => Left(VCFHeaderLineCount.LG)
+      case VcfCount.OnePerBaseModification => Left(VCFHeaderLineCount.M)
+      case VcfCount.Unknown                => Left(VCFHeaderLineCount.UNBOUNDED)
+      case VcfCount.Fixed(n)               => Right(n)
     }
   }
 

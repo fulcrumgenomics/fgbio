@@ -68,13 +68,13 @@ class HapCutToVcfTest extends UnitSpec with ParallelTestExecution {
   private val withIupacOut    = dir.resolve("with_iupac.hapcut")
 
   private def countVcfRecords(vcf: PathToVcf): Int = {
-    val vcfReader = new VCFFileReader(vcf.toFile, false)
+    val vcfReader = new VCFFileReader(vcf, false)
     yieldAndThen(vcfReader.iterator().length)(vcfReader.close())
   }
 
   private def compareVcfs(newVcf: PathToVcf, originalVcf: PathToVcf): Unit = {
-    val newVcfReader      = new VCFFileReader(newVcf.toFile, false)
-    val originalVcfReader = new VCFFileReader(originalVcf.toFile, false)
+    val newVcfReader      = new VCFFileReader(newVcf, false)
+    val originalVcfReader = new VCFFileReader(originalVcf, false)
 
     for (newVariantCtx <- newVcfReader) {
       originalVcfReader.exists { originalVariantCtx =>
@@ -91,14 +91,14 @@ class HapCutToVcfTest extends UnitSpec with ParallelTestExecution {
   }
 
   private def getNumPhasedFromVcf(path: PathToVcf, gatkPhasingFormat: Boolean): Int = {
-    val vcfReader = new VCFFileReader(path.toFile, false)
+    val vcfReader = new VCFFileReader(path, false)
     val numPhased = vcfReader.iterator().count { ctx => isPhased(ctx, gatkPhasingFormat) }
     vcfReader.close()
     numPhased
   }
 
   private def hasPhasingSetFormatTagButUnphased(path: PathToVcf, gatkPhasingFormat: Boolean): Boolean = {
-    val vcfReader = new VCFFileReader(path.toFile, false)
+    val vcfReader = new VCFFileReader(path, false)
     val hasPhasingSetTag = vcfReader
       .iterator()
       .filterNot { ctx => isPhased(ctx, gatkPhasingFormat) }

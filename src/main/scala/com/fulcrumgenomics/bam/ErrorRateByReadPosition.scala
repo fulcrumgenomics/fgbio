@@ -130,9 +130,9 @@ class ErrorRateByReadPosition
   private[bam] def computeMetrics(in: SamSource = SamSource(input, ref=Some(ref))): Seq[ErrorRateByReadPositionMetric] = {
     import com.fulcrumgenomics.fasta.Converters.FromSAMSequenceDictionary
     val progress = ProgressLogger(logger, verb="Processed", noun="loci", unit=50000)
-    val ilist    = this.intervals.map(p => IntervalList.fromFile(p.toFile).uniqued(false))
+    val ilist    = this.intervals.map(p => IntervalList.fromPath(p).uniqued(false))
 
-    val refWalker     = new ReferenceSequenceFileWalker(this.ref.toFile)
+    val refWalker     = new ReferenceSequenceFileWalker(this.ref)
     val locusIterator = buildSamLocusIterator(in, ilist).iterator()
     val variantMask   = buildVariantMask(ilist, refWalker.getSequenceDictionary.fromSam)
 
@@ -196,7 +196,7 @@ class ErrorRateByReadPosition
       case None =>
         new VariantMask(Iterator.empty, dict)
       case Some(path) =>
-        val reader = new VCFFileReader(path.toFile, this.intervals.isDefined)
+        val reader = new VCFFileReader(path, this.intervals.isDefined)
         intervals match {
           case None => new VariantMask(reader.iterator(), dict)
           case Some(i) => new VariantMask(ByIntervalListVariantContextIterator(reader, i), dict)

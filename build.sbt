@@ -189,7 +189,7 @@ lazy val root = Project(id="fgbio", base=file("."))
       "org.scala-lang.modules"    %% "scala-xml"      % "2.4.0",
       "com.fulcrumgenomics"       %% "commons"        % "1.9.0",
       "com.fulcrumgenomics"       %% "sopt"           % "1.2.1",
-      "com.github.samtools"       %  "htsjdk"         % "5.0.0",
+      "com.github.samtools"       %  "htsjdk"         % "6.0.0",
       "org.apache.commons"        %  "commons-math3"  % "3.6.1",
       "com.beachape"              %% "enumeratum"     % "1.9.0",
 

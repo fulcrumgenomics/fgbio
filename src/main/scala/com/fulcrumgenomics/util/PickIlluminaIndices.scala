@@ -65,7 +65,7 @@ class PickIlluminaIndices
     cmd.MAX_HOMOPOLYMER           = maxHomopolymer
     cmd.MIN_GC                    = minGc
     cmd.MAX_GC                    = maxGc
-    cmd.OUTPUT                    = output.toFile
+    cmd.OUTPUT                    = output
     cmd.NUM_THREADS               = threads
     cmd.VIENNA_RNA_DIR            = viennaRnaDir.map(_.toFile).orNull
     cmd.MIN_DELTAG                = minDeltaG

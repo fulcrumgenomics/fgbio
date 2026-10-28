@@ -35,16 +35,42 @@ sealed trait VcfCount { }
 
 object VcfCount {
   /** VcfCount that indicates there should be exactly one value per alternate allele on the Variant. */
-  case object OnePerAltAllele  extends VcfCount
+  case object OnePerAltAllele        extends VcfCount
   /** VcfCount that indicates there should be exactly one value per allele, including reference, on the Variant. */
-  case object OnePerAllele     extends VcfCount
+  case object OnePerAllele           extends VcfCount
   /** VcfCount that indicates there should be exactly one value per possible genotype.  E.g. for a variant with a
     * ref allele and one alt allele, and a diploid sample, there would be three values. */
-  case object OnePerGenotype   extends VcfCount
+  case object OnePerGenotype         extends VcfCount
+  /** VcfCount that indicates there should be one value per allele in the sample's GT, e.g. two for a diploid call
+    * (`Number=P`, VCF 4.4). */
+  case object OnePerGtAllele         extends VcfCount
+  /** As [[OnePerAltAllele]], counting only the alternate alleles named by the sample's LAA (`Number=LA`, VCF 4.5). */
+  case object OnePerLocalAltAllele   extends VcfCount
+  /** As [[OnePerAllele]], counting only the alternate alleles named by the sample's LAA (`Number=LR`, VCF 4.5). */
+  case object OnePerLocalAllele      extends VcfCount
+  /** As [[OnePerGenotype]], counting only the alternate alleles named by the sample's LAA (`Number=LG`, VCF 4.5). */
+  case object OnePerLocalGenotype    extends VcfCount
+  /** VcfCount that indicates there should be one value per possible base modification in the alleles of the sample's
+    * GT (`Number=M`, VCF 4.5). */
+  case object OnePerBaseModification extends VcfCount
   /** The attribute may have any number of values. */
-  case object Unknown          extends VcfCount
+  case object Unknown                extends VcfCount
   /** The attribute must have a fixed number of values, indicated by `count`. */
-  case class Fixed(count: Int) extends VcfCount
+  case class Fixed(count: Int)       extends VcfCount
+}
+
+/** A version of the VCF specification that a VCF header can declare. */
+sealed trait VcfVersion { }
+
+object VcfVersion {
+  case object V3_2 extends VcfVersion
+  case object V3_3 extends VcfVersion
+  case object V4_0 extends VcfVersion
+  case object V4_1 extends VcfVersion
+  case object V4_2 extends VcfVersion
+  case object V4_3 extends VcfVersion
+  case object V4_4 extends VcfVersion
+  case object V4_5 extends VcfVersion
 }
 
 /** Trait for the set of acceptable atomic types that can appear in VCF's INFO and genotype fields. */
@@ -141,15 +167,19 @@ case class VcfGeneralHeader(headerType: String, id: String, data: Map[String, St
   * @param filters the list of FILTER entries in the header
   * @param others the list of all other header entries
   * @param samples the ordered list of samples that appear in the VCF
+  * @param version the VCF version the header declares, if any.  A VCF is written at this version, or at
+  *                [[VcfVersion.V4_2]] if it is older, and a version too old to express all of the header's lines is
+  *                refused when the VCF is written.  A header that declares no version is written at the oldest
+  *                version that can express all of its lines, and at least [[VcfVersion.V4_2]].
   */
 case class VcfHeader(contigs: IndexedSeq[VcfContigHeader],
                      infos: Seq[VcfInfoHeader],
                      formats: Seq[VcfFormatHeader],
                      filters: Seq[VcfFilterHeader],
                      others: Seq[VcfGeneralHeader],
-                     samples: IndexedSeq[String]
+                     samples: IndexedSeq[String],
+                     version: Option[VcfVersion] = None
                     ) {
-
   /** A mapping of sample name to the index in samples. */
   private[api] val sampleIndex = samples.zipWithIndex.toMap
 

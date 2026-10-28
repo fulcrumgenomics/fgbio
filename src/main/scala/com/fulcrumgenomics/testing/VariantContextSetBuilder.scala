@@ -204,12 +204,18 @@ class VariantContextSetBuilder(sampleNames: Seq[String] = List("Sample")) extend
   def write(path: PathToVcf) : Unit = {
     val writer = new VariantContextWriterBuilder()
       .setReferenceDictionary(this.header.getSequenceDictionary)
-      .setOutputFile(path.toFile)
+      .setOutputPath(path)
       .setOption(Options.INDEX_ON_THE_FLY)
       .setOption(Options.ALLOW_MISSING_FIELDS_IN_HEADER)
       .build()
     writer.writeHeader(_header)
-    this.iterator.foreach(writer.add)
+    // Indexing on the fly needs the variants in coordinate order, which may not be the order they were added in.  A
+    // header without contig lines defines no order, so its variants are written in the order they were added.
+    val ordered = {
+      if (_header.getContigLines.isEmpty) this.variants
+      else this.variants.sorted(Ordering.comparatorToOrdering(_header.getVCFRecordComparator))
+    }
+    ordered.foreach(writer.add)
     writer.close()
   }
 
@@ -225,7 +231,7 @@ class VariantContextSetBuilder(sampleNames: Seq[String] = List("Sample")) extend
     * provides a [VCFFileReader]. */
   def toVcfFileReader(deleteOnExit: Boolean = true): VCFFileReader = {
     val path = toTempFile(deleteOnExit=deleteOnExit)
-    new VCFFileReader(path.toFile, true)
+    new VCFFileReader(path, true)
   }
 
   /** Given a list of alleles as strings, typically for a genotype, gives a list of alleles of type [Allele].  If

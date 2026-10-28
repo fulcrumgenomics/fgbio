@@ -47,7 +47,7 @@ object ReviewConsensusVariantsTest {
       |>chr2
       |CCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCC
       |CCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCC
-    """.stripMargin.linesIterator.toSeq
+    """.stripMargin.linesIterator.map(_.trim).filter(_.nonEmpty).toSeq
 
   val Fai : Seq[String] =
     """
@@ -191,7 +191,7 @@ class ReviewConsensusVariantsTest extends UnitSpec {
     val rawOut  = outBase.getParent.resolve(s"${outBase.getFileName}.grouped.bam")
     val txtOut  = outBase.getParent.resolve(s"${outBase.getFileName}.txt")
     val intervals = makeTempFile("empty.", ".interval_list")
-    new IntervalList(header).write(intervals.toFile)
+    new IntervalList(header).write(intervals)
     new ReviewConsensusVariants(input=intervals, consensusBam=consensusBam, groupedBam=rawBam, ref=refFasta, output=outBase).execute()
 
     conOut.toFile.exists() shouldBe true

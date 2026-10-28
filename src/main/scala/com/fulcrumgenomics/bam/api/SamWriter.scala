@@ -101,9 +101,9 @@ object SamWriter extends LazyLogging {
     factory.setCompressionLevel(compression)
     factory.setCreateIndex(actuallyIndex)
     factory.setCreateMd5File(md5)
-    tmp.foreach(dir => factory.setTempDirectory(dir.toFile))
+    tmp.foreach(dir => factory.setTempDirectory(dir))
 
-    val htsJdkWriter = factory.makeWriter(header, true, path.toFile, ref.map(_.toFile).orNull)
+    val htsJdkWriter = factory.makeWriter(header, true, path, ref.orNull)
     htsJdkWriter.setSortOrderChecking(false)
 
     new SamWriter(writer=htsJdkWriter, sorter=sorter, sortProgress=sortProgress, writeProgress=writeProgress)

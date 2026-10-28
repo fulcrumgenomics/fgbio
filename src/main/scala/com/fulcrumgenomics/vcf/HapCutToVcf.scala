@@ -130,7 +130,7 @@ class HapCutToVcf
       newVcf
     }
 
-    val vcfReader = new VCFFileReader(inputVcf.toFile, false)
+    val vcfReader = new VCFFileReader(inputVcf, false)
     val iterator  = new HapCutAndVcfMergingIterator(input, vcfReader, gatkPhasingFormat)
     val vcfWriter = makeWriter(output, vcfReader, iterator.hapCutType)
 
@@ -150,7 +150,7 @@ class HapCutToVcf
       case _                              => throw new IllegalArgumentException(s"Could not determine file type from $path")
     }
     val builder = new VariantContextWriterBuilder()
-      .setOutputFile(path.toFile)
+      .setOutputPath(path)
       .setReferenceDictionary(inputHeader.getSequenceDictionary)
       .setOption(Options.WRITE_FULL_FORMAT_FIELD)
       .setOption(Options.ALLOW_MISSING_FIELDS_IN_HEADER)
