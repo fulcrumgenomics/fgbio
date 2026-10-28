@@ -189,6 +189,20 @@ class SamRecordClipperTest extends UnitSpec with OptionValues {
     }
   }
 
+  for (fromStart <- Seq(true, false)) {
+    it should s"keep unsigned array attributes unsigned when auto-trimming with fromStart=$fromStart" in {
+      val rec = r(10, "20M")
+      rec.asSam.setUnsignedArrayAttribute("ML", Range.inclusive(1, 20).map(i => (i + 200).toByte).toArray)
+
+      val hardClipper = clipper(mode=ClippingMode.Hard, autoClip=true)
+      if (fromStart) hardClipper.clipStartOfAlignment(rec, 5) else hardClipper.clipEndOfAlignment(rec, 5)
+      rec.asSam.isUnsignedArrayAttribute("ML") shouldBe true
+      rec.asSam.getUnsignedByteArrayAttribute("ML").map(_ & 0xff) shouldBe {
+        if (fromStart) Range.inclusive(206, 220).toArray else Range.inclusive(201, 215).toArray
+      }
+    }
+  }
+
   //////////////////////////////////////////////////////////////////////////////
 
   "SamRecordClipper.clipEndOfAlignment" should "soft-clip 10 matched bases" in {

@@ -275,6 +275,29 @@ class ZipperBamsTest extends UnitSpec {
     }
   }
 
+  it should "keep unsigned array tags unsigned on both strands, including reversed tags" in {
+    val unmapped = uBuilder()
+    unmapped.addFrag(name="q1", unmapped=true).foreach { u =>
+      u.asSam.setUnsignedArrayAttribute("ML", Array[Byte](10, 200.toByte, 255.toByte))
+      u.asSam.setUnsignedArrayAttribute("n1", Array[Short](1, 40000.toShort, 3))
+      u.asSam.setUnsignedArrayAttribute("n2", Array[Int](1, 3000000000L.toInt, 3))
+    }
+
+    val mapped = mBuilder()
+    mapped.addFrag(name="q1", start=100, strand=Plus,  attrs=Map("PG" -> mappedPg.getId))
+    mapped.addFrag(name="q1", start=200, strand=Minus, attrs=Map("PG" -> mappedPg.getId)).foreach(_.supplementary=true)
+
+    val recs = run(unmapped, mapped, reverse=Seq("n1", "n2")).toIndexedSeq
+    recs should have length 2
+    recs.foreach { z =>
+      z.asSam.getUnsignedByteArrayAttribute("ML").map(_ & 0xff) shouldBe Array(10, 200, 255)
+      val n1 = z.asSam.getUnsignedShortArrayAttribute("n1").map(_ & 0xffff)
+      if (z.positiveStrand) n1 shouldBe Array(1, 40000, 3) else n1 shouldBe Array(3, 40000, 1)
+      val n2 = z.asSam.getUnsignedIntArrayAttribute("n2").map(_ & 0xffffffffL)
+      if (z.positiveStrand) n2 shouldBe Array(1L, 3000000000L, 3L) else n2 shouldBe Array(3L, 3000000000L, 1L)
+    }
+  }
+
   it should "reverse/revcomp tags when using a named tag set" in {
     val unmapped = uBuilder()
     val uAttrs = Map(
