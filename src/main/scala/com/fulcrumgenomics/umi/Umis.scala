@@ -29,6 +29,8 @@ import com.fulcrumgenomics.bam.api.SamRecord
 import com.fulcrumgenomics.umi.ConsensusTags.PerRead.{AbRawReadCount, BaRawReadCount, RawReadCount}
 import com.fulcrumgenomics.util.Sequences
 
+import scala.util.Try
+
 object Umis {
   val RevcompPrefix: String = "r"
 
@@ -77,10 +79,15 @@ object Umis {
     *  field may contain multiple UMIs, in which case they will delimit them with `umiDelimiter` characters, which
     *  will be translated to hyphens before returning.
     *
-    *  If `strict` is true the name _must_ contain either 7 or 8 colon-separated segments, 
-    with the UMI being the last in the case of 8 and `None` in the case of 7.
-    * 
+    *  If `strict` is true the name _must_ contain either 7 or 8 colon-separated segments,
+    *  with the UMI being the last in the case of 8 and `None` in the case of 7.
+    *
     * If `strict` is false the last segment is returned so long as it appears to be a valid UMI.
+    *
+    * In both modes an empty last segment yields `None`.  UMIs prefixed with `r` are reverse complemented (if
+    * `reverseComplementPrefixedUmis` is true, otherwise the `r` is removed) and the result is upper-cased.  The UMI is
+    * only valid if it is non-empty and contains only `ACGTN-`; an invalid UMI throws in strict mode and yields `None`
+    * otherwise.
     */
   def extractUmisFromReadName(name: String,
                               fieldDelimiter: Char = ':',
@@ -99,30 +106,91 @@ object Umis {
       Some(name.substring(idx + 1, name.length))
     }
 
-    // Remove 'r' prefixes, optionally reverse-complementing the prefixed UMIs if 
+    toValidUmi(rawUmi, source=s"name '${name}'", strict=strict, umiDelimiter=umiDelimiter,
+      reverseComplementPrefixedUmis=reverseComplementPrefixedUmis)
+  }
+
+  /**
+    * Extracts the UMI from the comment of a FASTQ header, i.e. the text after the first whitespace character.
+    * Illumina documents the comment as four colon-separated fields:
+    *   `<read>:<is filtered>:<control number>:<index>`
+    *
+    * e.g. `1:N:0:ACGTACGT+TTGCGGCT`.  The last field normally holds the sample index (or the sample number), but
+    * some demultiplexers and pipelines write the UMI(s) there instead; this method is for that case.  Multiple UMIs
+    * delimited by `umiDelimiter` characters will be translated to hyphens before returning.
+    *
+    * If `strict` is true the comment _must_ contain exactly 4 colon-separated fields, with the UMI being the last,
+    * and the UMI must be valid (see below), otherwise an exception is thrown.
+    *
+    * If `strict` is false the last field (or the whole comment if it has only one field) is returned so long as it
+    * is a valid UMI, otherwise `None` is returned.
+    *
+    * In both modes an empty last field (e.g. `1:N:0:`) yields `None`.  The UMI is normalized as described in
+    * [[extractUmisFromReadName]]: `r`-prefixed UMIs are reverse complemented (if `reverseComplementPrefixedUmis` is
+    * true), the result is upper-cased, and it is only valid if it is non-empty and contains only `ACGTN-`.
+    */
+  def extractUmisFromReadComment(comment: String,
+                                 fieldDelimiter: Char = ':',
+                                 strict: Boolean,
+                                 umiDelimiter: Char = '+',
+                                 reverseComplementPrefixedUmis: Boolean = true): Option[String] = {
+    // If strict, check that the comment actually has four fields, as documented by Illumina
+    val delimiters = comment.count(_ == fieldDelimiter)
+    if (strict && delimiters != 3) {
+      throw new IllegalArgumentException(
+        s"Trying to extract UMI from read comment with ${delimiters + 1} '${fieldDelimiter}'-separated fields (4 expected): ${comment}"
+      )
+    }
+    val rawUmi = comment.substring(comment.lastIndexOf(fieldDelimiter.toInt) + 1, comment.length)
+    toValidUmi(rawUmi=Some(rawUmi), source=s"read comment '${comment}'", strict=strict, umiDelimiter=umiDelimiter,
+      reverseComplementPrefixedUmis=reverseComplementPrefixedUmis)
+  }
+
+  /** Normalizes a raw UMI extracted from a read name or comment, returning it if valid.
+    *
+    * Removes 'r' prefixes (reverse-complementing the prefixed UMIs if `reverseComplementPrefixedUmis` is true),
+    * replaces the `umiDelimiter` (if any) with '-', and upper-cases the sequence.  An empty raw UMI yields `None`.
+    * If the result is empty (e.g. a bare `r`) or contains characters other than `ACGTN-`, throws if `strict` is
+    * true and returns `None` otherwise.
+    *
+    * @param source a description of where the UMI came from, used in error messages
+    */
+  private def toValidUmi(rawUmi: Option[String],
+                         source: String,
+                         strict: Boolean,
+                         umiDelimiter: Char,
+                         reverseComplementPrefixedUmis: Boolean): Option[String] = {
+    // Remove 'r' prefixes, optionally reverse-complementing the prefixed UMIs if
     // reverseComplementPrefixedUmis = true, replace the delimiter (if any) with '-',
-    // and make sure the sequence is upper-case.
-    val umi = rawUmi.map(raw =>
-      (raw.indexOf(RevcompPrefix) >= 0, raw.indexOf(umiDelimiter.toInt) > 0) match {
-        case (true, true) if reverseComplementPrefixedUmis => 
-          raw.split(umiDelimiter).map(seq => 
-            if (seq.startsWith(RevcompPrefix)) Sequences.revcomp(seq.stripPrefix(RevcompPrefix))
-            else seq.stripPrefix(RevcompPrefix)
-          ).mkString("-").toUpperCase
-        case (true, false) if reverseComplementPrefixedUmis =>
-          Sequences.revcomp(raw.stripPrefix(RevcompPrefix)).toUpperCase
-        case (true, true) => raw.replace(RevcompPrefix, "").replace(umiDelimiter, '-').toUpperCase
-        case (true, false) => raw.replace(RevcompPrefix, "").toUpperCase
-        case (false, true) => raw.replace(umiDelimiter, '-').toUpperCase
-        case (false, false) => raw.toUpperCase
-      }
-    )
+    // and make sure the sequence is upper-case.  Reverse complementing throws on characters that are not bases; in
+    // that case keep the raw UMI, which contains the offending character and so fails validation below.
+    val umi = rawUmi.filter(_.nonEmpty).map(raw => Try(normalizeUmi(raw, umiDelimiter, reverseComplementPrefixedUmis)).getOrElse(raw))
 
-    val valid  = umi.forall(u => u.forall(isValidUmiCharacter))
+    // A raw UMI that normalizes to the empty string (e.g. a bare `r`) is invalid rather than absent
+    umi match {
+      case Some(u) if u.isEmpty || !u.forall(isValidUmiCharacter) =>
+        if (strict) throw new IllegalArgumentException(s"Invalid UMI '${u}' extracted from ${source}") else None
+      case _ => umi
+    }
+  }
 
-    if (strict && !valid) throw new IllegalArgumentException(s"Invalid UMI '${umi.get}' extracted from name '${name}")
-    else if (!valid) None
-    else umi
+  /** Removes 'r' prefixes (reverse-complementing the prefixed UMIs if `reverseComplementPrefixedUmis` is true),
+    * replaces the `umiDelimiter` (if any) with '-', and upper-cases the UMI.  Does not validate the result.
+    */
+  private def normalizeUmi(raw: String, umiDelimiter: Char, reverseComplementPrefixedUmis: Boolean): String = {
+    (raw.indexOf(RevcompPrefix) >= 0, raw.indexOf(umiDelimiter.toInt) > 0) match {
+      case (true, true) if reverseComplementPrefixedUmis =>
+        raw.split(umiDelimiter).map(seq =>
+          if (seq.startsWith(RevcompPrefix)) Sequences.revcomp(seq.stripPrefix(RevcompPrefix))
+          else seq.stripPrefix(RevcompPrefix)
+        ).mkString("-").toUpperCase
+      case (true, false) if reverseComplementPrefixedUmis =>
+        Sequences.revcomp(raw.stripPrefix(RevcompPrefix)).toUpperCase
+      case (true, true) => raw.replace(RevcompPrefix, "").replace(umiDelimiter, '-').toUpperCase
+      case (true, false) => raw.replace(RevcompPrefix, "").toUpperCase
+      case (false, true) => raw.replace(umiDelimiter, '-').toUpperCase
+      case (false, false) => raw.toUpperCase
+    }
   }
 
   @inline private def isValidUmiCharacter(ch: Char): Boolean = {

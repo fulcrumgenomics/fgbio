@@ -80,6 +80,93 @@ class UmisTest extends UnitSpec with OptionValues {
   }
 
 
+  it should "return None if the UMI field of the read name is empty" in {
+    Umis.extractUmisFromReadName("1:2:3:4:5:6:7:", strict=true)  shouldBe None
+    Umis.extractUmisFromReadName("1:2:3:4:5:6:7:", strict=false) shouldBe None
+  }
+
+  it should "treat a UMI that normalizes to the empty string as invalid" in {
+    an[Exception] shouldBe thrownBy { Umis.extractUmisFromReadName("1:2:3:4:5:6:7:r", strict=true) }
+    Umis.extractUmisFromReadName("1:2:3:4:5:6:7:r", strict=false) shouldBe None
+  }
+
+  "Umis.extractUmisFromReadComment" should "extract a UMI from a well-formed read comment" in {
+    Umis.extractUmisFromReadComment("1:N:0:ACGTACGT", strict=true).value shouldBe "ACGTACGT"
+  }
+
+  it should "throw an exception in strict mode if the comment has too many or too few segments" in {
+    an[Exception] shouldBe thrownBy { Umis.extractUmisFromReadComment("ACGTACGT", strict=true) }
+    an[Exception] shouldBe thrownBy { Umis.extractUmisFromReadComment("1:N:ACGTACGT", strict=true) }
+    an[Exception] shouldBe thrownBy { Umis.extractUmisFromReadComment("1:N:0:2:ACGTACGT", strict=true) }
+  }
+
+  it should "include the number of fields in the error message in strict mode" in {
+    val ex = intercept[IllegalArgumentException] { Umis.extractUmisFromReadComment("1:N:0", strict=true) }
+    ex.getMessage should include ("3 ':'-separated fields (4 expected)")
+  }
+
+  it should "throw an exception in strict mode if the comment contains extra tab-separated tags" in {
+    an[Exception] shouldBe thrownBy { Umis.extractUmisFromReadComment("1:N:0:ACGT\tRX:Z:ACGT", strict=true) }
+  }
+
+  it should "return None if the UMI field of the comment is empty" in {
+    Umis.extractUmisFromReadComment("1:N:0:", strict=true)  shouldBe None
+    Umis.extractUmisFromReadComment("1:N:0:", strict=false) shouldBe None
+    Umis.extractUmisFromReadComment("", strict=false)       shouldBe None
+  }
+
+  it should "treat a UMI that normalizes to the empty string as invalid" in {
+    an[Exception] shouldBe thrownBy { Umis.extractUmisFromReadComment("1:N:0:r", strict=true) }
+    Umis.extractUmisFromReadComment("1:N:0:r", strict=false) shouldBe None
+  }
+
+  it should "treat an r-prefixed UMI containing non-bases as invalid rather than failing to reverse complement it" in {
+    Umis.extractUmisFromReadComment("1:N:0:rX", strict=false) shouldBe None
+    Umis.extractUmisFromReadComment("1:N:0:rAACC+rX", strict=false) shouldBe None
+    Umis.extractUmisFromReadName("1:2:3:4:5:6:7:rX", strict=false) shouldBe None
+    the[IllegalArgumentException] thrownBy {
+      Umis.extractUmisFromReadComment("1:N:0:rX", strict=true)
+    } should have message "Invalid UMI 'rX' extracted from read comment '1:N:0:rX'"
+    Umis.extractUmisFromReadComment("1:N:0:rAACC", strict=false).value shouldBe "GGTT"
+  }
+
+  it should "upper-case the UMI" in {
+    Umis.extractUmisFromReadComment("1:N:0:acgt+ttga", strict=true).value shouldBe "ACGT-TTGA"
+  }
+
+  it should "throw an exception in strict mode if the last segment is not a valid UMI" in {
+    an[Exception] shouldBe thrownBy { Umis.extractUmisFromReadComment("1:N:0:ACGTXYZ", strict=true) }
+  }
+
+  it should "translate the UMI delimiter to hyphens when multiple UMIs are present" in {
+    Umis.extractUmisFromReadComment("1:N:0:ACGTACGT+TTGCGGCT", strict=true).value shouldBe "ACGTACGT-TTGCGGCT"
+    Umis.extractUmisFromReadComment("1:N:0:ACGTACGT_TTGCGGCT", strict=true, umiDelimiter='_').value shouldBe "ACGTACGT-TTGCGGCT"
+  }
+
+  it should "reverse complement UMIs prefixed with 'r' unless told not to" in {
+    Umis.extractUmisFromReadComment("1:N:0:rAACC+ACGT", strict=true).value shouldBe "GGTT-ACGT"
+    Umis.extractUmisFromReadComment("1:N:0:rAACC+ACGT", strict=true, reverseComplementPrefixedUmis=false).value shouldBe "AACC-ACGT"
+  }
+
+  it should "split on a different field delimiter if specified" in {
+    Umis.extractUmisFromReadComment("1_N_0_ACGT", fieldDelimiter='_', strict=true).value shouldBe "ACGT"
+  }
+
+  it should "extract a UMI from the last segment, or the whole comment, in non-strict mode if it looks like a UMI" in {
+    Umis.extractUmisFromReadComment("ACGT", strict=false).value shouldBe "ACGT"
+    Umis.extractUmisFromReadComment("1:ACGT", strict=false).value shouldBe "ACGT"
+    Umis.extractUmisFromReadComment("1:2:ACGT", strict=false).value shouldBe "ACGT"
+    Umis.extractUmisFromReadComment("1:2:3:ACGT", strict=false).value shouldBe "ACGT"
+    Umis.extractUmisFromReadComment("1:2:3:4:ACGT", strict=false).value shouldBe "ACGT"
+  }
+
+  it should "return None in non-strict mode if the last segment doesn't look like a UMI" in {
+    Umis.extractUmisFromReadComment("1", strict=false) shouldBe None
+    Umis.extractUmisFromReadComment("1:Y", strict=false) shouldBe None
+    Umis.extractUmisFromReadComment("1:N:0", strict=false) shouldBe None
+    Umis.extractUmisFromReadComment("1:N:0:4", strict=false) shouldBe None
+  }
+
   "Umis.copyUmiFromReadName" should "copy the UMI from the read name" in {
     copyUmiFromReadName(rec=rec("UMI:A")).nameAndUmi shouldBe ("UMI:A", "A")
     copyUmiFromReadName(rec=rec("UMI:C:A")).nameAndUmi shouldBe ("UMI:C:A", "A")
