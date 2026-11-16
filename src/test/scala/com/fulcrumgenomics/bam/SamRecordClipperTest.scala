@@ -759,6 +759,45 @@ class SamRecordClipperTest extends UnitSpec with OptionValues {
     mate.cigar.toString shouldBe "75S15M10D10M"
   }
 
+  it should "clip reads that extend past each other with the mate ending one base after the read starts" in {
+    // R1 is 50-149, while R2 is 1-51, so the reference midpoint is (50 + 51) / 2 = 50
+    val (rec, mate) = pair(50, "100M", Plus, 1, "49S51M", Minus)
+    clipper(Soft).clipOverlappingReads(rec=rec, mate=mate) shouldBe (99, 50)
+    rec.start shouldBe 50
+    rec.end shouldBe 50
+    rec.cigar.toString shouldBe "1M99S"
+    mate.start shouldBe 51
+    mate.end shouldBe 51
+    mate.cigar.toString shouldBe "99S1M"
+  }
+
+  Seq(Soft, Hard).foreach { mode =>
+    it should s"fully clip the mate of reads that extend past each other with coincident 5' ends in $mode mode" in {
+      // R1 is 50-149, while R2 is 1-50, so the reference midpoint is (50 + 50) / 2 = 50, the last base of the mate
+      val (rec, mate) = pair(50, "100M", Plus, 1, "50S50M", Minus)
+      clipper(mode).clipOverlappingReads(rec=rec, mate=mate) shouldBe (99, 50)
+      rec.start shouldBe 50
+      rec.end shouldBe 50
+      rec.cigar.toString shouldBe (if (mode == Soft) "1M99S" else "1M99H")
+      mate.unmapped shouldBe true
+    }
+  }
+
+  it should "fully clip the mate of reads with coincident 5' ends and a trailing soft-clip on the mate" in {
+    // R1 is 50-149, while R2 is 6-50
+    val (rec, mate) = pair(50, "100M", Plus, 6, "50S45M5S", Minus)
+    clipper(Soft).clipOverlappingReads(rec=rec, mate=mate) shouldBe (99, 45)
+    rec.end shouldBe 50
+    mate.unmapped shouldBe true
+  }
+
+  it should "fully clip the mate of reads with coincident 5' ends when the mate is passed first" in {
+    val (rec, mate) = pair(50, "100M", Plus, 1, "50S50M", Minus)
+    clipper(Soft).clipOverlappingReads(rec=mate, mate=rec) shouldBe (50, 99)
+    rec.end shouldBe 50
+    mate.unmapped shouldBe true
+  }
+
   it should "not clip when the read pairs are mapped +/- with start(R1) > end(R2) but do not overlap" in {
     val (rec, mate) = pair(1000, "100M", Plus, 1, "100M", Minus)
     clipper(Soft).clipOverlappingReads(rec=rec, mate=mate) shouldBe (0, 0)
