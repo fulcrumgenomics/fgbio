@@ -917,6 +917,80 @@ class SamRecordClipperTest extends UnitSpec with OptionValues {
     mate.cigar.toString shouldBe "40M20I40M"
   }
 
+  it should "clip a positive strand read whose mate's end falls in one of its deletions" in {
+    // R1 is +/101-155 with a deletion at 131-135, R2 is -/83-132, so R2's end falls in R1's deletion
+    val (rec, mate) = pair(101, "30M5D20M", Plus, 83, "50M", Minus)
+    clipper(Soft).clipExtendingPastMateEnds(rec=rec, mate=mate) shouldBe (20, 18)
+    rec.mapped shouldBe true
+    rec.start shouldBe 101
+    rec.end shouldBe 130
+    rec.cigar.toString shouldBe "30M20S"
+    mate.start shouldBe 101
+    mate.cigar.toString shouldBe "18S32M"
+  }
+
+  it should "clip a negative strand read whose mate's start falls in one of its deletions" in {
+    // R1 is +/122-171, R2 is -/100-154 with a deletion at 120-124, so R1's start falls in R2's deletion
+    val (rec, mate) = pair(122, "50M", Plus, 100, "20M5D30M", Minus)
+    clipper(Soft).clipExtendingPastMateEnds(rec=rec, mate=mate) shouldBe (17, 20)
+    rec.end shouldBe 154
+    rec.cigar.toString shouldBe "33M17S"
+    mate.start shouldBe 125
+    mate.cigar.toString shouldBe "20S30M"
+  }
+
+  it should "clip reads extending past their mate when they already have hard-clipping on their 3' ends" in {
+    // R1 is +/100-139 and R2 is -/90-129, each with 10 bases already hard-clipped from its 3' end
+    val (rec, mate) = pair(100, "40M10H", Plus, 90, "10H40M", Minus)
+    clipper(Hard).clipExtendingPastMateEnds(rec=rec, mate=mate) shouldBe (10, 10)
+    rec.end shouldBe 129
+    rec.cigar.toString shouldBe "30M20H"
+    mate.start shouldBe 100
+    mate.cigar.toString shouldBe "20H30M"
+  }
+
+  it should "clip an insertion adjacent to the mate's end along with the bases past it" in {
+    // R1 is +/100-147 with a 2-base insertion after 119; R2 is -/70-119 and R1's insertion lies past R2's end
+    val (rec, mate) = pair(100, "20M2I28M", Plus, 70, "50M", Minus)
+    clipper(Soft).clipExtendingPastMateEnds(rec=rec, mate=mate) shouldBe (30, 30)
+    rec.cigar.toString shouldBe "20M30S"
+    mate.cigar.toString shouldBe "30S20M"
+  }
+
+  Seq(Soft, Hard, SoftWithMask).foreach { mode =>
+    Seq(false, true).foreach { forwardFirst =>
+      it should s"fully clip both strands past their mate with $mode clipping (forwardFirst=$forwardFirst)" in {
+        // Fixed 5' clipping can move a previously FR pair's 5' ends past each other.
+        val (fwd, rev) = pair(150, "5H25M10H", Plus, 100, "10H25M5H", Minus)
+        val clipped = if (forwardFirst) clipper(mode).clipExtendingPastMateEndsOfFrPair(fwd, rev)
+                      else clipper(mode).clipExtendingPastMateEndsOfFrPair(rev, fwd).swap
+        clipped shouldBe (25, 25)
+        fwd.unmapped shouldBe true
+        rev.unmapped shouldBe true
+      }
+    }
+  }
+
+  it should "clip both reads the same regardless of which is passed first when clipping unmaps one of them" in {
+    // The forward read is 185-210 and is entirely past the reverse read's end of 173 (175 with soft-clipping), so it is
+    // fully clipped; the reverse read extends before the forward read's start of 158 (with soft-clipping) by 42 bases
+    def run(forwardFirst: Boolean): (SamRecord, SamRecord, (Int, Int)) = {
+      val (fwd, rev) = pair(185, "27S26M7S", Plus, 120, "4S54M2S", Minus)
+      val clipped    = {
+        if (forwardFirst) clipper(Soft).clipExtendingPastMateEndsOfFrPair(rec=fwd, mate=rev)
+        else clipper(Soft).clipExtendingPastMateEndsOfFrPair(rec=rev, mate=fwd).swap
+      }
+      (fwd, rev, clipped)
+    }
+
+    Seq(true, false).foreach { forwardFirst =>
+      val (fwd, rev, clipped) = run(forwardFirst=forwardFirst)
+      fwd.unmapped shouldBe true
+      (rev.start, rev.end, rev.cigar.toString) shouldBe (158, 173, "42S16M2S")
+      clipped shouldBe run(forwardFirst=true)._3
+    }
+  }
+
   "SamRecordClipper.numBasesExtendingPastMate" should "return zero when reads do not extend past the end or are not FR pairs" in {
     val builder = new SamBuilder()
     val Seq(r1, r2) = builder.addPair(start1=100, start2=200, cigar1="20S80M", cigar2="10S90M")

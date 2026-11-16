@@ -809,6 +809,16 @@ class VanillaUmiConsensusCallerTest extends UnitSpec with OptionValues {
     s2.cigar.toString shouldBe "40M20I40M"
   }
 
+  it should "trim the source read when the mate's end falls in a deletion of the read" in {
+    // R1 is +/101-155 with a deletion at 131-135, and R2 is -/83-132, so R2's end falls in R1's deletion
+    val builder     = new SamBuilder(readLength=50)
+    val Seq(r1, r2) = builder.addPair(start1=101, start2=83, strand1=Plus, strand2=Minus, cigar1="30M5D20M", cigar2="50M")
+    r1.bases = "A"*30 + "C"*20
+    val s1 = cc().toSourceRead(r1, minBaseQuality=2.toByte, qualityTrim=false).value
+    s1.baseString shouldBe "A"*30 // the 20 bases after the deletion lie past R2's end
+    s1.cigar.toString shouldBe "30M"
+  }
+
   it should "except when the reads do not have base qualities" in {
     val builder = new SamBuilder(readLength=10)
     val rec     = builder.addFrag(start=1, bases="AAAAAAAAAA").map(r => { r.quals = MissingQuals; r }).value
