@@ -254,6 +254,34 @@ class ClipBamTest extends UnitSpec with ErrorLogLevel with OptionValues {
     }
   }
 
+  Seq(true, false).foreach { forwardIsR1 =>
+    it should s"clip bases past the mate the same regardless of which read is R1 (forwardIsR1=$forwardIsR1)" in {
+      // The forward read is 158-217 and the reverse read is 116-175.  After the fixed clipping the forward read is
+      // aligned at 185-210 and the reverse read at 120-173, so every aligned base of the forward read lies past the
+      // reverse read's end, while the reverse read extends before the forward read's start of 158.  Both reads must be
+      // judged against their mate's boundaries before either is clipped.
+      val builder = new SamBuilder(readLength=60)
+      val Seq(r1, r2) = {
+        if (forwardIsR1) builder.addPair(start1=158, start2=116, strand1=Plus, strand2=Minus)
+        else builder.addPair(start1=116, start2=158, strand1=Minus, strand2=Plus)
+      }
+      val (fwd, rev) = if (forwardIsR1) (r1, r2) else (r2, r1)
+
+      // The bases to clip from the 5' and 3' ends of the forward and reverse reads respectively
+      val (fwdFivePrime, fwdThreePrime, revFivePrime, revThreePrime) = (27, 7, 2, 4)
+      val (r1FivePrime, r1ThreePrime, r2FivePrime, r2ThreePrime) = {
+        if (forwardIsR1) (fwdFivePrime, fwdThreePrime, revFivePrime, revThreePrime)
+        else (revFivePrime, revThreePrime, fwdFivePrime, fwdThreePrime)
+      }
+      new ClipBam(input=dummyBam, output=dummyBam, ref=ref, clippingMode=Soft, clipBasesPastMate=true,
+        readOneFivePrime=r1FivePrime, readOneThreePrime=r1ThreePrime, readTwoFivePrime=r2FivePrime, readTwoThreePrime=r2ThreePrime
+      ).clipPair(r1, r2)
+
+      fwd.unmapped shouldBe true
+      (rev.start, rev.end, rev.cigar.toString) shouldBe (158, 173, "42S16M2S")
+    }
+  }
+
   "ClippingMetrics.add" should "add two metrics" in {
     val fragment = ClippingMetrics(ReadType.Fragment, 1, 2,  3,  4,  5,  6, 7,  8,   9, 10, 11, 12, 13, 14, 15)
     val readOne  = ClippingMetrics(ReadType.ReadTwo,  2, 3,  4,  5,  6,  7, 8,  9,  10, 11, 12, 13, 14, 15, 16)
