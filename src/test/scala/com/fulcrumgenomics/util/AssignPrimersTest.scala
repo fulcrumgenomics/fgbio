@@ -27,7 +27,7 @@ package com.fulcrumgenomics.util
 
 import com.fulcrumgenomics.bam.api.SamRecord
 import com.fulcrumgenomics.testing.SamBuilder.Minus
-import com.fulcrumgenomics.testing.{SamBuilder, UnitSpec}
+import com.fulcrumgenomics.testing.{DovetailPairs, SamBuilder, UnitSpec}
 import htsjdk.samtools.SamPairUtil
 import org.scalatest.OptionValues
 
@@ -179,5 +179,15 @@ class AssignPrimersTest extends UnitSpec with OptionValues {
 
       }
     }
+  }
+
+  "AmpliconLabeller.label(r1, r2, ...)" should "label a dovetail FR pair without MC tags as a primer pair on both reads" in {
+    val (r1, r2) = DovetailPairs.pair(withMateCigar=false)
+    val amplicon = Amplicon("chr1", 28, 32, 140, 149)
+    val labeller = new AmpliconLabeller(amplicons=Iterator(amplicon))
+    labeller.label(r1=r1, r2=r2, recAmplicon=Some(amplicon), mateAmplicon=Some(amplicon))
+    r1.get[String](AssignPrimers.MateAmpliconIdentifierTag).value shouldBe "="
+    r2.get[String](AssignPrimers.MateAmpliconIdentifierTag).value shouldBe "="
+    labeller.metrics(amplicon).pairs shouldBe 1
   }
 }

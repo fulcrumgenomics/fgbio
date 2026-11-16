@@ -28,7 +28,7 @@ import com.fulcrumgenomics.FgBioDef._
 import com.fulcrumgenomics.alignment.Cigar
 import com.fulcrumgenomics.bam.api.{SamOrder, SamRecord}
 import com.fulcrumgenomics.testing.SamBuilder.{Minus, Plus}
-import com.fulcrumgenomics.testing.{SamBuilder, UnitSpec}
+import com.fulcrumgenomics.testing.{DovetailPairs, SamBuilder, UnitSpec}
 import com.fulcrumgenomics.util.{Io, Sequences}
 import htsjdk.samtools.SAMFileHeader.GroupOrder
 import htsjdk.samtools.SamPairUtil.PairOrientation
@@ -550,5 +550,15 @@ class BamsTest extends UnitSpec {
     template.r2Supplementals.foreach { supp =>
       supp.insertSize shouldBe -150
     }
+  }
+
+  "Template.pairOrientation" should "return FR for a dovetail pair without MC tags with R1 on either strand" in {
+    val (fwd, rev) = DovetailPairs.pair(withMateCigar=false)
+    Template(Iterator(fwd, rev)).pairOrientation shouldBe Some(PairOrientation.FR)
+
+    // Swap the read ends so that R1 is on the reverse strand
+    fwd.firstOfPair = false; fwd.secondOfPair = true
+    rev.firstOfPair = true;  rev.secondOfPair = false
+    Template(Iterator(rev, fwd)).pairOrientation shouldBe Some(PairOrientation.FR)
   }
 }

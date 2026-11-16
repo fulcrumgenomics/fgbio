@@ -64,8 +64,8 @@ case class Template(r1: Option[SamRecord],
 
   /** If both the R1 and R2 are present and mapped to the same chromosome returns the pair orientation, else None. */
   def pairOrientation: Option[PairOrientation] = (r1, r2) match {
-    case (Some(a), Some(b)) if a.mapped && b.mapped && a.refIndex == b.refIndex => Some(SamPairUtil.getPairOrientation(a.asSam))
-    case _ => None
+    case (Some(a), Some(b)) => SamRecord.pairOrientation(a, b)
+    case _                  => None
   }
 
   /** Returns an iterator over all records that are not the primary r1 and r2. */
