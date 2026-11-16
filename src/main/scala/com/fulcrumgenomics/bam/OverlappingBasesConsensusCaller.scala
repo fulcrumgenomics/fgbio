@@ -31,7 +31,7 @@ import com.fulcrumgenomics.commons.collection.SelfClosingIterator
 import com.fulcrumgenomics.commons.util.Logger
 import com.fulcrumgenomics.util.NumericTypes.PhredScore
 import enumeratum.EnumEntry
-import htsjdk.samtools.util.SequenceUtil
+import htsjdk.samtools.util.{CoordMath, SequenceUtil}
 
 
 /** Consensus calls the overlapping mapped bases in read pairs.
@@ -58,8 +58,15 @@ class OverlappingBasesConsensusCaller(agreementStrategy: AgreementStrategy = Agr
     * @return summary statistics about how many bases were examined and modified
     */
   def call(template: Template): CorrectionStats = (template.r1, template.r2) match {
-    case (Some(r1), Some(r2)) if r1.mapped && r2.mapped && r1.matesOverlap.contains(true) => call(r1, r2)
+    case (Some(r1), Some(r2)) if r1.mapped && r2.mapped && readsOverlap(r1, r2) => call(r1, r2)
     case _ => CorrectionStats()
+  }
+
+  /** True if the two mapped reads' alignments overlap by at least one reference position.  Uses both records' own
+    * alignments rather than [[SamRecord.matesOverlap]], which needs the mate cigar (MC tag) when the mate starts
+    * before the read. */
+  private def readsOverlap(r1: SamRecord, r2: SamRecord): Boolean = {
+    r1.refIndex == r2.refIndex && CoordMath.overlaps(r1.start, r1.end, r2.start, r2.end)
   }
 
   /** Consensus calls the overlapping bases if and only if both ends map with at least one base overlapping.
@@ -69,8 +76,10 @@ class OverlappingBasesConsensusCaller(agreementStrategy: AgreementStrategy = Agr
     * @return summary statistics about how many bases were examined and modified
     */
   def call(r1: SamRecord, r2: SamRecord): CorrectionStats = {
-    require(r1.mapped && r2.mapped && r1.paired && r2.paired && r1.name == r2.name && r1.matesOverlap.contains(true))
-    require(r1.firstOfPair && r2.secondOfPair)
+    require(r1.mapped && r2.mapped && r1.paired && r2.paired && r1.name == r2.name,
+      s"Expected both records to be mapped, paired and from the same template: ${r1.name} and ${r2.name}")
+    require(readsOverlap(r1, r2), s"Expected the records' alignments to overlap for read: ${r1.name}")
+    require(r1.firstOfPair && r2.secondOfPair, s"Expected R1 then R2 for read: ${r1.name}")
 
     val iter             = new ReadMateAndRefPosIterator(rec=r1, mate=r2).buffered
     var overlappingBases = 0

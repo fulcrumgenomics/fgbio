@@ -26,6 +26,7 @@
 package com.fulcrumgenomics.bam
 
 import com.fulcrumgenomics.bam.api.SamRecord
+import com.fulcrumgenomics.testing.SamBuilder.{Minus, Plus}
 import com.fulcrumgenomics.testing.{SamBuilder, UnitSpec}
 import com.fulcrumgenomics.util.NumericTypes.PhredScore
 
@@ -55,6 +56,46 @@ class OverlappingBasesConsensusCallerTest extends UnitSpec {
     r1.qualsString shouldBe q10*9  + q30
     r2.basesString shouldBe "A"*10
     r2.qualsString shouldBe q30 + q20*9
+  }
+
+  Seq(true, false).foreach { withMateCigar =>
+    it should s"consensus call overlapping reads when R1 maps after R2 (withMateCigar=$withMateCigar)" in {
+      // R1 is -/150-249 and R2 is +/100-199, so they overlap at 150-199
+      val builder = new SamBuilder(readLength=100)
+      val Seq(r1, r2) = builder.addPair(
+        bases1="A"*100, bases2="C"*100, start1=150, start2=100, strand1=Minus, strand2=Plus,
+        quals1=quals(q=10, rl=100), quals2=quals(q=20, rl=100))
+      if (!withMateCigar) Seq(r1, r2).foreach(_.remove("MC"))
+
+      caller().call(Template(Iterator(r1, r2))) shouldBe CorrectionStats(50, 50, 0)
+      r1.basesString shouldBe "C"*50 + "A"*50
+      r2.basesString shouldBe "C"*100
+    }
+  }
+
+  it should "not consensus call reads that do not overlap when R1 maps after R2 and there are no MC tags" in {
+    // R1 is -/200-299 and R2 is +/100-199, so they abut but do not overlap
+    val builder = new SamBuilder(readLength=100)
+    val Seq(r1, r2) = builder.addPair(
+      bases1="A"*100, bases2="C"*100, start1=200, start2=100, strand1=Minus, strand2=Plus,
+      quals1=quals(q=10, rl=100), quals2=quals(q=20, rl=100))
+    Seq(r1, r2).foreach(_.remove("MC"))
+
+    caller().call(Template(Iterator(r1, r2))) shouldBe CorrectionStats()
+    r1.basesString shouldBe "A"*100
+    r2.basesString shouldBe "C"*100
+  }
+
+  it should "not consensus call reads whose reference spans overlap but that are mapped to different contigs" in {
+    val builder = new SamBuilder(readLength=100)
+    val Seq(r1, r2) = builder.addPair(
+      bases1="A"*100, bases2="C"*100, start1=150, start2=100, strand1=Minus, strand2=Plus,
+      quals1=quals(q=10, rl=100), quals2=quals(q=20, rl=100))
+    r1.refIndex = r2.refIndex + 1
+
+    caller().call(Template(Iterator(r1, r2))) shouldBe CorrectionStats()
+    r1.basesString shouldBe "A"*100
+    r2.basesString shouldBe "C"*100
   }
 
   it should "pick the base with the highest quality (r1) with a single base overlap (disagreement)" in {
