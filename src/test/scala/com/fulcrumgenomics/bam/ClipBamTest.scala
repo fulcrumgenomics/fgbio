@@ -227,6 +227,33 @@ class ClipBamTest extends UnitSpec with ErrorLogLevel with OptionValues {
     }
   }
 
+  Seq(false, true).foreach { clipBasesPastMate =>
+    it should s"unmap the reverse read of a pair with coincident 5' ends when clipping overlapping reads (clipBasesPastMate=$clipBasesPastMate)" in {
+      // R1 is +/50-149 and R2 is -/1-50, so both 5' ends are at 50 and the reads overlap by one base
+      val builder = new SamBuilder(readLength=100, sort=Some(Queryname))
+      builder.addPair(name="q1", start1=50, cigar1="100M", strand1=Plus, start2=1, cigar2="50S50M", strand2=Minus)
+
+      val out        = makeTempFile("out.", ".bam")
+      val metricsOut = makeTempFile("out.", ".txt")
+      new ClipBam(
+        input=builder.toTempFile(), output=out, metrics=Some(metricsOut), ref=ref,
+        clipOverlappingReads=true, clipBasesPastMate=clipBasesPastMate
+      ).execute()
+
+      val Seq(r1, r2) = SamSource(out).toSeq.sortBy(r => if (r.firstOfPair) 1 else 2)
+      r1.mapped shouldBe true
+      r1.start shouldBe 50
+      r1.end shouldBe 50
+      r1.mateUnmapped shouldBe true
+      r2.unmapped shouldBe true
+      r2.mateStart shouldBe r1.start
+
+      val metrics = Metric.read[ClippingMetrics](metricsOut)
+      metrics.find(_.read_type == ReadType.ReadOne).value.bases_clipped_overlapping shouldBe 99
+      metrics.find(_.read_type == ReadType.ReadTwo).value.reads_unmapped shouldBe 1
+    }
+  }
+
   "ClippingMetrics.add" should "add two metrics" in {
     val fragment = ClippingMetrics(ReadType.Fragment, 1, 2,  3,  4,  5,  6, 7,  8,   9, 10, 11, 12, 13, 14, 15)
     val readOne  = ClippingMetrics(ReadType.ReadTwo,  2, 3,  4,  5,  6,  7, 8,  9,  10, 11, 12, 13, 14, 15, 16)
