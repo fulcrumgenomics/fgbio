@@ -141,7 +141,7 @@ class AmpliconDetector(val detector: OverlapDetector[Amplicon],
     * @param r2 the second end of a pair
     * @return Some amplicon if a match is found for the read pair, None otherwise
     */
-  def find(r1: SamRecord, r2: SamRecord): Option[Amplicon] = if (!r1.isFrPair) None else {
+  def find(r1: SamRecord, r2: SamRecord): Option[Amplicon] = if (!SamRecord.isFrPair(r1, r2)) None else {
     val (left, right) = if (r1.positiveStrand) (r1, r2) else (r2, r1)
     val (start, end)  = (coordinates.start(left), coordinates.end(right))
     val insert        = new Interval(left.refName, start, end)

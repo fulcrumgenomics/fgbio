@@ -26,7 +26,8 @@ package com.fulcrumgenomics.bam.api
 
 import com.fulcrumgenomics.alignment.Cigar
 import com.fulcrumgenomics.testing.SamBuilder.{Minus, Plus}
-import com.fulcrumgenomics.testing.{SamBuilder, UnitSpec}
+import com.fulcrumgenomics.testing.{DovetailPairs, SamBuilder, UnitSpec}
+import htsjdk.samtools.SamPairUtil.PairOrientation
 import htsjdk.samtools.TextCigarCodec
 import org.scalatest.OptionValues
 
@@ -55,6 +56,71 @@ class SamRecordTest extends UnitSpec with OptionValues {
   it should "return true on an actual FR pair" in {
     val builder = new SamBuilder(sort=Some(SamOrder.Coordinate), readLength=10, baseQuality=20)
     builder.addPair(start1=100, start2=200, strand1=Plus, strand2=Minus).forall(_.isFrPair)  shouldBe true
+  }
+
+  "SamRecord.pairOrientation(r1, r2)" should "return None for unmapped or cross-chromosomal pairs" in {
+    val builder = new SamBuilder(readLength=10, baseQuality=20)
+    val Seq(a, b) = builder.addPair(start1=100, start2=200, unmapped2=true).toSeq
+    SamRecord.pairOrientation(a, b) shouldBe None
+    SamRecord.pairOrientation(b, a) shouldBe None
+    val Seq(c, d) = builder.addPair(start1=100, start2=200).toSeq
+    d.refIndex = c.refIndex + 1
+    SamRecord.pairOrientation(c, d) shouldBe None
+  }
+
+  it should "return FR, RF and TANDEM regardless of argument order" in {
+    val builder = new SamBuilder(readLength=10, baseQuality=20)
+    Seq(
+      (Plus,  Minus, PairOrientation.FR),
+      (Minus, Plus,  PairOrientation.RF),
+      (Plus,  Plus,  PairOrientation.TANDEM),
+      (Minus, Minus, PairOrientation.TANDEM),
+    ).foreach { case (s1, s2, expected) =>
+      val Seq(r1, r2) = builder.addPair(start1=100, start2=200, strand1=s1, strand2=s2).toSeq
+      SamRecord.pairOrientation(r1, r2).value shouldBe expected
+      SamRecord.pairOrientation(r2, r1).value shouldBe expected
+    }
+  }
+
+  it should "return FR when the 5' ends coincide and RF when they are one base apart" in {
+    val builder = new SamBuilder(readLength=10, baseQuality=20)
+    val Seq(a, b) = builder.addPair(start1=100, start2=91).toSeq // both 5' ends at 100
+    SamRecord.pairOrientation(a, b).value shouldBe PairOrientation.FR
+    val Seq(c, d) = builder.addPair(start1=101, start2=91).toSeq // forward 5' end at 101, reverse 5' end at 100
+    SamRecord.pairOrientation(c, d).value shouldBe PairOrientation.RF
+  }
+
+  it should "return FR for a dovetail pair without MC tags, where the per-record orientation disagrees" in {
+    val (r1, r2) = DovetailPairs.pair(withMateCigar=false)
+    r1.isFrPair shouldBe false // the forward-strand record falls back to TLEN and gets this wrong
+    r2.isFrPair shouldBe true
+    SamRecord.pairOrientation(r1, r2).value shouldBe PairOrientation.FR
+    SamRecord.pairOrientation(r2, r1).value shouldBe PairOrientation.FR
+  }
+
+  it should "use the records' own positions rather than stale mate fields" in {
+    val builder = new SamBuilder(readLength=10, baseQuality=20)
+    val Seq(r1, r2) = builder.addPair(start1=100, start2=200).toSeq
+    r2.mateStart = 300 // stale: r1 now appears to start after r2 ends
+    r2.pairOrientation shouldBe PairOrientation.RF
+    SamRecord.pairOrientation(r1, r2).value shouldBe PairOrientation.FR
+  }
+
+  "SamRecord.isFrPair(r1, r2)" should "return true only for paired FR records" in {
+    val builder = new SamBuilder(readLength=10, baseQuality=20)
+    val Seq(r1, r2) = builder.addPair(start1=100, start2=200).toSeq
+    SamRecord.isFrPair(r1, r2) shouldBe true
+    SamRecord.isFrPair(r2, r1) shouldBe true
+    val Seq(r3, r4) = builder.addPair(start1=100, start2=200, strand1=Minus, strand2=Plus).toSeq
+    SamRecord.isFrPair(r3, r4) shouldBe false
+    r1.paired = false
+    SamRecord.isFrPair(r1, r2) shouldBe false
+  }
+
+  it should "return true for a dovetail pair without MC tags regardless of argument order" in {
+    val (r1, r2) = DovetailPairs.pair(withMateCigar=false)
+    SamRecord.isFrPair(r1, r2) shouldBe true
+    SamRecord.isFrPair(r2, r1) shouldBe true
   }
 
   "SamRecord.cigar" should "always return the latest/correct cigar, when when SAMRecord methods are used" in {

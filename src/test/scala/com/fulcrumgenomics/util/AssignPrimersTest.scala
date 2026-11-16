@@ -25,9 +25,9 @@
 
 package com.fulcrumgenomics.util
 
-import com.fulcrumgenomics.bam.api.SamRecord
+import com.fulcrumgenomics.bam.api.{SamRecord, SamWriter}
 import com.fulcrumgenomics.testing.SamBuilder.Minus
-import com.fulcrumgenomics.testing.{SamBuilder, UnitSpec}
+import com.fulcrumgenomics.testing.{DovetailPairs, SamBuilder, UnitSpec}
 import htsjdk.samtools.SamPairUtil
 import org.scalatest.OptionValues
 
@@ -177,6 +177,57 @@ class AssignPrimersTest extends UnitSpec with OptionValues {
         }
         metrics.length shouldBe expected.length
 
+      }
+    }
+  }
+
+  Seq(false, true).foreach { r1NegativeStrand =>
+    val strand = if (r1NegativeStrand) "negative" else "positive"
+    "AssignPrimers" should s"annotate a dovetail FR pair without MC tags with --annotate-all and R1 on the $strand strand" in {
+      val (forward, reverse) = DovetailPairs.pair(withMateCigar=false)
+      val reads = if (r1NegativeStrand) IndexedSeq(reverse, forward) else IndexedSeq(forward, reverse)
+      reads.zipWithIndex.foreach { case (rec, index) =>
+        rec.firstOfPair  = index == 0
+        rec.secondOfPair = index == 1
+        rec.contains("MC") shouldBe false
+        rec.insertSize shouldBe 0
+      }
+
+      val inputBam      = makeTempFile("input.", ".bam")
+      val outputBam     = makeTempFile("output.", ".bam")
+      val ampliconsPath = makeTempFile("amplicons.", ".txt")
+      val metricsPath   = makeTempFile("metrics.", ".txt")
+      val amplicon      = Amplicon("chr1", 28, 32, 140, 149)
+      val writer        = SamWriter(inputBam, reads.head.header)
+      writer ++= reads
+      writer.close()
+      Metric.write(ampliconsPath, IndexedSeq(amplicon))
+
+      new AssignPrimers(
+        input       = inputBam,
+        primers     = ampliconsPath,
+        output      = outputBam,
+        metrics     = metricsPath,
+        annotateAll = true
+      ).execute()
+
+      val expectedMetrics = IndexedSeq(amplicon.identifier, AssignPrimersMetric.AllAmpliconsIdentifier).map { identifier =>
+        AssignPrimersMetric(identifier=identifier, left=1, right=1, r1s=1, r2s=1, pairs=1).finalize(total=2)
+      }
+      Metric.read[AssignPrimersMetric](metricsPath) shouldBe expectedMetrics
+
+      val outputRecs = readBamRecs(outputBam)
+      outputRecs should have length 2
+      reads.foreach { input =>
+        val output = outputRecs.find(_.firstOfPair == input.firstOfPair).value
+        output.name shouldBe input.name
+        output.flags shouldBe input.flags
+        output.start shouldBe input.start
+        output.cigar shouldBe input.cigar
+        output.basesString shouldBe input.basesString
+        output.contains("MC") shouldBe false
+        output.insertSize shouldBe 0
+        checkMatch(rec=output, amplicon=amplicon, mateAmplicon=amplicon)
       }
     }
   }

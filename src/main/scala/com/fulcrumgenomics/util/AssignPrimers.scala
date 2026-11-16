@@ -116,9 +116,14 @@ class AssignPrimers
           case Seq(x) => Some(x)
           case _      => None
         }
-        // label the reads
-        r1s.foreach { rec => labeller.label(rec=rec, recAmplicon=r1Amplicon, mateAmplicon=r2Amplicon) }
-        r2s.foreach { rec => labeller.label(rec=rec, recAmplicon=r2Amplicon, mateAmplicon=r1Amplicon) }
+        // label the reads, using both primary records (when present) to determine whether the template is an FR pair
+        val isFrPair = (template.r1, template.r2) match {
+          case (Some(r1), Some(r2)) => Some(SamRecord.isFrPair(r1, r2))
+          case _                    => None
+        }
+        def frPairFor(rec: SamRecord): Option[Boolean] = if (rec.secondary || rec.supplementary) None else isFrPair
+        r1s.foreach { rec => labeller.label(rec=rec, recAmplicon=r1Amplicon, mateAmplicon=r2Amplicon, isFrPair=frPairFor(rec)) }
+        r2s.foreach { rec => labeller.label(rec=rec, recAmplicon=r2Amplicon, mateAmplicon=r1Amplicon, isFrPair=frPairFor(rec)) }
         // write them out
         template.allReads.foreach { r =>
           sorter match {
@@ -223,10 +228,13 @@ class AmpliconLabeller(val amplicons: Iterator[Amplicon] = Iterator.empty,
     * @param rec the record to label
     * @param recAmplicon the assigned amplicon for the record
     * @param mateAmplicon the assigned amplicon fo the record's mate (if paired)
+    * @param isFrPair whether the record's template is an FR pair, if already determined from both of its primary
+    *                 records (see `SamRecord.isFrPair(r1, r2)`); otherwise it is determined from this record alone
     */
   def label(rec: SamRecord,
             recAmplicon: Option[Amplicon] = None,
-            mateAmplicon: Option[Amplicon] = None): Unit = {
+            mateAmplicon: Option[Amplicon] = None,
+            isFrPair: Option[Boolean] = None): Unit = {
     // Process the primer for the current read
     recAmplicon.foreach { amp =>
       // update metrics
@@ -244,7 +252,7 @@ class AmpliconLabeller(val amplicons: Iterator[Amplicon] = Iterator.empty,
     // Find the primer for its mate
     mateAmplicon.foreach { amp =>
       require(rec.paired)
-      val isPrimerPair = rec.isFrPair && recAmplicon.contains(amp)
+      val isPrimerPair = isFrPair.getOrElse(rec.isFrPair) && recAmplicon.contains(amp)
       // update metrics
       metrics.get(amp).foreach { metric =>
         if (isPrimerPair && rec.firstOfPair) metric.pairs += 1
@@ -266,8 +274,9 @@ class AmpliconLabeller(val amplicons: Iterator[Amplicon] = Iterator.empty,
             r2: SamRecord,
             recAmplicon: Option[Amplicon],
             mateAmplicon: Option[Amplicon]): Unit = {
-    label(rec=r1, recAmplicon=recAmplicon, mateAmplicon=mateAmplicon)
-    label(rec=r2, recAmplicon=mateAmplicon, mateAmplicon=recAmplicon)
+    val isFrPair = Some(SamRecord.isFrPair(r1, r2))
+    label(rec=r1, recAmplicon=recAmplicon, mateAmplicon=mateAmplicon, isFrPair=isFrPair)
+    label(rec=r2, recAmplicon=mateAmplicon, mateAmplicon=recAmplicon, isFrPair=isFrPair)
   }
 }
 
