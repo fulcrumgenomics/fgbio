@@ -25,7 +25,8 @@ The `--sorted` option may be used to indicate that the FASTQ has the same reads 
 sorted in the same order as the BAM file.
 
 At the end of execution, reports how many records were processed and how many were
-missing UMIs. If any read from the BAM file did not have a matching UMI read in the
+missing UMIs.  All records are written to the output, whether or not a UMI was found.
+If any read from the BAM file did not have a matching UMI read in the
 FASTQ file, the program will exit with a non-zero exit status.  The `--fail-fast` option
 may be specified to cause the program to terminate the first time it finds a records
 without a matching UMI.
@@ -36,7 +37,7 @@ the (uncompressed) fastq(s).  Use the `--sorted` option to traverse the UMI fast
 files assuming they are in the same order.  More precisely, the UMI fastq file will be
 traversed first, reading in the next set of BAM reads with same read name as the
 UMI's read name.  Those BAM reads will be annotated.  If no BAM reads exist for the UMI,
-no logging or error will be reported.
+the UMI is skipped and counted, but is not an error.
 
 ## Arguments
 
