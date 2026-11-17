@@ -48,12 +48,29 @@ runs:
         source "$HOME/.sdkman/bin/sdkman-init.sh"
         sdk version
         echo 'source "$HOME/.sdkman/bin/sdkman-init.sh"' >> "$HOME/.bash_profile"
+    # Note: `sdk install` can report a failed download (e.g. a corrupt archive) without the step failing, so
+    # retry each install and then check that the candidate is actually installed.
     - name: Install tools
       shell: bash -l {0}
       run: |
-        sdk install java 17.0.13-amzn
-        sdk install scala 2.13.16
-        sdk install sbt 1.11.2
+        install_candidate() {
+          local candidate=$1 version=$2
+          for attempt in 1 2 3; do
+            sdk install "${candidate}" "${version}"
+            if [ -d "${SDKMAN_CANDIDATES_DIR}/${candidate}/${version}" ]; then return 0; fi
+            echo "Install of ${candidate} ${version} failed (attempt ${attempt} of 3)"
+            sleep 10
+          done
+          echo "Error: could not install ${candidate} ${version}"
+          return 1
+        }
+        install_candidate java 17.0.13-amzn || exit 1
+        install_candidate scala 2.13.16 || exit 1
+        install_candidate sbt 1.11.2 || exit 1
+        if [ ! -x "${SDKMAN_CANDIDATES_DIR}/scala/2.13.16/bin/scaladoc" ]; then
+          echo "Error: scaladoc was not found in the scala 2.13.16 install"
+          exit 1
+        fi
     - name: Cache .ivy2
       uses: actions/cache@5a3ec84eff668545956fd18022155c47e93e2684 # v4.2.3
       with:
