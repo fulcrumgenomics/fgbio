@@ -26,6 +26,7 @@
 package com.fulcrumgenomics.umi
 
 import com.fulcrumgenomics.bam.api.SamOrder
+import com.fulcrumgenomics.bam.api.SamRecord.MissingQuals
 import com.fulcrumgenomics.testing.{SamBuilder, UnitSpec}
 import com.fulcrumgenomics.umi.VanillaUmiConsensusCallerOptions._
 
@@ -108,6 +109,32 @@ class CallMolecularConsensusReadsTest extends UnitSpec {
       rec.basesString shouldBe "A" * 100
       rec.length shouldBe 100
       rec[String](specialCellTag) shouldBe "AB"
+    }
+  }
+
+  it should "fail on reads without base qualities unless a missing base quality is given" in {
+    for (consensusCallOverlappingBases <- Seq(true, false)) {
+      val builder = new SamBuilder(readLength=10, sort=Some(SamOrder.TemplateCoordinate))
+      Range(0, 2).foreach { i =>
+        builder.addPair(name=s"q$i", start1=100, start2=100, bases1="A"*10, bases2="A"*10,
+          quals1=MissingQuals, quals2=MissingQuals, attrs=Map(DefaultTag -> "1"))
+      }
+      val in = builder.toTempFile()
+
+      an[Exception] should be thrownBy {
+        new CallMolecularConsensusReads(input=in, output=newBam, minReads=1,
+          consensusCallOverlappingBases=consensusCallOverlappingBases).execute()
+      }
+
+      val output = newBam
+      new CallMolecularConsensusReads(input=in, output=output, minReads=1, missingBaseQuality=Some(30.toByte),
+        consensusCallOverlappingBases=consensusCallOverlappingBases).execute()
+      val recs = readBamRecs(output)
+      recs should have size 2
+      // Consensus reads are unmapped, so R2 (mapped to the negative strand) is reverse complemented
+      recs.find(_.firstOfPair).value.basesString shouldBe "A" * 10
+      recs.find(_.secondOfPair).value.basesString shouldBe "T" * 10
+      recs.foreach(rec => rec[Int](ConsensusTags.PerRead.RawReadCount) shouldBe 2)
     }
   }
 }

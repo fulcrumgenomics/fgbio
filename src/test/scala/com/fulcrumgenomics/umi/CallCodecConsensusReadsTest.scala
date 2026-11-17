@@ -25,6 +25,7 @@
 package com.fulcrumgenomics.umi
 
 import com.fulcrumgenomics.bam.api.{SamOrder, SamSource}
+import com.fulcrumgenomics.bam.api.SamRecord.MissingQuals
 import com.fulcrumgenomics.testing.{SamBuilder, UnitSpec}
 import com.fulcrumgenomics.umi.UmiConsensusCaller.{ConsensusKvMetric, RejectionReason}
 import com.fulcrumgenomics.util.Metric
@@ -125,5 +126,22 @@ class CallCodecConsensusReadsTest extends UnitSpec with OptionValues {
       val metric = metrics.find(_.key.contains(RejectionReason.R1R2OverlapTooShort.code)).value
       metric.value.toString.toInt shouldBe 2
     }
+  }
+
+  it should "fail on reads without base qualities unless a missing base quality is given" in {
+    val builder = new SamBuilder(readLength=30, sort=Some(SamOrder.TemplateCoordinate))
+    builder.addPair(start1=100, start2=100, bases1="AC" * 15, bases2="AC" * 15,
+      quals1=MissingQuals, quals2=MissingQuals, attrs=Map(("RX", "ACC-TGA"), ("MI", "hi")))
+    val in = builder.toTempFile()
+
+    an[Exception] should be thrownBy {
+      new CallCodecConsensusReads(input=in, output=makeTempFile("codec.", ".bam"), readGroupId="ZZ").execute()
+    }
+
+    val out = makeTempFile("codec.", ".bam")
+    new CallCodecConsensusReads(input=in, output=out, readGroupId="ZZ", missingBaseQuality=Some(30.toByte)).execute()
+    val recs = readBamRecs(out)
+    recs should have size 1
+    recs.head.basesString shouldBe "AC" * 15
   }
 }

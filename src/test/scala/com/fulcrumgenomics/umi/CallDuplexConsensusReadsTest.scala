@@ -26,6 +26,7 @@ package com.fulcrumgenomics.umi
 
 import com.fulcrumgenomics.FgBioDef._
 import com.fulcrumgenomics.bam.api.{SamOrder, SamRecord, SamSource}
+import com.fulcrumgenomics.bam.api.SamRecord.MissingQuals
 import com.fulcrumgenomics.sopt.cmdline.ValidationException
 import com.fulcrumgenomics.testing.SamBuilder.{Minus, Plus}
 import com.fulcrumgenomics.testing.{SamBuilder, UnitSpec}
@@ -185,5 +186,33 @@ class CallDuplexConsensusReadsTest extends UnitSpec {
     }
 
     multiThreaded.map(_.asSam.getSAMString) should contain theSameElementsInOrderAs singleThreaded.map(_.asSam.getSAMString)
+  }
+
+  it should "fail on reads without base qualities unless a missing base quality is given" in {
+    for (consensusCallOverlappingBases <- Seq(true, false)) {
+      val builder = new SamBuilder(readLength=10, sort=Some(SamOrder.TemplateCoordinate))
+      builder.addPair(name="ab", start1=100, start2=100, bases1="A"*10, bases2="A"*10,
+        quals1=MissingQuals, quals2=MissingQuals, attrs=Map("MI" -> "1/A"))
+      builder.addPair(name="ba", start1=100, start2=100, strand1=Minus, strand2=Plus, bases1="A"*10, bases2="A"*10,
+        quals1=MissingQuals, quals2=MissingQuals, attrs=Map("MI" -> "1/B"))
+      val in = builder.toTempFile()
+
+      an[Exception] should be thrownBy {
+        new CallDuplexConsensusReads(input=in, output=makeTempFile("duplex.", ".bam"),
+          consensusCallOverlappingBases=consensusCallOverlappingBases).execute()
+      }
+
+      val out = makeTempFile("duplex.", ".bam")
+      new CallDuplexConsensusReads(input=in, output=out, missingBaseQuality=Some(30.toByte),
+        consensusCallOverlappingBases=consensusCallOverlappingBases).execute()
+      val recs = readBamRecs(out)
+      recs should have size 2
+      // Consensus reads are unmapped, so the read built from the negative strand reads is reverse complemented
+      recs.map(_.basesString).sorted shouldBe Seq("A" * 10, "T" * 10)
+      recs.foreach { rec =>
+        rec[Int](ConsensusTags.PerRead.AbRawReadCount) shouldBe 1
+        rec[Int](ConsensusTags.PerRead.BaRawReadCount) shouldBe 1
+      }
+    }
   }
 }

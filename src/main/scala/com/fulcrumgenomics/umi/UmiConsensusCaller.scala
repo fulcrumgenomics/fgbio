@@ -162,6 +162,23 @@ object UmiConsensusCaller {
     * @param warn a function to be called when any warnings are detected/emitted
     * @param error a function to be called when any errors are encountered; should probably throw an exception!
     */
+  /** Returns the given records, where any record that has bases but no base qualities is assigned
+    * `missingBaseQuality` at every base, if given.  If `missingBaseQuality` is not given, the records are returned
+    * unchanged.
+    *
+    * @param records the records to update
+    * @param missingBaseQuality the base quality to assign to every base of records that are missing base qualities
+    */
+  def withMissingBaseQualities(records: Iterator[SamRecord], missingBaseQuality: Option[PhredScore]): Iterator[SamRecord] = {
+    missingBaseQuality match {
+      case None       => records
+      case Some(qual) => records.map { rec =>
+        if (rec.quals.isEmpty && rec.length > 0) rec.quals = Array.fill(rec.length)(qual)
+        rec
+      }
+    }
+  }
+
   def checkSortOrder(header: SAMFileHeader, source: Any, warn: String => Unit, error: String => Unit): Unit = {
     // Check that the SAM file is sorted appropriately
     if (!SamOrder(header).contains(SamOrder.TemplateCoordinate)) {
@@ -266,7 +283,7 @@ trait UmiConsensusCaller[ConsensusRead <: SimpleRead] {
     val bases = rec.bases.clone()
     val quals = if (rec.quals.nonEmpty) rec.quals.clone() else {
       throw new IllegalArgumentException(
-        f"The input read is missing base qualities: ${rec.asSam.getSAMString}"
+        f"The input read is missing base qualities (see --missing-base-quality): ${rec.asSam.getSAMString}"
       )
     }
     val cigar = if (rec.positiveStrand) rec.cigar else {

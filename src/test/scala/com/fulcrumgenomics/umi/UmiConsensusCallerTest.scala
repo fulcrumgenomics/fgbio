@@ -25,6 +25,7 @@
 package com.fulcrumgenomics.umi
 
 import com.fulcrumgenomics.bam.api.SamOrder
+import com.fulcrumgenomics.bam.api.SamRecord.{MissingBases, MissingQuals}
 import com.fulcrumgenomics.testing.{SamBuilder, UnitSpec}
 import htsjdk.samtools.SAMFileHeader.GroupOrder
 import htsjdk.samtools.SAMReadGroupRecord
@@ -94,5 +95,22 @@ class UmiConsensusCallerTest extends UnitSpec with OptionValues {
     val s4 = caller.toSourceRead(r4, minBaseQuality=0, qualityTrim=false).value
     s3.cigar.toString shouldBe "10S80M"
     s4.cigar.toString shouldBe "80M10S" // on reverse strand, so cigar is reversed
+  }
+
+  "UmiConsensusCaller.withMissingBaseQualities" should "return records unchanged when no missing base quality is given" in {
+    val builder = new SamBuilder(readLength=10)
+    builder.addFrag(start=1, bases="AAAAAAAAAA").foreach(_.quals = MissingQuals)
+    builder.addFrag(start=1, bases="CCCCCCCCCC", quals="IIIIIIIIII")
+    val recs = UmiConsensusCaller.withMissingBaseQualities(builder.iterator, missingBaseQuality=None).toIndexedSeq
+    recs.map(_.quals.toSeq) shouldBe Seq(Seq.empty, Seq.fill(10)(40.toByte))
+  }
+
+  it should "fill in base qualities only for records that are missing them" in {
+    val builder = new SamBuilder(readLength=10)
+    builder.addFrag(start=1, bases="AAAAAAAAAA").foreach(_.quals = MissingQuals)
+    builder.addFrag(start=1, bases="CCCCCCCCCC", quals="IIIIIIIIII")
+    builder.addFrag(start=1, bases="AAAAAAAAAA").foreach { r => r.bases = MissingBases; r.quals = MissingQuals }
+    val recs = UmiConsensusCaller.withMissingBaseQualities(builder.iterator, missingBaseQuality=Some(20.toByte)).toIndexedSeq
+    recs.map(_.quals.toSeq) shouldBe Seq(Seq.fill(10)(20.toByte), Seq.fill(10)(40.toByte), Seq.empty)
   }
 }

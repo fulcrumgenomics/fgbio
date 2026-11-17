@@ -27,10 +27,12 @@ package com.fulcrumgenomics.bam
 
 import com.fulcrumgenomics.FgBioDef.FgBioEnum
 import com.fulcrumgenomics.bam.api.{SamRecord, SamSource}
+import com.fulcrumgenomics.util.Io
 import com.fulcrumgenomics.commons.collection.SelfClosingIterator
 import com.fulcrumgenomics.commons.util.Logger
 import com.fulcrumgenomics.util.NumericTypes.PhredScore
 import enumeratum.EnumEntry
+import htsjdk.samtools.SAMFileHeader
 import htsjdk.samtools.util.SequenceUtil
 
 
@@ -135,13 +137,32 @@ object OverlappingBasesConsensusCaller {
                logger: Logger,
                agreementStrategy: AgreementStrategy = AgreementStrategy.Consensus,
                disagreementStrategy: DisagreementStrategy = DisagreementStrategy.Consensus): Iterator[SamRecord] = {
+    iterator(in.iterator, in.header, logger, agreementStrategy, disagreementStrategy)
+  }
+
+  /** Returns an iterator over the given records that are in query group order, where overlapping read pairs
+    * are consensus called.  The records will be re-sorted if not already query sorted or grouped.  Statistics for how
+    * may bases and templates had overlaps and were modified are logged to the given logger.
+    *
+    * @param in the records to consensus call
+    * @param header the header for the records
+    * @param logger the logger, to which output statistics are written
+    * @param agreementStrategy the strategy to use when the two bases agree.  This only affects the base qualities.
+    * @param disagreementStrategy the disagreement strategy to use when the two bases disagree.  This will affect both the
+    *                             bases and the qualities.
+    */
+  def iterator(in: Iterator[SamRecord],
+               header: SAMFileHeader,
+               logger: Logger,
+               agreementStrategy: AgreementStrategy,
+               disagreementStrategy: DisagreementStrategy): Iterator[SamRecord] = {
     val templateMetric = CallOverlappingConsensusBasesMetric(kind=CountKind.Templates)
     val basesMetric    = CallOverlappingConsensusBasesMetric(kind=CountKind.Bases)
     val caller         = new OverlappingBasesConsensusCaller(
       agreementStrategy    = agreementStrategy,
       disagreementStrategy = disagreementStrategy
     )
-    val templateIterator = Bams.templateIterator(in=in).flatMap { template =>
+    val templateIterator = Bams.templateIterator(in, header, Bams.MaxInMemory, Io.tmpDir).flatMap { template =>
       val stats: CorrectionStats = caller.call(template)
 
       // update metrics

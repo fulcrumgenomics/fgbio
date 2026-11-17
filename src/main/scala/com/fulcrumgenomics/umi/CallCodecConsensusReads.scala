@@ -107,6 +107,7 @@ class CallCodecConsensusReads
  @arg(flag='X', doc="Discard consensus reads where greater than this number of duplex bases disagree.") val maxDuplexDisagreements: Int = Int.MaxValue,
  @arg(flag='c', doc="Tag containing the cellular barcodes.") val cellTag: Option[String] = Some(SAMTag.CB.name),
  @arg(doc="The number of threads to use while consensus calling.") val threads: Int = 1,
+ @arg(doc="The base quality to assign to every base of input reads that have no base qualities (`*` in SAM). If not given, reads without base qualities cause an error.") val missingBaseQuality: Option[PhredScore] = None,
 ) extends FgBioTool with LazyLogging {
 
   Io.assertReadable(input)
@@ -149,7 +150,8 @@ class CallCodecConsensusReads
       rejectsWriter             = rejectsWriter,
     )
     val progress = ProgressLogger(logger, unit=1000000)
-    val iterator = new ConsensusCallingIterator(in.iterator, caller, Some(progress), threads)
+    val records  = UmiConsensusCaller.withMissingBaseQualities(in.iterator, missingBaseQuality)
+    val iterator = new ConsensusCallingIterator(records, caller, Some(progress), threads)
     out ++= iterator
     progress.logLast()
 

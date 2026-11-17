@@ -26,6 +26,7 @@ package com.fulcrumgenomics.umi
 
 import com.fulcrumgenomics.FgBioDef._
 import com.fulcrumgenomics.bam.OverlappingBasesConsensusCaller
+import com.fulcrumgenomics.bam.{AgreementStrategy, DisagreementStrategy}
 import com.fulcrumgenomics.bam.api.{SamOrder, SamSource, SamWriter}
 import com.fulcrumgenomics.cmdline.{ClpGroups, FgBioTool}
 import com.fulcrumgenomics.commons.io.Io
@@ -123,6 +124,7 @@ class CallDuplexConsensusReads
  @arg(flag='c', doc="Tag containing the cell barcode.") val cellTag: Option[String] = Some(SAMTag.CB.name),
  @arg(doc="The number of threads to use while consensus calling.") val threads: Int = 1,
  @arg(doc="Consensus call overlapping bases in mapped paired end reads") val consensusCallOverlappingBases: Boolean = true,
+ @arg(doc="The base quality to assign to every base of input reads that have no base qualities (`*` in SAM). If not given, reads without base qualities cause an error.") val missingBaseQuality: Option[PhredScore] = None,
 ) extends FgBioTool with LazyLogging {
 
   Io.assertReadable(input)
@@ -138,11 +140,16 @@ class CallDuplexConsensusReads
     UmiConsensusCaller.checkSortOrder(in.header, input, logger.warning, fail)
     val rejectsWriter = rejects.map(r => SamWriter(r, in.header))
 
-    // Build an iterator for the input reads, which only really matters if calling consensus in overlapping read pairs.
-    val inIter = if (!consensusCallOverlappingBases) in.iterator else {
+    // Build an iterator for the input reads, filling in any missing base qualities if requested, and then calling
+    // consensus in overlapping read pairs if requested.
+    val records = UmiConsensusCaller.withMissingBaseQualities(in.iterator, missingBaseQuality)
+    val inIter  = if (!consensusCallOverlappingBases) records else {
       OverlappingBasesConsensusCaller.iterator(
-        in                    = in,
-        logger                = logger
+        in                   = records,
+        header               = in.header,
+        logger               = logger,
+        agreementStrategy    = AgreementStrategy.Consensus,
+        disagreementStrategy = DisagreementStrategy.Consensus
       )
     }
 
