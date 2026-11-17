@@ -24,6 +24,7 @@
 
 package com.fulcrumgenomics.umi
 
+import com.fulcrumgenomics.bam.api.SamRecord
 import com.fulcrumgenomics.testing.SamBuilder.{Minus, Plus}
 import com.fulcrumgenomics.testing.{SamBuilder, UnitSpec}
 import com.fulcrumgenomics.umi.ConsensusTags.PerRead.{AbRawReadErrorRate, BaRawReadErrorRate, RawReadErrorRate}
@@ -226,6 +227,32 @@ class DuplexConsensusCallerTest extends UnitSpec with OptionValues {
     val dissimilar = builder.addPair(name="q6", start1=200, start2=100, strand1=Minus, strand2=Plus, bases1="CCCCCCCCCC", bases2="AAAAAAAAAA", attrs=Map(MI -> "foo/B"), cigar1 = "5M1D5M")
     caller(minReads=Seq(3)).consensusReadsFromSamRecords(records ++ dissimilar) shouldBe empty // the new read pair is *not* considered in the final consensus
     caller(minReads=Seq(2)).consensusReadsFromSamRecords(records ++ dissimilar) should have size 2
+  }
+
+  /** Builds one molecule whose pooled AB-R1 and BA-R2 reads split between 10M and 5M1I4M. */
+  private def tiedMolecule(abRef: Int, abIns: Int, baRef: Int, baIns: Int): Seq[SamRecord] = {
+    val builder = new SamBuilder(readLength=10, baseQuality=30)
+    def ab(name: String, cigar: String) = builder.addPair(name=name, start1=100, start2=200, strand1=Plus, strand2=Minus,
+      bases1="AAAAAAAAAA", bases2="CCCCCCCCCC", cigar1=cigar, attrs=Map(MI -> "foo/A"))
+    def ba(name: String, cigar: String) = builder.addPair(name=name, start1=200, start2=100, strand1=Minus, strand2=Plus,
+      bases1="CCCCCCCCCC", bases2="AAAAAAAAAA", cigar2=cigar, attrs=Map(MI -> "foo/B"))
+    Range(0, abRef).foreach(i => ab(s"ab_ref$i", "10M"))
+    Range(0, abIns).foreach(i => ab(s"ab_ins$i", "5M1I4M"))
+    Range(0, baRef).foreach(i => ba(s"ba_ref$i", "10M"))
+    Range(0, baIns).foreach(i => ba(s"ba_ins$i", "5M1I4M"))
+    builder.toSeq
+  }
+
+  it should "break a tie between alignments in favour of the one supported by both strands" in {
+    val r1 = c.consensusReadsFromSamRecords(tiedMolecule(abRef=6, abIns=9, baRef=4, baIns=1)).find(_.firstOfPair).value
+    r1[Int](ConsensusTags.PerRead.AbRawReadCount) shouldBe 6
+    r1[Int](ConsensusTags.PerRead.BaRawReadCount) shouldBe 4
+  }
+
+  it should "keep an indel supported by both strands over a reference alignment from one strand" in {
+    val r1 = c.consensusReadsFromSamRecords(tiedMolecule(abRef=9, abIns=5, baRef=1, baIns=5)).find(_.firstOfPair).value
+    r1[Int](ConsensusTags.PerRead.AbRawReadCount) shouldBe 5
+    r1[Int](ConsensusTags.PerRead.BaRawReadCount) shouldBe 5
   }
 
   it should "not saturate the qualities with deep AB and light BA coverage" in {
