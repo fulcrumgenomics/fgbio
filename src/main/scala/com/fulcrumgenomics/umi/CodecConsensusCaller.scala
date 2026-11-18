@@ -157,7 +157,8 @@ class CodecConsensusCaller(readNamePrefix: String,
     * output consensus reads as SAM records.
     *
     * NOTE: this override does not set the raw-family count tags (`cT`/`cR`, and the per-strand `aT`/`bT`/`aR`/`bR`)
-    * that [[DuplexConsensusCaller]] and [[VanillaUmiConsensusCaller]] set via `addRawSourceCounts`.  This is
+    * that [[DuplexConsensusCaller]] and [[VanillaUmiConsensusCaller]] set via `addRawSourceCounts` (and, for the
+    * per-strand tags, by passing raw counts to `duplexConsensus`).  This is
     * deliberate rather than an oversight: in CODEC both strands are carried by a single read pair and a single
     * fragment consensus is emitted, so the pair-collapsed "raw template" unit and the pre-selection boundary both
     * need separate definition here.  Adding the tags requires settling those semantics first.

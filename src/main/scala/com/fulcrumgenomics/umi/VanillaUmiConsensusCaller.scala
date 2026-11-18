@@ -221,7 +221,9 @@ class VanillaUmiConsensusCaller(override val readNamePrefix: String,
 
   /** Takes in all the SamRecords for a single source molecule and produces consensus records. */
   override protected def consensusSamRecordsFromSamRecords(recs: Seq[SamRecord]): Seq[SamRecord] = {
-    val rawCounts = rawSourceCounts(recs)
+    // Lazy so that the raw family is only counted when a consensus is actually emitted; `recs` is the family as
+    // grouped, so the counts are still taken before family selection and downsampling.
+    lazy val rawCounts = rawSourceCounts(recs)
     val cellBarcode: Option[String] = this.cellTag.flatMap { tag =>
       val barcodes = recs.flatMap(_.get[String](tag)).distinct
       require(barcodes.length <= 1, s"Multiple different cell barcodes found for tag $tag: $barcodes")

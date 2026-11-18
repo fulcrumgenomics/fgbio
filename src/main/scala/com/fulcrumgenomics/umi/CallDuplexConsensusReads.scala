@@ -89,15 +89,18 @@ import htsjdk.samtools.SAMTag
     |The raw template and record counts (`aT`/`bT`/`cT` and `aR`/`bR`/`cR`) describe the tag family as it was
     |grouped, before filtering to the most common alignment and before downsampling with `--max-reads-per-strand`.
     |Template counts are collapsed by read name, so a read and its mate count once; record counts are not.
-    |Both are duplicated on the two reads of each emitted consensus pair.  Because this tool rejects fragment
-    |reads before consensus calling, fragments are excluded from all six counts.  Secondary and supplementary
-    |records are also excluded, as they are filtered out before consensus calling.
+    |Because this tool rejects fragment reads before consensus calling, fragments are excluded from all six counts.
+    |Secondary and supplementary records are also excluded, as they are filtered out before consensus calling.
     |
-    |The per-strand counts `aT`/`bT` and `aR`/`bR` are keyed on the `/A` vs. `/B` suffix of the `MI` tag, and not
-    |on which single-strand consensus ended up in the `a` or `b` slot of the emitted read.  When only one
-    |single-strand consensus survives, it is reported in the `a` tags whichever strand it came from, so `aD`/`aM`/`aE`
-    |may describe the `/B` strand while `aT`/`aR` still describe `/A`.  Differences such as `aT` minus `aD` are
-    |therefore not meaningful; compare `cT` to `cD` instead.
+    |The per-strand counts `aT`/`bT` and `aR`/`bR` describe the same source strand as `aD`/`bD`: the strand whose
+    |single-strand consensus is reported in that slot, so `aT` is never less than `aD`.  The difference between them
+    |reflects raw templates from that strand that were dropped by consensus-family selection and downsampling, but is
+    |not an exact count of them: `aD` is the maximum per-base depth, which no-calls, low-quality bases and the depth
+    |cap can lower even when no template was dropped.  When only one single-strand consensus
+    |forms, it is reported in the `a` tags whichever strand it came from, and `bT`/`bR` are zero like `bD`; the strand
+    |that formed no consensus is still counted in `cT`/`cR`.  The whole-family counts `cT`/`cR` are the same on both
+    |reads of an emitted consensus pair, but the per-strand counts can differ between them when one strand forms a
+    |single-strand consensus for one read and not the other.
     |
     |## Single-Cell / Cell Barcode Support
     |

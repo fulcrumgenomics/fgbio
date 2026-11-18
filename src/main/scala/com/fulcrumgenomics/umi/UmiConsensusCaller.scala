@@ -112,7 +112,11 @@ object UmiConsensusCaller {
     require(bases.length == quals.length, "Bases and qualities are not the same length.")
   }
 
-  /** Stores raw input-family sizes before consensus-family selection. */
+  /** Stores the size of a raw input family as it was grouped, before consensus-family selection and downsampling.
+    *
+    * @param templateCount the number of distinct templates (read names), so a read and its mate count once
+    * @param recordCount the number of SAM records
+    */
   case class RawSourceCounts(templateCount: Int, recordCount: Int)
 
   /**
@@ -232,29 +236,18 @@ trait UmiConsensusCaller[ConsensusRead <: SimpleRead] {
     RawSourceCounts(templateCount=recs.iterator.map(_.name).toSet.size, recordCount=recs.size)
   }
 
-  /** Adds raw input-family count tags to a consensus record.
+  /** Adds the whole-family raw count tags (`cT` and `cR`) to a consensus record.
     *
-    * The optional `ab` and `ba` counts add the per-strand tags and should only be supplied by duplex-style
-    * callers that can attribute raw records to a single source strand.
+    * The per-strand duplex counts (`aT`/`bT`/`aR`/`bR`) are not set here: they follow the single-strand consensus
+    * reported in each of the `a` and `b` slots, so [[DuplexConsensusCaller]] sets them where that slot is decided.
     *
     * NOTE: this is invoked from each caller's `consensusSamRecordsFromSamRecords` implementation. Any subclass
     * that overrides `consensusSamRecordsFromSamRecords` without calling this method will silently emit consensus
     * records with no raw-family count tags. [[CodecConsensusCaller]] does exactly that, deliberately.
     */
-  protected def addRawSourceCounts(rec: SamRecord,
-                                   counts: RawSourceCounts,
-                                   ab: Option[RawSourceCounts] = None,
-                                   ba: Option[RawSourceCounts] = None): SamRecord = {
+  protected def addRawSourceCounts(rec: SamRecord, counts: RawSourceCounts): SamRecord = {
     rec(ConsensusTags.PerRead.RawTemplateCount) = counts.templateCount
     rec(ConsensusTags.PerRead.RawRecordCount)   = counts.recordCount
-    ab.foreach { c =>
-      rec(ConsensusTags.PerRead.AbRawTemplateCount) = c.templateCount
-      rec(ConsensusTags.PerRead.AbRawRecordCount)   = c.recordCount
-    }
-    ba.foreach { c =>
-      rec(ConsensusTags.PerRead.BaRawTemplateCount) = c.templateCount
-      rec(ConsensusTags.PerRead.BaRawRecordCount)   = c.recordCount
-    }
     rec
   }
 

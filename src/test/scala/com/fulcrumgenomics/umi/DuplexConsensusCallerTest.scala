@@ -89,36 +89,7 @@ class DuplexConsensusCallerTest extends UnitSpec with OptionValues {
     r2.quals(0) > 30 shouldBe true
   }
 
-  it should "tag duplex consensus records with pre-selection raw template and record counts" in {
-    val builder = new SamBuilder(readLength=10, baseQuality=20)
-    builder.addPair(name="ab1", start1=100, start2=200, strand1=Plus,  strand2=Minus, cigar1="10M",    cigar2="10M", bases1="AAAAAAAAAA", bases2="CCCCCCCCCC", attrs=Map(MI -> "foo/A"))
-    builder.addPair(name="ab2", start1=100, start2=200, strand1=Plus,  strand2=Minus, cigar1="10M",    cigar2="10M", bases1="AAAAAAAAAA", bases2="CCCCCCCCCC", attrs=Map(MI -> "foo/A"))
-    builder.addPair(name="ab3", start1=100, start2=200, strand1=Plus,  strand2=Minus, cigar1="5M1D5M", cigar2="10M", bases1="AAAAAAAAAA", bases2="CCCCCCCCCC", attrs=Map(MI -> "foo/A"))
-    builder.addPair(name="ba1", start1=200, start2=100, strand1=Minus, strand2=Plus,  cigar1="10M",    cigar2="10M", bases1="CCCCCCCCCC", bases2="AAAAAAAAAA", attrs=Map(MI -> "foo/B"))
-    builder.addPair(name="ba2", start1=200, start2=100, strand1=Minus, strand2=Plus,  cigar1="10M",    cigar2="10M", bases1="CCCCCCCCCC", bases2="AAAAAAAAAA", attrs=Map(MI -> "foo/B"))
-
-    val recs = c.consensusReadsFromSamRecords(builder.toSeq)
-    recs should have size 2
-
-    val r1 = recs.find(_.firstOfPair).value
-    val r2 = recs.find(_.secondOfPair).value
-
-    { import ConsensusTags.PerRead._
-      r1[Int](RawTemplateCount) shouldBe 5
-      r1[Int](RawRecordCount)   shouldBe 10
-      r1[Int](RawReadCount)     shouldBe 4
-      r1[Int](AbRawReadCount)   shouldBe 2
-      r1[Int](BaRawReadCount)   shouldBe 2
-
-      r2[Int](RawTemplateCount) shouldBe 5
-      r2[Int](RawRecordCount)   shouldBe 10
-      r2[Int](RawReadCount)     shouldBe 5
-      r2[Int](AbRawReadCount)   shouldBe 3
-      r2[Int](BaRawReadCount)   shouldBe 2
-    }
-  }
-
-  it should "tag duplex consensus records with per-strand raw template and record counts" in {
+  it should "tag duplex consensus records with pre-selection whole-family and per-strand raw counts" in {
     val builder = new SamBuilder(readLength=10, baseQuality=20)
     // Three AB templates, one of which (ab3) carries a minority deletion on R1 and is discarded
     builder.addPair(name="ab1", start1=100, start2=200, strand1=Plus,  strand2=Minus, cigar1="10M",    cigar2="10M", bases1="AAAAAAAAAA", bases2="CCCCCCCCCC", attrs=Map(MI -> "foo/A"))
@@ -135,9 +106,17 @@ class DuplexConsensusCallerTest extends UnitSpec with OptionValues {
     val r2 = recs.find(_.secondOfPair).value
 
     { import ConsensusTags.PerRead._
-      // Whole-bundle counts are unchanged by this task
-      r1[Int](RawTemplateCount)   shouldBe 5
-      r1[Int](RawRecordCount)     shouldBe 10
+      // Whole-family counts: 5 templates, 10 records, on both reads.  These are pre-selection, unlike cD.
+      Seq(r1, r2).foreach { rec =>
+        rec[Int](RawTemplateCount) shouldBe 5
+        rec[Int](RawRecordCount)   shouldBe 10
+      }
+      r1[Int](RawReadCount)   shouldBe 4
+      r1[Int](AbRawReadCount) shouldBe 2
+      r1[Int](BaRawReadCount) shouldBe 2
+      r2[Int](RawReadCount)   shouldBe 5
+      r2[Int](AbRawReadCount) shouldBe 3
+      r2[Int](BaRawReadCount) shouldBe 2
 
       // Per-strand counts: 3 AB templates (6 records), 2 BA templates (4 records).
       // These are pre-selection, so ab3's discarded minority alignment is still counted.
@@ -158,7 +137,7 @@ class DuplexConsensusCallerTest extends UnitSpec with OptionValues {
     }
   }
 
-  it should "key the per-strand raw counts on the MI suffix even when aD describes the other strand" in {
+  it should "report the per-strand raw counts for the same strand as aD and bD when only one strand forms a consensus" in {
     val builder = new SamBuilder(readLength=10, baseQuality=20)
     // Two AB templates whose R2s carry a minority deletion, and three clean BA templates.  The AB-R2s and BA-R1s are
     // filtered to the most common alignment together, so the AB-R2s lose and no AB-R2 consensus is formed.
@@ -176,24 +155,31 @@ class DuplexConsensusCallerTest extends UnitSpec with OptionValues {
     val r2 = recs.find(_.secondOfPair).value
 
     { import ConsensusTags.PerRead._
-      // The raw counts always follow the MI suffix: two /A templates (four records), three /B (six records).
+      // The whole-family counts are the same on both reads: five templates, ten records.
       Seq(r1, r2).foreach { rec =>
-        rec[Int](AbRawTemplateCount) shouldBe 2
-        rec[Int](BaRawTemplateCount) shouldBe 3
-        rec[Int](AbRawRecordCount)   shouldBe 4
-        rec[Int](BaRawRecordCount)   shouldBe 6
+        rec[Int](RawTemplateCount) shouldBe 5
+        rec[Int](RawRecordCount)   shouldBe 10
       }
 
-      // On R1 both strands form a single-strand consensus, so aD/bD line up with aT/bT.
-      r1[Int](AbRawReadCount) shouldBe 2
-      r1[Int](BaRawReadCount) shouldBe 3
+      // On R1 both strands form a single-strand consensus: /A (two templates, four records) is in the a slot and
+      // /B (three templates, six records) in the b slot.
+      r1[Int](AbRawReadCount)     shouldBe 2
+      r1[Int](BaRawReadCount)     shouldBe 3
+      r1[Int](AbRawTemplateCount) shouldBe 2
+      r1[Int](AbRawRecordCount)   shouldBe 4
+      r1[Int](BaRawTemplateCount) shouldBe 3
+      r1[Int](BaRawRecordCount)   shouldBe 6
 
-      // On R2 only the /B strand forms a single-strand consensus, and it is promoted into the a-slot.  So aD
-      // describes /B here while aT still describes /A.  This is intentional: the two tag families are keyed
-      // differently, and differences such as `aT - aD` are not meaningful.
-      r2[Int](AbRawReadCount) shouldBe 3
-      r2[Int](BaRawReadCount) shouldBe 0
-      r2[Int](AbRawTemplateCount) < r2[Int](AbRawReadCount) shouldBe true
+      // On R2 only the /B strand forms a single-strand consensus, and it is promoted into the a slot.  The raw
+      // counts move with it, so every a-slot tag describes /B and the empty b slot is zero throughout.  The /A
+      // strand is still counted in cT/cR.
+      r2[Int](AbRawReadCount)     shouldBe 3
+      r2[Int](BaRawReadCount)     shouldBe 0
+      r2[Int](AbRawTemplateCount) shouldBe 3
+      r2[Int](AbRawRecordCount)   shouldBe 6
+      r2[Int](BaRawTemplateCount) shouldBe 0
+      r2[Int](BaRawRecordCount)   shouldBe 0
+      r2[Int](RawTemplateCount) - r2[Int](AbRawTemplateCount) - r2[Int](BaRawTemplateCount) shouldBe 2
     }
   }
 
@@ -663,8 +649,8 @@ class DuplexConsensusCallerTest extends UnitSpec with OptionValues {
         r2[Float](AbRawReadErrorRate)  shouldBe 1/30f
         r2[Float](BaRawReadErrorRate)  shouldBe 0f
 
-        // All six raw family count tags are written here too.  The lone strand's counts land in aT/aR even though
-        // it is the /B strand, and bT/bR are zero.  NB: two of the three pairs above share the read name "q2", so
+        // All six raw family count tags are written here too.  The lone /B strand is reported in the a slot, so its
+        // counts land in aT/aR, and bT/bR are zero.  NB: two of the three pairs above share the read name "q2", so
         // the template count collapses them to two templates.
         Seq(r1, r2).foreach { rec =>
           rec[Int](RawTemplateCount)   shouldBe 2
@@ -721,5 +707,31 @@ class DuplexConsensusCallerTest extends UnitSpec with OptionValues {
       read.abConsensus shouldBe ba
       read.baConsensus.isEmpty shouldBe true
     }
+  }
+
+  it should "move the raw counts with their strand's single-strand consensus" in {
+    val cc    = caller(minReads=Seq(1, 1, 0))
+    val empty = VanillaConsensusRead(id="ab", bases="NNN".getBytes, quals="III".getBytes, depths=Array(0, 0, 0), errors=Array(0, 0, 0))
+    val full  = empty.copy(depths=Array(1, 1, 1))
+    val abRaw = UmiConsensusCaller.RawSourceCounts(templateCount=2, recordCount=4)
+    val baRaw = UmiConsensusCaller.RawSourceCounts(templateCount=3, recordCount=6)
+
+    def call(ab: VanillaConsensusRead, ba: VanillaConsensusRead): DuplexConsensusCaller.DuplexConsensusRead =
+      cc.duplexConsensus(ab=Some(ab), ba=Some(ba), sourceReads=Some(Seq.empty), abRawCounts=Some(abRaw), baRawCounts=Some(baRaw)).value
+
+    // Both strands form a consensus, so each keeps its own counts.
+    { val read = call(ab=full, ba=full); read.abRawCounts.value shouldBe abRaw; read.baRawCounts.value shouldBe baRaw }
+    // Only the BA strand has depth, so it and its counts are promoted into the AB slot.
+    { val read = call(ab=empty, ba=full); read.abRawCounts.value shouldBe baRaw; read.baRawCounts shouldBe None }
+    // Only the AB strand has depth.
+    { val read = call(ab=full, ba=empty); read.abRawCounts.value shouldBe abRaw; read.baRawCounts shouldBe None }
+  }
+
+  "DuplexConsensusCaller.DuplexConsensusRead" should "require a BA consensus when BA raw counts are given" in {
+    val ss = VanillaConsensusRead(id="ab", bases="AAA".getBytes, quals="III".getBytes, depths=Array(1, 1, 1), errors=Array(0, 0, 0))
+    an[IllegalArgumentException] should be thrownBy DuplexConsensusCaller.DuplexConsensusRead(
+      id="x", bases=ss.bases, quals=ss.quals, errors=Array[Short](0, 0, 0), abConsensus=ss, baConsensus=None,
+      baRawCounts=Some(UmiConsensusCaller.RawSourceCounts(templateCount=1, recordCount=2))
+    )
   }
 }

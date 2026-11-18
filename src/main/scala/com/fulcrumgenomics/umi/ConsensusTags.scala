@@ -38,16 +38,12 @@ package com.fulcrumgenomics.umi
   *   per-read-depth        aD  bD  cD
   *   per-read-min-depth    aM  bM  cM
   *   per-read-error-rate   aE  bE  cE
-  *   per-read-template-ct  aT  bT  cT  *
-  *   per-read-record-ct    aR  bR  cR  *
+  *   per-read-template-ct  aT  bT  cT
+  *   per-read-record-ct    aR  bR  cR
   *   per-base-depth        ad  bd  cd
   *   per-base-error-count  ae  be  ce
   *   per-base-bases        ac  bc  bases
   *   per-base-quals        aq  bq  quals
-  *
-  * (*) The starred rows are keyed on the `/A` vs. `/B` suffix of the `MI` tag rather than on which single-strand
-  * consensus is reported in the `a` vs. `b` tags, so they do not always describe the same strand as the rows above
-  * them.  See the note on `PerRead.AbRawTemplateCount` below.
   */
 object ConsensusTags {
   /** The default field in which to look for UMI sequences and qualities. */
@@ -108,20 +104,17 @@ object ConsensusTags {
     /** The number of raw SAM records in the input family before consensus-family selection. */
     val RawRecordCount     = "cR" // consensus raw Record count
 
-    // NOTE: the four per-strand raw counts below are keyed on the `/A` vs. `/B` suffix of the `MI` tag: when both
-    // suffixes are present the `/A` family is reported in `aT`/`aR` and the `/B` family in `bT`/`bR`, and when only
-    // one is present it is reported in `aT`/`aR` with `bT`/`bR` zero.  They are NOT keyed on which single-strand
-    // consensus is reported in the `a` vs. `b` tags: when both strands are present in the raw family but only one of
-    // them yields a single-strand consensus, that consensus is reported in `aD`/`aM`/`aE` whichever strand it came
-    // from.  So `aD` may describe the `/B` strand while `aT` still describes `/A`, and differences such as
-    // `aT - aD` are not meaningful.
-    /** The number of raw templates in the `/A` MI-suffix input family before consensus-family selection. */
+    // NOTE: the four per-strand raw counts below describe the source strand whose single-strand consensus is
+    // reported in the same `a` or `b` slot as `aD`/`bD`.  When only one strand yields a single-strand consensus it is
+    // reported in the `a` slot whichever strand it came from, and `bT`/`bR` are zero like `bD`.  A strand that forms
+    // no single-strand consensus is therefore counted only in `cT`/`cR`.
+    /** The number of raw templates, before consensus-family selection, in the strand reported in the `a` slot. */
     val AbRawTemplateCount = "aT"
-    /** The number of raw templates in the `/B` MI-suffix input family before consensus-family selection. */
+    /** The number of raw templates, before consensus-family selection, in the strand reported in the `b` slot. */
     val BaRawTemplateCount = "bT"
-    /** The number of raw SAM records in the `/A` MI-suffix input family before consensus-family selection. */
+    /** The number of raw SAM records, before consensus-family selection, in the strand reported in the `a` slot. */
     val AbRawRecordCount   = "aR"
-    /** The number of raw SAM records in the `/B` MI-suffix input family before consensus-family selection. */
+    /** The number of raw SAM records, before consensus-family selection, in the strand reported in the `b` slot. */
     val BaRawRecordCount   = "bR"
 
     // Duplex versions of the above tags for the two single strand consensus reads
