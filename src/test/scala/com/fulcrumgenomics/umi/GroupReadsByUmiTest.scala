@@ -511,16 +511,45 @@ class GroupReadsByUmiTest extends UnitSpec with OptionValues with PrivateMethodT
     readBamRecs(out).map(_.name).distinct shouldBe Seq("a01", "a02")
   }
 
-  it should "fail when umis have different length" in {
+  it should "group paired UMIs of different lengths separately with the paired strategy" in {
     val builder = new SamBuilder(readLength=100, sort=Some(SamOrder.Coordinate))
-    builder.addPair(name="a01", start1=100, start2=300, strand1=Plus,  strand2=Minus, attrs=Map("RX" -> "ACT-ACT"))
-    builder.addPair(name="a02", start1=100, start2=300, strand1=Plus,  strand2=Minus, attrs=Map("RX" -> "ACT-AC"))
+    // Molecule 1 has two 6bp UMIs, molecule 2 two 3bp UMIs; each is seen from both strands (F1R2 and F2R1)
+    Seq("a" -> "ACTACT-GGGGGG", "c" -> "ACT-GGG").foreach { case (prefix, umi) =>
+      Range.inclusive(1, 4).foreach(i => builder.addPair(name=f"${prefix}0$i", start1=100, start2=300, strand1=Plus, strand2=Minus, attrs=Map("RX" -> umi)))
+    }
+    Seq("b" -> "GGGGGG-ACTACT", "d" -> "GGG-ACT").foreach { case (prefix, umi) =>
+      Range.inclusive(1, 4).foreach(i => builder.addPair(name=f"${prefix}0$i", start1=300, start2=100, strand1=Minus, strand2=Plus, attrs=Map("RX" -> umi)))
+    }
 
-    val in   = builder.toTempFile()
-    val out  = Files.createTempFile("umi_grouped.", ".sam")
-    val tool = new GroupReadsByUmi(input=in, output=out, familySizeHistogram=None, rawTag="RX", assignTag="MI", strategy=Strategy.Paired, edits=1)
+    val in  = builder.toTempFile()
+    val out = Files.createTempFile("umi_grouped.", ".sam")
+    new GroupReadsByUmi(input=in, output=out, rawTag="RX", assignTag="MI", strategy=Strategy.Paired, edits=1).execute()
 
-    an[Exception] should be thrownBy tool.execute()
+    val idsByPrefix = readBamRecs(out).groupBy(_.name.take(1)).map { case (prefix, recs) => prefix -> recs.map(r => r[String]("MI")).distinct }
+    idsByPrefix.values.foreach(ids => ids should have size 1)
+    val Seq(a, b, c, d) = Seq("a", "b", "c", "d").map(p => idsByPrefix(p).head)
+
+    // a and b are the two strands of molecule 1, and c and d the two strands of molecule 2
+    a.takeWhile(_ != '/') shouldBe b.takeWhile(_ != '/')
+    c.takeWhile(_ != '/') shouldBe d.takeWhile(_ != '/')
+    a should not equal b
+    c should not equal d
+    a.takeWhile(_ != '/') should not equal c.takeWhile(_ != '/')
+  }
+
+  it should "group the two strands of a paired UMI whose two UMIs have different lengths with the paired strategy" in {
+    val builder = new SamBuilder(readLength=100, sort=Some(SamOrder.Coordinate))
+    // The 6bp UMI is always on the read at the lower coordinate, so F1R2 reads are ACTACT-GGG and F2R1 reads GGG-ACTACT
+    Range.inclusive(1, 4).foreach(i => builder.addPair(name=f"a0$i", start1=100, start2=300, strand1=Plus,  strand2=Minus, attrs=Map("RX" -> "ACTACT-GGG")))
+    Range.inclusive(1, 4).foreach(i => builder.addPair(name=f"b0$i", start1=300, start2=100, strand1=Minus, strand2=Plus,  attrs=Map("RX" -> "GGG-ACTACT")))
+
+    val in  = builder.toTempFile()
+    val out = Files.createTempFile("umi_grouped.", ".sam")
+    new GroupReadsByUmi(input=in, output=out, rawTag="RX", assignTag="MI", strategy=Strategy.Paired, edits=1).execute()
+
+    val recs = readBamRecs(out)
+    recs.filter(_.name.startsWith("a")).map(r => r[String]("MI")).distinct shouldBe Seq("0/A")
+    recs.filter(_.name.startsWith("b")).map(r => r[String]("MI")).distinct shouldBe Seq("0/B")
   }
 
   it should "not consider read-pairs with the same coordinates but different pair orientations as being from the same molecule" in {
@@ -590,31 +619,91 @@ class GroupReadsByUmiTest extends UnitSpec with OptionValues with PrivateMethodT
 
       builder.addPair(name="a01", start1=100, start2=300, strand1=Plus,  strand2=Minus, attrs=Map("RX" -> "ACTACT"))
       builder.addPair(name="a02", start1=100, start2=300, strand1=Plus,  strand2=Minus, attrs=Map("RX" -> "ACTAC"))
+      builder.addPair(name="a03", start1=100, start2=300, strand1=Plus,  strand2=Minus, attrs=Map("RX" -> "ACTACTA"))
 
       val in   = builder.toTempFile()
       val out  = Files.createTempFile("umi_grouped.", ".sam")
       new GroupReadsByUmi(input=in, output=out, familySizeHistogram=None, rawTag="RX", assignTag="MI", strategy=strategy, edits=0, minUmiLength=Some(6)).execute()
 
+      // a02 is too short, and without --truncate the 6bp and 7bp UMIs are separate molecules
       val recs = readBamRecs(out)
-      recs should have length 2
-      recs.map(_.name) should contain theSameElementsInOrderAs Seq("a01", "a01")
-      recs.map(r => r[String]("MI")).distinct should have length 1
+      recs.map(_.name) should contain theSameElementsAs Seq("a01", "a01", "a03", "a03")
+      recs.groupBy(r => r[String]("MI")).values.map(_.map(_.name).toSet).toSet shouldBe Set(Set("a01"), Set("a03"))
     }
 
-    it should s"truncate to the specified minimum length with the $strategy strategy" in {
+    it should s"truncate to the specified minimum length with --truncate and the $strategy strategy" in {
       val builder = new SamBuilder(readLength=100, sort=Some(SamOrder.Coordinate))
       builder.addPair(name="a01", start1=100, start2=300, strand1=Plus,  strand2=Minus, attrs=Map("RX" -> "ACTACT"))
       builder.addPair(name="a02", start1=100, start2=300, strand1=Plus,  strand2=Minus, attrs=Map("RX" -> "ACTAC"))
+      builder.addPair(name="a03", start1=100, start2=300, strand1=Plus,  strand2=Minus, attrs=Map("RX" -> "ACTACTA"))
 
       val in   = builder.toTempFile()
       val out  = Files.createTempFile("umi_grouped.", ".sam")
-      new GroupReadsByUmi(input=in, output=out, familySizeHistogram=None, rawTag="RX", assignTag="MI", strategy=strategy, edits=0, minUmiLength=Some(5)).execute()
+      new GroupReadsByUmi(input=in, output=out, familySizeHistogram=None, rawTag="RX", assignTag="MI", strategy=strategy, edits=0, minUmiLength=Some(5), truncate=true).execute()
 
       val recs = readBamRecs(out)
-      recs should have length 4
-      recs.map(_.name) should contain theSameElementsInOrderAs Seq("a01", "a01", "a02", "a02")
+      recs.map(_.name) should contain theSameElementsAs Seq("a01", "a01", "a02", "a02", "a03", "a03")
       recs.map(r => r[String]("MI")).distinct should have length 1 // all should be assigned to one molecule
+      recs.map(r => r[String]("RX")).distinct should contain theSameElementsAs Seq("ACTACT", "ACTAC", "ACTACTA") // the raw UMIs are not changed
     }
+
+    it should s"truncate to --min-umi-length even when every UMI is longer with --truncate and the $strategy strategy" in {
+      // All UMIs have seven bases and differ only in the seventh, so truncating to six bases groups them together
+      val umis = Seq("a01" -> "ACTACTC", "a02" -> "ACTACTC", "a03" -> "ACTACTG", "a04" -> "ACTACTG")
+      groupFragsByMi(umis, strategy=strategy, edits=0, minUmiLength=Some(6), truncate=true) shouldBe Set(Set("a01", "a02", "a03", "a04"))
+    }
+
+    it should s"not group UMIs with the same number of bases but different segment lengths with the $strategy strategy" in {
+      val edits = if (strategy == Strategy.Identity) 0 else 1
+      // The symmetric dual UMIs differ by length (8+8 vs 7+7), and the asymmetric ones by which segment is longer
+      val umis = Seq(
+        "a01" -> "AAAAAAAA-CCCCCCCC", "a02" -> "AAAAAAAA-CCCCCCCC", "a03" -> "AAAAAAAA-CCCCCCCG",
+        "b01" -> "AAAAAAA-CCCCCCC",   "b02" -> "AAAAAAA-CCCCCCC",   "b03" -> "AAAAAAA-CCCCCCG",
+        "c01" -> "ACTACT-GGG",        "c02" -> "ACTACT-GGG",
+        "d01" -> "ACTAC-TGGG",        "d02" -> "ACTAC-TGGG",
+        "e01" -> "ACGT",              "e02" -> "ACGT-",
+      )
+      val expected = if (strategy == Strategy.Identity) {
+        Set(Set("a01", "a02"), Set("a03"), Set("b01", "b02"), Set("b03"), Set("c01", "c02"), Set("d01", "d02"), Set("e01"), Set("e02"))
+      } else {
+        Set(Set("a01", "a02", "a03"), Set("b01", "b02", "b03"), Set("c01", "c02"), Set("d01", "d02"), Set("e01"), Set("e02"))
+      }
+      groupFragsByMi(umis, strategy=strategy, edits=edits, minUmiLength=None) shouldBe expected
+    }
+  }
+
+  "GroupReadsByUmi" should "group single-end reads with UMIs of different lengths separately" in {
+    val builder = new SamBuilder(readLength=100, sort=Some(SamOrder.Coordinate))
+    builder.addFrag(name="a01", start=100, attrs=Map("RX" -> "AAAAAAAA"))
+    builder.addFrag(name="a02", start=100, attrs=Map("RX" -> "AAAAAAAA"))
+    builder.addFrag(name="a03", start=100, attrs=Map("RX" -> "ACACACA"))
+    builder.addFrag(name="a04", start=100, attrs=Map("RX" -> "ACACACC"))
+    builder.addFrag(name="a05", start=100, attrs=Map("RX" -> "AAAAAAA"))
+    builder.addFrag(name="a06", start=105, attrs=Map("RX" -> "AGTAGG"))
+    builder.addFrag(name="a07", start=105, attrs=Map("RX" -> "AGTAGG"))
+
+    val in  = builder.toTempFile()
+    val out = Files.createTempFile("umi_grouped.", ".sam")
+    new GroupReadsByUmi(input=in, output=out, rawTag="RX", assignTag="MI", strategy=Strategy.Edit, edits=1).execute()
+
+    // a05 is one edit from a01 and a02, but is shorter, so it is a separate molecule
+    val groups = readBamRecs(out).groupBy(r => r[String]("MI")).values.map(_.map(_.name).toSet).toSet
+    groups shouldBe Set(Set("a01", "a02"), Set("a03", "a04"), Set("a05"), Set("a06", "a07"))
+  }
+
+  it should "discard single-end reads with UMIs shorter than --min-umi-length but not group UMIs of different lengths without --truncate" in {
+    val umis = Seq("a01" -> "AGTAGGCC", "a02" -> "AGTAGGCC", "a03" -> "AGTAGGC", "a04" -> "AGTAGGC", "a05" -> "AGTAGG", "a06" -> "AGTAGG")
+    groupFragsByMi(umis, strategy=Strategy.Edit, edits=1, minUmiLength=Some(7)) shouldBe Set(Set("a01", "a02"), Set("a03", "a04"))
+  }
+
+  it should "group single-end reads with UMIs of different lengths with --min-umi-length and --truncate" in {
+    val umis = Seq("a01" -> "AGTAGGCC", "a02" -> "AGTAGGCC", "a03" -> "AGTAGGC", "a04" -> "AGTAGGC", "a05" -> "AGTAGG", "a06" -> "AGTAGG")
+    groupFragsByMi(umis, strategy=Strategy.Edit, edits=1, minUmiLength=Some(7), truncate=true) shouldBe Set(Set("a01", "a02", "a03", "a04"))
+  }
+
+  it should "reject --truncate without --min-umi-length" in {
+    val ex = intercept[ValidationException] { new GroupReadsByUmi(rawTag="RX", assignTag="MI", strategy=Strategy.Edit, edits=1, truncate=true) }
+    ex.messages.mkString("\n") should include ("--truncate requires --min-umi-length")
   }
 
   /** Runs GroupReadsByUmi on single-end reads at the same position and returns the read names grouped by molecule ID.
@@ -623,13 +712,14 @@ class GroupReadsByUmiTest extends UnitSpec with OptionValues with PrivateMethodT
                              strategy: Strategy,
                              edits: Int,
                              minUmiLength: Option[Int],
+                             truncate: Boolean = false,
                              sortOrder: SamOrder = SamOrder.Coordinate): Set[Set[String]] = {
     val builder = new SamBuilder(readLength=100, sort=Some(sortOrder))
     umis.foreach { case (name, umi) => builder.addFrag(name=name, start=100, attrs=Map("RX" -> umi)) }
 
     val in   = builder.toTempFile()
     val out  = Files.createTempFile("umi_grouped.", ".sam")
-    new GroupReadsByUmi(input=in, output=out, familySizeHistogram=None, rawTag="RX", assignTag="MI", strategy=strategy, edits=edits, minUmiLength=minUmiLength).execute()
+    new GroupReadsByUmi(input=in, output=out, familySizeHistogram=None, rawTag="RX", assignTag="MI", strategy=strategy, edits=edits, minUmiLength=minUmiLength, truncate=truncate).execute()
 
     readBamRecs(out).groupBy(r => r[String]("MI")).values.map(_.map(_.name).toSet).toSet
   }
@@ -642,9 +732,11 @@ class GroupReadsByUmiTest extends UnitSpec with OptionValues with PrivateMethodT
     }
   }
 
-  it should "reject --min-umi-length with the paired strategy" in {
-    an[ValidationException] shouldBe thrownBy {
-      new GroupReadsByUmi(rawTag="RX", assignTag="MI", strategy=Strategy.Paired, minUmiLength=Some(4))
+  Seq(false, true).foreach { truncate =>
+    it should s"reject --min-umi-length with the paired strategy and --truncate=$truncate" in {
+      an[ValidationException] shouldBe thrownBy {
+        new GroupReadsByUmi(rawTag="RX", assignTag="MI", strategy=Strategy.Paired, minUmiLength=Some(4), truncate=truncate)
+      }
     }
   }
 
@@ -665,9 +757,9 @@ class GroupReadsByUmiTest extends UnitSpec with OptionValues with PrivateMethodT
     groupFragsByMi(Seq("a01" -> "ACGTn", "a02" -> "ACGTA"), strategy=Strategy.Identity, edits=0, minUmiLength=None) shouldBe Set(Set("a02"))
   }
 
-  Seq(None, Some(8)).foreach { minUmiLength =>
-    it should s"group UMIs that differ only by case with the adjacency strategy and --min-umi-length=$minUmiLength" in {
-      groupFragsByMi(Seq("a01" -> "aaaaaaaa", "a02" -> "AAAAAAAA"), strategy=Strategy.Adjacency, edits=1, minUmiLength=minUmiLength) shouldBe Set(Set("a01", "a02"))
+  Seq((None, false), (Some(8), false), (Some(8), true)).foreach { case (minUmiLength, truncate) =>
+    it should s"group UMIs that differ only by case with the adjacency strategy, --min-umi-length=$minUmiLength and --truncate=$truncate" in {
+      groupFragsByMi(Seq("a01" -> "aaaaaaaa", "a02" -> "AAAAAAAA"), strategy=Strategy.Adjacency, edits=1, minUmiLength=minUmiLength, truncate=truncate) shouldBe Set(Set("a01", "a02"))
     }
   }
 
@@ -682,35 +774,42 @@ class GroupReadsByUmiTest extends UnitSpec with OptionValues with PrivateMethodT
     it should s"compare only the bases of UMIs containing dashes when truncating with the $strategy strategy" in {
       // Comparing bases gives "ACGTT" vs "ACGTA" (one mismatch); comparing characters would align the dashes against
       // bases, e.g. "AC-GTT" vs "ACGTA-" (four mismatches).
-      groupFragsByMi(Seq("a01" -> "AC-GTT", "a02" -> "ACGTA-T"), strategy=strategy, edits=1, minUmiLength=Some(5)) shouldBe Set(Set("a01", "a02"))
-      groupFragsByMi(Seq("a01" -> "ACGTAC-", "a02" -> "TCGTACG-TT"), strategy=strategy, edits=1, minUmiLength=Some(6)) shouldBe Set(Set("a01", "a02"))
-      // The shortest UMI has six bases, more than --min-umi-length: "ACGTTA" vs "ACGTAC" has two mismatches, so the
-      // reads must stay apart.  Truncating to five bases ("ACGTT" vs "ACGTA") would wrongly merge them.
-      groupFragsByMi(Seq("a01" -> "AC-GTTA", "a02" -> "ACGTA-C"), strategy=strategy, edits=1, minUmiLength=Some(5)) shouldBe Set(Set("a01"), Set("a02"))
+      groupFragsByMi(Seq("a01" -> "AC-GTT", "a02" -> "ACGTA-T"), strategy=strategy, edits=1, minUmiLength=Some(5), truncate=true) shouldBe Set(Set("a01", "a02"))
+      groupFragsByMi(Seq("a01" -> "ACGTAC-", "a02" -> "TCGTACG-TT"), strategy=strategy, edits=1, minUmiLength=Some(6), truncate=true) shouldBe Set(Set("a01", "a02"))
+      // Both UMIs have six bases, more than --min-umi-length, and "ACGTTA" vs "ACGTAC" has two mismatches.  UMIs are
+      // truncated to --min-umi-length, not to the shortest UMI, so "ACGTT" vs "ACGTA" (one mismatch) are grouped.
+      groupFragsByMi(Seq("a01" -> "AC-GTTA", "a02" -> "ACGTA-C"), strategy=strategy, edits=1, minUmiLength=Some(5), truncate=true) shouldBe Set(Set("a01", "a02"))
+    }
+
+    it should s"not group UMIs whose segments have different lengths without --truncate with the $strategy strategy" in {
+      // One mismatch apart if the dashes are ignored, but the segment lengths differ (2+4 vs 5+1)
+      groupFragsByMi(Seq("a01" -> "AC-GTTA", "a02" -> "ACGTA-A"), strategy=strategy, edits=1, minUmiLength=Some(5)) shouldBe Set(Set("a01"), Set("a02"))
     }
   }
 
-  // When only identical UMIs are grouped, UMIs are split by their first --min-umi-length bases and each split is
-  // truncated to its own shortest UMI, whether the tool sorts the input or the input is already TemplateCoordinate.
+  // When only identical UMIs are grouped, the tool groups reads by UMI while sorting.  The grouping must be the same
+  // whether the tool sorts the input or the input is already TemplateCoordinate sorted.
   for (sortOrder <- Seq(SamOrder.Coordinate, SamOrder.TemplateCoordinate); (strategy, edits) <- Seq(Strategy.Identity -> 0, Strategy.Edit -> 0, Strategy.Adjacency -> 0)) {
     val desc = s"the $strategy strategy, edits=$edits and $sortOrder input"
+    // The first eight bases are ACGTACGT for a01, a02 and a04, and ACGTACGA for a03
+    val dashedUmis = Seq("a01" -> "ACG-TACGTA", "a02" -> "ACG-TACGTC", "a03" -> "ACG-TACGA", "a04" -> "ACGT-ACGTA")
 
-    it should s"compare only the bases of UMIs containing dashes when truncating with $desc" in {
-      // The first eight bases are ACGTACGT for a01, a02 and a04, and ACGTACGA for a03.  Among a01, a02 and a04 the
-      // shortest UMI has nine bases, so a01 and a04 are identical regardless of where their dashes are.
-      val umis = Seq("a01" -> "ACG-TACGTA", "a02" -> "ACG-TACGTC", "a03" -> "ACG-TACGA", "a04" -> "ACGT-ACGTA")
-      groupFragsByMi(umis, strategy=strategy, edits=edits, minUmiLength=Some(8), sortOrder=sortOrder) shouldBe Set(Set("a01", "a04"), Set("a02"), Set("a03"))
+    it should s"compare only the first --min-umi-length bases of UMIs containing dashes with --truncate and $desc" in {
+      groupFragsByMi(dashedUmis, strategy=strategy, edits=edits, minUmiLength=Some(8), truncate=true, sortOrder=sortOrder) shouldBe Set(Set("a01", "a02", "a04"), Set("a03"))
     }
 
-    it should s"truncate UMIs without dashes to the shortest UMI sharing their first bases with $desc" in {
-      // a03 does not share its first four bases with a01 and a02, so its length does not affect them
-      val umis = Seq("a01" -> "ACGTA", "a02" -> "ACGTC", "a03" -> "TTTT")
-      groupFragsByMi(umis, strategy=strategy, edits=edits, minUmiLength=Some(4), sortOrder=sortOrder) shouldBe Set(Set("a01"), Set("a02"), Set("a03"))
+    it should s"not truncate UMIs containing dashes without --truncate with $desc" in {
+      groupFragsByMi(dashedUmis, strategy=strategy, edits=edits, minUmiLength=Some(8), sortOrder=sortOrder) shouldBe Set(Set("a01"), Set("a02"), Set("a03"), Set("a04"))
     }
 
-    it should s"truncate UMIs without dashes to the minimum UMI length with $desc" in {
-      val umis = Seq("a01" -> "ACGTACGTA", "a02" -> "ACGTACGTC", "a03" -> "ACGTACGA", "a04" -> "ACGTACGT")
-      groupFragsByMi(umis, strategy=strategy, edits=edits, minUmiLength=Some(8), sortOrder=sortOrder) shouldBe Set(Set("a01", "a02", "a04"), Set("a03"))
+    it should s"truncate UMIs to --min-umi-length with --truncate and $desc" in {
+      val umis = Seq("a01" -> "ACGTA", "a02" -> "ACGTC", "a03" -> "TTTT", "a04" -> "ACGT")
+      groupFragsByMi(umis, strategy=strategy, edits=edits, minUmiLength=Some(4), truncate=true, sortOrder=sortOrder) shouldBe Set(Set("a01", "a02", "a04"), Set("a03"))
+    }
+
+    it should s"group only identical UMIs of the same length without --min-umi-length with $desc" in {
+      val umis = Seq("a01" -> "ACGTA", "a02" -> "ACGTA", "a03" -> "ACGT", "a04" -> "ACGT-", "a05" -> "ACGTAC")
+      groupFragsByMi(umis, strategy=strategy, edits=edits, minUmiLength=None, sortOrder=sortOrder) shouldBe Set(Set("a01", "a02"), Set("a03"), Set("a04"), Set("a05"))
     }
   }
 }
