@@ -38,6 +38,8 @@ package com.fulcrumgenomics.umi
   *   per-read-depth        aD  bD  cD
   *   per-read-min-depth    aM  bM  cM
   *   per-read-error-rate   aE  bE  cE
+  *   per-read-template-ct  aT  bT  cT
+  *   per-read-record-ct    aR  bR  cR
   *   per-base-depth        ad  bd  cd
   *   per-base-error-count  ae  be  ce
   *   per-base-bases        ac  bc  bases
@@ -97,6 +99,23 @@ object ConsensusTags {
     val MinRawReadCount = "cM" // consensus Min-depth
     /** The number of bases in the raw reads that contributed to the consensus but disagreed with the consensus call. */
     val RawReadErrorRate   = "cE" // consensus Error rate
+    /** The number of raw templates in the input family before consensus-family selection. */
+    val RawTemplateCount   = "cT" // consensus raw Template count
+    /** The number of raw SAM records in the input family before consensus-family selection. */
+    val RawRecordCount     = "cR" // consensus raw Record count
+
+    // NOTE: the four per-strand raw counts below describe the source strand whose single-strand consensus is
+    // reported in the same `a` or `b` slot as `aD`/`bD`.  When only one strand yields a single-strand consensus it is
+    // reported in the `a` slot whichever strand it came from, and `bT`/`bR` are zero like `bD`.  A strand that forms
+    // no single-strand consensus is therefore counted only in `cT`/`cR`.
+    /** The number of raw templates, before consensus-family selection, in the strand reported in the `a` slot. */
+    val AbRawTemplateCount = "aT"
+    /** The number of raw templates, before consensus-family selection, in the strand reported in the `b` slot. */
+    val BaRawTemplateCount = "bT"
+    /** The number of raw SAM records, before consensus-family selection, in the strand reported in the `a` slot. */
+    val AbRawRecordCount   = "aR"
+    /** The number of raw SAM records, before consensus-family selection, in the strand reported in the `b` slot. */
+    val BaRawRecordCount   = "bR"
 
     // Duplex versions of the above tags for the two single strand consensus reads
     val AbRawReadCount     = "aD"
@@ -112,12 +131,18 @@ object ConsensusTags {
       RawReadCount,
       MinRawReadCount,
       RawReadErrorRate,
+      RawTemplateCount,
+      RawRecordCount,
       AbRawReadCount,
       BaRawReadCount,
       AbMinRawReadCount,
       BaMinRawReadCount,
       AbRawReadErrorRate,
-      BaRawReadErrorRate
+      BaRawReadErrorRate,
+      AbRawTemplateCount,
+      BaRawTemplateCount,
+      AbRawRecordCount,
+      BaRawRecordCount
     )
   }
 }

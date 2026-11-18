@@ -126,6 +126,25 @@ class CodecConsensusCallerTest extends UnitSpec with OptionValues {
     cons.head[String](ConsensusTags.UmiBases) shouldBe "ACC-TGA"
   }
 
+  it should "not emit raw family count tags, which are deliberately unimplemented for CODEC" in {
+    val builder = new SamBuilder(readLength=30, baseQuality=35)
+    val caller  = new CodecConsensusCaller(readNamePrefix="codec", minReadsPerStrand=1, minDuplexLength=1)
+    val raw     = builder.addPair(contig=0, start1=1, start2=11, attrs=Map(("RX", "ACC-TGA"), ("MI", "hi"))).tapEach(setReadSequence)
+    val cons    = caller.consensusReadsFromSamRecords(raw)
+
+    cons should have length 1
+    // CODEC's raw-vs-filtered family semantics differ from classic duplex (both strands share one read pair,
+    // and a single fragment record is emitted), so none of the raw family count tags are set here. If this assertion
+    // starts failing, the tags were added without first settling those semantics -- see CodecConsensusCaller.
+    val rawCountTags = {
+      import ConsensusTags.PerRead._
+      Seq(RawTemplateCount, RawRecordCount, AbRawTemplateCount, BaRawTemplateCount, AbRawRecordCount, BaRawRecordCount)
+    }
+    rawCountTags.foreach { tag =>
+      withClue(s"tag=$tag: ") { cons.head.get[Int](tag) shouldBe None }
+    }
+  }
+
   it should "make a consensus where R1 has a deletion outside of the overlap region" in {
     val builder = new SamBuilder(readLength=30, baseQuality=35)
     val caller  = new CodecConsensusCaller(readNamePrefix="codec", minReadsPerStrand=1, minDuplexLength=1)

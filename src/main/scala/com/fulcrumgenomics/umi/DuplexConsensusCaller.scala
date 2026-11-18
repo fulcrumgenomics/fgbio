@@ -29,7 +29,7 @@ import com.fulcrumgenomics.bam.api.{SamRecord, SamWriter}
 import com.fulcrumgenomics.commons.util.LazyLogging
 import com.fulcrumgenomics.umi.DuplexConsensusCaller._
 import com.fulcrumgenomics.umi.UmiConsensusCaller.ReadType.{ReadType, _}
-import com.fulcrumgenomics.umi.UmiConsensusCaller.{RejectionReason, SimpleRead, SourceRead}
+import com.fulcrumgenomics.umi.UmiConsensusCaller.{RawSourceCounts, RejectionReason, SimpleRead, SourceRead}
 import com.fulcrumgenomics.util.NumericTypes.PhredScore
 import com.fulcrumgenomics.util.Sequences
 import htsjdk.samtools.SAMTag
@@ -57,17 +57,23 @@ object DuplexConsensusCaller {
     * @param abConsensus the AB consensus read from which the duplex was constructed
     * @param baConsensus the BA consensus read from which the duplex was constructed, if present. It may not be present
     *                    if created from the AB strand reads only.
+    * @param abRawCounts the raw input-family counts for the source strand whose consensus is `abConsensus`, if known
+    * @param baRawCounts the raw input-family counts for the source strand whose consensus is `baConsensus`, if known.
+    *                    Only defined when `baConsensus` is defined.
     */
   case class DuplexConsensusRead(id: String,
                                  bases: Array[Byte],
                                  quals: Array[Byte],
                                  errors: Array[Short],
                                  abConsensus: VanillaConsensusRead,
-                                 baConsensus: Option[VanillaConsensusRead]) extends SimpleRead {
+                                 baConsensus: Option[VanillaConsensusRead],
+                                 abRawCounts: Option[RawSourceCounts] = None,
+                                 baRawCounts: Option[RawSourceCounts] = None) extends SimpleRead {
     require(bases.length == quals.length,  "Bases and qualities are not the same length.")
     require(bases.length == errors.length, "Bases and errors are not the same length.")
     require(abConsensus.length == bases.length, "Bases and AB consensus are not the same length.")
     require(baConsensus.forall(_.length == bases.length), "Bases and BA consensus are not the same length.")
+    require(baRawCounts.isEmpty || baConsensus.isDefined, "BA raw counts given without a BA consensus.")
 
     /**
       * Modifies all of the bases, quals, depths and errors arrays *in place* to reverse complement the sequence
@@ -217,7 +223,11 @@ class DuplexConsensusCaller(override val readNamePrefix: String,
       val y = groups.lift(1).getOrElse(Seq.empty)
 
       if (hasMinimumNumberOfReads(x, y)) {
-        val consensus = callDuplexConsensusRead(x, y)
+        // Raw family sizes are captured here, before filtering to the most common alignment and before
+        // any downsampling to --max-reads-per-strand, so they describe the family as it was grouped.
+        val rawCounts = rawSourceCounts(pairs)
+        val consensus = callDuplexConsensusRead(x, y, abRawCounts=rawSourceCounts(x), baRawCounts=rawSourceCounts(y))
+          .map(addRawSourceCounts(_, rawCounts))
         if (consensus.forall(duplexHasMinimumNumberOfReads)) {
           consensus
         } else {
@@ -283,8 +293,17 @@ class DuplexConsensusCaller(override val readNamePrefix: String,
     (NoSamRecords, firstOfPair, secondOfPair)
   }
 
-  /** Attempts to call a duplex consensus reads from the two sets of reads, one for each strand. */
-  private def callDuplexConsensusRead(ab: Seq[SamRecord], ba: Seq[SamRecord]): Seq[SamRecord] = {
+  /** Attempts to call a duplex consensus reads from the two sets of reads, one for each strand.
+    *
+    * @param ab the raw records for the first (`/A`) strand
+    * @param ba the raw records for the second (`/B`) strand
+    * @param abRawCounts the raw input-family counts for the records in `ab`
+    * @param baRawCounts the raw input-family counts for the records in `ba`
+    */
+  private def callDuplexConsensusRead(ab: Seq[SamRecord],
+                                      ba: Seq[SamRecord],
+                                      abRawCounts: RawSourceCounts,
+                                      baRawCounts: RawSourceCounts): Seq[SamRecord] = {
     val cellBarcode: Option[String] = this.cellTag.flatMap { tag =>
       val barcodes = (ab ++ ba).flatMap(_.get(tag)).distinct
       require(barcodes.length <= 1, s"Multiple different cell barcodes found for tag $tag: $barcodes")
@@ -336,8 +355,8 @@ class DuplexConsensusCaller(override val readNamePrefix: String,
         // Call the duplex reads
         val duplexR1Sources = filteredAbR1s ++ filteredBaR2s
         val duplexR2Sources = filteredAbR2s ++ filteredBaR1s
-        val duplexR1 = duplexConsensus(abR1Consensus, baR2Consensus, Some(duplexR1Sources))
-        val duplexR2 = duplexConsensus(abR2Consensus, baR1Consensus, Some(duplexR2Sources))
+        val duplexR1 = duplexConsensus(abR1Consensus, baR2Consensus, Some(duplexR1Sources), Some(abRawCounts), Some(baRawCounts))
+        val duplexR2 = duplexConsensus(abR2Consensus, baR1Consensus, Some(duplexR2Sources), Some(abRawCounts), Some(baRawCounts))
 
         // Convert to SamRecords and return
         (duplexR1, duplexR2) match {
@@ -391,11 +410,17 @@ class DuplexConsensusCaller(override val readNamePrefix: String,
     *
     * @param ab the single-strand consensus from one strand
     * @param ba the single-strand consensus from the other strand
-    * @return a duplex consensus if one can be built
+    * @param sourceReads the source reads from both strands, used to count errors against the duplex consensus
+    * @param abRawCounts the raw input-family counts for the strand of `ab`, if known
+    * @param baRawCounts the raw input-family counts for the strand of `ba`, if known
+    * @return a duplex consensus if one can be built.  The raw counts follow their strand's single-strand consensus,
+    *         so when only `ba` yields a consensus it is reported as the AB consensus along with `baRawCounts`.
     */
   private[umi] def duplexConsensus(ab: Option[VanillaConsensusRead],
                                    ba: Option[VanillaConsensusRead],
-                                   sourceReads: Option[Seq[SourceRead]]): Option[DuplexConsensusRead] = {
+                                   sourceReads: Option[Seq[SourceRead]],
+                                   abRawCounts: Option[RawSourceCounts] = None,
+                                   baRawCounts: Option[RawSourceCounts] = None): Option[DuplexConsensusRead] = {
     // Calculate the length that we'll create a duplex read as "the shorter of the available reads",
     // and then filter each read to make sure it has some coverage in that section of the read
     val len = min(ab.map(_.length).getOrElse(Int.MaxValue), ba.map(_.length).getOrElse(Int.MaxValue))
@@ -404,8 +429,8 @@ class DuplexConsensusCaller(override val readNamePrefix: String,
     val sourceReadsArray = sourceReads.map(_.toArray).getOrElse(Array())
 
     (abX, baX) match {
-      case (Some(a), None)    => Some(DuplexConsensusRead(id=a.id, a.bases, a.quals, a.errors, a, None))
-      case (None, Some(b))    => Some(DuplexConsensusRead(id=b.id, b.bases, b.quals, b.errors, b, None))
+      case (Some(a), None)    => Some(DuplexConsensusRead(id=a.id, a.bases, a.quals, a.errors, a, None, abRawCounts=abRawCounts))
+      case (None, Some(b))    => Some(DuplexConsensusRead(id=b.id, b.bases, b.quals, b.errors, b, None, abRawCounts=baRawCounts))
       case (Some(a), Some(b)) =>
         val id  = a.id
         val bases  = new Array[Byte](len)
@@ -456,7 +481,8 @@ class DuplexConsensusCaller(override val readNamePrefix: String,
           }
         }
 
-        Some(DuplexConsensusRead(id=id, bases, quals, errors, a.truncate(bases.length), Some(b.truncate(bases.length))))
+        Some(DuplexConsensusRead(id=id, bases, quals, errors, a.truncate(bases.length), Some(b.truncate(bases.length)),
+          abRawCounts=abRawCounts, baRawCounts=baRawCounts))
       case _ =>
         None
     }
@@ -498,6 +524,15 @@ class DuplexConsensusCaller(override val readNamePrefix: String,
           rec(BaRawReadCount)     = 0
           rec(BaMinRawReadCount)  = 0
           rec(BaRawReadErrorRate) = 0.0f
+      }
+
+      // The per-strand raw counts describe the same strand as the depths above, and like them are zero for an
+      // empty `b` slot.  They are only known when the caller supplied them (CODEC does not).
+      read.abRawCounts.foreach { ab =>
+        rec(AbRawTemplateCount) = ab.templateCount
+        rec(AbRawRecordCount)   = ab.recordCount
+        rec(BaRawTemplateCount) = read.baRawCounts.map(_.templateCount).getOrElse(0)
+        rec(BaRawRecordCount)   = read.baRawCounts.map(_.recordCount).getOrElse(0)
       }
     }
 

@@ -112,6 +112,13 @@ object UmiConsensusCaller {
     require(bases.length == quals.length, "Bases and qualities are not the same length.")
   }
 
+  /** Stores the size of a raw input family as it was grouped, before consensus-family selection and downsampling.
+    *
+    * @param templateCount the number of distinct templates (read names), so a read and its mate count once
+    * @param recordCount the number of SAM records
+    */
+  case class RawSourceCounts(templateCount: Int, recordCount: Int)
+
   /**
     * Attempts to construct a String that can be used as a prefix for consensus read names based
     * on the contents of the incoming SAMFileHeader.
@@ -222,6 +229,26 @@ trait UmiConsensusCaller[ConsensusRead <: SimpleRead] {
 
   protected def initializeRejectCounts(pred: RejectionReason => Boolean): Unit = {
     RejectionReason.values.filter(pred).foreach(this._filteredReads.count(_, 0))
+  }
+
+  /** Counts raw input templates and records before filtering down to a consensus-forming family. */
+  protected def rawSourceCounts(recs: Seq[SamRecord]): RawSourceCounts = {
+    RawSourceCounts(templateCount=recs.iterator.map(_.name).toSet.size, recordCount=recs.size)
+  }
+
+  /** Adds the whole-family raw count tags (`cT` and `cR`) to a consensus record.
+    *
+    * The per-strand duplex counts (`aT`/`bT`/`aR`/`bR`) are not set here: they follow the single-strand consensus
+    * reported in each of the `a` and `b` slots, so [[DuplexConsensusCaller]] sets them where that slot is decided.
+    *
+    * NOTE: this is invoked from each caller's `consensusSamRecordsFromSamRecords` implementation. Any subclass
+    * that overrides `consensusSamRecordsFromSamRecords` without calling this method will silently emit consensus
+    * records with no raw-family count tags. [[CodecConsensusCaller]] does exactly that, deliberately.
+    */
+  protected def addRawSourceCounts(rec: SamRecord, counts: RawSourceCounts): SamRecord = {
+    rec(ConsensusTags.PerRead.RawTemplateCount) = counts.templateCount
+    rec(ConsensusTags.PerRead.RawRecordCount)   = counts.recordCount
+    rec
   }
 
   /** Records that the supplied records were rejected, and not used to build a consensus read. */
