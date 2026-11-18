@@ -55,14 +55,17 @@ object CorrectUmis {
   /**
     * Metrics produced by `CorrectUmis` regarding the correction of UMI sequences to a fixed set of known UMIs.
     *
-    * @param umi The corrected UMI sequence (or all `N`s for unmatched).
+    * @param umi The corrected UMI sequence, or all `N`s for UMIs that could not be matched.  There is one row of `N`s
+    *            for each length of the fixed UMIs, holding the unmatched UMIs of that length.
     * @param total_matches The number of UMI sequences that matched/were corrected to this UMI.
     * @param perfect_matches The number of UMI sequences that were perfect matches to this UMI.
     * @param one_mismatch_matches The number of UMI sequences that matched with a single mismatch.
     * @param two_mismatch_matches The number of UMI sequences that matched with two mismatches.
     * @param other_matches The number of UMI sequences that matched with three or more mismatches.
-    * @param fraction_of_matches The fraction of all UMIs that matched or were corrected to this UMI.
-    * @param representation The `total_matches` for this UMI divided by the _mean_ `total_matches` for all UMIs.
+    * @param fraction_of_matches The fraction of all UMIs that matched or were corrected to this UMI, or zero if no UMIs
+    *                            were examined.
+    * @param representation The `total_matches` for this UMI divided by the _mean_ `total_matches` for all fixed UMIs
+    *                       (excluding the rows of `N`s), or zero if no UMIs matched a fixed UMI.
     */
   case class UmiCorrectionMetrics(umi: String,
                                   var total_matches: Count = 0,
@@ -104,9 +107,10 @@ object CorrectUmis {
     |  2. Optionally a set of metrics about the representation of each UMI in the set
     |  3. Optionally a second BAM file of reads whose UMIs could not be corrected within the specific parameters
     |
-    |The fixed UMIs may have differing lengths, and all UMIs in the BAM file must have the same length as at least one
-    |of the fixed UMIs.  Only UMIs of the same length will be compared (i.e. a fixed UMI of length 5 will not be
-    |compared to a UMI in the BAM of length 6).
+    |The fixed UMIs may have different lengths.  Each UMI in the BAM file is compared only to the fixed UMIs of the
+    |same length (e.g. a 6bp UMI is never corrected to a 7bp fixed UMI), and a record is rejected if any of its UMIs has
+    |a length that matches no fixed UMI.  The metrics have one row of `N`s for each fixed UMI length, counting the UMIs
+    |of that length that could not be matched.
     |
     |Multiple UMIs that are concatenated with hyphens (e.g. `AACCAGT-AGGTAGA`) are split apart, corrected individually
     |and then re-assembled.  A read is accepted only if all the UMIs can be corrected.
@@ -115,14 +119,15 @@ object CorrectUmis {
     |
     |  1. _--max-mismatches_ controls how many mismatches (no-calls are counted as mismatches) are tolerated
     |         between a UMI as read and a fixed UMI.
-    |  2. _--min-distance_ controls how many *more* mismatches the next best hit must have
+    |  2. _--min-distance_ controls how many *more* mismatches the next best hit must have; it is not applied when
+    |     only one fixed UMI has the same length as the UMI
     |
     |For example, with two fixed UMIs `AAAAA` and `CCCCC` and `--max-mismatches=3` and `--min-distance=2` the
     |following would happen:
     |
     |  - AAAAA would match to AAAAA
-    |  - AAGTG would match to AAAAA with three mismatches because CCCCCC has six mismatches and 6 >= 3 + 2
-    |  - AACCA would be rejected because it is 2 mismatches to AAAAA and 3 to CCCCCC and 3 <= 2 + 2
+    |  - AAGTG would match to AAAAA with three mismatches because CCCCC has five mismatches and 5 >= 3 + 2
+    |  - AACCA would be rejected because it is 2 mismatches to AAAAA and 3 to CCCCC and 3 < 2 + 2
     |
     |The set of fixed UMIs may be specified on the command line using `--umis umi1 umi2 ...` or via one or
     |more files of UMIs with a single sequence per line using `--umi-files umis.txt more_umis.txt`.  If there
@@ -167,26 +172,26 @@ class CorrectUmis
   private lazy val cache = new LeastRecentlyUsedCache[String,UmiMatch](maxEntries = cacheSize)
 
   override def execute(): Unit = {
-    // Construct the full set of UMI sequences to match again
-    val umiSequencesByLength = {
+    // Construct the full set of UMI sequences to match against, grouped by length
+    val umiSequencesByLength: Map[Int, Array[String]] = {
       val set = mutable.HashSet[String](umis.map(_.toUpperCase):_*)
       umiFiles.foreach(Io.readLines(_).map(_.trim.toUpperCase).filter(_.nonEmpty).foreach(set.add))
       validate(set.nonEmpty, s"At least one UMI sequence must be provided; none found in files ${umiFiles.mkString(", ")}")
       set.toArray.groupBy(_.length)
     }
-    val umiBytesByLength = umiSequencesByLength.view.mapValues(_.map(_.getBytes)).toMap
+    val umiBytesByLength: Map[Int, Array[Array[Byte]]] = umiSequencesByLength.view.mapValues(_.map(_.getBytes)).toMap
+    val expectedUmiLengths = umiSequencesByLength.keys.toSeq.sorted.mkString(", ")
 
     // Warn if any of the UMIs are too close together
     umiSequencesByLength.values.foreach { umiSequences =>
       CorrectUmis.findUmiPairsWithinDistance(umiSequences.toSeq, minDistanceDiff - 1).foreach { case (umi1, umi2, distance) =>
-        logger.warning(s"Umis $umi1 and $umi2 are $distance edits apart which is less than the min distance: $minDistanceDiff")
+        logger.warning(s"Umis $umi1 and $umi2 are $distance edits apart which is less than the min distance diff: $minDistanceDiff")
       }
     }
 
-    // Construct the UMI metrics objects
-    val umiLengths = umiSequencesByLength.keys.toSeq
-    val unmatchedUmiByLength = umiLengths.map { umiLength => umiLength -> "N" * umiLength }.toMap
-    val umiMetrics = (umiSequencesByLength.values.flatten ++ unmatchedUmiByLength.values).map(umi => umi -> UmiCorrectionMetrics(umi)).toMap
+    // Construct the UMI metrics objects, with one all-N "unmatched" UMI per fixed UMI length
+    val unmatchedUmiByLength = umiSequencesByLength.keys.map(umiLength => umiLength -> "N" * umiLength).toMap
+    val umiMetrics           = (umiSequencesByLength.values.flatten ++ unmatchedUmiByLength.values).map(umi => umi -> UmiCorrectionMetrics(umi)).toMap
 
     // Now go through and correct the UMIs in the BAM
     var (totalRecords, missingUmisRecords, wrongLengthRecords, mismatchedRecords) = (0L, 0L, 0L, 0L)
@@ -206,7 +211,10 @@ class CorrectUmis
         case Some(umi: String) =>
           val sequences = if (revcomp) umi.split("-", -1).map(Sequences.revcomp).reverse else umi.split("-", -1)
           if (sequences.exists(seq => !umiSequencesByLength.contains(seq.length))) {
-            if (wrongLengthRecords == 0) logger.warning(s"Read (${rec.name}) detected with unexpected length UMI(s): ${sequences.mkString(" ")}")
+            if (wrongLengthRecords == 0) {
+              logger.warning(s"Read (${rec.name}) detected with unexpected length UMI(s): ${sequences.mkString(" ")}.")
+              logger.warning(s"Expected UMI length(s): $expectedUmiLengths")
+            }
             wrongLengthRecords += 1
             rejectOut.foreach(w => w += rec)
           }
@@ -256,14 +264,15 @@ class CorrectUmis
     out.close()
     rejectOut.foreach(_.close())
 
-    // Finalize the metrics
+    // Finalize the metrics.  The denominators are zero when no UMIs were examined or none matched a fixed UMI, in
+    // which case the fractions are reported as zero rather than NaN or Infinity.
     val sortedMetrics        = umiMetrics.values.toSeq.sortBy(_.umi)
+    val fixedUmiMetrics      = sortedMetrics.filterNot(m => unmatchedUmiByLength.get(m.umi.length).contains(m.umi))
     val totalWithUnmatched   = sortedMetrics.map(_.total_matches).sum.toDouble
-    val numReal = sortedMetrics.size - unmatchedUmiByLength.size
-    val meanWithoutUnmatched = if (numReal == 0) 0d else sortedMetrics.filter(m => m.umi != unmatchedUmiByLength(m.umi.length)).map(_.total_matches).sum / numReal.toDouble
+    val meanWithoutUnmatched = fixedUmiMetrics.map(_.total_matches).sum / fixedUmiMetrics.length.toDouble
     sortedMetrics.foreach { m =>
-      m.fraction_of_matches = m.total_matches / totalWithUnmatched
-      m.representation      = m.total_matches / meanWithoutUnmatched
+      m.fraction_of_matches = if (totalWithUnmatched > 0)   m.total_matches / totalWithUnmatched   else 0
+      m.representation      = if (meanWithoutUnmatched > 0) m.total_matches / meanWithoutUnmatched else 0
     }
 
     this.metrics.foreach(path => Metric.write(path, sortedMetrics))
@@ -275,8 +284,8 @@ class CorrectUmis
 
     if (missingUmisRecords > 0 || wrongLengthRecords > 0) {
       logger.error("###################################################################")
-      if (missingUmisRecords > 0) logger.error(s"# ${mismatchedRecords} were missing UMI attributes in the BAM file!")
-      if (wrongLengthRecords > 0) logger.error(s"# ${wrongLengthRecords} had unexpected UMIs of differing lengths in the BAM file!")
+      if (missingUmisRecords > 0) logger.error(s"# ${missingUmisRecords} were missing UMI attributes in the BAM file!")
+      if (wrongLengthRecords > 0) logger.error(s"# ${wrongLengthRecords} had UMIs whose lengths matched no fixed UMI length in the BAM file!")
       logger.error("###################################################################")
     }
 
@@ -322,7 +331,9 @@ class CorrectUmis
           }
           umiIndex += 1
         }
-        val matched  = (minMismatches <= maxMismatches) && (nextBestMismatches >= minMismatches + this.minDistanceDiff)
+        // With a single candidate (e.g. the only fixed UMI of this length) there is no next-best UMI to be far from
+        val distanceOk = umis.length == 1 || nextBestMismatches >= minMismatches + this.minDistanceDiff
+        val matched    = (minMismatches <= maxMismatches) && distanceOk
         val umiMatch = UmiMatch(matched, umis(minIndex), minMismatches)
         if (cacheSize > 0) cache.put(bases, umiMatch)
         umiMatch
