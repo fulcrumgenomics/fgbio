@@ -315,9 +315,14 @@ class SamRecordClipper(val mode: ClippingMode, val autoClipAttributes: Boolean) 
         else retval
       }
       val readEnd   = rec.readPosAtRefPos(pos=midPoint, returnLastBaseIfDeleted=true)
-      val mateStart = { // NB: need to be careful if the midpoint falls in a deletion
-        val retval = mate.readPosAtRefPos(pos=midPoint + 1, returnLastBaseIfDeleted=false)
-        if (retval != 0) retval else mate.readPosAtRefPos(pos=midPoint + 1, returnLastBaseIfDeleted=true) + 1
+      val mateStart = {
+        // When the 5' ends coincide (rec.start == mate.end) the midpoint is the mate's last aligned base, so no mate
+        // base lies after it.  The mate then "starts" one past its last base, so that all of its bases are clipped.
+        if (midPoint >= mate.end) mate.length + 1
+        else { // NB: need to be careful if the midpoint falls in a deletion
+          val retval = mate.readPosAtRefPos(pos=midPoint + 1, returnLastBaseIfDeleted=false)
+          if (retval != 0) retval else mate.readPosAtRefPos(pos=midPoint + 1, returnLastBaseIfDeleted=true) + 1
+        }
       }
       val numOverlappingBasesRead = this.clip3PrimeEndOfRead(rec, rec.cigar.trailingHardClippedBases + rec.length - readEnd)
       val numOverlappingBasesMate = this.clip3PrimeEndOfRead(mate, mate.cigar.leadingHardClippedBases + mateStart - 1)
