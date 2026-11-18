@@ -57,6 +57,14 @@ class SimpleConsensusCallerTest extends UnitSpec {
     caller.callConsensus(Seq("GATTACA", "GATTACA", "GATTACA", "NNNNNNN")) shouldBe "GATTACA"
   }
 
+  it should "produce a no-call when the bases at a position are tied, regardless of floating-point summation noise" in {
+    // T, A and C are each seen once at the last position, so no base is more likely than another. With these error
+    // rates the accumulated likelihoods differ by a few ulps depending on the order the bases were added, which must
+    // not be enough to call one of them.
+    val caller = new SimpleConsensusCaller(errorRatePreLabeling=45.toByte, errorRatePostLabeling=40.toByte)
+    caller.callConsensus(Seq("ACGTACGT", "ACGTACGA", "ACGTACGC")) shouldBe "ACGTACGN"
+  }
+
   it should "gracefully handle non-ACGTN bases" in {
     val caller = new SimpleConsensusCaller()
     caller.callConsensus(Seq("GATT-ACA", "GATT-ACA", "GATT-ACA")) shouldBe "GATT-ACA"
