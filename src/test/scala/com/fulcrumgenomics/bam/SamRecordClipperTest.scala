@@ -957,6 +957,26 @@ class SamRecordClipperTest extends UnitSpec with OptionValues {
     mate.cigar.toString shouldBe "30S20M"
   }
 
+  it should "clip both reads the same regardless of which is passed first when clipping unmaps one of them" in {
+    // The forward read is 185-210 and is entirely past the reverse read's end of 173 (175 with soft-clipping), so it is
+    // fully clipped; the reverse read extends before the forward read's start of 158 (with soft-clipping) by 42 bases
+    def run(forwardFirst: Boolean): (SamRecord, SamRecord, (Int, Int)) = {
+      val (fwd, rev) = pair(185, "27S26M7S", Plus, 120, "4S54M2S", Minus)
+      val clipped    = {
+        if (forwardFirst) clipper(Soft).clipExtendingPastMateEndsOfFrPair(rec=fwd, mate=rev)
+        else clipper(Soft).clipExtendingPastMateEndsOfFrPair(rec=rev, mate=fwd).swap
+      }
+      (fwd, rev, clipped)
+    }
+
+    Seq(true, false).foreach { forwardFirst =>
+      val (fwd, rev, clipped) = run(forwardFirst=forwardFirst)
+      fwd.unmapped shouldBe true
+      (rev.start, rev.end, rev.cigar.toString) shouldBe (158, 173, "42S16M2S")
+      clipped shouldBe run(forwardFirst=true)._3
+    }
+  }
+
   "SamRecordClipper.numBasesExtendingPastMate" should "return zero when reads do not extend past the end or are not FR pairs" in {
     val builder = new SamBuilder()
     val Seq(r1, r2) = builder.addPair(start1=100, start2=200, cigar1="20S80M", cigar2="10S90M")

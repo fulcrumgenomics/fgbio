@@ -402,15 +402,19 @@ class SamRecordClipper(val mode: ClippingMode, val autoClipAttributes: Boolean) 
     */
   def clipExtendingPastMateEndsOfFrPair(rec: SamRecord, mate: SamRecord): (Int, Int) = {
     if (rec.unmapped || mate.unmapped) (0, 0) else {
+      // Capture both reads' boundaries before clipping either, so that the result does not depend on which read is
+      // clipped first (e.g. clipping may unmap the first read)
+      val (recStart, recEnd)   = (rec.unSoftClippedStart, rec.unSoftClippedEnd)
+      val (mateStart, mateEnd) = (mate.unSoftClippedStart, mate.unSoftClippedEnd)
       val basesClipped1 = clipExtendingPastMateEnd(
         rec                    = rec,
-        mateUnSoftClippedStart = mate.unSoftClippedStart,
-        mateUnSoftClippedEnd   = mate.unSoftClippedEnd,
+        mateUnSoftClippedStart = mateStart,
+        mateUnSoftClippedEnd   = mateEnd,
       )
       val basesClipped2 = clipExtendingPastMateEnd(
         rec                    = mate,
-        mateUnSoftClippedStart = rec.unSoftClippedStart,
-        mateUnSoftClippedEnd   = rec.unSoftClippedEnd,
+        mateUnSoftClippedStart = recStart,
+        mateUnSoftClippedEnd   = recEnd,
       )
       (basesClipped1, basesClipped2)
     }
