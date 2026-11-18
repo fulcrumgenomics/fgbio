@@ -24,7 +24,6 @@
 
 package com.fulcrumgenomics.umi
 
-import com.fulcrumgenomics.sopt.cmdline.ValidationException
 import com.fulcrumgenomics.testing.{SamBuilder, UnitSpec}
 import com.fulcrumgenomics.umi.CorrectUmis.{UmiCorrectionMetrics, UmiMatch}
 import com.fulcrumgenomics.util.{Io, Metric, Sequences}
@@ -101,12 +100,6 @@ class CorrectUmisTest extends UnitSpec {
     logLines.exists(line => line.contains("Error")) shouldBe true
     readBamRecs(corrected) shouldBe empty
     readBamRecs(rejects) should have size 1
-  }
-
-  it should "throw an exception if all the fixed umis are not the same length " in {
-    an[ValidationException] shouldBe thrownBy {
-      new CorrectUmis(input = NoBam, output = NoBam, maxMismatches = 2, minDistanceDiff = 2, umis = Seq("AAAAAA", "CCC")).execute()
-    }
   }
 
   it should "reject reads with incorrect length UMIs and emit an error" in {
@@ -304,6 +297,118 @@ class CorrectUmisTest extends UnitSpec {
       if (rec.name == "exact")       rec.get(ConsensusTags.OriginalUmiBases) shouldBe None
       if (rec.name == "correctable") rec.get(ConsensusTags.OriginalUmiBases) shouldBe Some("TCTTTT")
       if (rec.name == "reject")      fail("reject record should not have made it into the output.")
+    }
+  }
+
+  it should "correct each UMI only against the fixed UMIs of the same length when the fixed UMIs have different lengths" in {
+    val builder = new SamBuilder(readLength = 10)
+    builder.addFrag(name="q1",  start=1, attrs=Map(ConsensusTags.UmiBases -> "AAAAAA"))
+    builder.addFrag(name="q2",  start=1, attrs=Map(ConsensusTags.UmiBases -> "AAAAAA"))
+    builder.addFrag(name="q3",  start=1, attrs=Map(ConsensusTags.UmiBases -> "AATAAA"))
+    builder.addFrag(name="q4",  start=1, attrs=Map(ConsensusTags.UmiBases -> "AATTAA"))
+    builder.addFrag(name="q5",  start=1, attrs=Map(ConsensusTags.UmiBases -> "AAATGC"))
+    builder.addFrag(name="q6",  start=1, attrs=Map(ConsensusTags.UmiBases -> "CCCCCCC"))
+    builder.addFrag(name="q7",  start=1, attrs=Map(ConsensusTags.UmiBases -> "CCTCCCC"))
+    builder.addFrag(name="q8",  start=1, attrs=Map(ConsensusTags.UmiBases -> "CCTCCCC"))
+    builder.addFrag(name="q9",  start=1, attrs=Map(ConsensusTags.UmiBases -> "CCTGCCC"))
+    builder.addFrag(name="q10", start=1, attrs=Map(ConsensusTags.UmiBases -> "GGGGGGG"))
+
+    val input     = builder.toTempFile()
+    val corrected = makeTempFile("corrected.", ".bam")
+    val rejects   = makeTempFile("rejects.", ".bam")
+    val metrics   = makeTempFile("metrics.", ".txt")
+
+    val corrector = new CorrectUmis(input=input, output=corrected, rejects=Some(rejects), metrics=Some(metrics), maxMismatches=2, minDistanceDiff=2, umis=Seq("AAAAAA", "CCCCCCC"))
+    val logLines = executeFgbioTool(corrector)
+    logLines.exists(line => line.contains("Error")) shouldBe false // No errors this time
+
+    readBamRecs(corrected).map(_.name) should contain theSameElementsAs Seq("q1", "q2", "q3", "q4", "q6", "q7", "q8", "q9")
+    readBamRecs(rejects).map(_.name) should contain theSameElementsAs Seq("q5", "q10")
+
+    val metricsByUmi = Metric.read[UmiCorrectionMetrics](metrics).map(m => m.umi -> m).toMap
+    metricsByUmi("AAAAAA")  shouldBe UmiCorrectionMetrics(umi="AAAAAA",  total_matches=4, perfect_matches=2, one_mismatch_matches=1, two_mismatch_matches=1, other_matches=0, fraction_of_matches = 4/10.0, representation = 4.0 / (8.0 / 2))
+    metricsByUmi("CCCCCCC") shouldBe UmiCorrectionMetrics(umi="CCCCCCC", total_matches=4, perfect_matches=1, one_mismatch_matches=2, two_mismatch_matches=1, other_matches=0, fraction_of_matches = 4/10.0, representation = 4.0 / (8.0 / 2))
+    metricsByUmi("NNNNNN")  shouldBe UmiCorrectionMetrics(umi="NNNNNN",  total_matches=1, perfect_matches=0, one_mismatch_matches=0, two_mismatch_matches=0, other_matches=0, fraction_of_matches = 1/10.0, representation = 1.0 / (8.0 / 2))
+    metricsByUmi("NNNNNNN") shouldBe UmiCorrectionMetrics(umi="NNNNNNN", total_matches=1, perfect_matches=0, one_mismatch_matches=0, two_mismatch_matches=0, other_matches=0, fraction_of_matches = 1/10.0, representation = 1.0 / (8.0 / 2))
+  }
+
+  it should "reject reads whose UMI length matches no fixed UMI length" in {
+    val builder = new SamBuilder(readLength = 10)
+    builder.addFrag(name="match6",  start=1, attrs=Map(ConsensusTags.UmiBases -> "AAAAAA"))
+    builder.addFrag(name="match7",  start=1, attrs=Map(ConsensusTags.UmiBases -> "CCCCCCC"))
+    builder.addFrag(name="short4",  start=1, attrs=Map(ConsensusTags.UmiBases -> "ACGT"))
+
+    val input     = builder.toTempFile()
+    val corrected = makeTempFile("corrected.", ".bam")
+    val rejects   = makeTempFile("rejects.",   ".bam")
+
+    val corrector = new CorrectUmis(input=input, output=corrected, rejects=Some(rejects), maxMismatches=1, minDistanceDiff=1, umis=Seq("AAAAAA", "CCCCCCC"))
+    val logLines  = executeFgbioTool(corrector)
+    logLines.exists(_.contains("Expected UMI length(s): 6, 7")) shouldBe true
+
+    readBamRecs(corrected).map(_.name) should contain theSameElementsAs Seq("match6", "match7")
+    readBamRecs(rejects).map(_.name)   should contain theSameElementsAs Seq("short4")
+  }
+
+  it should "correct each UMI of a multi-UMI tag against the fixed UMIs of its own length" in {
+    val builder = new SamBuilder(readLength = 10)
+    builder.addFrag(name="exact",     start=1, attrs=Map(ConsensusTags.UmiBases -> "AAAAAA-CCCCCCC"))
+    builder.addFrag(name="corrected", start=1, attrs=Map(ConsensusTags.UmiBases -> "AAAATA-CCCCGCC"))
+    builder.addFrag(name="swapped",   start=1, attrs=Map(ConsensusTags.UmiBases -> "CCCCCCC-AAAAAA"))
+    builder.addFrag(name="wrongLen",  start=1, attrs=Map(ConsensusTags.UmiBases -> "AAAAAA-CCCCC"))
+
+    val input     = builder.toTempFile()
+    val corrected = makeTempFile("corrected.", ".bam")
+    val rejects   = makeTempFile("rejects.",   ".bam")
+
+    new CorrectUmis(input=input, output=corrected, rejects=Some(rejects), maxMismatches=1, minDistanceDiff=1, umis=Seq("AAAAAA", "CCCCCCC")).execute()
+
+    readBamRecs(corrected).map(r => r.name -> r[String](ConsensusTags.UmiBases)) should contain theSameElementsAs Seq(
+      "exact"     -> "AAAAAA-CCCCCCC",
+      "corrected" -> "AAAAAA-CCCCCCC",
+      "swapped"   -> "CCCCCCC-AAAAAA",
+    )
+    readBamRecs(rejects).map(_.name) should contain theSameElementsAs Seq("wrongLen")
+  }
+
+  it should "match a UMI to the only fixed UMI of its length without applying --min-distance" in {
+    // AAATTT is three mismatches from AAAAAA, the only 6bp fixed UMI, so there is no next-best UMI to be far from
+    val corrector = new CorrectUmis(input=NoBam, output=NoBam, maxMismatches=3, minDistanceDiff=5, umis=Seq("AAAAAA", "CCCCCCC"))
+    corrector.findBestMatch("AAATTT", Array("AAAAAA".getBytes)) shouldBe UmiMatch(matched=true, umi="AAAAAA", mismatches=3)
+    corrector.findBestMatch("AAATTTT", Array("CCCCCCC".getBytes)).matched shouldBe false // more than --max-mismatches
+
+    val builder = new SamBuilder(readLength = 10)
+    builder.addFrag(name="q1", start=1, attrs=Map(ConsensusTags.UmiBases -> "AAATTT"))
+    val input     = builder.toTempFile()
+    val corrected = makeTempFile("corrected.", ".bam")
+    new CorrectUmis(input=input, output=corrected, maxMismatches=3, minDistanceDiff=5, umis=Seq("AAAAAA", "CCCCCCC")).execute()
+    readBamRecs(corrected).map(_[String](ConsensusTags.UmiBases)) shouldBe Seq("AAAAAA")
+  }
+
+  it should "write zero fractions instead of NaN or Infinity when no UMIs could be examined or matched" in {
+    Seq(
+      "no UMIs examined" -> Map.empty[String, String],
+      "no UMIs matched"  -> Map(ConsensusTags.UmiBases -> "GGGGGG"),
+    ).foreach { case (desc, attrs) =>
+      withClue(desc) {
+        val builder = new SamBuilder(readLength = 10)
+        builder.addFrag(name="q1", start=1, attrs=attrs)
+
+        val input     = builder.toTempFile()
+        val corrected = makeTempFile("corrected.", ".bam")
+        val metrics   = makeTempFile("metrics.", ".txt")
+        new CorrectUmis(input=input, output=corrected, metrics=Some(metrics), maxMismatches=1, minDistanceDiff=1, umis=Seq("AAAAAA", "CCCCCCC")).execute()
+
+        val ms = Metric.read[UmiCorrectionMetrics](metrics)
+        ms.map(_.umi) should contain theSameElementsAs Seq("AAAAAA", "CCCCCCC", "NNNNNN", "NNNNNNN")
+        ms.filter(_.umi != "NNNNNN").foreach { m =>
+          m.fraction_of_matches shouldBe 0.0
+          m.representation      shouldBe 0.0
+        }
+        // The single unmatched 6bp UMI (if any) is all of the UMIs examined
+        ms.find(_.umi == "NNNNNN").value.fraction_of_matches shouldBe (if (attrs.isEmpty) 0.0 else 1.0)
+        ms.find(_.umi == "NNNNNN").value.representation      shouldBe 0.0
+      }
     }
   }
 }
