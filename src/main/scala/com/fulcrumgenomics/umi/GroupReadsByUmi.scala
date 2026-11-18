@@ -172,6 +172,13 @@ object GroupReadsByUmi {
     /** Returns a canonical form of the UMI that is the same for all reads with the same UMI. */
     def canonicalize(u: Umi): Umi = u
 
+    /** Returns the length of each `-`-delimited segment of the canonical UMI, keeping empty segments (e.g. `ACGT-` has
+      * the lengths `4` and `0`).  Only UMIs with the same segment lengths are compared with each other, so UMIs of
+      * different lengths are never assigned to the same molecule.  Since the canonical UMI is used, the two orientations
+      * of a paired UMI (`A-B` and `B-A`) have the same segment lengths.
+      */
+    def segmentLengths(u: Umi): IndexedSeq[Int] = canonicalize(u).split("-", -1).iterator.map(_.length).toIndexedSeq
+
     /** If true, templates at the same coordinates will be split up by R1+R2 orientation prior to grouping. */
     val splitTemplatesByPairOrientation: Boolean = true
 
@@ -575,15 +582,22 @@ object Strategy extends FgBioEnum[Strategy] {
     |Strategies `edit`, `adjacency`, and `paired` make use of the `--edits` parameter to control the matching of
     |non-identical UMIs.
     |
-    |By default, all UMIs must be the same length. If `--min-umi-length=len` is specified then reads that have a UMI
-    |shorter than `len` will be discarded, and when comparing UMIs of different lengths, the first `m` bases will be
-    |compared, where `m` is the number of bases in the shortest UMI being compared. The UMI length is the number of
-    |bases (A, C, G, T) in the UMI; reads with an N in their UMI are discarded earlier, and dashes and all other
-    |characters are not counted. When comparing, these other characters are removed, so the bases of a multi-segment
-    |UMI (e.g. `ACG-TACGT`) are compared as one sequence and the position of the dash is ignored. For the `identity`
-    |strategy, and for other strategies with `--edits=0`, UMIs are first split by their first `len` bases and `m` is
-    |computed separately for each split. This option is not implemented for reads with UMI pairs (i.e. using
-    |the paired assigner).
+    |UMIs may have different lengths, but only UMIs with the same length are compared, so reads whose UMIs have
+    |different lengths are never assigned to the same molecule.  For UMIs with multiple segments separated by `-`, each
+    |segment must have the same length (e.g. `ACGT-CCGGA` is never grouped with `ACGTC-CGGA` or `ACGT-CCGG`).  For the
+    |`paired` strategy, the two orientations of a UMI pair (e.g. `ACGT-CCGGA` and `CCGGA-ACGT`) are compared with
+    |each other as usual.
+    |
+    |If `--min-umi-length=len` is specified then reads that have fewer than `len` bases in their UMI are discarded.  The
+    |number of bases is the number of A, C, G and T characters in the UMI: dashes and other characters are not counted,
+    |and reads with an N in their UMI are discarded earlier.  The UMIs of the remaining reads are not changed, so UMIs
+    |of different lengths are still never grouped together.
+    |
+    |To group UMIs of different lengths together, specify `--truncate` together with `--min-umi-length=len`.  Each UMI
+    |then has its dashes and other non-base characters removed and is truncated to its first `len` bases before it is
+    |compared, so the position of a dash does not matter.  For example, with `--min-umi-length=6 --truncate` the UMIs
+    |`ACGTAC`, `ACGTACGT` and `ACG-TACG` are all compared as `ACGTAC`.  Only the UMIs used for grouping are truncated:
+    |the raw UMI tag is not changed.  `--min-umi-length` and `--truncate` cannot be used with the `paired` strategy.
     |
     |If the `--mark-duplicates` option is given, reads will also have their duplicate flag set in the BAM file.
     |Each tag-family is treated separately, and a single template within the tag family is chosen to be the "unique"
@@ -623,23 +637,32 @@ class GroupReadsByUmi
  @arg(flag='n', doc="Include non-PF reads.")            val includeNonPfReads: Boolean = false,
  @arg(flag='s', doc="The UMI assignment strategy.")     val strategy: Strategy,
  @arg(flag='e', doc="The allowable number of edits between UMIs.") val edits: Int = 1,
- @arg(flag='l', doc= """The minimum UMI length. If not specified then all UMIs must have the same length,
-                         |otherwise discard reads with UMIs shorter than this length and allow for differing UMI lengths.
-                         |The length is the number of bases (A, C, G, T) in the UMI; dashes and all other characters
-                         |are not counted, and are ignored when comparing UMIs, so the position of a dash does not matter.
+ @arg(flag='l', doc= """The minimum UMI length, in bases.  Discard reads whose UMI has fewer bases (A, C, G, T) than this;
+                         |dashes and other characters are not counted.  UMIs are not truncated unless `--truncate` is
+                         |also given, so UMIs of different lengths are still never grouped together.
                          |""")
     val minUmiLength: Option[Int] = None,
+ @arg(doc= """Truncate every UMI to its first `--min-umi-length` bases, ignoring dashes and other non-base characters,
+               |before grouping, so that UMIs of different lengths can be grouped together.  Requires
+               |`--min-umi-length`.
+               |""")
+    val truncate: Boolean = false,
  @arg(flag='@', doc="Number of threads to use when comparing UMIs. Only recommended for amplicon or similar data.") val threads: Int = 1,
 )extends FgBioTool with LazyLogging {
   import GroupReadsByUmi._
 
-  validate(this.minUmiLength.isEmpty || this.strategy != Strategy.Paired, "--min-umi-length cannot be used with the paired strategy")
+  validate(this.minUmiLength.isEmpty || this.strategy != Strategy.Paired,
+    "--min-umi-length and --truncate cannot be used with the paired strategy; paired UMIs of different lengths are grouped by the lengths of their two UMIs")
   validate(this.minUmiLength.forall(_ >= 1), "--min-umi-length must be at least 1")
+  validate(!this.truncate || this.minUmiLength.isDefined, "--truncate requires --min-umi-length")
 
   private val assigner = strategy.newStrategy(this.edits, this.threads)
 
   /** True if only identical UMIs are grouped together, i.e. the identity strategy or any strategy with no edits. */
   private val groupsIdenticalUmisOnly: Boolean = this.edits == 0 || this.strategy == Strategy.Identity
+
+  /** The number of bases to truncate each UMI to before grouping, if `--truncate` is given. */
+  private val truncateLength: Option[Int] = if (this.truncate) this.minUmiLength else None
 
   // Give values to unset parameters that are different in duplicate marking mode
   private val _minMapQ = this.minMapQ.getOrElse(if (this.markDuplicates) 0 else 1)
@@ -679,9 +702,8 @@ class GroupReadsByUmi
     // True here enables an optimization where, when bringing groups of reads into memory, we can _also_ group by UMI
     // thus reducing the number of reads in memory.  This is helpful since edits=0 is often used for data that has
     // high numbers of reads with the same start/stop coordinates.
-    // We do this by setting the MI tag to the canonicalized UMI (or, with `--min-umi-length`, its first
-    // `--min-umi-length` bases) prior to sorting, so that reads with the same UMI are grouped together in the sorted
-    // stream of records.
+    // We do this by setting the MI tag to the canonicalized UMI (or, with `--truncate`, its first `--min-umi-length`
+    // bases) prior to sorting, so that reads with the same UMI are grouped together in the sorted stream of records.
     val canTakeNextGroupByUmi = !skipSorting && this.assignTag == ConsensusTags.MolecularId && groupsIdenticalUmisOnly
 
     // Filter and sort the input BAM file
@@ -701,18 +723,14 @@ class GroupReadsByUmi
         // If we're able to also group by the UMI because edits aren't allowed, push the trimmed, canonicalized UMI
         // into the assign tag (which must be MI if canTakeNextGroupByUmi is true), since that is used by the
         // SamOrder to sort the reads _and_ we'll overwrite it on the way out!
-        // Note that with `--min-umi-length` the key is the first `--min-umi-length` bases of the UMI (with non-base
-        // characters such as `-` removed).  When grouping later, `assignUmiGroups` splits the UMIs by this same key
-        // and `truncateUmis` truncates each split to the bases of its shortest UMI, so the key is never finer than the
-        // grouping.
+        // Note that with `--truncate` the key is the UMI truncated exactly as it is when grouping (see
+        // `umiForGrouping`), so reads are only kept apart here if they would never be grouped together.
         if (canTakeNextGroupByUmi) {
           val umi = this.assigner.canonicalize(r[String](rawTag).toUpperCase)
-          val truncated = this.minUmiLength match {
+          r(this.assignTag) = this.truncateLength match {
             case None    => umi
             case Some(n) => basesOnly(umi).take(n)
           }
-
-          r(this.assignTag) = truncated
         }
 
         kept += 1
@@ -817,7 +835,7 @@ class GroupReadsByUmi
       iterator.hasNext &&
       firstEnds == ReadInfo(iterator.head, cellTag = this.cellTag) &&
       // This last condition only works because, if canTakeNextGroupByUmi, we put the grouping key into rec(assignTag):
-      // the canonicalized UMI, or with `--min-umi-length` its first `--min-umi-length` bases (see `assignUmiGroups`)
+      // the canonicalized UMI, or with `--truncate` its first `--min-umi-length` bases
       (!canTakeNextGroupByUmi || firstUmi == iterator.head.r1.get.apply[String](this.assignTag))
     ) {
       builder += iterator.next()
@@ -835,21 +853,15 @@ class GroupReadsByUmi
 
     // Split reads back out so we don't accidentally group F1R2 pairs with F2R1 pairs _unless_ the assigner
     // wants it that way (e.g. the paired assigner)
-    val byOrientation = if (!this.assigner.splitTemplatesByPairOrientation) Seq(templates) else {
+    val subgroups = if (!this.assigner.splitTemplatesByPairOrientation) Seq(templates) else {
       templates.groupBy { t => (t.r1.forall(_.positiveStrand), t.r2.forall(_.positiveStrand)) }.values
     }
 
-    // When only identical UMIs are grouped and a minimum UMI length is given, also split by the first
-    // `--min-umi-length` bases of the UMI.  This is the same split made when sorting (see `canTakeNextGroupByUmi`),
-    // so that `truncateUmis` truncates to the same length whether or not the input was already sorted.
-    val subgroups = this.minUmiLength match {
-      case Some(n) if groupsIdenticalUmisOnly => byOrientation.flatMap(_.groupBy(t => basesOnly(umiForRead(t)).take(n)).values)
-      case _                                  => byOrientation
-    }
-
     val umisGrouped = subgroups.sumBy { ts =>
-      val umis    = truncateUmis(ts.map { t => umiForRead(t) })
-      val rawToId = this.assigner.assign(umis)
+      val umis    = ts.map(umiForGrouping)
+      // Only compare UMIs with the same segment lengths, so that UMIs of different lengths are never grouped together.
+      // The UMIs in different buckets differ in length, so the per-bucket assignments never share a UMI.
+      val rawToId = umis.groupBy(this.assigner.segmentLengths).values.flatMap(this.assigner.assign).toMap
 
       ts.iterator.zip(umis.iterator).foreach { case (template, umi) =>
         val id  = rawToId(umi)
@@ -866,17 +878,13 @@ class GroupReadsByUmi
     }
   }
 
-  /** When a minimum UMI length is specified, removes all non-base characters (e.g. `-`) from the (upper-case) UMIs and
-    * truncates them to the number of bases in the shortest UMI.  When only identical UMIs are grouped, the caller first
-    * splits the UMIs by their first `--min-umi-length` bases (see `assignUmiGroups`).
+  /** Returns the UMI used to group the template: the UMI from [[umiForRead]], or with `--truncate`, its first
+    * `--min-umi-length` bases with dashes and other non-base characters removed.  Reads with fewer bases have already
+    * been discarded, so every truncated UMI has exactly `--min-umi-length` bases.
     */
-  private def truncateUmis(umis: Seq[Umi]): Seq[Umi] = this.minUmiLength match {
-    case None         => umis
-    case Some(length) =>
-      val bases     = umis.map(basesOnly)
-      val minLength = bases.iterator.map(_.length).min
-      require(length <= minLength, s"Bug: UMI found that had shorter length than expected ($minLength < $length)")
-      bases.map(_.take(minLength))
+  private def umiForGrouping(t: Template): Umi = this.truncateLength match {
+    case None    => umiForRead(t)
+    case Some(n) => basesOnly(umiForRead(t)).take(n)
   }
 
   /**
