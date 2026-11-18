@@ -28,6 +28,7 @@ import com.fulcrumgenomics.FgBioDef._
 import com.fulcrumgenomics.alignment.{Cigar, CigarElem}
 import com.fulcrumgenomics.bam.api.SamRecord
 import enumeratum.EnumEntry
+import htsjdk.samtools.util.CoordMath
 import htsjdk.samtools.{SAMUtils, CigarOperator => Op}
 
 import scala.collection.mutable.ArrayBuffer
@@ -297,12 +298,12 @@ class SamRecordClipper(val mode: ClippingMode, val autoClipAttributes: Boolean) 
     *
     * @param rec the read
     * @param mate the mate
-    * @return the number of overlapping bases to that were clipped on the record and mate respectively (3' end in sequencing order)
+    * @return the number of overlapping bases that were clipped on the record and mate respectively (3' end in sequencing order)
     */
   def clipOverlappingReads(rec: SamRecord, mate: SamRecord): (Int, Int) = {
-    if (rec.matesOverlap.contains(false)) (0, 0) // do not overlap, don't clip
-    else if (!rec.isFrPair) (0, 0)
-    else if (rec.negativeStrand) clipOverlappingReads(rec=mate, mate=rec).swap // don't for get to swap the results since we swapped inputs
+    if (!SamRecord.isFrPair(rec, mate)) (0, 0)
+    else if (!CoordMath.overlaps(rec.start, rec.end, mate.start, mate.end)) (0, 0) // do not overlap, don't clip
+    else if (rec.negativeStrand) clipOverlappingReads(rec=mate, mate=rec).swap // don't forget to swap the results since we swapped inputs
     else {
       // Pick the mid point in the reference window between the 5' ends of the record and its mate.  The read ends at the
       // mid point, or if the mid point is in a deletion, the base prior to the deletion.  The mate ends at the mid
@@ -326,12 +327,20 @@ class SamRecordClipper(val mode: ClippingMode, val autoClipAttributes: Boolean) 
 
   /** Returns the number of bases extending past the mate end for FR pairs including any soft-clipped bases, zero otherwise.
     *
+    * Whether `rec` is in an FR pair is determined from `rec` alone (see `SamRecord.isFrPair`), since only the mate's
+    * boundaries are given.  When both records are available, use [[clipExtendingPastMateEnds]] instead.
+    *
     * @param rec the record to examine
     * @param mateUnSoftClippedStart the smallest mapped genomic coordinate considering *ONLY* soft-clipping
     * @param mateUnSoftClippedEnd the largest mapped genomic coordinate considering *ONLY* soft-clipping
     */
   def numBasesExtendingPastMate(rec: SamRecord, mateUnSoftClippedStart: Int, mateUnSoftClippedEnd: Int): Int = {
-    if (!rec.isFrPair) 0 else rec.positiveStrand match {
+    if (!rec.isFrPair) 0 else numBasesExtendingPastMateOfFrPair(rec, mateUnSoftClippedStart, mateUnSoftClippedEnd)
+  }
+
+  /** As [[numBasesExtendingPastMate]], but assumes the caller has already established that `rec` is in an FR pair. */
+  private def numBasesExtendingPastMateOfFrPair(rec: SamRecord, mateUnSoftClippedStart: Int, mateUnSoftClippedEnd: Int): Int = {
+    rec.positiveStrand match {
       case true if rec.end >= mateUnSoftClippedEnd =>
         // positive strand record is aligned to/past the mate alignment end: count any bases aligned/soft-clipped after
         Math.max(0, rec.length - rec.readPosAtRefPos(pos=mateUnSoftClippedEnd, returnLastBaseIfDeleted=false))
@@ -354,7 +363,18 @@ class SamRecordClipper(val mode: ClippingMode, val autoClipAttributes: Boolean) 
     * @return the additional number of bases clipped (3' end in sequencing order) for the read and mate respectively
     */
   def clipExtendingPastMateEnds(rec: SamRecord, mate: SamRecord): (Int, Int) = {
-    if (rec.isFrPair) {
+    if (SamRecord.isFrPair(rec, mate)) clipExtendingPastMateEndsOfFrPair(rec, mate) else (0, 0)
+  }
+
+  /** As [[clipExtendingPastMateEnds]], but the caller has already established that the reads are an FR pair, for
+    * example before other clipping changed their alignments.  Nothing is clipped if either read is unmapped.
+    *
+    * @param rec the read
+    * @param mate the mate
+    * @return the additional number of bases clipped (3' end in sequencing order) for the read and mate respectively
+    */
+  def clipExtendingPastMateEndsOfFrPair(rec: SamRecord, mate: SamRecord): (Int, Int) = {
+    if (rec.unmapped || mate.unmapped) (0, 0) else {
       val basesClipped1 = clipExtendingPastMateEnd(
         rec                    = rec,
         mateUnSoftClippedStart = mate.unSoftClippedStart,
@@ -367,12 +387,10 @@ class SamRecordClipper(val mode: ClippingMode, val autoClipAttributes: Boolean) 
       )
       (basesClipped1, basesClipped2)
     }
-    else {
-      (0, 0)
-    }
   }
 
   /** Clips the read in FR read pairs whose alignments extend beyond the far end of their mate's alignment.
+    * The caller must have already established that `rec` is in an FR pair.
     *
     * @param rec the record to clip
     * @param mateUnSoftClippedStart the smallest mapped genomic coordinate considering *ONLY* soft-clipping
@@ -380,17 +398,14 @@ class SamRecordClipper(val mode: ClippingMode, val autoClipAttributes: Boolean) 
     * @return the additional number of bases clipped (3' end in sequencing order)
     */
   private def clipExtendingPastMateEnd(rec: SamRecord, mateUnSoftClippedStart: Int, mateUnSoftClippedEnd: Int): Int = {
-    if (!rec.isFrPair) 0 // do not overlap, don't clip
-    else {
-      val totalClippedBases = numBasesExtendingPastMate(
-        rec                    = rec,
-        mateUnSoftClippedStart = mateUnSoftClippedStart,
-        mateUnSoftClippedEnd   = mateUnSoftClippedEnd,
-      )
-      if (totalClippedBases == 0) 0 else {
-       if (rec.positiveStrand) this.clipEndOfRead(rec, totalClippedBases)
-       else this.clipStartOfRead(rec, totalClippedBases)
-      }
+    val totalClippedBases = numBasesExtendingPastMateOfFrPair(
+      rec                    = rec,
+      mateUnSoftClippedStart = mateUnSoftClippedStart,
+      mateUnSoftClippedEnd   = mateUnSoftClippedEnd,
+    )
+    if (totalClippedBases == 0) 0 else {
+      if (rec.positiveStrand) this.clipEndOfRead(rec, totalClippedBases)
+      else this.clipStartOfRead(rec, totalClippedBases)
     }
   }
 

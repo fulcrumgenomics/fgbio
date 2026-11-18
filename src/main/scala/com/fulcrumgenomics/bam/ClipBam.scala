@@ -179,6 +179,11 @@ class ClipBam
     val priorBasesClippedReadOne = r1.cigar.clippedBases
     val priorBasesClippedReadTwo = r2.cigar.clippedBases
 
+    // Whether the pair is FR is a property of the template, so judge it before the fixed clipping, which can move the
+    // reads' 5' ends past each other.  This is used for clipping bases past the mate; clipping overlapping reads instead
+    // checks the clipped reads, since only reads that still overlap after the fixed clipping need clipping.
+    val isFrPairBeforeClipping = SamRecord.isFrPair(r1, r2)
+
     // Clip the read!
     val numReadOneFivePrime  = this.clipper.clip5PrimeEndOfRead(r1, readOneFivePrime)
     val numReadOneThreePrime = this.clipper.clip3PrimeEndOfRead(r1, readOneThreePrime)
@@ -186,13 +191,13 @@ class ClipBam
     val numReadTwoThreePrime = this.clipper.clip3PrimeEndOfRead(r2, readTwoThreePrime)
 
     val (numOverlappingBasesReadOne, numOverlappingBasesReadTwo) = {
-      if (clipOverlappingReads && r1.isFrPair) this.clipper.clipOverlappingReads(r1, r2)
+      if (clipOverlappingReads) this.clipper.clipOverlappingReads(r1, r2)
       else (0, 0)
     }
 
     val (numExtendingPastMateStartReadOne, numExtendingPastMateStartReadTwo) = {
-      if (clipBasesPastMate && r1.isFrPair) {
-        this.clipper.clipExtendingPastMateEnds(rec=r1, mate=r2)
+      if (clipBasesPastMate && isFrPairBeforeClipping) {
+        this.clipper.clipExtendingPastMateEndsOfFrPair(rec=r1, mate=r2)
       }
       else (0, 0)
     }

@@ -30,7 +30,7 @@ import com.fulcrumgenomics.bam.api.SamOrder.Queryname
 import com.fulcrumgenomics.bam.api.SamRecord.UnmappedStart
 import com.fulcrumgenomics.bam.api.{SamRecord, SamSource}
 import com.fulcrumgenomics.testing.SamBuilder._
-import com.fulcrumgenomics.testing.{ErrorLogLevel, ReferenceSetBuilder, SamBuilder, UnitSpec}
+import com.fulcrumgenomics.testing.{DovetailPairs, ErrorLogLevel, ReferenceSetBuilder, SamBuilder, UnitSpec}
 import com.fulcrumgenomics.util.Metric
 import htsjdk.samtools.SAMTag
 import htsjdk.samtools.reference.ReferenceSequenceFileFactory
@@ -643,5 +643,40 @@ class ClipBamTest extends UnitSpec with ErrorLogLevel with OptionValues {
     r1.end shouldBe UnmappedStart
     r2.start shouldBe UnmappedStart
     r2.end shouldBe UnmappedStart
+  }
+
+  "ClipBam.clipPair" should "clip a dovetail FR pair without MC tags the same as with them" in {
+    val clipper = new ClipBam(input=dummyBam, output=dummyBam, ref=ref, clipOverlappingReads=true, clipBasesPastMate=true)
+    val ((a1, a2), (b1, b2)) = DovetailPairs.withAndWithoutMateCigar()
+    clipper.clipPair(a1, a2)
+    clipper.clipPair(b1, b2)
+    a1.cigar.toString should not be DovetailPairs.ForwardCigar
+    b1.cigar shouldBe a1.cigar
+    b2.cigar shouldBe a2.cigar
+  }
+
+  Seq(true, false).foreach { withMateCigar =>
+    it should s"clip bases past the mate when fixed 5' clipping moves the 5' ends past each other (withMateCigar=$withMateCigar)" in {
+      // R1 is +/100-149 and R2 is -/90-139, an FR pair that reads through; after clipping 25 bases from each 5' end
+      // R1 starts at 125, after R2's new end of 114
+      def run(mode: ClippingMode): (SamRecord, SamRecord) = {
+        val builder = new SamBuilder(readLength=50)
+        val Seq(r1, r2) = builder.addPair(start1=100, start2=90)
+        if (!withMateCigar) Seq(r1, r2).foreach(_.remove("MC"))
+        new ClipBam(input=dummyBam, output=dummyBam, ref=ref, clippingMode=mode,
+          readOneFivePrime=25, readTwoFivePrime=25, clipBasesPastMate=true).clipPair(r1, r2)
+        (r1, r2)
+      }
+
+      // Soft-clipped bases still count toward the mate's extent, so only the read-through past it is clipped
+      val (s1, s2) = run(Soft)
+      (s1.start, s1.end, s1.cigar.toString) shouldBe (125, 139, "25S15M10S")
+      (s2.start, s2.end, s2.cigar.toString) shouldBe (100, 114, "10S15M25S")
+
+      // Hard-clipped bases do not, so all of R1 extends past R2's end
+      val (h1, h2) = run(Hard)
+      h1.unmapped shouldBe true
+      (h2.start, h2.end, h2.cigar.toString) shouldBe (90, 114, "25M25H")
+    }
   }
 }
