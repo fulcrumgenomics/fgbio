@@ -31,7 +31,7 @@ import com.fulcrumgenomics.commons.collection.{BetterBufferedIterator, SelfClosi
 import com.fulcrumgenomics.commons.io.Writer
 import com.fulcrumgenomics.commons.util.LazyLogging
 import com.fulcrumgenomics.fasta.ReferenceSequenceIterator
-import com.fulcrumgenomics.util.{Io, ProgressLogger, Sorter}
+import com.fulcrumgenomics.util.{Io, PrefixTrieSet, ProgressLogger, Sorter}
 import htsjdk.samtools.SAMFileHeader.{GroupOrder, SortOrder}
 import htsjdk.samtools.SamPairUtil.PairOrientation
 import htsjdk.samtools._
@@ -564,6 +564,38 @@ object Bams extends LazyLogging {
         writer += rec
       }
       def close(): Unit = writer.close()
+    }
+  }
+
+  /** Builds a `Writer` of [[com.fulcrumgenomics.bam.api.SamRecord]]s where all records for a given read name (e.g. pair, including any
+    * secondary and supplementary) are output to the writer.  This is implemented via collecting the unique read
+    * names from records passed into `write()`, then upon closing, all records in the original BAM are examined and any
+    * records with a matching read name are written the provided writer.
+    *
+    * @param original the original BAM that will be filtered
+    * @param writer the final writer to which filtered records should be written
+    * @return
+    */
+  def readNameFilteringWriter(original: PathToBam, writer: SamWriter): Writer[SamRecord] with Closeable = {
+    new Writer[SamRecord] with Closeable {
+      private val readNames = new PrefixTrieSet()
+      private val progress = new ProgressLogger(logger, noun="unique reads", verb="added", unit=1e6.toInt)
+      override def write(rec: SamRecord): Unit = {
+        readNames.add(rec.name)
+        progress.record(rec)
+        ()
+      }
+      override def close(): Unit = {
+        val progress = new ProgressLogger(logger, verb="written", unit=1e6.toInt)
+        logger.info("Filtering original input based on read names")
+        val source = SamSource(original)
+        source.filter(rec => this.readNames.contains(rec.name)).foreach { rec =>
+          progress.record(rec)
+          writer.write(rec)
+        }
+        progress.logLast()
+        source.close()
+      }
     }
   }
 }
