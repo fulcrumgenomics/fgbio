@@ -28,7 +28,8 @@ Correction is controlled by two parameters that are applied per-UMI:
 
   1. _--max-mismatches_ controls how many mismatches (no-calls are counted as mismatches) are tolerated
          between a UMI as read and a fixed UMI.
-  2. _--min-distance_ controls how many *more* mismatches the next best hit must have
+  2. _--min-distance_ controls how many *more* mismatches the next best hit must have; it is not applied when
+     only one fixed UMI has the same length as the UMI
 
 For example, with two fixed UMIs `AAAAA` and `CCCCC` and `--max-mismatches=3` and `--min-distance=2` the
 following would happen:
