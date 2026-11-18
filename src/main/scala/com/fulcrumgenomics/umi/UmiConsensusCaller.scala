@@ -198,8 +198,19 @@ trait UmiConsensusCaller[ConsensusRead <: SimpleRead] {
   protected val NoCall: Byte = 'N'.toByte
   protected val NoCallQual: PhredScore = PhredScore.MinValue
 
+  /** The estimated Phred-scaled rate of errors in the DNA prior to attaching UMIs.  Implementors must supply the
+    * user-configured value; it is used when calling the consensus UMI (the `RX` tag) on the consensus read. */
+  protected def errorRatePreUmi: PhredScore
+
+  /** The estimated Phred-scaled rate of errors in the DNA post attaching UMIs.  Implementors must supply the
+    * user-configured value; it is used when calling the consensus UMI (the `RX` tag) on the consensus read. */
+  protected def errorRatePostUmi: PhredScore
+
   /** A consensus caller used to generate consensus UMI sequences */
-  private val consensusBuilder = new SimpleConsensusCaller()
+  private lazy val consensusBuilder = new SimpleConsensusCaller(
+    errorRatePreLabeling  = this.errorRatePreUmi,
+    errorRatePostLabeling = this.errorRatePostUmi,
+  )
 
   /** Clipper utility used to _calculate_ clipping, but not do the actual clipping */
   private val clipper = new SamRecordClipper(mode=ClippingMode.Soft, autoClipAttributes=true)
