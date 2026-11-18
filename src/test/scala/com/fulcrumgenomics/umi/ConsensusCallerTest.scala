@@ -60,6 +60,18 @@ class ConsensusCallerTest extends UnitSpec {
     builder.call() shouldBe ('N'.toByte, 2.toByte)
   }
 
+  it should "produce a no-call if two bases are tied up to floating-point summation noise" in {
+    // A and C are each observed at Q29 and Q25, so their likelihoods are mathematically identical. Accumulating the
+    // same terms in a different order leaves them one ulp apart, which must not be enough to call a definite base.
+    val caller  = new ConsensusCaller(errorRatePreLabeling=PhredScore.MaxValue, errorRatePostLabeling=PhredScore.MaxValue)
+    val builder = caller.builder()
+    builder.add('C'.toByte, 29.toByte)
+    builder.add('C'.toByte, 25.toByte)
+    builder.add('A'.toByte, 29.toByte)
+    builder.add('A'.toByte, 25.toByte)
+    builder.call() shouldBe ('N'.toByte, 2.toByte)
+  }
+
   it should "calculate consensus base and quality, and observation counts, given a massive pileup" in {
     val caller = new ConsensusCaller(errorRatePreLabeling=50.toByte, errorRatePostLabeling=50.toByte)
     val builder = caller.builder()

@@ -30,11 +30,67 @@ package com.fulcrumgenomics.util
   */
 object MathUtil {
 
-  /** The difference between 1.0 and the next larger representable number.
+  /** The default number of ulps within which two values are treated as equal.
     *
-    * @see https://doc.rust-lang.org/std/primitive.f64.html#associatedconstant.EPSILON
+    * Comparing in ulps scales with the magnitude of the values, unlike an absolute tolerance. Four ulps are chosen
+    * to accommodate roundoff between mathematically tied likelihoods in [[com.fulcrumgenomics.umi.ConsensusCaller]].
+    * That caller uses Kahan-compensated summation of same-sign (non-positive) log-probability terms: tied bases
+    * can accumulate the same terms in different orders. Allowing roughly two ulps of error per sum gives roughly
+    * four ulps between them. This is a practical allowance, not a universal rigorous error bound; the rationale
+    * depends on retaining Kahan summation and does not apply to arbitrary sums, especially with cancellation.
+    *
+    * ULP distance counts representable steps, treating signed zeros as equal. Near zero this includes subnormal
+    * values on either side, but there is no additional absolute tolerance. Equal infinities match only each other;
+    * NaNs never match.
     */
-  val epsilon: Double = 1.0 / Math.pow(2, 52)
+  val maxUlps: Int = 4
+
+  /** The number of representable steps between `a` and `b`, capped at `Long.MaxValue`.
+    *
+    * Signed zeros have distance zero. NaNs and unequal non-finite values are reported as maximally distant.
+    */
+  private def ulpsBetween(a: Double, b: Double): Long = {
+    if (a == b) 0L
+    else if (java.lang.Double.isNaN(a) || java.lang.Double.isNaN(b)) Long.MaxValue
+    else if (a.isInfinite || b.isInfinite) Long.MaxValue
+    else {
+      val aBits = java.lang.Double.doubleToLongBits(a)
+      val bBits = java.lang.Double.doubleToLongBits(b)
+      // Same-sign finite representations lie in one half of the long range, so their difference cannot overflow.
+      if ((aBits < 0) == (bBits < 0)) Math.abs(aBits - bBits)
+      else {
+        // Across zero, add distances to zero rather than subtracting signed representations, which can overflow.
+        val aMagnitude = aBits & Long.MaxValue
+        val bMagnitude = bBits & Long.MaxValue
+        if (aMagnitude > Long.MaxValue - bMagnitude) Long.MaxValue else aMagnitude + bMagnitude
+      }
+    }
+  }
+
+  /** True if more than one eligible entry of `ds` is approximately equal to `target`.
+    *
+    * `NaN`s are always ineligible, and `-Infinity` is ineligible unless `allowNegativeInfinity` is set, mirroring
+    * the entries that were candidates for the extremum in the first place. The scan stops as soon as a second
+    * match is seen; these functions sit on the consensus calling hot path, so neither the predicate nor the count
+    * is worth materialising.
+    */
+  private def hasApproximateTie(ds: Array[Double],
+                                target: Double,
+                                maxUlps: Int,
+                                allowNegativeInfinity: Boolean): Boolean = {
+    var seen = false
+    var idx  = 0
+    while (idx < ds.length) {
+      val v = ds(idx)
+      if (!java.lang.Double.isNaN(v) && (Double.NegativeInfinity != v || allowNegativeInfinity) &&
+          ulpsBetween(v, target) <= maxUlps) {
+        if (seen) return true
+        seen = true
+      }
+      idx += 1
+    }
+    false
+  }
 
   /** Calculates the arithmetic mean of an array of bytes. The computation is performed
     * in integer space and the result will therefore always round down.
@@ -67,12 +123,16 @@ object MathUtil {
     *                              otherwise return the lowest non-infinite value
     * @param requireUniqueMinimum When false the earliest index at which the minimum value occurs is
     *                             reported. When true, if there are multiple indices with the minimum
-    *                             value then -1 will be returned for the index.
-    * @param epsilon The epsilon for comparison of equality
+    *                             value within `maxUlps` then -1 will be returned for the index.
+    * @param maxUlps The inclusive ULP distance from the final minimum within which values tie when uniqueness
+    *                is required. Defaults to [[MathUtil.maxUlps]]; zero requires exact equality, including signed
+    *                zeros and equal infinities. Must be non-negative, even when uniqueness is not required.
     * @throws java.util.NoSuchElementException if either the input array is zero length or the array
     *                                contains only invalid values (NaN and possibly NegativeInfinity)
+    * @throws java.lang.IllegalArgumentException if `maxUlps` is negative
     */
-  def minWithIndex(ds: Array[Double], allowNegativeInfinity: Boolean=false, requireUniqueMinimum: Boolean=false, epsilon: Double = MathUtil.epsilon): (Double, Int) = {
+  def minWithIndex(ds: Array[Double], allowNegativeInfinity: Boolean=false, requireUniqueMinimum: Boolean=false, maxUlps: Int = MathUtil.maxUlps): (Double, Int) = {
+    require(maxUlps >= 0, s"maxUlps must be non-negative, found $maxUlps")
     if (ds.length == 0) throw new NoSuchElementException("Cannot find the min of a zero length array.")
     var min      = Double.MaxValue
     var minIndex = -1
@@ -81,22 +141,22 @@ object MathUtil {
     var idx      = 0
     while (idx < len) {
       val v = ds(idx)
-      if (!java.lang.Double.isNaN(v) && (Double.NegativeInfinity != v || allowNegativeInfinity)) {
-        if (!assigned || v < min) {
-          min = v
-          minIndex = idx
-          assigned = true
-        }
-        else if (Math.abs(v - min) <= epsilon  && requireUniqueMinimum) {
-          minIndex = -1
-        }
+      if (!java.lang.Double.isNaN(v) && (Double.NegativeInfinity != v || allowNegativeInfinity) &&
+          (!assigned || v < min)) {
+        min = v
+        minIndex = idx
+        assigned = true
       }
 
       idx += 1
     }
 
     if (!assigned) throw new NoSuchElementException("All values are NaNs or negative infinity.")
-    (min, minIndex)
+
+    // Ties are detected against the final minimum, not a running one: a near-tie is a property of the values, and
+    // comparing against a running minimum would only detect it when the tied value happens to appear later.
+    if (requireUniqueMinimum && hasApproximateTie(ds, min, maxUlps, allowNegativeInfinity)) (min, -1)
+    else (min, minIndex)
   }
 
 
@@ -109,12 +169,16 @@ object MathUtil {
     * @param ds an array of doubles of length >= 1
     * @param requireUniqueMaximum When false the earliest index at which the maximum value occurs is
     *                             reported. When true, if there are multiple indices with the maximum
-    *                             value then -1 will be returned for the index.
-    * @param epsilon The epsilon for comparison of equality
+    *                             value within `maxUlps` then -1 will be returned for the index.
+    * @param maxUlps The inclusive ULP distance from the final maximum within which values tie when uniqueness
+    *                is required. Defaults to [[MathUtil.maxUlps]]; zero requires exact equality, including signed
+    *                zeros and equal infinities. Must be non-negative, even when uniqueness is not required.
     * @throws java.util.NoSuchElementException if either the input array is zero length or the array
     *                                contains only invalid values (NaN)
+    * @throws java.lang.IllegalArgumentException if `maxUlps` is negative
     */
-  def maxWithIndex(ds: Array[Double], requireUniqueMaximum: Boolean=false, epsilon: Double = MathUtil.epsilon): (Double,Int) = {
+  def maxWithIndex(ds: Array[Double], requireUniqueMaximum: Boolean=false, maxUlps: Int = MathUtil.maxUlps): (Double,Int) = {
+    require(maxUlps >= 0, s"maxUlps must be non-negative, found $maxUlps")
     if (ds.length == 0) throw new NoSuchElementException("Cannot find the max of a zero length array.")
     var max      =  Double.MinValue
     var maxIndex = -1
@@ -123,20 +187,20 @@ object MathUtil {
     var idx = 0
     while (idx < len) {
       val v = ds(idx)
-      if (!java.lang.Double.isNaN(v)) {
-        if (!assigned || v > max) {
-          max = v
-          maxIndex = idx
-          assigned = true
-        }
-        else if (Math.abs(v - max) <= epsilon && requireUniqueMaximum) {
-          maxIndex = -1
-        }
+      if (!java.lang.Double.isNaN(v) && (!assigned || v > max)) {
+        max = v
+        maxIndex = idx
+        assigned = true
       }
       idx += 1
     }
 
     if (!assigned) throw new NoSuchElementException("Array contained only NaNs.")
-    (max, maxIndex)
+
+    // Ties are detected against the final maximum, not a running one: a near-tie is a property of the values, and
+    // comparing against a running maximum would only detect it when the tied value happens to appear later.
+    // Negative infinities are eligible here: unlike the minimum, they are never excluded from the maximum.
+    if (requireUniqueMaximum && hasApproximateTie(ds, max, maxUlps, allowNegativeInfinity=true)) (max, -1)
+    else (max, maxIndex)
   }
 }

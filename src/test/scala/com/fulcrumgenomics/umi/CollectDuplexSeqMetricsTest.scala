@@ -343,15 +343,15 @@ class CollectDuplexSeqMetricsTest extends UnitSpec {
     o.duplexUmiMetrics.map(m => (m.umi, m.raw_observations, m.raw_observations_with_errors, m.unique_observations)).sortBy(_._1)
 
   it should "call the consensus UMI of a tied duplex independently of the hash of its MI" in {
-    // The single-strand families are visited in the order the UMI observations are summed, and that order resolves a
-    // 2-vs-2 tie. "0/A" and "1/A" sort the same way relative to their /B, but iterate in opposite orders in a HashMap.
-    // The expected UMI is the deterministic outcome of summing the /A reads before the /B reads.
-    Seq(("AAA-GGG", "GGG-TAA", "TAA"), ("TAA-GGG", "GGG-AAA", "AAA")).foreach { case (aRx, bRx, expected) =>
+    // "0/A" and "1/A" sort the same way relative to their /B, but iterate in opposite orders in a HashMap.
+    // Both RX arrangements have a 2-vs-2 tie and must yield NAA rather than selecting a base from summation noise.
+    // All four observations differ from NAA, so all four count as errors in both the UMI and duplex UMI metrics.
+    Seq(("AAA-GGG", "GGG-TAA", "NAA"), ("TAA-GGG", "GGG-AAA", "NAA")).foreach { case (aRx, bRx, expected) =>
       Seq("0", "1").foreach { miBase =>
         val results = exec(tiedDuplex(miBase, aRx, bRx), duplexCounts=true)
         withClue(s"/A RX $aRx, /B RX $bRx, MI base $miBase: ") {
-          umiCounts(results) shouldBe Seq((expected, 4L, 2L, 1L), ("GGG", 4L, 0L, 1L)).sortBy(_._1)
-          duplexUmiCounts(results) shouldBe Seq((s"$expected-GGG", 4L, 2L, 1L))
+          umiCounts(results) shouldBe Seq((expected, 4L, 4L, 1L), ("GGG", 4L, 0L, 1L)).sortBy(_._1)
+          duplexUmiCounts(results) shouldBe Seq((s"$expected-GGG", 4L, 4L, 1L))
         }
       }
     }
@@ -383,7 +383,8 @@ class CollectDuplexSeqMetricsTest extends UnitSpec {
   }
 
   it should "give the same result whichever order the single-strand families are given in" in {
-    // Pass the families directly, in both orders, so this does not rely on how a HashMap happens to order their MIs
+    // Pass the families directly, in both orders, so this does not rely on how a HashMap happens to order their MIs.
+    // The 2-vs-2 tie produces NAA, which differs from all four observations and makes all four count as errors.
     val reads = tiedDuplex("1", "AAA-GGG", "GGG-TAA").toSeq.filter(_.firstOfPair)
     val (aReads, bReads) = reads.partition(_[String](MI).endsWith("/A"))
     val Seq(abFirst, baFirst) = Seq(Seq(aReads, bReads), Seq(bReads, aReads)).map { ssGroups =>
@@ -396,7 +397,7 @@ class CollectDuplexSeqMetricsTest extends UnitSpec {
       )
     }
     baFirst shouldBe abFirst
-    abFirst shouldBe ((Seq(("GGG", 4L, 0L, 1L), ("TAA", 4L, 2L, 1L)), Seq(("TAA-GGG", 4L, 2L, 1L))))
+    abFirst shouldBe ((Seq(("GGG", 4L, 0L, 1L), ("NAA", 4L, 4L, 1L)), Seq(("NAA-GGG", 4L, 4L, 1L))))
   }
 
   it should "count UMIs as if on F1R2 molecules" in collector(duplex=true).foreach { c =>
