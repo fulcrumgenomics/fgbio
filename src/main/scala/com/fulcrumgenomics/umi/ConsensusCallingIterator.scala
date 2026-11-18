@@ -53,6 +53,9 @@ class ConsensusCallingIterator[ConsensusRead <: SimpleRead](sourceIterator: Iter
   private var collectedStats: Boolean = false
 
   protected val iter: Iterator[SamRecord] = {
+    // Templates with no mapped read at all are dropped here; the unmapped end of a half-mapped pair is passed through
+    // to the caller, which rejects it as `RejectionReason.Unmapped` so that it is counted and written to the rejects
+    // output rather than silently discarded.
     val filteredIterator = sourceIterator
       .filterNot (r => r.secondary || r.supplementary)
       .filter(r => r.mapped || (r.paired && r.mateMapped))
