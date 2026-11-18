@@ -812,9 +812,12 @@ class GroupReadsByUmi
     val startMs = System.currentTimeMillis
 
     // Split reads back out so we don't accidentally group F1R2 pairs with F2R1 pairs _unless_ the assigner
-    // wants it that way (e.g. the paired assigner)
+    // wants it that way (e.g. the paired assigner). Only mapped ends provide orientation evidence: absent
+    // and unmapped ends are both unknown, and opposite half-mapped endpoints must remain separate.
     val subgroups = if (!this.assigner.splitTemplatesByPairOrientation) Seq(templates) else {
-      templates.groupBy { t => (t.r1.forall(_.positiveStrand), t.r2.forall(_.positiveStrand)) }.values
+      templates.groupBy { t =>
+        (t.r1.filter(_.mapped).map(_.positiveStrand), t.r2.filter(_.mapped).map(_.positiveStrand))
+      }.values
     }
 
     val umisGrouped = subgroups.sumBy { ts =>

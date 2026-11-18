@@ -257,13 +257,10 @@ class DuplexConsensusCaller(override val readNamePrefix: String,
     this.minTotalReads <= numXy + numYx && this.minXyReads <= numXy && this.minYxReads <= numYx
   }
 
+  /** Checks strand agreement using only mapped reads; unmapped flags are not alignment evidence. */
   private def areAllSameStrand(reads: Seq[SamRecord]): Boolean = {
-    if (reads.nonEmpty) {
-      val ss1Flag = reads.head.negativeStrand
-      reads.forall(_.negativeStrand == ss1Flag)
-    }
-    else {
-      true
+    reads.find(_.mapped).forall { first =>
+      reads.forall(r => r.unmapped || r.negativeStrand == first.negativeStrand)
     }
   }
 

@@ -29,6 +29,8 @@ import com.fulcrumgenomics.bam.api.{SamOrder, SamRecord, SamSource}
 import com.fulcrumgenomics.sopt.cmdline.ValidationException
 import com.fulcrumgenomics.testing.SamBuilder.{Minus, Plus}
 import com.fulcrumgenomics.testing.{SamBuilder, UnitSpec}
+import com.fulcrumgenomics.umi.UmiConsensusCaller.{ConsensusKvMetric, RejectionReason}
+import com.fulcrumgenomics.util.Metric
 
 import java.nio.file.Paths
 
@@ -185,5 +187,94 @@ class CallDuplexConsensusReadsTest extends UnitSpec {
     }
 
     multiThreaded.map(_.asSam.getSAMString) should contain theSameElementsInOrderAs singleThreaded.map(_.asSam.getSAMString)
+  }
+
+  for (missingAbR1 <- Seq(false, true); reverse <- Seq(false, true);
+       mixedFlags <- Seq(false, true); unplaced <- Seq(false, true)) {
+    it should s"call a grouped half-mapped duplex with missingAbR1=$missingAbR1 reverse=$reverse mixedFlags=$mixedFlags unplaced=$unplaced" in {
+      val builder = new SamBuilder(readLength=10, baseQuality=30, sort=Some(SamOrder.Unsorted))
+      val templates = for (ba <- Seq(false, true); i <- 1 to 2) yield (ba, i)
+      (if (reverse) templates.reverse else templates).foreach { case (ba, i) =>
+        val missingR1 = missingAbR1 != ba
+        val pair = builder.addPair(name=s"$ba:$i", start1=100, start2=100,
+          unmapped1=missingR1, unmapped2= !missingR1, strand1=Plus, strand2=Plus,
+          bases1=if (ba) "CAGTCAGTCC" else "ACGTACGTAA",
+          bases2=if (ba) "ACGTACGTAA" else "CAGTCAGTCC",
+          attrs=Map(RX -> (if (ba) "CCCC-AAAA" else "AAAA-CCCC")))
+        // Neither placement nor strand flags on unmapped reads provide alignment evidence.
+        val unmapped = pair.find(_.unmapped).value
+        if (unplaced) {
+          unmapped.refIndex = -1
+          unmapped.start = 0
+        }
+        if (mixedFlags && i == 2) {
+          unmapped.negativeStrand = true
+          pair.find(_.mapped).value.mateNegativeStrand = true
+          unmapped.bases = htsjdk.samtools.util.SequenceUtil.reverseComplement(unmapped.basesString)
+        }
+      }
+      val grouped = makeTempFile("grouped.", ".bam")
+      val out = makeTempFile("duplex.", ".bam")
+      val rej = makeTempFile("rejects.", ".bam")
+      val stats = makeTempFile("duplex.", ".txt")
+      new GroupReadsByUmi(input=builder.toTempFile(), output=grouped, strategy=Strategy.Paired, edits=0).execute()
+      val groupedReads = readBamRecs(grouped)
+      groupedReads.map(_[String](MI).takeWhile(_ != '/')).distinct should have size 1
+      groupedReads.groupBy(_[String](MI)).values.map(_.size).toSeq.sorted shouldBe Seq(4, 4)
+      new CallDuplexConsensusReads(input=grouped, output=out, rejects=Some(rej), stats=Some(stats)).execute()
+      val reads = readBamRecs(out)
+      reads should have size 2
+      reads.map(_.basesString).toSet shouldBe Set("ACGTACGTAA", "CAGTCAGTCC")
+      reads.foreach { read =>
+        read[Int](ConsensusTags.PerRead.RawReadCount) shouldBe 4
+        read[Int](ConsensusTags.PerRead.AbRawReadCount) shouldBe 2
+        read[Int](ConsensusTags.PerRead.BaRawReadCount) shouldBe 2
+      }
+      readBamRecs(rej) shouldBe empty
+      val metrics = Metric.read[ConsensusKvMetric](stats).map(m => m.key -> m.value.toString).toMap
+      metrics("raw_reads_considered") shouldBe "8"
+      metrics("raw_reads_rejected") shouldBe "0"
+      metrics.contains("raw_reads_rejected_for_unmapped") shouldBe false
+    }
+  }
+
+  it should "not use the unmapped end of a half-mapped pair when calling a single-strand consensus" in {
+    val builder = new SamBuilder(readLength=10, sort=Some(SamOrder.TemplateCoordinate))
+    // Three AB templates, the third of which has an unmapped R2 carrying different bases to the mapped R2s.
+    builder.addPair(name="ab1", start1=100, start2=100, attrs=Map(MI -> "1/A"), bases1="AAAAAAAAAA", bases2="AAAAAAAAAA")
+    builder.addPair(name="ab2", start1=100, start2=100, attrs=Map(MI -> "1/A"), bases1="AAAAAAAAAA", bases2="AAAAAAAAAA")
+    builder.addPair(name="ab3", start1=100, start2=100, attrs=Map(MI -> "1/A"), bases1="AAAAAAAAAA", bases2="CCCCCCCCCC", unmapped2=true)
+    // Two fully mapped BA templates.
+    builder.addPair(name="ba1", start1=100, start2=100, strand1=Minus, strand2=Plus, attrs=Map(MI -> "1/B"), bases1="AAAAAAAAAA", bases2="AAAAAAAAAA")
+    builder.addPair(name="ba2", start1=100, start2=100, strand1=Minus, strand2=Plus, attrs=Map(MI -> "1/B"), bases1="AAAAAAAAAA", bases2="AAAAAAAAAA")
+
+    val out   = makeTempFile("duplex.", ".bam")
+    val rej   = makeTempFile("rejects.", ".bam")
+    val stats = makeTempFile("duplex.", ".txt")
+    new CallDuplexConsensusReads(input=builder.toTempFile(), output=out, readGroupId="ZZ", rejects=Some(rej), stats=Some(stats)).execute()
+
+    val recs = readBamRecs(out)
+    recs should have size 2
+    val r1 = recs.find(_.firstOfPair).value
+    val r2 = recs.find(_.secondOfPair).value
+
+    // The AB-R1s are all mapped, so all three contribute to the AB single-strand consensus for R1.
+    r1[Int](ConsensusTags.PerRead.AbRawReadCount) shouldBe 3
+    r1[Int](ConsensusTags.PerRead.BaRawReadCount) shouldBe 2
+
+    // Only the two mapped AB-R2s may contribute to the AB single-strand consensus for R2; the unmapped one must not.
+    r2[Int](ConsensusTags.PerRead.AbRawReadCount) shouldBe 2
+    r2[Int](ConsensusTags.PerRead.BaRawReadCount) shouldBe 2
+
+    // Only the unmapped R2 is rejected, and it is counted as a minority alignment.
+    val rejected = readBamRecs(rej).map(rec => (rec.name, rec.firstOfPair, rec[String](UmiConsensusCaller.RejectReasonTag)))
+    rejected should contain theSameElementsAs Seq(("ab3", false, RejectionReason.MinorityAlignment.code))
+
+    val metrics = Metric.read[ConsensusKvMetric](stats).map(m => m.key -> m.value.toString).toMap
+    metrics(s"raw_reads_rejected_for_${RejectionReason.MinorityAlignment.code}") shouldBe "1"
+    metrics("raw_reads_rejected") shouldBe "1"
+    metrics("raw_reads_used") shouldBe "9"
+    metrics.contains("raw_reads_rejected_for_unmapped") shouldBe false
+    metrics("raw_reads_considered") shouldBe "10"
   }
 }

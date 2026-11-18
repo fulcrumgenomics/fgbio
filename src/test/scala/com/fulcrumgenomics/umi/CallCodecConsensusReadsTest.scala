@@ -126,4 +126,39 @@ class CallCodecConsensusReadsTest extends UnitSpec with OptionValues {
       metric.value.toString.toInt shouldBe 2
     }
   }
+
+  it should "not use either end of a half-mapped pair when calling a consensus" in {
+    val builder = new SamBuilder(readLength=30, sort=Some(SamOrder.TemplateCoordinate))
+    val attrs   = Map(("RX", "ACC-TGA"), ("MI", "hi"))
+    builder.addPair(name="mapped1", start1=100, start2=100, bases1="AC" * 15, bases2="AC" * 15, attrs=attrs)
+    builder.addPair(name="mapped2", start1=100, start2=100, bases1="AC" * 15, bases2="AC" * 15, attrs=attrs)
+    // A template whose R2 is unmapped is not a primary FR pair, so neither end may contribute to the consensus.
+    builder.addPair(name="halfmapped", start1=100, start2=100, bases1="AC" * 15, bases2="GT" * 15, unmapped2=true, attrs=attrs)
+
+    val out   = makeTempFile("codec.", ".bam")
+    val rej   = makeTempFile("rejects.", ".bam")
+    val stats = makeTempFile("codec.", ".txt")
+    new CallCodecConsensusReads(input=builder.toTempFile(), output=out, readGroupId="ZZ", rejects=Some(rej), stats=Some(stats)).execute()
+
+    val recs = readBamRecs(out)
+    recs should have size 1
+
+    // Only the two fully mapped templates contribute to each single-strand consensus.
+    recs.head[Int](ConsensusTags.PerRead.AbRawReadCount) shouldBe 2
+    recs.head[Int](ConsensusTags.PerRead.BaRawReadCount) shouldBe 2
+
+    // Both ends are rejected together because the template is not a primary FR pair.
+    val rejected = readBamRecs(rej).map(rec => (rec.name, rec.firstOfPair, rec[String](UmiConsensusCaller.RejectReasonTag)))
+    rejected should contain theSameElementsAs Seq(
+      ("halfmapped", true,  RejectionReason.NotPrimaryFrPair.code),
+      ("halfmapped", false, RejectionReason.NotPrimaryFrPair.code),
+    )
+
+    val metrics = Metric.read[ConsensusKvMetric](stats).map(m => m.key -> m.value.toString).toMap
+    metrics(s"raw_reads_rejected_for_${RejectionReason.NotPrimaryFrPair.code}") shouldBe "2"
+    metrics("raw_reads_rejected") shouldBe "2"
+    metrics("raw_reads_used") shouldBe "4"
+    metrics.contains("raw_reads_rejected_for_unmapped") shouldBe false
+    metrics("raw_reads_considered") shouldBe "6"
+  }
 }
