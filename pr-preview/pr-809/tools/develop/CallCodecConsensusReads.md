@@ -65,12 +65,13 @@ min-input-base-quality are not counted in tag value calculations.
 |min-input-base-quality|m|PhredScore|Ignore bases in raw reads that have Q below this value.|Optional|1|10|
 |sort-order|S|SamOrder|The sort order of the output, the same as the input if not given.|Optional|1||
 |min-read-pairs|M|Int|The minimum number of codec read pairs to form a consensus read.|Optional|1|1|
-|max-read-pairs||Int|The maximum number of reads to use when building a single-strand consensus. If more than this many reads are present in a tag family, the family is randomly downsampled to exactly max-reads-pairs reads.|Optional|1||
+|max-read-pairs||Int|The maximum number of reads to use when building a single-strand consensus. If more than this many read pairs are present in a tag family, the family is randomly but deterministically downsampled to exactly max-read-pairs read pairs; the same reads are selected on every run and for any number of threads.|Optional|1||
 |min-duplex-length|d|Int|Minimum length of the duplex region (where R1 and R2 overlap).|Optional|1|1|
 |single-strand-qual|q|PhredScore|Reduce quality scores in single stranded regions of the consensus read to the given quality.|Optional|1||
 |outer-bases-qual|Q|PhredScore|Reduce the first and last `outer-bases-length` bases to the given quality.|Optional|1||
 |outer-bases-length|O|Int|The number of bases at the start and end of the read to reduce quality over *if* `outer-bases-qual` is specified.|Optional|1|5|
 |max-duplex-disagreement-rate|x|Double|Discard consensus reads where greater than this fraction of duplex bases disagree.|Optional|1|1.0|
 |max-duplex-disagreements|X|Int|Discard consensus reads where greater than this number of duplex bases disagree.|Optional|1|2147483647|
+|cell-tag|c|String|Tag containing the cellular barcodes.|Optional|1|CB|
 |threads||Int|The number of threads to use while consensus calling.|Optional|1|1|
 

@@ -44,18 +44,18 @@ If multiple FASTQs are present for each sub-read, then the FASTQs for each sub-r
 prior to running this tool (ex. `cat s_R1_L001.fq.gz s_R1_L002.fq.gz > s_R1.fq.gz`).
 
 [Read structures](https://github.com/fulcrumgenomics/fgbio/wiki/Read-Structures) are made up of `<number><operator>`
-pairs much like the `CIGAR` string in BAM files. Four kinds of operators are recognized:
+pairs much like the `CIGAR` string in BAM files. Four kinds of operators are supported by this tool:
 
 1. `T` identifies a template read
 2. `B` identifies a sample barcode read
 3. `M` identifies a unique molecular index read
 4. `S` identifies a set of bases that should be skipped or ignored
 
-The last `<number><operator>` pair may be specified using a `+` sign instead of number to denote "all remaining
-bases". This is useful if, e.g., fastqs have been trimmed and contain reads of varying length. Both reads must
-have template bases.  Any molecular identifiers will be concatenated using
-the `-` delimiter and placed in the given SAM record tag (`RX` by default).  Similarly, the sample barcode bases
-from the given read will be placed in the `BC` tag.
+At most one `<number><operator>` pair in a read structure may use a `+` sign in place of the number to denote
+"all remaining bases", and it may appear at any position in the read structure.  This is useful if, e.g., fastqs
+have been trimmed and contain reads of varying length. Both reads must have template bases.  Any molecular
+identifiers will be concatenated using the `-` delimiter and placed in the given SAM record tag (`RX` by default).
+Similarly, the sample barcode bases from the given read will be placed in the `BC` tag.
 
 Metadata about the samples should be given in either an Illumina Experiment Manager sample sheet or a metadata CSV
 file.  Formats are described in detail below.

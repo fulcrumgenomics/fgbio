@@ -19,6 +19,9 @@ being copied to reads mapped to the negative strand.  These options can take a m
 and the names of tag sets, which will be expanded into sets of tag names.  Currently the only named tag set
 is "Consensus" which contains all the per-base consensus tags produced by fgbio consensus callers.
 
+By default, reads present in the unmapped BAM but absent from the aligned BAM (e.g., removed by adapter
+trimming) are written to the output as unmapped. Use `--exclude-missing-reads` to exclude them entirely.
+
 By default the mapped BAM is read from standard input (stdin) and the output BAM is written to standard
 output (stdout). This can be changed using the `--input/-i` and `--output/-o` options.
 
@@ -42,4 +45,5 @@ fgbio --compression 0 ZipperBams -i mapped.bam -u unmapped.bam -r ref.fa | samto
 |tags-to-revcomp||String|Set of optional tags to reverse complement on reads mapped to the negative strand.|Optional|Unlimited||
 |sort|s|SamOrder|Sort the output BAM into the given order.|Optional|1||
 |buffer|b|Int|Buffer this many read-pairs while reading the input BAMs.|Optional|1|5000|
+|exclude-missing-reads||Boolean|Exclude reads from the unmapped BAM that are not present in the aligned BAM. Useful when reads were intentionally removed (e.g., by adapter trimming) prior to alignment.|Optional|1|false|
 

@@ -70,6 +70,12 @@ consensus errors [ce] (short[]): the number of bases from raw reads disagreeing 
 The per base depths and errors are both capped at 32,767. In all cases no-calls (`N`s) and bases below the
 `--min-input-base-quality` are not counted in tag value calculations.
 
+## Single-Cell / Cell Barcode Support
+
+When processing data with cell barcodes, the `--cell-tag` option specifies the SAM tag containing the cell
+barcode (default: `CB`). All source reads in a consensus group are validated to have the same cell barcode,
+and the barcode is propagated to the output consensus read.
+
 ## Arguments
 
 |Name|Flag|Type|Description|Required?|Max # of Values|Default Value(s)|
@@ -85,10 +91,11 @@ The per base depths and errors are both capped at 32,767. In all cases no-calls 
 |error-rate-post-umi|2|PhredScore|The Phred-scaled error rate for an error post the UMIs have been integrated.|Optional|1|40|
 |min-input-base-quality|m|PhredScore|Ignore bases in raw reads that have Q below this value.|Optional|1|10|
 |min-reads|M|Int|The minimum number of reads to produce a consensus base.|Required|1||
-|max-reads||Int|The maximum number of reads to use when building a consensus. If more than this many reads are present in a tag family, the family is randomly downsampled to exactly max-reads reads.|Optional|1||
+|max-reads||Int|The maximum number of reads to use when building a consensus. If more than this many reads are present in a tag family, the family is randomly but deterministically downsampled to exactly max-reads reads; the same reads are selected on every run and for any number of threads.|Optional|1||
 |output-per-base-tags|B|Boolean|If true produce tags on consensus reads that contain per-base information.|Optional|1|true|
 |sort-order|S|SamOrder|The sort order of the output, the same as the input if not given.|Optional|1||
 |debug|D|Boolean|Turn on debug logging.|Optional|1|false|
+|cell-tag|c|String|Tag containing the cell barcode.|Optional|1|CB|
 |threads||Int|The number of threads to use while consensus calling.|Optional|1|1|
 |consensus-call-overlapping-bases||Boolean|Consensus call overlapping bases in mapped paired end reads|Optional|1|true|
 

@@ -45,6 +45,10 @@ disabled with the `--dont-store-original-umis` option.
 For a large number of input UMIs, the `--cache-size` option may used to speed up the tool.  To disable
 using a cache, set the value to `0`.
 
+The reverse complement (using `--revcomp`) option will reverse complement the UMI in place.  In the case of
+multiple UMIs concatenated together, the individual UMIs are reverse complemented and the order
+reversed (eg. `AAGG-ACTG` is changed to `CAGT-CCTT`).
+
 ## Arguments
 
 |Name|Flag|Type|Description|Required?|Max # of Values|Default Value(s)|
@@ -61,4 +65,5 @@ using a cache, set the value to `0`.
 |dont-store-original-umis|x|Boolean|Don't store original UMIs upon correction.|Optional|1|false|
 |cache-size||Int|The number of uncorrected UMIs to cache; zero will disable the cache.|Optional|1|100000|
 |min-corrected||Double|The minimum ratio of kept UMIs to accept. A ratio below this will cause a failure (but all files will still be written).|Optional|1||
+|revcomp||Boolean|Reverse complement the UMIs in the BAM file prior to correcting.|Optional|1|false|
 
