@@ -153,7 +153,13 @@ private[bam] object ZipperBams extends LazyLogging {
 
       // Then reverse complement the unmapped read if we need to and do the negative strand reads
       if (hasNegReads) {
-        if (tagInfo.hasRevsOrRevcomps) u.asSam.reverseComplement(tagInfo.setToRevcomp, tagInfo.setToReverse, !hasPosReads)
+        if (tagInfo.hasRevsOrRevcomps) {
+          // htsjdk's reverseComplement re-sets each reversed tag as signed, so restore unsigned array types after
+          val unsignedTags = (tagInfo.reverse ++ tagInfo.revcomp)
+            .filter(tag => u.contains(tag) && u.asSam.isUnsignedArrayAttribute(tag))
+          u.asSam.reverseComplement(tagInfo.setToRevcomp, tagInfo.setToReverse, !hasPosReads)
+          unsignedTags.foreach(tag => u.asSam.setUnsignedArrayAttribute(tag, u[AnyRef](tag)))
+        }
         ms.iterator.filter(_.negativeStrand).foreach(m => copyTags(u, m))
       }
     }
@@ -165,7 +171,8 @@ private[bam] object ZipperBams extends LazyLogging {
   def copyTags(src: SamRecord, dest: SamRecord): Unit = {
     src.attributes.foreach { case (tag, value) =>
       if (tag != "PG" || !dest.contains("PG")) {
-        dest(tag) = value
+        if (src.asSam.isUnsignedArrayAttribute(tag)) dest.asSam.setUnsignedArrayAttribute(tag, value)
+        else dest(tag) = value
       }
     }
   }
