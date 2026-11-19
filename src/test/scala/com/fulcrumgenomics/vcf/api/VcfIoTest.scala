@@ -558,6 +558,29 @@ class VcfIoTest extends UnitSpec with OptionValues {
     roundTripText(bcf) shouldBe roundTripText(vcf)
   }
 
+  it should "read and write single breakend alleles, through a VCF and a BCF" in {
+    val records = Seq(
+      Seq("chr1", "100", "bnd1", "C", "C.", "50", "PASS", ".", "GT", "0/1", "0/0"),
+      Seq("chr1", "200", "bnd2", "T", ".T,G]chr1:300]", "50", "PASS", ".", "GT", "1/2", "0/1")
+    )
+    val vcf = writeRawVcf(records:_*)
+
+    val variants = VcfSource(vcf).toIndexedSeq
+    variants.map(_.alleles.alts.map(_.value)) shouldBe Seq(Seq("C."), Seq(".T", "G]chr1:300]"))
+    variants.flatMap(_.alleles.alts).foreach(_.isInstanceOf[Allele.BreakendAllele] shouldBe true)
+    variants.map(_.gt("s1").gtWithBases) shouldBe Seq("C/C.", ".T/G]chr1:300]")
+    variants.map(_.end) shouldBe Seq(100, 200)
+
+    // VCF -> VCF
+    roundTripText(vcf) shouldBe records.map(_.mkString("\t"))
+
+    // VCF -> BCF -> VCF
+    val bcf = makeTempFile(getClass.getSimpleName, BcfExtension)
+    copyVcf(vcf, bcf)
+    VcfSource(bcf).toIndexedSeq.map(_.alleles.toSeq.map(_.value)) shouldBe variants.map(_.alleles.toSeq.map(_.value))
+    roundTripText(bcf) shouldBe records.map(_.mkString("\t"))
+  }
+
   "VcfConversions.formatFloat" should "format Floats as plain, shortest round-trip decimals" in {
     VcfConversions.formatFloat(60f) shouldBe "60"
     VcfConversions.formatFloat(0.5f) shouldBe "0.5"
