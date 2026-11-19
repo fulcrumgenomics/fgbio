@@ -82,8 +82,21 @@ sealed trait VcfFieldType extends EnumEntry {
 object VcfFieldType extends FgBioEnum[VcfFieldType] {
   /** Integer field type, represented internally as [[scala.Int]]. */
   case object Integer   extends VcfFieldType { override def parse(s: String): Any = if (s == ".") Variant.MissingInt else s.toInt }
-  /** Floating point number field type, represented internally as [[scala.Float]]. */
-  case object Float     extends VcfFieldType { override def parse(s: String): Any = if (s == ".") Variant.MissingFloat else s.toFloat }
+  /** Floating point number field type, represented internally as [[scala.Float]].  NaN and infinite values may be
+    * written as `NaN`, `Inf` or `Infinity`, in any case and with an optional sign, as the VCF specification allows. */
+  case object Float     extends VcfFieldType {
+    override def parse(s: String): Any = {
+      if (s == ".") Variant.MissingFloat
+      else try s.toFloat catch { case ex: NumberFormatException => // Java parses `NaN` and `Infinity`, but not `nan` or `Inf`
+        s.toLowerCase(java.util.Locale.ROOT) match {
+          case "nan" | "+nan" | "-nan"                   => java.lang.Float.NaN
+          case "inf" | "+inf" | "infinity" | "+infinity" => java.lang.Float.POSITIVE_INFINITY
+          case "-inf" | "-infinity"                      => java.lang.Float.NEGATIVE_INFINITY
+          case _                                         => throw ex
+        }
+      }
+    }
+  }
   /** String field type, represented internally as [[java.lang.String]]. */
   case object String    extends VcfFieldType { override def parse(s: String): Any = s }
   /** Character field type, represented internally as [[scala.Char]]. */

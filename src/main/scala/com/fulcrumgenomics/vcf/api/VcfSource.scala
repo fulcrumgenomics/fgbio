@@ -26,12 +26,11 @@ package com.fulcrumgenomics.vcf.api
 
 import com.fulcrumgenomics.FgBioDef._
 import com.fulcrumgenomics.commons.collection.SelfClosingIterator
-import com.fulcrumgenomics.commons.io.PathUtil
 import htsjdk.samtools.util.CloseableIterator
 import htsjdk.tribble.AbstractFeatureReader
 import htsjdk.variant.bcf2.BCF2Codec
 import htsjdk.variant.variantcontext.VariantContext
-import htsjdk.variant.vcf.{VCFCodec, VCFHeader}
+import htsjdk.variant.vcf.{VCFCodec, VCFHeader, VariantFileType}
 
 import java.io.Closeable
 
@@ -109,7 +108,8 @@ object VcfSource {
     * @return a VariantSource for reading from the path given
     */
   def apply(path: PathToVcf, headerTransformer: VcfHeader => VcfHeader): VcfSource = {
-    val codec  = if (PathUtil.extensionOf(path).contains(".bcf")) {
+    // NB: recognize a BCF by its name as HTSJDK does, ignoring case
+    val codec  = if (VariantFileType.fromFileName(path.getFileName.toString).orElse(null) == VariantFileType.BCF) {
       new BCF2Codec
     }
     else {
