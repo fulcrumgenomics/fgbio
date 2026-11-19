@@ -1,0 +1,34 @@
+# Assembly name:  WBcel235
+# Organism name:  Caenorhabditis elegans (nematodes)
+# Infraspecific name:  strain=Bristol N2
+# Taxid:          6239
+# BioProject:     PRJNA13758
+# Submitter:      C. elegans Sequencing Consortium
+# Date:           2013-02-07
+# Assembly type:  haploid
+# Release type:   major
+# Assembly level: Complete Genome
+# Genome representation: full
+# RefSeq category: Reference Genome
+# GenBank assembly accession: GCA_000002985.3
+# RefSeq assembly accession: GCF_000002985.6
+# RefSeq assembly and GenBank assemblies identical: no
+#
+## Assembly-Units:
+## GenBank Unit Accession	RefSeq Unit Accession	Assembly-Unit name
+## GCA_000001175.3	GCF_000001175.4	Primary Assembly
+## 	GCF_000006485.1	non-nuclear
+#
+# Ordered by chromosome/plasmid; the chromosomes/plasmids are followed by
+# unlocalized scaffolds.
+# Unplaced scaffolds are listed at the end.
+# RefSeq is equal or derived from GenBank object.
+#
+# Sequence-Name	Sequence-Role	Assigned-Molecule	Assigned-Molecule-Location/Type	GenBank-Accn	Relationship	RefSeq-Accn	Assembly-Unit	Sequence-Length	UCSC-style-name
+I	assembled-molecule	I	Chromosome	BX284601.5	=	NC_003279.8	Primary Assembly	15072434	na
+II	assembled-molecule	II	Chromosome	BX284602.5	=	NC_003280.10	Primary Assembly	15279421	na
+III	assembled-molecule	III	Chromosome	BX284603.4	=	NC_003281.10	Primary Assembly	13783801	na
+IV	assembled-molecule	IV	Chromosome	BX284604.4	=	NC_003282.8	Primary Assembly	17493829	na
+V	assembled-molecule	V	Chromosome	BX284605.5	=	NC_003283.11	Primary Assembly	20924180	na
+X	assembled-molecule	X	Chromosome	BX284606.5	=	NC_003284.9	Primary Assembly	17718942	na
+MT	assembled-molecule	MT	Mitochondrion	na	<>	NC_001328.1	non-nuclear	13794	chrM
