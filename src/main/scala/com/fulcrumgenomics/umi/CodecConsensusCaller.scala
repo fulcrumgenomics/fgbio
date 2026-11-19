@@ -217,11 +217,11 @@ class CodecConsensusCaller(readNamePrefix: String,
         else if (
           // Check that the start and end of the overlap are in phase with one another in the longest alignments -
           // i.e. that the length of the overlapping region, in query bases, is the same in both R1 and R2
-          longestR1Alignment.readPosAtRefPos(overlapStart, returnLastBaseIfDeleted = true)
-            - longestR2Alignment.readPosAtRefPos(overlapStart, returnLastBaseIfDeleted = true)
+          readPosOrZero(longestR1Alignment, overlapStart, returnPriorBase=true)
+            - readPosOrZero(longestR2Alignment, overlapStart, returnPriorBase=true)
             !=
-            longestR1Alignment.readPosAtRefPos(overlapEnd, returnLastBaseIfDeleted = true)
-              - longestR2Alignment.readPosAtRefPos(overlapEnd, returnLastBaseIfDeleted = true)) {
+            readPosOrZero(longestR1Alignment, overlapEnd, returnPriorBase=true)
+              - readPosOrZero(longestR2Alignment, overlapEnd, returnPriorBase=true)) {
           rejectRecords((r1s.view ++ r2s.view).flatMap(_.sam), RejectionReason.IndelErrorBetweenStrands)
           Nil
         }
@@ -276,6 +276,20 @@ class CodecConsensusCaller(readNamePrefix: String,
     }
   }
 
+  /** Returns the 1-based read position at the given 1-based reference position, or zero if the reference position
+    * falls outside the alignment or is not aligned to a read base.  Positions outside the alignment can occur for
+    * dovetailed pairs, where the computed overlap extends past the alignment of one of the reads.
+    *
+    * @param rec the record to query
+    * @param pos the 1-based reference position
+    * @param returnPriorBase if the reference position is deleted or skipped in the read, true to return the last read
+    *                        base aligned before the deletion or skip, false to return zero
+    */
+  private def readPosOrZero(rec: SamRecord, pos: Int, returnPriorBase: Boolean): Int = {
+    if (pos < rec.start || pos > rec.end) 0
+    else rec.readPosAtReferencePos(pos, returnPriorBaseIfDeleted=returnPriorBase, returnPriorBaseIfSkipped=returnPriorBase).getOrElse(0)
+  }
+
   /**
     * Computes the length of the consensus read that should be generated. The provided positive and
     * negative strand alignments _must_ overlap.
@@ -284,8 +298,8 @@ class CodecConsensusCaller(readNamePrefix: String,
     */
   private def computeConsensusLength(pos: SamRecord, neg: SamRecord): Int = {
     val refOverlapEnd = pos.end
-    val posReadPos = pos.readPosAtRefPos(refOverlapEnd, returnLastBaseIfDeleted=false)
-    val negReadPos = neg.readPosAtRefPos(refOverlapEnd, returnLastBaseIfDeleted=false)
+    val posReadPos = readPosOrZero(pos, refOverlapEnd, returnPriorBase=false)
+    val negReadPos = readPosOrZero(neg, refOverlapEnd, returnPriorBase=false)
     if (posReadPos == 0 || negReadPos == 0) -1 else {
       posReadPos + neg.length - negReadPos
     }

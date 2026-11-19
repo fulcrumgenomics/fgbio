@@ -254,9 +254,110 @@ trait SamRecord {
   // transient attributes
   @inline final val transientAttrs: TransientAttrs = new TransientAttrs(this)
 
-  // TODO long-term: replace these two methods with methods on [[Cigar]] to save creating alignment blocks in memory
-  @inline final def refPosAtReadPos(pos: Int) = getReferencePositionAtReadPosition(pos)
-  @inline final def readPosAtRefPos(pos: Int, returnLastBaseIfDeleted: Boolean) = getReadPositionAtReferencePosition(pos, returnLastBaseIfDeleted)
+  /** Returns the 1-based reference position for the 1-based position in the read, or zero if the read base does not
+    * align to a reference base.  Equivalent to htsjdk's `SAMRecord.getReferencePositionAtReadPosition` for any cigar
+    * that fgbio's [[com.fulcrumgenomics.alignment.Cigar]] accepts, including returning zero (rather than throwing) for
+    * an unmapped record or a position outside the read. */
+  @deprecated(
+    message="Use referencePosAtReadPos, which returns an Option and throws if the record is unmapped or the position is outside the read",
+    since="5.0.0"
+  )
+  final def refPosAtReadPos(pos: Int): Int = refPosAtReadPosOrZero(pos, returnPriorBaseIfInserted=false)
+
+  /** Returns the 1-based read position for the 1-based reference position, or zero if no read base aligns to the
+    * reference position.  If `returnLastBaseIfDeleted` is true and the reference position is deleted or skipped (`D`
+    * or `N`) between two aligned read bases, returns the last read base aligned before the deletion or skip.  Equivalent
+    * to htsjdk's `SAMRecord.getReadPositionAtReferencePosition` for any cigar that fgbio's
+    * [[com.fulcrumgenomics.alignment.Cigar]] accepts, including returning zero (rather than throwing) for an unmapped
+    * record or a position outside the alignment. */
+  @deprecated(
+    message="Use readPosAtReferencePos, which returns an Option and throws if the record is unmapped or the position is outside the alignment",
+    since="5.0.0"
+  )
+  final def readPosAtRefPos(pos: Int, returnLastBaseIfDeleted: Boolean): Int = {
+    readPosAtRefPosOrZero(
+      pos                      = pos,
+      returnPriorBaseIfDeleted = returnLastBaseIfDeleted,
+      returnPriorBaseIfSkipped = returnLastBaseIfDeleted
+    )
+  }
+
+  /** Returns the 1-based reference position for the 1-based position in the read, or [[scala.None]] if
+    * the given base in the read does not align to a reference base (e.g. due to soft-clipping, or an insertion).
+    *
+    * Hard-clipping (`H`) is ignored and not counted as part of the read.  An exception is thrown if the record is
+    * unmapped, or if the requested read position is less than one or greater than the number of read bases described
+    * by the cigar.
+    *
+    * @param pos the 1-based read position to query
+    * @param returnPriorBaseIfInserted if the read base is part of an insertion, true to return the reference position
+    *                                  of the last read base aligned before the insertion (or [[scala.None]] if there
+    *                                  is no such base), false to return [[scala.None]]
+    */
+  final def referencePosAtReadPos(pos: Int, returnPriorBaseIfInserted: Boolean = false): Option[Int] = {
+    if (this.unmapped || pos < 1 || pos > this.cigar.lengthOnQuery) failInvalidReadPos(pos)
+    val refPos = refPosAtReadPosOrZero(pos=pos, returnPriorBaseIfInserted=returnPriorBaseIfInserted)
+    if (refPos == 0) None else Some(refPos)
+  }
+
+  /** Returns the 1-based position in the read's bases that is aligned to the 1-based reference position.
+    *
+    * If the reference position is deleted (`D`) or skipped (`N`) in the read, [[scala.None]] is returned unless
+    * `returnPriorBaseIfDeleted` or `returnPriorBaseIfSkipped` (respectively) is true, in which case the position of the
+    * last read base aligned to the reference before the deletion or skip is returned.  This requires the deletion or
+    * skip to lie between two aligned read bases: [[scala.None]] is returned for a deletion or skip at the start or end
+    * of the alignment.  An exception is thrown if the record is unmapped, or if the reference position is outside the
+    * alignment (i.e. before [[start]] or after [[end]]).
+    *
+    * @param pos the 1-based reference position to query
+    * @param returnPriorBaseIfDeleted if the reference position is deleted in the read, true to return the last read base
+    *                                 aligned before the deletion, false to return [[scala.None]]
+    * @param returnPriorBaseIfSkipped if the reference position is skipped in the read, true to return the last read base
+    *                                 aligned before the skip, false to return [[scala.None]]
+    */
+  final def readPosAtReferencePos(pos: Int,
+                                  returnPriorBaseIfDeleted: Boolean = false,
+                                  returnPriorBaseIfSkipped: Boolean = false): Option[Int] = {
+    if (this.unmapped || pos < this.start || pos > this.end) failInvalidReferencePos(pos)
+    val readPos = readPosAtRefPosOrZero(
+      pos                      = pos,
+      returnPriorBaseIfDeleted = returnPriorBaseIfDeleted,
+      returnPriorBaseIfSkipped = returnPriorBaseIfSkipped
+    )
+    if (readPos == 0) None else Some(readPos)
+  }
+
+  // The failure paths of the position lookups are kept in separate methods to keep the lookups themselves small.
+
+  /** Throws an exception describing why the read position given to [[referencePosAtReadPos]] is invalid. */
+  private def failInvalidReadPos(pos: Int): Nothing = {
+    require(this.mapped, s"Read is not mapped: ${this}")
+    require(pos >= 1, s"Read position '$pos' is less than one: ${this}")
+    throw new IllegalArgumentException(
+      s"Read position '$pos' is greater than the number of read bases '${this.cigar.lengthOnQuery}': ${this}")
+  }
+
+  /** Throws an exception describing why the reference position given to [[readPosAtReferencePos]] is invalid. */
+  private def failInvalidReferencePos(pos: Int): Nothing = {
+    require(this.mapped, s"Read is not mapped: ${this}")
+    require(pos >= this.start, s"Reference position '$pos' is before the start of the alignment '${this.start}': ${this}")
+    throw new IllegalArgumentException(s"Reference position '$pos' is after the end of the alignment '${this.end}': ${this}")
+  }
+
+  /** Returns the 1-based reference position aligned to the 1-based read position, or zero if there is none (including
+    * when the read position is outside the read), without validating the inputs or allocating.  See
+    * [[referencePosAtReadPos]]. */
+  private def refPosAtReadPosOrZero(pos: Int, returnPriorBaseIfInserted: Boolean): Int = {
+    val offset = this.cigar.targetOffsetAtQueryPos(pos, returnPriorBaseIfInserted)
+    if (offset < 0) 0 else this.start + offset
+  }
+
+  /** Returns the 1-based read position aligned to the 1-based reference position, or zero if there is none (including
+    * when the reference position is outside the alignment), without validating the inputs or allocating.  See
+    * [[readPosAtReferencePos]]. */
+  private def readPosAtRefPosOrZero(pos: Int, returnPriorBaseIfDeleted: Boolean, returnPriorBaseIfSkipped: Boolean): Int = {
+    if (pos < 1) 0 else this.cigar.queryPosAtTargetOffset(pos - this.start, returnPriorBaseIfDeleted, returnPriorBaseIfSkipped)
+  }
 
   ////////////////////////////////////////////////////////////////////////////
   // Non-wrapper methods.
