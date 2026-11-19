@@ -27,6 +27,7 @@ package com.fulcrumgenomics.vcf.api
 import com.fulcrumgenomics.FgBioDef.PathToVcf
 import com.fulcrumgenomics.commons.CommonsDef.SafelyClosable
 import com.fulcrumgenomics.commons.io.{Io, PathUtil}
+import com.fulcrumgenomics.fasta.SequenceMetadata
 import com.fulcrumgenomics.testing.VcfBuilder.Gt
 import com.fulcrumgenomics.testing.{UnitSpec, VcfBuilder}
 import com.fulcrumgenomics.vcf.api.Allele.NoCallAllele
@@ -655,5 +656,36 @@ class VcfIoTest extends UnitSpec with OptionValues {
     VcfConversions.formatFloat(Float.PositiveInfinity) shouldBe "Inf"
     VcfConversions.formatFloat(Float.NegativeInfinity) shouldBe "-Inf"
     Seq(0.1f, 1/3f, 123.456f, 3.4028235e38f, 1.4e-45f).foreach { f => VcfConversions.formatFloat(f).toFloat shouldBe f }
+  }
+
+  "VcfSource and VcfWriter" should "round-trip the length, assembly, MD5, species and URL of contig lines" in {
+    val contig = VcfContigHeader(index=0, name="chr1", length=Some(5000), assembly=Some("hg38"),
+      md5=Some("6aef897c3d6ff0c78aff06ac189178dd"), species=Some("Homo sapiens"), url=Some("file:/ref.fa"))
+    val header = VcfIoTest.Header.copy(contigs=IndexedSeq(contig))
+    val output = makeTempFile(getClass.getSimpleName, VcfExtension)
+    VcfWriter(output, header).close()
+
+    Io.readLines(output).filter(_.startsWith("##contig")).toSeq shouldBe Seq(
+      "##contig=<ID=chr1,length=5000,assembly=hg38,md5=6aef897c3d6ff0c78aff06ac189178dd,species=\"Homo sapiens\",URL=file:/ref.fa>"
+    )
+
+    val source = VcfSource(output)
+    source.header.contigs should contain theSameElementsInOrderAs Seq(contig)
+    source.header.dict(0).md5 shouldBe contig.md5
+    source.header.dict(0).assembly shouldBe contig.assembly
+    source.header.dict(0).species shouldBe contig.species
+    source.header.dict(0).uri shouldBe contig.url
+    source.safelyClose()
+  }
+
+  "VcfContigHeader.fromSequenceMetadata" should "keep the length, assembly, MD5, species and URL of the sequence" in {
+    val metadata = SequenceMetadata(name="chr1", length=5000, index=0, assembly=Some("hg38"), md5=Some("abc"),
+      species=Some("Homo sapiens"), uri=Some("file:/ref.fa"))
+    VcfContigHeader.fromSequenceMetadata(metadata) shouldBe VcfContigHeader(index=0, name="chr1", length=Some(5000),
+      assembly=Some("hg38"), md5=Some("abc"), species=Some("Homo sapiens"), url=Some("file:/ref.fa"))
+  }
+
+  it should "leave out the length of a sequence of unknown length" in {
+    VcfContigHeader.fromSequenceMetadata(SequenceMetadata(name="chr1", index=0)).length shouldBe None
   }
 }

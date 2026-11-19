@@ -38,9 +38,7 @@ import scala.util.Try
 object VcfBuilder {
   /** The default header that is used when making a new [[VcfBuilder]]. */
   val DefaultHeader: VcfHeader = {
-    val contigs = new SamBuilder().dict
-      .map(s => VcfContigHeader(s.index, s.name, length=Some(s.length), assembly=s.assembly))
-      .toIndexedSeq
+    val contigs = VcfContigHeader.fromSequenceDictionary(new SamBuilder().dict)
 
     VcfHeader(
       contigs = contigs,

@@ -118,12 +118,52 @@ sealed trait VcfHeaderEntry {}
   * @param name the name of the contig
   * @param length the length of the contig in bases, optional
   * @param assembly the optional name of the assembly from which the contig is drawn
+  * @param md5 the optional MD5 checksum of the contig's sequence
+  * @param species the optional species from which the contig is drawn
+  * @param url the optional URL of the contig's sequence: the `URL` key of the contig line, and the `uri` of a
+  *            [[com.fulcrumgenomics.fasta.SequenceMetadata]]
   */
 case class VcfContigHeader(index: Int,
                            name: String,
                            length: Option[Int] = None,
-                           assembly: Option[String] = None
-                          ) extends VcfHeaderEntry
+                           assembly: Option[String] = None,
+                           md5: Option[String] = None,
+                           species: Option[String] = None,
+                           url: Option[String] = None
+                          ) extends VcfHeaderEntry {
+  /** Returns the contig as a sequence in a sequence dictionary, keeping its index, length, assembly, MD5, species and
+    * URL.  A contig of unknown length is given
+    * [[com.fulcrumgenomics.fasta.SequenceMetadata$.UnknownSequenceLength]]. */
+  def toSequenceMetadata: SequenceMetadata = SequenceMetadata(
+    name     = name,
+    length   = length.getOrElse(SequenceMetadata.UnknownSequenceLength),
+    index    = index,
+    assembly = assembly,
+    md5      = md5,
+    species  = species,
+    uri      = url
+  )
+}
+
+object VcfContigHeader {
+  /** Builds a contig header line from a sequence in a sequence dictionary, keeping its length, assembly, MD5, species
+    * and URL.  A sequence of unknown length is written without a length.
+    */
+  def fromSequenceMetadata(metadata: SequenceMetadata): VcfContigHeader = VcfContigHeader(
+    index    = metadata.index,
+    name     = metadata.name,
+    length   = if (metadata.length == SequenceMetadata.UnknownSequenceLength) None else Some(metadata.length),
+    assembly = metadata.assembly,
+    md5      = metadata.md5,
+    species  = metadata.species,
+    url      = metadata.uri
+  )
+
+  /** Builds the contig header lines for the sequences in a sequence dictionary (see [[fromSequenceMetadata]]). */
+  def fromSequenceDictionary(dict: SequenceDictionary): IndexedSeq[VcfContigHeader] = {
+    dict.iterator.map(fromSequenceMetadata).toIndexedSeq
+  }
+}
 
 
 /**
@@ -197,12 +237,7 @@ case class VcfHeader(contigs: IndexedSeq[VcfContigHeader],
   private[api] val sampleIndex = samples.zipWithIndex.toMap
 
   /** The contig lines represented as a SAM sequence dictionary. */
-  val dict: SequenceDictionary = {
-    val infos = contigs.map { c =>
-      SequenceMetadata(name = c.name, length = c.length.getOrElse(0))
-    }
-    SequenceDictionary(infos:_*)
-  }
+  val dict: SequenceDictionary = SequenceDictionary(contigs.map(_.toSequenceMetadata):_*)
 
   /** The INFO entries organized as a map where the key is the ID of the INFO field. */
   val info: Map[String, VcfInfoHeader]     = infos.map(i => i.id -> i).toMap
