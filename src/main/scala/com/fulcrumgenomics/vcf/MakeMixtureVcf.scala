@@ -70,42 +70,14 @@ object MakeMixtureVcf {
   }
 
   /**
-    * Subsets the variant to the genotypes of the given samples, and its alleles to the reference allele and the
-    * alternate alleles called in those genotypes.
-    */
-  private[vcf] def subsetToSamples(variant: Variant, samples: Set[String]): Variant = {
-    val genotypes = variant.genotypes.filter { case (sample, _) => samples.contains(sample) }
-    val called    = genotypes.valuesIterator.flatMap(_.calls).toSet
-    val alleles   = AlleleSet(variant.alleles.ref, variant.alleles.alts.filter(called.contains))
-    variant.copy(alleles=alleles, genotypes=genotypes.map { case (sample, gt) => sample -> gt.copy(alleles=alleles) })
-  }
-
-  /**
     * Builds a writer for a mixture VCF.  The header has the version, contigs, FILTER, FORMAT and INFO lines of the input
-    * header along with the given FILTER and FORMAT lines (where the input does not already define them), and the given
-    * samples.
+    * header along with the given INFO, FORMAT and FILTER lines, which replace any of the same kind and ID in the input
+    * (see [[com.fulcrumgenomics.vcf.api.VcfHeader#withEntries]]), and the given samples.
+    *
+    * @throws java.lang.IllegalArgumentException if any of the given lines is not an INFO, FORMAT or FILTER line
     */
   def makeWriter(output: PathToVcf, in: VcfHeader, lines: Seq[VcfHeaderEntry], samples: String*): VcfWriter = {
-    val filters = lines.collect { case f: VcfFilterHeader => f }.filterNot(f => in.filter.contains(f.id))
-    val formats = lines.collect { case f: VcfFormatHeader => f }.filterNot(f => in.format.contains(f.id))
-    val header  = in.copy(
-      filters = in.filters ++ filters,
-      formats = in.formats ++ formats,
-      others  = Seq.empty,
-      samples = samples.toIndexedSeq
-    )
-    VcfWriter(output, header)
-  }
-
-  /** Converts the value of an allele fraction field to one or more fractions. */
-  private[vcf] def toFractions(value: Any): Seq[Double] = value match {
-    case x if Variant.isMissingValue(x) => throw new IllegalArgumentException(s"Missing value in allele fraction: $value")
-    case f: Float      => Seq(f.toString.toDouble) // via the decimal text, as the VCF has it
-    case d: Double     => Seq(d)
-    case i: Int        => Seq(i.toDouble)
-    case s: String     => s.split(',').toSeq.map(_.toDouble)
-    case xs: Seq[_]    => xs.flatMap(toFractions)
-    case _             => throw new IllegalArgumentException(s"Could not parse allele fraction: $value")
+    VcfWriter(output, in.withEntries(lines).copy(others=Seq.empty, samples=samples.toIndexedSeq))
   }
 }
 
@@ -200,7 +172,7 @@ class MakeMixtureVcf
     logger.info("Making mixture of: ", samples.mkString(", "))
     val progress = new ProgressLogger(logger, noun="variants", unit=50000)
 
-    in.iterator.map(MakeMixtureVcf.subsetToSamples(_, sampleNameSet)).foreach { variant =>
+    in.iterator.map(VariantUtil.subsetToSamples(_, sampleNameSet)).foreach { variant =>
       val outputGt = {
         if (!this.noCallIsHomRef && variant.gts.exists(_.isNoCall)) {
           MakeMixtureVcf.noCall(this.outputSampleName, variant.alleles)
@@ -210,7 +182,7 @@ class MakeMixtureVcf
           samples.foreach(updateAlleleFractionsForSample(variant, _, alleleFractions))
 
           // The allele fractions are written as a string instead of numbers so that they are written with the
-          // requested precision, rather than the three decimal places that htsjdk's VCF code would round them to.
+          // requested precision, rather than the three decimal places that a Double would be rounded to when written.
           val afString = variant.alleles.alts.map(a => fmt.format(alleleFractions(a))).mkString(",")
           val calls    = variant.alleles.iterator.filter(a => alleleFractions(a) > 0).toIndexedSeq
           Genotype(variant.alleles, this.outputSampleName, calls, attrs=Map(MakeMixtureVcf.AlleleFractionField -> afString))
@@ -218,7 +190,7 @@ class MakeMixtureVcf
       }
 
       // Finally make the variant, keeping the input filters and adding one if the genotype is unknown
-      val filters = variant.filters.filterNot(Variant.PassingFilters.contains) ++
+      val filters = variant.failedFilters ++
         (if (outputGt.isNoCall) Some(MakeMixtureVcf.UnknownGtFilter) else None)
       out.write(Variant(
         chrom     = variant.chrom,
@@ -250,16 +222,19 @@ class MakeMixtureVcf
         gt.calls.foreach(a => alleleFractions(a) += sample.proportion / count)
 
       case Some(afField) =>
-        getAfs(gt, afField) match {
+        getAfs(variant, gt, afField) match {
           case Seq()   =>
             // Missing AF field is only allowed if the genotype is hom-ref
             if (gt.isHomRef) alleleFractions(ref) += sample.proportion
             else fail(s"Sample ${sample.name} missing format field ${afField} at ${variant.chrom}:${variant.pos}")
           case Seq(d)  =>
             val pos = s"${variant.chrom}:${variant.pos}"
-            if (gt.isHetNonRef) fail(s"Only one value for AF for sample ${sample.name} at $pos with het-non-ref genotype.")
+            // NB: Genotype.isHet ignores a spanning deletion (`*`), so that `A/*` is not het, but here, as in HTSJDK, it
+            // is a het whose alt allele is the spanning deletion
+            val isHet = gt.isFullyCalled && gt.calls.distinct.length > 1
+            if (isHet && !gt.calls.contains(ref)) fail(s"Only one value for AF for sample ${sample.name} at $pos with het-non-ref genotype.")
             else if (gt.isHomRef) alleleFractions(ref) += sample.proportion
-            else if (gt.isHet)    gt.calls.foreach(a => alleleFractions(a) += sample.proportion * (if (a == ref) 1-d else d))
+            else if (isHet)       gt.calls.foreach(a => alleleFractions(a) += sample.proportion * (if (a == ref) 1-d else d))
             else if (gt.isHomVar) {
               alleleFractions(ref)          += sample.proportion * (1-d)
               alleleFractions(gt.calls(0))  += sample.proportion * d
@@ -282,10 +257,11 @@ class MakeMixtureVcf
   }
 
   /**
-    * Retrieves the requested field as a sequence of fractions, empty if the field is not present.
+    * Retrieves the requested field of the genotype of the variant as a sequence of fractions, empty if the field is not
+    * present.
     */
-  private[vcf] def getAfs(gt: Genotype, afField: String): Seq[Double] = gt.get[Any](afField) match {
-    case None        => Seq.empty
-    case Some(value) => MakeMixtureVcf.toFractions(value)
+  private[vcf] def getAfs(variant: Variant, gt: Genotype, afField: String): IndexedSeq[Double] = gt.get[Any](afField) match {
+    case None        => IndexedSeq.empty
+    case Some(value) => VariantUtil.toDoubles(value, s"$afField of sample ${gt.sample} at ${variant.chrom}:${variant.pos}")
   }
 }

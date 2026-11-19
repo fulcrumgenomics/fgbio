@@ -116,38 +116,32 @@ class MakeTwoSampleMixtureVcf
       val isMonomorphic = alleles.size < 2
 
       if (!isMonomorphic) {
-        // The new tumor genotype, and whether it is unknown because an input genotype is a no-call or the locus is
-        // multi-allelic
-        val (newTumorGt, tumorGtIsUnknown, newNormalGt) = if (isMultiAllelic) {
-          val normalGt = if (tumorOnly) None else Some(MakeMixtureVcf.noCall(NormalSampleName, variant.alleles))
-          (MakeMixtureVcf.noCall(TumorSampleName, variant.alleles), true, normalGt)
+        val (newTumorGt, newNormalGt) = if (isMultiAllelic) {
+          (MakeMixtureVcf.noCall(TumorSampleName, variant.alleles), if (tumorOnly) None else Some(MakeMixtureVcf.noCall(NormalSampleName, variant.alleles)))
         }
         else {
+          // The locus is bi-allelic in the two samples, so this is the one alt allele that they carry (which need not be
+          // the variant's first alt allele)
           val refAllele = variant.alleles.ref
-          val altAllele = variant.alleles.alts.head
+          val altAllele = alleles.find(_ != refAllele).getOrElse(unreachable("A bi-allelic locus must have an alt allele."))
 
           // Build the Tumor genotype
-          val (tumorGt, tumorGtIsUnknown) = if (oldGts.forall(gt => !gt.isNoCall)) {
+          val tumorGt = if (oldGts.forall(gt => !gt.isNoCall)) {
             def count(allele: Allele): Int = oldGts.map(_.calls.count(_ == allele)).sum
-            val calls = {
-              val present = Seq(refAllele, altAllele).filter(a => count(a) > 0).toIndexedSeq
-              present match {
-                case IndexedSeq()       => IndexedSeq(NoCallAllele) // neither the ref nor the first alt is called
-                case IndexedSeq(allele) => IndexedSeq(allele, allele)
-                case _                  => present
-              }
+            val calls = Seq(refAllele, altAllele).filter(a => count(a) > 0).toIndexedSeq match {
+              case IndexedSeq(allele) => IndexedSeq(allele, allele)
+              case present            => present
             }
 
             // We count alts only, because ref and no-call can be treated as ref here
             val af = (this.tumorFraction * oldTumorGt.calls.count(_ == altAllele) / 2) + ((1 - this.tumorFraction) * oldNormalGt.calls.count(_ == altAllele) / 2)
-            (Genotype(variant.alleles, TumorSampleName, calls, attrs=Map(MakeTwoSampleMixtureVcf.AlleleFractionField -> af)), false)
+            Genotype(variant.alleles, TumorSampleName, calls, attrs=Map(MakeTwoSampleMixtureVcf.AlleleFractionField -> af))
           }
           else {
-            (MakeMixtureVcf.noCall(TumorSampleName, variant.alleles), true)
+            MakeMixtureVcf.noCall(TumorSampleName, variant.alleles)
           }
 
-          val normalGt = if (tumorOnly) None else Some(Genotype(variant.alleles, NormalSampleName, oldNormalGt.calls))
-          (tumorGt, tumorGtIsUnknown, normalGt)
+          (tumorGt, if (tumorOnly) None else Some(Genotype(variant.alleles, NormalSampleName, oldNormalGt.calls)))
         }
 
         val gts = Seq(Some(newTumorGt), newNormalGt).flatten
@@ -155,7 +149,7 @@ class MakeTwoSampleMixtureVcf
         val filters = ListBuffer[String]()
         if (isMultiAllelic) filters += MultiAllelicFilter
         if (!tumorOnly && !oldNormalGt.isHomRef) filters += GermlineFilter
-        if (tumorGtIsUnknown) filters += UnknownGtFilter
+        if (newTumorGt.isNoCall) filters += UnknownGtFilter
 
         out.write(Variant(
           chrom     = variant.chrom,
