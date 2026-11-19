@@ -25,55 +25,53 @@
 package com.fulcrumgenomics.vcf
 
 import com.fulcrumgenomics.fasta.SequenceDictionary
-import htsjdk.variant.variantcontext.{VariantContext, VariantContextComparator}
+import com.fulcrumgenomics.vcf.api.Variant
 
 object JointVariantContextIterator {
-  def apply(iters: Seq[Iterator[VariantContext]],
+  /** Creates an iterator over the union of sites across the given iterators, ordering variants by the index of their
+    * contig in the sequence dictionary and then by their start position. */
+  def apply(iters: Seq[Iterator[Variant]],
             dict: SequenceDictionary
            ): JointVariantContextIterator = {
-    new JointVariantContextIterator(
-      iters=iters,
-      dictOrComp = Left(dict)
-    )
+    new JointVariantContextIterator(iters=iters, ordering=coordinateOrdering(dict))
   }
 
-  def apply(iters: Seq[Iterator[VariantContext]],
-            comp: VariantContextComparator
+  /** Creates an iterator over the union of sites across the given iterators, ordering variants with the given
+    * ordering.  Variants that compare as equal are returned together. */
+  def apply(iters: Seq[Iterator[Variant]],
+            ordering: Ordering[Variant]
            ): JointVariantContextIterator = {
-    new JointVariantContextIterator(
-      iters=iters,
-      dictOrComp = Right(comp)
-    )
+    new JointVariantContextIterator(iters=iters, ordering=ordering)
+  }
+
+  /** An ordering of variants by the index of their contig in the sequence dictionary and then by their start position. */
+  def coordinateOrdering(dict: SequenceDictionary): Ordering[Variant] = {
+    Ordering.by((v: Variant) => (dict(v.chrom).index, v.pos))
   }
 }
 
 /**
-  * Iterates over multiple variant context iterators such that we return a list of contexts for the union of sites
-  * across the iterators.  If samples is given, we subset each variant context to just that sample.
+  * Iterates over multiple variant iterators such that we return a list of variants for the union of sites
+  * across the iterators.
   */
-class JointVariantContextIterator private(iters: Seq[Iterator[VariantContext]],
-                                          dictOrComp: Either[SequenceDictionary, VariantContextComparator]
+class JointVariantContextIterator private(iters: Seq[Iterator[Variant]],
+                                          ordering: Ordering[Variant]
                                          )
-extends Iterator[Seq[Option[VariantContext]]] {
+extends Iterator[Seq[Option[Variant]]] {
 
   if (iters.isEmpty) throw new IllegalArgumentException("No iterators given")
 
   private val iterators = iters.map(_.buffered)
-  private val comparator = dictOrComp match {
-    case Left(dict)  => new VariantContextComparator(dict.toSam)
-    case Right(comp) => comp
-  }
 
   def hasNext: Boolean = iterators.exists(_.nonEmpty)
 
-  def next(): Seq[Option[VariantContext]] = {
-    val minCtx = iterators.filter(_.nonEmpty).map(_.head).sortWith {
-      case (left: VariantContext, right: VariantContext) => comparator.compare(left, right) < 0
-    }.head
+  def next(): Seq[Option[Variant]] = {
+    if (!hasNext) throw new NoSuchElementException("Called next when hasNext is false")
+    val minVariant = iterators.filter(_.nonEmpty).map(_.head).min(ordering)
     // TODO: could use a TreeSet to store the iterators, examine the head of each iterator, then pop the iterator with the min,
     // and add that iterator back in.
     iterators.map { iter =>
-      if (iter.isEmpty || this.comparator.compare(minCtx, iter.head) != 0) None
+      if (iter.isEmpty || this.ordering.compare(minVariant, iter.head) != 0) None
       else Some(iter.next())
     }
   }

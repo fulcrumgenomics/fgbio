@@ -29,14 +29,15 @@ import com.fulcrumgenomics.bam.api.SamOrder
 import com.fulcrumgenomics.commons.io.PathUtil
 import com.fulcrumgenomics.fasta.SequenceDictionary
 import com.fulcrumgenomics.testing.SamBuilder.{Minus, Plus}
-import com.fulcrumgenomics.testing.{ReferenceSetBuilder, SamBuilder, UnitSpec, VariantContextSetBuilder}
+import com.fulcrumgenomics.testing.VcfBuilder.Gt
+import com.fulcrumgenomics.testing.{ReferenceSetBuilder, SamBuilder, UnitSpec, VcfBuilder}
 import com.fulcrumgenomics.util.Metric.Count
 import com.fulcrumgenomics.util.{Metric, Rscript}
+import com.fulcrumgenomics.vcf.api.VcfContigHeader
 import htsjdk.samtools.util.{Interval, IntervalList}
 import org.scalatest.OptionValues
 
 import java.nio.file.{Files, Path}
-import scala.annotation.nowarn
 
 
 // Old-style metrics that did not include the optional non-collapsed substitution types
@@ -74,13 +75,13 @@ class ErrorRateByReadPositionTest extends UnitSpec with OptionValues {
   private val dict = SequenceDictionary.extract(ref)
 
   private val vcf = {
-    @nowarn("msg=class VariantContextSetBuilder in package testing is deprecated")
-    val builder = new VariantContextSetBuilder().setSequenceDictionary(dict)
-    builder.addVariant(1, 500, variantAlleles=List("A", "C"), genotypeAlleles=List("A", "C"))
-    builder.addVariant(2, 500, variantAlleles=List("C", "T"), genotypeAlleles=List("C", "T"))
-    builder.addVariant(3, 500, variantAlleles=List("G", "A"), genotypeAlleles=List("G", "A"))
-    builder.addVariant(4, 500, variantAlleles=List("T", "C"), genotypeAlleles=List("T", "C"))
-    builder.toTempFile()
+    val contigs = VcfContigHeader.fromSequenceDictionary(dict)
+    VcfBuilder(VcfBuilder.DefaultHeader.copy(contigs=contigs, samples=IndexedSeq("Sample")))
+      .add(chrom=dict(1).name, pos=500, alleles=Seq("A", "C"), gts=Seq(Gt(sample="Sample", gt="A/C")))
+      .add(chrom=dict(2).name, pos=500, alleles=Seq("C", "T"), gts=Seq(Gt(sample="Sample", gt="C/T")))
+      .add(chrom=dict(3).name, pos=500, alleles=Seq("G", "A"), gts=Seq(Gt(sample="Sample", gt="G/A")))
+      .add(chrom=dict(4).name, pos=500, alleles=Seq("T", "C"), gts=Seq(Gt(sample="Sample", gt="T/C")))
+      .toTempFile()
   }
 
   private def outputAndPrefix: (Path, Path) = {

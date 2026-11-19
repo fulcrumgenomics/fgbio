@@ -27,33 +27,54 @@ package com.fulcrumgenomics.vcf
 import com.fulcrumgenomics.FgBioDef._
 import com.fulcrumgenomics.commons.io.PathUtil
 import com.fulcrumgenomics.commons.util.NumericCounter
-import com.fulcrumgenomics.fasta.Converters.FromSAMSequenceDictionary
 import com.fulcrumgenomics.testing.VcfBuilder.Gt
-import com.fulcrumgenomics.testing.{ErrorLogLevel, UnitSpec, VariantContextSetBuilder, VcfBuilder}
+import com.fulcrumgenomics.testing.{ErrorLogLevel, UnitSpec, VcfBuilder}
 import com.fulcrumgenomics.util.{Io, Metric}
-import com.fulcrumgenomics.vcf.api.{VcfCount, VcfFieldType, VcfFormatHeader}
 import com.fulcrumgenomics.vcf.PhaseCigar.IlluminaSwitchErrors
+import com.fulcrumgenomics.vcf.api.{Variant, VcfCount, VcfFieldType, VcfFormatHeader, VcfHeader, VcfWriter}
 import htsjdk.samtools.SAMFileHeader
 import htsjdk.samtools.util.{Interval, IntervalList}
-import htsjdk.variant.variantcontext.writer.{Options, VariantContextWriterBuilder}
-import htsjdk.variant.variantcontext.{GenotypeBuilder, VariantContext, VariantContextBuilder}
-import htsjdk.variant.vcf.{VCFFileReader, VCFHeader}
 
 import java.nio.file.{Files, Paths}
-import scala.annotation.nowarn
 
-@nowarn("msg=class VariantContextSetBuilder in package testing is deprecated")
 object AssessPhasingTest {
-  def withPhasingSetId(ctx: VariantContext, id: Int): VariantContext = {
-    val gBuilder = new GenotypeBuilder(ctx.getGenotype(0))
-    gBuilder.attribute("PS", id)
-    val ctxBuilder = new VariantContextBuilder(ctx)
-    ctxBuilder.genotypes(gBuilder.make())
-    ctxBuilder.make()
+  /** The name of the sample in the test VCFs. */
+  val SampleName: String = "Sample"
+
+  /** The header for the test VCFs, with a single sample and a FORMAT line for the phase set (PS). */
+  val Header: VcfHeader = VcfBuilder(Seq(SampleName))
+    .withFormatHeaders(VcfFormatHeader(id="PS", count=VcfCount.Fixed(1), kind=VcfFieldType.Integer, description="Phase set"))
+    .header
+
+  /** Returns a copy of the variant with the phase set (PS) of its first genotype set to the given ID. */
+  def withPhasingSetId(variant: Variant, id: Int): Variant = {
+    val gt = variant.gts.next()
+    variant.copy(genotypes=variant.genotypes + (gt.sample -> gt.copy(attrs=gt.attrs + ("PS" -> id))))
   }
 
-  private val builderTruth = new VariantContextSetBuilder()
-  private val builderCall  = new VariantContextSetBuilder()
+  /** Builds single-sample variants with the [[Header]] for testing. */
+  class VariantSetBuilder extends Iterable[Variant] {
+    private val builder = VcfBuilder(Header)
+
+    /** The header of the VCF being built. */
+    def header: VcfHeader = builder.header
+
+    /** Adds a variant whose sample has the given genotype alleles, or a no-call if none are given. */
+    def addVariant(refIdx: Int = 0,
+                   start: Long,
+                   variantAlleles: List[String],
+                   genotypeAlleles: List[String] = List.empty,
+                   phased: Boolean = false): this.type = {
+      val gt = if (genotypeAlleles.isEmpty) "." else genotypeAlleles.mkString(if (phased) "|" else "/")
+      builder.add(chrom=header.dict(refIdx).name, pos=start.toInt, alleles=variantAlleles, gts=Seq(Gt(sample=SampleName, gt=gt)))
+      this
+    }
+
+    override def iterator: Iterator[Variant] = builder.iterator
+  }
+
+  private val builderTruth = new VariantSetBuilder()
+  private val builderCall  = new VariantSetBuilder()
 
   // init builderTruth and builderCall
   {
@@ -94,31 +115,30 @@ object AssessPhasingTest {
     // NB: call has blocks lengths 4, 5, 1, and 13; truth has block lengths 4, 6, and 13.
   }
 
-  private def addPhaseSetId(ctx: VariantContext): VariantContext = {
-    if (ctx.getStart <= 10) withPhasingSetId(ctx, 1)
-    else if (ctx.getStart <= 20) withPhasingSetId(ctx, 11)
-    else if (ctx.getStart <= 29) withPhasingSetId(ctx, 21)
-    else if (ctx.getStart <= 42) withPhasingSetId(ctx, 30)
+  private def addPhaseSetId(ctx: Variant): Variant = {
+    if (ctx.pos <= 10) withPhasingSetId(ctx, 1)
+    else if (ctx.pos <= 20) withPhasingSetId(ctx, 11)
+    else if (ctx.pos <= 29) withPhasingSetId(ctx, 21)
+    else if (ctx.pos <= 42) withPhasingSetId(ctx, 30)
     else unreachable("Not defined")
   }
 
-  lazy val TruthVariants: Seq[VariantContext] = {
+  lazy val TruthVariants: Seq[Variant] = {
     // Keep the truth variant position 13 without a phase set
     builderTruth.map { ctx =>
-      if (ctx.getStart == 13) ctx
+      if (ctx.pos == 13) ctx
       else addPhaseSetId(ctx)
     }.toSeq
   }
 
-  lazy val CallVariants: Seq[VariantContext] = {
+  lazy val CallVariants: Seq[Variant] = {
     // Keep the call variant position 14 without a phase set
     builderCall.map { ctx =>
-      if (ctx.getStart == 14) ctx
+      if (ctx.pos == 14) ctx
       else addPhaseSetId(ctx)
     }.toSeq
   }
 
-  val Header: VCFHeader = builderCall.header
 }
 
 /**
@@ -127,17 +147,11 @@ object AssessPhasingTest {
 class AssessPhasingTest extends ErrorLogLevel {
   import AssessPhasingTest._
 
-  private def writeVariants(variants: Seq[VariantContext]): PathToVcf = {
+  private def writeVariants(variants: Seq[Variant]): PathToVcf = {
     val path = Files.createTempFile("AssessPhasingTest.", ".vcf.gz")
     path.toFile.deleteOnExit()
-    val writer = new VariantContextWriterBuilder()
-      .setReferenceDictionary(Header.getSequenceDictionary)
-      .setOutputPath(path)
-      .setOption(Options.INDEX_ON_THE_FLY)
-      .setOption(Options.ALLOW_MISSING_FIELDS_IN_HEADER)
-      .build()
-    writer.writeHeader(Header)
-    variants.foreach(writer.add)
+    val writer = VcfWriter(path, Header)
+    writer ++= variants
     writer.close()
     path
   }
@@ -150,16 +164,16 @@ class AssessPhasingTest extends ErrorLogLevel {
     runEndToEnd(
       intervals      = intervals,
       expectedPrefix = expectedPrefix,
-      truthVariants  = TruthVariants.filter { ctx => start <= ctx.getStart && ctx.getStart <= end },
-      callVariants   = CallVariants.filter  { ctx => start <= ctx.getStart && ctx.getStart <= end },
+      truthVariants  = TruthVariants.filter { ctx => start <= ctx.pos && ctx.pos <= end },
+      callVariants   = CallVariants.filter  { ctx => start <= ctx.pos && ctx.pos <= end },
       debugVcf       = debugVcf
     )
   }
 
   private def runEndToEnd(intervals: Option[PathToIntervals],
                           expectedPrefix: PathPrefix,
-                          truthVariants: Seq[VariantContext] = TruthVariants,
-                          callVariants: Seq[VariantContext] = CallVariants,
+                          truthVariants: Seq[Variant] = TruthVariants,
+                          callVariants: Seq[Variant] = CallVariants,
                           debugVcf: Boolean = false
                          ): Unit = {
     // input files
@@ -194,20 +208,18 @@ class AssessPhasingTest extends ErrorLogLevel {
     if (debugVcf) {
       val annotatedVcf         = Paths.get(output.toString + AssessPhasing.AnnotatedVcfExtension)
       val expectedAnnotatedVcf = PathUtil.pathTo(s"${expectedPrefix}${AssessPhasing.AnnotatedVcfExtension}")
-      val actualContexts = new VCFFileReader(annotatedVcf, false).iterator().toList
-      val expectedContexts = new VCFFileReader(expectedAnnotatedVcf, false).iterator().toList
-      actualContexts.length shouldBe expectedContexts.length
-      actualContexts.zip(expectedContexts).foreach { case (actualCtx, expectedCtx) =>
-          actualCtx.toStringDecodeGenotypes shouldBe expectedCtx.toStringDecodeGenotypes
-      }
+      // NB: compare the records as text, as the expected VCF declares PHASE_CONC to be an Integer field
+      def records(vcf: PathToVcf): Seq[String] = Io.readLines(vcf).filterNot(_.startsWith("#")).toSeq
+      records(annotatedVcf) should contain theSameElementsInOrderAs records(expectedAnnotatedVcf)
     }
+    ()
   }
 
   private def toIntervalList(start: Int, end: Int): PathToIntervals = {
     val path = makeTempFile("AssessPhasingTest.", ".interval_list")
-    val contig = Header.getSequenceDictionary.getSequence(0).getSequenceName
+    val contig = Header.dict(0).name
     val header = new SAMFileHeader
-    header.setSequenceDictionary(Header.getSequenceDictionary)
+    header.setSequenceDictionary(Header.dict.toSam)
     val intervalList = new IntervalList(header)
     // TODO: BUG!!! These variables are never passed down into the interval list.
     locally { val _ = start }
@@ -346,22 +358,21 @@ class AssemblyStatisticsTest extends UnitSpec {
   }
 }
 
-@nowarn("msg=class VariantContextSetBuilder in package testing is deprecated")
 class PhaseBlockTest extends ErrorLogLevel {
-  import AssessPhasingTest.withPhasingSetId
+  import AssessPhasingTest.{VariantSetBuilder, withPhasingSetId}
 
   "PhaseBlock.toOverlapDetector" should "create an empty detector if no variants are given" in {
-    val builder = new VariantContextSetBuilder()
+    val builder = new VariantSetBuilder()
     PhaseBlock.buildOverlapDetector(iterator=builder.iterator).getAll.isEmpty shouldBe true
   }
 
   it should "create an empty detector when variants do not have the phase set tag" in {
-    val builder  = new VariantContextSetBuilder().addVariant(start=1, variantAlleles=List("A", "C"), genotypeAlleles=List("A", "C"), phased=true)
+    val builder  = new VariantSetBuilder().addVariant(start=1, variantAlleles=List("A", "C"), genotypeAlleles=List("A", "C"), phased=true)
     PhaseBlock.buildOverlapDetector(iterator=builder.iterator).getAll.isEmpty shouldBe true
   }
 
   it should "create a detector for a single variant" in {
-    val builder  = new VariantContextSetBuilder().addVariant(start=1, variantAlleles=List("A", "C"), genotypeAlleles=List("A", "C"), phased=true)
+    val builder  = new VariantSetBuilder().addVariant(start=1, variantAlleles=List("A", "C"), genotypeAlleles=List("A", "C"), phased=true)
     val iterator = builder.iterator.map { ctx => withPhasingSetId(ctx, 1) }
     val detector = PhaseBlock.buildOverlapDetector(iterator=iterator)
     detector.getAll should have size 1
@@ -371,7 +382,7 @@ class PhaseBlockTest extends ErrorLogLevel {
   }
 
   it should "create a detector from multiple variants within one block" in {
-    val builder = new VariantContextSetBuilder()
+    val builder = new VariantSetBuilder()
     builder.addVariant(start=1, variantAlleles=List("A", "C"), genotypeAlleles=List("A", "C"), phased=true)
     builder.addVariant(start=2, variantAlleles=List("A", "C"), genotypeAlleles=List("A", "C"), phased=true)
     builder.addVariant(start=3, variantAlleles=List("A", "C"), genotypeAlleles=List("A", "C"), phased=true)
@@ -385,12 +396,12 @@ class PhaseBlockTest extends ErrorLogLevel {
   }
 
   it should "create a detector from multiple variants across multiple blocks" in {
-    val builderBlockOne = new VariantContextSetBuilder()
+    val builderBlockOne = new VariantSetBuilder()
     builderBlockOne.addVariant(start=1, variantAlleles=List("A", "C"), genotypeAlleles=List("A", "C"), phased=true)
     builderBlockOne.addVariant(start=2, variantAlleles=List("A", "C"), genotypeAlleles=List("A", "C"), phased=true)
     builderBlockOne.addVariant(start=3, variantAlleles=List("A", "C"), genotypeAlleles=List("A", "C"), phased=true)
 
-    val builderBlockTwo = new VariantContextSetBuilder()
+    val builderBlockTwo = new VariantSetBuilder()
     builderBlockTwo.addVariant(start=4, variantAlleles=List("A", "C"), genotypeAlleles=List("A", "C"), phased=true)
     builderBlockTwo.addVariant(start=5, variantAlleles=List("A", "C"), genotypeAlleles=List("A", "C"), phased=true)
     builderBlockTwo.addVariant(start=6, variantAlleles=List("A", "C"), genotypeAlleles=List("A", "C"), phased=true)
@@ -409,14 +420,14 @@ class PhaseBlockTest extends ErrorLogLevel {
   }
 
   it should "keep the larger block when one block encloses/contains another" in {
-    val builderBlockOne = new VariantContextSetBuilder()
+    val builderBlockOne = new VariantSetBuilder()
     builderBlockOne.addVariant(start=1, variantAlleles=List("A", "C"), genotypeAlleles=List("A", "C"), phased=true)
     builderBlockOne.addVariant(start=2, variantAlleles=List("A", "C"), genotypeAlleles=List("A", "C"), phased=true)
     builderBlockOne.addVariant(start=3, variantAlleles=List("A", "C"), genotypeAlleles=List("A", "C"), phased=true)
 
     // second fully contained in the first
     {
-      val builderBlockTwo = new VariantContextSetBuilder()
+      val builderBlockTwo = new VariantSetBuilder()
       builderBlockTwo.addVariant(start = 2, variantAlleles = List("A", "C"), genotypeAlleles = List("A", "C"), phased = true)
 
       val contexts = (builderBlockOne.iterator.map { ctx => withPhasingSetId(ctx, 1) } ++ builderBlockTwo.iterator.map { ctx => withPhasingSetId(ctx, 2) }).toSeq
@@ -434,7 +445,7 @@ class PhaseBlockTest extends ErrorLogLevel {
 
     // first fully contained in the second
     {
-      val builderBlockTwo = new VariantContextSetBuilder()
+      val builderBlockTwo = new VariantSetBuilder()
       builderBlockTwo.addVariant(start = 2, variantAlleles = List("A", "C"), genotypeAlleles = List("A", "C"), phased = true)
 
       val contexts = (builderBlockTwo.iterator.map { ctx => withPhasingSetId(ctx, 2) } ++ builderBlockOne.iterator.map { ctx => withPhasingSetId(ctx, 1) }).toSeq
@@ -464,14 +475,14 @@ class PhaseBlockTest extends ErrorLogLevel {
   }
 
   it should "truncate the smaller block when too blocks overlap" in {
-    val builderBlockOne = new VariantContextSetBuilder()
+    val builderBlockOne = new VariantSetBuilder()
     builderBlockOne.addVariant(start=2, variantAlleles=List("A", "C"), genotypeAlleles=List("A", "C"), phased=true)
     builderBlockOne.addVariant(start=3, variantAlleles=List("A", "C"), genotypeAlleles=List("A", "C"), phased=true)
     builderBlockOne.addVariant(start=4, variantAlleles=List("A", "C"), genotypeAlleles=List("A", "C"), phased=true)
 
     // first block is extended
     {
-      val builderBlockTwo = new VariantContextSetBuilder()
+      val builderBlockTwo = new VariantSetBuilder()
       builderBlockTwo.addVariant(start = 3, variantAlleles = List("A", "C"), genotypeAlleles = List("A", "C"), phased = true)
       builderBlockTwo.addVariant(start = 4, variantAlleles = List("A", "C"), genotypeAlleles = List("A", "C"), phased = true)
       builderBlockTwo.addVariant(start = 5, variantAlleles = List("A", "C"), genotypeAlleles = List("A", "C"), phased = true)
@@ -494,7 +505,7 @@ class PhaseBlockTest extends ErrorLogLevel {
 
     // second block is extended
     {
-      val builderBlockTwo = new VariantContextSetBuilder()
+      val builderBlockTwo = new VariantSetBuilder()
       builderBlockTwo.addVariant(start = 3, variantAlleles = List("A", "C"), genotypeAlleles = List("A", "C"), phased = true)
       builderBlockTwo.addVariant(start = 4, variantAlleles = List("A", "C"), genotypeAlleles = List("A", "C"), phased = true)
       builderBlockTwo.addVariant(start = 5, variantAlleles = List("A", "C"), genotypeAlleles = List("A", "C"), phased = true)
@@ -518,17 +529,17 @@ class PhaseBlockTest extends ErrorLogLevel {
   }
 
   it should "resolve three overlapping blocks, such that when the middle one is truncated and now starts after the third, it is resolved" in {
-    val builderBlockOne = new VariantContextSetBuilder()
+    val builderBlockOne = new VariantSetBuilder()
     builderBlockOne.addVariant(start=2, variantAlleles=List("A", "C"), genotypeAlleles=List("A", "C"), phased=true)
     builderBlockOne.addVariant(start=10, variantAlleles=List("A", "C"), genotypeAlleles=List("A", "C"), phased=true)
     val oneIter = builderBlockOne.iterator.map { ctx => withPhasingSetId(ctx, 2) }
 
-    val builderBlockTwo = new VariantContextSetBuilder()
+    val builderBlockTwo = new VariantSetBuilder()
     builderBlockTwo.addVariant(start = 8, variantAlleles = List("A", "C"), genotypeAlleles = List("A", "C"), phased = true)
     builderBlockTwo.addVariant(start = 14, variantAlleles = List("A", "C"), genotypeAlleles = List("A", "C"), phased = true)
     val twoIter = builderBlockTwo.iterator.map { ctx => withPhasingSetId(ctx, 3) }
 
-    val builderBlockThree = new VariantContextSetBuilder()
+    val builderBlockThree = new VariantSetBuilder()
     builderBlockThree.addVariant(start = 9, variantAlleles = List("A", "C"), genotypeAlleles = List("A", "C"), phased = true)
     builderBlockThree.addVariant(start = 13, variantAlleles = List("A", "C"), genotypeAlleles = List("A", "C"), phased = true)
     val threeIter = builderBlockThree.iterator.map { ctx => withPhasingSetId(ctx, 4) }
@@ -558,17 +569,17 @@ class PhaseBlockTest extends ErrorLogLevel {
   }
 
   it should "resolve three overlapping blocks, such that when the middle one is truncated and now is enclosed in the third, we get two blocks" in {
-    val builderBlockOne = new VariantContextSetBuilder()
+    val builderBlockOne = new VariantSetBuilder()
     builderBlockOne.addVariant(start=2, variantAlleles=List("A", "C"), genotypeAlleles=List("A", "C"), phased=true)
     builderBlockOne.addVariant(start=10, variantAlleles=List("A", "C"), genotypeAlleles=List("A", "C"), phased=true)
     val oneIter = builderBlockOne.iterator.map { ctx => withPhasingSetId(ctx, 2) }
 
-    val builderBlockTwo = new VariantContextSetBuilder()
+    val builderBlockTwo = new VariantSetBuilder()
     builderBlockTwo.addVariant(start = 8, variantAlleles = List("A", "C"), genotypeAlleles = List("A", "C"), phased = true)
     builderBlockTwo.addVariant(start = 13, variantAlleles = List("A", "C"), genotypeAlleles = List("A", "C"), phased = true)
     val twoIter = builderBlockTwo.iterator.map { ctx => withPhasingSetId(ctx, 3) }
 
-    val builderBlockThree = new VariantContextSetBuilder()
+    val builderBlockThree = new VariantSetBuilder()
     builderBlockThree.addVariant(start = 9, variantAlleles = List("A", "C"), genotypeAlleles = List("A", "C"), phased = true)
     builderBlockThree.addVariant(start = 13, variantAlleles = List("A", "C"), genotypeAlleles = List("A", "C"), phased = true)
     val threeIter = builderBlockThree.iterator.map { ctx => withPhasingSetId(ctx, 4) }
@@ -594,17 +605,16 @@ class PhaseBlockTest extends ErrorLogLevel {
   }
 }
 
-@nowarn("msg=class VariantContextSetBuilder in package testing is deprecated")
 class PhaseCigarTest extends ErrorLogLevel {
   import AssessPhasingTest._
   import PhaseCigarOp._
 
-  private def toCigar(truth: Seq[VariantContext],
-                      call: Seq[VariantContext],
-                      header: VCFHeader,
+  private def toCigar(truth: Seq[Variant],
+                      call: Seq[Variant],
+                      header: VcfHeader,
                       skipMismatchingAlleles: Boolean,
                       assumeFixedAlleleOrder: Boolean = true): (Seq[PhaseCigarOp], AssessPhasingMetric) = {
-    val dict = header.getSequenceDictionary.fromSam
+    val dict = header.dict
     val pairedIterator = JointVariantContextIterator(
       iters = Seq(truth.iterator, call.iterator),
       dict  = dict
@@ -626,7 +636,7 @@ class PhaseCigarTest extends ErrorLogLevel {
   }
 
   "Cigar.toCigar" should "create an empty cigar if no variants have a phasing set" in {
-    val builder = new VariantContextSetBuilder().addVariant(start=1, variantAlleles=List("A", "C"), genotypeAlleles=List("A", "C"), phased=true)
+    val builder = new VariantSetBuilder().addVariant(start=1, variantAlleles=List("A", "C"), genotypeAlleles=List("A", "C"), phased=true)
     val ctx     = builder.head
 
     // truth variant only
@@ -649,7 +659,7 @@ class PhaseCigarTest extends ErrorLogLevel {
   }
 
   it should "create a cigar from either a single truth or call variant" in {
-    val builder = new VariantContextSetBuilder().addVariant(start=1, variantAlleles=List("A", "C"), genotypeAlleles=List("A", "C"), phased=true)
+    val builder = new VariantSetBuilder().addVariant(start=1, variantAlleles=List("A", "C"), genotypeAlleles=List("A", "C"), phased=true)
     val ctx     = withPhasingSetId(builder.head, 1)
 
     // truth variant only
@@ -672,7 +682,7 @@ class PhaseCigarTest extends ErrorLogLevel {
   }
 
   it should "create a cigar when both truth and call variants are present but only of the two are phased" in {
-    val builder    = new VariantContextSetBuilder().addVariant(start=1, variantAlleles=List("A", "C"), genotypeAlleles=List("A", "C"), phased=true)
+    val builder    = new VariantSetBuilder().addVariant(start=1, variantAlleles=List("A", "C"), genotypeAlleles=List("A", "C"), phased=true)
     val ctxPhased  = withPhasingSetId(builder.head, 1)
     val ctxNoPhase = builder.head
 
@@ -698,7 +708,7 @@ class PhaseCigarTest extends ErrorLogLevel {
   }
 
   it should "create a cigar when both truth and call variants are present and both are phased" in {
-    val builder  = new VariantContextSetBuilder().addVariant(start=1, variantAlleles=List("A", "C"), genotypeAlleles=List("A", "C"), phased=true)
+    val builder  = new VariantSetBuilder().addVariant(start=1, variantAlleles=List("A", "C"), genotypeAlleles=List("A", "C"), phased=true)
     val ctx      = withPhasingSetId(builder.head, 1)
 
     // both variants are phased
@@ -713,8 +723,8 @@ class PhaseCigarTest extends ErrorLogLevel {
   }
 
   it should "create a cigar when both truth and call variants are present and both are phased but mismatch alleles" in {
-    val builderTruth = new VariantContextSetBuilder().addVariant(start=1, variantAlleles=List("A", "C"), genotypeAlleles=List("A", "C"), phased=true)
-    val builderCall  = new VariantContextSetBuilder().addVariant(start=1, variantAlleles=List("A", "C"), genotypeAlleles=List("C", "A"), phased=true)
+    val builderTruth = new VariantSetBuilder().addVariant(start=1, variantAlleles=List("A", "C"), genotypeAlleles=List("A", "C"), phased=true)
+    val builderCall  = new VariantSetBuilder().addVariant(start=1, variantAlleles=List("A", "C"), genotypeAlleles=List("C", "A"), phased=true)
     val truth = withPhasingSetId(builderTruth.head, 1)
     val call  = withPhasingSetId(builderCall.head, 1)
 
@@ -753,8 +763,8 @@ class PhaseCigarTest extends ErrorLogLevel {
   }
 
   it should "skip sites where alleles mismatch if specified" in {
-    val builderTruth = new VariantContextSetBuilder().addVariant(start=1, variantAlleles=List("A", "C"), genotypeAlleles=List("A", "C"), phased=true)
-    val builderCall  = new VariantContextSetBuilder().addVariant(start=1, variantAlleles=List("A", "G"), genotypeAlleles=List("A", "G"), phased=true)
+    val builderTruth = new VariantSetBuilder().addVariant(start=1, variantAlleles=List("A", "C"), genotypeAlleles=List("A", "C"), phased=true)
+    val builderCall  = new VariantSetBuilder().addVariant(start=1, variantAlleles=List("A", "G"), genotypeAlleles=List("A", "G"), phased=true)
     val truth = withPhasingSetId(builderTruth.head, 1)
     val call  = withPhasingSetId(builderCall.head, 1)
 
@@ -779,8 +789,8 @@ class PhaseCigarTest extends ErrorLogLevel {
 
   private val threeHaplotypeCigar = Seq(BothEnd, Match, TruthOnly, CallOnly, Match, BothEnd, Match, Mismatch, CallOnly, TruthOnly, Match, TruthOnly, CallEnd, CallOnly, BothEnd)
   it should "create a cigar with three haplotype blocks" in {
-    val truth = AssessPhasingTest.TruthVariants.filter(ctx => ctx.getStart < 30)
-    val call  = AssessPhasingTest.CallVariants.filter(ctx => ctx.getStart < 30)
+    val truth = AssessPhasingTest.TruthVariants.filter(ctx => ctx.pos < 30)
+    val call  = AssessPhasingTest.CallVariants.filter(ctx => ctx.pos < 30)
 
     val (cigar, metric) = toCigar(truth = truth, call = call, header = AssessPhasingTest.Header, skipMismatchingAlleles = false)
     cigar should contain theSameElementsInOrderAs threeHaplotypeCigar
@@ -800,8 +810,8 @@ class PhaseCigarTest extends ErrorLogLevel {
 
   it should "create a cigar with four haplotype blocks" in {
     val fourHaplotypeBlockCigar = threeHaplotypeCigar ++ Seq(Match, Match, Match, Match, Match, Match, Match, Mismatch, Mismatch, Mismatch, Mismatch, Mismatch, Mismatch, BothEnd)
-    val truth = AssessPhasingTest.TruthVariants.filter(ctx => ctx.getStart <= 42)
-    val call  = AssessPhasingTest.CallVariants.filter(ctx => ctx.getStart <= 42)
+    val truth = AssessPhasingTest.TruthVariants.filter(ctx => ctx.pos <= 42)
+    val call  = AssessPhasingTest.CallVariants.filter(ctx => ctx.pos <= 42)
 
     val (cigar, metric) = toCigar(truth = truth, call = call, header = AssessPhasingTest.Header, skipMismatchingAlleles = false)
     cigar should contain theSameElementsInOrderAs fourHaplotypeBlockCigar
@@ -987,102 +997,102 @@ class PhaseCigarTest extends ErrorLogLevel {
     PhaseCigar(Seq(CallOnly, CallEnd, TruthOnly, TruthEnd, CallOnly, CallEnd)).toPhasedBlocks().map(_.cigar) should contain theSameElementsInOrderAs Seq(Seq(CallOnly), Seq(TruthOnly, TruthEnd, CallOnly))
   }
 
-  "Cigar.contextsToBlockEndOperator/contextsToMatchingOperator" should "should return the cigar operator for two variant contexts" in {
-    val builder = new VariantContextSetBuilder()
+  "Cigar.variantsToBlockEndOperator/variantsToMatchingOperator" should "should return the cigar operator for two variant contexts" in {
+    val builder = new VariantSetBuilder()
     builder.addVariant(start = 1, variantAlleles = List("A", "C"), genotypeAlleles = List("A", "C"), phased = true)
     builder.addVariant(start = 2, variantAlleles = List("A", "C"), genotypeAlleles = List("A", "C"), phased = true)
     val ctxStart   = withPhasingSetId(builder.head, 1)
     val ctxNoStart = withPhasingSetId(builder.last, 1)
 
     // No truth, call is start of a phase block
-    PhaseCigar.contextsToBlockEndOperator(truth=None, call=Some(ctxStart)) shouldBe Some(CallEnd)
-    PhaseCigar.contextsToMatchingOperator(truth=None, call=Some(ctxStart)) shouldBe Some(CallOnly)
+    PhaseCigar.variantsToBlockEndOperator(truth=None, call=Some(ctxStart)) shouldBe Some(CallEnd)
+    PhaseCigar.variantsToMatchingOperator(truth=None, call=Some(ctxStart)) shouldBe Some(CallOnly)
 
     // No truth, call is not the start of a phase block
-    PhaseCigar.contextsToBlockEndOperator(truth=None, call=Some(ctxNoStart)).isEmpty shouldBe true
-    PhaseCigar.contextsToMatchingOperator(truth=None, call=Some(ctxNoStart)) shouldBe Some(CallOnly)
+    PhaseCigar.variantsToBlockEndOperator(truth=None, call=Some(ctxNoStart)).isEmpty shouldBe true
+    PhaseCigar.variantsToMatchingOperator(truth=None, call=Some(ctxNoStart)) shouldBe Some(CallOnly)
 
     // Truth is the start of a phase block, no call
-    PhaseCigar.contextsToBlockEndOperator(truth=Some(ctxStart), call=None) shouldBe Some(TruthEnd)
-    PhaseCigar.contextsToMatchingOperator(truth=Some(ctxStart), call=None) shouldBe Some(TruthOnly)
+    PhaseCigar.variantsToBlockEndOperator(truth=Some(ctxStart), call=None) shouldBe Some(TruthEnd)
+    PhaseCigar.variantsToMatchingOperator(truth=Some(ctxStart), call=None) shouldBe Some(TruthOnly)
 
     // Truth is the start of a phase block, no call
-    PhaseCigar.contextsToBlockEndOperator(truth=Some(ctxNoStart), call=None).isEmpty shouldBe true
-    PhaseCigar.contextsToMatchingOperator(truth=Some(ctxNoStart), call=None) shouldBe Some(TruthOnly)
+    PhaseCigar.variantsToBlockEndOperator(truth=Some(ctxNoStart), call=None).isEmpty shouldBe true
+    PhaseCigar.variantsToMatchingOperator(truth=Some(ctxNoStart), call=None) shouldBe Some(TruthOnly)
 
     // Truth and call, both start of a phase block
-    PhaseCigar.contextsToBlockEndOperator(truth=Some(ctxStart), call=Some(ctxStart)) shouldBe Some(BothEnd)
-    PhaseCigar.contextsToMatchingOperator(truth=Some(ctxStart), call=Some(ctxStart)) shouldBe Some(Match)
+    PhaseCigar.variantsToBlockEndOperator(truth=Some(ctxStart), call=Some(ctxStart)) shouldBe Some(BothEnd)
+    PhaseCigar.variantsToMatchingOperator(truth=Some(ctxStart), call=Some(ctxStart)) shouldBe Some(Match)
 
     // Truth and call, only call is the start of a phase block
-    PhaseCigar.contextsToBlockEndOperator(truth=Some(ctxNoStart), call=Some(ctxStart)) shouldBe Some(CallEnd)
-    PhaseCigar.contextsToMatchingOperator(truth=Some(ctxNoStart), call=Some(ctxStart)) shouldBe Some(Match)
+    PhaseCigar.variantsToBlockEndOperator(truth=Some(ctxNoStart), call=Some(ctxStart)) shouldBe Some(CallEnd)
+    PhaseCigar.variantsToMatchingOperator(truth=Some(ctxNoStart), call=Some(ctxStart)) shouldBe Some(Match)
 
     // Truth and call, only truth is the start of a phase block
-    PhaseCigar.contextsToBlockEndOperator(truth=Some(ctxStart), call=Some(ctxNoStart)) shouldBe Some(TruthEnd)
-    PhaseCigar.contextsToMatchingOperator(truth=Some(ctxStart), call=Some(ctxNoStart)) shouldBe Some(Match)
+    PhaseCigar.variantsToBlockEndOperator(truth=Some(ctxStart), call=Some(ctxNoStart)) shouldBe Some(TruthEnd)
+    PhaseCigar.variantsToMatchingOperator(truth=Some(ctxStart), call=Some(ctxNoStart)) shouldBe Some(Match)
 
     // Truth and call, neither are the start of a phase block
-    PhaseCigar.contextsToBlockEndOperator(truth=Some(ctxNoStart), call=Some(ctxNoStart)).isEmpty shouldBe true
-    PhaseCigar.contextsToMatchingOperator(truth=Some(ctxNoStart), call=Some(ctxNoStart)) shouldBe Some(Match)
+    PhaseCigar.variantsToBlockEndOperator(truth=Some(ctxNoStart), call=Some(ctxNoStart)).isEmpty shouldBe true
+    PhaseCigar.variantsToMatchingOperator(truth=Some(ctxNoStart), call=Some(ctxNoStart)) shouldBe Some(Match)
   }
 
   it should "should return the cigar operator for two variant contexts that disagree on phase" in {
-    val builder = new VariantContextSetBuilder()
+    val builder = new VariantSetBuilder()
     builder.addVariant(start = 1, variantAlleles = List("A", "C"), genotypeAlleles = List("A", "C"), phased = true)
     builder.addVariant(start = 2, variantAlleles = List("A", "C"), genotypeAlleles = List("C", "A"), phased = true)
     val ctx         = withPhasingSetId(builder.head, 1)
     val ctxMismatch = withPhasingSetId(builder.last, 2)
 
     // Truth and call, both start of a phase block
-    PhaseCigar.contextsToMatchingOperator(truth=Some(ctx), call=Some(ctxMismatch)) shouldBe Some(Mismatch)
+    PhaseCigar.variantsToMatchingOperator(truth=Some(ctx), call=Some(ctxMismatch)) shouldBe Some(Mismatch)
   }
 
   it should "be unreachable to provide (None, None)" in {
-    an[Exception] should be thrownBy PhaseCigar.contextsToBlockEndOperator(truth=None, call=None)
-    an[Exception] should be thrownBy PhaseCigar.contextsToMatchingOperator(truth=None, call=None)
+    an[Exception] should be thrownBy PhaseCigar.variantsToBlockEndOperator(truth=None, call=None)
+    an[Exception] should be thrownBy PhaseCigar.variantsToMatchingOperator(truth=None, call=None)
   }
 
-  "Cigar.cigarForVariantContexts" should "return a match if two variant contexts share the same alleles in the same order" in {
-    val builder = new VariantContextSetBuilder()
+  "PhaseCigar.cigarTypeForVariants" should "return a match if two variant contexts share the same alleles in the same order" in {
+    val builder = new VariantSetBuilder()
     builder.addVariant(start = 1, variantAlleles = List("A", "C"), genotypeAlleles = List("A", "C"))
     builder.addVariant(start = 2, variantAlleles = List("A", "C"), genotypeAlleles = List("A", "C"))
-    PhaseCigar.cigarTypeForVariantContexts(builder.head, builder.last) shouldBe Match
-    PhaseCigar.cigarTypeForVariantContexts(builder.last, builder.head) shouldBe Match
+    PhaseCigar.cigarTypeForVariants(builder.head, builder.last) shouldBe Match
+    PhaseCigar.cigarTypeForVariants(builder.last, builder.head) shouldBe Match
   }
 
   it should "return a mismatch if two variant contexts share the same alleles but in the different order" in {
-    val builder = new VariantContextSetBuilder()
+    val builder = new VariantSetBuilder()
     builder.addVariant(start = 1, variantAlleles = List("A", "C"), genotypeAlleles = List("C", "A"))
     builder.addVariant(start = 2, variantAlleles = List("A", "C"), genotypeAlleles = List("A", "C"))
-    PhaseCigar.cigarTypeForVariantContexts(builder.head, builder.last) shouldBe Mismatch
-    PhaseCigar.cigarTypeForVariantContexts(builder.last, builder.head) shouldBe Mismatch
+    PhaseCigar.cigarTypeForVariants(builder.head, builder.last) shouldBe Mismatch
+    PhaseCigar.cigarTypeForVariants(builder.last, builder.head) shouldBe Mismatch
   }
 
   it should "return a mismatch if two variant contexts share the different alleles" in {
-    val builder = new VariantContextSetBuilder()
+    val builder = new VariantSetBuilder()
     builder.addVariant(start = 1, variantAlleles = List("A", "G"), genotypeAlleles = List("A", "G"))
     builder.addVariant(start = 2, variantAlleles = List("A", "C"), genotypeAlleles = List("A", "C"))
-    PhaseCigar.cigarTypeForVariantContexts(builder.head, builder.last) shouldBe Mismatch
-    PhaseCigar.cigarTypeForVariantContexts(builder.last, builder.head) shouldBe Mismatch
+    PhaseCigar.cigarTypeForVariants(builder.head, builder.last) shouldBe Mismatch
+    PhaseCigar.cigarTypeForVariants(builder.last, builder.head) shouldBe Mismatch
   }
 
   it should "throw an exception if the variant contexts do not have exactly two alleles" in {
     // One variant alleles, one genotype allele
     {
-      val builder = new VariantContextSetBuilder()
+      val builder = new VariantSetBuilder()
       builder.addVariant(start = 1, variantAlleles = List("A"), genotypeAlleles = List("A"))
       builder.addVariant(start = 2, variantAlleles = List("A"), genotypeAlleles = List("A"))
-      an[Exception] should be thrownBy PhaseCigar.cigarTypeForVariantContexts(builder.head, builder.last)
+      an[Exception] should be thrownBy PhaseCigar.cigarTypeForVariants(builder.head, builder.last)
     }
 
     // Two variant alleles, one genotype allele
     {
-      val builder = new VariantContextSetBuilder()
+      val builder = new VariantSetBuilder()
       builder.addVariant(start = 1, variantAlleles = List("A", "C"), genotypeAlleles = List("C"))
       builder.addVariant(start = 2, variantAlleles = List("A", "C"), genotypeAlleles = List("A", "C"))
-      an[Exception] should be thrownBy PhaseCigar.cigarTypeForVariantContexts(builder.head, builder.last)
-      an[Exception] should be thrownBy PhaseCigar.cigarTypeForVariantContexts(builder.last, builder.head)
+      an[Exception] should be thrownBy PhaseCigar.cigarTypeForVariants(builder.head, builder.last)
+      an[Exception] should be thrownBy PhaseCigar.cigarTypeForVariants(builder.last, builder.head)
     }
   }
 }
