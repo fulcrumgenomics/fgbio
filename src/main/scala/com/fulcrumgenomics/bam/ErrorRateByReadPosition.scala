@@ -34,12 +34,12 @@ import com.fulcrumgenomics.fasta.SequenceDictionary
 import com.fulcrumgenomics.sopt._
 import com.fulcrumgenomics.util.Metric.Count
 import com.fulcrumgenomics.util.{Metric, ProgressLogger, Rscript, Sequences}
-import com.fulcrumgenomics.vcf.{ByIntervalListVariantContextIterator, VariantMask}
+import com.fulcrumgenomics.vcf.api.VcfSource
+import com.fulcrumgenomics.vcf.{ByIntervalListVariantIterator, VariantMask}
 import htsjdk.samtools.SAMRecord
 import htsjdk.samtools.filter.{DuplicateReadFilter, FailsVendorReadQualityFilter, SamRecordFilter, SecondaryOrSupplementaryFilter}
 import htsjdk.samtools.reference.ReferenceSequenceFileWalker
 import htsjdk.samtools.util.{IntervalList, SamLocusIterator, SequenceUtil}
-import htsjdk.variant.vcf.VCFFileReader
 
 import java.util
 import scala.annotation.switch
@@ -134,7 +134,8 @@ class ErrorRateByReadPosition
 
     val refWalker     = new ReferenceSequenceFileWalker(this.ref)
     val locusIterator = buildSamLocusIterator(in, ilist).iterator()
-    val variantMask   = buildVariantMask(ilist, refWalker.getSequenceDictionary.fromSam)
+    val variantSource = this.variants.map(openVariants(_, ilist))
+    val variantMask   = buildVariantMask(variantSource, ilist, refWalker.getSequenceDictionary.fromSam)
 
     val counters = List.tabulate(3)(_ => mutable.Map[Int, ObsCounter]())
 
@@ -161,6 +162,8 @@ class ErrorRateByReadPosition
       progress.record(locus.getSequenceName, locus.getPosition)
     }
     in.safelyClose()
+    // NB: the mask reads the variants lazily, one contig at a time, so the VCF can only be closed once all loci are visited
+    variantSource.foreach(_.safelyClose())
 
     // Ensure that all the maps have values up to the max
     for ((counter, readNum) <- counters.filter(_.nonEmpty).zipWithIndex; cycle <- 1 to counter.keys.max) {
@@ -190,17 +193,22 @@ class ErrorRateByReadPosition
     iterator
   }
 
-  /** Generates a variant mask object. */
-  private def buildVariantMask(intervals: Option[IntervalList], dict: SequenceDictionary): VariantMask = {
-    this.variants match {
-      case None =>
-        new VariantMask(Iterator.empty, dict)
-      case Some(path) =>
-        val reader = new VCFFileReader(path, this.intervals.isDefined)
-        intervals match {
-          case None => new VariantMask(reader.iterator(), dict)
-          case Some(i) => new VariantMask(ByIntervalListVariantContextIterator(reader, i), dict)
-        }
+  /** Opens the VCF of variants to mask, failing if it must be queried by `intervals` but is not indexed. */
+  private def openVariants(path: PathToVcf, intervals: Option[IntervalList]): VcfSource = {
+    val source = VcfSource(path, allowMissingFieldsInHeader=true)
+    if (intervals.isDefined && !source.isQueryable) {
+      source.safelyClose()
+      fail(s"The --variants VCF must be indexed when --intervals is given (e.g. with `bcftools index`): ${path.toAbsolutePath}")
+    }
+    source
+  }
+
+  /** Generates a variant mask over the variants in `source`, if any, restricted to `intervals` if given. */
+  private def buildVariantMask(source: Option[VcfSource], intervals: Option[IntervalList], dict: SequenceDictionary): VariantMask = {
+    (source, intervals) match {
+      case (None, _)                => new VariantMask(Iterator.empty, dict)
+      case (Some(vcf), None)        => new VariantMask(vcf.iterator, dict)
+      case (Some(vcf), Some(ilist)) => new VariantMask(ByIntervalListVariantIterator(vcf, ilist), dict)
     }
   }
 

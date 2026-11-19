@@ -26,17 +26,19 @@
 package com.fulcrumgenomics.bam
 
 import com.fulcrumgenomics.bam.api.SamOrder
+import com.fulcrumgenomics.cmdline.FgBioMain.FailureException
 import com.fulcrumgenomics.commons.io.PathUtil
 import com.fulcrumgenomics.fasta.SequenceDictionary
 import com.fulcrumgenomics.testing.SamBuilder.{Minus, Plus}
-import com.fulcrumgenomics.testing.{ReferenceSetBuilder, SamBuilder, UnitSpec, VariantContextSetBuilder}
+import com.fulcrumgenomics.testing.VcfBuilder.Gt
+import com.fulcrumgenomics.testing.{ReferenceSetBuilder, SamBuilder, UnitSpec, VcfBuilder}
 import com.fulcrumgenomics.util.Metric.Count
 import com.fulcrumgenomics.util.{Metric, Rscript}
+import com.fulcrumgenomics.vcf.api.VcfContigHeader
 import htsjdk.samtools.util.{Interval, IntervalList}
 import org.scalatest.OptionValues
 
 import java.nio.file.{Files, Path}
-import scala.annotation.nowarn
 
 
 // Old-style metrics that did not include the optional non-collapsed substitution types
@@ -74,13 +76,13 @@ class ErrorRateByReadPositionTest extends UnitSpec with OptionValues {
   private val dict = SequenceDictionary.extract(ref)
 
   private val vcf = {
-    @nowarn("msg=class VariantContextSetBuilder in package testing is deprecated")
-    val builder = new VariantContextSetBuilder().setSequenceDictionary(dict)
-    builder.addVariant(1, 500, variantAlleles=List("A", "C"), genotypeAlleles=List("A", "C"))
-    builder.addVariant(2, 500, variantAlleles=List("C", "T"), genotypeAlleles=List("C", "T"))
-    builder.addVariant(3, 500, variantAlleles=List("G", "A"), genotypeAlleles=List("G", "A"))
-    builder.addVariant(4, 500, variantAlleles=List("T", "C"), genotypeAlleles=List("T", "C"))
-    builder.toTempFile()
+    val contigs = VcfContigHeader.fromSequenceDictionary(dict)
+    VcfBuilder(VcfBuilder.DefaultHeader.copy(contigs=contigs, samples=IndexedSeq("Sample")))
+      .add(chrom=dict(1).name, pos=500, alleles=Seq("A", "C"), gts=Seq(Gt(sample="Sample", gt="A/C")))
+      .add(chrom=dict(2).name, pos=500, alleles=Seq("C", "T"), gts=Seq(Gt(sample="Sample", gt="C/T")))
+      .add(chrom=dict(3).name, pos=500, alleles=Seq("G", "A"), gts=Seq(Gt(sample="Sample", gt="G/A")))
+      .add(chrom=dict(4).name, pos=500, alleles=Seq("T", "C"), gts=Seq(Gt(sample="Sample", gt="T/C")))
+      .toTempFile()
   }
 
   private def outputAndPrefix: (Path, Path) = {
@@ -280,6 +282,21 @@ class ErrorRateByReadPositionTest extends UnitSpec with OptionValues {
     val metrics = Metric.read[ErrorRateByReadPositionMetric](out)
     metrics.size shouldBe 40
     metrics.map(_.bases_total).sum shouldBe 4000
+  }
+
+  it should "fail with a clear message if the variants VCF is not indexed and intervals are given" in {
+    val unindexed = makeTempFile("variants.", ".vcf.gz")
+    Files.copy(vcf, unindexed, java.nio.file.StandardCopyOption.REPLACE_EXISTING)
+    val intervals = new IntervalList(dict.toSam)
+    intervals.add(new Interval(dict(1).name, 1, 1000))
+    val intervalsPath = makeTempFile("regions.", ".interval_list")
+    intervals.write(intervalsPath)
+
+    val (_, pre) = outputAndPrefix
+    val tool     = new ErrorRateByReadPosition(input=newSamBuilder.toTempFile(), intervals=Some(intervalsPath), output=Some(pre), ref=ref, variants=Some(unindexed))
+    val ex       = intercept[FailureException] { tool.execute() }
+    ex.message.value should include ("--variants VCF must be indexed")
+    ex.message.value should include (unindexed.toString)
   }
 
   it should "count each of the error types correctly" in {

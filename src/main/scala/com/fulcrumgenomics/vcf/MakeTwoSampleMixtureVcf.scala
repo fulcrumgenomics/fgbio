@@ -29,13 +29,11 @@ import com.fulcrumgenomics.cmdline.{ClpGroups, FgBioTool}
 import com.fulcrumgenomics.sopt._
 import com.fulcrumgenomics.util.Io
 import com.fulcrumgenomics.vcf.MakeTwoSampleMixtureVcf._
+import com.fulcrumgenomics.vcf.api.Allele.NoCallAllele
+import com.fulcrumgenomics.vcf.api._
 import htsjdk.samtools.util.IntervalList
-import htsjdk.variant.variantcontext._
-import htsjdk.variant.vcf._
 
-import java.util
 import scala.collection.mutable.ListBuffer
-import scala.jdk.CollectionConverters._
 
 object MakeTwoSampleMixtureVcf {
   val AlleleFractionField = "AF"
@@ -46,9 +44,10 @@ object MakeTwoSampleMixtureVcf {
   val TumorSampleName  = "tumor"
   val NormalSampleName = "normal"
 
-  val HeaderLines = MakeMixtureVcf.HeaderLines ++ Seq(
-    new VCFFilterHeaderLine(GermlineFilter,  "Evidence seen in the normal sample"),
-    new VCFFilterHeaderLine(MultiAllelicFilter, "Locus is multi-allelic in chosen samples.")
+  /** The FILTER and FORMAT header lines added to the mixture VCF. */
+  val HeaderLines: Seq[VcfHeaderEntry] = MakeMixtureVcf.HeaderLines ++ Seq(
+    VcfFilterHeader(GermlineFilter,  "Evidence seen in the normal sample"),
+    VcfFilterHeader(MultiAllelicFilter, "Locus is multi-allelic in chosen samples.")
   )
 }
 
@@ -98,63 +97,72 @@ class MakeTwoSampleMixtureVcf
 
   Io.assertReadable(input)
   Io.assertCanWriteFile(output)
-  intervals.foreach(Io.assertCanWriteFile(_))
+  intervals.foreach(Io.assertReadable(_))
 
   override def execute(): Unit = {
-    val in = new VCFFileReader(input, true)
-    if (!in.getFileHeader.getSampleNamesInOrder.contains(tumor))  fail(s"VCF does not contain tumor sample ${tumor}")
-    if (!in.getFileHeader.getSampleNamesInOrder.contains(normal)) fail(s"VCF does not contain normal sample ${normal}")
+    val in = VcfSource(input, allowMissingFieldsInHeader=true)
+    def failAndClose(message: String): Nothing = { in.safelyClose(); fail(message) }
+    if (!in.header.samples.contains(tumor))  failAndClose(s"VCF does not contain tumor sample ${tumor}")
+    if (!in.header.samples.contains(normal)) failAndClose(s"VCF does not contain normal sample ${normal}")
+    if (intervals.isDefined && !in.isQueryable) {
+      failAndClose(s"The --input VCF must be indexed when --intervals is given (e.g. with `bcftools index`): ${input.toAbsolutePath}")
+    }
 
-    val outputSamples = if (tumorOnly) Seq("tumor") else Seq("tumor", "normal")
-    val out = MakeMixtureVcf.makeWriter(output, in.getFileHeader, MakeTwoSampleMixtureVcf.HeaderLines, outputSamples:_*)
-    iterator(in, this.intervals).foreach { ctx =>
-      val oldTumorGt = MakeMixtureVcf.genotypeOf(tumor, ctx, this.noCallIsHomRef)
-      val oldNormalGt = MakeMixtureVcf.genotypeOf(normal, ctx, this.noCallIsHomRef)
-      val oldGts = Seq(oldTumorGt, oldNormalGt)
+    val outputSamples = if (tumorOnly) Seq(TumorSampleName) else Seq(TumorSampleName, NormalSampleName)
+    val out = MakeMixtureVcf.makeWriter(output, in.header, MakeTwoSampleMixtureVcf.HeaderLines, outputSamples:_*)
+    iterator(in, this.intervals).foreach { variant =>
+      val oldTumorGt  = MakeMixtureVcf.genotypeOf(tumor, variant, this.noCallIsHomRef)
+      val oldNormalGt = MakeMixtureVcf.genotypeOf(normal, variant, this.noCallIsHomRef)
+      val oldGts      = Seq(oldTumorGt, oldNormalGt)
 
-      val alleles = (oldTumorGt.getAlleles ++ oldNormalGt.getAlleles ++ Some(ctx.getReference)).filterNot(_ == Allele.NO_CALL).toSet
+      val alleles = (oldTumorGt.calls ++ oldNormalGt.calls :+ variant.alleles.ref).filterNot(_ == NoCallAllele).toSet
       val isMultiAllelic = alleles.size > 2
       val isMonomorphic = alleles.size < 2
 
       if (!isMonomorphic) {
         val (newTumorGt, newNormalGt) = if (isMultiAllelic) {
-          (MakeMixtureVcf.noCall(TumorSampleName), if (tumorOnly) None else Some(MakeMixtureVcf.noCall(NormalSampleName)))
+          (MakeMixtureVcf.noCall(TumorSampleName, variant.alleles), if (tumorOnly) None else Some(MakeMixtureVcf.noCall(NormalSampleName, variant.alleles)))
         }
         else {
-          val refAllele = ctx.getReference
-          val altAllele = ctx.getAlternateAllele(0)
+          // The locus is bi-allelic in the two samples, so this is the one alt allele that they carry (which need not be
+          // the variant's first alt allele)
+          val refAllele = variant.alleles.ref
+          val altAllele = alleles.find(_ != refAllele).getOrElse(unreachable("A bi-allelic locus must have an alt allele."))
 
           // Build the Tumor genotype
-          val builder = new GenotypeBuilder(TumorSampleName)
-          val alleles = new util.ArrayList[Allele]()
-          if (oldGts.forall(_.isCalled)) {
-            if (oldGts.map(_.countAllele(refAllele)).sum > 0) alleles.add(refAllele)
-            if (oldGts.map(_.countAllele(altAllele)).sum > 0) alleles.add(altAllele)
-            if (alleles.size() == 1) alleles.add(alleles.get(0))
-            builder.alleles(alleles)
+          val tumorGt = if (oldGts.forall(gt => !gt.isNoCall)) {
+            def count(allele: Allele): Int = oldGts.map(_.calls.count(_ == allele)).sum
+            val calls = Seq(refAllele, altAllele).filter(a => count(a) > 0).toIndexedSeq match {
+              case IndexedSeq(allele) => IndexedSeq(allele, allele)
+              case present            => present
+            }
 
             // We count alts only, because ref and no-call can be treated as ref here
-            val af = (this.tumorFraction * oldTumorGt.countAllele(altAllele) / 2) + ((1 - this.tumorFraction) * oldNormalGt.countAllele(altAllele) / 2)
-            builder.attribute(MakeTwoSampleMixtureVcf.AlleleFractionField, af)
+            val af = (this.tumorFraction * oldTumorGt.calls.count(_ == altAllele) / 2) + ((1 - this.tumorFraction) * oldNormalGt.calls.count(_ == altAllele) / 2)
+            Genotype(variant.alleles, TumorSampleName, calls, attrs=Map(MakeTwoSampleMixtureVcf.AlleleFractionField -> af))
           }
           else {
-            builder.alleles(util.Arrays.asList(Allele.NO_CALL, Allele.NO_CALL))
+            MakeMixtureVcf.noCall(TumorSampleName, variant.alleles)
           }
 
-          (builder.make(), if (tumorOnly) None else Some(new GenotypeBuilder("normal", oldNormalGt.getAlleles).make()))
+          (tumorGt, if (tumorOnly) None else Some(Genotype(variant.alleles, NormalSampleName, oldNormalGt.calls)))
         }
 
         val gts = Seq(Some(newTumorGt), newNormalGt).flatten
-        val builder = new VariantContextBuilder(ctx.getSource, ctx.getContig, ctx.getStart.toLong, ctx.getEnd.toLong, ctx.getAlleles)
-        builder.id(ctx.getID)
-        builder.genotypes(gts.asJavaCollection)
 
         val filters = ListBuffer[String]()
         if (isMultiAllelic) filters += MultiAllelicFilter
         if (!tumorOnly && !oldNormalGt.isHomRef) filters += GermlineFilter
         if (newTumorGt.isNoCall) filters += UnknownGtFilter
-        if (filters.nonEmpty) builder.filters(filters.iterator.toJavaSet) else builder.passFilters()
-        out.add(builder.make())
+
+        out.write(Variant(
+          chrom     = variant.chrom,
+          pos       = variant.pos,
+          id        = variant.id,
+          alleles   = variant.alleles,
+          filters   = if (filters.nonEmpty) filters.toSet else Variant.PassingFilters,
+          genotypes = gts.map(gt => gt.sample -> gt).toMap
+        ))
       }
     }
 
@@ -163,10 +171,10 @@ class MakeTwoSampleMixtureVcf
   }
 
   /** Generates an iterator over the whole file, or over the intervals if provided. */
-  def iterator(in: VCFFileReader, intervals: Option[PathToIntervals]): Iterator[VariantContext] = {
+  def iterator(in: VcfSource, intervals: Option[PathToIntervals]): Iterator[Variant] = {
     intervals match {
-      case None       => in.iterator()
-      case Some(path) => ByIntervalListVariantContextIterator(in, IntervalList.fromPath(path).uniqued(false))
+      case None       => in.iterator
+      case Some(path) => ByIntervalListVariantIterator(in, IntervalList.fromPath(path).uniqued(false))
     }
   }
 }
