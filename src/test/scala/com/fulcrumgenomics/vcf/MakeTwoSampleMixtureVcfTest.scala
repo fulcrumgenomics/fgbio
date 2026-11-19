@@ -25,7 +25,10 @@
 package com.fulcrumgenomics.vcf
 
 import com.fulcrumgenomics.FgBioDef._
-import com.fulcrumgenomics.testing.{UnitSpec, VariantContextSetBuilder}
+import com.fulcrumgenomics.testing.VcfBuilder.Gt
+import com.fulcrumgenomics.testing.{SamBuilder, UnitSpec, VariantContextSetBuilder, VcfBuilder}
+import com.fulcrumgenomics.vcf.api.{VcfCount, VcfFieldType, VcfInfoHeader, VcfSource}
+import htsjdk.samtools.util.{Interval, IntervalList}
 import htsjdk.variant.variantcontext.Allele
 import htsjdk.variant.vcf.VCFFileReader
 
@@ -134,5 +137,70 @@ class MakeTwoSampleMixtureVcfTest extends UnitSpec {
         v.isFiltered shouldBe true
         v.getFilters.contains(MakeTwoSampleMixtureVcf.GermlineFilter) shouldBe true
     }
+  }
+
+  it should "only mix variants that start in or enclose the given intervals" in {
+    val in = VcfBuilder(Seq("s1", "s2"))
+      .withInfoHeaders(VcfInfoHeader(id="END", count=VcfCount.Fixed(1), kind=VcfFieldType.Integer, description="End position."))
+      .add(chrom="chr1", pos=10,  alleles=Seq("A", "C"), gts=Seq(Gt(sample="s1", gt="0/1"), Gt(sample="s2", gt="0/0")))
+      .add(chrom="chr1", pos=95,  alleles=Seq("ACGTAC", "A"), gts=Seq(Gt(sample="s1", gt="0/1"), Gt(sample="s2", gt="0/0"))) // ends in 100-200
+      .add(chrom="chr1", pos=100, alleles=Seq("A", "C"), gts=Seq(Gt(sample="s1", gt="0/1"), Gt(sample="s2", gt="0/0")))
+      .add(chrom="chr1", pos=150, alleles=Seq("A", "C"), gts=Seq(Gt(sample="s1", gt="0/1"), Gt(sample="s2", gt="0/0")))
+      .add(chrom="chr1", pos=250, alleles=Seq("A", "C"), gts=Seq(Gt(sample="s1", gt="0/1"), Gt(sample="s2", gt="0/0")))
+      .add(chrom="chr1", pos=290, alleles=Seq("A", "<DEL>"), info=Map("END" -> 320), gts=Seq(Gt(sample="s1", gt="0/1"), Gt(sample="s2", gt="0/0"))) // encloses 300-310
+      .add(chrom="chr2", pos=100, alleles=Seq("A", "C"), gts=Seq(Gt(sample="s1", gt="0/1"), Gt(sample="s2", gt="0/0")))
+      .toTempFile()
+
+    val intervals = new IntervalList(new SamBuilder().header)
+    intervals.add(new Interval("chr1", 100, 200))
+    intervals.add(new Interval("chr1", 300, 310))
+    intervals.add(new Interval("chr2", 1, 1000))
+    val intervalsPath = makeTempFile("intervals.", ".interval_list")
+    intervals.write(intervalsPath)
+
+    val out = makeTempFile("mixture.", ".vcf.gz")
+    new MakeTwoSampleMixtureVcf(input=in, output=out, tumor="s1", normal="s2", intervals=Some(intervalsPath)).execute()
+
+    val source = VcfSource(out)
+    source.map(v => (v.chrom, v.pos)).toSeq should contain theSameElementsInOrderAs Seq(("chr1", 100), ("chr1", 150), ("chr1", 290), ("chr2", 100))
+    source.safelyClose()
+  }
+
+  it should "set the tumor and normal genotypes, allele fraction, ID and filters" in {
+    val in = VcfBuilder(Seq("s1", "s2"))
+      .add(pos=10, id="rs10", alleles=Seq("A", "C"), qual=40, filters=Seq("LowQD"), gts=Seq(Gt(sample="s1", gt="0/1"), Gt(sample="s2", gt="0/0")))
+      .add(pos=20, alleles=Seq("A", "C"), gts=Seq(Gt(sample="s1", gt="1/1"), Gt(sample="s2", gt="0|1")))
+      .add(pos=30, alleles=Seq("A", "C", "G"), gts=Seq(Gt(sample="s1", gt="0/1"), Gt(sample="s2", gt="0/2")))
+      .add(pos=40, alleles=Seq("A", "C"), gts=Seq(Gt(sample="s1", gt="./."), Gt(sample="s2", gt="0/1")))
+      .toTempFile()
+
+    val out = makeTempFile("mixture.", ".vcf.gz")
+    new MakeTwoSampleMixtureVcf(input=in, output=out, tumor="s1", normal="s2", tumorFraction=0.3, noCallIsHomRef=false).execute()
+
+    val source = VcfSource(out)
+    source.header.samples should contain theSameElementsInOrderAs Seq("tumor", "normal")
+    val Seq(v10, v20, v30, v40) = source.toIndexedSeq
+    source.safelyClose()
+
+    v10.id shouldBe Some("rs10")
+    v10.qual shouldBe None
+    v10.filters shouldBe Set("PASS")
+    v10.gt("tumor").gtWithBases shouldBe "A/C"
+    v10.gt("tumor")[Seq[Float]]("AF") should contain theSameElementsInOrderAs Seq(0.15f)
+    v10.gt("normal").gtWithBases shouldBe "A/A"
+
+    v20.filters shouldBe Set(MakeTwoSampleMixtureVcf.GermlineFilter)
+    v20.gt("tumor").gtWithBases shouldBe "A/C"
+    v20.gt("tumor")[Seq[Float]]("AF") should contain theSameElementsInOrderAs Seq(0.65f)
+    v20.gt("normal").gtWithBases shouldBe "A/C"
+    v20.gt("normal").phased shouldBe false
+
+    v30.filters shouldBe Set(MakeTwoSampleMixtureVcf.GermlineFilter, MakeTwoSampleMixtureVcf.MultiAllelicFilter, MakeTwoSampleMixtureVcf.UnknownGtFilter)
+    v30.gt("tumor").isNoCall shouldBe true
+    v30.gt("normal").isNoCall shouldBe true
+
+    v40.filters shouldBe Set(MakeTwoSampleMixtureVcf.GermlineFilter, MakeTwoSampleMixtureVcf.UnknownGtFilter)
+    v40.gt("tumor").isNoCall shouldBe true
+    v40.gt("normal").gtWithBases shouldBe "A/C"
   }
 }
