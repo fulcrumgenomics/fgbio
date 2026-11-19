@@ -59,7 +59,7 @@ object SamRecordClipper {
   val TagsNeverAutoClipped: Set[String] = Set(
     "RG", "LB", "PU", "PG", "CO", "MI",
     "BC", "QT", "RX", "QX", "OX", "BZ", "CB", "CR", "CY", "UB", "UR", "UY", "BX",
-    "MC", "MD", "SA", "OA", "OC", "CG", "XA", "cs", "jM", "jI",
+    "MC", "MD", "SA", "OA", "OC", "CG", "XA", "XB", "cs", "jM", "jI",
     "CC", "CT", "FS", "PT", "GX", "GN",
     "R2", "Q2",
     "FZ", "MM", "ML", "mv", "pi", "st", "fn"

@@ -539,7 +539,7 @@ class SamRecordClipperTest extends UnitSpec with OptionValues {
     val expected = Set(
       "RG", "LB", "PU", "PG", "CO", "MI",
       "BC", "QT", "RX", "QX", "OX", "BZ", "CB", "CR", "CY", "UB", "UR", "UY", "BX",
-      "MC", "MD", "SA", "OA", "OC", "CG", "XA", "cs", "jM", "jI",
+      "MC", "MD", "SA", "OA", "OC", "CG", "XA", "XB", "cs", "jM", "jI",
       "CC", "CT", "FS", "PT", "GX", "GN",
       "R2", "Q2",
       "FZ", "MM", "ML", "mv", "pi", "st", "fn"
@@ -549,13 +549,17 @@ class SamRecordClipperTest extends UnitSpec with OptionValues {
     val rec     = r(10, "5S10M5S")
     val value   = "ACGTACGTACGTACGTACGT"
     val depth   = Array.tabulate[Short](20)(_.toShort)
-    val perBase = Seq("OQ", "E2", "XB")
-    expected.foreach(tag => rec(tag) = value)
+    val perBase = Seq("OQ", "E2", "zz")
+    val arrayed = Seq("CG", "ML")
+    val counts  = Array.tabulate[Int](20)(identity)
+    expected.filterNot(arrayed.contains).foreach(tag => rec(tag) = value)
+    arrayed.foreach(tag => rec(tag) = counts)
     perBase.foreach(tag => rec(tag) = value)
     rec("cd") = depth
 
     clipper(Hard, autoClip=true).upgradeAllClipping(rec) shouldBe (5, 5)
-    expected.foreach(tag => rec[String](tag) shouldBe value)
+    expected.filterNot(arrayed.contains).foreach(tag => rec[String](tag) shouldBe value)
+    arrayed.foreach(tag => rec[Array[Int]](tag) shouldBe counts)
     perBase.foreach(tag => rec[String](tag) shouldBe value.slice(5, 15))
     rec[Array[Short]]("cd") shouldBe depth.slice(5, 15)
   }
