@@ -26,6 +26,7 @@ package com.fulcrumgenomics.umi
 
 import com.fulcrumgenomics.FgBioDef._
 import com.fulcrumgenomics.bam.api.SamOrder
+import com.fulcrumgenomics.cmdline.FgBioMain.FailureException
 import com.fulcrumgenomics.commons.io.PathUtil
 import com.fulcrumgenomics.sopt.cmdline.ValidationException
 import com.fulcrumgenomics.testing.SamBuilder.{Minus, Plus}
@@ -302,5 +303,64 @@ class ReviewConsensusVariantsTest extends UnitSpec {
 
     val tool = new ReviewConsensusVariants(input=vcf, consensusBam=consensusBam, groupedBam=rawBam, ref=refFasta, output=makeTempFile("review_consensus.", ".out"))
     tool.loadPositions(vcf, ref).map(p => (p.chrom, p.start, p.genotype)) should contain theSameElementsInOrderAs Seq(("chr1", 10, None))
+  }
+
+  it should "read an AF field that the VCF header does not describe" in {
+    val vcf = makeTempFile("review_consensus.", ".vcf")
+    Io.writeLines(vcf, Seq(
+      "##fileformat=VCFv4.2",
+      "##contig=<ID=chr1,length=100>",
+      "##contig=<ID=chr2,length=100>",
+      "##FORMAT=<ID=GT,Number=1,Type=String,Description=\"Genotype\">",
+      Seq("#CHROM", "POS", "ID", "REF", "ALT", "QUAL", "FILTER", "INFO", "FORMAT", "s1").mkString("\t"),
+      Seq("chr1", "10", ".", "A", "T", ".", "PASS", ".", "GT:AF", "0/1:0.01").mkString("\t"),
+      Seq("chr1", "20", ".", "A", "C", ".", "PASS", ".", "GT:AF", "0/1:0.5").mkString("\t")
+    ))
+    val tool = new ReviewConsensusVariants(input=vcf, consensusBam=consensusBam, groupedBam=rawBam, ref=refFasta, output=makeTempFile("review_consensus.", ".out"))
+    tool.loadPositions(vcf, ref).map(p => (p.chrom, p.start)) should contain theSameElementsInOrderAs Seq(("chr1", 10))
+  }
+
+  it should "load SNP sites whose alt alleles include a spanning deletion, as HTSJDK does" in {
+    val vcf = vcfBuilder("s1")
+      .add(chrom="chr1", pos=10, alleles=Seq("A","*"), gts=Seq(Gt(sample="s1", gt="A/*")))
+      .add(chrom="chr1", pos=11, alleles=Seq("A","C","*"), gts=Seq(Gt(sample="s1", gt="C/*")))
+      .add(chrom="chr1", pos=12, alleles=Seq("AT","*"), gts=Seq(Gt(sample="s1", gt="AT/*")))
+      .toTempFile()
+
+    val tool = new ReviewConsensusVariants(input=vcf, consensusBam=consensusBam, groupedBam=rawBam, ref=refFasta, output=makeTempFile("review_consensus.", ".out"))
+    tool.loadPositions(vcf, ref).map(p => (p.chrom, p.start, p.refBase, p.genotype)) should contain theSameElementsInOrderAs Seq(
+      ("chr1", 10, 'A', Some("A/*")),
+      ("chr1", 11, 'A', Some("C/*"))
+    )
+  }
+
+  it should "give the genotype of a sample with no GT as a no-call" in {
+    val vcf = makeTempFile("review_consensus.", ".vcf")
+    Io.writeLines(vcf, Seq(
+      "##fileformat=VCFv4.2",
+      "##contig=<ID=chr1,length=100>",
+      "##FORMAT=<ID=DP,Number=1,Type=Integer,Description=\"Depth\">",
+      Seq("#CHROM", "POS", "ID", "REF", "ALT", "QUAL", "FILTER", "INFO", "FORMAT", "s1").mkString("\t"),
+      Seq("chr1", "10", ".", "A", "T", ".", "PASS", ".", "DP", "10").mkString("\t")
+    ))
+    val tool = new ReviewConsensusVariants(input=vcf, consensusBam=consensusBam, groupedBam=rawBam, ref=refFasta, output=makeTempFile("review_consensus.", ".out"))
+    tool.loadPositions(vcf, ref).map(p => (p.chrom, p.start, p.genotype)) should contain theSameElementsInOrderAs Seq(("chr1", 10, Some(".")))
+  }
+
+  it should "fail if the sample is not in the VCF" in {
+    val vcf  = vcfBuilder("s1").add(chrom="chr1", pos=10, alleles=Seq("A","T"), gts=Seq(Gt(sample="s1", gt="A/T"))).toTempFile()
+    val tool = new ReviewConsensusVariants(input=vcf, sample=Some("s2"), consensusBam=consensusBam, groupedBam=rawBam, ref=refFasta, output=makeTempFile("review_consensus.", ".out"))
+    val ex   = intercept[FailureException] { tool.loadPositions(vcf, ref) }
+    ex.message.value should include ("Sample s2 not found")
+    ex.message.value should include ("samples present: s1")
+  }
+
+  it should "fail if a sample's genotype has more than one AF value" in {
+    val vcf = vcfBuilder("s1")
+      .add(chrom="chr1", pos=10, alleles=Seq("A","C","G"), gts=Seq(Gt(sample="s1", gt="C/G", attrs=Map("AF" -> Seq(0.01f, 0.02f)))))
+      .toTempFile()
+    val tool = new ReviewConsensusVariants(input=vcf, consensusBam=consensusBam, groupedBam=rawBam, ref=refFasta, output=makeTempFile("review_consensus.", ".out"))
+    val ex   = intercept[IllegalArgumentException] { tool.loadPositions(vcf, ref) }
+    ex.getMessage should include ("Expected one AF value for sample s1 at chr1:10")
   }
 }
