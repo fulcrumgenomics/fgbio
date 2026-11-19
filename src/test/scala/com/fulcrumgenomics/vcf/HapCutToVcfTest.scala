@@ -30,8 +30,7 @@ import com.fulcrumgenomics.commons.io.PathUtil
 import com.fulcrumgenomics.testing.UnitSpec
 import com.fulcrumgenomics.util.Io
 import com.fulcrumgenomics.vcf.HapCutType.{HapCut1, HapCut2, HapCutType}
-import htsjdk.variant.variantcontext.VariantContext
-import htsjdk.variant.vcf.VCFFileReader
+import com.fulcrumgenomics.vcf.api.{Variant, VcfSource}
 import org.scalatest.ParallelTestExecution
 
 /**
@@ -68,41 +67,41 @@ class HapCutToVcfTest extends UnitSpec with ParallelTestExecution {
   private val withIupacOut    = dir.resolve("with_iupac.hapcut")
 
   private def countVcfRecords(vcf: PathToVcf): Int = {
-    val vcfReader = new VCFFileReader(vcf, false)
-    yieldAndThen(vcfReader.iterator().length)(vcfReader.close())
+    val vcfReader = VcfSource(vcf, allowMissingFieldsInHeader=true)
+    yieldAndThen(vcfReader.iterator.length)(vcfReader.close())
   }
 
   private def compareVcfs(newVcf: PathToVcf, originalVcf: PathToVcf): Unit = {
-    val newVcfReader      = new VCFFileReader(newVcf, false)
-    val originalVcfReader = new VCFFileReader(originalVcf, false)
+    val newVcfReader      = VcfSource(newVcf, allowMissingFieldsInHeader=true)
+    val originalVcfReader = VcfSource(originalVcf, allowMissingFieldsInHeader=true)
 
-    for (newVariantCtx <- newVcfReader) {
-      originalVcfReader.exists { originalVariantCtx =>
-        originalVariantCtx.getContig == newVariantCtx.getContig &&
-        originalVariantCtx.getStart  == newVariantCtx.getStart &&
-        originalVariantCtx.getEnd    == newVariantCtx.getEnd
+    for (newVariant <- newVcfReader) {
+      originalVcfReader.exists { originalVariant =>
+        originalVariant.chrom == newVariant.chrom &&
+        originalVariant.pos   == newVariant.pos &&
+        originalVariant.end   == newVariant.end
       } shouldBe true
     }
   }
 
-  private def isPhased(ctx: VariantContext, gatkPhasingFormat: Boolean): Boolean = {
-    if (gatkPhasingFormat) ctx.isNotFiltered // are marked as passed filter
-    else ctx.getGenotypes.exists(_.isPhased) // are marked as phased
+  private def isPhased(variant: Variant, gatkPhasingFormat: Boolean): Boolean = {
+    if (gatkPhasingFormat) variant.filters.forall(Variant.PassingFilters.contains) // are marked as passed filter
+    else variant.gts.exists(_.phased) // are marked as phased
   }
 
   private def getNumPhasedFromVcf(path: PathToVcf, gatkPhasingFormat: Boolean): Int = {
-    val vcfReader = new VCFFileReader(path, false)
-    val numPhased = vcfReader.iterator().count { ctx => isPhased(ctx, gatkPhasingFormat) }
+    val vcfReader = VcfSource(path, allowMissingFieldsInHeader=true)
+    val numPhased = vcfReader.iterator.count { variant => isPhased(variant, gatkPhasingFormat) }
     vcfReader.close()
     numPhased
   }
 
   private def hasPhasingSetFormatTagButUnphased(path: PathToVcf, gatkPhasingFormat: Boolean): Boolean = {
-    val vcfReader = new VCFFileReader(path, false)
+    val vcfReader = VcfSource(path, allowMissingFieldsInHeader=true)
     val hasPhasingSetTag = vcfReader
-      .iterator()
-      .filterNot { ctx => isPhased(ctx, gatkPhasingFormat) }
-      .exists { ctx => ctx.getGenotypes.exists(_.hasExtendedAttribute(HapCut1VcfHeaderLines.PhaseSetFormatTag)) }
+      .iterator
+      .filterNot { variant => isPhased(variant, gatkPhasingFormat) }
+      .exists { variant => variant.gts.exists(_.attrs.contains(HapCut1VcfHeaderLines.PhaseSetFormatTag)) }
     vcfReader.close()
     hasPhasingSetTag
   }
@@ -122,18 +121,18 @@ class HapCutToVcfTest extends UnitSpec with ParallelTestExecution {
       call.phaseSet shouldBe 41106449
       call.hap1Allele shouldBe 1
       call.hap2Allele shouldBe 0
-      val ctx = call.toVariantContext("Sample")
-      ctx.getGenotype(0).isPhased shouldBe true
-      ctx.getGenotype(0).getAlleles.map(_.getBaseString).toList should contain theSameElementsInOrderAs Seq("CT", "C")
+      val gt = call.toGenotype("Sample")
+      gt.phased shouldBe true
+      gt.calls.map(_.value) should contain theSameElementsInOrderAs Seq("CT", "C")
     }
     {
       val call = calls(4)
       call.phaseSet shouldBe 41106449
       call.hap1Allele shouldBe 0
       call.hap2Allele shouldBe 1
-      val ctx = call.toVariantContext("Sample")
-      ctx.getGenotype(0).isPhased shouldBe true
-      ctx.getGenotype(0).getAlleles.map(_.getBaseString).toList should contain theSameElementsInOrderAs Seq("T", "G")
+      val gt = call.toGenotype("Sample")
+      gt.phased shouldBe true
+      gt.calls.map(_.value) should contain theSameElementsInOrderAs Seq("T", "G")
     }
   }
 
