@@ -25,6 +25,7 @@
 package com.fulcrumgenomics.vcf
 
 import com.fulcrumgenomics.FgBioDef._
+import com.fulcrumgenomics.cmdline.FgBioMain.FailureException
 import com.fulcrumgenomics.testing.VcfBuilder.Gt
 import com.fulcrumgenomics.testing.{SamBuilder, UnitSpec, VcfBuilder}
 import com.fulcrumgenomics.vcf.api.{Variant, VcfCount, VcfFieldType, VcfInfoHeader, VcfSource}
@@ -162,6 +163,21 @@ class MakeTwoSampleMixtureVcfTest extends UnitSpec {
     val source = VcfSource(out)
     source.map(v => (v.chrom, v.pos)).toSeq should contain theSameElementsInOrderAs Seq(("chr1", 100), ("chr1", 150), ("chr1", 290), ("chr2", 100))
     source.safelyClose()
+  }
+
+  it should "fail with a clear message if the input VCF is not indexed and intervals are given" in {
+    val in        = VcfBuilder(Seq("s1", "s2")).add(pos=10, alleles=Seq("A", "C"), gts=Seq(Gt(sample="s1", gt="0/1"), Gt(sample="s2", gt="0/0"))).toTempFile()
+    val unindexed = makeTempFile("mixture.", ".vcf.gz")
+    java.nio.file.Files.copy(in, unindexed, java.nio.file.StandardCopyOption.REPLACE_EXISTING)
+    val intervals = new IntervalList(new SamBuilder().header)
+    intervals.add(new Interval("chr1", 1, 1000))
+    val intervalsPath = makeTempFile("intervals.", ".interval_list")
+    intervals.write(intervalsPath)
+
+    val tool = new MakeTwoSampleMixtureVcf(input=unindexed, output=makeTempFile("mixture.", ".vcf.gz"), tumor="s1", normal="s2", intervals=Some(intervalsPath))
+    val ex   = intercept[FailureException] { tool.execute() }
+    ex.message.value should include ("--input VCF must be indexed")
+    ex.message.value should include (unindexed.toString)
   }
 
   it should "set the tumor and normal genotypes, allele fraction, ID and filters" in {

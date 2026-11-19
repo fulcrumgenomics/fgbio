@@ -97,12 +97,16 @@ class MakeTwoSampleMixtureVcf
 
   Io.assertReadable(input)
   Io.assertCanWriteFile(output)
-  intervals.foreach(Io.assertCanWriteFile(_))
+  intervals.foreach(Io.assertReadable(_))
 
   override def execute(): Unit = {
     val in = VcfSource(input, allowMissingFieldsInHeader=true)
-    if (!in.header.samples.contains(tumor))  fail(s"VCF does not contain tumor sample ${tumor}")
-    if (!in.header.samples.contains(normal)) fail(s"VCF does not contain normal sample ${normal}")
+    def failAndClose(message: String): Nothing = { in.safelyClose(); fail(message) }
+    if (!in.header.samples.contains(tumor))  failAndClose(s"VCF does not contain tumor sample ${tumor}")
+    if (!in.header.samples.contains(normal)) failAndClose(s"VCF does not contain normal sample ${normal}")
+    if (intervals.isDefined && !in.isQueryable) {
+      failAndClose(s"The --input VCF must be indexed when --intervals is given (e.g. with `bcftools index`): ${input.toAbsolutePath}")
+    }
 
     val outputSamples = if (tumorOnly) Seq(TumorSampleName) else Seq(TumorSampleName, NormalSampleName)
     val out = MakeMixtureVcf.makeWriter(output, in.header, MakeTwoSampleMixtureVcf.HeaderLines, outputSamples:_*)

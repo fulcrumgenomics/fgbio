@@ -89,16 +89,14 @@ class JointVariantIteratorTest extends UnitSpec {
     }
   }
 
-  it should "order variants with the given ordering" in {
+  it should "order variants by the index of their contig in the sequence dictionary, then by position" in {
     val left: VcfBuilder  = newBuilder().add(chrom=dict(0).name, pos=10, alleles=Seq("A")).add(chrom=dict(1).name, pos=5, alleles=Seq("A"))
-    val right: VcfBuilder = newBuilder().add(chrom=dict(0).name, pos=10, alleles=Seq("A")).add(chrom=dict(1).name, pos=5, alleles=Seq("A"))
-    // order by the reverse of the contig index, so that variants on the second contig come first
-    val ordering = Ordering.by((v: Variant) => (-dict(v.chrom).index, v.pos))
-    val iters    = Seq(left, right).map(_.toSeq.sorted(ordering).iterator)
-    val iterator = JointVariantIterator(iters=iters, ordering=ordering)
-    iterator.map(_.flatten.map(v => (v.chrom, v.pos))).toSeq shouldBe Seq(
-      Seq((dict(1).name, 5), (dict(1).name, 5)),
-      Seq((dict(0).name, 10), (dict(0).name, 10))
+    val right: VcfBuilder = newBuilder().add(chrom=dict(1).name, pos=5, alleles=Seq("A")).add(chrom=dict(1).name, pos=7, alleles=Seq("A"))
+    val iterator = JointVariantIterator(iters=Seq(left.iterator, right.iterator), dict=dict)
+    iterator.map(_.map(_.map(v => (v.chrom, v.pos)))).toSeq shouldBe Seq(
+      Seq(Some((dict(0).name, 10)), None),
+      Seq(Some((dict(1).name, 5)), Some((dict(1).name, 5))),
+      Seq(None, Some((dict(1).name, 7)))
     )
   }
 }

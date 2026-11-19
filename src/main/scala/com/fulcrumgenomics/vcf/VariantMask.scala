@@ -31,10 +31,16 @@ import com.fulcrumgenomics.vcf.api.{Variant, VcfSource}
 import scala.collection.mutable
 
 object VariantMask {
-  /** Generate a variant mask from the provided VCF. */
-  def apply(path: PathToVcf): VariantMask = apply(VcfSource(path, allowMissingFieldsInHeader=true))
+  /** Generate a variant mask from the provided VCF.  The mask reads the VCF lazily, one contig at a time, as it is
+    * queried, so the VCF is left open; use the overload that takes a `VcfSource` to close it once done with the mask.
+    */
+  def apply(path: PathToVcf): VariantMask = {
+    val source = VcfSource(path, allowMissingFieldsInHeader=true)
+    try apply(source) catch { case ex: Throwable => source.safelyClose(); throw ex }
+  }
 
-  /** Generate a variant mask from the provided VCF source. */
+  /** Generate a variant mask from the provided VCF source.  The mask reads the source lazily, one contig at a time, as
+    * it is queried, so the source must not be closed until the mask is no longer queried. */
   def apply(source: VcfSource): VariantMask = {
     val dict = source.header.dict
     require(dict.length > 0, "Generating a VariantMask requires VCFs contain contig lines.")
@@ -71,7 +77,7 @@ class VariantMask(variants: Iterator[Variant], val dict: SequenceDictionary) {
     val bits = new mutable.BitSet(ref.length)
     iterator.dropWhile(v => dict(v.chrom).index < refIndex)
       .takeWhile(v => dict(v.chrom).index == refIndex)
-      .filter(v => v.filters.forall(Variant.PassingFilters.contains)) // skip filtered variants
+      .filterNot(_.isFiltered)
       .foreach { v =>
         forloop (from=v.pos, until=v.end+1) { i => bits(i-1) = true }
       }
