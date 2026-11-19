@@ -188,6 +188,33 @@ class PileupBuilderTest extends UnitSpec {
       piler.safelyClose()
     }
 
+    it should "pile up a skipped reference position as a deletion entry at the base before the skip" in {
+      val builder = new SamBuilder(readLength = ReadLength, sd = Some(TestSequenceDictionary), sort = Some(Coordinate))
+      builder.addFrag(name = "q1", start = 101, cigar = "20M100N30M").foreach(_.bases = "A" * ReadLength)
+
+      val source = builder.toSource
+      val piler  = PileupBuilder(source, accessPattern = accessPattern, mappedPairsOnly = false)
+      val pile   = piler.pileup(Chr1, 150)
+      pile.iterator.toSeq match {
+        case Seq(entry: DeletionEntry) => entry.offset shouldBe 19 // the last base before the skip
+        case entries                   => fail(s"Expected a single deletion entry, found: $entries")
+      }
+      source.safelyClose()
+      piler.safelyClose()
+    }
+
+    it should "raise an exception when piling up a deletion at the end of an alignment" in {
+      val builder = new SamBuilder(readLength = ReadLength, sd = Some(TestSequenceDictionary), sort = Some(Coordinate))
+      builder.addFrag(name = "q1", start = 101, cigar = "50M5D").foreach(_.bases = "A" * ReadLength)
+
+      val source = builder.toSource
+      val piler  = PileupBuilder(source, accessPattern = accessPattern, mappedPairsOnly = false)
+      val ex     = the[IllegalArgumentException] thrownBy piler.pileup(Chr1, 152)
+      ex.getMessage should include ("deleted or skipped at the start or end of the alignment")
+      source.safelyClose()
+      piler.safelyClose()
+    }
+
     it should "allow a repeated locus query for a coordinate-maintaining call" in {
       val builder = new SamBuilder(readLength = ReadLength, sd = Some(TestSequenceDictionary), sort = Some(Coordinate))
 

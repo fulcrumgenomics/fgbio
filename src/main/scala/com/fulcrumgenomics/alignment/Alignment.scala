@@ -180,6 +180,113 @@ private[alignment] object CigarStats {
   private[alignment] def apply(cigar: String): CigarStats = this.apply(Cigar(cigar))
 }
 
+/** A compact, primitive representation of a [[Cigar]] used to translate between query (read) and target (reference)
+  * positions without allocating.  Built once per [[Cigar]] on first use.
+  *
+  * Positions on the query are 1-based and count soft-clipped but not hard-clipped bases.  Positions on the target are
+  * given as 0-based offsets from the first target base of the alignment, so that the index does not depend on where the
+  * alignment starts.  Each array holds one value per cigar element.
+  *
+  * @param operators the operator of each element
+  * @param queryStarts the 1-based query position of the first query base of each element
+  * @param queryEnds one more than the 1-based query position of the last query base of each element
+  * @param targetOffsets the 0-based target offset of the first target base of each element
+  * @param targetEnds one more than the 0-based target offset of the last target base of each element
+  * @param priorAlignedQuery for each element, the 1-based query position of the last aligned base before it, or 0 if
+  *                          there is no such base
+  * @param priorAlignedTarget for each element, one more than the 0-based target offset of the last aligned base before
+  *                           it, or 0 if there is no such base
+  * @param lastAlignmentIndex the index of the last alignment (`M`, `=` or `X`) element, or -1 if there is none
+  */
+private[alignment] final class CigarPositionIndex private(operators: Array[CigarOperator],
+                                                          queryStarts: Array[Int],
+                                                          queryEnds: Array[Int],
+                                                          targetOffsets: Array[Int],
+                                                          targetEnds: Array[Int],
+                                                          priorAlignedQuery: Array[Int],
+                                                          priorAlignedTarget: Array[Int],
+                                                          lastAlignmentIndex: Int) {
+  /** See [[Cigar.targetOffsetAtQueryPos]]. */
+  def targetOffsetAtQueryPos(pos: Int, returnPriorBaseIfInserted: Boolean): Int = {
+    var result = -1
+    if (pos >= 1) {
+      var index = 0
+      while (index < operators.length) {
+        if (pos < queryEnds(index)) { // the query position is in this element
+          val op = operators(index)
+          if (op.isAlignment) result = targetOffsets(index) + (pos - queryStarts(index))
+          else if (op == CigarOperator.INSERTION && returnPriorBaseIfInserted) result = priorAlignedTarget(index) - 1
+          index = operators.length // stop
+        }
+        else index += 1
+      }
+    }
+    result
+  }
+
+  /** See [[Cigar.queryPosAtTargetOffset]]. */
+  def queryPosAtTargetOffset(offset: Int, returnPriorBaseIfDeleted: Boolean, returnPriorBaseIfSkipped: Boolean): Int = {
+    var result = 0
+    if (offset >= 0) {
+      var index = 0
+      while (index < operators.length) {
+        if (offset < targetEnds(index)) { // the target offset is in this element
+          val op = operators(index)
+          if (op.isAlignment) result = queryStarts(index) + (offset - targetOffsets(index))
+          else if (index < lastAlignmentIndex && (
+            (op == CigarOperator.DELETION && returnPriorBaseIfDeleted) ||
+            (op == CigarOperator.SKIPPED_REGION && returnPriorBaseIfSkipped))) {
+            result = priorAlignedQuery(index)
+          }
+          index = operators.length // stop
+        }
+        else index += 1
+      }
+    }
+    result
+  }
+}
+
+private[alignment] object CigarPositionIndex {
+  /** Builds a [[CigarPositionIndex]] from a [[Cigar]]. */
+  def apply(cigar: Cigar): CigarPositionIndex = {
+    val length             = cigar.elems.length
+    val operators          = new Array[CigarOperator](length)
+    val queryStarts        = new Array[Int](length)
+    val queryEnds          = new Array[Int](length)
+    val targetOffsets      = new Array[Int](length)
+    val targetEnds         = new Array[Int](length)
+    val priorAlignedQuery  = new Array[Int](length)
+    val priorAlignedTarget = new Array[Int](length)
+    var lastAlignmentIndex = -1
+    var queryPos           = 1
+    var targetOffset       = 0
+    var lastAlignedQuery   = 0
+    var lastAlignedTarget  = 0
+    var index              = 0
+    while (index < length) {
+      val elem = cigar.elems(index)
+      operators(index)          = elem.operator
+      queryStarts(index)        = queryPos
+      targetOffsets(index)      = targetOffset
+      priorAlignedQuery(index)  = lastAlignedQuery
+      priorAlignedTarget(index) = lastAlignedTarget
+      if (elem.operator.isAlignment) {
+        lastAlignmentIndex = index
+        lastAlignedQuery   = queryPos + elem.length - 1
+        lastAlignedTarget  = targetOffset + elem.length
+      }
+      queryPos            += elem.lengthOnQuery
+      targetOffset        += elem.lengthOnTarget
+      queryEnds(index)     = queryPos
+      targetEnds(index)    = targetOffset
+      index               += 1
+    }
+    new CigarPositionIndex(operators, queryStarts, queryEnds, targetOffsets, targetEnds, priorAlignedQuery,
+      priorAlignedTarget, lastAlignmentIndex)
+  }
+}
+
 /**
   * Object representation of a Cigar string representing an alignment between two sequences.
   * @param elems the ordered sequence of elements in the Cigar
@@ -196,8 +303,33 @@ case class Cigar(elems: IndexedSeq[CigarElem]) extends Iterable[CigarElem] {
     itIs
   }
 
-  /** Statistics about this cigar which are computed once on first access and then cached. */
-  private lazy val stats: CigarStats = CigarStats(this)
+  // The statistics and position index below are computed on first access and cached in plain fields, rather than in
+  // `lazy val`s, to keep synchronization out of frequently called accessors.  This is safe without synchronization:
+  // both are immutable with only final fields (so are safely published), and each accessor reads its field once, so
+  // racing threads at worst each compute an equivalent value.  The fields are transient so that a deserialized
+  // `Cigar` recomputes them.
+
+  /** Statistics about this cigar.  See above for how it is cached. */
+  @transient private var _stats: CigarStats = _
+  private def stats: CigarStats = {
+    var stats = _stats
+    if (stats == null) {
+      stats  = CigarStats(this)
+      _stats = stats
+    }
+    stats
+  }
+
+  /** Index for translating between query and target positions.  See above for how it is cached. */
+  @transient private var _positionIndex: CigarPositionIndex = _
+  private def positionIndex: CigarPositionIndex = {
+    var index = _positionIndex
+    if (index == null) {
+      index          = CigarPositionIndex(this)
+      _positionIndex = index
+    }
+    index
+  }
 
   /** Provides an iterator over the elements in the cigar. */
   override def iterator: Iterator[CigarElem] = elems.iterator
@@ -210,6 +342,39 @@ case class Cigar(elems: IndexedSeq[CigarElem]) extends Iterable[CigarElem] {
 
   /** Returns the length of the alignment on the target sequence. */
   def lengthOnTarget: Int = stats.lengthOnTarget
+
+  /** Returns the 0-based offset from the first target base of the alignment of the target base aligned to the 1-based
+    * query position, or -1 if the query base is not aligned to a target base (e.g. it is soft-clipped or inserted), or
+    * the position is outside the query.  Query positions count soft-clipped but not hard-clipped bases.
+    *
+    * Does not allocate once the cigar's position index has been built (on the first lookup), and so is suitable for use
+    * in tight loops.
+    *
+    * @param pos the 1-based query position
+    * @param returnPriorBaseIfInserted if the query base is part of an insertion, true to return the offset of the last
+    *                                  target base aligned before the insertion (or -1 if there is no such base)
+    */
+  private[fulcrumgenomics] def targetOffsetAtQueryPos(pos: Int, returnPriorBaseIfInserted: Boolean): Int = {
+    positionIndex.targetOffsetAtQueryPos(pos, returnPriorBaseIfInserted)
+  }
+
+  /** Returns the 1-based query position aligned to the target base at the 0-based offset from the first target base of
+    * the alignment, or 0 if no query base is aligned there (e.g. it is deleted or skipped) or the offset is outside the
+    * alignment.  Query positions count soft-clipped but not hard-clipped bases.
+    *
+    * Does not allocate once the cigar's position index has been built (on the first lookup), and so is suitable for use
+    * in tight loops.
+    *
+    * @param offset the 0-based target offset
+    * @param returnPriorBaseIfDeleted if the target base is deleted, true to return the last query base aligned before
+    *                                 the deletion, provided an aligned query base also follows the deletion
+    * @param returnPriorBaseIfSkipped as `returnPriorBaseIfDeleted`, but for skipped (`N`) target bases
+    */
+  private[fulcrumgenomics] def queryPosAtTargetOffset(offset: Int,
+                                                     returnPriorBaseIfDeleted: Boolean,
+                                                     returnPriorBaseIfSkipped: Boolean): Int = {
+    positionIndex.queryPosAtTargetOffset(offset, returnPriorBaseIfDeleted, returnPriorBaseIfSkipped)
+  }
 
   /** Yields a new cigar that is truncated to the given length on the query. */
   def truncateToQueryLength(len: Int): Cigar = truncate(len, e => e.operator.consumesReadBases())
