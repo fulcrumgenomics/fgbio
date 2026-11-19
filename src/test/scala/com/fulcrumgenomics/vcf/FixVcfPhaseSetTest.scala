@@ -25,6 +25,7 @@
 
 package com.fulcrumgenomics.vcf
 
+import com.fulcrumgenomics.commons.io.Io
 import com.fulcrumgenomics.testing.VcfBuilder.Gt
 import com.fulcrumgenomics.testing.{UnitSpec, VcfBuilder}
 import com.fulcrumgenomics.vcf.FixVcfPhaseSet.VcfPhaseSetUpdater
@@ -231,6 +232,31 @@ class FixVcfPhaseSetTest extends UnitSpec with OptionValues {
     compareVariants(
       actual   = actual,
       expected = expected
+    )
+  }
+
+  "FixVcfPhaseSet" should "keep missing values, genotype filters, commas in String values, and Float values" in {
+    val input = makeTempFile("FixVcfPhaseSetTest.", ".vcf")
+    Io.writeLines(input, Seq(
+      "##fileformat=VCFv4.2",
+      "##contig=<ID=chr1,length=5000>",
+      "##INFO=<ID=AF,Number=A,Type=Float,Description=\"af\">",
+      "##INFO=<ID=AC,Number=A,Type=Integer,Description=\"ac\">",
+      "##INFO=<ID=MQ,Number=1,Type=Float,Description=\"mq\">",
+      "##INFO=<ID=S1,Number=1,Type=String,Description=\"s\">",
+      "##FORMAT=<ID=GT,Number=1,Type=String,Description=\"Genotype\">",
+      "##FORMAT=<ID=DP,Number=1,Type=Integer,Description=\"Depth\">",
+      "##FORMAT=<ID=FT,Number=1,Type=String,Description=\"Genotype filter\">",
+      "##FORMAT=<ID=PS,Number=1,Type=Integer,Description=\"Phase set\">",
+      "##FORMAT=<ID=XF,Number=2,Type=Float,Description=\"xf\">",
+      Seq("#CHROM", "POS", "ID", "REF", "ALT", "QUAL", "FILTER", "INFO", "FORMAT", "sample").mkString("\t"),
+      Seq("chr1", "100", ".", "A", "C,G", "50", "PASS", "AC=.,3;AF=0.5,.;MQ=60;S1=a,b", "GT:DP:FT:PS:XF", "0|1:20:lowq:100:1.5,.").mkString("\t")
+    ))
+    val output = makeTempFile("FixVcfPhaseSetTest.", ".vcf")
+    new FixVcfPhaseSet(input=input, output=output).execute()
+
+    Io.readLines(output).filterNot(_.startsWith("#")).toSeq shouldBe Seq(
+      Seq("chr1", "100", ".", "A", "C,G", "50", "PASS", "AC=.,3;AF=0.5,.;MQ=60;S1=a,b", "GT:DP:FT:PS:XF", "0|1:20:lowq:100:1.5,.").mkString("\t")
     )
   }
 }

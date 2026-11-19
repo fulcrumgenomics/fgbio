@@ -25,7 +25,7 @@
 package com.fulcrumgenomics.vcf.api
 
 import com.fulcrumgenomics.testing.UnitSpec
-import com.fulcrumgenomics.vcf.api.Allele.{NoCallAllele, SimpleAllele, SpannedAllele, SymbolicAllele}
+import com.fulcrumgenomics.vcf.api.Allele.{BreakendAllele, NoCallAllele, SimpleAllele, SpannedAllele, SymbolicAllele}
 
 class AlleleTest extends UnitSpec {
   "Allele.apply()" should "generate SimpleAlleles for base strings" in {
@@ -52,6 +52,26 @@ class AlleleTest extends UnitSpec {
   it should "construct symbolic alleles for string wrapped in <>" in {
     Allele("<NON_REF>").isInstanceOf[SymbolicAllele] shouldBe true
     Allele("<NON_REF>").value shouldBe "<NON_REF>"
+  }
+
+  it should "construct breakend alleles in bracket notation" in {
+    Seq("G]17:198982]", "]13:123456]T", "C[2:321682[", "[17:198983[A").foreach { value =>
+      Allele(value).isInstanceOf[BreakendAllele] shouldBe true
+      Allele(value).value shouldBe value
+    }
+  }
+
+  it should "construct breakend alleles for single breakends" in {
+    Seq("C.", ".T", "ACGT.", ".acgtn").foreach { value =>
+      Allele(value).isInstanceOf[BreakendAllele] shouldBe true
+      Allele(value).value shouldBe value
+    }
+  }
+
+  it should "reject values that are not single breakends" in {
+    Seq("..", ".A.", "A.C", ".R", "R.").foreach { value =>
+      intercept[IllegalArgumentException] { Allele(value) }.getMessage shouldBe s"Not a valid VCF allele: '$value'"
+    }
   }
 
   it should "reject alleles with non-ACGTN bases in them" in {

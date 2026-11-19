@@ -36,6 +36,12 @@ import java.util.{List => JavaList}
 import scala.collection.immutable.ListMap
 import scala.jdk.CollectionConverters.MapHasAsJava
 
+/** Thrown when a value of a typed INFO or FORMAT field is not a valid value of its declared type (e.g. `1.5` or
+  * `3000000000` for an Integer field), so the VCF is invalid.  The message names the type, the value, the field and the
+  * record (and, when read with a [[VcfSource]], the VCF). */
+private[api] final class InvalidVcfValueException(message: String, cause: Throwable = null)
+  extends IllegalArgumentException(message, cause)
+
 /**
   * Object that provides methods for converting from fgbio's scala VCF classes to HTSJDK's
   * Java VCF-related classes and vice-versa.  Only intended for internal use within the `api`
@@ -266,18 +272,24 @@ private[api] object VcfConversions {
         new ArrayIndexedSeq(buffer)
       }
 
-      val attrs = if (g.getExtendedAttributes.isEmpty && !g.hasAD && !g.hasDP && !g.hasGQ && !g.hasPL) Variant.EmptyGtAttrs else {
+      val attrs = if (g.getExtendedAttributes.isEmpty && !g.hasAD && !g.hasDP && !g.hasGQ && !g.hasPL && !g.isFiltered) Variant.EmptyGtAttrs else {
         val builder = Map.newBuilder[String, Any]
         if (g.hasAD) builder += ("AD" -> g.getAD.toIndexedSeq)
         if (g.hasDP) builder += ("DP" -> g.getDP)
         if (g.hasGQ) builder += ("GQ" -> g.getGQ)
         if (g.hasPL) builder += ("PL" -> g.getPL.toIndexedSeq)
+        // HTSJDK holds the genotype filters (FT) apart from the other attributes, as one `;`-separated String
+        if (g.isFiltered) builder += ("FT" -> g.getFilters)
 
         g.getExtendedAttributes.keySet().foreach { key =>
           val value = g.getExtendedAttribute(key)
 
           header.format.get(key) match {
-            case Some(hd) => toTypedValue(value, hd.kind, hd.count).foreach(v => builder += (key -> v))
+            case Some(hd) =>
+              val typed = try toTypedValue(value, hd.kind, hd.count) catch { case ex: InvalidVcfValueException =>
+                throw new InvalidVcfValueException(s"${ex.getMessage} for FORMAT field $key of sample ${g.getSampleName} at ${in.getContig}:${in.getStart}")
+              }
+              typed.foreach(v => builder += (key -> v))
             case None     => throw new IllegalStateException(s"Format field $key not described in header.")
           }
         }
@@ -296,7 +308,11 @@ private[api] object VcfConversions {
         val key   = entry.getKey
         val value = entry.getValue
         header.info.get(key) match {
-          case Some(hd) => toTypedValue(value, hd.kind, hd.count).foreach(v => builder += (key -> v))
+          case Some(hd) =>
+            val typed = try toTypedValue(value, hd.kind, hd.count) catch { case ex: InvalidVcfValueException =>
+              throw new InvalidVcfValueException(s"${ex.getMessage} for INFO field $key at ${in.getContig}:${in.getStart}")
+            }
+            typed.foreach(v => builder += (key -> v))
           case None     => throw new IllegalStateException(s"INFO field $key not described in header.")
         }
       }
@@ -322,7 +338,8 @@ private[api] object VcfConversions {
     )
   }
   catch {
-    case ex: Throwable => throw new RuntimeException(s"Failed to convert variant: ${in}", ex)
+    case ex: InvalidVcfValueException => throw ex
+    case ex: Throwable                => throw new RuntimeException(s"Failed to convert variant: ${in}", ex)
   }
 
   /**
@@ -337,18 +354,43 @@ private[api] object VcfConversions {
     * Note that in the case of Flag types and things that have a fixed count of 0, [[Variant.FlagValue]] is returned
     * since the value itself is unimportant.
     *
+    * HTSJDK gives the values read from a BCF as typed values (e.g. Integer, Double or a list of them, with `null` for a
+    * missing value) rather than as text, so these are first turned back into text.
+    *
     * @param value the value that came out of the INFO or genotype attributes from HTSJDK
     * @param kind the scala [[VcfFieldType]] declaring what the target type is
     * @param count the scala [[VcfCount]] describing how many values are expected
     * @return either a String/Float/Int/Char or an IndexedSeq of one of those types
     */
-  private def toTypedValue(value: Any, kind: VcfFieldType, count: VcfCount): Option[Any] = ((value, kind, count): @unchecked) match {
-    case (_, VcfFieldType.Flag, _       )              => Some(Variant.FlagValue)
-    case (_, _,                 Fixed(0))              => Some(Variant.FlagValue)
-    case (s: String, _,         Fixed(1))              => if (s == ".") None else Some(kind.parse(s))
-    case (s: String, _,         _       )              => val xs = s.split(","); if (xs.forall(_ == ".")) None else Some(ArrayAttr(xs.map(kind.parse)))
-    case (l: JavaList[String @unchecked], _, Fixed(1)) => if (l.get(0) == ".") None else Some(kind.parse(l.get(0)))
-    case (l: JavaList[String @unchecked], _, _)        => if (l.forall(_ == ".")) None else Some(ArrayAttr(l.map(kind.parse)))
+  private def toTypedValue(value: Any, kind: VcfFieldType, count: VcfCount): Option[Any] = ((toText(value), kind, count): @unchecked) match {
+    case (_, VcfFieldType.Flag, _       )                       => Some(Variant.FlagValue)
+    case (_, _,                 Fixed(0))                       => Some(Variant.FlagValue)
+    case (s: String, _,         Fixed(1))                       => if (s == ".") None else Some(parseValue(s, kind))
+    case (s: String, _,         _       )                       => val xs = s.split(","); if (xs.forall(_ == ".")) None else Some(ArrayAttr(xs.map(parseValue(_, kind))))
+    // A single String value that contains commas is split into a list by HTSJDK, so join it back up
+    case (l: JavaList[String @unchecked], VcfFieldType.String, Fixed(1)) => val s = l.mkString(","); if (s == ".") None else Some(s)
+    case (l: JavaList[String @unchecked], _, Fixed(1))          => if (l.get(0) == ".") None else Some(parseValue(l.get(0), kind))
+    case (l: JavaList[String @unchecked], _, _)                 => if (l.forall(_ == ".")) None else Some(ArrayAttr(l.map(parseValue(_, kind))))
+  }
+
+  /** Parses a single value of the given type, throwing an [[InvalidVcfValueException]] that names the type and the value
+    * if it is not a valid value of the type (e.g. `1.5` or `3000000000` for an Integer field). */
+  private def parseValue(s: String, kind: VcfFieldType): Any = {
+    try kind.parse(s) catch {
+      case _: NumberFormatException => throw new InvalidVcfValueException(s"Invalid $kind value '$s'")
+    }
+  }
+
+  /** Converts a value from HTSJDK to a String, or a list of Strings, as it would appear in a VCF.  Values read from a VCF
+    * are already Strings (or lists of them); values read from a BCF are typed, with `null` for missing values. */
+  private def toText(value: Any): Any = value match {
+    case s: String                => s
+    case null                     => Variant.Missing
+    case l: JavaList[_]           => l.iterator().map(toText).map(_.toString).toJavaList
+    case a: Array[_]              => a.iterator.map(toText).map(_.toString).toJavaList
+    case d: java.lang.Double      => toText(d.floatValue()) // BCF stores 32-bit floats, which HTSJDK widens to Double
+    case f: java.lang.Float       => f.toString
+    case other                    => other.toString
   }
 
   /**
@@ -356,15 +398,16 @@ private[api] object VcfConversions {
     *
     * @param in the [[Variant]] instance to convert
     * @param header the scala [[VcfHeader]] for the VCF being read or written
+    * @param isBcf true if the variant will be written to a BCF, which needs numbers rather than text for Float values
     * @return a VariantContext instance
     */
-  def toJavaVariant(in: Variant, header: VcfHeader): VariantContext = {
+  def toJavaVariant(in: Variant, header: VcfHeader, isBcf: Boolean = false): VariantContext = {
     val alleles   = in.alleles.iterator.map { a => JavaAllele.create(a.toString, a eq in.alleles.ref) }.toJavaList
     val builder = new VariantContextBuilder(null, in.chrom, in.pos.toLong, in.end.toLong, alleles)
     in.id.foreach(i => builder.id(i))
     in.qual.foreach(q => builder.log10PError(q / -10 ))
     if (in.filters.isEmpty) builder.unfiltered() else builder.filters(in.filters.iterator.toJavaSet)
-    builder.attributes(toJavaAttributeMap(in.attrs))
+    builder.attributes(toJavaAttributeMap(in.attrs, isBcf))
 
     val genotypes = header.samples.iterator.map { s =>
       val sgt = in.genotypes(s)
@@ -372,13 +415,13 @@ private[api] object VcfConversions {
       jgt.phased(sgt.phased)
 
       sgt.attrs.foreach {
-        case ("GQ", value: Int)                    => jgt.GQ(value)
-        case ("DP", value: Int)                    => jgt.DP(value)
+        case ("GQ", value: Int)                    => if (value != Variant.MissingInt) jgt.GQ(value)
+        case ("DP", value: Int)                    => if (value != Variant.MissingInt) jgt.DP(value)
         case ("AD", value: Seq[Int @unchecked])    => jgt.AD(value.toArray)
         case ("PL", value: Seq[Int @unchecked])    => jgt.PL(value.toArray)
-        case ("FT", value: Seq[String @unchecked]) => value.foreach(f => jgt.filter(f))
-        case (key,  value: Seq[Any])               => jgt.attribute(key, value.toArray)
-        case (key,  value: Any)                    => jgt.attribute(key, value)
+        case ("FT", value: String)                 => jgt.filter(value)
+        case ("FT", value: Seq[String @unchecked]) => jgt.filters(value.iterator.toJavaList)
+        case (key,  value: Any)                    => jgt.attribute(key, toJavaValue(value, isBcf))
       }
 
       jgt.make()
@@ -388,17 +431,44 @@ private[api] object VcfConversions {
   }
 
   /**
-    * Converts a map of attributes from either the INFO field of a sample genotype into a java map that
-    * HTSJDK can handle.  Largely this means translating to a [[java.util.Map]] and converting any scala
-    * collection types back to arrays in the values.
+    * Converts a map of attributes from the INFO field into a java map that HTSJDK can handle (see [[toJavaValue]]).
     */
-  private def toJavaAttributeMap(attrs: Map[String,Any]): java.util.LinkedHashMap[String,Any] = {
+  private def toJavaAttributeMap(attrs: Map[String,Any], isBcf: Boolean): java.util.LinkedHashMap[String,Any] = {
     val out = new util.LinkedHashMap[String,Any]()
-    attrs.foreach {
-      case (key, value: Seq[Any]) => out.put(key, value.toArray)
-      case (key, value)           => out.put(key, value)
+    attrs.foreach { case (key, value) => out.put(key, toJavaValue(value, isBcf)) }
+    out
+  }
+
+  /**
+    * Converts an INFO or genotype attribute value into a value that HTSJDK writes correctly:
+    *   - a missing value ([[Variant.MissingInt]], [[Variant.MissingFloat]] or [[Variant.Missing]]), on its own or in a
+    *     collection, becomes `null`, which HTSJDK writes as `.`
+    *   - a Float is written as text with [[formatFloat]] in a VCF, or as a Double in a BCF (which HTSJDK requires)
+    *   - a collection becomes an array for a VCF, or a [[java.util.List]] for a BCF
+    */
+  private def toJavaValue(value: Any, isBcf: Boolean): Any = {
+    def element(x: Any): Any = x match {
+      case _ if Variant.isMissingValue(x) => null
+      case f: Float                       => if (isBcf) f.toDouble else formatFloat(f)
+      case other                          => other
     }
 
-    out
+    value match {
+      case xs: Seq[Any] => if (isBcf) xs.iterator.map(element).toJavaList else xs.iterator.map(element).toArray[Any]
+      case other        => element(other)
+    }
+  }
+
+  /**
+    * Formats a Float as the shortest decimal text that reads back as the same Float, without an exponent and without
+    * trailing zeros (e.g. `60` rather than `60.0`, and `0.0001` rather than `1.0E-4`).  NaN and infinities are written
+    * as `NaN`, `Inf` and `-Inf`, as the VCF specification describes.
+    */
+  private[api] def formatFloat(f: Float): String = {
+    if (f.isNaN) "NaN"
+    else if (f.isPosInfinity) "Inf"
+    else if (f.isNegInfinity) "-Inf"
+    else if (f == 0f) { if (java.lang.Float.compare(f, 0f) < 0) "-0" else "0" } // keep the sign of negative zero
+    else BigDecimal(java.lang.Float.toString(f)).bigDecimal.stripTrailingZeros.toPlainString
   }
 }
