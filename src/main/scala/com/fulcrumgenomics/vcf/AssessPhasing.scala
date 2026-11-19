@@ -28,11 +28,10 @@ import com.fulcrumgenomics.FgBioDef._
 import com.fulcrumgenomics.cmdline.{ClpGroups, FgBioTool}
 import com.fulcrumgenomics.commons.io.{Io, PathUtil}
 import com.fulcrumgenomics.commons.util.{LazyLogging, NumericCounter}
-import com.fulcrumgenomics.fasta.SequenceDictionary
+import com.fulcrumgenomics.fasta.{SequenceDictionary, SequenceMetadata}
 import com.fulcrumgenomics.sopt._
 import com.fulcrumgenomics.util.{GenomicSpan, Metric, ProgressLogger}
 import com.fulcrumgenomics.vcf.PhaseCigarOp.PhaseCigarOp
-import com.fulcrumgenomics.vcf.api.Allele.SimpleAllele
 import com.fulcrumgenomics.vcf.api._
 import htsjdk.samtools.util.{IntervalList, OverlapDetector}
 
@@ -55,7 +54,8 @@ import scala.jdk.CollectionConverters._
       |
       |The input VCFs are assumed to be single sample: the genotype from the first sample is used.
       |
-      |Only bi-allelic heterozygous SNPs are considered.
+      |Only bi-allelic heterozygous SNPs are considered.  As in HTSJDK, a heterozygous genotype of a single-base reference
+      |allele and a spanning deletion (`*`) counts as a SNP.
       |
       |The input known phased variants can be subsetted using the known interval list, for example to keep only variants
       |from high-confidence regions.
@@ -70,7 +70,7 @@ class AssessPhasing
   @arg(flag='t', doc="The VCF with known phased variants.") val truthVcf: PathToVcf,
   @arg(flag='o', doc="The output prefix for all output files.") val output: PathPrefix,
   @arg(flag='k', doc="The interval list over which known phased variants should be kept.") val knownIntervals: Option[PathToIntervals] = None,
-  @arg(flag='m', doc="Allow missing fields in the VCF header.") val allowMissingFieldsInVcfHeader: Boolean = true,
+  @arg(flag='m', doc="Allow INFO and FORMAT fields that are not described in the VCF headers.  If false, reading a VCF with such a field fails.") val allowMissingFieldsInVcfHeader: Boolean = true,
   @arg(flag='s', doc="Skip sites where the truth and call are both called but do not share the same alleles.") val skipMismatchingAlleles: Boolean = true,
   @arg(flag='l', doc="Analyze only the given chromosomes in the interval list.  The entire chromosome will be analyzed (start and end ignored).") val intervals: Option[PathToIntervals] = None,
   @arg(flag='b', doc="Remove enclosed phased blocks and truncate overlapping blocks.") val modifyBlocks: Boolean = true,
@@ -87,11 +87,20 @@ class AssessPhasing
     // Setup
     /////////////////////////////////////////////////////////////////////////////////////////////////////////
 
-    // check the sequence dictionaries.
+    // check the samples and the sequence dictionaries.
+    val calledHeader = header(calledVcf)
+    val truthHeader  = header(truthVcf)
+    if (calledHeader.samples.isEmpty) fail(s"The called VCF has no samples: ${calledVcf.toAbsolutePath}")
+    if (truthHeader.samples.isEmpty)  fail(s"The truth VCF has no samples: ${truthVcf.toAbsolutePath}")
     val dict = {
-      val calledDict = header(calledVcf).dict
-      val truthDict  = header(truthVcf).dict
-      require(calledDict.sameAs(truthDict), "The called and truth VCFs have different sequence dictionaries.")
+      val calledDict = calledHeader.dict
+      val truthDict  = truthHeader.dict
+      if (calledDict.isEmpty) fail(s"The called VCF has no contig lines: ${calledVcf.toAbsolutePath}")
+      if (truthDict.isEmpty)  fail(s"The truth VCF has no contig lines: ${truthVcf.toAbsolutePath}")
+      // NB: HTSJDK's check compares contig MD5s, and only compares lengths when both are known
+      try calledDict.toSam.assertSameDictionary(truthDict.toSam) catch {
+        case ex: AssertionError => fail(s"The called and truth VCFs have different contigs: ${ex.getMessage}")
+      }
       calledDict
     }
 
@@ -100,12 +109,13 @@ class AssessPhasing
     val truthBlockLengthCounter  = new NumericCounter[Long]()
     val metric                   = new AssessPhasingMetric
     val writer = if (!debugVcf) None else {
-      val path         = Paths.get(output.toString + AssessPhasing.AnnotatedVcfExtension)
-      val calledHeader = header(calledVcf)
-      // add the standard and new format header lines, replacing any of the same ID in the called VCF
-      val formatsToAdd = HeaderLines.StandardFormatHeaderLines :+ AssessPhasing.PhaseConcordanceFormatHeaderLine
-      val formats      = calledHeader.formats.filterNot(f => formatsToAdd.exists(_.id == f.id)) ++ formatsToAdd
-      Some(VcfWriter(path, calledHeader.copy(formats=formats, samples=IndexedSeq(CalledSampleName, TruthSampleName))))
+      val path      = Paths.get(output.toString + AssessPhasing.AnnotatedVcfExtension)
+      // add the standard format header lines the called VCF does not define, and the new format header line
+      val outHeader = calledHeader
+        .withEntriesIfAbsent(VariantUtil.StandardFormatHeaderLines)
+        .withEntries(Seq(AssessPhasing.PhaseConcordanceFormatHeaderLine))
+        .copy(samples=IndexedSeq(CalledSampleName, TruthSampleName))
+      Some(VcfWriter(path, outHeader))
     }
     val chromosomes = intervals.map { intv =>
       val intervalList = IntervalList.fromPath(intv)
@@ -131,7 +141,8 @@ class AssessPhasing
       executeContig(
         dict                     = dict,
         contig                   = sequence.name,
-        contigLength             = sequence.length,
+        // NB: query the whole contig if the contig lines give no length
+        contigLength             = if (sequence.length == SequenceMetadata.UnknownSequenceLength) Int.MaxValue else sequence.length,
         knownIntervalList        = knownIntervalList,
         metric                   = metric,
         calledBlockLengthCounter = calledBlockLengthCounter,
@@ -195,7 +206,7 @@ class AssessPhasing
     val calledPhaseBlockDetector = {
       val calledReader = source(calledVcf)
       val detector = PhaseBlock.buildOverlapDetector(
-        iterator     = toVariantIterator(calledReader, contig, contigLength),
+        iterator     = toVariantIterator(calledVcf, calledReader, contig, contigLength),
         modifyBlocks = modifyBlocks
       )
       calledReader.close()
@@ -205,7 +216,7 @@ class AssessPhasing
     val truthPhaseBlockDetector = {
       val truthReader = source(truthVcf)
       val detector = PhaseBlock.buildOverlapDetector(
-        iterator     = toVariantIterator(truthReader, contig, contigLength, intervalList=intervalListForContig),
+        iterator     = toVariantIterator(truthVcf, truthReader, contig, contigLength, intervalList=intervalListForContig),
         modifyBlocks = modifyBlocks
       )
       truthReader.close()
@@ -216,7 +227,10 @@ class AssessPhasing
     val calledReader   = source(calledVcf)
     val truthReader    = source(truthVcf)
     val pairedIterator = JointVariantIterator(
-      iters = Seq(toVariantIterator(truthReader, contig, contigLength, intervalList=intervalListForContig), toVariantIterator(calledReader, contig, contigLength)),
+      iters = Seq(
+        toVariantIterator(truthVcf, truthReader, contig, contigLength, intervalList=intervalListForContig),
+        toVariantIterator(calledVcf, calledReader, contig, contigLength)
+      ),
       dict = dict
     ).map { case Seq(left, right) => (left, right) }
 
@@ -275,20 +289,38 @@ class AssessPhasing
   }
 
   /** Returns an iterator over the bi-allelic heterozygous SNPs of the first sample on the given contig, with each variant
-    * subset to the genotype of the first sample and the alleles called in that genotype. */
-  private def toVariantIterator(reader: VcfSource,
+    * subset to the genotype of the first sample and the alleles called in that genotype (see
+    * [[AssessPhasing.isBiallelicHetSnp]]).  An error reading a variant is reported with the path to the VCF. */
+  private def toVariantIterator(vcf: PathToVcf,
+                                reader: VcfSource,
                                 contig: String,
                                 contigLength: Int,
                                 intervalList: Option[IntervalList] = None): Iterator[Variant] = {
-    val sampleName = reader.header.samples.head
-    val baseIter: Iterator[Variant] = intervalList match {
-      case Some(intv) => ByIntervalListVariantIterator(reader.iterator, intv, dict=reader.header.dict)
-      case None       => reader.query(contig, 1, contigLength)
+    // NB: variants are read lazily, and may be read when the iterator is created, so report an error reading one
+    // wherever it happens
+    def withPath[A](f: => A): A = try f catch {
+      case ex: RuntimeException =>
+        val cause = Iterator.iterate[Throwable](ex)(_.getCause).takeWhile(_ != null).toSeq.last.getMessage
+        val hint  = if (allowMissingFieldsInVcfHeader) "" else
+          " (to read INFO and FORMAT fields that are not described in the VCF header, set --allow-missing-fields-in-vcf-header to true)"
+        throw new IllegalStateException(s"Failed reading variants from ${vcf.toAbsolutePath}: $cause$hint", ex)
     }
 
-    baseIter
-      .map(MakeMixtureVcf.subsetToSamples(_, Set(sampleName)))
-      .filter(v => AssessPhasing.isBiallelicHetSnp(v, sampleName))
+    val sampleName = reader.header.samples.head
+    val iter = withPath {
+      val baseIter: Iterator[Variant] = intervalList match {
+        case Some(intv) => ByIntervalListVariantIterator(reader.iterator, intv, dict=reader.header.dict)
+        case None       => reader.query(contig, 1, contigLength)
+      }
+      baseIter
+        .filter(v => AssessPhasing.isBiallelicHetSnp(v, sampleName))
+        .map(VariantUtil.subsetToSamples(_, Set(sampleName)))
+    }
+
+    new Iterator[Variant] {
+      override def hasNext: Boolean = withPath(iter.hasNext)
+      override def next(): Variant  = withPath(iter.next())
+    }
   }
 }
 
@@ -309,23 +341,26 @@ object AssessPhasing {
     description = PhaseConcordanceFormatDescription
   )
 
-  /** Returns the phase set (`PS`) of the first genotype of the variant, or -1 if it has none. */
+  /** Returns the phase set (`PS`) of the first genotype of the variant, or -1 if it has none or it is missing (`.`). */
   def getPhasingSetId(variant: Variant): Int = {
     variant.gts.next().get[Any]("PS") match {
-      case None             => -1
-      case Some(Seq(value)) => value.toString.toInt
-      case Some(value)      => value.toString.toInt
+      case None                                         => -1
+      case Some(value) if Variant.isMissingValue(value) => -1
+      case Some(value)                                  => VariantUtil.toInt(value, s"PS at ${variant.chrom}:${variant.pos}")
     }
   }
 
-  /** True if the sample's genotype is a fully called heterozygote and the variant is a bi-allelic SNP. */
+  /**
+    * True if the sample's genotype is a fully called heterozygote of the reference allele and one alternate allele, and
+    * the variant is a SNP once subset to those two alleles (see [[Variant.isSnp]]).  This is HTSJDK's
+    * `VariantContext.subContextFromSample` followed by `isSNP && isBiallelic` and `Genotype.isHet`, so, as in HTSJDK, a
+    * heterozygote of a single-base reference allele and a spanning deletion (e.g. `0|*`) is a bi-allelic heterozygous
+    * SNP.
+    */
   private[vcf] def isBiallelicHetSnp(variant: Variant, sample: String): Boolean = {
-    val gt = variant.gt(sample)
-    def isSingleBase(allele: Allele): Boolean = allele match {
-      case a: SimpleAllele => a.length == 1
-      case _               => false
-    }
-    variant.alleles.alts.length == 1 && variant.alleles.forall(isSingleBase) && gt.isFullyCalled && gt.isHet
+    val gt    = variant.gt(sample)
+    val calls = gt.calls.distinct
+    gt.isFullyCalled && calls.length == 2 && calls.contains(variant.alleles.ref) && calls.forall(Variant.isOneBaseAllele)
   }
 }
 
@@ -655,8 +690,10 @@ private[vcf] object PhaseCigar {
       val inCalledPhaseBlock    = variants.headOption.exists(v => calledPhaseBlockDetector.overlapsAny(v.toLocatable))
       val isTruthVariant        = t.isDefined
       val isCalledVariant       = c.isDefined
-      val isTruthVariantPhased  = t.exists { v => AssessPhasing.getPhasingSetId(v) > 0 }
-      val isCalledVariantPhased = c.exists { v => AssessPhasing.getPhasingSetId(v) > 0 }
+      val truthPhasedVariant    = t.filter { v => AssessPhasing.getPhasingSetId(v) > 0 }
+      val calledPhasedVariant   = c.filter { v => AssessPhasing.getPhasingSetId(v) > 0 }
+      val isTruthVariantPhased  = truthPhasedVariant.isDefined
+      val isCalledVariantPhased = calledPhasedVariant.isDefined
 
       // Fill in the metrics
       // Basic metrics
@@ -682,7 +719,7 @@ private[vcf] object PhaseCigar {
       }
 
       if (isCalledVariantPhased || isTruthVariantPhased) {
-        Some((t, c))
+        Some((t, c, truthPhasedVariant, calledPhasedVariant))
       }
       else None
     }
@@ -697,9 +734,7 @@ private[vcf] object PhaseCigar {
 
     val cigarOps = new ListBuffer[PhaseCigarOp]()
     while (iter.hasNext) {
-      val (t, c) = iter.next()
-      val truthPhasedVariant    = t.filter { v => AssessPhasing.getPhasingSetId(v) > 0 }
-      val calledPhasedVariant   = c.filter { v => AssessPhasing.getPhasingSetId(v) > 0 }
+      val (t, c, truthPhasedVariant, calledPhasedVariant) = iter.next()
 
       // Get the end-block operator if we encountered one.
       val blockEndOp = variantsToBlockEndOperator(truthPhasedVariant, calledPhasedVariant)
