@@ -1,0 +1,57 @@
+# Assembly name:  T2T-CHM13v2.0
+# Description:    T2T CHM13v2.0 Telomere-to-Telomere assembly of the CHM13 cell line, with chrY from NA24385
+# Organism name:  Homo sapiens (human)
+# Isolate:  CHM13
+# Sex:  female
+# Taxid:          9606
+# BioSample:      SAMN03255769
+# BioProject:     PRJNA559484
+# Submitter:      T2T Consortium
+# Date:           2022-01-24
+# Assembly type:  haploid
+# Release type:   major
+# Assembly level: Complete Genome
+# Genome representation: full
+# Assembly method: T2T assembly pipeline + rDNA (see manuscript for details) v. 04/23/2021
+# Expected final version: No
+# Genome coverage: 30.0x
+# Sequencing technology: PacBio Sequel II HiFi; Oxford Nanopore MinION; Illumina NovaSeq
+# GenBank assembly accession: GCA_009914755.4
+# RefSeq assembly accession: GCF_009914755.1
+# RefSeq assembly and GenBank assemblies identical: no
+#
+## Assembly-Unit names:
+## Primary Assembly
+## non-nuclear
+#
+# Ordered by chromosome/plasmid; the chromosomes/plasmids are followed by
+# unlocalized scaffolds.
+# Unplaced scaffolds are listed at the end.
+# RefSeq is equal or derived from GenBank object.
+#
+# Sequence-Name	Sequence-Role	Assigned-Molecule	Assigned-Molecule-Location/Type	GenBank-Accn	Relationship	RefSeq-Accn	Assembly-Unit	Sequence-Length	UCSC-style-name
+1	assembled-molecule	1	Chromosome	CP068277.2	=	NC_060925.1	Primary Assembly	248387328	chr1
+2	assembled-molecule	2	Chromosome	CP068276.2	=	NC_060926.1	Primary Assembly	242696752	chr2
+3	assembled-molecule	3	Chromosome	CP068275.2	=	NC_060927.1	Primary Assembly	201105948	chr3
+4	assembled-molecule	4	Chromosome	CP068274.2	=	NC_060928.1	Primary Assembly	193574945	chr4
+5	assembled-molecule	5	Chromosome	CP068273.2	=	NC_060929.1	Primary Assembly	182045439	chr5
+6	assembled-molecule	6	Chromosome	CP068272.2	=	NC_060930.1	Primary Assembly	172126628	chr6
+7	assembled-molecule	7	Chromosome	CP068271.2	=	NC_060931.1	Primary Assembly	160567428	chr7
+8	assembled-molecule	8	Chromosome	CP068270.2	=	NC_060932.1	Primary Assembly	146259331	chr8
+9	assembled-molecule	9	Chromosome	CP068269.2	=	NC_060933.1	Primary Assembly	150617247	chr9
+10	assembled-molecule	10	Chromosome	CP068268.2	=	NC_060934.1	Primary Assembly	134758134	chr10
+11	assembled-molecule	11	Chromosome	CP068267.2	=	NC_060935.1	Primary Assembly	135127769	chr11
+12	assembled-molecule	12	Chromosome	CP068266.2	=	NC_060936.1	Primary Assembly	133324548	chr12
+13	assembled-molecule	13	Chromosome	CP068265.2	=	NC_060937.1	Primary Assembly	113566686	chr13
+14	assembled-molecule	14	Chromosome	CP068264.2	=	NC_060938.1	Primary Assembly	101161492	chr14
+15	assembled-molecule	15	Chromosome	CP068263.2	=	NC_060939.1	Primary Assembly	99753195	chr15
+16	assembled-molecule	16	Chromosome	CP068262.2	=	NC_060940.1	Primary Assembly	96330374	chr16
+17	assembled-molecule	17	Chromosome	CP068261.2	=	NC_060941.1	Primary Assembly	84276897	chr17
+18	assembled-molecule	18	Chromosome	CP068260.2	=	NC_060942.1	Primary Assembly	80542538	chr18
+19	assembled-molecule	19	Chromosome	CP068259.2	=	NC_060943.1	Primary Assembly	61707364	chr19
+20	assembled-molecule	20	Chromosome	CP068258.2	=	NC_060944.1	Primary Assembly	66210255	chr20
+21	assembled-molecule	21	Chromosome	CP068257.2	=	NC_060945.1	Primary Assembly	45090682	chr21
+22	assembled-molecule	22	Chromosome	CP068256.2	=	NC_060946.1	Primary Assembly	51324926	chr22
+X	assembled-molecule	X	Chromosome	CP068255.2	=	NC_060947.1	Primary Assembly	154259566	chrX
+Y	assembled-molecule	Y	Chromosome	CP086569.2	=	NC_060948.1	Primary Assembly	62460029	chrY
+MT	assembled-molecule	MT	Mitochondrion	CP068254.1	<>	na	non-nuclear	16569	chrM

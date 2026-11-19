@@ -1,0 +1,944 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="light dark">
+  <title>Assembly Report to Sequence Dictionary</title>
+  <meta name="description" content="Build a SAM sequence dictionary (@HD/@SQ) with alternate contig names from an NCBI assembly report.">
+  <style>
+    :root {
+      --bg: #f6f7f9;
+      --surface: #ffffff;
+      --surface-2: #f0f2f5;
+      --border: #d8dce3;
+      --text: #1d2330;
+      --muted: #5b6474;
+      --accent: #1f6feb;
+      --accent-text: #ffffff;
+      --accent-soft: #e5efff;
+      --ok: #1a7f37;
+      --warn: #9a6700;
+      --warn-soft: #fff8e1;
+      --err: #cf222e;
+      --err-soft: #ffebe9;
+      --focus: #0969da;
+      --mono: ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace;
+      --radius: 10px;
+    }
+    @media (prefers-color-scheme: dark) {
+      :root {
+        --bg: #0d1117;
+        --surface: #161b22;
+        --surface-2: #1f2630;
+        --border: #30363d;
+        --text: #e6edf3;
+        --muted: #9aa5b1;
+        --accent: #4493f8;
+        --accent-text: #0d1117;
+        --accent-soft: #15253d;
+        --ok: #3fb950;
+        --warn: #d29922;
+        --warn-soft: #2b2111;
+        --err: #f85149;
+        --err-soft: #3a1618;
+        --focus: #58a6ff;
+      }
+    }
+    * { box-sizing: border-box; }
+    html { -webkit-text-size-adjust: 100%; }
+    body {
+      margin: 0;
+      background: var(--bg);
+      color: var(--text);
+      font: 15px/1.55 system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+      overflow-wrap: anywhere;
+    }
+    a { color: var(--accent); }
+    code, .mono { font-family: var(--mono); font-size: 0.92em; }
+    .page { max-width: 1200px; margin: 0 auto; padding: 24px 16px 48px; }
+    .site-header { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 8px; margin-bottom: 8px; }
+    .site-header h1 { font-size: 1.6rem; margin: 0; line-height: 1.2; }
+    .site-header nav a { margin-left: 16px; font-size: 0.95rem; }
+    .lead { color: var(--muted); margin: 4px 0 20px; max-width: 75ch; }
+    .card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 18px 20px;
+      margin-bottom: 18px;
+    }
+    .card > h2 { font-size: 1.1rem; margin: 0 0 12px; display: flex; align-items: center; gap: 10px; }
+    .step {
+      display: inline-flex; align-items: center; justify-content: center;
+      width: 1.6em; height: 1.6em; border-radius: 50%;
+      background: var(--accent); color: var(--accent-text); font-size: 0.85rem; font-weight: 700;
+    }
+    .hint { color: var(--muted); font-size: 0.9rem; margin: 6px 0 0; }
+    label { font-weight: 600; }
+    input[type="text"], select, textarea {
+      font: inherit; color: var(--text); background: var(--surface);
+      border: 1px solid var(--border); border-radius: 6px; padding: 7px 10px;
+      max-width: 100%;
+    }
+    textarea { font-family: var(--mono); font-size: 0.85rem; width: 100%; }
+    input[type="checkbox"] { width: 1.05em; height: 1.05em; accent-color: var(--accent); }
+    :focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
+    button {
+      font: inherit; cursor: pointer; border-radius: 6px; padding: 7px 14px;
+      border: 1px solid var(--border); background: var(--surface-2); color: var(--text);
+    }
+    button:hover:not(:disabled) { border-color: var(--accent); }
+    button:disabled { opacity: 0.45; cursor: default; }
+    button.primary { background: var(--accent); border-color: var(--accent); color: var(--accent-text); font-weight: 600; }
+    button.icon { padding: 2px 8px; line-height: 1.3; }
+    .row { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+    .row > input[type="text"], .row > select { flex: 1 1 260px; }
+
+    /* tabs */
+    [role="tablist"] { display: flex; flex-wrap: wrap; gap: 4px; border-bottom: 1px solid var(--border); margin-bottom: 14px; }
+    [role="tab"] {
+      border: 0; border-bottom: 3px solid transparent; border-radius: 0; background: none;
+      padding: 8px 12px; color: var(--muted); font-weight: 600;
+    }
+    [role="tab"][aria-selected="true"] { color: var(--text); border-bottom-color: var(--accent); }
+    [role="tab"]:hover { color: var(--text); }
+    [role="tabpanel"][hidden] { display: none; }
+
+    .dropzone {
+      border: 2px dashed var(--border); border-radius: var(--radius); padding: 22px; text-align: center;
+      color: var(--muted); background: var(--surface-2);
+    }
+    .dropzone.dragover { border-color: var(--accent); background: var(--accent-soft); color: var(--text); }
+
+    /* status messages */
+    .status { margin-top: 12px; padding: 8px 12px; border-radius: 6px; font-size: 0.92rem; }
+    .status:empty { display: none; }
+    .status.info { background: var(--accent-soft); }
+    .status.error { background: var(--err-soft); color: var(--err); }
+    .status.ok { background: var(--accent-soft); }
+
+    /* assembly summary */
+    dl.meta { display: grid; grid-template-columns: max-content 1fr; gap: 4px 16px; margin: 0; }
+    dl.meta dt { color: var(--muted); }
+    dl.meta dd { margin: 0; overflow-wrap: anywhere; }
+
+    /* options */
+    .options { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 18px 28px; }
+    fieldset { border: 0; padding: 0; margin: 0; min-width: 0; }
+    legend { font-weight: 600; padding: 0; margin-bottom: 6px; }
+    .checks { display: flex; flex-direction: column; gap: 4px; }
+    .checks label { font-weight: 400; display: flex; gap: 8px; align-items: baseline; }
+    .field { display: flex; flex-direction: column; gap: 6px; }
+    ol.roles { list-style: none; margin: 0; padding: 0; border: 1px solid var(--border); border-radius: 8px; overflow: hidden; }
+    ol.roles li { display: flex; align-items: center; gap: 8px; padding: 6px 10px; border-top: 1px solid var(--border); background: var(--surface); }
+    ol.roles li:first-child { border-top: 0; }
+    ol.roles li.off { background: var(--surface-2); color: var(--muted); }
+    ol.roles .rank { width: 1.6em; text-align: right; color: var(--muted); font-variant-numeric: tabular-nums; }
+    ol.roles label { flex: 1; font-weight: 400; display: flex; gap: 8px; align-items: center; }
+    ol.roles .count { color: var(--muted); font-size: 0.85rem; }
+    ol.roles.unsorted .rank { visibility: hidden; }
+    details.differences { margin: -8px 0 20px; max-width: 75ch; color: var(--muted); font-size: 0.92rem; }
+    details.differences summary { cursor: pointer; color: var(--text); }
+    details.differences ul { margin: 6px 0 0; padding-left: 22px; }
+
+    /* summary chips */
+    .stats { display: flex; flex-wrap: wrap; gap: 10px; margin-bottom: 12px; }
+    .stat { background: var(--surface-2); border: 1px solid var(--border); border-radius: 8px; padding: 6px 12px; }
+    .stat b { font-variant-numeric: tabular-nums; }
+    .toolbar { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; justify-content: space-between; margin-bottom: 10px; }
+    .toolbar .filter-row { flex: 1 1 260px; max-width: 420px; }
+
+    /* tables */
+    .table-wrap { overflow: auto; max-height: 70vh; border: 1px solid var(--border); border-radius: 8px; }
+    table { border-collapse: collapse; width: 100%; font-size: 0.88rem; }
+    th, td { padding: 6px 10px; text-align: left; white-space: nowrap; overflow-wrap: normal; border-bottom: 1px solid var(--border); }
+    thead th { position: sticky; top: 0; background: var(--surface-2); z-index: 1; font-weight: 600; }
+    tbody tr:nth-child(even) td { background: color-mix(in srgb, var(--surface-2) 45%, transparent); }
+    tbody tr:hover td { background: var(--accent-soft); }
+    td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
+    td.name { font-family: var(--mono); }
+    td.missing { color: var(--muted); }
+    .role-tag { display: inline-block; padding: 0 8px; border-radius: 999px; background: var(--surface-2); border: 1px solid var(--border); font-size: 0.8rem; }
+
+    details.issues { margin-top: 12px; border: 1px solid var(--border); border-radius: 8px; background: var(--warn-soft); }
+    details.issues summary { cursor: pointer; padding: 8px 12px; color: var(--warn); font-weight: 600; }
+    details.issues ul { margin: 0; padding: 0 12px 10px 32px; max-height: 260px; overflow: auto; font-size: 0.88rem; }
+    #dictionary-output { min-height: 320px; white-space: pre; overflow: auto; }
+    .visually-hidden { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+    footer { color: var(--muted); font-size: 0.85rem; margin-top: 24px; }
+    @media (max-width: 600px) {
+      .card { padding: 14px; }
+      .site-header nav a { margin: 0 12px 0 0; }
+      dl.meta { grid-template-columns: 1fr; }
+      dl.meta dd { margin-bottom: 6px; }
+    }
+  </style>
+</head>
+<body>
+<div class="page">
+  <header class="site-header">
+    <h1>Assembly Report to Sequence Dictionary</h1>
+    <nav aria-label="Project links">
+      <a href="https://fulcrumgenomics.github.io/fgbio/">fgbio</a>
+      <a href="https://github.com/fulcrumgenomics/fgbio">GitHub</a>
+    </nav>
+  </header>
+  <p class="lead">
+    Build a SAM sequence dictionary (<code>@HD</code>/<code>@SQ</code> lines) with alternate contig names (<code>AN</code>) from an NCBI
+    assembly report, similar to fgbio's
+    <a href="https://fulcrumgenomics.github.io/fgbio/tools/latest/CollectAlternateContigNames.html">CollectAlternateContigNames</a>.
+    The dictionary can be used with tools such as <code>UpdateContigNames</code>, <code>UpdateVcfContigNames</code>, and
+    <code>UpdateFastaContigNames</code>. See
+    <a href="https://github.com/fulcrumgenomics/fgbio/wiki/Use-an-NCBI-Assembly-Report-to-Update-Contig-Names-in-FASTA-VCF-GFF-BED-IntervalList-Delimited-Files">the fgbio wiki</a>
+    for more details. Everything runs in your browser; uploaded or pasted reports never leave your computer.
+  </p>
+  <details class="differences">
+    <summary>How this page differs from <code>CollectAlternateContigNames</code></summary>
+    <ul>
+      <li>The default primary name is the first of UCSC-style-name, RefSeq-Accn, GenBank-Accn, Sequence-Name and
+        Assigned-Molecule that names every sequence in the default roles, or, if none does, the one that names the most (the
+        CLI defaults to RefSeq-Accn). Alternates default to the other accession, UCSC and Assigned-Molecule columns.</li>
+      <li>By default only <code>assembled-molecule</code>, <code>unlocalized-scaffold</code>, <code>unplaced-scaffold</code>
+        and <code>alt-scaffold</code> sequences are included, sorted in that order (the CLI includes every role in report
+        order). Sequences without alternate names are kept (the CLI skips them).</li>
+      <li><code>Assigned-Molecule</code> is used only for <code>assembled-molecule</code> sequences, as the primary name as
+        well as an alternate.</li>
+      <li>Names are checked against the SAM specification and must be unique across all <code>SN</code> and
+        <code>AN</code> values: an alternate name that is another sequence's primary name, or is shared by several
+        sequences, is dropped with a warning.</li>
+      <li><code>AN</code> lists alternates in a fixed column order, an <code>AS</code> tag can be added, and the lowercase
+        report tags are optional.</li>
+    </ul>
+  </details>
+  <noscript><p class="status error">This page requires JavaScript. Please enable it in your browser settings.</p></noscript>
+
+  <!-- Step 1: choose the assembly report -->
+  <section class="card" aria-labelledby="load-heading">
+    <h2 id="load-heading"><span class="step" aria-hidden="true">1</span>Load an assembly report</h2>
+    <div role="tablist" aria-label="Assembly report source" id="source-tabs">
+      <button role="tab" id="tab-preset" aria-controls="panel-preset" aria-selected="true">Common assemblies</button>
+      <button role="tab" id="tab-accession" aria-controls="panel-accession" aria-selected="false" tabindex="-1">NCBI accession or URL</button>
+      <button role="tab" id="tab-upload" aria-controls="panel-upload" aria-selected="false" tabindex="-1">Upload a file</button>
+      <button role="tab" id="tab-paste" aria-controls="panel-paste" aria-selected="false" tabindex="-1">Paste text</button>
+    </div>
+
+    <div role="tabpanel" id="panel-preset" aria-labelledby="tab-preset">
+      <form id="preset-form" class="row">
+        <label for="preset-select" class="visually-hidden">Assembly</label>
+        <select id="preset-select"></select>
+        <button type="submit" class="primary">Load</button>
+      </form>
+      <p class="hint">Reports are downloaded directly from the NCBI FTP site (<code>ftp.ncbi.nlm.nih.gov</code>).</p>
+    </div>
+
+    <div role="tabpanel" id="panel-accession" aria-labelledby="tab-accession" hidden>
+      <form id="accession-form" class="row">
+        <label for="accession-input" class="visually-hidden">Assembly accession or report URL</label>
+        <input type="text" id="accession-input" placeholder="e.g. GCF_000001405.40, GCA_009914755.4, or an https:// URL" autocomplete="off" spellcheck="false">
+        <button type="submit" class="primary">Fetch</button>
+      </form>
+      <p class="hint">
+        Enter a GenBank (<code>GCA_</code>) or RefSeq (<code>GCF_</code>) assembly accession. Omit the version (e.g. <code>GCF_000001635</code>)
+        to use the latest version. A direct <code>https://</code> link to an <code>*_assembly_report.txt</code> file also works
+        if the server allows cross-origin requests (NCBI does).
+      </p>
+    </div>
+
+    <div role="tabpanel" id="panel-upload" aria-labelledby="tab-upload" hidden>
+      <div class="dropzone" id="dropzone">
+        <p>Drag and drop an <code>*_assembly_report.txt</code> file here, or</p>
+        <label for="file-input" class="visually-hidden">Assembly report file</label>
+        <input type="file" id="file-input" accept=".txt,.tsv,text/plain">
+      </div>
+    </div>
+
+    <div role="tabpanel" id="panel-paste" aria-labelledby="tab-paste" hidden>
+      <form id="paste-form">
+        <label for="paste-input" class="visually-hidden">Assembly report text</label>
+        <textarea id="paste-input" rows="8" spellcheck="false" placeholder="# Assembly name:  GRCh38.p14&#10;...&#10;# Sequence-Name&#9;Sequence-Role&#9;Assigned-Molecule&#9;..."></textarea>
+        <div class="row" style="margin-top:8px">
+          <button type="submit" class="primary">Parse</button>
+        </div>
+      </form>
+    </div>
+
+    <div id="load-status" class="status" role="status" aria-live="polite"></div>
+  </section>
+
+  <div id="results" hidden>
+    <!-- Step 2: assembly summary and options -->
+    <section class="card" aria-labelledby="options-heading">
+      <h2 id="options-heading"><span class="step" aria-hidden="true">2</span>Choose names, roles, and order</h2>
+      <dl class="meta" id="assembly-meta"></dl>
+      <hr style="border:0;border-top:1px solid var(--border);margin:16px 0">
+      <div class="options">
+        <div class="field">
+          <label for="as-input">Genome assembly identifier (<code>AS</code>)</label>
+          <input type="text" id="as-input" spellcheck="false" autocomplete="off">
+          <p class="hint">Inferred from the report's <code>Assembly name</code> (or the file name). Clear it to omit <code>AS</code>.</p>
+
+          <label for="primary-select" style="margin-top:10px">Primary name (<code>SN</code>)</label>
+          <select id="primary-select"></select>
+
+          <fieldset style="margin-top:10px">
+            <legend>Alternate names (<code>AN</code>), in the order listed</legend>
+            <div class="checks" id="alternates-checks"></div>
+            <p class="hint">
+              <code>Assigned-Molecule</code> is only used for <code>assembled-molecule</code> sequences, as an alternate or as the
+              primary name, since for other roles it names the parent chromosome.
+            </p>
+          </fieldset>
+        </div>
+
+        <fieldset>
+          <legend>Sequence roles to include, and their order</legend>
+          <ol class="roles" id="roles-list"></ol>
+          <p class="hint">Use the arrows to reorder; the order is used only when sorting by role is enabled below. Counts are the number of sequences in the report with that role.</p>
+          <div class="checks" style="margin-top:10px">
+            <label><input type="checkbox" id="sort-by-role" checked><span>Sort the dictionary by the role order above (otherwise use report order)</span></label>
+            <label><input type="checkbox" id="skip-no-alternates"><span>Skip sequences that have no alternate names</span></label>
+            <label><input type="checkbox" id="include-report-tags" checked><span>Add assembly report columns as lowercase tags (<code>sr</code>, <code>sn</code>, <code>am</code>, <code>ga</code>, <code>ra</code>, <code>un</code>)</span></label>
+          </div>
+        </fieldset>
+      </div>
+    </section>
+
+    <!-- Step 3: output -->
+    <section class="card" aria-labelledby="output-heading">
+      <h2 id="output-heading"><span class="step" aria-hidden="true">3</span>Review and download</h2>
+      <div class="stats" id="stats" aria-live="polite"></div>
+
+      <div role="tablist" aria-label="Output view" id="output-tabs">
+        <button role="tab" id="tab-table" aria-controls="panel-table" aria-selected="true">Table</button>
+        <button role="tab" id="tab-dict" aria-controls="panel-dict" aria-selected="false" tabindex="-1">Sequence dictionary</button>
+      </div>
+
+      <div role="tabpanel" id="panel-table" aria-labelledby="tab-table">
+        <div class="toolbar">
+          <div class="row filter-row">
+            <label for="table-filter" class="visually-hidden">Filter sequences</label>
+            <input type="text" id="table-filter" placeholder="Filter by any name or role" autocomplete="off" spellcheck="false">
+          </div>
+          <span class="hint" id="table-note"></span>
+        </div>
+        <div class="table-wrap">
+          <table id="output-table">
+            <caption class="visually-hidden">Sequences in the output sequence dictionary</caption>
+            <thead></thead>
+            <tbody></tbody>
+          </table>
+        </div>
+      </div>
+
+      <div role="tabpanel" id="panel-dict" aria-labelledby="tab-dict" hidden>
+        <div class="toolbar">
+          <div class="row">
+            <button type="button" class="primary" id="download-button">Download .dict</button>
+            <button type="button" id="copy-button">Copy to clipboard</button>
+          </div>
+          <span class="hint" id="copy-status" role="status" aria-live="polite"></span>
+        </div>
+        <label for="dictionary-output" class="visually-hidden">Sequence dictionary</label>
+        <textarea id="dictionary-output" rows="20" readonly spellcheck="false" wrap="off"></textarea>
+      </div>
+
+      <details class="issues" id="issues" hidden>
+        <summary id="issues-summary"></summary>
+        <ul id="issues-list"></ul>
+      </details>
+    </section>
+  </div>
+
+  <footer>
+    Part of <a href="https://fulcrumgenomics.github.io/fgbio/">fgbio</a>, maintained by
+    <a href="https://github.com/fulcrumgenomics">Fulcrum Genomics</a>.
+  </footer>
+</div>
+
+<script src="js/ncbi-assembly-report-to-sam-dict.js"></script>
+
+<!-- User interface; the parsing and dictionary logic is in js/ncbi-assembly-report-to-sam-dict.js -->
+<script>
+"use strict";
+(function () {
+  /** Common assemblies offered in the preset menu: `accession` is the versioned accession, `name` the assembly name. */
+  const Presets = [
+    { group: "Human", accession: "GCA_000001405.29", name: "GRCh38.p14", label: "GRCh38.p14 (GenBank GCA_000001405.29)", selected: true },
+    { group: "Human", accession: "GCF_000001405.40", name: "GRCh38.p14", label: "GRCh38.p14 (RefSeq GCF_000001405.40)" },
+    { group: "Human", accession: "GCA_000001405.28", name: "GRCh38.p13", label: "GRCh38.p13 (GenBank GCA_000001405.28)" },
+    { group: "Human", accession: "GCF_000001405.25", name: "GRCh37.p13", label: "GRCh37.p13 (RefSeq GCF_000001405.25)" },
+    { group: "Human", accession: "GCF_009914755.1", name: "T2T-CHM13v2.0", label: "T2T-CHM13v2.0 (RefSeq GCF_009914755.1)" },
+    { group: "Mouse", accession: "GCF_000001635.27", name: "GRCm39", label: "GRCm39 (RefSeq GCF_000001635.27)" },
+    { group: "Mouse", accession: "GCF_000001635.26", name: "GRCm38.p6", label: "GRCm38.p6 (RefSeq GCF_000001635.26)" },
+    { group: "Other", accession: "GCF_000001215.4", name: "Release_6_plus_ISO1_MT", label: "Drosophila melanogaster Release 6 (RefSeq GCF_000001215.4)" },
+    { group: "Other", accession: "GCF_000002985.6", name: "WBcel235", label: "Caenorhabditis elegans WBcel235 (RefSeq GCF_000002985.6)" },
+    { group: "Other", accession: "GCF_000146045.2", name: "R64", label: "Saccharomyces cerevisiae R64 (RefSeq GCF_000146045.2)" },
+    { group: "Other", accession: "GCF_000005845.2", name: "ASM584v2", label: "Escherichia coli K-12 MG1655 (RefSeq GCF_000005845.2)" }
+  ];
+  /** Maximum number of table rows to render at once (the dictionary always contains every sequence). */
+  const MaxTableRows = 2000;
+  /** Delay before re-rendering while the user is typing, in milliseconds. */
+  const TypingDelayMs = 150;
+
+  const $ = id => document.getElementById(id);
+  const state = {
+    loadId: 0,                    // incremented by every load attempt; stale loads are ignored
+    report: null,
+    counts: new Map(),            // sequence role -> number of records
+    fileName: "",
+    source: "",
+    roleOrder: [],
+    selectedRoles: new Set(),
+    checkedAlternates: new Set(), // the user's alternate column choices, kept while a column is the primary
+    result: null,
+    haystacks: [],                // lowercase search text per output sequence, for the table filter
+    pendingUpdate: null           // timer for a debounced update(), or null
+  };
+
+  // ---------------------------------------------------------------------------------------------------------------
+  // Tabs (WAI-ARIA tabs pattern with arrow-key navigation)
+  // ---------------------------------------------------------------------------------------------------------------
+  function setupTabs(tablist) {
+    const tabs = [...tablist.querySelectorAll('[role="tab"]')];
+    const select = tab => {
+      for (const t of tabs) {
+        const on = t === tab;
+        t.setAttribute("aria-selected", String(on));
+        t.tabIndex = on ? 0 : -1;
+        $(t.getAttribute("aria-controls")).hidden = !on;
+      }
+    };
+    tabs.forEach((tab, i) => {
+      tab.type = "button";
+      tab.addEventListener("click", () => select(tab));
+      tab.addEventListener("keydown", e => {
+        let next = null;
+        if (e.key === "ArrowRight") next = tabs[(i + 1) % tabs.length];
+        else if (e.key === "ArrowLeft") next = tabs[(i - 1 + tabs.length) % tabs.length];
+        else if (e.key === "Home") next = tabs[0];
+        else if (e.key === "End") next = tabs[tabs.length - 1];
+        if (next) { e.preventDefault(); select(next); next.focus(); }
+      });
+    });
+  }
+
+  // ---------------------------------------------------------------------------------------------------------------
+  // Loading reports.  Each load attempt gets an id; anything that finishes after a newer attempt has started is
+  // ignored, so a slow download cannot overwrite a newer upload, paste, or download.
+  // ---------------------------------------------------------------------------------------------------------------
+
+  /** Starts a load attempt: clears the current report and results, and returns the attempt's id. */
+  function beginLoad() {
+    state.loadId++;
+    clearTimeout(state.pendingUpdate);
+    state.pendingUpdate = null;
+    state.report = null;
+    state.result = null;
+    $("results").hidden = true;
+    return state.loadId;
+  }
+
+  /** Sets the status message, unless load attempt `id` has been superseded. */
+  function setStatus(id, message, kind) {
+    if (id !== state.loadId) return;
+    const el = $("load-status");
+    el.className = `status ${kind || "info"}`;
+    el.textContent = message;
+  }
+
+  /** Runs an asynchronous load attempt, reporting its failure unless it has been superseded. */
+  function run(id, promise) {
+    promise.catch(e => setStatus(id, e.message, "error"));
+  }
+
+  async function fetchText(url) {
+    let response;
+    try {
+      response = await fetch(url);
+    } catch (e) {
+      throw new Error(`Could not download ${url} (${e.message}). The server may not allow cross-origin requests; ` +
+        "try downloading the file and uploading it instead.");
+    }
+    if (!response.ok) throw new Error(`Could not download ${url} (HTTP ${response.status}).`);
+    return response.text();
+  }
+
+  async function loadFromUrl(id, url) {
+    setStatus(id, `Downloading ${url} ...`, "info");
+    const text = await fetchText(url);
+    loadReport(id, text, url.split("/").pop(), url);
+  }
+
+  async function loadFromAccessionOrUrl(id, input) {
+    const value = input.trim();
+    if (value === "") throw new Error("Enter an assembly accession or URL.");
+    if (/^https?:\/\//i.test(value)) return loadFromUrl(id, value);
+    const acc = parseAccession(value);
+    if (acc === null) {
+      throw new Error(`"${value}" is not an assembly accession. Expected GCA_ or GCF_ followed by nine digits and an optional version, e.g. GCF_000001405.40.`);
+    }
+    const dirUrl = accessionDirectoryUrl(acc);
+    setStatus(id, `Looking up ${value} at NCBI ...`, "info");
+    const listing = await fetchText(dirUrl);
+    if (id !== state.loadId) return;
+    const hrefs = [...new DOMParser().parseFromString(listing, "text/html").querySelectorAll("a[href]")]
+      .map(a => a.getAttribute("href"));
+    const dir = findAssemblyDirectory(hrefs, acc);
+    if (dir === null) {
+      const which = acc.version === null ? "any version" : `version ${acc.version}`;
+      throw new Error(`Could not find ${which} of ${acc.prefix}_${acc.digits} at NCBI (${dirUrl}).`);
+    }
+    return loadFromUrl(id, assemblyReportUrl(acc, dir));
+  }
+
+  function loadFromFile(file) {
+    if (!file) return;
+    const id = beginLoad();
+    setStatus(id, `Reading ${file.name} ...`, "info");
+    const reader = new FileReader();
+    reader.onload = () => {
+      try { loadReport(id, String(reader.result), file.name, file.name); }
+      catch (e) { setStatus(id, e.message, "error"); }
+    };
+    reader.onerror = () => setStatus(id, `Could not read ${file.name}.`, "error");
+    reader.readAsText(file);
+  }
+
+  /**
+   * Parses the report text for load attempt `id`, resets the options to their defaults, and renders everything.
+   * Does nothing if the attempt has been superseded.
+   */
+  function loadReport(id, text, fileName, source) {
+    if (id !== state.loadId) return;
+    const report = parseAssemblyReport(text);
+    state.report = report;
+    state.counts = roleCounts(report.records);
+    state.fileName = fileName || "";
+    state.source = source || "";
+
+    state.roleOrder = rolesInReport(report.records);
+    state.selectedRoles = new Set(state.roleOrder.filter(r => DefaultSequenceRoles.includes(r)));
+    if (state.selectedRoles.size === 0) state.roleOrder.forEach(r => state.selectedRoles.add(r));
+
+    $("as-input").value = inferAssemblyId(report.metadata, fileName);
+    renderMetadata();
+    renderColumnOptions();
+    renderRoles();
+    $("table-filter").value = "";
+    $("results").hidden = false;
+    update();
+    setStatus(id, `Loaded ${withThousands(report.records.length)} sequences from ${fileName || "the pasted report"}.`, "ok");
+  }
+
+  // ---------------------------------------------------------------------------------------------------------------
+  // Rendering options
+  // ---------------------------------------------------------------------------------------------------------------
+  function renderMetadata() {
+    const dl = $("assembly-meta");
+    dl.replaceChildren();
+    const md = state.report.metadata;
+    const items = [
+      ["Assembly", md.get("Assembly name")],
+      ["Description", md.get("Description")],
+      ["Organism", md.get("Organism name")],
+      ["GenBank accession", md.get("GenBank assembly accession")],
+      ["RefSeq accession", md.get("RefSeq assembly accession")],
+      ["Date", md.get("Date")],
+      ["Source", state.source]
+    ];
+    for (const [label, value] of items) {
+      if (!value) continue;
+      const dt = document.createElement("dt");
+      dt.textContent = label;
+      const dd = document.createElement("dd");
+      if (/^https?:\/\//.test(value)) {
+        const a = document.createElement("a");
+        a.href = value;
+        a.textContent = value;
+        a.rel = "noopener";
+        dd.appendChild(a);
+      } else {
+        dd.textContent = value;
+      }
+      dl.append(dt, dd);
+    }
+  }
+
+  function renderColumnOptions() {
+    const { columns, records } = state.report;
+    const usable = usableNameColumns(columns, records);
+    const defaults = defaultColumns(columns, records);
+    const label = c => usable.includes(c) ? c.key : `${c.key} (no values)`;
+
+    const primary = $("primary-select");
+    primary.replaceChildren();
+    for (const c of NameColumns.filter(c => columns.includes(c.key))) {
+      const option = document.createElement("option");
+      option.value = c.key;
+      option.textContent = label(c);
+      option.selected = c.key === defaults.primary;
+      primary.appendChild(option);
+    }
+
+    // List alternates in the order they are written to AN
+    state.checkedAlternates = new Set(defaults.alternates);
+    const checks = $("alternates-checks");
+    checks.replaceChildren();
+    for (const c of AlternateColumnOrder.map(nameColumn).filter(c => columns.includes(c.key))) {
+      const row = document.createElement("label");
+      const box = document.createElement("input");
+      box.type = "checkbox";
+      box.value = c.key;
+      box.addEventListener("change", () => {
+        if (box.checked) state.checkedAlternates.add(c.key); else state.checkedAlternates.delete(c.key);
+        update();
+      });
+      const text = document.createElement("span");
+      text.textContent = label(c);
+      row.append(box, text);
+      checks.appendChild(row);
+    }
+    syncAlternateCheckboxes();
+  }
+
+  /** Disables the primary column's alternate checkbox, and restores the user's choice for the other columns. */
+  function syncAlternateCheckboxes() {
+    const primary = $("primary-select").value;
+    for (const box of $("alternates-checks").querySelectorAll("input")) {
+      box.disabled = box.value === primary;
+      box.checked = !box.disabled && state.checkedAlternates.has(box.value);
+      box.parentElement.title = box.disabled ? "This column is the primary name" : "";
+    }
+  }
+
+  function renderRoles(focusRole, focusAction) {
+    const list = $("roles-list");
+    list.replaceChildren();
+    list.classList.toggle("unsorted", !$("sort-by-role").checked);
+    const selectedOrder = state.roleOrder.filter(r => state.selectedRoles.has(r));
+    state.roleOrder.forEach((role, i) => {
+      const on = state.selectedRoles.has(role);
+      const li = document.createElement("li");
+      if (!on) li.classList.add("off");
+
+      const rank = document.createElement("span");
+      rank.className = "rank";
+      rank.textContent = on ? `${selectedOrder.indexOf(role) + 1}.` : "";
+
+      const label = document.createElement("label");
+      const box = document.createElement("input");
+      box.type = "checkbox";
+      box.checked = on;
+      box.addEventListener("change", () => {
+        if (box.checked) state.selectedRoles.add(role); else state.selectedRoles.delete(role);
+        renderRoles(role, "check");
+        update();
+      });
+      const name = document.createElement("span");
+      name.className = "mono";
+      name.textContent = role;
+      const count = document.createElement("span");
+      count.className = "count";
+      count.textContent = `(${withThousands(state.counts.get(role) || 0)})`;
+      label.append(box, name, count);
+
+      const up = document.createElement("button");
+      up.type = "button";
+      up.className = "icon";
+      up.textContent = "↑";
+      up.setAttribute("aria-label", `Move ${role} up`);
+      up.disabled = i === 0;
+      up.addEventListener("click", () => moveRole(i, -1));
+
+      const down = document.createElement("button");
+      down.type = "button";
+      down.className = "icon";
+      down.textContent = "↓";
+      down.setAttribute("aria-label", `Move ${role} down`);
+      down.disabled = i === state.roleOrder.length - 1;
+      down.addEventListener("click", () => moveRole(i, 1));
+
+      li.append(rank, label, up, down);
+      list.appendChild(li);
+
+      if (role === focusRole) {
+        const target = focusAction === "up" ? (up.disabled ? down : up)
+          : focusAction === "down" ? (down.disabled ? up : down) : box;
+        target.focus();
+      }
+    });
+  }
+
+  function moveRole(index, delta) {
+    const j = index + delta;
+    if (j < 0 || j >= state.roleOrder.length) return;
+    const order = state.roleOrder;
+    [order[index], order[j]] = [order[j], order[index]];
+    renderRoles(order[j], delta < 0 ? "up" : "down");
+    update();
+  }
+
+  function currentOptions() {
+    return {
+      primary: $("primary-select").value,
+      alternates: [...$("alternates-checks").querySelectorAll("input:checked")].map(b => b.value),
+      roles: state.roleOrder.filter(r => state.selectedRoles.has(r)),
+      sortByRole: $("sort-by-role").checked,
+      assemblyId: $("as-input").value,
+      includeReportTags: $("include-report-tags").checked,
+      skipMissingAlternates: $("skip-no-alternates").checked
+    };
+  }
+
+  // ---------------------------------------------------------------------------------------------------------------
+  // Rendering output
+  // ---------------------------------------------------------------------------------------------------------------
+  function update() {
+    clearTimeout(state.pendingUpdate);
+    state.pendingUpdate = null;
+    if (state.report === null) return;
+    const options = currentOptions();
+    state.result = buildSequenceDictionary(state.report, options);
+    state.haystacks = state.result.sequences.map(seq => [seq.name, seq.role, ...seq.alternates].join("\t").toLowerCase());
+    renderStats(options);
+    renderTable();
+    renderIssues();
+    $("dictionary-output").value = state.result.text;
+    $("copy-status").textContent = "";
+  }
+
+  /** Calls update() once the user pauses typing. */
+  function scheduleUpdate() {
+    clearTimeout(state.pendingUpdate);
+    state.pendingUpdate = setTimeout(update, TypingDelayMs);
+  }
+
+  /** Applies any pending update now, so the output matches the inputs. */
+  function flush() {
+    if (state.pendingUpdate !== null) update();
+  }
+
+  function renderStats(options) {
+    const r = state.result;
+    const stats = $("stats");
+    stats.replaceChildren();
+    const add = (label, value) => {
+      const div = document.createElement("div");
+      div.className = "stat";
+      const b = document.createElement("b");
+      b.textContent = value;
+      div.append(b, label === "" ? "" : ` ${label}`);
+      stats.appendChild(div);
+    };
+    add(r.sequences.length === 1 ? "sequence" : "sequences", withThousands(r.sequences.length));
+    add("total bases", withThousands(r.totalLength));
+    add("excluded", withThousands(r.skipped.length));
+    add(r.warnings.length === 1 ? "warning" : "warnings", withThousands(r.warnings.length));
+    if (options.roles.length === 0) add("", "No sequence roles selected");
+  }
+
+  function renderTable() {
+    const table = $("output-table");
+    const { sequences, alternateColumns } = state.result;
+    const head = table.tHead;
+    head.replaceChildren();
+    const hr = head.insertRow();
+    const th = (text, cls, title) => {
+      const cell = document.createElement("th");
+      cell.scope = "col";
+      cell.textContent = text;
+      if (cls) cell.className = cls;
+      if (title) cell.title = title;
+      hr.appendChild(cell);
+    };
+    th("#", "num");
+    th(`SN (${$("primary-select").value})`);
+    for (const a of alternateColumns) th(`AN (${a})`);
+    th(SequenceRoleColumn.key);
+    th("LN", "num", "Sequence length");
+
+    const filter = $("table-filter").value.trim().toLowerCase();
+    const body = table.tBodies[0];
+    const fragment = document.createDocumentFragment();
+    let matched = 0;
+    sequences.forEach((seq, i) => {
+      if (filter !== "" && !state.haystacks[i].includes(filter)) return;
+      matched++;
+      if (matched > MaxTableRows) return;
+      const tr = document.createElement("tr");
+      const td = (text, cls) => {
+        const cell = document.createElement("td");
+        cell.textContent = text;
+        if (cls) cell.className = cls;
+        tr.appendChild(cell);
+        return cell;
+      };
+      td(String(i + 1), "num");
+      td(seq.name, "name");
+      for (const a of alternateColumns) {
+        const value = seq.altByColumn.get(a);
+        if (value === undefined) td("—", "missing").setAttribute("aria-label", "none");
+        else td(value, "name");
+      }
+      const roleCell = td("");
+      const tag = document.createElement("span");
+      tag.className = "role-tag";
+      tag.textContent = seq.role;
+      roleCell.appendChild(tag);
+      td(withThousands(seq.length), "num");
+      fragment.appendChild(tr);
+    });
+    body.replaceChildren(fragment);
+
+    let note = "";
+    if (matched > MaxTableRows) note = `Showing the first ${withThousands(MaxTableRows)} of ${withThousands(matched)} matching sequences; the dictionary contains all of them.`;
+    else if (filter !== "") note = `${withThousands(matched)} of ${withThousands(sequences.length)} sequences match.`;
+    $("table-note").textContent = note;
+  }
+
+  function renderIssues() {
+    const { skipped, warnings } = state.result;
+    const details = $("issues");
+    const list = $("issues-list");
+    list.replaceChildren();
+    const total = skipped.length + warnings.length;
+    details.hidden = total === 0;
+    if (total === 0) return;
+
+    // Summarize skipped sequences by reason, then list warnings individually
+    const byReason = new Map();
+    for (const s of skipped) {
+      if (!byReason.has(s.reason)) byReason.set(s.reason, []);
+      byReason.get(s.reason).push(s.name);
+    }
+    for (const [reason, names] of byReason) {
+      const li = document.createElement("li");
+      const shown = names.slice(0, 10).join(", ");
+      const more = names.length > 10 ? `, and ${withThousands(names.length - 10)} more` : "";
+      li.textContent = `Excluded ${withThousands(names.length)} sequence(s): ${reason} (${shown}${more}).`;
+      list.appendChild(li);
+    }
+    for (const w of warnings) {
+      const li = document.createElement("li");
+      li.textContent = w;
+      list.appendChild(li);
+    }
+    const parts = [];
+    if (skipped.length > 0) parts.push(`${withThousands(skipped.length)} sequence(s) excluded`);
+    if (warnings.length > 0) parts.push(`${withThousands(warnings.length)} warning(s)`);
+    $("issues-summary").textContent = parts.join(", ");
+  }
+
+  function dictionaryFileName() {
+    const base = ($("as-input").value.trim() || inferAssemblyId(new Map(), state.fileName) || "assembly")
+      .replace(/[^0-9A-Za-z._-]+/g, "_");
+    return `${base}.dict`;
+  }
+
+  // ---------------------------------------------------------------------------------------------------------------
+  // Wiring
+  // ---------------------------------------------------------------------------------------------------------------
+  function init() {
+    setupTabs($("source-tabs"));
+    setupTabs($("output-tabs"));
+
+    const presetSelect = $("preset-select");
+    const groups = new Map();
+    Presets.forEach((p, i) => {
+      if (!groups.has(p.group)) {
+        const og = document.createElement("optgroup");
+        og.label = p.group;
+        groups.set(p.group, og);
+        presetSelect.appendChild(og);
+      }
+      const option = document.createElement("option");
+      option.value = String(i);
+      option.textContent = p.label;
+      option.selected = !!p.selected;
+      groups.get(p.group).appendChild(option);
+    });
+
+    $("preset-form").addEventListener("submit", e => {
+      e.preventDefault();
+      const preset = Presets[Number(presetSelect.value)];
+      const id = beginLoad();
+      run(id, loadFromUrl(id, assemblyReportUrl(parseAccession(preset.accession), `${preset.accession}_${preset.name}`)));
+    });
+    $("accession-form").addEventListener("submit", e => {
+      e.preventDefault();
+      const id = beginLoad();
+      run(id, loadFromAccessionOrUrl(id, $("accession-input").value));
+    });
+    $("paste-form").addEventListener("submit", e => {
+      e.preventDefault();
+      const id = beginLoad();
+      try { loadReport(id, $("paste-input").value, "", "pasted text"); }
+      catch (err) { setStatus(id, err.message, "error"); }
+    });
+    $("file-input").addEventListener("change", e => {
+      const file = e.target.files[0];
+      e.target.value = ""; // so choosing the same file again reloads it
+      loadFromFile(file);
+    });
+
+    const dropzone = $("dropzone");
+    ["dragenter", "dragover"].forEach(type => dropzone.addEventListener(type, e => {
+      e.preventDefault();
+      dropzone.classList.add("dragover");
+    }));
+    ["dragleave", "drop"].forEach(type => dropzone.addEventListener(type, () => dropzone.classList.remove("dragover")));
+    dropzone.addEventListener("drop", e => {
+      e.preventDefault();
+      if (e.dataTransfer && e.dataTransfer.files.length > 0) loadFromFile(e.dataTransfer.files[0]);
+    });
+
+    $("primary-select").addEventListener("change", () => { syncAlternateCheckboxes(); update(); });
+    $("sort-by-role").addEventListener("change", () => {
+      $("roles-list").classList.toggle("unsorted", !$("sort-by-role").checked);
+      update();
+    });
+    for (const id of ["skip-no-alternates", "include-report-tags"]) $(id).addEventListener("change", update);
+    $("as-input").addEventListener("input", scheduleUpdate);
+    let filterTimer = null;
+    $("table-filter").addEventListener("input", () => {
+      clearTimeout(filterTimer);
+      filterTimer = setTimeout(() => { if (state.result !== null) renderTable(); }, TypingDelayMs);
+    });
+
+    $("download-button").addEventListener("click", () => {
+      flush();
+      if (!state.result) return;
+      const blob = new Blob([state.result.text], { type: "text/plain" });
+      const a = document.createElement("a");
+      a.href = URL.createObjectURL(blob);
+      a.download = dictionaryFileName();
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+    });
+    $("copy-button").addEventListener("click", async () => {
+      flush();
+      if (!state.result) return;
+      const status = $("copy-status");
+      const result = state.result;
+      try {
+        await navigator.clipboard.writeText(result.text);
+        if (state.result !== result) return; // replaced while copying; this message would describe another dictionary
+        status.textContent = "Copied.";
+      } catch (e) {
+        if (state.result !== result) return;
+        const area = $("dictionary-output");
+        area.focus();
+        area.select();
+        status.textContent = "Select the text and copy it manually (clipboard access was denied).";
+      }
+    });
+  }
+
+  init();
+})();
+</script>
+</body>
+</html>
