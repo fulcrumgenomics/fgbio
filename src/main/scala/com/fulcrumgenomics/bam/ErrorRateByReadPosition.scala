@@ -35,7 +35,7 @@ import com.fulcrumgenomics.sopt._
 import com.fulcrumgenomics.util.Metric.Count
 import com.fulcrumgenomics.util.{Metric, ProgressLogger, Rscript, Sequences}
 import com.fulcrumgenomics.vcf.api.VcfSource
-import com.fulcrumgenomics.vcf.{ByIntervalListVariantContextIterator, VariantMask}
+import com.fulcrumgenomics.vcf.{ByIntervalListVariantIterator, VariantMask}
 import htsjdk.samtools.SAMRecord
 import htsjdk.samtools.filter.{DuplicateReadFilter, FailsVendorReadQualityFilter, SamRecordFilter, SecondaryOrSupplementaryFilter}
 import htsjdk.samtools.reference.ReferenceSequenceFileWalker
@@ -198,7 +198,7 @@ class ErrorRateByReadPosition
     (source, intervals) match {
       case (None, _)                => new VariantMask(Iterator.empty, dict)
       case (Some(vcf), None)        => new VariantMask(vcf.iterator, dict)
-      case (Some(vcf), Some(ilist)) => new VariantMask(ByIntervalListVariantContextIterator(vcf, ilist), dict)
+      case (Some(vcf), Some(ilist)) => new VariantMask(ByIntervalListVariantIterator(vcf, ilist), dict)
     }
   }
 

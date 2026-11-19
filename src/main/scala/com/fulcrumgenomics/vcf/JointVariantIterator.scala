@@ -27,21 +27,21 @@ package com.fulcrumgenomics.vcf
 import com.fulcrumgenomics.fasta.SequenceDictionary
 import com.fulcrumgenomics.vcf.api.Variant
 
-object JointVariantContextIterator {
+object JointVariantIterator {
   /** Creates an iterator over the union of sites across the given iterators, ordering variants by the index of their
     * contig in the sequence dictionary and then by their start position. */
   def apply(iters: Seq[Iterator[Variant]],
             dict: SequenceDictionary
-           ): JointVariantContextIterator = {
-    new JointVariantContextIterator(iters=iters, ordering=coordinateOrdering(dict))
+           ): JointVariantIterator = {
+    new JointVariantIterator(iters=iters, ordering=coordinateOrdering(dict))
   }
 
   /** Creates an iterator over the union of sites across the given iterators, ordering variants with the given
     * ordering.  Variants that compare as equal are returned together. */
   def apply(iters: Seq[Iterator[Variant]],
             ordering: Ordering[Variant]
-           ): JointVariantContextIterator = {
-    new JointVariantContextIterator(iters=iters, ordering=ordering)
+           ): JointVariantIterator = {
+    new JointVariantIterator(iters=iters, ordering=ordering)
   }
 
   /** An ordering of variants by the index of their contig in the sequence dictionary and then by their start position. */
@@ -54,7 +54,7 @@ object JointVariantContextIterator {
   * Iterates over multiple variant iterators such that we return a list of variants for the union of sites
   * across the iterators.
   */
-class JointVariantContextIterator private(iters: Seq[Iterator[Variant]],
+class JointVariantIterator private(iters: Seq[Iterator[Variant]],
                                           ordering: Ordering[Variant]
                                          )
 extends Iterator[Seq[Option[Variant]]] {
