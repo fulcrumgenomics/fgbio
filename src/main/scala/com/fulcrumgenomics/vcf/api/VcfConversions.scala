@@ -350,6 +350,10 @@ private[api] object VcfConversions {
       else in.getFilters.toSet
     }
 
+    // Preserve spans decoded from SVLEN or FORMAT LEN, rather than deriving them again from REF alone.
+    val scalaEnd = info.get(EndKey).map(_.asInstanceOf[Int]).getOrElse(in.getStart + alleles.ref.length - 1)
+    val attrs = if (scalaEnd == in.getEnd) info else info.updated(EndKey, in.getEnd)
+
     Variant(
       chrom     = in.getContig,
       pos       = in.getStart,
@@ -357,7 +361,7 @@ private[api] object VcfConversions {
       alleles   = alleles,
       qual      = if (in.hasLog10PError) Some(in.getPhredScaledQual) else None,
       filters   = filters,
-      attrs     = info,
+      attrs     = attrs,
       genotypes = new GenotypeMap(gts, header.sampleIndex)
     )
   }

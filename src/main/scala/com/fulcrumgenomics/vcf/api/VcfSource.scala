@@ -45,6 +45,9 @@ import java.io.Closeable
   * FORMAT fields, which HTSJDK parses itself: an invalid value of one of these either fails with HTSJDK's error, or is
   * changed or dropped without an error.
   *
+  * If HTSJDK decodes a span not represented by INFO END or REF length (e.g. from SVLEN or FORMAT LEN), the decoded
+  * end is stored in INFO END so that writing the variant preserves its span and index coverage.
+  *
   * @param reader the underlying HTSJDK [[VCFFileReader]]
   * @param headerTransformer a method to transform the header after being read in.
   * @param allowMissingFieldsInHeader if true, INFO and FORMAT fields that are not described in the header are read

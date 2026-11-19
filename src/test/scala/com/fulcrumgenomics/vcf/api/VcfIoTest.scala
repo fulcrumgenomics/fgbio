@@ -80,10 +80,13 @@ class VcfIoTest extends UnitSpec with OptionValues {
     val results = Result(in.header, in.toIndexedSeq)
     in.close()
 
-    // Check that the header didn't get mangled other than perhaps having lines resorted
+    // The writer adds an END definition if absent; all other header entries are preserved, possibly reordered.
+    val expectedInfos = if (header.info.contains("END")) header.infos else {
+      header.infos :+ VcfInfoHeader("END", VcfCount.Fixed(1), VcfFieldType.Integer, "End position of the variant.")
+    }
     results.header.samples should contain theSameElementsInOrderAs header.samples
     results.header.contigs should contain theSameElementsInOrderAs header.contigs
-    results.header.infos   should contain theSameElementsAs        header.infos
+    results.header.infos   should contain theSameElementsAs        expectedInfos
     results.header.formats should contain theSameElementsAs        header.formats
     results.header.filters should contain theSameElementsAs        header.filters
     results.header.others  should contain theSameElementsAs        header.others
@@ -706,6 +709,47 @@ class VcfIoTest extends UnitSpec with OptionValues {
 
   it should "leave out the length of a sequence of unknown length" in {
     VcfContigHeader.fromSequenceMetadata(SequenceMetadata(name="chr1", index=0)).length shouldBe None
+  }
+
+  Seq(
+    ("A", "<DEL>", "SVLEN=-50", "GT", "0/1", 16430),
+    ("A", "<DEL:ME>", "SVLEN=-50", "GT", "0/1", 16430),
+    ("A", "<DUP>,<INS>", "SVLEN=50,500", "GT", "0/1", 16430),
+    ("A", "<INS>,<DEL>", "SVLEN=500,-50", "GT", "0/2", 16430),
+    ("A", "<INV>", "SVLEN=50;END=16390", "GT", "0/1", 16430),
+    ("AAAA", "A", "SVLEN=-50", "GT", "0/1", 16383),
+    ("A", "<INS>", "SVLEN=50", "GT", "0/1", 16380),
+    ("A", "<NON_REF>", ".", "GT:LEN", "0/0:51", 16430)
+  ).foreach { case (ref, alt, info, format, genotype, end) =>
+    it should s"preserve the decoded span of $ref/$alt with $info and $genotype through BCF" in {
+      val input = makeTempFile(getClass.getSimpleName, VcfExtension)
+      Io.writeLines(input, Seq(
+        "##fileformat=VCFv4.2",
+        "##contig=<ID=chr1,length=100000>",
+        "##INFO=<ID=SVLEN,Number=A,Type=Integer,Description=\"Structural variant length\">",
+        "##INFO=<ID=END,Number=1,Type=Integer,Description=\"End position\">",
+        "##FORMAT=<ID=GT,Number=1,Type=String,Description=\"Genotype\">",
+        "##FORMAT=<ID=LEN,Number=1,Type=Integer,Description=\"Reference block length\">",
+        Seq("#CHROM", "POS", "ID", "REF", "ALT", "QUAL", "FILTER", "INFO", "FORMAT", "s1").mkString("\t"),
+        Seq("chr1", "16380", ".", ref, alt, ".", "PASS", info, format, genotype).mkString("\t")
+      ))
+      val source = VcfSource(input)
+      val output = makeTempFile(getClass.getSimpleName, ".bcf")
+      val writer = VcfWriter(output, source.header)
+      try {
+        val variant = source.iterator.next()
+        variant.end shouldBe end
+        writer.header.info("END").description shouldBe "End position"
+        writer.write(variant)
+      }
+      finally { writer.close(); source.close() }
+      val result = VcfSource(output)
+      try {
+        result.iterator.next().end shouldBe end
+        result.query("chr1", end, end).map(_.pos).toIndexedSeq shouldBe IndexedSeq(16380)
+      }
+      finally result.close()
+    }
   }
 
   /** Writes a VCF whose single variant has INFO and FORMAT fields that are not described in the header. */
