@@ -269,8 +269,8 @@ trait SamRecord {
     * The record must not use `=` for a read base that the MD tag reports as matching the reference, since the
     * reference base cannot then be determined.
     *
-    * @throws IllegalArgumentException if the MD tag is missing or malformed, does not match the CIGAR, or the reference
-    *                                  base for an `=` read base is needed
+    * @throws java.lang.IllegalArgumentException if the MD tag is missing or malformed, does not match the CIGAR, or the
+    *                                            reference base for an `=` read base is needed
     */
   final def refBasesFromMd: Array[Byte] = {
     val md        = get[String]("MD").getOrElse(
