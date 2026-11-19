@@ -26,12 +26,13 @@ package com.fulcrumgenomics.vcf
 
 import com.fulcrumgenomics.FgBioDef._
 import com.fulcrumgenomics.commons.io.PathUtil
+import com.fulcrumgenomics.cmdline.FgBioMain.FailureException
 import com.fulcrumgenomics.commons.util.NumericCounter
 import com.fulcrumgenomics.testing.VcfBuilder.Gt
 import com.fulcrumgenomics.testing.{ErrorLogLevel, UnitSpec, VcfBuilder}
 import com.fulcrumgenomics.util.{Io, Metric}
 import com.fulcrumgenomics.vcf.PhaseCigar.IlluminaSwitchErrors
-import com.fulcrumgenomics.vcf.api.{Variant, VcfCount, VcfFieldType, VcfFormatHeader, VcfHeader, VcfWriter}
+import com.fulcrumgenomics.vcf.api.{ArrayAttr, Variant, VcfCount, VcfFieldType, VcfFormatHeader, VcfHeader, VcfSource, VcfWriter}
 import htsjdk.samtools.SAMFileHeader
 import htsjdk.samtools.util.{Interval, IntervalList}
 
@@ -56,17 +57,13 @@ object AssessPhasingTest {
   class VariantSetBuilder extends Iterable[Variant] {
     private val builder = VcfBuilder(Header)
 
-    /** The header of the VCF being built. */
-    def header: VcfHeader = builder.header
-
-    /** Adds a variant whose sample has the given genotype alleles, or a no-call if none are given. */
-    def addVariant(refIdx: Int = 0,
-                   start: Long,
+    /** Adds a variant on the first contig whose sample has the given genotype alleles, or a no-call if none are given. */
+    def addVariant(start: Int,
                    variantAlleles: List[String],
                    genotypeAlleles: List[String] = List.empty,
                    phased: Boolean = false): this.type = {
       val gt = if (genotypeAlleles.isEmpty) "." else genotypeAlleles.mkString(if (phased) "|" else "/")
-      builder.add(chrom=header.dict(refIdx).name, pos=start.toInt, alleles=variantAlleles, gts=Seq(Gt(sample=SampleName, gt=gt)))
+      builder.add(chrom=Header.dict(0).name, pos=start, alleles=variantAlleles, gts=Seq(Gt(sample=SampleName, gt=gt)))
       this
     }
 
@@ -104,12 +101,12 @@ object AssessPhasingTest {
 
     // BLOCK #4: position 30-42
     Range(30, 37).foreach { start =>
-      builderTruth.addVariant(start=start.toLong, variantAlleles=List("A", "C"), genotypeAlleles=List("A", "C"), phased=true) // Match
-      builderCall.addVariant( start=start.toLong, variantAlleles=List("A", "C"), genotypeAlleles=List("A", "C"), phased=true) //   - with previous
+      builderTruth.addVariant(start=start, variantAlleles=List("A", "C"), genotypeAlleles=List("A", "C"), phased=true) // Match
+      builderCall.addVariant( start=start, variantAlleles=List("A", "C"), genotypeAlleles=List("A", "C"), phased=true) //   - with previous
     }
     Range(37, 43).foreach { start =>
-      builderTruth.addVariant(start=start.toLong, variantAlleles=List("A", "C"), genotypeAlleles=List("A", "C"), phased=true) // Mismatch
-      builderCall.addVariant( start=start.toLong, variantAlleles=List("A", "C"), genotypeAlleles=List("C", "A"), phased=true) //   - with previous
+      builderTruth.addVariant(start=start, variantAlleles=List("A", "C"), genotypeAlleles=List("A", "C"), phased=true) // Mismatch
+      builderCall.addVariant( start=start, variantAlleles=List("A", "C"), genotypeAlleles=List("C", "A"), phased=true) //   - with previous
     }
 
     // NB: call has blocks lengths 4, 5, 1, and 13; truth has block lengths 4, 6, and 13.
@@ -293,6 +290,10 @@ class AssessPhasingTest extends ErrorLogLevel {
       .add(pos=5,  alleles=Seq("A", "C", "G"), gts=gt("1|2")) // not bi-allelic in the genotype
       .add(pos=6,  alleles=Seq("A", "C"),      gts=gt("0|1"))
       .add(pos=7,  alleles=Seq("A", "C"),      gts=gt("0|1"))
+      .add(pos=8,  alleles=Seq("A", "*"),      gts=gt("0|1")) // a SNP with a spanning deletion, as in HTSJDK
+      .add(pos=9,  alleles=Seq("A", "C", "*"), gts=gt("0|2")) // likewise, once subset to the genotype's alleles
+      .add(pos=10, alleles=Seq("AT", "*"),     gts=gt("0|1")) // an indel, as in HTSJDK
+      .add(pos=11, alleles=Seq("A", "C", "*"), gts=gt("1|2")) // not bi-allelic in the genotype
       .toTempFile()
     val call = VcfBuilder(Seq("s1")).withFormatHeaders(psHeader)
       .add(pos=1,  alleles=Seq("A", "C"),      gts=gt("0|1"))
@@ -302,18 +303,22 @@ class AssessPhasingTest extends ErrorLogLevel {
       .add(pos=5,  alleles=Seq("A", "C", "G"), gts=gt("1|2"))
       .add(pos=6,  alleles=Seq("A", "C"),      gts=gt("1|0"))
       .add(pos=7,  alleles=Seq("A", "C"),      gts=gt("0|1"))
+      .add(pos=8,  alleles=Seq("A", "*"),      gts=gt("0|1"))
+      .add(pos=9,  alleles=Seq("A", "C", "*"), gts=gt("2|0"))
+      .add(pos=10, alleles=Seq("AT", "*"),     gts=gt("0|1"))
+      .add(pos=11, alleles=Seq("A", "C", "*"), gts=gt("1|2"))
       .toTempFile()
 
     val output = makeTempFile("AssessPhasingTest.", "prefix")
     new AssessPhasing(truthVcf=truth, calledVcf=call, output=output, debugVcf=true).execute()
 
     val metric = Metric.read[AssessPhasingMetric](PathUtil.pathTo(s"${output}${AssessPhasingMetric.MetricExtension}")).head
-    metric.num_called shouldBe 5
-    metric.num_phased shouldBe 5
-    metric.num_truth shouldBe 4
-    metric.num_truth_phased shouldBe 4
-    metric.num_called_with_truth_phased shouldBe 4
-    metric.num_phased_with_truth_phased shouldBe 4
+    metric.num_called shouldBe 7
+    metric.num_phased shouldBe 7
+    metric.num_truth shouldBe 6
+    metric.num_truth_phased shouldBe 6
+    metric.num_called_with_truth_phased shouldBe 6
+    metric.num_phased_with_truth_phased shouldBe 6
 
     // The debug VCF has the sites called and in the truth, with the called alleles and both genotypes
     val annotatedVcf = Paths.get(output.toString + AssessPhasing.AnnotatedVcfExtension)
@@ -322,8 +327,158 @@ class AssessPhasingTest extends ErrorLogLevel {
       ("1", "A", "C", "GT:PHASE_CONC:PS", "0|1:Match:1",    "0|1:.:1"),
       ("2", "A", "C", "GT:PHASE_CONC:PS", "0|1:Match:1",    "0|1:.:1"),
       ("6", "A", "C", "GT:PHASE_CONC:PS", "1|0:Mismatch:1", "0|1:.:1"),
-      ("7", "A", "C", "GT:PHASE_CONC:PS", "0|1:Match:1",    "0|1:.:1")
+      ("7", "A", "C", "GT:PHASE_CONC:PS", "0|1:Match:1",    "0|1:.:1"),
+      ("8", "A", "*", "GT:PHASE_CONC:PS", "0|1:Match:1",    "0|1:.:1"),
+      ("9", "A", "*", "GT:PHASE_CONC:PS", "1|0:Mismatch:1", "0|1:.:1")
     )
+  }
+
+  /** Writes a single-sample VCF with the given contig (or other) header lines and records (each given as its
+    * tab-separated fields).  The records may have INFO and FORMAT fields that are not described in the header. */
+  private def writeRawVcf(contigs: Seq[String], records: Seq[String]*): PathToVcf = {
+    val text = makeTempFile("AssessPhasingTest.", ".vcf")
+    Io.writeLines(text, Seq("##fileformat=VCFv4.2") ++ contigs ++ Seq(
+      "##FORMAT=<ID=GT,Number=1,Type=String,Description=\"Genotype\">",
+      "##FORMAT=<ID=PS,Number=1,Type=Integer,Description=\"Phase set\">",
+      Seq("#CHROM", "POS", "ID", "REF", "ALT", "QUAL", "FILTER", "INFO", "FORMAT", "s1").mkString("\t")
+    ) ++ records.map(_.mkString("\t")))
+
+    // copy it to an indexed VCF, as AssessPhasing queries the VCFs
+    val vcf    = makeTempFile("AssessPhasingTest.", ".vcf.gz")
+    val source = VcfSource(text, allowMissingFieldsInHeader=true)
+    val writer = VcfWriter(vcf, source.header)
+    writer ++= source
+    writer.close()
+    source.safelyClose()
+    vcf
+  }
+
+  it should "write the debug VCF with call and truth samples and a String PHASE_CONC field" in {
+    val output = makeTempFile("AssessPhasingTest.", "prefix")
+    new AssessPhasing(truthVcf=writeVariants(TruthVariants), calledVcf=writeVariants(CallVariants), output=output, debugVcf=true).execute()
+
+    val source = VcfSource(Paths.get(output.toString + AssessPhasing.AnnotatedVcfExtension))
+    source.header.samples should contain theSameElementsInOrderAs Seq(AssessPhasing.CalledSampleName, AssessPhasing.TruthSampleName)
+    source.header.format(AssessPhasing.PhaseConcordanceFormatTag) shouldBe AssessPhasing.PhaseConcordanceFormatHeaderLine
+    Seq("GT", "GQ", "DP", "AD", "PL", "FT").foreach(key => source.header.format.contains(key) shouldBe true)
+    source.iterator.map(_.gt(AssessPhasing.CalledSampleName)[String](AssessPhasing.PhaseConcordanceFormatTag)).toSet should contain allOf ("Match", "Mismatch")
+    source.safelyClose()
+  }
+
+  it should "fail to write the debug VCF when the truth and call alleles differ and mismatching alleles are not skipped" in {
+    def gt(calls: String) = Seq(Gt(sample=SampleName, gt=calls, attrs=Map("PS" -> 1)))
+    val truth = VcfBuilder(Header).add(pos=1, alleles=Seq("A", "C"), gts=gt("0|1")).toTempFile()
+    val call  = VcfBuilder(Header).add(pos=1, alleles=Seq("A", "G"), gts=gt("0|1")).toTempFile()
+    val output = makeTempFile("AssessPhasingTest.", "prefix")
+    val ex = intercept[IllegalStateException] {
+      new AssessPhasing(truthVcf=truth, calledVcf=call, output=output, debugVcf=true, skipMismatchingAlleles=false).execute()
+    }
+    ex.getMessage should include ("not in the called variant")
+  }
+
+  it should "fail when either VCF has no contig lines" in {
+    val withContigs    = writeRawVcf(Seq("##contig=<ID=chr1,length=1000>"), Seq("chr1", "1", ".", "A", "C", ".", ".", ".", "GT:PS", "0|1:1"))
+    val withoutContigs = writeRawVcf(Seq.empty, Seq("chr1", "1", ".", "A", "C", ".", ".", ".", "GT:PS", "0|1:1"))
+    Seq((withContigs, withoutContigs), (withoutContigs, withContigs)).foreach { case (truth, call) =>
+      val output = makeTempFile("AssessPhasingTest.", "prefix")
+      val ex = intercept[FailureException] { new AssessPhasing(truthVcf=truth, calledVcf=call, output=output).execute() }
+      ex.message.value should include ("no contig lines")
+    }
+  }
+
+  it should "fail when either VCF has no samples" in {
+    val withSamples    = writeRawVcf(Seq("##contig=<ID=chr1,length=1000>"), Seq("chr1", "1", ".", "A", "C", ".", ".", ".", "GT:PS", "0|1:1"))
+    val withoutSamples = {
+      val vcf    = makeTempFile("AssessPhasingTest.", ".vcf.gz")
+      val source = VcfSource(withSamples)
+      val writer = VcfWriter(vcf, source.header.copy(samples=IndexedSeq.empty))
+      writer ++= source.iterator.map(_.copy(genotypes=Map.empty))
+      writer.close()
+      source.close()
+      vcf
+    }
+    Seq((withSamples, withoutSamples, "called"), (withoutSamples, withSamples, "truth")).foreach { case (truth, call, which) =>
+      val output = makeTempFile("AssessPhasingTest.", "prefix")
+      val ex = intercept[FailureException] { new AssessPhasing(truthVcf=truth, calledVcf=call, output=output).execute() }
+      ex.message.value should include (s"The $which VCF has no samples")
+    }
+  }
+
+  it should "compare the contigs of the VCFs as HTSJDK does: by MD5 when both have one, and by length when both have one" in {
+    def run(truthContig: String, callContig: String): Unit = {
+      val record = Seq("chr1", "1", ".", "A", "C", ".", ".", ".", "GT:PS", "0|1:1")
+      val output = makeTempFile("AssessPhasingTest.", "prefix")
+      new AssessPhasing(truthVcf=writeRawVcf(Seq(truthContig), record), calledVcf=writeRawVcf(Seq(callContig), record), output=output).execute()
+    }
+
+    // a missing length matches any length
+    noException should be thrownBy run("##contig=<ID=chr1>", "##contig=<ID=chr1,length=1000>")
+    // different lengths or MD5s do not match
+    intercept[FailureException] { run("##contig=<ID=chr1,length=999>", "##contig=<ID=chr1,length=1000>") }
+      .message.value should include ("different contigs")
+    intercept[FailureException] { run("##contig=<ID=chr1,length=1000,md5=abc>", "##contig=<ID=chr1,length=1000,md5=def>") }
+      .message.value should include ("different contigs")
+    noException should be thrownBy run("##contig=<ID=chr1,length=1000,md5=abc>", "##contig=<ID=chr1,length=1000>")
+  }
+
+  it should "assess the whole contig when the called VCF's contig line has no length" in {
+    val record = Seq("chr1", "500", ".", "A", "C", ".", ".", ".", "GT:PS", "0|1:500")
+    Seq(("##contig=<ID=chr1,length=1000>", "##contig=<ID=chr1>"), ("##contig=<ID=chr1>", "##contig=<ID=chr1>")).foreach {
+      case (truthContig, callContig) =>
+        val output = makeTempFile("AssessPhasingTest.", "prefix")
+        new AssessPhasing(truthVcf=writeRawVcf(Seq(truthContig), record), calledVcf=writeRawVcf(Seq(callContig), record), output=output).execute()
+        val metric = Metric.read[AssessPhasingMetric](PathUtil.pathTo(s"${output}${AssessPhasingMetric.MetricExtension}")).head
+        metric.num_called shouldBe 1
+        metric.num_truth shouldBe 1
+        metric.num_phased_with_truth_phased shouldBe 1
+    }
+  }
+
+  it should "read FORMAT fields not described in the VCF header only if --allow-missing-fields-in-vcf-header is true" in {
+    val contig = Seq("##contig=<ID=chr1,length=1000>")
+    val truth  = writeRawVcf(contig, Seq("chr1", "10", ".", "A", "C", ".", ".", ".", "GT:PS:XX", "0|1:10:5"))
+    val call   = writeRawVcf(contig, Seq("chr1", "10", ".", "A", "C", ".", ".", ".", "GT:PS:XX", "0|1:10:5"))
+
+    // by default the undescribed field is read, and the site assessed
+    val output = makeTempFile("AssessPhasingTest.", "prefix")
+    new AssessPhasing(truthVcf=truth, calledVcf=call, output=output).execute()
+    val metric = Metric.read[AssessPhasingMetric](PathUtil.pathTo(s"${output}${AssessPhasingMetric.MetricExtension}")).head
+    metric.num_phased_with_truth_phased shouldBe 1
+
+    // otherwise reading the VCF fails, naming the VCF, the field and the option
+    val ex = intercept[IllegalStateException] {
+      new AssessPhasing(truthVcf=truth, calledVcf=call, output=makeTempFile("AssessPhasingTest.", "prefix"), allowMissingFieldsInVcfHeader=false).execute()
+    }
+    ex.getMessage should include (call.toString)
+    ex.getMessage should include ("XX")
+    ex.getMessage should include ("--allow-missing-fields-in-vcf-header")
+  }
+
+  it should "keep the called VCF's definitions of the standard FORMAT fields in the debug VCF" in {
+    val headers = Seq("##contig=<ID=chr1,length=1000>", "##FORMAT=<ID=DP,Number=1,Type=Integer,Description=\"My depth\">")
+    val record  = Seq("chr1", "10", ".", "A", "C", ".", ".", ".", "GT:PS:DP", "0|1:10:5")
+    val output  = makeTempFile("AssessPhasingTest.", "prefix")
+    new AssessPhasing(truthVcf=writeRawVcf(headers, record), calledVcf=writeRawVcf(headers, record), output=output, debugVcf=true).execute()
+
+    val source = VcfSource(Paths.get(output.toString + AssessPhasing.AnnotatedVcfExtension))
+    source.header.format("DP").description shouldBe "My depth"
+    source.header.format("GQ") shouldBe VariantUtil.StandardFormatHeaderLines.find(_.id == "GQ").value
+    source.header.format(AssessPhasing.PhaseConcordanceFormatTag) shouldBe AssessPhasing.PhaseConcordanceFormatHeaderLine
+    source.safelyClose()
+  }
+
+  "AssessPhasing.getPhasingSetId" should "read a phase set given as a single value or a one-element list, and reject more values" in {
+    val variant = TruthVariants.head
+    def withPs(ps: Any): Variant = {
+      val gt = variant.gts.next()
+      variant.copy(genotypes=Map(gt.sample -> gt.copy(attrs=gt.attrs + ("PS" -> ps))))
+    }
+    AssessPhasing.getPhasingSetId(withPs(5)) shouldBe 5
+    AssessPhasing.getPhasingSetId(withPs(ArrayAttr(Seq("5")))) shouldBe 5
+    intercept[IllegalArgumentException] { AssessPhasing.getPhasingSetId(withPs(ArrayAttr(Seq("5", "6")))) }
+      .getMessage should include (s"PS at ${variant.chrom}:${variant.pos}")
+    AssessPhasing.getPhasingSetId(withPs(Variant.MissingInt)) shouldBe -1
+    AssessPhasing.getPhasingSetId(variant.copy(genotypes=Map(SampleName -> variant.gts.next().copy(attrs=Map.empty)))) shouldBe -1
   }
 }
 
@@ -611,10 +766,9 @@ class PhaseCigarTest extends ErrorLogLevel {
 
   private def toCigar(truth: Seq[Variant],
                       call: Seq[Variant],
-                      header: VcfHeader,
                       skipMismatchingAlleles: Boolean,
                       assumeFixedAlleleOrder: Boolean = true): (Seq[PhaseCigarOp], AssessPhasingMetric) = {
-    val dict = header.dict
+    val dict = Header.dict
     val pairedIterator = JointVariantIterator(
       iters = Seq(truth.iterator, call.iterator),
       dict  = dict
@@ -641,7 +795,7 @@ class PhaseCigarTest extends ErrorLogLevel {
 
     // truth variant only
     {
-      val (cigar, metric) = toCigar(truth = Seq(ctx), call = Seq.empty, header = builder.header, skipMismatchingAlleles = true)
+      val (cigar, metric) = toCigar(truth = Seq(ctx), call = Seq.empty, skipMismatchingAlleles = true)
       cigar should contain theSameElementsInOrderAs Seq(BothEnd, BothEnd)
       metric.num_called shouldBe 0
       metric.num_truth shouldBe 1
@@ -650,7 +804,7 @@ class PhaseCigarTest extends ErrorLogLevel {
 
     // call variant only
     {
-      val (cigar, metric) = toCigar(truth = Seq.empty, call = Seq(ctx), header = builder.header, skipMismatchingAlleles = true)
+      val (cigar, metric) = toCigar(truth = Seq.empty, call = Seq(ctx), skipMismatchingAlleles = true)
       cigar should contain theSameElementsInOrderAs Seq(BothEnd, BothEnd)
       metric.num_called shouldBe 1
       metric.num_phased shouldBe 0
@@ -664,7 +818,7 @@ class PhaseCigarTest extends ErrorLogLevel {
 
     // truth variant only
     {
-      val (cigar, metric) = toCigar(truth = Seq(ctx), call = Seq.empty, header = builder.header, skipMismatchingAlleles = true)
+      val (cigar, metric) = toCigar(truth = Seq(ctx), call = Seq.empty, skipMismatchingAlleles = true)
       cigar should contain theSameElementsInOrderAs Seq(BothEnd, TruthOnly, BothEnd)
       metric.num_called shouldBe 0
       metric.num_truth shouldBe 1
@@ -673,7 +827,7 @@ class PhaseCigarTest extends ErrorLogLevel {
 
     // call variant only
     {
-      val (cigar, metric) = toCigar(truth = Seq.empty, call = Seq(ctx), header = builder.header, skipMismatchingAlleles = true)
+      val (cigar, metric) = toCigar(truth = Seq.empty, call = Seq(ctx), skipMismatchingAlleles = true)
       cigar should contain theSameElementsInOrderAs Seq(BothEnd, CallOnly, BothEnd)
       metric.num_called shouldBe 1
       metric.num_phased shouldBe 1
@@ -688,7 +842,7 @@ class PhaseCigarTest extends ErrorLogLevel {
 
     // truth variant phased only
     {
-      val (cigar, metric) = toCigar(truth = Seq(ctxPhased), call = Seq(ctxNoPhase), header = builder.header, skipMismatchingAlleles = true)
+      val (cigar, metric) = toCigar(truth = Seq(ctxPhased), call = Seq(ctxNoPhase), skipMismatchingAlleles = true)
       cigar should contain theSameElementsInOrderAs Seq(BothEnd, TruthOnly, BothEnd)
       metric.num_called shouldBe 1
       metric.num_phased shouldBe 0
@@ -698,7 +852,7 @@ class PhaseCigarTest extends ErrorLogLevel {
 
     // call variant phased only
     {
-      val (cigar, metric) = toCigar(truth = Seq(ctxNoPhase), call = Seq(ctxPhased), header = builder.header, skipMismatchingAlleles = true)
+      val (cigar, metric) = toCigar(truth = Seq(ctxNoPhase), call = Seq(ctxPhased), skipMismatchingAlleles = true)
       cigar should contain theSameElementsInOrderAs Seq(BothEnd, CallOnly, BothEnd)
       metric.num_called shouldBe 1
       metric.num_phased shouldBe 1
@@ -713,7 +867,7 @@ class PhaseCigarTest extends ErrorLogLevel {
 
     // both variants are phased
     {
-      val (cigar, metric) = toCigar(truth = Seq(ctx), call = Seq(ctx), header = builder.header, skipMismatchingAlleles = true)
+      val (cigar, metric) = toCigar(truth = Seq(ctx), call = Seq(ctx), skipMismatchingAlleles = true)
       cigar should contain theSameElementsInOrderAs Seq(BothEnd, Match, BothEnd)
       metric.num_called shouldBe 1
       metric.num_phased shouldBe 1
@@ -730,7 +884,7 @@ class PhaseCigarTest extends ErrorLogLevel {
 
     // both variants are phased, phase is inverted, and we assume a fixed order, so a mismatch
     {
-      val (cigar, metric) = toCigar(truth = Seq(truth), call = Seq(call), header = builderTruth.header, skipMismatchingAlleles = true, assumeFixedAlleleOrder = true)
+      val (cigar, metric) = toCigar(truth = Seq(truth), call = Seq(call), skipMismatchingAlleles = true, assumeFixedAlleleOrder = true)
       cigar should contain theSameElementsInOrderAs Seq(BothEnd, Mismatch, BothEnd)
       metric.num_called shouldBe 1
       metric.num_phased shouldBe 1
@@ -739,7 +893,7 @@ class PhaseCigarTest extends ErrorLogLevel {
     }
     // both variants are phased, phase is inverted, and we don't assume a fixed order, so a match
     {
-      val (cigar, metric) = toCigar(truth = Seq(truth), call = Seq(call), header = builderTruth.header, skipMismatchingAlleles = true, assumeFixedAlleleOrder = false)
+      val (cigar, metric) = toCigar(truth = Seq(truth), call = Seq(call), skipMismatchingAlleles = true, assumeFixedAlleleOrder = false)
       cigar should contain theSameElementsInOrderAs Seq(BothEnd, Match, BothEnd)
       metric.num_called shouldBe 1
       metric.num_phased shouldBe 1
@@ -753,7 +907,7 @@ class PhaseCigarTest extends ErrorLogLevel {
       val truthTwo = withPhasingSetId(builderTruth.last, 1)
       val callTwo  = withPhasingSetId(builderCall.last, 1)
 
-      val (cigar, metric) = toCigar(truth = Seq(truth, truthTwo), call = Seq(call, callTwo), header = builderTruth.header, skipMismatchingAlleles = true, assumeFixedAlleleOrder = false)
+      val (cigar, metric) = toCigar(truth = Seq(truth, truthTwo), call = Seq(call, callTwo), skipMismatchingAlleles = true, assumeFixedAlleleOrder = false)
       cigar should contain theSameElementsInOrderAs Seq(BothEnd, Match, Mismatch, BothEnd)
       metric.num_called shouldBe 2
       metric.num_phased shouldBe 2
@@ -770,7 +924,7 @@ class PhaseCigarTest extends ErrorLogLevel {
 
     // skip the sites that have mismatching alleles
     {
-      val (cigar, metric) = toCigar(truth = Seq(truth), call = Seq(call), header = builderTruth.header, skipMismatchingAlleles = true)
+      val (cigar, metric) = toCigar(truth = Seq(truth), call = Seq(call), skipMismatchingAlleles = true)
       cigar should contain theSameElementsInOrderAs Seq(BothEnd, BothEnd)
       metric.num_called shouldBe 0
       metric.num_truth shouldBe 0
@@ -778,7 +932,7 @@ class PhaseCigarTest extends ErrorLogLevel {
 
     // include the sites that have mismatching alleles
     {
-      val (cigar, metric) = toCigar(truth = Seq(truth), call = Seq(call), header = builderTruth.header, skipMismatchingAlleles = false)
+      val (cigar, metric) = toCigar(truth = Seq(truth), call = Seq(call), skipMismatchingAlleles = false)
       cigar should contain theSameElementsInOrderAs Seq(BothEnd, Mismatch, BothEnd)
       metric.num_called shouldBe 1
       metric.num_phased shouldBe 1
@@ -792,7 +946,7 @@ class PhaseCigarTest extends ErrorLogLevel {
     val truth = AssessPhasingTest.TruthVariants.filter(ctx => ctx.pos < 30)
     val call  = AssessPhasingTest.CallVariants.filter(ctx => ctx.pos < 30)
 
-    val (cigar, metric) = toCigar(truth = truth, call = call, header = AssessPhasingTest.Header, skipMismatchingAlleles = false)
+    val (cigar, metric) = toCigar(truth = truth, call = call, skipMismatchingAlleles = false)
     cigar should contain theSameElementsInOrderAs threeHaplotypeCigar
     metric.num_called shouldBe 9
     metric.num_phased shouldBe 8
@@ -813,7 +967,7 @@ class PhaseCigarTest extends ErrorLogLevel {
     val truth = AssessPhasingTest.TruthVariants.filter(ctx => ctx.pos <= 42)
     val call  = AssessPhasingTest.CallVariants.filter(ctx => ctx.pos <= 42)
 
-    val (cigar, metric) = toCigar(truth = truth, call = call, header = AssessPhasingTest.Header, skipMismatchingAlleles = false)
+    val (cigar, metric) = toCigar(truth = truth, call = call, skipMismatchingAlleles = false)
     cigar should contain theSameElementsInOrderAs fourHaplotypeBlockCigar
     metric.num_called shouldBe 22
     metric.num_phased shouldBe 21
@@ -997,7 +1151,7 @@ class PhaseCigarTest extends ErrorLogLevel {
     PhaseCigar(Seq(CallOnly, CallEnd, TruthOnly, TruthEnd, CallOnly, CallEnd)).toPhasedBlocks().map(_.cigar) should contain theSameElementsInOrderAs Seq(Seq(CallOnly), Seq(TruthOnly, TruthEnd, CallOnly))
   }
 
-  "Cigar.variantsToBlockEndOperator/variantsToMatchingOperator" should "should return the cigar operator for two variants" in {
+  "Cigar.variantsToBlockEndOperator/variantsToMatchingOperator" should "return the cigar operator for two variants" in {
     val builder = new VariantSetBuilder()
     builder.addVariant(start = 1, variantAlleles = List("A", "C"), genotypeAlleles = List("A", "C"), phased = true)
     builder.addVariant(start = 2, variantAlleles = List("A", "C"), genotypeAlleles = List("A", "C"), phased = true)
@@ -1037,7 +1191,7 @@ class PhaseCigarTest extends ErrorLogLevel {
     PhaseCigar.variantsToMatchingOperator(truth=Some(ctxNoStart), call=Some(ctxNoStart)) shouldBe Some(Match)
   }
 
-  it should "should return the cigar operator for two variants that disagree on phase" in {
+  it should "return the cigar operator for two variants that disagree on phase" in {
     val builder = new VariantSetBuilder()
     builder.addVariant(start = 1, variantAlleles = List("A", "C"), genotypeAlleles = List("A", "C"), phased = true)
     builder.addVariant(start = 2, variantAlleles = List("A", "C"), genotypeAlleles = List("C", "A"), phased = true)

@@ -48,9 +48,12 @@ import java.io.Closeable
   * @param reader the underlying HTSJDK [[VCFFileReader]]
   * @param headerTransformer a method to transform the header after being read in.
   * @param allowMissingFieldsInHeader if true, INFO and FORMAT fields that are not described in the header are read
-  *                                   as [[VcfFieldType.String]] fields of [[VcfCount.Unknown]] count (or as a flag,
+  *                                   as [[VcfFieldType.String]] fields of [[VcfCount.Unknown]] count (or as Boolean `true` for a flag,
   *                                   and the INFO END field as an Int), otherwise reading a variant with such a field
-  *                                   throws an exception.
+  *                                   throws an exception.  The FORMAT fields `GT`, `AD`, `DP`, `GQ`, `PL` and `FT`
+  *                                   are exempt: they are read directly without requiring header definitions
+  *                                   regardless of this setting.  HTSJDK may normalize GL to PL or discard missing
+  *                                   FORMAT values before this check.
   * @param description a description of the VCF (e.g. its path) used in error messages
   */
 class VcfSource private(private val reader: AbstractFeatureReader[VariantContext, _],
@@ -136,8 +139,11 @@ object VcfSource {
     * @param headerTransformer a method to transform the header after being read in
     * @param allowMissingFieldsInHeader if true, INFO and FORMAT fields that are not described in the header are read
     *                                   as [[VcfFieldType.String]] fields of [[VcfCount.Unknown]] count (or as a
-    *                                   flag, and the INFO END field as an Int), as HTSJDK's `VCFFileReader` does,
-    *                                   otherwise reading a variant with such a field throws an exception
+    *                                   Boolean `true` for a flag, and the INFO END field as an Int), as HTSJDK's `VCFFileReader` does,
+    *                                   otherwise reading a variant with such a field throws an exception.  The FORMAT
+    *                                   fields `GT`, `AD`, `DP`, `GQ`, `PL` and `FT` are exempt: they are read directly
+    *                                   without requiring header definitions regardless of this setting.  HTSJDK may
+    *                                   normalize GL to PL or discard missing FORMAT values before this check.
     * @return a VariantSource for reading from the path given
     */
   def apply(path: PathToVcf,

@@ -254,8 +254,11 @@ private[api] object VcfConversions {
     *               fields as well as the ordered list of sample names.
     * @param allowMissingFieldsInHeader if true, INFO and FORMAT fields not described in the header are kept as
     *                                   [[VcfFieldType.String]] fields of [[VcfCount.Unknown]] count (or as
-    *                                   [[Variant.FlagValue]] for an INFO flag, and as an Int for the INFO END field),
-    *                                   otherwise an exception is thrown
+    *                                   Boolean `true` for an INFO flag, and as an Int for the INFO END field),
+    *                                   otherwise an exception is thrown.  The FORMAT fields `GT`, `AD`, `DP`, `GQ`,
+    *                                   `PL` and `FT` are exempt: they are read directly without requiring header
+    *                                   definitions regardless of this setting.  HTSJDK may normalize GL to PL or discard
+    *                                   missing FORMAT values before this check.
     * @return a [[Variant]] instance that is a copy of the [[VariantContext]] and does not rely on it
     *         post-return.  A genotype with no GT (e.g. a VCF whose FORMAT has no GT) is read as a haploid no-call,
     *         since a [[Genotype]] has at least one call, and so is written back with a GT of `.`.
@@ -419,11 +422,11 @@ private[api] object VcfConversions {
 
   /**
     * Converts the value of an INFO or FORMAT field that is not described in the header.  HTSJDK gives `true` for a
-    * flag, which becomes [[Variant.FlagValue]]; any other value is treated as a [[VcfFieldType.String]] field with
+    * flag, which is kept as Boolean `true` to distinguish it from [[Variant.Missing]]; any other value is treated as a [[VcfFieldType.String]] field with
     * [[VcfCount.Unknown]] count.
     */
   private def toUndescribedValue(value: Any): Option[Any] = value match {
-    case _: java.lang.Boolean => Some(Variant.FlagValue)
+    case _: java.lang.Boolean => Some(true)
     case _                    => toTypedValue(value, VcfFieldType.String, VcfCount.Unknown)
   }
 
@@ -441,7 +444,7 @@ private[api] object VcfConversions {
     in.id.foreach(i => builder.id(i))
     in.qual.foreach(q => builder.log10PError(q / -10 ))
     if (in.filters.isEmpty) builder.unfiltered() else builder.filters(in.filters.iterator.toJavaSet)
-    builder.attributes(toJavaInfoMap(in.attrs, header, isBcf))
+    builder.attributes(toJavaInfoMap(in.attrs, isBcf))
 
     val genotypes = header.samples.iterator.map { s =>
       val sgt = in.genotypes(s)
@@ -465,13 +468,9 @@ private[api] object VcfConversions {
   }
 
   /** Converts the INFO attributes of a variant into a java map that HTSJDK can handle (see [[toJavaValue]]). */
-  private def toJavaInfoMap(attrs: Map[String,Any], header: VcfHeader, isBcf: Boolean): java.util.LinkedHashMap[String,Any] = {
+  private def toJavaInfoMap(attrs: Map[String,Any], isBcf: Boolean): java.util.LinkedHashMap[String,Any] = {
     val out = new util.LinkedHashMap[String,Any]()
-    attrs.foreach {
-      // An INFO field not described in the header that holds the flag value was read as a flag, so write it as one
-      case (key, Variant.FlagValue) if !header.info.contains(key) => out.put(key, java.lang.Boolean.TRUE)
-      case (key, value)                                           => out.put(key, toJavaValue(value, isBcf))
-    }
+    attrs.foreach { case (key, value) => out.put(key, toJavaValue(value, isBcf)) }
     out
   }
 

@@ -738,6 +738,26 @@ class VcfIoTest extends UnitSpec with OptionValues {
     source.safelyClose()
   }
 
+  it should "read standard FORMAT fields without header definitions even when missing fields are disallowed" in {
+    val vcf = makeTempFile(getClass.getSimpleName, VcfExtension)
+    Io.writeLines(vcf, Seq(
+      "##fileformat=VCFv4.2",
+      "##contig=<ID=chr1,length=5000>",
+      Seq("#CHROM", "POS", "ID", "REF", "ALT", "QUAL", "FILTER", "INFO", "FORMAT", "s1").mkString("\t"),
+      Seq("chr1", "100", ".", "A", "C", "50", "PASS", ".", "GT:AD:DP:GQ:PL:FT", "0|1:7,5:12:40:50,0,70:LowDepth").mkString("\t")
+    ))
+    val source = VcfSource(vcf, allowMissingFieldsInHeader=false)
+    source.header.formats shouldBe empty
+    val gt = source.iterator.next().gt("s1")
+    gt.gtWithBases shouldBe "A|C"
+    gt[IndexedSeq[Int]]("AD") shouldBe IndexedSeq(7, 5)
+    gt[Int]("DP") shouldBe 12
+    gt[Int]("GQ") shouldBe 40
+    gt[IndexedSeq[Int]]("PL") shouldBe IndexedSeq(50, 0, 70)
+    gt[String]("FT") shouldBe "LowDepth"
+    source.safelyClose()
+  }
+
   it should "fail to read fields not described in the header by default" in {
     val source = VcfSource(writeVcfWithUndescribedFields())
     val ex     = intercept[RuntimeException] { source.toIndexedSeq }
@@ -761,6 +781,35 @@ class VcfIoTest extends UnitSpec with OptionValues {
     source.safelyClose()
   }
 
+  it should "allow normalized GL and discarded missing FORMAT values even in strict mode" in {
+    val input = makeTempFile(getClass.getSimpleName, VcfExtension)
+    Io.writeLines(input, Seq(
+      "##fileformat=VCFv4.2",
+      "##contig=<ID=chr1,length=5000>",
+      Seq("#CHROM", "POS", "ID", "REF", "ALT", "QUAL", "FILTER", "INFO", "FORMAT", "s1").mkString("\t"),
+      Seq("chr1", "100", ".", "A", "C", ".", "PASS", ".", "GT:GL:XX", "0/1:-1,0,-2:.").mkString("\t")
+    ))
+    val source = VcfSource(input, allowMissingFieldsInHeader=false)
+    try {
+      val gt = source.iterator.next().gt("s1")
+      gt[IndexedSeq[Int]]("PL") shouldBe IndexedSeq(10, 0, 20)
+      gt.attrs.keySet shouldBe Set("PL")
+    }
+    finally source.close()
+  }
+
+  it should "write an undeclared missing INFO value separately from an undeclared flag" in {
+    val source = VcfSource(writeVcfWithUndescribedFields(), allowMissingFieldsInHeader=true)
+    val output = makeTempFile(getClass.getSimpleName, VcfExtension)
+    val writer = VcfWriter(output, source.header)
+    try {
+      val variant = source.iterator.next()
+      writer.write(variant.copy(attrs=variant.attrs.filter { case (key, _) => key == "XF" }.updated("XM", Variant.Missing)))
+    }
+    finally { writer.close(); source.close() }
+    Io.readLines(output).filterNot(_.startsWith("#")).toIndexedSeq.map(_.split("\t")(7)) shouldBe IndexedSeq("XF;XM=.")
+  }
+
   it should "read fields not described in the header when allowed, and write them back as they were (with INFO fields sorted)" in {
     val input   = writeVcfWithUndescribedFields()
     val source  = VcfSource(input, allowMissingFieldsInHeader=true)
@@ -768,7 +817,7 @@ class VcfIoTest extends UnitSpec with OptionValues {
     variant[Int]("DP") shouldBe 10
     variant[Seq[String]]("XL") should contain theSameElementsInOrderAs Seq("a", "b")
     variant[Seq[String]]("XS") should contain theSameElementsInOrderAs Seq("0.5")
-    variant[String]("XF") shouldBe Variant.FlagValue
+    variant[Boolean]("XF") shouldBe true
     variant.gt("s1")[Seq[String]]("XG") should contain theSameElementsInOrderAs Seq("7")
     variant.gt("s1")[Seq[String]]("XH") should contain theSameElementsInOrderAs Seq("x", "y")
 
