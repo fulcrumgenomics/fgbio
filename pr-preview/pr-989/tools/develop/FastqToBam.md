@@ -40,19 +40,33 @@ Alternative if you know your reads are of fixed length you could specify:
 For more information on read structures see the
 [Read Structure Wiki Page](https://github.com/fulcrumgenomics/fgbio/wiki/Read-Structures)
 
-UMIs may be extracted from the read sequences, the read names, or both.  If `--extract-umis-from-read-names` is
-specified, any UMIs present in the read names are extracted; read names are expected to be `:`-separated with
-any UMIs present in the 8th field.  If this option is specified, the `--umi-qual-tag` option may not be used as
-qualities are not available for UMIs in the read name. If UMI segments are present in the read structures those
-will also be extracted.  If UMIs are present in both, the final UMIs are constructed by first taking the UMIs
-from the read names, then adding a hyphen, then the UMIs extracted from the reads.
+UMIs may be extracted from the read sequences, from the FASTQ header (either the read name or the read comment),
+or both.  If UMI segments are present in the read structures those will be extracted.  UMIs in the FASTQ header
+are extracted when one of the following (mutually exclusive) options is specified:
 
-Alternatively, if `--extract-umis-from-read-comment` is specified, any UMIs present in the read name comment
-(the text after the first whitespace in the FASTQ header) are extracted instead.  The comment is expected to be
-`:`-separated with exactly four fields (e.g. `1:N:0:ACGT+TTGA`), with any UMIs present in the last field.  Note
-that Illumina instruments normally write the sample index into this field, so only use this option when the UMIs
-were placed there instead.  These UMIs are combined with UMIs from the reads as described above, and the same
-restriction on `--umi-qual-tag` applies.
+1. `--extract-umis-from-read-names`: the read name (the text before the first whitespace) is expected to be
+   `:`-separated with 7 or 8 fields, with any UMI in the 8th field.  A read name with 7 fields, or an empty 8th
+   field, has no UMI.  Any other number of fields is an error.
+2. `--extract-umis-from-read-comment`: the read comment (the text after the first whitespace) is expected to be
+   `:`-separated with exactly 4 fields, with any UMI in the 4th field.  Illumina documents the comment as
+   `<read>:<is filtered>:<control number>:<index>`, where the last field is normally the sample index, so only
+   use this option when the UMIs were written there instead.  A read with an empty 4th field has no UMI.  A read
+   with no comment, or with any other number of fields, is an error.
+
+For example, both of the following FASTQ headers yield the UMI `ACGTACGT-TTGCGGCT`, the first with
+`--extract-umis-from-read-names` and the second with `--extract-umis-from-read-comment`:
+
+```
+@A00123:8:HFLV2DSXX:1:1101:1000:2000:ACGTACGT+TTGCGGCT 1:N:0:GATTACA
+@A00123:8:HFLV2DSXX:1:1101:1000:2000 1:N:0:ACGTACGT+TTGCGGCT
+```
+
+In both cases the UMI is taken from the header of the first FASTQ given to `--input`.  Multiple UMIs in the
+header must be separated by `+` and are joined with `-`, UMIs prefixed with `r` are reverse complemented, and
+the UMI is upper-cased.  It is an error if the resulting UMI contains any character other than `ACGTN-`.
+Neither option may be used with `--umi-qual-tag` as qualities are not available for UMIs in the header.  If UMIs
+are present in both the header and the reads, the final UMIs are constructed by first taking the UMIs from the
+header, then adding a hyphen, then the UMIs extracted from the reads.
 
 The same number of input files and read structures must be provided, with one exception: if supplying exactly
 1 or 2 fastq files, both of which are solely template reads, no read structures need be provided.
@@ -74,7 +88,7 @@ with reads in the same order as they appear in the fastq file.
 |cell-qual-tag|C|String|Tag in which to store the cellular barcodes qualities.|Optional|1||
 |store-sample-barcode-qualities|Q|Boolean|Store the sample barcode qualities in the QT Tag.|Optional|1|false|
 |extract-umis-from-read-names|n|Boolean|Extract UMI(s) from read names and prepend to UMIs from reads.|Optional|1|false|
-|extract-umis-from-read-comment||Boolean|Extract UMI(s) from the read name comment and prepend to UMIs from reads.|Optional|1|false|
+|extract-umis-from-read-comment||Boolean|Extract UMI(s) from the read comment and prepend to UMIs from reads.|Optional|1|false|
 |read-group-id||String|Read group ID to use in the file header.|Optional|1|A|
 |sample||String|The name of the sequenced sample.|Required|1||
 |library||String|The name/ID of the sequenced library.|Required|1||
