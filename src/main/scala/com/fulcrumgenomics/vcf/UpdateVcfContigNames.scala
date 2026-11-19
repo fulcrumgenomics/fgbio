@@ -42,6 +42,8 @@ import htsjdk.variant.vcf.{VCFFileReader, VCFHeader}
     |new name will be the primary (non-alias) name in the sequence dictionary.
     |
     |Use `--skip-missing` to ignore variants where a contig name could not be updated (i.e. missing from the sequence dictionary).
+    |
+    |The input VCF need not be indexed.
   """,
   group = ClpGroups.VcfOrBcf)
 class UpdateVcfContigNames
@@ -56,8 +58,12 @@ class UpdateVcfContigNames
   Io.assertCanWriteFile(output)
 
   override def execute(): Unit = {
+    // NB: this tool uses HTSJDK's VCF classes rather than fgbio's VCF API (VcfSource/VcfWriter) on purpose.  HTSJDK
+    // copies each record's genotypes (and other values it never decodes) through as the original text, so the only
+    // change is the contig name.  Converting to and from fgbio's Variant re-encodes every value, which cannot always
+    // be done losslessly (e.g. Float precision, missing values in AD/PL).  The input need not be indexed.
     val dict   = SequenceDictionary(this.dict)
-    val reader = new VCFFileReader(this.input)
+    val reader = new VCFFileReader(this.input, false)
     val header = {
       val h: VCFHeader = new VCFHeader(reader.getFileHeader)
       h.setSequenceDictionary(dict.toSam)
@@ -66,6 +72,7 @@ class UpdateVcfContigNames
     val writer = {
       new VariantContextWriterBuilder()
         .setOutputPath(this.output)
+        .setReferenceDictionary(dict.toSam) // needed to index a plain-text VCF on the fly
         .setOption(Options.INDEX_ON_THE_FLY)
         .build()
     }
