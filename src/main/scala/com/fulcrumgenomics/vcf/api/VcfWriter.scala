@@ -77,9 +77,14 @@ object VcfWriter {
     val javaHeader = VcfConversions.toJavaHeader(header)
     require(!Files.isDirectory(path), s"Path cannot be a directory! Found $path")
 
+    // NB: a header with no contig lines gives an empty dictionary, which HTSJDK cannot index a block-gzipped VCF
+    // against (it needs no dictionary at all), but which it needs to index a plain-text VCF.
+    val outputType = VariantContextWriterBuilder.determineOutputTypeFromFile(path)
+    val dict       = if (header.dict.isEmpty && outputType != VariantContextWriterBuilder.OutputType.VCF) null else header.dict.toSam
+
     val builder = new VariantContextWriterBuilder()
       .setOutputPath(path)
-      .setReferenceDictionary(header.dict.toSam)
+      .setReferenceDictionary(dict)
       .setOption(Options.ALLOW_MISSING_FIELDS_IN_HEADER)
       .setBuffer(Io.bufferSize)
 
@@ -97,7 +102,6 @@ object VcfWriter {
     val writer = builder.build()
     writer.writeHeader(javaHeader)
     // NB: decide whether the output is a BCF as the writer builder does, which ignores case and follows symbolic links
-    val isBcf = VariantContextWriterBuilder.determineOutputTypeFromFile(path) == VariantContextWriterBuilder.OutputType.BCF
-    new VcfWriter(writer, header, isBcf=isBcf)
+    new VcfWriter(writer, header, isBcf=outputType == VariantContextWriterBuilder.OutputType.BCF)
   }
 }
