@@ -28,8 +28,10 @@ import com.fulcrumgenomics.FgBioDef._
 import com.fulcrumgenomics.commons.io.PathUtil
 import com.fulcrumgenomics.commons.util.NumericCounter
 import com.fulcrumgenomics.fasta.Converters.FromSAMSequenceDictionary
-import com.fulcrumgenomics.testing.{ErrorLogLevel, UnitSpec, VariantContextSetBuilder}
-import com.fulcrumgenomics.util.Metric
+import com.fulcrumgenomics.testing.VcfBuilder.Gt
+import com.fulcrumgenomics.testing.{ErrorLogLevel, UnitSpec, VariantContextSetBuilder, VcfBuilder}
+import com.fulcrumgenomics.util.{Io, Metric}
+import com.fulcrumgenomics.vcf.api.{VcfCount, VcfFieldType, VcfFormatHeader}
 import com.fulcrumgenomics.vcf.PhaseCigar.IlluminaSwitchErrors
 import htsjdk.samtools.SAMFileHeader
 import htsjdk.samtools.util.{Interval, IntervalList}
@@ -266,6 +268,50 @@ class AssessPhasingTest extends ErrorLogLevel {
 
   it should "produce an annotated VCF when specified" in {
     runEndToEndWithFilter(intervals = None, prefix_none_1_10, 1, 10, debugVcf=true) // no intervals
+  }
+
+  it should "only assess bi-allelic heterozygous SNPs in the sample's genotype, and write them to the debug VCF" in {
+    val psHeader = VcfFormatHeader(id="PS", count=VcfCount.Fixed(1), kind=VcfFieldType.Integer, description="Phase set")
+    def gt(calls: String) = Seq(Gt(sample="s1", gt=calls, attrs=Map("PS" -> 1)))
+    val truth = VcfBuilder(Seq("s1")).withFormatHeaders(psHeader)
+      .add(pos=1,  alleles=Seq("A", "C"),      gts=gt("0|1"))
+      .add(pos=2,  alleles=Seq("A", "C", "G"), gts=gt("0|1")) // multi-allelic, but bi-allelic in the genotype
+      .add(pos=3,  alleles=Seq("A", "C"),      gts=gt("1|1")) // not heterozygous
+      .add(pos=4,  alleles=Seq("AT", "A"),     gts=gt("0|1")) // not a SNP
+      .add(pos=5,  alleles=Seq("A", "C", "G"), gts=gt("1|2")) // not bi-allelic in the genotype
+      .add(pos=6,  alleles=Seq("A", "C"),      gts=gt("0|1"))
+      .add(pos=7,  alleles=Seq("A", "C"),      gts=gt("0|1"))
+      .toTempFile()
+    val call = VcfBuilder(Seq("s1")).withFormatHeaders(psHeader)
+      .add(pos=1,  alleles=Seq("A", "C"),      gts=gt("0|1"))
+      .add(pos=2,  alleles=Seq("A", "C"),      gts=gt("0|1"))
+      .add(pos=3,  alleles=Seq("A", "C"),      gts=gt("0|1"))
+      .add(pos=4,  alleles=Seq("AT", "A"),     gts=gt("0|1"))
+      .add(pos=5,  alleles=Seq("A", "C", "G"), gts=gt("1|2"))
+      .add(pos=6,  alleles=Seq("A", "C"),      gts=gt("1|0"))
+      .add(pos=7,  alleles=Seq("A", "C"),      gts=gt("0|1"))
+      .toTempFile()
+
+    val output = makeTempFile("AssessPhasingTest.", "prefix")
+    new AssessPhasing(truthVcf=truth, calledVcf=call, output=output, debugVcf=true).execute()
+
+    val metric = Metric.read[AssessPhasingMetric](PathUtil.pathTo(s"${output}${AssessPhasingMetric.MetricExtension}")).head
+    metric.num_called shouldBe 5
+    metric.num_phased shouldBe 5
+    metric.num_truth shouldBe 4
+    metric.num_truth_phased shouldBe 4
+    metric.num_called_with_truth_phased shouldBe 4
+    metric.num_phased_with_truth_phased shouldBe 4
+
+    // The debug VCF has the sites called and in the truth, with the called alleles and both genotypes
+    val annotatedVcf = Paths.get(output.toString + AssessPhasing.AnnotatedVcfExtension)
+    val records      = Io.readLines(annotatedVcf).filterNot(_.startsWith("#")).map(_.split('\t').toSeq).toSeq
+    records.map(r => (r(1), r(3), r(4), r(8), r(9), r(10))) should contain theSameElementsInOrderAs Seq(
+      ("1", "A", "C", "GT:PHASE_CONC:PS", "0|1:Match:1",    "0|1:.:1"),
+      ("2", "A", "C", "GT:PHASE_CONC:PS", "0|1:Match:1",    "0|1:.:1"),
+      ("6", "A", "C", "GT:PHASE_CONC:PS", "1|0:Mismatch:1", "0|1:.:1"),
+      ("7", "A", "C", "GT:PHASE_CONC:PS", "0|1:Match:1",    "0|1:.:1")
+    )
   }
 }
 
