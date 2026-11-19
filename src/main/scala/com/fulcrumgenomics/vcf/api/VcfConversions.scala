@@ -65,9 +65,7 @@ private[api] object VcfConversions {
   /** Converts a Java VCF header into a scala VCF header. */
   def toScalaHeader(in: VCFHeader): VcfHeader = {
     val contigs = in.getContigLines.map { c =>
-      val rec = c.getSAMSequenceRecord
-      val length = if (rec.getSequenceLength == SequenceMetadata.UnknownSequenceLength) None else Some(rec.getSequenceLength)
-      VcfContigHeader(rec.getSequenceIndex, rec.getSequenceName, length, Option(rec.getAssembly))
+      VcfContigHeader.fromSequenceMetadata(SequenceMetadata(c.getSAMSequenceRecord))
     }.toIndexedSeq
 
     val infos = in.getInfoHeaderLines.toIndexedSeq.sortBy(_.getID).map { i =>
@@ -134,10 +132,14 @@ private[api] object VcfConversions {
     }
 
     in.contigs.foreach { i =>
-      val fields = new util.HashMap[String,String]()
+      // Ordered as HTSJDK writes contig lines built from a sequence dictionary
+      val fields = new util.LinkedHashMap[String,String]()
       fields.put("ID", i.name)
-      i.assembly.foreach(a => fields.put("assembly", a))
       i.length.foreach(l => fields.put("length", l.toString))
+      i.assembly.foreach(a => fields.put("assembly", a))
+      i.md5.foreach(m => fields.put("md5", m))
+      i.species.foreach(s => fields.put("species", s))
+      i.url.foreach(u => fields.put("URL", u))
       out.addMetaDataLine(new VCFContigHeaderLine(fields, i.index))
     }
 
