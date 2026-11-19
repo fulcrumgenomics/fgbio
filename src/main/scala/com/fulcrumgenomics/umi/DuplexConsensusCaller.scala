@@ -318,8 +318,10 @@ class DuplexConsensusCaller(override val readNamePrefix: String,
         Nil
       case (true, true) =>
         // Filter by common indel pattern with AB and BA together
-        val filteredXs = filterToMostCommonAlignment((abR1s ++ baR2s).flatMap(toSourceRead(_, this.minInputBaseQuality, this.qualityTrim)))
-        val filteredYs = filterToMostCommonAlignment((abR2s ++ baR1s).flatMap(toSourceRead(_, this.minInputBaseQuality, this.qualityTrim)))
+        // Within each pool the first-of-pair flag splits the AB reads from the BA reads
+        val byStrand   = (r: SourceRead) => r.sam.exists(_.firstOfPair)
+        val filteredXs = filterToMostCommonAlignment((abR1s ++ baR2s).flatMap(toSourceRead(_, this.minInputBaseQuality, this.qualityTrim)), byStrand)
+        val filteredYs = filterToMostCommonAlignment((abR2s ++ baR1s).flatMap(toSourceRead(_, this.minInputBaseQuality, this.qualityTrim)), byStrand)
 
         // Then split then back apart for SS calling
         val filteredAbR1s = filteredXs.filter(_.sam.exists(_.firstOfPair))
