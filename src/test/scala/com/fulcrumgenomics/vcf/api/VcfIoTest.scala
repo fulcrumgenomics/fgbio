@@ -688,4 +688,61 @@ class VcfIoTest extends UnitSpec with OptionValues {
   it should "leave out the length of a sequence of unknown length" in {
     VcfContigHeader.fromSequenceMetadata(SequenceMetadata(name="chr1", index=0)).length shouldBe None
   }
+
+  /** Writes a VCF whose single variant has INFO and FORMAT fields that are not described in the header. */
+  private def writeVcfWithUndescribedFields(): PathToVcf = {
+    val vcf = makeTempFile(getClass.getSimpleName, VcfExtension)
+    Io.writeLines(vcf, Seq(
+      "##fileformat=VCFv4.2",
+      "##contig=<ID=chr1,length=5000>",
+      "##INFO=<ID=DP,Number=1,Type=Integer,Description=\"Depth\">",
+      "##FORMAT=<ID=GT,Number=1,Type=String,Description=\"Genotype\">",
+      Seq("#CHROM", "POS", "ID", "REF", "ALT", "QUAL", "FILTER", "INFO", "FORMAT", "s1").mkString("\t"),
+      Seq("chr1", "100", ".", "A", "C", "50", "PASS", "DP=10;XF;XL=a,b;XS=0.5", "GT:XG:XH", "0/1:7:x,y").mkString("\t")
+    ))
+    vcf
+  }
+
+  "VcfSource" should "fail to read fields not described in the header by default" in {
+    val source = VcfSource(writeVcfWithUndescribedFields())
+    val ex     = intercept[RuntimeException] { source.toIndexedSeq }
+    Iterator.iterate[Throwable](ex)(_.getCause).takeWhile(_ != null).map(_.getMessage).mkString(" ") should include ("not described in header")
+    source.safelyClose()
+  }
+
+  it should "read an END INFO field not described in the header as an Int when allowed" in {
+    val vcf = makeTempFile(getClass.getSimpleName, VcfExtension)
+    Io.writeLines(vcf, Seq(
+      "##fileformat=VCFv4.2",
+      "##contig=<ID=chr1,length=5000>",
+      "##FORMAT=<ID=GT,Number=1,Type=String,Description=\"Genotype\">",
+      Seq("#CHROM", "POS", "ID", "REF", "ALT", "QUAL", "FILTER", "INFO", "FORMAT", "s1").mkString("\t"),
+      Seq("chr1", "100", ".", "A", "<DEL>", "50", "PASS", "END=150", "GT", "0/1").mkString("\t")
+    ))
+    val source  = VcfSource(vcf, allowMissingFieldsInHeader=true)
+    val variant = source.iterator.next()
+    variant[Int]("END") shouldBe 150
+    variant.end shouldBe 150
+    source.safelyClose()
+  }
+
+  it should "read fields not described in the header when allowed, and write them back as they were (with INFO fields sorted)" in {
+    val input   = writeVcfWithUndescribedFields()
+    val source  = VcfSource(input, allowMissingFieldsInHeader=true)
+    val variant = source.iterator.next()
+    variant[Int]("DP") shouldBe 10
+    variant[Seq[String]]("XL") should contain theSameElementsInOrderAs Seq("a", "b")
+    variant[Seq[String]]("XS") should contain theSameElementsInOrderAs Seq("0.5")
+    variant[String]("XF") shouldBe Variant.FlagValue
+    variant.gt("s1")[Seq[String]]("XG") should contain theSameElementsInOrderAs Seq("7")
+    variant.gt("s1")[Seq[String]]("XH") should contain theSameElementsInOrderAs Seq("x", "y")
+
+    val output = makeTempFile(getClass.getSimpleName, VcfExtension)
+    val writer = VcfWriter(output, source.header)
+    writer.write(variant)
+    writer.close()
+    source.safelyClose()
+
+    Io.readLines(output).filterNot(_.startsWith("#")).toSeq shouldBe Io.readLines(input).filterNot(_.startsWith("#")).toSeq
+  }
 }
