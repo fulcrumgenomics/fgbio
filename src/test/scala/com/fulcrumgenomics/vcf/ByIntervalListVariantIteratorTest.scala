@@ -26,7 +26,7 @@ package com.fulcrumgenomics.vcf
 
 import com.fulcrumgenomics.testing.VcfBuilder.Gt
 import com.fulcrumgenomics.testing.{UnitSpec, VcfBuilder}
-import com.fulcrumgenomics.vcf.api.{Variant, VcfSource}
+import com.fulcrumgenomics.vcf.api.{Variant, VcfSource, VcfWriter}
 import htsjdk.samtools.SAMFileHeader
 import htsjdk.samtools.util.{Interval, IntervalList}
 
@@ -40,7 +40,7 @@ class ByIntervalListVariantIteratorTest extends UnitSpec {
   /** A builder for a single-sample VCF. */
   private def newBuilder(): VcfBuilder = VcfBuilder(Seq("Sample"))
 
-  private def emtpyIntervalList(): IntervalList = {
+  private def emptyIntervalList(): IntervalList = {
     val header = new SAMFileHeader
     header.setSequenceDictionary(this.dict)
     new IntervalList(header)
@@ -60,7 +60,7 @@ class ByIntervalListVariantIteratorTest extends UnitSpec {
   "ByIntervalListVariantIterator" should "return no variants if the interval list is empty" in {
     Iterator(true, false).foreach { useIndex =>
       val builder = newBuilder().add(chrom=dict.getSequence(0).getSequenceName, pos=1, alleles=Seq("A"), gts=Seq(Gt(sample="Sample", gt="A")))
-      val iterator = toIterator(source=builder.toSource, intervalList=emtpyIntervalList(), useIndex=useIndex)
+      val iterator = toIterator(source=builder.toSource, intervalList=emptyIntervalList(), useIndex=useIndex)
       iterator.isEmpty shouldBe true
     }
   }
@@ -68,9 +68,9 @@ class ByIntervalListVariantIteratorTest extends UnitSpec {
   it should "return no variants if the variants are empty" in {
     Iterator(true, false).foreach { useIndex =>
       val builder = newBuilder()
-      val intervalList = emtpyIntervalList()
+      val intervalList = emptyIntervalList()
       intervalList.add(new Interval(dict.getSequence(0).getSequenceName, 1, 1000, false, "foo"))
-      val iterator = toIterator(source=builder.toSource, intervalList=emtpyIntervalList(), useIndex=useIndex)
+      val iterator = toIterator(source=builder.toSource, intervalList=intervalList, useIndex=useIndex)
       iterator.isEmpty shouldBe true
     }
   }
@@ -78,7 +78,7 @@ class ByIntervalListVariantIteratorTest extends UnitSpec {
   it should "return a variant if it overlaps an interval" in {
     Iterator(true, false).foreach { useIndex =>
       val builder = newBuilder().add(chrom=dict.getSequence(0).getSequenceName, pos=500, alleles=Seq("A"), gts=Seq(Gt(sample="Sample", gt="A")))
-      val intervalList = emtpyIntervalList()
+      val intervalList = emptyIntervalList()
       intervalList.add(new Interval(dict.getSequence(0).getSequenceName, 1, 1000, false, "foo"))
       val iterator = toIterator(source=builder.toSource, intervalList=intervalList, useIndex=useIndex)
       iterator.isEmpty shouldBe false
@@ -94,7 +94,7 @@ class ByIntervalListVariantIteratorTest extends UnitSpec {
   it should "not return a variant if it doesn't overlap an interval (same chromosome)" in {
     Iterator(true, false).foreach { useIndex =>
       val builder = newBuilder().add(chrom=dict.getSequence(0).getSequenceName, pos=500, alleles=Seq("A"), gts=Seq(Gt(sample="Sample", gt="A")))
-      val intervalList = emtpyIntervalList()
+      val intervalList = emptyIntervalList()
       intervalList.add(new Interval(dict.getSequence(0).getSequenceName, 750, 1000, false, "foo"))
       val iterator = toIterator(source=builder.toSource, intervalList=intervalList, useIndex=useIndex)
       iterator.isEmpty shouldBe true
@@ -104,17 +104,17 @@ class ByIntervalListVariantIteratorTest extends UnitSpec {
   it should "not return a variant if it doesn't overlap an interval (different chromosome)" in {
     Iterator(true, false).foreach { useIndex =>
       val builder = newBuilder().add(chrom=dict.getSequence(0).getSequenceName, pos=500, alleles=Seq("A"), gts=Seq(Gt(sample="Sample", gt="A")))
-      val intervalList = emtpyIntervalList()
+      val intervalList = emptyIntervalList()
       intervalList.add(new Interval(dict.getSequence(1).getSequenceName, 1, 1000, false, "foo"))
       val iterator = toIterator(source=builder.toSource, intervalList=intervalList, useIndex=useIndex)
       iterator.isEmpty shouldBe true
     }
   }
 
-  it should "throw an exception when next() is call but hasNext() is false" in {
+  it should "throw an exception when next() is called but hasNext() is false" in {
     Iterator(true, false).foreach { useIndex =>
       val builder = newBuilder().add(chrom=dict.getSequence(0).getSequenceName, pos=1, alleles=Seq("A"), gts=Seq(Gt(sample="Sample", gt="A")))
-      val iterator = toIterator(source=builder.toSource, intervalList=emtpyIntervalList(), useIndex=useIndex)
+      val iterator = toIterator(source=builder.toSource, intervalList=emptyIntervalList(), useIndex=useIndex)
       iterator.hasNext shouldBe false
       an[Exception] should be thrownBy iterator.next()
     }
@@ -123,7 +123,7 @@ class ByIntervalListVariantIteratorTest extends UnitSpec {
   it should "return a variant if it encloses an interval" in {
     Iterator(true, false).foreach { useIndex =>
       val builder = newBuilder().add(chrom=dict.getSequence(0).getSequenceName, pos=495, alleles=Seq("AAAAA", "A"), gts=Seq(Gt(sample="Sample", gt="A")))
-      val intervalList = emtpyIntervalList()
+      val intervalList = emptyIntervalList()
       intervalList.add(new Interval(dict.getSequence(0).getSequenceName, 496, 496, false, "foo"))
       val iterator = toIterator(source=builder.toSource, intervalList=intervalList, useIndex=useIndex)
       iterator.isEmpty shouldBe false
@@ -139,7 +139,7 @@ class ByIntervalListVariantIteratorTest extends UnitSpec {
   it should "return a variant only once if it overlaps multiple intervals" in {
     Iterator(true, false).foreach { useIndex =>
       val builder = newBuilder().add(chrom=dict.getSequence(0).getSequenceName, pos=495, alleles=Seq("AAAAA", "A"), gts=Seq(Gt(sample="Sample", gt="A")))
-      val intervalList = emtpyIntervalList()
+      val intervalList = emptyIntervalList()
       intervalList.add(new Interval(dict.getSequence(0).getSequenceName, 496, 496, false, "foo"))
       intervalList.add(new Interval(dict.getSequence(0).getSequenceName, 500, 500, false, "foo"))
       val iterator = toIterator(source=builder.toSource, intervalList=intervalList, useIndex=useIndex)
@@ -157,23 +157,33 @@ class ByIntervalListVariantIteratorTest extends UnitSpec {
     val builder: VcfBuilder = newBuilder()
       .add(chrom=dict.getSequence(0).getSequenceName, pos=495, alleles=Seq("AAAAA", "A"), gts=Seq(Gt(sample="Sample", gt="A")))
       .add(chrom=dict.getSequence(0).getSequenceName, pos=595, alleles=Seq("AAAAA", "A"), gts=Seq(Gt(sample="Sample", gt="A")))
-    val intervalList = emtpyIntervalList()
+    val intervalList = emptyIntervalList()
     intervalList.add(new Interval(dict.getSequence(0).getSequenceName, 494, 500, false, "foo"))
     intervalList.add(new Interval(dict.getSequence(0).getSequenceName, 500, 500, false, "foo"))
     val iterator = toIterator(source=builder.toSource, intervalList=intervalList, useIndex=true)
     // OK, since we are overlapping the first interval
     iterator.isEmpty shouldBe false
     // NOK, since the intervals were overlapping when we pre-fetch the second variant
-    an[Exception] should be thrownBy iterator.next()
+    val ex = intercept[IllegalStateException] { iterator.next() }
+    ex.getMessage should include (s"${dict.getSequence(0).getSequenceName}:494-500")
+    ex.getMessage should include (s"${dict.getSequence(0).getSequenceName}:500-500")
   }
 
-  it should "ignore a variant if does not overlap an interval" in {
+  it should "ignore a variant if it does not overlap an interval" in {
     Iterator(true, false).foreach { useIndex =>
       val builder = newBuilder().add(chrom=dict.getSequence(0).getSequenceName, pos=495, alleles=Seq("A", "C"), gts=Seq(Gt(sample="Sample", gt="C")))
-      val intervalList = emtpyIntervalList()
+      val intervalList = emptyIntervalList()
       intervalList.add(new Interval(dict.getSequence(0).getSequenceName, 500, 500, false, "foo"))
       val iterator = toIterator(source=builder.toSource, intervalList=intervalList, useIndex=useIndex)
       iterator.isEmpty shouldBe true
     }
+  }
+
+  it should "require an indexed VCF when querying it by interval" in {
+    val vcf    = makeTempFile("ByIntervalListVariantIteratorTest.", ".vcf")
+    val writer = VcfWriter(vcf, newBuilder().header, index=false)
+    writer.close()
+    intercept[IllegalArgumentException] { ByIntervalListVariantIterator(source=VcfSource(vcf), intervalList=emptyIntervalList()) }
+      .getMessage should include ("must be indexed")
   }
 }

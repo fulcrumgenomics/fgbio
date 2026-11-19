@@ -30,49 +30,40 @@ import com.fulcrumgenomics.vcf.api.Variant
 object JointVariantIterator {
   /** Creates an iterator over the union of sites across the given iterators, ordering variants by the index of their
     * contig in the sequence dictionary and then by their start position. */
-  def apply(iters: Seq[Iterator[Variant]],
-            dict: SequenceDictionary
-           ): JointVariantIterator = {
-    new JointVariantIterator(iters=iters, ordering=coordinateOrdering(dict))
-  }
-
-  /** Creates an iterator over the union of sites across the given iterators, ordering variants with the given
-    * ordering.  Variants that compare as equal are returned together. */
-  def apply(iters: Seq[Iterator[Variant]],
-            ordering: Ordering[Variant]
-           ): JointVariantIterator = {
-    new JointVariantIterator(iters=iters, ordering=ordering)
-  }
-
-  /** An ordering of variants by the index of their contig in the sequence dictionary and then by their start position. */
-  def coordinateOrdering(dict: SequenceDictionary): Ordering[Variant] = {
-    Ordering.by((v: Variant) => (dict(v.chrom).index, v.pos))
+  def apply(iters: Seq[Iterator[Variant]], dict: SequenceDictionary): JointVariantIterator = {
+    new JointVariantIterator(iters=iters, dict=dict)
   }
 }
 
 /**
   * Iterates over multiple variant iterators such that we return a list of variants for the union of sites
-  * across the iterators.
+  * across the iterators.  Variants are ordered by the index of their contig in the sequence dictionary and then by
+  * their start position, and variants at the same contig and start position are returned together.
   */
-class JointVariantIterator private(iters: Seq[Iterator[Variant]],
-                                          ordering: Ordering[Variant]
-                                         )
+class JointVariantIterator private(iters: Seq[Iterator[Variant]], dict: SequenceDictionary)
 extends Iterator[Seq[Option[Variant]]] {
 
   if (iters.isEmpty) throw new IllegalArgumentException("No iterators given")
 
-  private val iterators = iters.map(_.buffered)
+  private val iterators = iters.map(_.buffered).toIndexedSeq
 
   def hasNext: Boolean = iterators.exists(_.nonEmpty)
 
   def next(): Seq[Option[Variant]] = {
     if (!hasNext) throw new NoSuchElementException("Called next when hasNext is false")
-    val minVariant = iterators.filter(_.nonEmpty).map(_.head).min(ordering)
     // TODO: could use a TreeSet to store the iterators, examine the head of each iterator, then pop the iterator with the min,
     // and add that iterator back in.
+    val minVariant     = iterators.iterator.filter(_.nonEmpty).map(_.head).reduce((min, v) => if (compare(v, min) < 0) v else min)
+    val minContigIndex = dict(minVariant.chrom).index
     iterators.map { iter =>
-      if (iter.isEmpty || this.ordering.compare(minVariant, iter.head) != 0) None
-      else Some(iter.next())
+      if (iter.nonEmpty && iter.head.pos == minVariant.pos && dict(iter.head.chrom).index == minContigIndex) Some(iter.next())
+      else None
     }
+  }
+
+  /** Compares two variants by the index of their contig in the sequence dictionary and then by their start position. */
+  private def compare(left: Variant, right: Variant): Int = {
+    val byContig = Integer.compare(dict(left.chrom).index, dict(right.chrom).index)
+    if (byContig != 0) byContig else Integer.compare(left.pos, right.pos)
   }
 }

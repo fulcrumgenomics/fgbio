@@ -26,6 +26,7 @@
 package com.fulcrumgenomics.bam
 
 import com.fulcrumgenomics.bam.api.SamOrder
+import com.fulcrumgenomics.cmdline.FgBioMain.FailureException
 import com.fulcrumgenomics.commons.io.PathUtil
 import com.fulcrumgenomics.fasta.SequenceDictionary
 import com.fulcrumgenomics.testing.SamBuilder.{Minus, Plus}
@@ -281,6 +282,21 @@ class ErrorRateByReadPositionTest extends UnitSpec with OptionValues {
     val metrics = Metric.read[ErrorRateByReadPositionMetric](out)
     metrics.size shouldBe 40
     metrics.map(_.bases_total).sum shouldBe 4000
+  }
+
+  it should "fail with a clear message if the variants VCF is not indexed and intervals are given" in {
+    val unindexed = makeTempFile("variants.", ".vcf.gz")
+    Files.copy(vcf, unindexed, java.nio.file.StandardCopyOption.REPLACE_EXISTING)
+    val intervals = new IntervalList(dict.toSam)
+    intervals.add(new Interval(dict(1).name, 1, 1000))
+    val intervalsPath = makeTempFile("regions.", ".interval_list")
+    intervals.write(intervalsPath)
+
+    val (_, pre) = outputAndPrefix
+    val tool     = new ErrorRateByReadPosition(input=newSamBuilder.toTempFile(), intervals=Some(intervalsPath), output=Some(pre), ref=ref, variants=Some(unindexed))
+    val ex       = intercept[FailureException] { tool.execute() }
+    ex.message.value should include ("--variants VCF must be indexed")
+    ex.message.value should include (unindexed.toString)
   }
 
   it should "count each of the error types correctly" in {

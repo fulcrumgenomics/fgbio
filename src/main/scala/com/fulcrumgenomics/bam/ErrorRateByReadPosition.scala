@@ -134,7 +134,7 @@ class ErrorRateByReadPosition
 
     val refWalker     = new ReferenceSequenceFileWalker(this.ref)
     val locusIterator = buildSamLocusIterator(in, ilist).iterator()
-    val variantSource = this.variants.map(VcfSource(_, allowMissingFieldsInHeader=true))
+    val variantSource = this.variants.map(openVariants(_, ilist))
     val variantMask   = buildVariantMask(variantSource, ilist, refWalker.getSequenceDictionary.fromSam)
 
     val counters = List.tabulate(3)(_ => mutable.Map[Int, ObsCounter]())
@@ -191,6 +191,16 @@ class ErrorRateByReadPosition
     iterator.setEmitUncoveredLoci(false)
     iterator.setIncludeIndels(false)
     iterator
+  }
+
+  /** Opens the VCF of variants to mask, failing if it must be queried by `intervals` but is not indexed. */
+  private def openVariants(path: PathToVcf, intervals: Option[IntervalList]): VcfSource = {
+    val source = VcfSource(path, allowMissingFieldsInHeader=true)
+    if (intervals.isDefined && !source.isQueryable) {
+      source.safelyClose()
+      fail(s"The --variants VCF must be indexed when --intervals is given (e.g. with `bcftools index`): ${path.toAbsolutePath}")
+    }
+    source
   }
 
   /** Generates a variant mask over the variants in `source`, if any, restricted to `intervals` if given. */

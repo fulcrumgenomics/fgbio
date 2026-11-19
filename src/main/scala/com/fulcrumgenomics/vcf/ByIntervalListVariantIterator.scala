@@ -27,11 +27,19 @@ package com.fulcrumgenomics.vcf
 
 import com.fulcrumgenomics.FgBioDef._
 import com.fulcrumgenomics.fasta.SequenceDictionary
-import htsjdk.samtools.util._
 import com.fulcrumgenomics.vcf.api.{Variant, VcfSource}
+import htsjdk.samtools.util._
 
 import scala.annotation.tailrec
 
+/**
+  * Creates iterators over the variants in an interval list.
+  *
+  * The two overloads select variants differently: the overload over an `Iterator[Variant]` returns every variant that
+  * overlaps an interval, while the overload over an indexed [[com.fulcrumgenomics.vcf.api.VcfSource]] returns only the
+  * variants that start in, or enclose, an interval, and so not a deletion that starts before an interval and ends
+  * inside it.  Both keep the rule of the HTSJDK-based iterators they replace.
+  */
 object ByIntervalListVariantIterator {
 
   /**
@@ -55,13 +63,14 @@ object ByIntervalListVariantIterator {
     */
   def apply(source: VcfSource,
             intervalList: IntervalList): Iterator[Variant] = {
+    require(source.isQueryable, "The VCF must be indexed to iterate over the variants in an interval list (e.g. with `bcftools index`).")
     new IndexQueryVariantIterator(source, intervalList)
   }
 }
 
 private class OverlapDetectionVariantIterator(val iter: Iterator[Variant],
-                                                     val intervalList: IntervalList,
-                                                     val dict: SequenceDictionary)
+                                              val intervalList: IntervalList,
+                                              val dict: SequenceDictionary)
   extends Iterator[Variant] {
 
   require(dict != null)
@@ -150,7 +159,7 @@ private class IndexQueryVariantIterator(private val source: VcfSource, intervalL
         val lastIntervalIdx = intervalList.getHeader.getSequenceIndex(lastInterval.getContig)
         val intervalIdx     = intervalList.getHeader.getSequenceIndex(interval.getContig)
         if (intervalIdx < lastIntervalIdx || (lastIntervalIdx == intervalIdx && interval.getStart <= lastInterval.getEnd)) {
-          throw new IllegalStateException(s"Intervals are out of order: '$lastInterval' and '$lastInterval'")
+          throw new IllegalStateException(s"Intervals are out of order: '$lastInterval' and '$interval'")
         }
       }
 
