@@ -26,6 +26,8 @@ package com.fulcrumgenomics.fastq
 
 import com.fulcrumgenomics.FgBioDef._
 import com.fulcrumgenomics.bam.api.SamSource
+import com.fulcrumgenomics.cmdline.FgBioMain.FailureException
+import com.fulcrumgenomics.sopt.cmdline.ValidationException
 import com.fulcrumgenomics.testing.UnitSpec
 import com.fulcrumgenomics.umi.ConsensusTags
 import com.fulcrumgenomics.util.ReadStructure
@@ -382,6 +384,88 @@ class FastqToBamTest extends UnitSpec {
     recs should have size 2
     recs(0).apply[String]("RX") shouldBe "ACGT-CGTA-GG-CC"
     recs(1).apply[String]("RX") shouldBe "TTGA-TAAT-TA-AA"
+  }
+
+  it should "extract UMIs from the read comment when requested" in {
+    val r1 = fq(
+      FastqRecord("q1:2:3:4:5:6:7", "AAAAAAAAAA", "==========", comment=Some("1:N:0:ACGT")),
+      FastqRecord("q2:2:3:4:5:6:7", "TAAAAAAAAA", "==========", comment=Some("1:N:0:TTGA")),
+      FastqRecord("q3:2:3:4:5:6:7", "TAAAAAAAAA", "==========", comment=Some("1:N:0:")),
+    )
+    val bam = makeTempFile("fastqToBamTest.", ".bam")
+    new FastqToBam(input=Seq(r1), output=bam, sample="s", library="l", extractUmisFromReadComment=true).execute()
+    val recs = readBamRecs(bam)
+    recs should have size 3
+    recs(0).apply[String]("RX") shouldBe "ACGT"
+    recs(1).apply[String]("RX") shouldBe "TTGA"
+    recs(2).get[String]("RX")   shouldBe None
+  }
+
+  it should "fail when extracting UMIs from the read comment and a read has no comment" in {
+    val r1  = fq(FastqRecord("q1:2:3:4:5:6:7", "AAAAAAAAAA", "=========="))
+    val bam = makeTempFile("fastqToBamTest.", ".bam")
+    val ex  = intercept[FailureException] {
+      new FastqToBam(input=Seq(r1), output=bam, sample="s", library="l", extractUmisFromReadComment=true).execute()
+    }
+    ex.message.value should include ("No read comment found")
+  }
+
+  it should "extract UMIs from the read comment and read sequences" in {
+    val r1 = fq(
+      FastqRecord("q1:2:3:4:5:6:7", "GGNCCGAAAAAAA", "=============", comment=Some("1:N:0:ACGT+CGTA")),
+      FastqRecord("q2:2:3:4:5:6:7", "TANAACAAAAAAA", "=============", comment=Some("1:N:0:TTGA+TAAT")),
+    )
+    val rs  = ReadStructure("2M1S2M+T")
+    val bam = makeTempFile("fastqToBamTest.", ".bam")
+    new FastqToBam(input=Seq(r1), readStructures=Seq(rs), output=bam, sample="s", library="l", extractUmisFromReadComment=true).execute()
+    val recs = readBamRecs(bam)
+    recs should have size 2
+    recs(0).apply[String]("RX") shouldBe "ACGT-CGTA-GG-CC"
+    recs(1).apply[String]("RX") shouldBe "TTGA-TAAT-TA-AA"
+  }
+
+  it should "fail when extracting UMIs from the read comment with a UMI quality tag" in {
+    val r1  = fq(FastqRecord("q1", "AAAAAAAAAA", "==========", comment=Some("1:N:0:ACGT")))
+    val bam = makeTempFile("fastqToBamTest.", ".bam")
+    an[ValidationException] shouldBe thrownBy {
+      new FastqToBam(input=Seq(r1), output=bam, sample="s", library="l", extractUmisFromReadComment=true, umiQualTag=Some("QX"))
+    }
+  }
+
+  it should "take the UMI from the read comment of the first FASTQ only" in {
+    val r1 = fq(FastqRecord("q1:2:3:4:5:6:7", "AAAAAAAAAA", "==========", comment=Some("1:N:0:ACGT")))
+    val r2 = fq(FastqRecord("q1:2:3:4:5:6:7", "CCCCCCCCCC", "==========", comment=Some("2:N:0:TTGA")))
+    val bam = makeTempFile("fastqToBamTest.", ".bam")
+    new FastqToBam(input=Seq(r1, r2), output=bam, sample="s", library="l", extractUmisFromReadComment=true).execute()
+    val recs = readBamRecs(bam)
+    recs should have size 2
+    recs.map(_.apply[String]("RX")) shouldBe Seq("ACGT", "ACGT")
+  }
+
+  it should "fail when the read comment does not have exactly four fields" in {
+    val r1  = fq(FastqRecord("q1:2:3:4:5:6:7", "AAAAAAAAAA", "==========", comment=Some("1:N:ACGT")))
+    val bam = makeTempFile("fastqToBamTest.", ".bam")
+    val ex  = intercept[FailureException] {
+      new FastqToBam(input=Seq(r1), output=bam, sample="s", library="l", extractUmisFromReadComment=true).execute()
+    }
+    ex.message.value should include ("4 expected")
+  }
+
+  it should "fail when the read comment contains an invalid UMI" in {
+    val r1  = fq(FastqRecord("q1:2:3:4:5:6:7", "AAAAAAAAAA", "==========", comment=Some("1:N:0:1")))
+    val bam = makeTempFile("fastqToBamTest.", ".bam")
+    val ex  = intercept[FailureException] {
+      new FastqToBam(input=Seq(r1), output=bam, sample="s", library="l", extractUmisFromReadComment=true).execute()
+    }
+    ex.message.value should include ("Invalid UMI")
+  }
+
+  it should "fail when extracting UMIs from both the read names and the read comments" in {
+    val r1  = fq(FastqRecord("q1:2:3:4:5:6:7:ACGT", "AAAAAAAAAA", "==========", comment=Some("1:N:0:ACGT")))
+    val bam = makeTempFile("fastqToBamTest.", ".bam")
+    an[ValidationException] shouldBe thrownBy {
+      new FastqToBam(input=Seq(r1), output=bam, sample="s", library="l", extractUmisFromReadNames=true, extractUmisFromReadComment=true)
+    }
   }
 
   it should "extract cell barcodes in read sequences" in {
