@@ -25,8 +25,10 @@
 package com.fulcrumgenomics.vcf
 
 import com.fulcrumgenomics.FgBioDef._
-import com.fulcrumgenomics.testing.{UnitSpec, VariantContextSetBuilder}
+import com.fulcrumgenomics.testing.VcfBuilder.Gt
+import com.fulcrumgenomics.testing.{UnitSpec, VariantContextSetBuilder, VcfBuilder}
 import com.fulcrumgenomics.vcf.MakeMixtureVcf.Sample
+import com.fulcrumgenomics.vcf.api.VcfSource
 import htsjdk.variant.variantcontext.Allele
 import htsjdk.variant.vcf.VCFFileReader
 
@@ -239,6 +241,61 @@ class MakeMixtureVcfTest extends UnitSpec {
       else {
         ctx4.getGenotype("mix").isNoCall shouldBe true
         ctx4.isFiltered shouldBe true
+      }
+    }
+  }
+
+  "MakeMixtureVcf" should "keep only the alleles called in the mixed samples, the ID and the input filters" in {
+    val in = VcfBuilder(Seq("s1", "s2", "s3"))
+      .add(pos=10, id="rs10", alleles=Seq("A", "C", "T"), qual=50, info=Map("DP" -> 30), filters=Seq("PASS"),
+        gts=Seq(Gt(sample="s1", gt="0/1"), Gt(sample="s2", gt="0/0"), Gt(sample="s3", gt="0/2")))
+      .add(pos=20, alleles=Seq("A", "C"), gts=Seq(Gt(sample="s1", gt="0/0"), Gt(sample="s2", gt="0/0"), Gt(sample="s3", gt="1/1")))
+      .add(pos=30, alleles=Seq("A", "C"), filters=Seq("LowQD"), gts=Seq(Gt(sample="s1", gt="1/1"), Gt(sample="s2", gt="0|1"), Gt(sample="s3", gt="0/0")))
+      .add(pos=40, alleles=Seq("A", "C", "G"), gts=Seq(Gt(sample="s1", gt="1/2"), Gt(sample="s2", gt="2/2"), Gt(sample="s3", gt="0/0")))
+      .add(pos=50, alleles=Seq("A", "C"), filters=Seq("LowQD"), gts=Seq(Gt(sample="s1", gt="./."), Gt(sample="s2", gt="0/1"), Gt(sample="s3", gt="0/0")))
+      .toTempFile()
+
+    Seq(true, false).foreach { noCallIsHomRef =>
+      val out = makeTempFile("mixture.", ".vcf.gz")
+      new MakeMixtureVcf(input=in, output=out, samples=Seq("s1", "s2"), outputSampleName="mix", noCallIsHomRef=noCallIsHomRef).execute()
+
+      val source = VcfSource(out)
+      source.header.samples should contain theSameElementsInOrderAs Seq("mix")
+      val Seq(v10, v20, v30, v40, v50) = source.toIndexedSeq
+      source.safelyClose()
+
+      // Only the alleles called in s1 and s2 are kept; the QUAL and INFO are dropped
+      v10.id shouldBe Some("rs10")
+      v10.alleles.toSeq.map(_.value) should contain theSameElementsInOrderAs Seq("A", "C")
+      v10.qual shouldBe None
+      v10.attrs shouldBe empty
+      v10.filters shouldBe Set("PASS")
+      v10.gt("mix").gtWithBases shouldBe "A/C"
+      v10.gt("mix")[Seq[Float]]("AF") should contain theSameElementsInOrderAs Seq(0.25f)
+
+      // Both mixed samples are hom-ref, so the mixture is a haploid hom-ref with no alt alleles
+      v20.alleles.alts shouldBe empty
+      v20.gt("mix").gtWithBases shouldBe "A"
+      v20.gt("mix").attrs.contains("AF") shouldBe false
+      v20.filters shouldBe Set("PASS")
+
+      v30.filters shouldBe Set("LowQD")
+      v30.gt("mix").gtWithBases shouldBe "A/C"
+      v30.gt("mix").phased shouldBe false
+      v30.gt("mix")[Seq[Float]]("AF") should contain theSameElementsInOrderAs Seq(0.75f)
+
+      v40.alleles.toSeq.map(_.value) should contain theSameElementsInOrderAs Seq("A", "C", "G")
+      v40.gt("mix").gtWithBases shouldBe "C/G"
+      v40.gt("mix")[Seq[Float]]("AF") should contain theSameElementsInOrderAs Seq(0.25f, 0.75f)
+
+      if (noCallIsHomRef) {
+        v50.filters shouldBe Set("LowQD")
+        v50.gt("mix").gtWithBases shouldBe "A/C"
+        v50.gt("mix")[Seq[Float]]("AF") should contain theSameElementsInOrderAs Seq(0.25f)
+      }
+      else {
+        v50.filters shouldBe Set("LowQD", MakeMixtureVcf.UnknownGtFilter)
+        v50.gt("mix").isNoCall shouldBe true
       }
     }
   }
