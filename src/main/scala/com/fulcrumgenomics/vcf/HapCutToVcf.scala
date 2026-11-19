@@ -31,14 +31,10 @@ import com.fulcrumgenomics.commons.io.PathUtil
 import com.fulcrumgenomics.commons.util.LazyLogging
 import com.fulcrumgenomics.sopt._
 import com.fulcrumgenomics.util.Io
-import htsjdk.variant.variantcontext._
-import htsjdk.variant.variantcontext.writer.{Options, VariantContextWriter, VariantContextWriterBuilder}
-import htsjdk.variant.vcf._
+import com.fulcrumgenomics.vcf.api._
 
 import java.io.{Closeable, InputStream}
-import java.util
 import scala.io.Source
-import scala.jdk.CollectionConverters._
 
 @clp(
   description =
@@ -130,11 +126,11 @@ class HapCutToVcf
       newVcf
     }
 
-    val vcfReader = new VCFFileReader(inputVcf, false)
+    val vcfReader = VcfSource(inputVcf, allowMissingFieldsInHeader=true)
     val iterator  = new HapCutAndVcfMergingIterator(input, vcfReader, gatkPhasingFormat)
-    val vcfWriter = makeWriter(output, vcfReader, iterator.hapCutType)
+    val vcfWriter = makeWriter(output, vcfReader.header, iterator.hapCutType)
 
-    iterator.foreach(vcfWriter.add)
+    vcfWriter ++= iterator
 
     vcfReader.safelyClose()
     iterator.safelyClose()
@@ -142,51 +138,39 @@ class HapCutToVcf
   }
 
   /** Creates a VCF writer, adding extra header lines if the output is the phased VCF. */
-  private def makeWriter(path: PathToVcf, vcfReader: VCFFileReader, hapCutType: HapCutType): VariantContextWriter = {
-    val inputHeader = vcfReader.getFileHeader
+  private def makeWriter(path: PathToVcf, inputHeader: VcfHeader, hapCutType: HapCutType): VcfWriter = {
     val createIndex = PathUtil.extensionOf(path) match {
       case Some(".vcf")                   => false
       case Some(".vcf.gz") | Some(".bcf") => true
       case _                              => throw new IllegalArgumentException(s"Could not determine file type from $path")
     }
-    val builder = new VariantContextWriterBuilder()
-      .setOutputPath(path)
-      .setReferenceDictionary(inputHeader.getSequenceDictionary)
-      .setOption(Options.WRITE_FULL_FORMAT_FIELD)
-      .setOption(Options.ALLOW_MISSING_FIELDS_IN_HEADER)
-    val writer: VariantContextWriter = if (createIndex) {
-      builder.setOption(Options.INDEX_ON_THE_FLY).build
-    }
-    else {
-      builder.unsetOption(Options.INDEX_ON_THE_FLY).build
-    }
 
-    // get the header lines in the input header that we wish to skip/replace with our own definitions
-    val headerLinesToSkip = HeaderLines.formatHeaderKeys(hapCutType).flatMap(key => Option(inputHeader.getFormatHeaderLine(key)))
-    val headerLines: util.Set[VCFHeaderLine] = new util.HashSet[VCFHeaderLine](
-      inputHeader.getMetaDataInSortedOrder.filterNot(headerLinesToSkip.contains).toJavaSet
-    )
-
-    // add standard header lines
-    VCFStandardHeaderLines.addStandardFormatLines(headerLines, false, Genotype.PRIMARY_KEYS)
-
-    // add the new format header lines
-    headerLines.addAll(HeaderLines.formatHeaderLines(hapCutType).asJava)
+    // Replace the input's definitions of the standard and HapCut-specific FORMAT fields with our own
+    val formatsToAdd = HeaderLines.StandardFormatHeaderLines ++ HeaderLines.formatHeaderLines(hapCutType)
+    val formats      = inputHeader.formats.filterNot(f => formatsToAdd.exists(_.id == f.id)) ++ formatsToAdd
 
     // add the new filter header line if we are to set a filter (not phased) on the unphased variants
-    if (gatkPhasingFormat) headerLines.add(HapCut1VcfHeaderLines.NotPhasedFilterHeaderLine)
+    val filters = {
+      if (!gatkPhasingFormat) inputHeader.filters
+      else inputHeader.filters.filterNot(_.id == HapCut1VcfHeaderLines.NotPhasedFilterName) :+ HapCut1VcfHeaderLines.NotPhasedFilterHeaderLine
+    }
 
-    // create it
-    val outHeader = new VCFHeader(headerLines, inputHeader.getSampleNamesInOrder) // create the header
-
-    // write it and return
-    writer.writeHeader(outHeader)
-    writer
+    VcfWriter(path, inputHeader.copy(formats=formats, filters=filters), index=createIndex)
   }
 }
 
 object HeaderLines {
   import HapCutType._
+
+  /** The definitions of the standard FORMAT fields that may be on the genotypes written by [[HapCutToVcf]]. */
+  val StandardFormatHeaderLines: Seq[VcfFormatHeader] = Seq(
+    VcfFormatHeader("GT", VcfCount.Fixed(1),       VcfFieldType.String,  "Genotype"),
+    VcfFormatHeader("GQ", VcfCount.Fixed(1),       VcfFieldType.Integer, "Genotype Quality"),
+    VcfFormatHeader("DP", VcfCount.Fixed(1),       VcfFieldType.Integer, "Approximate read depth (reads with MQ=255 or with bad mates are filtered)"),
+    VcfFormatHeader("AD", VcfCount.OnePerAllele,   VcfFieldType.Integer, "Allelic depths for the ref and alt alleles in the order listed"),
+    VcfFormatHeader("PL", VcfCount.OnePerGenotype, VcfFieldType.Integer, "Normalized, Phred-scaled likelihoods for genotypes as defined in the VCF specification"),
+    VcfFormatHeader("FT", VcfCount.Unknown,        VcfFieldType.String,  "Genotype-level filter")
+  )
   def formatHeaderKeys(hapCutType: HapCutType): Seq[String] = {
     hapCutType match {
       case HapCut1 => HapCut1VcfHeaderLines.formatHeaderKeys
@@ -195,7 +179,7 @@ object HeaderLines {
     }
   }
 
-  def formatHeaderLines(hapCutType: HapCutType): Seq[VCFHeaderLine] = {
+  def formatHeaderLines(hapCutType: HapCutType): Seq[VcfFormatHeader] = {
     hapCutType match {
       case HapCut1 => HapCut1VcfHeaderLines.formatHeaderLines
       case HapCut2 => HapCut2VcfHeaderLines.formatHeaderLines
@@ -228,29 +212,29 @@ object HapCutToVcf {
 trait HeaderLines {
   val PhaseSetFormatTag = "PS"
   val PhaseSetFormatDescription = "Phase set for the genotype (position of the first variant)"
-  val PhaseSetFormatHeaderLine = new VCFFormatHeaderLine(PhaseSetFormatTag, 1, VCFHeaderLineType.Integer, PhaseSetFormatDescription)
+  val PhaseSetFormatHeaderLine = VcfFormatHeader(PhaseSetFormatTag, VcfCount.Fixed(1), VcfFieldType.Integer, PhaseSetFormatDescription)
 
   val NotPhasedFilterName        = "NotPhased"
   val NotPhasedFilterDescription = "The variant was not phased by HapCut."
-  val NotPhasedFilterHeaderLine  = new VCFFilterHeaderLine(NotPhasedFilterName, NotPhasedFilterDescription)
+  val NotPhasedFilterHeaderLine  = VcfFilterHeader(NotPhasedFilterName, NotPhasedFilterDescription)
 }
 
 object HapCut1VcfHeaderLines extends HeaderLines {
   val ReadCountFormatTag         = "RC"
   val ReadCountFormatDescription = "Counts of calls supporting allele0 and allele1 respectively"
-  val ReadCountFormatHeaderLine  = new VCFFormatHeaderLine(ReadCountFormatTag, VCFHeaderLineCount.R, VCFHeaderLineType.Integer, ReadCountFormatDescription)
+  val ReadCountFormatHeaderLine  = VcfFormatHeader(ReadCountFormatTag, VcfCount.OnePerAllele, VcfFieldType.Integer, ReadCountFormatDescription)
 
   val LikelihoodChangeFormatTag         = "LC"
   val LikelihoodChangeFormatDescription = "Change in likelihood if this SNP is made homozygous or removed"
-  val LikelihoodChangeFormatHeaderLine  = new VCFFormatHeaderLine(LikelihoodChangeFormatTag, 3, VCFHeaderLineType.Float, LikelihoodChangeFormatDescription)
+  val LikelihoodChangeFormatHeaderLine  = VcfFormatHeader(LikelihoodChangeFormatTag, VcfCount.Fixed(3), VcfFieldType.Float, LikelihoodChangeFormatDescription)
 
   val MaxLikelihoodChangeFormatTag         = "MLC"
   val MaxLikelihoodChangeFormatDescription = "Maximum change in likelihood if this SNP is made homozygous or removed"
-  val MaxLikelihoodChangeFormatHeaderLine  = new VCFFormatHeaderLine(MaxLikelihoodChangeFormatTag, 1, VCFHeaderLineType.Float, MaxLikelihoodChangeFormatDescription)
+  val MaxLikelihoodChangeFormatHeaderLine  = VcfFormatHeader(MaxLikelihoodChangeFormatTag, VcfCount.Fixed(1), VcfFieldType.Float, MaxLikelihoodChangeFormatDescription)
 
   val MecReductionFormatTag = "RMEC"
   val MecReductionFormatDescription = "Reduction in MEC score if we remove this variant altogether"
-  val MecReductionFormatHeaderLine  = new VCFFormatHeaderLine(MecReductionFormatTag, 1, VCFHeaderLineType.Float, MecReductionFormatDescription)
+  val MecReductionFormatHeaderLine  = VcfFormatHeader(MecReductionFormatTag, VcfCount.Fixed(1), VcfFieldType.Float, MecReductionFormatDescription)
 
   /** The VCF header FORMAT keys that will be added for HapCut1 specific-genotype information. */
   val formatHeaderKeys: Seq[String] = {
@@ -258,7 +242,7 @@ object HapCut1VcfHeaderLines extends HeaderLines {
   }
 
   /** The VCF header FORMAT lines that will be added for HapCut1 specific-genotype information. */
-  val formatHeaderLines: Seq[VCFHeaderLine] = {
+  val formatHeaderLines: Seq[VcfFormatHeader] = {
     Seq(ReadCountFormatHeaderLine, LikelihoodChangeFormatHeaderLine, MaxLikelihoodChangeFormatHeaderLine, MecReductionFormatHeaderLine, PhaseSetFormatHeaderLine)
   }
 }
@@ -266,15 +250,15 @@ object HapCut1VcfHeaderLines extends HeaderLines {
 object HapCut2VcfHeaderLines extends HeaderLines {
   val PrunedFormatTag         = "PR"
   val PrunedFormatDescription = "1 if HapCut2 pruned this variant when using --discrete_pruning, 0 otherwise"
-  val PrunedFormatHeaderLine  = new VCFFormatHeaderLine(PrunedFormatTag, 1, VCFHeaderLineType.Integer, PrunedFormatDescription)
+  val PrunedFormatHeaderLine  = VcfFormatHeader(PrunedFormatTag, VcfCount.Fixed(1), VcfFieldType.Integer, PrunedFormatDescription)
 
   val SwitchErrorFormatTag         = "SE"
   val SwitchErrorFormatDescription = "The confidence (phred-scaled) that there is not a switch error occurring immediately before the SNV"
-  val SwitchErrorFormatHeaderLine  = new VCFFormatHeaderLine(SwitchErrorFormatTag, 1, VCFHeaderLineType.Float, SwitchErrorFormatDescription)
+  val SwitchErrorFormatHeaderLine  = VcfFormatHeader(SwitchErrorFormatTag, VcfCount.Fixed(1), VcfFieldType.Float, SwitchErrorFormatDescription)
 
   val NoErrorFormatTag         = "NE"
   val NoErrorFormatDescription = "The confidence (phred-scaled) that the SNV is not a mismatch (single SNV) error."
-  val NoErrorFormatHeaderLine  = new VCFFormatHeaderLine(NoErrorFormatTag, 1, VCFHeaderLineType.Float, NoErrorFormatDescription)
+  val NoErrorFormatHeaderLine  = VcfFormatHeader(NoErrorFormatTag, VcfCount.Fixed(1), VcfFieldType.Float, NoErrorFormatDescription)
 
   /** The VCF header FORMAT keys that will be added for HapCut2 specific-genotype information. */
   val formatHeaderKeys: Seq[String] = {
@@ -282,49 +266,49 @@ object HapCut2VcfHeaderLines extends HeaderLines {
   }
 
   /** The VCF header FORMAT lines that will be added for HapCut2 specific-genotype information. */
-  val formatHeaderLines: Seq[VCFHeaderLine] = {
+  val formatHeaderLines: Seq[VcfFormatHeader] = {
     Seq(PrunedFormatHeaderLine, SwitchErrorFormatHeaderLine, NoErrorFormatHeaderLine, PhaseSetFormatHeaderLine)
   }
 }
 
 
-/** An iterator over all variants in the provided VCFFileReader.
+/** An iterator over all variants in the provided VCF source.
   *
   * @param hapCutPath the output file with phased variants produced by HapCut.
-  * @param vcfReader the VCF file with the original variants provided to HapCut.
+  * @param vcfSource the VCF with the original variants provided to HapCut.
   * @param gatkPhasingFormat true to output in GATK's ReadBackedPhasing format, false if to use the recommendations in the VCF spec.
   */
 private class HapCutAndVcfMergingIterator(hapCutPath: FilePath,
-                                          vcfReader: VCFFileReader,
+                                          vcfSource: VcfSource,
                                           gatkPhasingFormat: Boolean)
-  extends Iterator[VariantContext] with Closeable {
+  extends Iterator[Variant] with Closeable {
   import HapCutType.HapCutType
 
-  private val sourceIterator = vcfReader.iterator.zipWithIndex.buffered
+  private val sourceIterator = vcfSource.iterator.zipWithIndex.buffered
   private val hapCutReader   = HapCutReader(path=hapCutPath)
-  private val sampleName     = vcfReader.getFileHeader.getSampleNamesInOrder.iterator().next()
+  private val sampleName     = vcfSource.header.samples.head
 
   def hasNext: Boolean = {
     if (sourceIterator.isEmpty && hapCutReader.hasNext) throw new IllegalStateException("HapCut has more phased variants but no more variants in the input")
     sourceIterator.hasNext
   }
 
-  /** Returns either the phased variant with added HapCut-specific genotype information (Left), or the original variant (Right). */
-  def next(): VariantContext = {
+  /** Returns either the phased variant with added HapCut-specific genotype information, or the original variant. */
+  def next(): Variant = {
     if (!hasNext) throw new NoSuchElementException("Calling next() when hasNext() is false")
-    val (sourceContext, sourceOffset) = sourceIterator.next()
-    if (!hapCutReader.hasNext) formatSourceContext(sourceContext)
+    val (sourceVariant, sourceOffset) = sourceIterator.next()
+    if (!hapCutReader.hasNext) formatSourceVariant(sourceVariant)
     else {
       val HapCutOffsetAndCall(offset, callOption) = hapCutReader.next()
       if (offset != sourceOffset+1) throw new IllegalStateException("BUG: calls are out of order")
       callOption match {
         case None =>
-          formatSourceContext(sourceContext)
+          formatSourceVariant(sourceVariant)
         case Some(hapCutCall) =>
-          require(hapCutCall.pos == sourceContext.getStart, s"${hapCutCall.pos} ${sourceContext.getStart}")
+          require(hapCutCall.pos == sourceVariant.pos, s"${hapCutCall.pos} ${sourceVariant.pos}")
           require(offset == hapCutCall.offset)
-          val hapCutContext = hapCutCall.toVariantContext(sampleName)
-          replaceGenotypes(source=sourceContext, genotype=hapCutContext.getGenotype(0), isPhased = !gatkPhasingFormat || !hapCutCall.firstInBlock)
+          val hapCutGenotype = hapCutCall.toGenotype(sampleName)
+          replaceGenotype(source=sourceVariant, genotype=hapCutGenotype, isPhased = !gatkPhasingFormat || !hapCutCall.firstInBlock)
       }
     }
   }
@@ -334,49 +318,41 @@ private class HapCutAndVcfMergingIterator(hapCutPath: FilePath,
 
   def close(): Unit = { this.hapCutReader.close() }
 
-  /** Returns a new variant context with the phase unset (if it was set) and appropriately formatted (filtered as
+  /** Returns a new variant with the phase unset (if it was set) and appropriately formatted (filtered as
     * not phased if `gatkPhasingFormat` is true).
     */
-  private def formatSourceContext(sourceContext: VariantContext): VariantContext = {
-    val hasPhasedGenotype = sourceContext.getGenotypes.exists(_.isPhased)
-    val hasPhasingSetId   = sourceContext.getGenotypes.exists(_.hasExtendedAttribute(HapCut1VcfHeaderLines.PhaseSetFormatTag))
+  private def formatSourceVariant(sourceVariant: Variant): Variant = {
+    import HapCut1VcfHeaderLines.{NotPhasedFilterName, PhaseSetFormatTag}
+    val hasPhasedGenotype = sourceVariant.gts.exists(_.phased)
+    val hasPhasingSetId   = sourceVariant.gts.exists(_.attrs.contains(PhaseSetFormatTag))
 
-    if (!hasPhasedGenotype && !hasPhasingSetId && !gatkPhasingFormat) sourceContext
+    if (!hasPhasedGenotype && !hasPhasingSetId && !gatkPhasingFormat) sourceVariant
     else {
-      val builder = new VariantContextBuilder(sourceContext)
-      if (hasPhasedGenotype || hasPhasingSetId) {
-        // unset the phase and remove the phasing set ID if the input has phase set
-        builder.genotypes(sourceContext.getGenotypes().map { g =>
-          val builder = new GenotypeBuilder(g).phased(false)
-          val attrs = g.getExtendedAttributes.asScala.filterNot { case (tag, _) =>  tag == HapCut1VcfHeaderLines.PhaseSetFormatTag }
-          builder.noAttributes()
-          builder.attributes(attrs.asJava)
-          builder.make()
-        }.toJavaList)
+      // unset the phase and remove the phasing set ID if the input has phase set
+      val genotypes = if (!hasPhasedGenotype && !hasPhasingSetId) sourceVariant.genotypes else {
+        sourceVariant.genotypes.map { case (sample, gt) => sample -> gt.copy(phased=false, attrs=gt.attrs - PhaseSetFormatTag) }
       }
-      if (gatkPhasingFormat) {
-        // set the variant as filtered due to not being phased
-        builder.filter(HapCut1VcfHeaderLines.NotPhasedFilterName)
+      // set the variant as filtered due to not being phased
+      val filters = {
+        if (!gatkPhasingFormat) sourceVariant.filters
+        else sourceVariant.filters.filterNot(Variant.PassingFilters.contains) + NotPhasedFilterName
       }
-      builder.make()
+      sourceVariant.copy(genotypes=genotypes, filters=filters)
     }
   }
 
-  /** Replaces the original genotype with HapCut's genotype and adds any HapCut-specific genotype information. */
-  private def replaceGenotypes(source: VariantContext, genotype: Genotype, isPhased: Boolean): VariantContext = {
-    val builder = new VariantContextBuilder(source)
-    val sourceAlleles = source.getAlleles.toSeq
-    val genotypeAlleles = genotype.getAlleles.toList.map {
-      allele => sourceAlleles.find(a => a.toString == allele.toString) match {
-        case None =>
-          throw new IllegalStateException(s"Could not find allele '$allele' in source alleles: " + sourceAlleles.map{_.toString}.mkString(", "))
-        case Some(a) => a
+  /** Replaces the original genotype of the sample with HapCut's genotype and adds any HapCut-specific genotype
+    * information.  The genotype's alleles are matched to the alleles of the source variant by their bases.
+    */
+  private def replaceGenotype(source: Variant, genotype: Genotype, isPhased: Boolean): Variant = {
+    val calls = genotype.calls.map { allele =>
+      source.alleles.find(_ == allele).getOrElse {
+        throw new IllegalStateException(s"Could not find allele '$allele' in source alleles: " + source.alleles.mkString(", "))
       }
     }
-    val sourceGenotype = source.getGenotype(0)
-    val genotypeBuilder = new GenotypeBuilder(sourceGenotype).alleles(genotypeAlleles.asJava).phased(isPhased)
-    genotypeBuilder.attributes(genotype.getExtendedAttributes)
-    builder.genotypes(genotypeBuilder.make()).make()
+    val sourceGenotype = source.gt(sampleName)
+    val newGenotype    = sourceGenotype.copy(calls=calls, phased=isPhased, attrs=sourceGenotype.attrs ++ genotype.attrs)
+    source.copy(genotypes=source.genotypes + (sampleName -> newGenotype))
   }
 }
 
@@ -453,7 +429,8 @@ private object GenotypeInfo {
 
 /** Genotype-level information specific to HapCut1 or HapCut2. */
 private sealed trait GenotypeInfo {
-  def addTo(builder: GenotypeBuilder): GenotypeBuilder
+  /** The HapCut-specific genotype attributes, keyed by FORMAT field.  A missing value is given as [[Variant.Missing]]. */
+  def attributes: Map[String, Any]
 }
 
 /** Genotype-level information produced by HapCut1 */
@@ -462,14 +439,12 @@ private case class HapCut1GenotypeInfo private(readCounts: List[Int],
                                                delta: Float,
                                                rMEC: Float) extends GenotypeInfo {
   import HapCut1VcfHeaderLines._
-  /** Adds the HapCut-specific genotype information to the given genotype builder. */
-  def addTo(builder: GenotypeBuilder): GenotypeBuilder = {
-    builder
-      .attribute(ReadCountFormatTag, this.readCounts.asJava)
-      .attribute(LikelihoodChangeFormatTag, this.likelihoods.asJava)
-      .attribute(MaxLikelihoodChangeFormatTag, this.delta)
-      .attribute(MecReductionFormatTag, this.rMEC)
-  }
+  def attributes: Map[String, Any] = Map(
+    ReadCountFormatTag           -> this.readCounts,
+    LikelihoodChangeFormatTag    -> this.likelihoods,
+    MaxLikelihoodChangeFormatTag -> this.delta,
+    MecReductionFormatTag        -> this.rMEC
+  )
 }
 
 /** Values and methods for HapCut-specific genotype information. */
@@ -498,12 +473,11 @@ private object HapCut1GenotypeInfo {
 /** Genotype-level information produced by HapCut2 */
 private[vcf] case class HapCut2GenotypeInfo private[vcf](pruned: Option[Boolean], log10SwitchError: Option[Double], log10NoError: Option[Double]) extends GenotypeInfo {
   import HapCut2VcfHeaderLines._
-  def addTo(builder: GenotypeBuilder): GenotypeBuilder = {
-    builder
-      .attribute(PrunedFormatTag, this.pruned.map(p => if (p) 1 else 0).orNull)
-      .attribute(SwitchErrorFormatTag, this.log10SwitchError.orNull)
-      .attribute(NoErrorFormatTag, this.log10NoError.orNull)
-  }
+  def attributes: Map[String, Any] = Map(
+    PrunedFormatTag      -> this.pruned.map(p => if (p) 1 else 0).getOrElse(Variant.Missing),
+    SwitchErrorFormatTag -> this.log10SwitchError.getOrElse(Variant.Missing),
+    NoErrorFormatTag     -> this.log10NoError.getOrElse(Variant.Missing)
+  )
 }
 
 /** Values and methods for HapCut2-specific genotype information. */
@@ -556,41 +530,28 @@ private case class HapCutCall private(block: BlockInfo,
   /** true if this variant is the first phased variant in a phased block, false otherwise. */
   def firstInBlock: Boolean = phaseSet == pos
 
-  /** Converts the HapCut variant representation to a VariantContext. */
-  def toVariantContext(sampleName: String): VariantContext = {
+  /** Converts the HapCut variant representation to a phased genotype for the given sample. */
+  def toGenotype(sampleName: String): Genotype = {
     // Parse the alleles
-    val refAllele = Allele.create(this.ref, true)
-    val altAlleles = this.alts.split(",").map { alt =>
-      Allele.create(alt, false)
-    }.toSeq
-    val alleles = refAllele +: altAlleles
-    val allelesCollection = alleles.asJavaCollection
+    val alleles = AlleleSet(ref=Allele(this.ref), alts=this.alts.split(",").iterator.map(Allele(_)).toIndexedSeq)
 
     // Get the genotype alleles
-    val genotypeAlleles: List[Allele] = if (hap1Allele < 0) {
+    val calls: IndexedSeq[Allele] = if (hap1Allele < 0) {
       require(hap2Allele < 0)
       // Assumes the genotype is before the first ":" token
-      this.genotype.split(":").head.split("[/|]").map(_.toInt).map(i => alleles(i)).toList
+      this.genotype.split(":").head.split("[/|]").iterator.map(i => alleles(i.toInt)).toIndexedSeq
     }
     else {
-      List(alleles(hap1Allele), alleles(hap2Allele))
+      IndexedSeq(alleles(hap1Allele), alleles(hap2Allele))
     }
 
-    val genotype = this.info.addTo(new GenotypeBuilder(sampleName, genotypeAlleles.asJava))
-      .phased(true)
-      .attribute(PhaseSetFormatTag, phaseSet)
-      .make()
-
-    // build the context, and make sure to recompute the end
-    new VariantContextBuilder(
-      s"${this.offset}",
-      this.contig,
-      this.pos.toLong,
-      this.pos.toLong,
-      allelesCollection
+    Genotype(
+      alleles = alleles,
+      sample  = sampleName,
+      calls   = calls,
+      phased  = true,
+      attrs   = this.info.attributes + (PhaseSetFormatTag -> phaseSet)
     )
-    .computeEndFromAlleles(alleles.toList.asJava, this.pos)
-    .genotypes(genotype).make()
   }
 }
 
