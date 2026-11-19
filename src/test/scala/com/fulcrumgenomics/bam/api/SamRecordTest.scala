@@ -28,8 +28,10 @@ import com.fulcrumgenomics.alignment.Cigar
 import com.fulcrumgenomics.testing.SamBuilder.{Minus, Plus}
 import com.fulcrumgenomics.testing.{DovetailPairs, SamBuilder, UnitSpec}
 import htsjdk.samtools.SamPairUtil.PairOrientation
-import htsjdk.samtools.TextCigarCodec
+import htsjdk.samtools.{CigarOperator, TextCigarCodec}
 import org.scalatest.OptionValues
+
+import scala.annotation.nowarn
 
 class SamRecordTest extends UnitSpec with OptionValues {
   "SamRecord.isFrPair" should "return false for reads that are not part of a mapped pair" in {
@@ -395,5 +397,370 @@ class SamRecordTest extends UnitSpec with OptionValues {
     rec2.remove("MC")
     rec1.matesOverlap shouldBe None // Mate's start is not enclosed by rec, and mate's end cannot be determined
     rec2.matesOverlap.value shouldBe true // Mate's start is enclosed by rec, regardless of where mate end is
+  }
+
+  /** A single test case for [[SamRecord.readPosAtReferencePos()]] and/or [[SamRecord.referencePosAtReadPos()]], for a
+    * fragment with the given cigar starting at reference position one.
+    *
+    * If `returnPriorBaseIfInserted` is `true`, then [[SamRecord.readPosAtReferencePos()]] is not tested.  Similarly,
+    * if either `returnPriorBaseIfDeleted` or `returnPriorBaseIfSkipped` is `true`, then
+    * [[SamRecord.referencePosAtReadPos()]] is not tested.
+    *
+    * @param cigar the cigar
+    * @param readPos the read position; empty if the reference position does not map to a read base
+    * @param refPos the reference position; empty if the read position does not map to a reference base
+    * @param returnPriorBaseIfInserted passed to [[SamRecord.referencePosAtReadPos()]]
+    * @param returnPriorBaseIfDeleted passed to [[SamRecord.readPosAtReferencePos()]]
+    * @param returnPriorBaseIfSkipped passed to [[SamRecord.readPosAtReferencePos()]]
+    */
+  case class TestCase(cigar: String, readPos: Option[Int], refPos: Option[Int],
+                      returnPriorBaseIfInserted: Boolean = false,
+                      returnPriorBaseIfDeleted: Boolean = false,
+                      returnPriorBaseIfSkipped: Boolean = false) {
+    require(readPos.isDefined || refPos.isDefined)
+    val doRefPosAtReadPos: Boolean = !returnPriorBaseIfDeleted && !returnPriorBaseIfSkipped
+    val doReadPosAtRefPos: Boolean = !returnPriorBaseIfInserted
+    require(doRefPosAtReadPos || doReadPosAtRefPos)
+  }
+  object TestCase {
+    def apply(cigar: String, readPos: Int, refPos: Int): TestCase = {
+      TestCase(cigar=cigar, readPos=Some(readPos), refPos=Some(refPos))
+    }
+  }
+
+  /** Test cases for [[SamRecord.readPosAtReferencePos()]] and [[SamRecord.referencePosAtReadPos()]]. */
+  private val testCases = Seq(
+    // all mapped bases
+    TestCase("10M",          10,       10),
+    TestCase("10M",           1,        1),
+    TestCase("3=1X6=",        4,        4), // sequence match/mismatch operators are aligned bases
+    // leading soft-clipping
+    TestCase("3S9M",    Some(1),     None), // no reference base, start of soft-clipping
+    TestCase("3S9M",    Some(3),     None), // no reference base, end of soft-clipping
+    TestCase("3S9M",    Some(1),     None, returnPriorBaseIfInserted=true), // soft-clipping should not return a reference base even with returnPriorBaseIfInserted=true
+    TestCase("3S9M",          4,        1), // start of aligned bases
+    TestCase("3S9M",          5,        2), // second aligned base
+    TestCase("3S9M",         10,        7), // end of aligned bases
+    // leading hard-clipping
+    TestCase("3H9M",          1,        1), // start of aligned bases
+    TestCase("3H3S9M",        4,        1), // start of aligned bases
+    TestCase("3H3S9M",  Some(3),     None), // no reference base, end of soft-clipping
+    // leading padding
+    TestCase("3P9M",          1,        1), // start of aligned bases
+    TestCase("3P9M",          9,        9), // end of aligned bases
+    // leading skip
+    TestCase("3N9M",       None,  Some(1)), // no reference base, start of skip
+    TestCase("3N9M",       None,  Some(3)), // no reference base, end of skip
+    TestCase("3N9M",       None,  Some(1), returnPriorBaseIfSkipped=true), // no read base precedes the skip
+    TestCase("3N9M",          1,        4), // start of aligned bases
+    TestCase("3N9M",          9,       12), // end of aligned bases
+    // leading deletion
+    TestCase("2D9M",       None,  Some(2), returnPriorBaseIfDeleted=true), // no read base precedes the deletion
+    // deletions
+    TestCase("4M1D6M",        4,        4), // before the deletion
+    TestCase("4M1D6M",     None,  Some(5)), // in a deletion
+    TestCase("4M1D6M",        5,        6), // after the deletion
+    TestCase("4M1D6M",  Some(4),   Some(5), returnPriorBaseIfDeleted=true), // returns the previous mapped base
+    TestCase("4M1D6M",     None,   Some(5), returnPriorBaseIfSkipped=true), // a deletion is not a skip
+    TestCase("4M2D6M",        4,        4), // before the deletion
+    TestCase("4M2D6M",     None,  Some(5)), // in a deletion
+    TestCase("4M2D6M",     None,  Some(6)), // in a deletion
+    TestCase("4M2D6M",  Some(4),   Some(5), returnPriorBaseIfDeleted=true), // returns the previous mapped base
+    TestCase("4M2D6M",  Some(4),   Some(6), returnPriorBaseIfDeleted=true), // returns the previous mapped base
+    TestCase("4M2D6M",        5,        7), // after the deletion
+    TestCase("20M10D20M",    21,       31), // first base of the deletion
+    TestCase("4M2I2D6M", Some(4),  Some(5), returnPriorBaseIfDeleted=true), // returns the last aligned base, not the inserted base
+    TestCase("3S2D6M",     None,   Some(1), returnPriorBaseIfDeleted=true), // only soft-clipped bases precede the deletion
+    // insertions
+    TestCase("4M1I6M",        4,        4), // before the insertion
+    TestCase("4M1I6M",  Some(5),     None), // in an insertion
+    TestCase("4M1I6M",  Some(5),   Some(4), returnPriorBaseIfInserted=true), // returns the previous mapped base
+    TestCase("4M1I6M",        6,        5), // after the insertion
+    TestCase("4M2I6M",        4,        4), // before the insertion
+    TestCase("4M2I6M",  Some(5),     None), // in an insertion
+    TestCase("4M2I6M",  Some(6),     None), // in an insertion
+    TestCase("4M2I6M",  Some(5),   Some(4), returnPriorBaseIfInserted=true), // returns the previous mapped base
+    TestCase("4M2I6M",  Some(6),   Some(4), returnPriorBaseIfInserted=true), // returns the previous mapped base
+    TestCase("4M2I6M",       7,         5), // after the insertion
+    TestCase("20M10I20M",    31,       21), // first base of the insertion
+    TestCase("4M2D2I6M", Some(5),  Some(4), returnPriorBaseIfInserted=true), // returns the last aligned base, not the deleted base
+    TestCase("2I9M",     Some(1),     None, returnPriorBaseIfInserted=true), // no aligned base precedes the insertion
+    TestCase("9M2I",     Some(11), Some(9), returnPriorBaseIfInserted=true), // trailing insertion
+    // trailing soft-clipping
+    TestCase("9M3S",          1,        1), // first aligned base
+    TestCase("9M3S",          8,        8), // second to last aligned base
+    TestCase("9M3S",          9,        9), // last aligned base
+    TestCase("9M3S",   Some(10),     None), // no reference base, first base of soft-clipping
+    TestCase("9M3S",   Some(12),     None), // no reference base, last base of soft-clipping
+    TestCase("9M3S",   Some(10),     None, returnPriorBaseIfInserted=true), // soft-clipping should not return a reference base even with returnPriorBaseIfInserted=true
+    // trailing hard-clipping
+    TestCase("9M3H",          1,        1), // start of aligned bases
+    TestCase("9M3S3H",        9,        9), // end of aligned bases
+    TestCase("9M3S3H", Some(10),     None), // no reference base, first base of soft-clipping
+    TestCase("9M3S3H", Some(12),     None), // no reference base, last base of soft-clipping
+    // trailing padding
+    TestCase("9M3P",          1,        1), // start of aligned bases
+    TestCase("9M3P",          9,        9), // end of aligned bases
+    // trailing skip
+    TestCase("9M3N",       None, Some(10)), // no reference base, start of skip
+    TestCase("9M3N",       None, Some(12)), // no reference base, end of skip
+    TestCase("9M3N",       None, Some(10), returnPriorBaseIfSkipped=true), // no read base follows the skip
+    TestCase("9M3N",          9,        9), // end of aligned bases
+    // trailing deletion
+    TestCase("9M2D",       None, Some(10), returnPriorBaseIfDeleted=true), // no read base follows the deletion
+    // reference skip
+    TestCase("5M6N5M", Some(5),  Some(10), returnPriorBaseIfSkipped=true), // returns the previous read base
+    TestCase("5M6N5M", None,     Some(10), returnPriorBaseIfDeleted=true), // a skip is not a deletion
+    TestCase("4M6N4M", Some(4),  Some(4)),
+    TestCase("4M6N4M", None,     Some(5)), // in a skip region
+    TestCase("4M6N4M", Some(5),  Some(11)),
+    TestCase("5M6N5M", None,     Some(10)), // does not return the read base
+  )
+
+  "SamRecord.readPosAtReferencePos" should "throw an exception when the reference position is outside the alignment" in {
+    val frag1 = new SamBuilder(readLength=10).addFrag(start=1, cigar="10M").value
+    (the[IllegalArgumentException] thrownBy frag1.readPosAtReferencePos(pos=0)).getMessage should include ("before the start of the alignment")
+    (the[IllegalArgumentException] thrownBy frag1.readPosAtReferencePos(pos=11)).getMessage should include ("after the end of the alignment")
+
+    // request a base in the trailing hard-clipping should throw an exception
+    val frag2 = new SamBuilder(readLength=10).addFrag(start=1, cigar="10M10H").value
+    an[IllegalArgumentException] should be thrownBy frag2.readPosAtReferencePos(pos=11)
+
+    // request a base in the trailing soft-clipping should throw an exception
+    val frag3 = new SamBuilder(readLength=20).addFrag(start=1, cigar="10M10S").value
+    an[IllegalArgumentException] should be thrownBy frag3.readPosAtReferencePos(pos=11)
+
+    // request a base in the leading soft-clipping should throw an exception
+    val frag4 = new SamBuilder(readLength=13).addFrag(start=4, cigar="3S10M").value
+    an[IllegalArgumentException] should be thrownBy frag4.readPosAtReferencePos(pos=3)
+  }
+
+  it should "throw an exception when the record is unmapped" in {
+    val frag = new SamBuilder(readLength=10).addFrag(unmapped=true).value
+    an[IllegalArgumentException] should be thrownBy frag.readPosAtReferencePos(pos=1)
+
+    // a record with an alignment that is flagged as unmapped should also throw
+    val flagged = new SamBuilder(readLength=10).addFrag(start=100, cigar="10M").value
+    flagged.unmapped = true
+    the[IllegalArgumentException] thrownBy flagged.readPosAtReferencePos(pos=105) should have message (
+      s"requirement failed: Read is not mapped: ${flagged}"
+    )
+  }
+
+  // now run the test cases
+  testCases.filter(_.doReadPosAtRefPos).foreach { testCase =>
+    testCase.refPos.foreach { pos =>
+      it should s"return read position ${testCase.readPos} for reference position ${testCase.refPos} with $testCase" in {
+        val frag    = new SamBuilder(readLength=Cigar(testCase.cigar).lengthOnQuery).addFrag(start=1, cigar=testCase.cigar).value
+        val readPos = frag.readPosAtReferencePos(
+          pos                      = pos,
+          returnPriorBaseIfDeleted = testCase.returnPriorBaseIfDeleted,
+          returnPriorBaseIfSkipped = testCase.returnPriorBaseIfSkipped
+        )
+        withClue(testCase) {
+          readPos shouldBe testCase.readPos
+          // htsjdk returns the prior base for both deletions and skips, or for neither
+          if (testCase.returnPriorBaseIfDeleted == testCase.returnPriorBaseIfSkipped) {
+            readPos.getOrElse(0) shouldBe frag.asSam.getReadPositionAtReferencePosition(pos, testCase.returnPriorBaseIfDeleted)
+          }
+        }
+      }
+    }
+  }
+
+  "SamRecord.referencePosAtReadPos" should "throw an exception when the read position is outside the read" in {
+    val frag1 = new SamBuilder(readLength=10).addFrag(start=1, cigar="10M").value
+    (the[IllegalArgumentException] thrownBy frag1.referencePosAtReadPos(pos=0)).getMessage should include ("less than one")
+    (the[IllegalArgumentException] thrownBy frag1.referencePosAtReadPos(pos=11)).getMessage should include ("greater than the number of read bases")
+
+    // request a base in the trailing hard-clipping should throw an exception
+    val frag2 = new SamBuilder(readLength=10).addFrag(start=1, cigar="10M10H").value
+    an[IllegalArgumentException] should be thrownBy frag2.referencePosAtReadPos(pos=11)
+  }
+
+  it should "throw an exception when the record is unmapped" in {
+    val frag = new SamBuilder(readLength=10).addFrag(unmapped=true).value
+    an[IllegalArgumentException] should be thrownBy frag.referencePosAtReadPos(pos=1)
+
+    // a record with an alignment that is flagged as unmapped should also throw
+    val flagged = new SamBuilder(readLength=10).addFrag(start=100, cigar="10M").value
+    flagged.unmapped = true
+    the[IllegalArgumentException] thrownBy flagged.referencePosAtReadPos(pos=5) should have message (
+      s"requirement failed: Read is not mapped: ${flagged}"
+    )
+  }
+
+  it should "return None for every read position when the read is entirely clipped" in {
+    Seq("10S", "76S", "10H66S", "76S10H", "10H66S10H").foreach { cigar =>
+      withClue(s"cigar=$cigar") {
+        val frag = new SamBuilder(readLength=Cigar(cigar).lengthOnQuery).addFrag(start=5, cigar=cigar).value
+        Range.inclusive(1, frag.length).foreach { pos =>
+          frag.referencePosAtReadPos(pos=pos) shouldBe None
+          frag.referencePosAtReadPos(pos=pos, returnPriorBaseIfInserted=true) shouldBe None
+        }
+      }
+    }
+  }
+
+  "SamRecord.readPosAtReferencePos and SamRecord.referencePosAtReadPos" should "handle a read that is entirely clipped (no aligned bases)" in {
+    @nowarn("cat=deprecation") def readPosAtRefPos(rec: SamRecord, pos: Int, returnLastBaseIfDeleted: Boolean): Int = {
+      rec.readPosAtRefPos(pos=pos, returnLastBaseIfDeleted=returnLastBaseIfDeleted)
+    }
+    @nowarn("cat=deprecation") def refPosAtReadPos(rec: SamRecord, pos: Int): Int = rec.refPosAtReadPos(pos=pos)
+
+    Seq("76S", "10H66S", "76S10H", "10H66S10H").foreach { cigar =>
+      withClue(s"cigar=$cigar") {
+        val frag = new SamBuilder(readLength=Cigar(cigar).lengthOnQuery).addFrag(start=5, cigar=cigar).value
+        // no reference bases are aligned, so every reference position is outside the alignment
+        Range.inclusive(frag.start - 1, frag.start + 1).foreach { pos =>
+          an[IllegalArgumentException] should be thrownBy frag.readPosAtReferencePos(pos=pos)
+          Seq(true, false).foreach { returnLastBaseIfDeleted =>
+            readPosAtRefPos(frag, pos, returnLastBaseIfDeleted) shouldBe frag.asSam.getReadPositionAtReferencePosition(pos, returnLastBaseIfDeleted)
+          }
+        }
+        Range.inclusive(0, frag.length + 1).foreach { pos =>
+          refPosAtReadPos(frag, pos) shouldBe frag.asSam.getReferencePositionAtReadPosition(pos)
+        }
+      }
+    }
+  }
+
+  // now run the test cases
+  testCases.filter(_.doRefPosAtReadPos).foreach { testCase =>
+    testCase.readPos.foreach { pos: Int =>
+      it should s"return ref position ${testCase.refPos} for read position ${testCase.readPos} with $testCase" in {
+        val frag   = new SamBuilder(readLength=Cigar(testCase.cigar).lengthOnQuery).addFrag(start=1, cigar=testCase.cigar).value
+        val refPos = frag.referencePosAtReadPos(pos=pos, returnPriorBaseIfInserted=testCase.returnPriorBaseIfInserted)
+        withClue(testCase) {
+          refPos shouldBe testCase.refPos
+          if (!testCase.returnPriorBaseIfInserted) {
+            refPos.getOrElse(0) shouldBe frag.asSam.getReferencePositionAtReadPosition(pos)
+          }
+        }
+      }
+    }
+  }
+
+  /** Generates random, valid cigars along with fragments aligned with them, for comparing against htsjdk.  Each cigar
+    * has optional leading and trailing clipping, and one or more alignment blocks with an optional gap before each one
+    * and after the last one.  A gap is a single `I`, `D`, `N` or `P` element, or two adjacent elements of different
+    * types drawn from `I`, `D` and `N`. */
+  private def randomFragments(seed: Int, count: Int): Seq[SamRecord] = {
+    val random    = new scala.util.Random(seed)
+    val alignment = IndexedSeq("M", "=", "X")
+    val indels    = IndexedSeq("I", "D", "N")
+    def length(max: Int): Int = random.nextInt(max) + 1
+    def gap(allowPadding: Boolean): String = random.nextInt(4) match {
+      case 0 => ""
+      case 1 => s"${length(3)}${(if (allowPadding) indels :+ "P" else indels)(random.nextInt(if (allowPadding) 4 else 3))}"
+      case _ =>
+        val Seq(first, second) = random.shuffle(indels).take(2)
+        s"${length(3)}$first${length(3)}$second"
+    }
+
+    Range(0, count).map { _ =>
+      val leading  = Seq(
+        if (random.nextBoolean()) s"${length(3)}H" else "",
+        if (random.nextBoolean()) s"${length(3)}S" else "",
+      ).mkString
+      val trailing = Seq(
+        if (random.nextBoolean()) s"${length(3)}S" else "",
+        if (random.nextBoolean()) s"${length(3)}H" else "",
+      ).mkString
+      val middle = Range(0, length(4)).map { _ => gap(allowPadding=true) + s"${length(4)}${alignment(random.nextInt(alignment.length))}" }.mkString
+      val cigar  = Cigar(leading + middle + gap(allowPadding=false) + trailing)
+      new SamBuilder(readLength=cigar.lengthOnQuery).addFrag(start=10, cigar=cigar.toString()).value
+    }
+  }
+
+  /** Returns the operator of the cigar element that contains each read position, indexed by 0-based read offset. */
+  private def operatorAtReadOffset(cigar: Cigar): IndexedSeq[CigarOperator] = {
+    cigar.elems.filter(_.operator.consumesReadBases()).flatMap(e => IndexedSeq.fill(e.length)(e.operator))
+  }
+
+  /** Returns the operator of the cigar element that contains each reference offset from the alignment start. */
+  private def operatorAtRefOffset(cigar: Cigar): IndexedSeq[CigarOperator] = {
+    cigar.elems.filter(_.operator.consumesReferenceBases()).flatMap(e => IndexedSeq.fill(e.length)(e.operator))
+  }
+
+  "SamRecord.readPosAtReferencePos" should "agree with htsjdk on random cigars for every combination of flags" in {
+    randomFragments(seed=42, count=2000).foreach { frag =>
+      val operators = operatorAtRefOffset(frag.cigar)
+      Range.inclusive(frag.start, frag.end).foreach { pos =>
+        val aligned = frag.asSam.getReadPositionAtReferencePosition(pos, false)
+        val prior   = frag.asSam.getReadPositionAtReferencePosition(pos, true) // htsjdk treats skips as deletions
+        for (returnPriorBaseIfDeleted <- Seq(true, false); returnPriorBaseIfSkipped <- Seq(true, false)) {
+          val returnPrior = operators(pos - frag.start) match {
+            case CigarOperator.D => returnPriorBaseIfDeleted
+            case CigarOperator.N => returnPriorBaseIfSkipped
+            case _               => false
+          }
+          val expected = if (aligned != 0) aligned else if (returnPrior) prior else 0
+          val actual   = frag.readPosAtReferencePos(pos, returnPriorBaseIfDeleted, returnPriorBaseIfSkipped)
+          withClue(s"cigar=${frag.cigar} pos=$pos deleted=$returnPriorBaseIfDeleted skipped=$returnPriorBaseIfSkipped") {
+            actual.getOrElse(0) shouldBe expected
+          }
+        }
+      }
+    }
+  }
+
+  "SamRecord.referencePosAtReadPos" should "agree with htsjdk on random cigars with and without returnPriorBaseIfInserted" in {
+    randomFragments(seed=43, count=2000).foreach { frag =>
+      val operators = operatorAtReadOffset(frag.cigar)
+      val refPos    = Range.inclusive(0, frag.cigar.lengthOnQuery).map(p => if (p == 0) 0 else frag.asSam.getReferencePositionAtReadPosition(p))
+      Range.inclusive(1, frag.cigar.lengthOnQuery).foreach { pos =>
+        // For an inserted base, the reference position of the last aligned base before it, if any
+        val priorIfInserted = {
+          if (operators(pos - 1) != CigarOperator.I) 0
+          else Range(pos - 1, 0, -1).map(refPos).find(_ != 0).getOrElse(0)
+        }
+        withClue(s"cigar=${frag.cigar} readPos=$pos") {
+          frag.referencePosAtReadPos(pos).getOrElse(0) shouldBe refPos(pos)
+          frag.referencePosAtReadPos(pos, returnPriorBaseIfInserted=true).getOrElse(0) shouldBe (if (refPos(pos) != 0) refPos(pos) else priorIfInserted)
+        }
+      }
+    }
+  }
+
+  "SamRecord.readPosAtReferencePos and SamRecord.referencePosAtReadPos" should "reflect changes to the cigar and start" in {
+    val frag = new SamBuilder(readLength=10).addFrag(start=100, cigar="10M").value
+    frag.readPosAtReferencePos(pos=105).value shouldBe 6
+    frag.referencePosAtReadPos(pos=6).value shouldBe 105
+
+    frag.start = 102
+    frag.readPosAtReferencePos(pos=105).value shouldBe 4
+    frag.referencePosAtReadPos(pos=6).value shouldBe 107
+
+    frag.cigar = "3S7M"
+    frag.readPosAtReferencePos(pos=105).value shouldBe 7
+    frag.referencePosAtReadPos(pos=6).value shouldBe 104
+
+    frag.asSam.setCigarString("2M1I7M") // via the htsjdk API
+    frag.readPosAtReferencePos(pos=105).value shouldBe 5
+    frag.referencePosAtReadPos(pos=3) shouldBe None
+  }
+
+  "SamRecord.readPosAtRefPos and SamRecord.refPosAtReadPos" should "agree with htsjdk on any position, including outside the alignment" in {
+    @nowarn("cat=deprecation") def readPosAtRefPos(rec: SamRecord, pos: Int, returnLastBaseIfDeleted: Boolean): Int = {
+      rec.readPosAtRefPos(pos=pos, returnLastBaseIfDeleted=returnLastBaseIfDeleted)
+    }
+    @nowarn("cat=deprecation") def refPosAtReadPos(rec: SamRecord, pos: Int): Int = rec.refPosAtReadPos(pos=pos)
+
+    val unmapped = new SamBuilder(readLength=10).addFrag(unmapped=true).value
+    (randomFragments(seed=7, count=500) :+ unmapped).foreach { frag =>
+      withClue(s"cigar=${frag.cigar} start=${frag.start}") {
+        Range.inclusive(-1, frag.start + frag.cigar.lengthOnTarget + 2).foreach { pos =>
+          Seq(true, false).foreach { returnLastBaseIfDeleted =>
+            withClue(s"pos=$pos returnLastBaseIfDeleted=$returnLastBaseIfDeleted") {
+              readPosAtRefPos(frag, pos, returnLastBaseIfDeleted) shouldBe frag.asSam.getReadPositionAtReferencePosition(pos, returnLastBaseIfDeleted)
+            }
+          }
+        }
+        Range.inclusive(-1, frag.cigar.lengthOnQuery + 2).foreach { pos =>
+          withClue(s"readPos=$pos") { refPosAtReadPos(frag, pos) shouldBe frag.asSam.getReferencePositionAtReadPosition(pos) }
+        }
+      }
+    }
   }
 }

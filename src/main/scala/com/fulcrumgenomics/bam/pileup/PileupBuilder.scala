@@ -214,14 +214,18 @@ trait PileupBuilder extends PileupParameters {
         if (rec.start == pos + 1) { // This site must be an insertion in the read that is at the start of the read.
           testAndAdd(InsertionEntry(rec, 0))
         } else {
-          val offset = rec.readPosAtRefPos(pos, returnLastBaseIfDeleted = false)
-          if (offset == 0) { // This site must be deleted within the read.
-            val deletionPosition = rec.readPosAtRefPos(pos, returnLastBaseIfDeleted = true)
-            testAndAdd(DeletionEntry(rec, deletionPosition - 1))
-          } else { // This site must be a matched site within the read.
-            testAndAdd(BaseEntry(rec, offset - 1))
-            // Also check to see if any subsequent base represents an insertion.
-            if (rec.end > pos && rec.refPosAtReadPos(offset + 1) == 0) testAndAdd(InsertionEntry(rec, offset))
+          rec.readPosAtReferencePos(pos) match {
+            case None => // This site must be deleted (or skipped) within the read.
+              val deletionPosition = rec
+                .readPosAtReferencePos(pos, returnPriorBaseIfDeleted=true, returnPriorBaseIfSkipped=true)
+                .getOrElse(throw new IllegalArgumentException(
+                  s"Cannot pile up position $pos as it is deleted or skipped at the start or end of the alignment: $rec"
+                ))
+              testAndAdd(DeletionEntry(rec, deletionPosition - 1))
+            case Some(offset) => // This site must be a matched site within the read.
+              testAndAdd(BaseEntry(rec, offset - 1))
+              // Also check to see if any subsequent base represents an insertion.
+              if (rec.end > pos && rec.referencePosAtReadPos(offset + 1).isEmpty) testAndAdd(InsertionEntry(rec, offset))
           }
         }
       }

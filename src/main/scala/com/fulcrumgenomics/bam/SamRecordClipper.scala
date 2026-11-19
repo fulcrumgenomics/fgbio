@@ -314,14 +314,23 @@ class SamRecordClipper(val mode: ClippingMode, val autoClipAttributes: Boolean) 
         else if (retval < mate.start) mate.start - 1 // trim only positive-strand read
         else retval
       }
-      val readEnd   = rec.readPosAtRefPos(pos=midPoint, returnLastBaseIfDeleted=true)
+      val readEnd   = {
+        // The midpoint lies within the read's alignment unless the read has no reference-consuming bases (e.g. it is
+        // entirely soft-clipped or inserted after 5' clipping), in which case its end precedes its start and the
+        // midpoint is its end.  Such a read is clipped entirely, as is one whose midpoint falls in a deletion or skip
+        // at the start of its alignment (no read base precedes the midpoint).
+        if (midPoint < rec.start) 0
+        else rec.readPosAtReferencePos(pos=midPoint, returnPriorBaseIfDeleted=true, returnPriorBaseIfSkipped=true).getOrElse(0)
+      }
       val mateStart = {
         // When the 5' ends coincide (rec.start == mate.end) the midpoint is the mate's last aligned base, so no mate
         // base lies after it.  The mate then "starts" one past its last base, so that all of its bases are clipped.
         if (midPoint >= mate.end) mate.length + 1
-        else { // NB: need to be careful if the midpoint falls in a deletion
-          val retval = mate.readPosAtRefPos(pos=midPoint + 1, returnLastBaseIfDeleted=false)
-          if (retval != 0) retval else mate.readPosAtRefPos(pos=midPoint + 1, returnLastBaseIfDeleted=true) + 1
+        else { // NB: midPoint + 1 lies within the mate's alignment here, but may fall in a deletion
+          val pos = midPoint + 1
+          mate.readPosAtReferencePos(pos=pos)
+            .orElse(mate.readPosAtReferencePos(pos=pos, returnPriorBaseIfDeleted=true, returnPriorBaseIfSkipped=true).map(_ + 1))
+            .getOrElse(1)
         }
       }
       val numOverlappingBasesRead = this.clip3PrimeEndOfRead(rec, rec.cigar.trailingHardClippedBases + rec.length - readEnd)

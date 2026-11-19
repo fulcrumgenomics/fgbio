@@ -120,6 +120,57 @@ class AlignmentTest extends UnitSpec {
     Cigar("10M2D20M").reverse.toString shouldBe "20M2D10M"
   }
 
+  "Cigar.targetOffsetAtQueryPos" should "return the 0-based target offset of aligned query positions" in {
+    val cigar = Cigar("2H3S5M2I4M1D3=1X3S")
+    cigar.targetOffsetAtQueryPos(pos=4, returnPriorBaseIfInserted=false) shouldBe 0 // first aligned base
+    cigar.targetOffsetAtQueryPos(pos=8, returnPriorBaseIfInserted=false) shouldBe 4
+    cigar.targetOffsetAtQueryPos(pos=11, returnPriorBaseIfInserted=false) shouldBe 5 // after the insertion
+    cigar.targetOffsetAtQueryPos(pos=15, returnPriorBaseIfInserted=false) shouldBe 10 // after the deletion
+    cigar.targetOffsetAtQueryPos(pos=18, returnPriorBaseIfInserted=false) shouldBe 13 // the X base
+  }
+
+  it should "return -1 for query positions that are not aligned or are outside the query" in {
+    val cigar = Cigar("2H3S5M2I4M3S")
+    Seq(-1, 0, 1, 3, 9, 10, 15, 17, 18).foreach { pos =>
+      withClue(s"pos=$pos") { cigar.targetOffsetAtQueryPos(pos=pos, returnPriorBaseIfInserted=false) shouldBe -1 }
+    }
+    Cigar.empty.targetOffsetAtQueryPos(pos=1, returnPriorBaseIfInserted=false) shouldBe -1
+  }
+
+  it should "return the offset of the last aligned base before an insertion if requested" in {
+    Cigar("3S5M2I4M").targetOffsetAtQueryPos(pos=9, returnPriorBaseIfInserted=true) shouldBe 4
+    Cigar("3S5M2I4M").targetOffsetAtQueryPos(pos=10, returnPriorBaseIfInserted=true) shouldBe 4
+    Cigar("2I5M").targetOffsetAtQueryPos(pos=1, returnPriorBaseIfInserted=true) shouldBe -1 // no prior aligned base
+    Cigar("3S5M").targetOffsetAtQueryPos(pos=2, returnPriorBaseIfInserted=true) shouldBe -1 // soft-clipped, not inserted
+  }
+
+  "Cigar.queryPosAtTargetOffset" should "return the 1-based query position aligned to target offsets" in {
+    val cigar = Cigar("2H3S5M2I4M1D3M3S")
+    cigar.queryPosAtTargetOffset(offset=0, returnPriorBaseIfDeleted=false, returnPriorBaseIfSkipped=false) shouldBe 4
+    cigar.queryPosAtTargetOffset(offset=5, returnPriorBaseIfDeleted=false, returnPriorBaseIfSkipped=false) shouldBe 11
+    cigar.queryPosAtTargetOffset(offset=10, returnPriorBaseIfDeleted=false, returnPriorBaseIfSkipped=false) shouldBe 15
+  }
+
+  it should "return 0 for target offsets that are deleted, skipped or outside the alignment" in {
+    val cigar = Cigar("5M1D3M2N3M")
+    Seq(-1, 5, 9, 10, 14, 15).foreach { offset =>
+      withClue(s"offset=$offset") {
+        cigar.queryPosAtTargetOffset(offset=offset, returnPriorBaseIfDeleted=false, returnPriorBaseIfSkipped=false) shouldBe 0
+      }
+    }
+    Cigar.empty.queryPosAtTargetOffset(offset=0, returnPriorBaseIfDeleted=true, returnPriorBaseIfSkipped=true) shouldBe 0
+  }
+
+  it should "return the last aligned query base before a deletion or skip only if requested and followed by aligned bases" in {
+    val cigar = Cigar("5M1D3M2N3M")
+    cigar.queryPosAtTargetOffset(offset=5, returnPriorBaseIfDeleted=true, returnPriorBaseIfSkipped=false) shouldBe 5
+    cigar.queryPosAtTargetOffset(offset=5, returnPriorBaseIfDeleted=false, returnPriorBaseIfSkipped=true) shouldBe 0
+    cigar.queryPosAtTargetOffset(offset=9, returnPriorBaseIfDeleted=false, returnPriorBaseIfSkipped=true) shouldBe 8
+    cigar.queryPosAtTargetOffset(offset=9, returnPriorBaseIfDeleted=true, returnPriorBaseIfSkipped=false) shouldBe 0
+    Cigar("2D5M").queryPosAtTargetOffset(offset=0, returnPriorBaseIfDeleted=true, returnPriorBaseIfSkipped=true) shouldBe 0
+    Cigar("5M2D").queryPosAtTargetOffset(offset=5, returnPriorBaseIfDeleted=true, returnPriorBaseIfSkipped=true) shouldBe 0
+  }
+
   /////////////////////////////////////////////////////////////////////////////
   // Tests for the Alignment class
   /////////////////////////////////////////////////////////////////////////////
