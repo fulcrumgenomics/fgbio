@@ -32,7 +32,7 @@ import com.fulcrumgenomics.vcf.api.{Variant, VcfSource}
 
 import scala.annotation.tailrec
 
-object ByIntervalListVariantContextIterator {
+object ByIntervalListVariantIterator {
 
   /**
     * Creates an iterator over variants that overlap any interval in an interval list.
@@ -42,7 +42,7 @@ object ByIntervalListVariantContextIterator {
   def apply(iterator: Iterator[Variant],
             intervalList: IntervalList,
             dict: SequenceDictionary): Iterator[Variant] = {
-    new OverlapDetectionVariantContextIterator(iterator, intervalList, dict)
+    new OverlapDetectionVariantIterator(iterator, intervalList, dict)
   }
 
   /**
@@ -55,11 +55,11 @@ object ByIntervalListVariantContextIterator {
     */
   def apply(source: VcfSource,
             intervalList: IntervalList): Iterator[Variant] = {
-    new IndexQueryVariantContextIterator(source, intervalList)
+    new IndexQueryVariantIterator(source, intervalList)
   }
 }
 
-private class OverlapDetectionVariantContextIterator(val iter: Iterator[Variant],
+private class OverlapDetectionVariantIterator(val iter: Iterator[Variant],
                                                      val intervalList: IntervalList,
                                                      val dict: SequenceDictionary)
   extends Iterator[Variant] {
@@ -113,7 +113,7 @@ private class OverlapDetectionVariantContextIterator(val iter: Iterator[Variant]
 }
 
 /** NB: if a variant overlaps multiple intervals, only returns it once. */
-private class IndexQueryVariantContextIterator(private val source: VcfSource, intervalList: IntervalList)
+private class IndexQueryVariantIterator(private val source: VcfSource, intervalList: IntervalList)
   extends Iterator[Variant] {
   private var iter: Option[Iterator[Variant]] = None
   private val intervals = intervalList.iterator()

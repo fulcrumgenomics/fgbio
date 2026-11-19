@@ -176,7 +176,7 @@ class MakeTwoSampleMixtureVcf
   def iterator(in: VcfSource, intervals: Option[PathToIntervals]): Iterator[Variant] = {
     intervals match {
       case None       => in.iterator
-      case Some(path) => ByIntervalListVariantContextIterator(in, IntervalList.fromPath(path).uniqued(false))
+      case Some(path) => ByIntervalListVariantIterator(in, IntervalList.fromPath(path).uniqued(false))
     }
   }
 }

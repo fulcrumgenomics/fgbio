@@ -215,7 +215,7 @@ class AssessPhasing
     // get an iterator of the pairs
     val calledReader   = source(calledVcf)
     val truthReader    = source(truthVcf)
-    val pairedIterator = JointVariantContextIterator(
+    val pairedIterator = JointVariantIterator(
       iters = Seq(toVariantIterator(truthReader, contig, contigLength, intervalList=intervalListForContig), toVariantIterator(calledReader, contig, contigLength)),
       dict = dict
     ).map { case Seq(left, right) => (left, right) }
@@ -282,7 +282,7 @@ class AssessPhasing
                                 intervalList: Option[IntervalList] = None): Iterator[Variant] = {
     val sampleName = reader.header.samples.head
     val baseIter: Iterator[Variant] = intervalList match {
-      case Some(intv) => ByIntervalListVariantContextIterator(reader.iterator, intv, dict=reader.header.dict)
+      case Some(intv) => ByIntervalListVariantIterator(reader.iterator, intv, dict=reader.header.dict)
       case None       => reader.query(contig, 1, contigLength)
     }
 

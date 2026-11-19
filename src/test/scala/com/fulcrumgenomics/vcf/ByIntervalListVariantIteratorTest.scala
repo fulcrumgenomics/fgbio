@@ -31,9 +31,9 @@ import htsjdk.samtools.SAMFileHeader
 import htsjdk.samtools.util.{Interval, IntervalList}
 
 /**
-  * Tests for ByIntervalListVariantContextIterator.
+  * Tests for ByIntervalListVariantIterator.
   */
-class ByIntervalListVariantContextIteratorTest extends UnitSpec {
+class ByIntervalListVariantIteratorTest extends UnitSpec {
 
   private val dict = VcfBuilder.DefaultHeader.dict.toSam
 
@@ -50,14 +50,14 @@ class ByIntervalListVariantContextIteratorTest extends UnitSpec {
                          intervalList: IntervalList,
                          useIndex: Boolean): Iterator[Variant] = {
     if (useIndex) {
-      ByIntervalListVariantContextIterator(source=source, intervalList=intervalList)
+      ByIntervalListVariantIterator(source=source, intervalList=intervalList)
     }
     else {
-      ByIntervalListVariantContextIterator(iterator=source.iterator, intervalList=intervalList, dict=source.header.dict)
+      ByIntervalListVariantIterator(iterator=source.iterator, intervalList=intervalList, dict=source.header.dict)
     }
   }
 
-  "ByIntervalListVariantContextIterator" should "return no variants if the interval list is empty" in {
+  "ByIntervalListVariantIterator" should "return no variants if the interval list is empty" in {
     Iterator(true, false).foreach { useIndex =>
       val builder = newBuilder().add(chrom=dict.getSequence(0).getSequenceName, pos=1, alleles=Seq("A"), gts=Seq(Gt(sample="Sample", gt="A")))
       val iterator = toIterator(source=builder.toSource, intervalList=emtpyIntervalList(), useIndex=useIndex)
@@ -75,7 +75,7 @@ class ByIntervalListVariantContextIteratorTest extends UnitSpec {
     }
   }
 
-  it should "return a variant context if it overlaps an interval" in {
+  it should "return a variant if it overlaps an interval" in {
     Iterator(true, false).foreach { useIndex =>
       val builder = newBuilder().add(chrom=dict.getSequence(0).getSequenceName, pos=500, alleles=Seq("A"), gts=Seq(Gt(sample="Sample", gt="A")))
       val intervalList = emtpyIntervalList()
@@ -91,7 +91,7 @@ class ByIntervalListVariantContextIteratorTest extends UnitSpec {
     }
   }
 
-  it should "not return a variant context if it doesn't overlap an interval (same chromosome)" in {
+  it should "not return a variant if it doesn't overlap an interval (same chromosome)" in {
     Iterator(true, false).foreach { useIndex =>
       val builder = newBuilder().add(chrom=dict.getSequence(0).getSequenceName, pos=500, alleles=Seq("A"), gts=Seq(Gt(sample="Sample", gt="A")))
       val intervalList = emtpyIntervalList()
@@ -101,7 +101,7 @@ class ByIntervalListVariantContextIteratorTest extends UnitSpec {
     }
   }
 
-  it should "not return a variant context if it doesn't overlap an interval (different chromosome)" in {
+  it should "not return a variant if it doesn't overlap an interval (different chromosome)" in {
     Iterator(true, false).foreach { useIndex =>
       val builder = newBuilder().add(chrom=dict.getSequence(0).getSequenceName, pos=500, alleles=Seq("A"), gts=Seq(Gt(sample="Sample", gt="A")))
       val intervalList = emtpyIntervalList()
@@ -120,7 +120,7 @@ class ByIntervalListVariantContextIteratorTest extends UnitSpec {
     }
   }
 
-  it should "return a variant context if it encloses an interval" in {
+  it should "return a variant if it encloses an interval" in {
     Iterator(true, false).foreach { useIndex =>
       val builder = newBuilder().add(chrom=dict.getSequence(0).getSequenceName, pos=495, alleles=Seq("AAAAA", "A"), gts=Seq(Gt(sample="Sample", gt="A")))
       val intervalList = emtpyIntervalList()
@@ -136,7 +136,7 @@ class ByIntervalListVariantContextIteratorTest extends UnitSpec {
     }
   }
 
-  it should "return a variant context only once if it overlaps multiple intervals" in {
+  it should "return a variant only once if it overlaps multiple intervals" in {
     Iterator(true, false).foreach { useIndex =>
       val builder = newBuilder().add(chrom=dict.getSequence(0).getSequenceName, pos=495, alleles=Seq("AAAAA", "A"), gts=Seq(Gt(sample="Sample", gt="A")))
       val intervalList = emtpyIntervalList()
@@ -163,11 +163,11 @@ class ByIntervalListVariantContextIteratorTest extends UnitSpec {
     val iterator = toIterator(source=builder.toSource, intervalList=intervalList, useIndex=true)
     // OK, since we are overlapping the first interval
     iterator.isEmpty shouldBe false
-    // NOK, since the intervals were overlapping when we pre-fetch the second variant context
+    // NOK, since the intervals were overlapping when we pre-fetch the second variant
     an[Exception] should be thrownBy iterator.next()
   }
 
-  it should "ignore a variant context if does not overlap an interval" in {
+  it should "ignore a variant if does not overlap an interval" in {
     Iterator(true, false).foreach { useIndex =>
       val builder = newBuilder().add(chrom=dict.getSequence(0).getSequenceName, pos=495, alleles=Seq("A", "C"), gts=Seq(Gt(sample="Sample", gt="C")))
       val intervalList = emtpyIntervalList()

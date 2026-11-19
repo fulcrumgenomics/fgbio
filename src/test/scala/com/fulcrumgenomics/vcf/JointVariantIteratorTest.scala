@@ -28,42 +28,42 @@ import com.fulcrumgenomics.testing.{UnitSpec, VcfBuilder}
 import com.fulcrumgenomics.vcf.api.Variant
 
 /**
-  * Tests for JointVariantContextIterator.
+  * Tests for JointVariantIterator.
   */
-class JointVariantContextIteratorTest extends UnitSpec {
+class JointVariantIteratorTest extends UnitSpec {
   private val dict = VcfBuilder.DefaultHeader.dict
 
   /** A builder for a single-sample VCF. */
   private def newBuilder(): VcfBuilder = VcfBuilder(Seq("Sample"))
 
-  private def compareVariantContexts(actual: Variant, expected: Variant) = {
+  private def compareVariants(actual: Variant, expected: Variant) = {
     actual.chrom shouldBe expected.chrom
     actual.pos shouldBe expected.pos
     actual.end shouldBe expected.end
   }
 
-  "JointVariantContextIterator" should "iterate variant contexts given a single iterator" in {
+  "JointVariantIterator" should "iterate variants given a single iterator" in {
     val builder = newBuilder().add(chrom=dict(0).name, pos=1, alleles=Seq("A"))
-    val iterator = JointVariantContextIterator(iters=Seq(builder.iterator), dict=dict)
-    compareVariantContexts(actual=iterator.next().head.get, expected=builder.head)
+    val iterator = JointVariantIterator(iters=Seq(builder.iterator), dict=dict)
+    compareVariants(actual=iterator.next().head.get, expected=builder.head)
   }
 
-  it should "not return a variant context if all the iterators are empty" in {
+  it should "not return a variant if all the iterators are empty" in {
     val builder = newBuilder()
-    val iterator = JointVariantContextIterator(iters=Seq(builder.iterator, builder.iterator), dict=dict)
+    val iterator = JointVariantIterator(iters=Seq(builder.iterator, builder.iterator), dict=dict)
     iterator.hasNext shouldBe false
     an[NoSuchElementException] should be thrownBy iterator.next()
   }
 
-  it should "return a pair of variant contexts at the same position" in {
+  it should "return a pair of variants at the same position" in {
     val builder = newBuilder().add(chrom=dict(0).name, pos=1, alleles=Seq("A"))
-    val iterator = JointVariantContextIterator(iters=Seq(builder.iterator, builder.iterator), dict=dict)
+    val iterator = JointVariantIterator(iters=Seq(builder.iterator, builder.iterator), dict=dict)
     iterator.hasNext shouldBe true
     val Seq(left, right) = iterator.next().flatten
-    compareVariantContexts(left, right)
+    compareVariants(left, right)
   }
 
-  it should "return a None for an iterator that doesn't have a variant context for a given covered site" in {
+  it should "return a None for an iterator that doesn't have a variant for a given covered site" in {
     import scala.language.existentials
     val builderLeft = newBuilder()
       .add(chrom=dict(0).name, pos=10, alleles=Seq("A"))
@@ -71,21 +71,21 @@ class JointVariantContextIteratorTest extends UnitSpec {
     val builderRight = newBuilder()
       .add(chrom=dict(0).name, pos=10, alleles=Seq("A"))
       .add(chrom=dict(0).name, pos=20, alleles=Seq("A"))
-    val iterator = JointVariantContextIterator(iters=Seq(builderLeft.iterator, builderRight.iterator), dict=dict)
+    val iterator = JointVariantIterator(iters=Seq(builderLeft.iterator, builderRight.iterator), dict=dict)
     // pos: 10 status: both
     iterator.hasNext shouldBe true
     iterator.next().flatten match {
-      case Seq(left, right) => compareVariantContexts(left, right)
+      case Seq(left, right) => compareVariants(left, right)
     }
     // pos: 20 status: right
     iterator.hasNext shouldBe true
     iterator.next() match {
-      case Seq(None, Some(right)) => compareVariantContexts(right, builderRight.last)
+      case Seq(None, Some(right)) => compareVariants(right, builderRight.last)
     }
     // pos: 30 status: left
     iterator.hasNext shouldBe true
     iterator.next() match {
-      case Seq(Some(left), None) => compareVariantContexts(left, builderLeft.last)
+      case Seq(Some(left), None) => compareVariants(left, builderLeft.last)
     }
   }
 
@@ -95,7 +95,7 @@ class JointVariantContextIteratorTest extends UnitSpec {
     // order by the reverse of the contig index, so that variants on the second contig come first
     val ordering = Ordering.by((v: Variant) => (-dict(v.chrom).index, v.pos))
     val iters    = Seq(left, right).map(_.toSeq.sorted(ordering).iterator)
-    val iterator = JointVariantContextIterator(iters=iters, ordering=ordering)
+    val iterator = JointVariantIterator(iters=iters, ordering=ordering)
     iterator.map(_.flatten.map(v => (v.chrom, v.pos))).toSeq shouldBe Seq(
       Seq((dict(1).name, 5), (dict(1).name, 5)),
       Seq((dict(0).name, 10), (dict(0).name, 10))

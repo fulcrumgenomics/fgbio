@@ -615,7 +615,7 @@ class PhaseCigarTest extends ErrorLogLevel {
                       skipMismatchingAlleles: Boolean,
                       assumeFixedAlleleOrder: Boolean = true): (Seq[PhaseCigarOp], AssessPhasingMetric) = {
     val dict = header.dict
-    val pairedIterator = JointVariantContextIterator(
+    val pairedIterator = JointVariantIterator(
       iters = Seq(truth.iterator, call.iterator),
       dict  = dict
     ).map { case Seq(left, right) => (left, right) }
@@ -997,7 +997,7 @@ class PhaseCigarTest extends ErrorLogLevel {
     PhaseCigar(Seq(CallOnly, CallEnd, TruthOnly, TruthEnd, CallOnly, CallEnd)).toPhasedBlocks().map(_.cigar) should contain theSameElementsInOrderAs Seq(Seq(CallOnly), Seq(TruthOnly, TruthEnd, CallOnly))
   }
 
-  "Cigar.variantsToBlockEndOperator/variantsToMatchingOperator" should "should return the cigar operator for two variant contexts" in {
+  "Cigar.variantsToBlockEndOperator/variantsToMatchingOperator" should "should return the cigar operator for two variants" in {
     val builder = new VariantSetBuilder()
     builder.addVariant(start = 1, variantAlleles = List("A", "C"), genotypeAlleles = List("A", "C"), phased = true)
     builder.addVariant(start = 2, variantAlleles = List("A", "C"), genotypeAlleles = List("A", "C"), phased = true)
@@ -1037,7 +1037,7 @@ class PhaseCigarTest extends ErrorLogLevel {
     PhaseCigar.variantsToMatchingOperator(truth=Some(ctxNoStart), call=Some(ctxNoStart)) shouldBe Some(Match)
   }
 
-  it should "should return the cigar operator for two variant contexts that disagree on phase" in {
+  it should "should return the cigar operator for two variants that disagree on phase" in {
     val builder = new VariantSetBuilder()
     builder.addVariant(start = 1, variantAlleles = List("A", "C"), genotypeAlleles = List("A", "C"), phased = true)
     builder.addVariant(start = 2, variantAlleles = List("A", "C"), genotypeAlleles = List("C", "A"), phased = true)
@@ -1053,7 +1053,7 @@ class PhaseCigarTest extends ErrorLogLevel {
     an[Exception] should be thrownBy PhaseCigar.variantsToMatchingOperator(truth=None, call=None)
   }
 
-  "PhaseCigar.cigarTypeForVariants" should "return a match if two variant contexts share the same alleles in the same order" in {
+  "PhaseCigar.cigarTypeForVariants" should "return a match if two variants share the same alleles in the same order" in {
     val builder = new VariantSetBuilder()
     builder.addVariant(start = 1, variantAlleles = List("A", "C"), genotypeAlleles = List("A", "C"))
     builder.addVariant(start = 2, variantAlleles = List("A", "C"), genotypeAlleles = List("A", "C"))
@@ -1061,7 +1061,7 @@ class PhaseCigarTest extends ErrorLogLevel {
     PhaseCigar.cigarTypeForVariants(builder.last, builder.head) shouldBe Match
   }
 
-  it should "return a mismatch if two variant contexts share the same alleles but in the different order" in {
+  it should "return a mismatch if two variants share the same alleles but in the different order" in {
     val builder = new VariantSetBuilder()
     builder.addVariant(start = 1, variantAlleles = List("A", "C"), genotypeAlleles = List("C", "A"))
     builder.addVariant(start = 2, variantAlleles = List("A", "C"), genotypeAlleles = List("A", "C"))
@@ -1069,7 +1069,7 @@ class PhaseCigarTest extends ErrorLogLevel {
     PhaseCigar.cigarTypeForVariants(builder.last, builder.head) shouldBe Mismatch
   }
 
-  it should "return a mismatch if two variant contexts share the different alleles" in {
+  it should "return a mismatch if two variants share the different alleles" in {
     val builder = new VariantSetBuilder()
     builder.addVariant(start = 1, variantAlleles = List("A", "G"), genotypeAlleles = List("A", "G"))
     builder.addVariant(start = 2, variantAlleles = List("A", "C"), genotypeAlleles = List("A", "C"))
@@ -1077,7 +1077,7 @@ class PhaseCigarTest extends ErrorLogLevel {
     PhaseCigar.cigarTypeForVariants(builder.last, builder.head) shouldBe Mismatch
   }
 
-  it should "throw an exception if the variant contexts do not have exactly two alleles" in {
+  it should "throw an exception if the variants do not have exactly two alleles" in {
     // One variant alleles, one genotype allele
     {
       val builder = new VariantSetBuilder()
