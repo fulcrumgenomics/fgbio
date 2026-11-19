@@ -40,8 +40,8 @@ import java.io.Closeable
   * index is present.
   *
   * Reading a variant with a value of a typed INFO or FORMAT field that is not a valid value of its declared type (e.g.
-  * `1.5` or `3000000000` for an Integer field) throws an [[IllegalArgumentException]] naming the type, the value, the
-  * field, the variant's position and the VCF.
+  * `1.5` or `3000000000` for an Integer field) throws an [[java.lang.IllegalArgumentException]] naming the type, the
+  * value, the field, the variant's position and the VCF.
   *
   * @param reader the underlying HTSJDK [[VCFFileReader]]
   * @param headerTransformer a method to transform the header after being read in.
