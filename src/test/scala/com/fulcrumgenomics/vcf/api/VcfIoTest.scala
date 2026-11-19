@@ -581,6 +581,23 @@ class VcfIoTest extends UnitSpec with OptionValues {
     roundTripText(bcf) shouldBe records.map(_.mkString("\t"))
   }
 
+  it should "fail with a message naming the VCF, record, field, type and value when a typed value is invalid" in {
+    case class Case(info: String, format: String, s1: String, expected: String)
+    Seq(
+      Case("AC=3000000000", "GT",    "0/1",          "Invalid Integer value '3000000000' for INFO field AC at chr1:100"),
+      Case("AC=1,1.5",      "GT",    "0/1",          "Invalid Integer value '1.5' for INFO field AC at chr1:100"),
+      Case("MQ=high",       "GT",    "0/1",          "Invalid Float value 'high' for INFO field MQ at chr1:100"),
+      Case(".",             "GT:PS", "0/1:1.5",      "Invalid Integer value '1.5' for FORMAT field PS of sample s1 at chr1:100"),
+      Case(".",             "GT:XI", "0/1:1,99999999999", "Invalid Integer value '99999999999' for FORMAT field XI of sample s1 at chr1:100")
+    ).foreach { c =>
+      val vcf = writeRawVcf(Seq("chr1", "100", ".", "A", "C", "50", "PASS", c.info, c.format, c.s1, "0/0" + ":." * (c.format.count(_ == ':'))))
+      val source = VcfSource(vcf)
+      val ex = intercept[IllegalArgumentException] { source.toIndexedSeq }
+      source.safelyClose()
+      ex.getMessage shouldBe s"${c.expected} in $vcf"
+    }
+  }
+
   "VcfConversions.formatFloat" should "format Floats as plain, shortest round-trip decimals" in {
     VcfConversions.formatFloat(60f) shouldBe "60"
     VcfConversions.formatFloat(0.5f) shouldBe "0.5"

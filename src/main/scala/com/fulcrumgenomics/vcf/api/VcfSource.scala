@@ -39,11 +39,17 @@ import java.io.Closeable
   * for iterating over the entire stream of variants as well as querying by genomic location if an
   * index is present.
   *
+  * Reading a variant with a value of a typed INFO or FORMAT field that is not a valid value of its declared type (e.g.
+  * `1.5` or `3000000000` for an Integer field) throws an [[IllegalArgumentException]] naming the type, the value, the
+  * field, the variant's position and the VCF.
+  *
   * @param reader the underlying HTSJDK [[VCFFileReader]]
   * @param headerTransformer a method to transform the header after being read in.
+  * @param description a description of the VCF (e.g. its path) used in error messages
   */
 class VcfSource private(private val reader: AbstractFeatureReader[VariantContext, _],
-                        private val headerTransformer: VcfHeader => VcfHeader) extends View[Variant] with Closeable {
+                        private val headerTransformer: VcfHeader => VcfHeader,
+                        private val description: String) extends View[Variant] with Closeable {
   /** The header associated with the VCF being read. */
   val header: VcfHeader = headerTransformer(VcfConversions.toScalaHeader(reader.getHeader.asInstanceOf[VCFHeader]))
 
@@ -57,7 +63,11 @@ class VcfSource private(private val reader: AbstractFeatureReader[VariantContext
   /** Wraps an iterator provided by HTSJDK into a [[com.fulcrumgenomics.commons.collection.SelfClosingIterator]] that transforms VariantContexts into Variants. */
   private def wrap(it: CloseableIterator[VariantContext]): VariantIterator = {
     new SelfClosingIterator(
-      iter   = it.map(vc => VcfConversions.toScalaVariant(vc, header)),
+      iter   = it.map { vc =>
+        try VcfConversions.toScalaVariant(vc, header) catch {
+          case ex: InvalidVcfValueException => throw new InvalidVcfValueException(s"${ex.getMessage} in $description", ex)
+        }
+      },
       closer = () => it.close())
   }
 
@@ -119,7 +129,7 @@ object VcfSource {
     }
 
     val reader = AbstractFeatureReader.getFeatureReader(path.toUri.toString, codec, false)
-    new VcfSource(reader, headerTransformer=headerTransformer)
+    new VcfSource(reader, headerTransformer=headerTransformer, description=path.toString)
   }
 
   /** Return the only sample in the VCF source otherwise raise an exception. */

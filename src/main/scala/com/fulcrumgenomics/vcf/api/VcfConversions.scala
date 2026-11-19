@@ -36,6 +36,12 @@ import java.util.{List => JavaList}
 import scala.collection.immutable.ListMap
 import scala.jdk.CollectionConverters.MapHasAsJava
 
+/** Thrown when a value of a typed INFO or FORMAT field is not a valid value of its declared type (e.g. `1.5` or
+  * `3000000000` for an Integer field), so the VCF is invalid.  The message names the type, the value, the field and the
+  * record (and, when read with a [[VcfSource]], the VCF). */
+private[api] final class InvalidVcfValueException(message: String, cause: Throwable = null)
+  extends IllegalArgumentException(message, cause)
+
 /**
   * Object that provides methods for converting from fgbio's scala VCF classes to HTSJDK's
   * Java VCF-related classes and vice-versa.  Only intended for internal use within the `api`
@@ -279,7 +285,11 @@ private[api] object VcfConversions {
           val value = g.getExtendedAttribute(key)
 
           header.format.get(key) match {
-            case Some(hd) => toTypedValue(value, hd.kind, hd.count).foreach(v => builder += (key -> v))
+            case Some(hd) =>
+              val typed = try toTypedValue(value, hd.kind, hd.count) catch { case ex: InvalidVcfValueException =>
+                throw new InvalidVcfValueException(s"${ex.getMessage} for FORMAT field $key of sample ${g.getSampleName} at ${in.getContig}:${in.getStart}")
+              }
+              typed.foreach(v => builder += (key -> v))
             case None     => throw new IllegalStateException(s"Format field $key not described in header.")
           }
         }
@@ -298,7 +308,11 @@ private[api] object VcfConversions {
         val key   = entry.getKey
         val value = entry.getValue
         header.info.get(key) match {
-          case Some(hd) => toTypedValue(value, hd.kind, hd.count).foreach(v => builder += (key -> v))
+          case Some(hd) =>
+            val typed = try toTypedValue(value, hd.kind, hd.count) catch { case ex: InvalidVcfValueException =>
+              throw new InvalidVcfValueException(s"${ex.getMessage} for INFO field $key at ${in.getContig}:${in.getStart}")
+            }
+            typed.foreach(v => builder += (key -> v))
           case None     => throw new IllegalStateException(s"INFO field $key not described in header.")
         }
       }
@@ -324,7 +338,8 @@ private[api] object VcfConversions {
     )
   }
   catch {
-    case ex: Throwable => throw new RuntimeException(s"Failed to convert variant: ${in}", ex)
+    case ex: InvalidVcfValueException => throw ex
+    case ex: Throwable                => throw new RuntimeException(s"Failed to convert variant: ${in}", ex)
   }
 
   /**
@@ -350,12 +365,20 @@ private[api] object VcfConversions {
   private def toTypedValue(value: Any, kind: VcfFieldType, count: VcfCount): Option[Any] = ((toText(value), kind, count): @unchecked) match {
     case (_, VcfFieldType.Flag, _       )                       => Some(Variant.FlagValue)
     case (_, _,                 Fixed(0))                       => Some(Variant.FlagValue)
-    case (s: String, _,         Fixed(1))                       => if (s == ".") None else Some(kind.parse(s))
-    case (s: String, _,         _       )                       => val xs = s.split(","); if (xs.forall(_ == ".")) None else Some(ArrayAttr(xs.map(kind.parse)))
+    case (s: String, _,         Fixed(1))                       => if (s == ".") None else Some(parseValue(s, kind))
+    case (s: String, _,         _       )                       => val xs = s.split(","); if (xs.forall(_ == ".")) None else Some(ArrayAttr(xs.map(parseValue(_, kind))))
     // A single String value that contains commas is split into a list by HTSJDK, so join it back up
     case (l: JavaList[String @unchecked], VcfFieldType.String, Fixed(1)) => val s = l.mkString(","); if (s == ".") None else Some(s)
-    case (l: JavaList[String @unchecked], _, Fixed(1))          => if (l.get(0) == ".") None else Some(kind.parse(l.get(0)))
-    case (l: JavaList[String @unchecked], _, _)                 => if (l.forall(_ == ".")) None else Some(ArrayAttr(l.map(kind.parse)))
+    case (l: JavaList[String @unchecked], _, Fixed(1))          => if (l.get(0) == ".") None else Some(parseValue(l.get(0), kind))
+    case (l: JavaList[String @unchecked], _, _)                 => if (l.forall(_ == ".")) None else Some(ArrayAttr(l.map(parseValue(_, kind))))
+  }
+
+  /** Parses a single value of the given type, throwing an [[InvalidVcfValueException]] that names the type and the value
+    * if it is not a valid value of the type (e.g. `1.5` or `3000000000` for an Integer field). */
+  private def parseValue(s: String, kind: VcfFieldType): Any = {
+    try kind.parse(s) catch {
+      case _: NumberFormatException => throw new InvalidVcfValueException(s"Invalid $kind value '$s'")
+    }
   }
 
   /** Converts a value from HTSJDK to a String, or a list of Strings, as it would appear in a VCF.  Values read from a VCF
