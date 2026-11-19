@@ -29,14 +29,16 @@ import com.fulcrumgenomics.bam.api.SamOrder
 import com.fulcrumgenomics.commons.io.PathUtil
 import com.fulcrumgenomics.sopt.cmdline.ValidationException
 import com.fulcrumgenomics.testing.SamBuilder.{Minus, Plus}
-import com.fulcrumgenomics.testing.{SamBuilder, UnitSpec, VariantContextSetBuilder}
+import com.fulcrumgenomics.fasta.Converters.FromSAMSequenceDictionary
+import com.fulcrumgenomics.testing.VcfBuilder.Gt
+import com.fulcrumgenomics.testing.{SamBuilder, UnitSpec, VcfBuilder}
 import com.fulcrumgenomics.umi.ReviewConsensusVariants.ConsensusVariantReviewInfo
 import com.fulcrumgenomics.util.{Io, Metric}
+import com.fulcrumgenomics.vcf.api.{VcfContigHeader, VcfCount, VcfFieldType, VcfFormatHeader}
 import htsjdk.samtools.SAMFileHeader
 import htsjdk.samtools.reference.{ReferenceSequenceFile, ReferenceSequenceFileFactory}
 import htsjdk.samtools.util.IntervalList
 
-import scala.annotation.nowarn
 
 object ReviewConsensusVariantsTest {
   val Fasta : Seq[String] =
@@ -63,8 +65,6 @@ object ReviewConsensusVariantsTest {
     """.stripMargin.linesIterator.map(_.trim.replaceAll("\\s+", "\t")).filter(_.nonEmpty).toSeq
 }
 
-@nowarn("msg=class VariantContextSetBuilder in package testing is deprecated")
-@nowarn("msg=method apply in object VariantContextSetBuilder is deprecated")
 class ReviewConsensusVariantsTest extends UnitSpec {
   import ReviewConsensusVariantsTest._
 
@@ -94,6 +94,13 @@ class ReviewConsensusVariantsTest extends UnitSpec {
     val h = new SAMFileHeader
     h.setSequenceDictionary(ref.getSequenceDictionary)
     h
+  }
+
+  /** A VCF builder with the reference's contigs, the given samples and a FORMAT header for the allele fraction (AF). */
+  private def vcfBuilder(samples: String*): VcfBuilder = {
+    val contigs = VcfContigHeader.fromSequenceDictionary(header.getSequenceDictionary.fromSam)
+    VcfBuilder(VcfBuilder.DefaultHeader.copy(contigs=contigs, samples=samples.toIndexedSeq))
+      .withFormatHeaders(VcfFormatHeader("AF", VcfCount.OnePerAltAllele, VcfFieldType.Float, "Alt allele fraction."))
   }
 
   // We're going to simulate raw reads and consensuses as if there were variants at:
@@ -210,9 +217,7 @@ class ReviewConsensusVariantsTest extends UnitSpec {
     val txtOut  = outBase.getParent.resolve(s"${outBase.getFileName}.txt")
     val intervals = makeTempFile("empty.", ".vcf")
 
-    val vcfBuilder = VariantContextSetBuilder("s1")
-    vcfBuilder.header.setSequenceDictionary(header.getSequenceDictionary)
-    vcfBuilder.write(intervals)
+    vcfBuilder("s1").write(intervals)
     new ReviewConsensusVariants(input=intervals, consensusBam=consensusBam, groupedBam=rawBam, ref=refFasta, output=outBase).execute()
 
     conOut.toFile.exists() shouldBe true
@@ -230,14 +235,14 @@ class ReviewConsensusVariantsTest extends UnitSpec {
     val rawOut  = outBase.getParent.resolve(s"${outBase.getFileName}.grouped.bam")
     val txtOut  = outBase.getParent.resolve(s"${outBase.getFileName}.txt")
 
-    val vcfBuilder = new VariantContextSetBuilder(sampleNames=List("tumor"))
-    vcfBuilder.header.setSequenceDictionary(this.header.getSequenceDictionary)
-    vcfBuilder.addVariant(refIdx=0, start=10, variantAlleles=List("A","T"), genotypeAlleles=List("A","T"), genotypeAttributes=Map("AF" -> 0.01))
-    vcfBuilder.addVariant(refIdx=0, start=20, variantAlleles=List("A","C"), genotypeAlleles=List("A","C"), genotypeAttributes=Map("AF" -> 0.01))
-    vcfBuilder.addVariant(refIdx=0, start=30, variantAlleles=List("A","G"), genotypeAlleles=List("A","G"), genotypeAttributes=Map("AF" -> 0.01))
-    vcfBuilder.addVariant(refIdx=1, start=20, variantAlleles=List("C","T"), genotypeAlleles=List("C","T"), genotypeAttributes=Map("AD" -> Array(100,2)))
+    val vcf = vcfBuilder("tumor")
+      .add(chrom="chr1", pos=10, alleles=Seq("A","T"), gts=Seq(Gt(sample="tumor", gt="A/T", attrs=Map("AF" -> Seq(0.01f)))))
+      .add(chrom="chr1", pos=20, alleles=Seq("A","C"), gts=Seq(Gt(sample="tumor", gt="A/C", attrs=Map("AF" -> Seq(0.01f)))))
+      .add(chrom="chr1", pos=30, alleles=Seq("A","G"), gts=Seq(Gt(sample="tumor", gt="A/G", attrs=Map("AF" -> Seq(0.01f)))))
+      .add(chrom="chr2", pos=20, alleles=Seq("C","T"), gts=Seq(Gt(sample="tumor", gt="C/T", ad=Seq(100, 2))))
+      .toTempFile()
 
-    new ReviewConsensusVariants(input=vcfBuilder.toTempFile(), consensusBam=consensusBam, groupedBam=rawBam, ref=refFasta, output=outBase).execute()
+    new ReviewConsensusVariants(input=vcf, consensusBam=consensusBam, groupedBam=rawBam, ref=refFasta, output=outBase).execute()
 
     conOut.toFile.exists() shouldBe true
     rawOut.toFile.exists() shouldBe true
@@ -256,9 +261,7 @@ class ReviewConsensusVariantsTest extends UnitSpec {
     val intervals = makeTempFile("empty.", ".vcf")
     val ref       = buildRefFasta(withDict=false)
 
-    val vcfBuilder = VariantContextSetBuilder("s1")
-    vcfBuilder.header.setSequenceDictionary(header.getSequenceDictionary)
-    vcfBuilder.write(intervals)
+    vcfBuilder("s1").write(intervals)
     a[ValidationException] should be thrownBy new ReviewConsensusVariants(input=intervals, consensusBam=consensusBam, groupedBam=rawBam, ref=ref, output=outBase)
   }
 
@@ -267,9 +270,37 @@ class ReviewConsensusVariantsTest extends UnitSpec {
     val intervals = makeTempFile("empty.", ".vcf")
     val ref       = buildRefFasta(withFai=false)
 
-    val vcfBuilder = VariantContextSetBuilder("s1")
-    vcfBuilder.header.setSequenceDictionary(header.getSequenceDictionary)
-    vcfBuilder.write(intervals)
+    vcfBuilder("s1").write(intervals)
     a[ValidationException] should be thrownBy new ReviewConsensusVariants(input=intervals, consensusBam=consensusBam, groupedBam=rawBam, ref=ref, output=outBase)
+  }
+
+  "ReviewConsensusVariants.loadPositions" should "load SNPs at or below the MAF with their genotype and filters" in {
+    val vcf = vcfBuilder("s1")
+      .add(chrom="chr1", pos=10, alleles=Seq("A","T"), filters=Seq("PASS"), gts=Seq(Gt(sample="s1", gt="A/T", attrs=Map("AF" -> Seq(0.05f)))))
+      .add(chrom="chr1", pos=11, alleles=Seq("A","T"), gts=Seq(Gt(sample="s1", gt="A/T", attrs=Map("AF" -> Seq(0.06f)))))
+      .add(chrom="chr1", pos=12, alleles=Seq("A","C","G"), filters=Seq("LowQD", "LowAB"), gts=Seq(Gt(sample="s1", gt="C|G", ad=Seq(98, 1, 1))))
+      .add(chrom="chr1", pos=13, alleles=Seq("A","T"), gts=Seq(Gt(sample="s1", gt="A/T", ad=Seq(90, 10))))
+      .add(chrom="chr1", pos=14, alleles=Seq("A","AT"), gts=Seq(Gt(sample="s1", gt="A/AT")))
+      .add(chrom="chr1", pos=15, alleles=Seq("A","<NON_REF>"), gts=Seq(Gt(sample="s1", gt="A/A")))
+      .add(chrom="chr1", pos=16, alleles=Seq("A"), gts=Seq(Gt(sample="s1", gt="A/A")))
+      .add(chrom="chr2", pos=20, alleles=Seq("c","t"), gts=Seq(Gt(sample="s1", gt="./.")))
+      .toTempFile()
+
+    val tool      = new ReviewConsensusVariants(input=vcf, consensusBam=consensusBam, groupedBam=rawBam, ref=refFasta, output=makeTempFile("review_consensus.", ".out"))
+    val positions = tool.loadPositions(vcf, ref)
+    positions.map(p => (p.chrom, p.start, p.refBase, p.genotype, p.filters)) should contain theSameElementsInOrderAs Seq(
+      ("chr1", 10, 'A', Some("A/T"), None),
+      ("chr1", 12, 'A', Some("C|G"), Some("LowAB,LowQD")),
+      ("chr2", 20, 'C', Some("./."), None)
+    )
+  }
+
+  it should "not filter on MAF or report genotypes when the VCF has many samples and no sample is given" in {
+    val vcf = vcfBuilder("s1", "s2")
+      .add(chrom="chr1", pos=10, alleles=Seq("A","T"), gts=Seq(Gt(sample="s1", gt="A/T", attrs=Map("AF" -> Seq(0.5f)))))
+      .toTempFile()
+
+    val tool = new ReviewConsensusVariants(input=vcf, consensusBam=consensusBam, groupedBam=rawBam, ref=refFasta, output=makeTempFile("review_consensus.", ".out"))
+    tool.loadPositions(vcf, ref).map(p => (p.chrom, p.start, p.genotype)) should contain theSameElementsInOrderAs Seq(("chr1", 10, None))
   }
 }
