@@ -590,9 +590,39 @@ class SamRecordTest extends UnitSpec with OptionValues {
     )
   }
 
-  it should "return None for every read position when the read is entirely soft-clipped" in {
-    val frag = new SamBuilder(readLength=10).addFrag(start=5, cigar="10S").value
-    Range.inclusive(1, 10).foreach { pos => frag.referencePosAtReadPos(pos=pos) shouldBe None }
+  it should "return None for every read position when the read is entirely clipped" in {
+    Seq("10S", "76S", "10H66S", "76S10H", "10H66S10H").foreach { cigar =>
+      withClue(s"cigar=$cigar") {
+        val frag = new SamBuilder(readLength=Cigar(cigar).lengthOnQuery).addFrag(start=5, cigar=cigar).value
+        Range.inclusive(1, frag.length).foreach { pos =>
+          frag.referencePosAtReadPos(pos=pos) shouldBe None
+          frag.referencePosAtReadPos(pos=pos, returnPriorBaseIfInserted=true) shouldBe None
+        }
+      }
+    }
+  }
+
+  "SamRecord.readPosAtReferencePos and SamRecord.referencePosAtReadPos" should "handle a read that is entirely clipped (no aligned bases)" in {
+    @nowarn("cat=deprecation") def readPosAtRefPos(rec: SamRecord, pos: Int, returnLastBaseIfDeleted: Boolean): Int = {
+      rec.readPosAtRefPos(pos=pos, returnLastBaseIfDeleted=returnLastBaseIfDeleted)
+    }
+    @nowarn("cat=deprecation") def refPosAtReadPos(rec: SamRecord, pos: Int): Int = rec.refPosAtReadPos(pos=pos)
+
+    Seq("76S", "10H66S", "76S10H", "10H66S10H").foreach { cigar =>
+      withClue(s"cigar=$cigar") {
+        val frag = new SamBuilder(readLength=Cigar(cigar).lengthOnQuery).addFrag(start=5, cigar=cigar).value
+        // no reference bases are aligned, so every reference position is outside the alignment
+        Range.inclusive(frag.start - 1, frag.start + 1).foreach { pos =>
+          an[IllegalArgumentException] should be thrownBy frag.readPosAtReferencePos(pos=pos)
+          Seq(true, false).foreach { returnLastBaseIfDeleted =>
+            readPosAtRefPos(frag, pos, returnLastBaseIfDeleted) shouldBe frag.asSam.getReadPositionAtReferencePosition(pos, returnLastBaseIfDeleted)
+          }
+        }
+        Range.inclusive(0, frag.length + 1).foreach { pos =>
+          refPosAtReadPos(frag, pos) shouldBe frag.asSam.getReferencePositionAtReadPosition(pos)
+        }
+      }
+    }
   }
 
   // now run the test cases
