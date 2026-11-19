@@ -56,4 +56,33 @@ class VariantTest extends UnitSpec with OptionValues {
     Variant.isMissingValue(Float.NaN) shouldBe false
     Range(-500, 500).foreach { i => Variant.isMissingValue(i) shouldBe false}
   }
+
+  "Variant.isSnp" should "be true for variants whose alleles are all one base long, counting a spanning deletion as one base, as in HTSJDK" in {
+    def snp(alleles: String*): Boolean = Variant(chrom="chr1", pos=10, alleles=AlleleSet(alleles:_*)).isSnp
+    snp("A", "C") shouldBe true
+    snp("A", "C", "T") shouldBe true
+    snp("A", "*") shouldBe true
+    snp("A", "C", "*") shouldBe true
+  }
+
+  it should "be false for variants with no alt allele, a longer allele, or a symbolic allele, as in HTSJDK" in {
+    def snp(alleles: String*): Boolean = Variant(chrom="chr1", pos=10, alleles=AlleleSet(alleles:_*)).isSnp
+    snp("A") shouldBe false
+    snp("A", "AT") shouldBe false
+    snp("AT", "A") shouldBe false
+    snp("AT", "*") shouldBe false
+    snp("AT", "GC") shouldBe false
+    snp("A", "C", "<NON_REF>") shouldBe false
+    snp("A", "<DEL>") shouldBe false
+  }
+
+  "Variant.failedFilters" should "return the filters other than PASS" in {
+    def variant(filters: String*): Variant = Variant(chrom="chr1", pos=10, alleles=AlleleSet("A", "C"), filters=filters.toSet)
+    variant().failedFilters shouldBe Set.empty
+    variant("PASS").failedFilters shouldBe Set.empty
+    variant("LowQual", "LowDP").failedFilters shouldBe Set("LowQual", "LowDP")
+    variant().isFiltered shouldBe false
+    variant("PASS").isFiltered shouldBe false
+    variant("LowQual").isFiltered shouldBe true
+  }
 }
