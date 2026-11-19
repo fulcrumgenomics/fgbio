@@ -33,7 +33,7 @@ import com.fulcrumgenomics.commons.util.LazyLogging
 import com.fulcrumgenomics.sopt.{arg, clp}
 import com.fulcrumgenomics.umi.ReviewConsensusVariants._
 import com.fulcrumgenomics.util.{Io, Metric}
-import com.fulcrumgenomics.vcf.api.Allele.SimpleAllele
+import com.fulcrumgenomics.vcf.VariantUtil
 import com.fulcrumgenomics.vcf.api.{VcfSource, Variant => VcfVariant}
 import htsjdk.samtools.SamPairUtil.PairOrientation
 import htsjdk.samtools.reference.{ReferenceSequenceFile, ReferenceSequenceFileFactory}
@@ -124,7 +124,8 @@ object ReviewConsensusVariants {
 @clp(group=ClpGroups.Umi, description=
   """
     |Extracts data to make reviewing of variant calls from consensus reads easier. Creates
-    |a list of variant sites from the input VCF (SNPs only) or IntervalList then extracts all
+    |a list of variant sites from the input VCF (SNPs only, including SNP sites whose alternate
+    |alleles include a spanning deletion `*`) or IntervalList then extracts all
     |the consensus reads that do not contain a reference allele at the the variant sites, and
     |all raw reads that contributed to those consensus reads.  This will include consensus
     |reads that carry the alternate allele, a third allele, a no-call or a spanning
@@ -298,16 +299,21 @@ class ReviewConsensusVariants
 
     if (VcfExtensions.exists(ext => path.getFileName.toString.endsWith(ext))) {
       val in = VcfSource(path, allowMissingFieldsInHeader=true)
+      this.sample.filterNot(in.header.samples.contains).foreach { s =>
+        in.safelyClose()
+        fail(s"Sample $s not found in VCF ${path.toAbsolutePath}; samples present: ${in.header.samples.mkString(", ")}")
+      }
       val sample = this.sample.orElse {
         if (in.header.samples.length == 1) Some(in.header.samples.head) else None
       }
 
-      in.filter(isSnp).filter(v => mafFromGenotype(v, sample).forall(_ <= this.maf)).foreach { v =>
-        val filters = v.filters.filterNot(VcfVariant.PassingFilters.contains)
+      in.filter(_.isSnp).filter(v => mafFromGenotype(v, sample).forall(_ <= this.maf)).foreach { v =>
+        val filters = v.failedFilters
         buffer += Variant(
           chrom    = v.chrom,
           start    = v.pos,
           refBase  = v.alleles.ref.value.charAt(0).toUpper,
+          // NB: a genotype with no GT is read as a haploid no-call, so is given as `.`
           genotype = sample.map(v.gt(_).gtWithBases),
           filters  = if (filters.isEmpty) None else Some(filters.toSeq.sorted.mkString(","))
         )
@@ -324,15 +330,6 @@ class ReviewConsensusVariants
     buffer.toList
   }
 
-  /** True if the variant has one or more alternate alleles and the reference and every alternate allele is a single base. */
-  private def isSnp(variant: VcfVariant): Boolean = {
-    def isSingleBase(allele: com.fulcrumgenomics.vcf.api.Allele): Boolean = allele match {
-      case a: SimpleAllele => a.length == 1
-      case _               => false
-    }
-    variant.alleles.alts.nonEmpty && variant.alleles.iterator.forall(isSingleBase)
-  }
-
   /** Attempts to determine the minor allele fraction from a VCF genotype object. */
   private def mafFromGenotype(variant: VcfVariant, sample: Option[String]): Option[Double] = sample.flatMap { s =>
     val gt = variant.gt(s)
@@ -343,16 +340,14 @@ class ReviewConsensusVariants
   }
 
   /** Converts the single value of an `AF` genotype field to a [[Double]]. */
-  private def alleleFractionToDouble(af: Any, variant: VcfVariant, sample: String): Double = af match {
-    case f: Float      => f.toString.toDouble // via the decimal text, as the VCF has it, so that 0.05 stays 0.05
-    case d: Double     => d
-    case i: Int        => i.toDouble
-    case s: String     => s.toDouble
-    case Seq(value)    => alleleFractionToDouble(value, variant, sample)
-    case values: Seq[_] =>
-      throw new IllegalArgumentException(
-        s"Expected one AF value for sample $sample at ${variant.chrom}:${variant.pos} but found: ${values.mkString(",")}"
-      )
+  private def alleleFractionToDouble(af: Any, variant: VcfVariant, sample: String): Double = {
+    VariantUtil.toDoubles(af, s"AF of sample $sample at ${variant.chrom}:${variant.pos}") match {
+      case Seq(value) => value
+      case values     =>
+        throw new IllegalArgumentException(
+          s"Expected one AF value for sample $sample at ${variant.chrom}:${variant.pos} but found: ${values.mkString(",")}"
+        )
+    }
   }
 
   /**
