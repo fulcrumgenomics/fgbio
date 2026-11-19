@@ -66,6 +66,7 @@ Documentation is also available online:
 * API documentation for developers is available through [javadoc.io](http://www.javadoc.io/doc/com.fulcrumgenomics/fgbio_2.13).
 * Web utility for validating [Read Structures](https://github.com/fulcrumgenomics/fgbio/wiki/Read-Structures) is available [here](validate-read-structure.html)
 * Web utility for validating a Sample Sheet for [DemuxFastqs](http://fulcrumgenomics.github.io/fgbio/tools/latest/DemuxFastqs.html) is available [here](validate-sample-sheet.html)
+* Web utility for building a sequence dictionary with alternate contig names from an NCBI assembly report is available [here](ncbi-assembly-report-to-sam-dict.html)
 
 ## Getting Help
 
