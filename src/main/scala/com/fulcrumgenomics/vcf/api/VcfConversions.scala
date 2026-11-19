@@ -257,7 +257,8 @@ private[api] object VcfConversions {
     *                                   [[Variant.FlagValue]] for an INFO flag, and as an Int for the INFO END field),
     *                                   otherwise an exception is thrown
     * @return a [[Variant]] instance that is a copy of the [[VariantContext]] and does not rely on it
-    *         post-return
+    *         post-return.  A genotype with no GT (e.g. a VCF whose FORMAT has no GT) is read as a haploid no-call,
+    *         since a [[Genotype]] has at least one call, and so is written back with a GT of `.`.
     */
   def toScalaVariant(in: VariantContext, header: VcfHeader, allowMissingFieldsInHeader: Boolean = false): Variant = try {
     // Build up the allele set
@@ -270,7 +271,9 @@ private[api] object VcfConversions {
     forloop (from=0, until=in.getNSamples) { sampleIndex =>
       val g = in.getGenotype(sampleIndex)
 
-      val calls = {
+      // NB: a Genotype must have at least one call, so a genotype without a GT is read as a haploid no-call, and so is
+      // written back with a GT of `.`
+      val calls = if (g.getPloidy == 0) IndexedSeq(NoCallAllele) else {
         val buffer = new Array[Allele](g.getPloidy)
         val javaAlleles = g.getAlleles
         forloop (from=0, until=buffer.length) { alleleIndex =>
