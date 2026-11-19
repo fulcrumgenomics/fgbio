@@ -678,7 +678,23 @@ class VcfIoTest extends UnitSpec with OptionValues {
     vcf
   }
 
-  "VcfSource" should "fail to read fields not described in the header by default" in {
+  "VcfSource" should "read a genotype without a GT as a no-call" in {
+    val vcf = makeTempFile(getClass.getSimpleName, VcfExtension)
+    Io.writeLines(vcf, Seq(
+      "##fileformat=VCFv4.2",
+      "##contig=<ID=chr1,length=5000>",
+      "##FORMAT=<ID=DP,Number=1,Type=Integer,Description=\"Depth\">",
+      Seq("#CHROM", "POS", "ID", "REF", "ALT", "QUAL", "FILTER", "INFO", "FORMAT", "s1").mkString("\t"),
+      Seq("chr1", "100", ".", "A", "C", "50", "PASS", ".", "DP", "12").mkString("\t")
+    ))
+    val source = VcfSource(vcf)
+    val gt     = source.iterator.next().gt("s1")
+    gt.isNoCall shouldBe true
+    gt[Int]("DP") shouldBe 12
+    source.safelyClose()
+  }
+
+  it should "fail to read fields not described in the header by default" in {
     val source = VcfSource(writeVcfWithUndescribedFields())
     val ex     = intercept[RuntimeException] { source.toIndexedSeq }
     Iterator.iterate[Throwable](ex)(_.getCause).takeWhile(_ != null).map(_.getMessage).mkString(" ") should include ("not described in header")
