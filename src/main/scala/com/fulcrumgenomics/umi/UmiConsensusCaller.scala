@@ -427,12 +427,15 @@ trait UmiConsensusCaller[ConsensusRead <: SimpleRead] {
       Seq.empty
     }
     else {
-      val onStrand = sortedIndices.map(i => strand(recsIndexed(i)))
-      def weakerStrandSize(g: AlignmentGroup): Int = {
-        val n = g.flags.count(i => onStrand(i))
-        math.min(n, g.size - n)
+      val bestGroup = if (groups.size == 1) groups.head else {
+        // Indexed by sorted position, the same index space as the groups' flags
+        val onStrand = sortedIndices.map(i => strand(recsIndexed(i)))
+        def weakerStrandSize(g: AlignmentGroup): Int = {
+          val n = g.flags.count(i => onStrand(i))
+          math.min(n, g.size - n)
+        }
+        groups.maxBy(g => (g.size, weakerStrandSize(g), g.cigar))(Ordering.Tuple3(Ordering.Int, Ordering.Int, Cigar.cigarOrdering.reverse))
       }
-      val bestGroup = groups.maxBy(g => (g.size, weakerStrandSize(g), g.cigar))(Ordering.Tuple3(Ordering.Int, Ordering.Int, Cigar.cigarOrdering.reverse))
       // BitSet tracking which original indices are kept - allows O(n) reconstruction in original order
       val keptIndices = new mutable.BitSet(recsIndexed.length)
       forloop (from=0, until=sortedIndices.length) { si =>

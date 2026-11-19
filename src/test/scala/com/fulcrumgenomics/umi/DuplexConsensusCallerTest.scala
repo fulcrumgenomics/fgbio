@@ -255,6 +255,26 @@ class DuplexConsensusCallerTest extends UnitSpec with OptionValues {
     r1[Int](ConsensusTags.PerRead.BaRawReadCount) shouldBe 5
   }
 
+  it should "break a tie by both-strand support when the reads have different lengths" in {
+    // The BA reads are longer than the AB reads, so sorting the pooled reads by length moves the BA reads (added last)
+    // to the front; the strand of each read must follow it through that reordering.
+    val abBuilder = new SamBuilder(readLength=10, baseQuality=30)
+    val baBuilder = new SamBuilder(readLength=12, baseQuality=30)
+    def ab(name: String, cigar: String) = abBuilder.addPair(name=name, start1=100, start2=200, strand1=Plus, strand2=Minus,
+      bases1="AAAAAAAAAA", bases2="CCCCCCCCCC", cigar1=cigar, attrs=Map(MI -> "foo/A"))
+    def ba(name: String, cigar: String) = baBuilder.addPair(name=name, start1=200, start2=100, strand1=Minus, strand2=Plus,
+      bases1="CCCCCCCCCCCC", bases2="AAAAAAAAAAAA", cigar2=cigar, attrs=Map(MI -> "foo/B"))
+    Range(0, 6).foreach(i => ab(s"ab_ref$i", "10M"))
+    Range(0, 9).foreach(i => ab(s"ab_ins$i", "5M1I4M"))
+    Range(0, 4).foreach(i => ba(s"ba_ref$i", "12M"))
+    Range(0, 1).foreach(i => ba(s"ba_ins$i", "5M1I6M"))
+
+    // Both alignments have 10 reads; the reference alignment has 6 AB and 4 BA, the insertion 9 AB and 1 BA
+    val r1 = c.consensusReadsFromSamRecords(abBuilder.toSeq ++ baBuilder.toSeq).find(_.firstOfPair).value
+    r1[Int](ConsensusTags.PerRead.AbRawReadCount) shouldBe 6
+    r1[Int](ConsensusTags.PerRead.BaRawReadCount) shouldBe 4
+  }
+
   it should "not saturate the qualities with deep AB and light BA coverage" in {
     val builder = new SamBuilder(readLength=10, baseQuality=20)
     Range.inclusive(1, 50) foreach { i =>
