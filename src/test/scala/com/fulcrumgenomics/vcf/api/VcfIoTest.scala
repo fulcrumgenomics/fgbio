@@ -360,6 +360,25 @@ class VcfIoTest extends UnitSpec with OptionValues {
     source.safelyClose()
   }
 
+  it should "write and index a VCF whose header has no contig lines" in {
+    val header  = VcfIoTest.Header.copy(contigs=IndexedSeq.empty)
+    val alleles = AlleleSet(ref=Allele("A"), alts=IndexedSeq(Allele("C")))
+    val variant = Variant(chrom="chr1", pos=100, alleles=alleles, genotypes=Map("s1" -> Genotype(alleles, "s1", alleles.toIndexedSeq)))
+    Seq(VcfExtension, VcfGzExtension).foreach { ext =>
+      val output = makeTempFile(getClass.getSimpleName, ext)
+      val writer = VcfWriter(output, header)
+      writer.write(variant)
+      writer.close()
+      VcfSource(output).map(v => (v.chrom, v.pos)).toSeq shouldBe Seq(("chr1", 100))
+
+      // the index was written, so the VCF can be queried
+      val source = VcfSource(output)
+      source.isQueryable shouldBe true
+      source.query("chr1", 1, 200).map(_.pos).toSeq shouldBe Seq(100)
+      source.safelyClose()
+    }
+  }
+
   it should "write a VCF at the version its header declares" in {
     val output = makeTempFile(getClass.getSimpleName, VcfExtension)
     VcfWriter(output, VcfIoTest.Header.copy(version = Some(VcfVersion.V4_3))).close()
