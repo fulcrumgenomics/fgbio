@@ -52,9 +52,6 @@ class MakeTwoSampleMixtureVcfTest extends UnitSpec {
   addVariant(200, _A, _C, _T, _A, _C) // should be no-called for tri-allelic
   addVariant(300, _A, _N, _N, _A, _C) // should be no-called for missing_gt
 
-  /** True if the variant has a filter other than PASS. */
-  private def isFiltered(variant: Variant): Boolean = !variant.filters.forall(Variant.PassingFilters.contains)
-
   /** Gets the single allele fraction of the tumor genotype. */
   private def tumorAf(variant: Variant): Double = variant.gt("tumor")[Seq[Float]]("AF").head.toString.toDouble
 
@@ -70,45 +67,45 @@ class MakeTwoSampleMixtureVcfTest extends UnitSpec {
     reader.header.samples.size shouldBe 1
 
     variants(0).pos shouldBe 20
-    isFiltered(variants(0)) shouldBe false
+    variants(0).isFiltered shouldBe false
     variants(0).alleles.ref.value shouldBe _A
     variants(0).gt("tumor").gtWithBases shouldBe "A/C"
     tumorAf(variants(0)) shouldBe 0.5
 
     variants(1).pos shouldBe 30
-    isFiltered(variants(1)) shouldBe false
+    variants(1).isFiltered shouldBe false
     variants(1).alleles.ref.value shouldBe _A
     variants(1).gt("tumor").gtWithBases shouldBe "A/C"
     tumorAf(variants(1)) shouldBe 0.6
 
     variants(2).pos shouldBe 40
-    isFiltered(variants(2)) shouldBe false
+    variants(2).isFiltered shouldBe false
     variants(2).alleles.ref.value shouldBe _A
     variants(2).gt("tumor").gtWithBases shouldBe "A/C"
     tumorAf(variants(2)) shouldBe 0.4
 
     variants(3).pos shouldBe 50
-    isFiltered(variants(3)) shouldBe false
+    variants(3).isFiltered shouldBe false
     variants(3).alleles.ref.value shouldBe _A
     variants(3).gt("tumor").gtWithBases shouldBe "A/C"
     tumorAf(variants(3)) shouldBe 0.8
 
     variants(4).pos shouldBe 60
-    isFiltered(variants(4)) shouldBe false
+    variants(4).isFiltered shouldBe false
     variants(4).alleles.ref.value shouldBe _A
     variants(4).gt("tumor").gtWithBases shouldBe "C/C"
     tumorAf(variants(4)) shouldBe 1.0
 
     variants(5).pos shouldBe 100
-    isFiltered(variants(5)) shouldBe true
+    variants(5).isFiltered shouldBe true
     variants(5).filters.contains(MakeTwoSampleMixtureVcf.MultiAllelicFilter) shouldBe true
 
     variants(6).pos shouldBe 200
-    isFiltered(variants(6)) shouldBe true
+    variants(6).isFiltered shouldBe true
     variants(6).filters.contains(MakeTwoSampleMixtureVcf.MultiAllelicFilter) shouldBe true
 
     variants(7).pos shouldBe 300
-    isFiltered(variants(7)) shouldBe true
+    variants(7).isFiltered shouldBe true
     variants(7).filters.contains(MakeTwoSampleMixtureVcf.UnknownGtFilter) shouldBe true
   }
 
@@ -119,7 +116,7 @@ class MakeTwoSampleMixtureVcfTest extends UnitSpec {
     val variants = VcfSource(out).toIndexedSeq
     val variant = variants.find(_.pos == 300).getOrElse(fail("Could not find expected variant"))
 
-    isFiltered(variant) shouldBe false
+    variant.isFiltered shouldBe false
     tumorAf(variant) shouldBe 0.25
   }
 
@@ -135,7 +132,7 @@ class MakeTwoSampleMixtureVcfTest extends UnitSpec {
     Seq(20, 40, 50, 60, 300).map(pos => variants.find(_.pos == pos)).foreach {
       case None => fail("Missing variant.")
       case Some(v) =>
-        isFiltered(v) shouldBe true
+        v.isFiltered shouldBe true
         v.filters.contains(MakeTwoSampleMixtureVcf.GermlineFilter) shouldBe true
     }
   }
@@ -203,5 +200,55 @@ class MakeTwoSampleMixtureVcfTest extends UnitSpec {
     v40.filters shouldBe Set(MakeTwoSampleMixtureVcf.GermlineFilter, MakeTwoSampleMixtureVcf.UnknownGtFilter)
     v40.gt("tumor").isNoCall shouldBe true
     v40.gt("normal").gtWithBases shouldBe "A/C"
+  }
+
+  Seq(".vcf.gz", ".bcf").foreach { extension =>
+    it should s"preserve a symbolic deletion's span but discard unrelated INFO in $extension output" in {
+      val in = VcfBuilder(Seq("s1", "s2"))
+        .withInfoHeaders(
+          VcfInfoHeader(id="END", count=VcfCount.Fixed(1), kind=VcfFieldType.Integer, description="End position."),
+          VcfInfoHeader(id="OTHER", count=VcfCount.Fixed(1), kind=VcfFieldType.Integer, description="Unrelated field.")
+        )
+        .add(chrom="chr1", pos=290, alleles=Seq("A", "<DEL>"), info=Map("END" -> 320, "OTHER" -> 7),
+          gts=Seq(Gt(sample="s1", gt="0/1"), Gt(sample="s2", gt="0/0")))
+        .toTempFile()
+      val out = makeTempFile("mixture.", extension)
+      new MakeTwoSampleMixtureVcf(input=in, output=out, tumor="s1", normal="s2").execute()
+
+      val source = VcfSource(out)
+      try {
+        val IndexedSeq(variant) = source.iterator.toIndexedSeq
+        variant.pos shouldBe 290
+        variant.end shouldBe 320
+        variant.attrs.keySet shouldBe Set("END")
+        // Query beyond POS to check the stored span and index, including the BCF record's span.
+        source.query("chr1", 310, 310).map(_.pos).toIndexedSeq shouldBe IndexedSeq(290)
+      }
+      finally source.close()
+    }
+  }
+
+  it should "mix the alt allele the two samples carry, even when it is not the variant's first alt allele" in {
+    val in = VcfBuilder(Seq("s1", "s2"))
+      .add(pos=10, alleles=Seq("A", "C", "G"), gts=Seq(Gt(sample="s1", gt="0/2"), Gt(sample="s2", gt="0/0")))
+      .add(pos=20, alleles=Seq("A", "C", "G"), gts=Seq(Gt(sample="s1", gt="2/2"), Gt(sample="s2", gt="2/2")))
+      .add(pos=30, alleles=Seq("A", "C", "G", "T"), gts=Seq(Gt(sample="s1", gt="0/1"), Gt(sample="s2", gt="0/0")))
+      .toTempFile()
+    val out = makeTempFile("mixture.", ".vcf.gz")
+    new MakeTwoSampleMixtureVcf(input=in, output=out, tumor="s1", normal="s2", tumorFraction=0.5).execute()
+
+    val Seq(v10, v20, v30) = VcfSource(out).toIndexedSeq
+    v10.filters shouldBe Set("PASS")
+    v10.gt("tumor").gtWithBases shouldBe "A/G"
+    v10.gt("tumor")[Seq[Float]]("AF") should contain theSameElementsInOrderAs Seq(0f, 0.25f)
+    v10.gt("normal").gtWithBases shouldBe "A/A"
+
+    v20.filters shouldBe Set(MakeTwoSampleMixtureVcf.GermlineFilter)
+    v20.gt("tumor").gtWithBases shouldBe "G/G"
+    v20.gt("tumor")[Seq[Float]]("AF") should contain theSameElementsInOrderAs Seq(0f, 1f)
+
+    v30.filters shouldBe Set("PASS")
+    v30.gt("tumor").gtWithBases shouldBe "A/C"
+    v30.gt("tumor")[Seq[Float]]("AF") should contain theSameElementsInOrderAs Seq(0.25f, 0f, 0f)
   }
 }

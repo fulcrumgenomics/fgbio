@@ -27,8 +27,9 @@ package com.fulcrumgenomics.vcf
 import com.fulcrumgenomics.FgBioDef._
 import com.fulcrumgenomics.testing.VcfBuilder.Gt
 import com.fulcrumgenomics.testing.{UnitSpec, VcfBuilder}
+import com.fulcrumgenomics.util.Io
 import com.fulcrumgenomics.vcf.MakeMixtureVcf.Sample
-import com.fulcrumgenomics.vcf.api.{Allele, Variant, VcfFormatHeader, VcfSource}
+import com.fulcrumgenomics.vcf.api.{Allele, Variant, VcfContigHeader, VcfCount, VcfFieldType, VcfFilterHeader, VcfFormatHeader, VcfGeneralHeader, VcfInfoHeader, VcfSource}
 
 import scala.collection.mutable
 
@@ -158,15 +159,16 @@ class MakeMixtureVcfTest extends UnitSpec {
     an[Exception] should be thrownBy { mixer.updateAlleleFractionsForSample(variant, Sample("s2", 0.5), fractions) }
   }
 
-  "MakeMixtureVcf.subsetToSamples" should "keep only the genotypes of the samples, and the alleles called in them" in {
-    val variant = builder("s1", "s2", "s3")
-      .add(pos=10, alleles=Seq("A", "C", "G", "T"), gts=Seq(Gt(sample="s1", gt="0/3"), Gt(sample="s2", gt="./."), Gt(sample="s3", gt="1/2")))
+  it should "treat a genotype with a spanning deletion as heterozygous when given a single AF value" in {
+    val variant = builder("s1")
+      .add(pos=10, alleles=Seq("A", "*"), gts=Seq(Gt(sample="s1", gt="A/*", attrs=Map("AF" -> 0.4))))
       .iterator.next()
-    val subset = MakeMixtureVcf.subsetToSamples(variant, Set("s1", "s2"))
-    subset.alleles.toSeq.map(_.value) should contain theSameElementsInOrderAs Seq("A", "T")
-    subset.genotypes.keySet shouldBe Set("s1", "s2")
-    subset.gt("s1").gtWithBases shouldBe "A/T"
-    subset.gt("s2").isNoCall shouldBe true
+    val mixer     = new MakeMixtureVcf(input=dummyVcf, output=dummyVcf, outputSampleName="mix", alleleFractionField=Some("AF"))
+    val fractions = emptyFractions(variant)
+
+    mixer.updateAlleleFractionsForSample(variant, Sample("s1", 1.0), fractions)
+    fractions(Allele("A")) shouldBe 0.6 +- 1e-9
+    fractions(Allele("*")) shouldBe 0.4 +- 1e-9
   }
 
   Seq(true, false).foreach { noCallsAreHomRef =>
@@ -266,6 +268,59 @@ class MakeMixtureVcfTest extends UnitSpec {
         v50.filters shouldBe Set("LowQD", MakeMixtureVcf.UnknownGtFilter)
         v50.gt("mix").isNoCall shouldBe true
       }
+    }
+  }
+
+  it should "replace the input's definitions of the header lines it adds" in {
+    val in = VcfBuilder(Seq("s1", "s2"))
+      .withFormatHeaders(VcfFormatHeader(MakeMixtureVcf.AlleleFractionField, VcfCount.Fixed(1), VcfFieldType.Float, "A different AF."))
+      .withFilterHeaders(VcfFilterHeader(MakeMixtureVcf.UnknownGtFilter, "A different filter."))
+      .add(pos=10, alleles=Seq("A", "C", "G"), gts=Seq(Gt(sample="s1", gt="0/1"), Gt(sample="s2", gt="0/2")))
+      .toTempFile()
+    val out = makeTempFile("mixture.", ".vcf")
+    new MakeMixtureVcf(input=in, output=out, outputSampleName="mix").execute()
+
+    val source = VcfSource(out)
+    source.header.format(MakeMixtureVcf.AlleleFractionField).count shouldBe VcfCount.OnePerAltAllele
+    source.header.filter(MakeMixtureVcf.UnknownGtFilter).description shouldBe MakeMixtureVcf.HeaderLines.collect { case f: VcfFilterHeader => f.description }.head
+    source.iterator.next().gt("mix")[Seq[Float]]("AF") should contain theSameElementsInOrderAs Seq(0.25f, 0.25f)
+    source.safelyClose()
+  }
+
+  it should "write the allele fractions with the requested precision" in {
+    val in = VcfBuilder(Seq("s1", "s2", "s3"))
+      .add(pos=10, alleles=Seq("A", "C"), gts=Seq(Gt(sample="s1", gt="0/1"), Gt(sample="s2", gt="0/0"), Gt(sample="s3", gt="0/0")))
+      .toTempFile()
+    Seq(2 -> "0.17", 5 -> "0.16667").foreach { case (precision, expected) =>
+      val out = makeTempFile("mixture.", ".vcf")
+      new MakeMixtureVcf(input=in, output=out, outputSampleName="mix", precision=precision).execute()
+      val record = Io.readLines(out).filterNot(_.startsWith("#")).next().split('\t')
+      record(8) shouldBe "GT:AF"
+      record(9) shouldBe s"0/1:$expected"
+    }
+  }
+
+  "MakeMixtureVcf.makeWriter" should "add the given INFO, FORMAT and FILTER lines, replacing any of the same ID in the input" in {
+    val input = VcfBuilder(Seq("s1"))
+      .withInfoHeaders(VcfInfoHeader("XX", VcfCount.Fixed(1), VcfFieldType.String, "The input's XX."))
+      .header
+    val info  = VcfInfoHeader("XX", VcfCount.Fixed(1), VcfFieldType.Integer, "Our XX.")
+    val out   = makeTempFile("mixture.", ".vcf")
+    MakeMixtureVcf.makeWriter(out, input, MakeMixtureVcf.HeaderLines :+ info, "mix").close()
+
+    val source = VcfSource(out)
+    source.header.info("XX") shouldBe info
+    source.header.format(MakeMixtureVcf.AlleleFractionField).description shouldBe "Alt allele fraction."
+    source.header.filter.contains(MakeMixtureVcf.UnknownGtFilter) shouldBe true
+    source.header.samples should contain theSameElementsInOrderAs Seq("mix")
+    source.safelyClose()
+  }
+
+  it should "fail if given a header line other than an INFO, FORMAT or FILTER line" in {
+    val input = VcfBuilder(Seq("s1")).header
+    Seq(VcfContigHeader(index=0, name="chrX"), VcfGeneralHeader("ALT", "DEL")).foreach { line =>
+      val ex = intercept[IllegalArgumentException] { MakeMixtureVcf.makeWriter(makeTempFile("mixture.", ".vcf"), input, Seq(line), "mix") }
+      ex.getMessage should include ("Only INFO, FORMAT and FILTER entries")
     }
   }
 }
