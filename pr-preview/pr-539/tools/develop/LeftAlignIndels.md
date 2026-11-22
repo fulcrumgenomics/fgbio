@@ -50,14 +50,18 @@ already uses `=` and `X` operators keeps its CIGAR when no indel is moved.
 
 Mate information (e.g. the MC tag and insert size) is reset for all primary and supplementary reads, including
 those whose alignment did not change.  The mate start, insert size, and MC tag of secondary reads are updated from
-their mate's primary alignment, and the positions and CIGARs in SA tags are updated.  An SA tag entry is updated only when
-exactly one alignment of the template matches it, otherwise it is left unchanged and counted.  To do so, input that
+their mate's primary alignment, and the positions, CIGARs, and edit distances in SA tags are updated.  An SA tag
+entry is updated only when exactly one alignment of the template matches it, otherwise it is left unchanged and
+counted.  To do so, input that
 is not query name sorted or grouped is sorted into query name order, then sorted back into the input's sort order
 (if known) when written; input of unknown order is written in query name order.  Query name sorted or grouped input
 is written in the input order, except that template-coordinate grouped input is sorted again when trimming
 leading indels may have changed the template's coordinates.  Reads with an unavailable query name (`*`) are not
 grouped with other reads, so their mate information and SA tags are not updated.  Unpaired reads that share a query
-name with another unpaired read are written without updating their SA tags.
+name with another unpaired read are written without updating their SA tags, and with `--leading-indel-mode Filter`
+only those reads with a leading indel are removed.
+
+The `lA` tag is used internally, and so may not be present in the input.
 
 If the tool fails, the partially written output is removed.
 
