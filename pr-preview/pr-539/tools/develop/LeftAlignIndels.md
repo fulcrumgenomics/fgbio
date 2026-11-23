@@ -22,7 +22,8 @@ is not supported by any aligned bases before it, and GATK's `GOOD_CIGAR` read fi
 deletion.  `--leading-indel-mode` controls what is done with such an indel:
 
 - `Trim` (the default): the indel is removed.  Inserted bases are soft-clipped, and the alignment start is moved
-  past deleted bases.  The MD, NM, and UQ tags are re-computed if present.
+  past deleted bases.  The MD, NM, and UQ tags are re-computed if present.  The indel is kept if no aligned bases
+  follow it before the first reference skip (e.g. `2I10N2M`).
 - `Keep`: the indel is kept at the start of the alignment.
 - `Filter`: all records of the read's template (the read, its mate, and their secondary and supplementary records)
   are removed from the output, so that no remaining record refers to a removed one.  A read with an unavailable
@@ -63,7 +64,9 @@ only those reads with a leading indel are removed.
 
 The `lA` tag is used internally, and so may not be present in the input.
 
-If the tool fails, the partially written output is removed.
+The output, and any index, are written to a temporary directory next to the output, and moved into place only if
+the tool succeeds, so that a failed run leaves any existing output and index unchanged.  An output that is not a
+regular file (e.g. `/dev/stdout`) is written directly.
 
 ## Arguments
 
