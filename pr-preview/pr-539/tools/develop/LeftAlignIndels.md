@@ -35,12 +35,19 @@ Unmapped reads, reads without stored bases (`SEQ` of `*`), and reads with paddin
 unchanged.  Read bases stored as `=` (equal to the reference) are compared using the reference base, and are written
 as the reference base when the read's CIGAR changes.
 
-The reference bases are retrieved from the reference FASTA (`--ref`) when given.  An indexed FASTA (with a `.fai`)
-may be used with any input sort order, while a FASTA without an index may only be used with coordinate sorted
-input whose sequence dictionary lists the contigs in the same order as the FASTA.  The FASTA contig lengths must
-match the input's sequence dictionary.  Without `--ref`, the reference bases are reconstructed from each read's MD
-tag, which is then required for every mapped read that may be changed, and such reads may not have `=` read bases
-that the MD tag reports as matching the reference.
+When `--ref` is given, the entire reference FASTA is loaded into memory before processing reads.  Plain, gzip, and
+BGZF FASTAs are supported; no index is needed, and any `.fai`, `.gzi`, or `.dict` sidecars are ignored.  Every contig
+in the input's sequence dictionary must be present with the same length, even if it has no reads.  Additional FASTA
+contigs (which are read but not kept in memory) and a different contig order are allowed.  A gzip or BGZF FASTA must
+have a `.gz` or `.gzip` extension (e.g. not `.bgz`); a plain FASTA need not use a standard filename extension.  The
+reference is loaded and checked even for an empty input or one with no alignments that need changing.
+
+A human reference needs about 3.1 GB for its bases alone, plus memory for parsing, reads, and sorting buffers.
+The launcher's default heap may be too small.  Use an explicit larger heap (e.g. `fgbio -Xmx8g ...` or
+`java -Xmx8g -jar fgbio.jar ...`) as a starting point; larger references, reads, or tags may need more.
+
+Without `--ref`, the reference bases are reconstructed from each read's MD tag, which is required for every mapped
+read that may be changed.  Such reads may not have `=` read bases that the MD tag reports as matching the reference.
 
 When a read's alignment changes, its MD, NM, and UQ tags are re-computed if present, counting a base as a mismatch
 unless the read and reference bases are the same and not `N` (as samtools does).  UQ is removed if the read has no
@@ -53,16 +60,32 @@ Mate information (e.g. the MC tag and insert size) is reset for all primary and 
 those whose alignment did not change.  The mate start, insert size, and MC tag of secondary reads are updated from
 their mate's primary alignment, and the positions, CIGARs, and edit distances in SA tags are updated.  An SA tag
 entry is updated only when exactly one alignment of the template matches it, otherwise it is left unchanged and
-counted.  To do so, input that
-is not query name sorted or grouped is sorted into query name order, then sorted back into the input's sort order
-(if known) when written; input of unknown order is written in query name order.  Query name sorted or grouped input
-is written in the input order, except that template-coordinate grouped input is sorted again when trimming
-leading indels may have changed the template's coordinates.  Reads with an unavailable query name (`*`) are not
-grouped with other reads, so their mate information and SA tags are not updated.  Unpaired reads that share a query
-name with another unpaired read are written without updating their SA tags, and with `--leading-indel-mode Filter`
-only those reads with a leading indel are removed.
+counted.
 
-The `lA` tag is used internally, and so may not be present in the input.
+Records are grouped by query name before any alignments are changed.  Coordinate and template-coordinate input is
+sorted into query name order, then sorted into coordinate or template-coordinate order after repairs, in every
+leading indel mode.  These two sorts require additional memory and temporary disk space.  The template-coordinate
+order is fgbio's, so may order ties differently than the input (e.g. if sorted by samtools).  Template-coordinate
+`GO:query` is not trusted because secondary or supplementary alignments may be separated from their primary pair.
+Other query name sorted input, or `SO:unsorted GO:query` input, keeps its input order and ordering metadata.  Random
+input is re-sorted into random order.  Unknown or ordinary unsorted input is written in query name order, including
+`SO:unknown GO:query` (or `GO:query` without `SO`): the unknown sort order takes precedence over the grouping
+declaration.
+
+With `--leading-indel-mode Trim`, trimming changes the coordinates of a read's template, so in template-coordinate
+output (e.g. from `GroupReadsByUmi`) the reads of a molecule (`MI` tag) may no longer be adjacent, as required by
+the consensus callers.  Left-align indels before grouping reads by UMI, or use `Keep` or `Filter`, which do not
+change the coordinates of the reads that are written.
+
+For template-coordinate output, every retained paired record with a mapped mate must have an MC tag after repairs,
+including in `Keep` and `Filter` modes.  If one does not, the tool fails with a diagnostic instead of changing the
+output order.  Add mate CIGARs (e.g. with `samtools fixmate -m` or fgbio `SetMateInformation` on query name grouped
+input), or query name sort the input to obtain query name output.  `--allow-missing-mates` does not waive this
+requirement.
+
+Reads with an unavailable query name (`*`) are not grouped with other reads, so their mate information and SA tags
+are not updated.  Unpaired reads that share a query name with another unpaired read are written without updating
+their SA tags, and with `--leading-indel-mode Filter` only those reads with a leading indel are removed.
 
 The output, and any index, are written to a temporary directory next to the output, and moved into place only if
 the tool succeeds, so that a failed run leaves any existing output and index unchanged.  An output that is not a
@@ -74,7 +97,7 @@ regular file (e.g. `/dev/stdout`) is written directly.
 |----|----|----|-----------|---------|---------------|----------------|
 |input|i|PathToBam|Input BAM file.|Required|1||
 |output|o|PathToBam|Output BAM file.|Required|1||
-|ref|r|PathToFasta|Reference sequence FASTA file, indexed unless the input is coordinate sorted.  If not given, the MD tag is used.|Optional|1||
+|ref|r|PathToFasta|Reference sequence FASTA file, loaded entirely into memory without requiring an index.  If not given, the MD tag is used.|Optional|1||
 |allow-missing-mates|x|Boolean|If specified, do not fail when reads marked as paired are missing their mate pairs.|Optional|1|false|
 |use-equals-and-x||Boolean|Use match (=) and mismatch (X) SAM CIGAR operators instead of match-or-mismatch (M).|Optional|1|false|
 |leading-indel-mode|l|LeadingIndelMode|What to do with an indel at the start of a read's alignment: trim it from the alignment, keep it, or filter the read's template.|Optional|1|Trim|
