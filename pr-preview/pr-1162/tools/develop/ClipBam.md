@@ -57,7 +57,7 @@ The order of operations for clipping is:
 |metrics|m|FilePath|Optional output of clipping metrics.|Optional|1||
 |ref|r|PathToFasta|Reference sequence fasta file.|Required|1||
 |clipping-mode|c|ClippingMode|The type of clipping to perform.|Optional|1|Hard|
-|auto-clip-attributes|a|Boolean|Automatically clip extended attributes that are the same length as bases.|Optional|1|false|
+|auto-clip-attributes|a|Boolean|Automatically clip extended attributes that are the same length as bases, except listed tags that are not per-base data for the read, such as RG.|Optional|1|false|
 |upgrade-clipping|H|Boolean|Upgrade all existing clipping in the input to the given clipping mode prior to applying any other clipping criteria.|Optional|1|false|
 |read-one-five-prime||Int|Require at least this number of bases to be clipped on the 5' end of R1|Optional|1|0|
 |read-one-three-prime||Int|Require at least this number of bases to be clipped on the 3' end of R1|Optional|1|0|
