@@ -59,8 +59,10 @@ already uses `=` and `X` operators keeps its CIGAR when no indel is moved.
 Mate information (e.g. the MC tag and insert size) is reset for all primary and supplementary reads, including
 those whose alignment did not change.  The mate start, insert size, and MC tag of secondary reads are updated from
 their mate's primary alignment, and the positions, CIGARs, and edit distances in SA tags are updated.  An SA tag
-entry is updated only when exactly one alignment of the template matches it, otherwise it is left unchanged and
-counted.
+entry is matched against the original start and CIGAR, accepting exact CIGARs and minimap2-style summaries
+(end clips, the smaller of the aligned query and reference spans as M, then any net I or D).  Hard and soft clips,
+and M versus =/X, are treated equivalently.  An entry is updated only when exactly one alignment of the template
+matches either form, otherwise it is left unchanged and counted.
 
 Records are grouped by query name before any alignments are changed.  Coordinate and template-coordinate input is
 sorted into query name order, then sorted into coordinate or template-coordinate order after repairs, in every
@@ -87,9 +89,12 @@ Reads with an unavailable query name (`*`) are not grouped with other reads, so 
 are not updated.  Unpaired reads that share a query name with another unpaired read are written without updating
 their SA tags, and with `--leading-indel-mode Filter` only those reads with a leading indel are removed.
 
-The output, and any index, are written to a temporary directory next to the output, and moved into place only if
-the tool succeeds, so that a failed run leaves any existing output and index unchanged.  An output that is not a
-regular file (e.g. `/dev/stdout`) is written directly.
+The output and any index are staged next to the output, then published with separate file moves.  Existing output
+and discoverable indexes are backed up until all moves succeed; caught publication errors restore them.  If a
+restore itself fails, the original error includes the restore errors and the staging directories retain recoverable
+backups.  Uncaught failures, including interruption, also retain recovery files.  Publication is not atomic across
+files or protected against process crashes, and concurrent readers may
+observe intermediate states.  An output that is not a regular file (e.g. `/dev/stdout`) is written directly.
 
 ## Arguments
 
