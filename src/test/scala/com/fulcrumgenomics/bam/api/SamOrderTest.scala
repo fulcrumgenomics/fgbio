@@ -30,7 +30,7 @@ import com.fulcrumgenomics.testing.SamBuilder.{Minus, Plus}
 import com.fulcrumgenomics.testing.{SamBuilder, UnitSpec}
 import htsjdk.samtools.SAMFileHeader.{GroupOrder, SortOrder}
 import htsjdk.samtools.util.Murmur3
-import htsjdk.samtools.{SAMFileHeader, SAMRecordCoordinateComparator, SAMRecordQueryNameComparator}
+import htsjdk.samtools.{SAMFileHeader, SAMReadGroupRecord, SAMRecordCoordinateComparator, SAMRecordQueryNameComparator}
 
 import java.util.Random
 import scala.collection.mutable.ListBuffer
@@ -227,6 +227,72 @@ class SamOrderTest extends UnitSpec {
       recs.take(4).map(_.apply[String]("MI")) should contain theSameElementsInOrderAs (seq(2, "1/A") ++ seq(2, "2/A"))
       recs.drop(4).map(_.apply[String]("MI")) should contain theSameElementsInOrderAs (seq(2, "1/A") ++ seq(2, "2/A"))
     }
+  }
+
+  it should "sort by library, then cell barcode, before molecular identifier and name" in {
+    val builder = new SamBuilder(readLength=10)
+    builder.header.getReadGroups.get(0).setLibrary("libA")
+    val rgB = new SAMReadGroupRecord("B")
+    rgB.setLibrary("libB")
+    rgB.setSample("Sample")
+    builder.header.addReadGroup(rgB)
+
+    builder.addPair(name="q1", start1=100, start2=200, attrs=Map("RG" -> "B", "CB" -> "AAAA", "MI" -> "1"))
+    builder.addPair(name="q2", start1=100, start2=200, attrs=Map("CB" -> "BBBB", "MI" -> "2"))
+    builder.addPair(name="q3", start1=100, start2=200, attrs=Map("RG" -> "B", "CB" -> "AAAA", "MI" -> "1"))
+    builder.addPair(name="q4", start1=100, start2=200, attrs=Map("CB" -> "AAAA", "MI" -> "3"))
+
+    val actual = builder.toSeq.sortBy(r => SamOrder.TemplateCoordinate.sortkey(r)).map(_.id)
+    // libA (q2, q4) before libB (q1, q3); within libA, CB AAAA (q4) before CB BBBB (q2) despite q4's larger MI
+    actual should contain theSameElementsInOrderAs Seq("q4/1", "q4/2", "q2/1", "q2/2", "q1/1", "q1/2", "q3/1", "q3/2")
+  }
+
+  it should "sort reverse-strand templates before forward-strand templates at the same position" in {
+    val builder = new SamBuilder(readLength=10)
+    // Both fragments have their 5' end at position 100; the forward one has the earlier name
+    builder.addFrag(name="a", start=100, strand=Plus)
+    builder.addFrag(name="b", start=91, strand=Minus)
+
+    val actual = builder.toSeq.sortBy(r => SamOrder.TemplateCoordinate.sortkey(r)).map(_.name)
+    actual should contain theSameElementsInOrderAs Seq("b", "a")
+  }
+
+  it should "sort templates whose upper end is on the reverse strand before those on the forward strand" in {
+    val builder = new SamBuilder(readLength=10)
+    // Both pairs have a forward lower end at 100 and an upper end whose 5' position is 200; the pair with the
+    // forward upper end has the earlier name
+    builder.addPair(name="a", start1=100, start2=200, strand1=Plus, strand2=Plus)
+    builder.addPair(name="b", start1=100, start2=191, strand1=Plus, strand2=Minus)
+
+    val actual = builder.toSeq.sortBy(r => SamOrder.TemplateCoordinate.sortkey(r)).map(_.id)
+    actual should contain theSameElementsInOrderAs Seq("b/1", "b/2", "a/1", "a/2")
+  }
+
+  it should "ignore the strand flag of an unmapped end" in {
+    val builder = new SamBuilder(readLength=10)
+    // Both pairs have a mapped forward R1 at 100 and an unmapped R2 whose strand flag differs
+    val Seq(a1, a2) = builder.addPair(name="a", start1=100, unmapped2=true, strand1=Plus, strand2=Plus)
+    val Seq(b1, b2) = builder.addPair(name="b", start1=100, unmapped2=true, strand1=Plus, strand2=Minus)
+    a2.negativeStrand shouldBe false
+    b2.negativeStrand shouldBe true
+
+    val key = SamOrder.TemplateCoordinate.sortkey
+    // Apart from the name and which end is upper, every record has the same key
+    Seq(a1, a2, b1, b2).map(r => key(r).copy(name="", isUpperOfPair=false)).distinct should have length 1
+  }
+
+  it should "sort records with no library before records with a library, as samtools does" in {
+    val builder = new SamBuilder(readLength=10)
+    // A library name that sorts before "Unknown", the default this order used to give records with no library
+    builder.header.getReadGroups.get(0).setLibrary("A")
+    val noLibrary = new SAMReadGroupRecord("B")
+    noLibrary.setSample("Sample")
+    builder.header.addReadGroup(noLibrary)
+    builder.addPair(name="a", start1=100, start2=200)
+    builder.addPair(name="b", start1=100, start2=200, attrs=Map("RG" -> "B"))
+
+    val actual = builder.toSeq.sortBy(r => SamOrder.TemplateCoordinate.sortkey(r)).map(_.id)
+    actual should contain theSameElementsInOrderAs Seq("b/1", "b/2", "a/1", "a/2")
   }
 
   it should "sort pairs by the 'lower' 5' position of the pair" in {

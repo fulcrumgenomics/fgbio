@@ -136,7 +136,7 @@ samtools sort --template-coordinate --threads 8 \
   s1.mapped.bam
 ```
 
-For data with cell barcodes, use `fgbio SortBam` instead, as `samtools sort --template-coordinate` does not yet include the cell barcode (CB tag) in its sort key (until [samtools#2314](https://github.com/samtools/samtools/pull/2314) is officially released):
+For data with cell barcodes, `samtools sort --template-coordinate` includes the cell barcode (CB tag) in its sort key from samtools 1.24 onward ([samtools#2314](https://github.com/samtools/samtools/pull/2314)).  With older samtools, use `fgbio SortBam` instead:
 
 ```bash
 fgbio -Xmx8g --async-io SortBam \
@@ -144,6 +144,8 @@ fgbio -Xmx8g --async-io SortBam \
   --sort-order TemplateCoordinate \
   --output s1.mapped.sorted.bam
 ```
+
+BAMs sorted into template-coordinate order by fgbio 4.1.1 or earlier use an older ordering which, when several libraries share a position, can split a library's UMI families into several molecules.  `GroupReadsByUmi` fails on such input; re-sort it with either command above.
 
 ### Step 1.4: Sorted BAM -> Grouped BAM
 
@@ -167,6 +169,8 @@ However:
 ### Single-Cell / Cell Barcode Data
 
 When processing data with cell barcodes (e.g. single-cell or single-nuclei sequencing), pass `--cell-tag CB` (or the appropriate tag) to `GroupReadsByUmi` and the consensus caller.  The cell barcode is expected to be the _corrected_ cell barcode.  This partitions reads by cell barcode before UMI grouping, so reads from different cells are never grouped together.  The cell barcode is validated and propagated to consensus reads.  You do not need to split your BAM by cell before running the pipeline.
+
+Template-coordinate sorting uses `CB`, including when `GroupReadsByUmi` sorts internally; it does not follow a custom `--cell-tag`.  Before grouping with a non-CB cell tag, populate `CB` consistently from that tag on every record and re-sort into template-coordinate order.  Re-sorting alone may not fix interleaved custom-tag groups when `CB` is absent or differs from the grouping value.  Preserve any original `CB` values separately if they are needed.
 
 
 ## Phase 2(a): GroupedBam -> Filtered Consensus, R&D Version

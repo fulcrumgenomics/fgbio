@@ -164,9 +164,14 @@ object SamOrder {
 
   /**
     * The sort order used by GroupReadByUmi. Sorts reads by the earlier un-soft-clipped 5' coordinate of the read
-    * pair, the higher un-soft-clipped 5' coordinate of the read pair, cellular barcode, the molecular identifier
-    * (see [[com.fulcrumgenomics.umi.ConsensusTags.MolecularId]]), read name, library, and if R1 has the lower
-    * coordinates of the pair.
+    * pair, the higher un-soft-clipped 5' coordinate of the read pair, the strand of the lower then the upper end
+    * (reverse before forward, with an unmapped end treated as forward),
+    * library, cellular barcode, the molecular identifier (see [[com.fulcrumgenomics.umi.ConsensusTags.MolecularId]]),
+    * read name, and if R1 has the lower coordinates of the pair.
+    *
+    * The fields are compared in the same order as `samtools sort --template-coordinate` (samtools 1.24 or later,
+    * which compares the cellular barcode). Comparisons within a field can differ: fgbio compares the cellular
+    * barcode and molecular identifier by length first, while samtools compares them as plain strings.
     */
   case object TemplateCoordinate extends SamOrder {
     override type A = TemplateCoordinateKey
@@ -176,15 +181,17 @@ object SamOrder {
     override val sortkey: SamRecord => A = rec => {
       val readChrom = if (rec.unmapped)     Int.MaxValue else rec.refIndex
       val mateChrom = if (rec.unpaired || rec.mateUnmapped) Int.MaxValue else rec.mateRefIndex
-      val readNeg   = rec.negativeStrand
-      val mateNeg   = if (rec.paired) rec.mateNegativeStrand else false
+      // An unmapped end has no strand: treat it as forward (as samtools does) so its 0x10/0x20 flag cannot
+      // split templates that GroupReadsByUmi considers to be at the same position
+      val readNeg   = rec.mapped && rec.negativeStrand
+      val mateNeg   = rec.paired && rec.mateMapped && rec.mateNegativeStrand
       val readPos   = if (rec.unmapped) Int.MaxValue else if (readNeg) rec.unSoftClippedEnd else rec.unSoftClippedStart
       val matePos   = {
         if (rec.unpaired || rec.mateUnmapped) Int.MaxValue
         else if (mateNeg) { rec.mateUnSoftClippedEnd.getOrElse(throw new IllegalArgumentException("Record does not have a mate cigar!")) }
         else { rec.mateUnSoftClippedStart.getOrElse(throw new IllegalArgumentException("Record does not have a mate cigar!")) }
       }
-      val lib       = Option(rec.readGroup).flatMap(rg => Option(rg.getLibrary)).getOrElse("Unknown")
+      val lib       = libraryOf(rec)
       val cid       = rec.getOrElse[String](SAMTag.CB.name, "")
       val mid       = rec.get[String](ConsensusTags.MolecularId).map { m =>
         val index: Int = m.lastIndexOf('/')
@@ -200,6 +207,12 @@ object SamOrder {
       }
     }
   }
+
+  /** The library of a record's read group, or the empty string if it has none. Used by the [[TemplateCoordinate]]
+    * sort and by grouping code that relies on each library's reads being contiguous in that order, so that both
+    * agree on which records share a library.
+    */
+  def libraryOf(rec: SamRecord): String = Option(rec.readGroup).flatMap(rg => Option(rg.getLibrary)).getOrElse("")
 
   /** Sorting key used by the [[TemplateCoordinate]] sort. */
   case class TemplateCoordinateKey(refIndex1: Int,
@@ -218,14 +231,17 @@ object SamOrder {
       if (retval == 0) retval = Integer.compare(this.refIndex2, that.refIndex2)
       if (retval == 0) retval = Integer.compare(this.pos1, that.pos1)
       if (retval == 0) retval = Integer.compare(this.pos2, that.pos2)
-      if (retval == 0) retval = this.neg1.compare(that.neg1)
-      if (retval == 0) retval = this.neg2.compare(that.neg2)
+      // Reverse strand sorts before forward strand, matching `samtools sort --template-coordinate`
+      if (retval == 0) retval = that.neg1.compare(this.neg1)
+      if (retval == 0) retval = that.neg2.compare(this.neg2)
+      // Library must precede the cell barcode, molecular identifier and read name so that all reads from one
+      // library at a given position are contiguous; GroupReadsByUmi starts a new group whenever the library changes.
+      if (retval == 0) retval = this.library.compareTo(that.library)
       if (retval == 0) retval = this.cid.length.compare(that.cid.length)
       if (retval == 0) retval = this.cid.compare(that.cid)
       if (retval == 0) retval = this.mid.length.compareTo(that.mid.length)
       if (retval == 0) retval = this.mid.compare(that.mid)
       if (retval == 0) retval = this.name.compareTo(that.name)
-      if (retval == 0) retval = this.library.compareTo(that.library)
       if (retval == 0) retval = this.isUpperOfPair.compareTo(that.isUpperOfPair)
       retval
     }

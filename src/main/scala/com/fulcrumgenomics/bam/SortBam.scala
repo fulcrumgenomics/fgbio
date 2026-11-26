@@ -43,8 +43,10 @@ import com.fulcrumgenomics.util.Io
     |   queryname together. The ordering is deterministic for any given input.
     |5. **TemplateCoordinate**: The sort order used by `GroupReadsByUmi`. Sorts reads by
     |   the earlier un-soft-clipped 5' coordinate of the read pair, the higher un-soft-clipped 5' coordinate of the
-    |   read pair, strand orientation, the cellular barcode (CB tag), the molecular identifier (MI tag), read name,
-    |   library, and if R1 has the lower coordinates of the pair.
+    |   read pair, the strand of the lower then the upper end (reverse before forward), library, the cellular
+    |   barcode (CB tag), the molecular identifier (MI tag), read name, and if R1 has the lower coordinates of the
+    |   pair.  BAMs sorted into TemplateCoordinate order by fgbio 4.1.1 or earlier use an older ordering and should
+    |   be re-sorted.
     |
     |Uses a temporary directory to buffer sets of sorted reads to disk. The number of reads kept in memory
     |affects memory use and can be changed with the `--max-records-in-ram` option.  The temporary directory

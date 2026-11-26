@@ -70,7 +70,7 @@ class DuplexConsensusCallingIntegrationTest extends UnitSpec with CaptureSystemS
     addPair(builder, "duplex1:r1:RF", start1=102, start2=3, strand1=Minus, strand2=Plus)
 
     // duplex 2: five FR read pairs and one RF read pair -> duplex from both strand (if pass filters)
-    Range.inclusive(1, 5).foreach { i => addPair(builder, s"duplex3:r$i:FR", start1=4, start2=103, strand1=Plus, strand2=Minus) }
+    Range.inclusive(1, 5).foreach { i => addPair(builder, s"duplex2:r$i:FR", start1=4, start2=103, strand1=Plus, strand2=Minus) }
     addPair(builder, "duplex2:r1:RF", start1=103, start2=4, strand1=Minus, strand2=Plus)
 
     // duplex 3: five FR read pairs and four RF read pair -> duplex from both strand (if pass filters)
