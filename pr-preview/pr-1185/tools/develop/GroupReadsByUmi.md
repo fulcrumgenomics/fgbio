@@ -55,15 +55,32 @@ Grouping of UMIs is performed by one of four strategies:
 Strategies `edit`, `adjacency`, and `paired` make use of the `--edits` parameter to control the matching of
 non-identical UMIs.
 
-By default, all UMIs must be the same length. If `--min-umi-length=len` is specified then reads that have a UMI
-shorter than `len` will be discarded, and when comparing UMIs of different lengths, the first `m` bases will be
-compared, where `m` is the number of bases in the shortest UMI being compared. The UMI length is the number of
-bases (A, C, G, T) in the UMI; reads with an N in their UMI are discarded earlier, and dashes and all other
-characters are not counted. When comparing, these other characters are removed, so the bases of a multi-segment
-UMI (e.g. `ACG-TACGT`) are compared as one sequence and the position of the dash is ignored. For the `identity`
-strategy, and for other strategies with `--edits=0`, UMIs are first split by their first `len` bases and `m` is
-computed separately for each split. This option is not implemented for reads with UMI pairs (i.e. using
-the paired assigner).
+UMIs may have different lengths, but only UMIs with the same length are compared, so reads whose UMIs have
+different lengths are never assigned to the same molecule.  For UMIs with multiple segments separated by `-`, each
+segment must have the same length (e.g. `ACGT-CCGGA` is never grouped with `ACGTC-CGGA` or `ACGT-CCGG`).  For the
+`paired` strategy, the two orientations of a UMI pair (e.g. `ACGT-CCGGA` and `CCGGA-ACGT`) are compared with
+each other as usual.
+
+If `--min-umi-length=len` is specified then reads that have fewer than `len` bases in their UMI are discarded.  The
+number of bases is the number of A, C, G and T characters in the UMI: dashes and other characters are not counted,
+and reads with an N in their UMI are discarded earlier.  The UMIs of the remaining reads are not changed, so UMIs
+of different lengths are still never grouped together. This filter supports every strategy, including `paired`,
+where bases are counted across both UMI segments.
+
+To group UMIs of different lengths together, specify `--truncate` together with `--min-umi-length=len`. Each UMI
+is truncated to the shortest prefix containing `len` bases, retaining dashes before the last kept base. Only UMIs
+whose truncated segments have the same lengths are compared. For example, at six bases `ACGTAC` and `ACGTACGT`
+both become `ACGTAC`, but `AC-GTAC` and `ACG-TAC` stay separate. A dash immediately after the last kept base is
+dropped: at eight bases `ACGTACGT-` and `ACGTACGT-AAAA` both become `ACGTACGT`. Truncation can also remove later
+segments entirely: at four bases `ACGT-ACGTAC` and `ACGTAC-GTAC` both become `ACGT`.
+
+Truncation requires `--raw-tag RX` so that the working UMIs are available to consensus callers. RX is truncated on
+both mates, and QX, when present, must match the original RX length and is truncated to the same character prefix
+(including spaces corresponding to RX dashes). When a record's RX changes and OX is absent, the original RX is
+saved in OX and the original QX, if present, in BZ (replacing any existing BZ). If OX already exists, both OX and BZ
+are left untouched. Missing qualities are never synthesized. Only `--truncate` is rejected with the `paired`
+strategy; `--min-umi-length` alone is supported. Without `--truncate`, a single warning is logged when
+`--min-umi-length` retains UMIs with different segment lengths at the same position: `--min-umi-length` is a filter only.
 
 If the `--mark-duplicates` option is given, reads will also have their duplicate flag set in the BAM file.
 Each tag-family is treated separately, and a single template within the tag family is chosen to be the "unique"
@@ -105,6 +122,7 @@ treated as a known/fixed value. The default tag is `CB`.
 |include-non-pf-reads|n|Boolean|Include non-PF reads.|Optional|1|false|
 |strategy|s|Strategy|The UMI assignment strategy.|Required|1||
 |edits|e|Int|The allowable number of edits between UMIs.|Optional|1|1|
-|min-umi-length|l|Int|The minimum UMI length. If not specified then all UMIs must have the same length, otherwise discard reads with UMIs shorter than this length and allow for differing UMI lengths. The length is the number of bases (A, C, G, T) in the UMI; dashes and all other characters are not counted, and are ignored when comparing UMIs, so the position of a dash does not matter.|Optional|1||
+|min-umi-length|l|Int|The minimum UMI length, in bases.  Discard reads whose UMI has fewer bases (A, C, G, T) than this; dashes and other characters are not counted.  UMIs are not truncated unless `--truncate` is also given, so UMIs of different lengths are still never grouped together. Supported with every strategy; paired UMIs are filtered by the total base count across both segments.|Optional|1||
+|truncate||Boolean|Truncate RX to the shortest prefix containing `--min-umi-length` bases, keeping dashes before the last kept base. Truncate matching QX qualities too, preserving originals in OX/BZ when OX is absent. Requires `--min-umi-length` and `--raw-tag RX`; not supported with the paired strategy.|Optional|1|false|
 |threads|@|Int|Number of threads to use when comparing UMIs. Only recommended for amplicon or similar data.|Optional|1|1|
 
