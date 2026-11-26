@@ -531,8 +531,8 @@ Metrics produced by `GroupReadsByUmi` to describe reads passed through UMI group
 |accepted_sam_records|Long|The number of SAM records accepted for grouping.|
 |discarded_non_pf|Long|The number of discarded non-PF SAM records.|
 |discarded_poor_alignment|Long|The number of SAM records discarded for poor alignment.|
-|discarded_ns_in_umi|Long|The number of SAM records discarded due to one or more Ns in the UMI.|
-|discarded_umis_to_short|Long|The number of SAM records discarded due to a shorter than expected UMI.|
+|discarded_ns_in_umi|Long|The number of SAM records discarded because any UMI in the template contains N/n.|
+|discarded_umis_to_short|Long|The number of SAM records discarded because any UMI in the template is too short,                               excluding templates already counted under discarded_ns_in_umi.|
 
 
 ### UmiMetric

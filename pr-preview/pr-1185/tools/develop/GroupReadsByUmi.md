@@ -30,9 +30,13 @@ During grouping, reads and templates are filtered out as follows:
 
 1. Templates are filtered if all reads for the template are unmapped
 2. Templates are filtered if any non-secondary, non-supplementary read has mapping quality < `min-map-q`
-3. Templates are filtered if any UMI sequence contains one or more `N` bases
-4. Templates are filtered if `--min-umi-length` is specified and the UMI does not meet the length requirement
+3. Templates are filtered if any UMI sequence contains one or more `N` or `n` bases
+4. Templates are filtered if `--min-umi-length` is specified and any UMI does not meet the length requirement
 5. Records are filtered out if flagged as either secondary or supplementary
+
+UMI filters discard all remaining primary records of the template, including both mates of a read pair.
+Unpaired reads are single-record templates. Metrics count discarded SAM records, not templates; when a template
+has both an N-containing UMI and a short UMI, all its records are counted under the N filter only.
 
 Grouping of UMIs is performed by one of four strategies:
 
