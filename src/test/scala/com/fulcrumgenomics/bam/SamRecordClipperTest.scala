@@ -672,6 +672,36 @@ class SamRecordClipperTest extends UnitSpec with OptionValues {
     mate.cigar.toString shouldBe "69H31M"
   }
 
+  it should "fully clip a positive strand read with no reference-consuming bases that is enclosed by its mate" in {
+    // An entirely soft-clipped read: nothing is left to clip on the read, so only the mate is clipped
+    {
+      val (rec, mate) = pair(100, "10S", Plus, 95, "10M", Minus)
+      clipper(Soft).clipOverlappingReads(rec=rec, mate=mate) shouldBe (0, 5)
+      rec.start shouldBe 100
+      rec.cigar.toString shouldBe "10S"
+      mate.start shouldBe 100
+      mate.cigar.toString shouldBe "5S5M"
+    }
+    // A read with only soft-clipped and inserted bases: the inserted bases are clipped, unmapping the read
+    {
+      val (rec, mate) = pair(100, "5S5I", Plus, 95, "10M", Minus)
+      clipper(Soft).clipOverlappingReads(rec=rec, mate=mate) shouldBe (5, 5)
+      rec.unmapped shouldBe true
+      mate.start shouldBe 100
+      mate.cigar.toString shouldBe "5S5M"
+    }
+    // A read left with only an insertion after clipping its 5' end (e.g. with ClipBam --read-one-five-prime)
+    {
+      val (rec, mate) = pair(100, "11M5I", Plus, 100, "16M", Minus)
+      clipper(Soft).clip5PrimeEndOfRead(rec, 11) shouldBe 11
+      rec.cigar.toString shouldBe "11S5I"
+      clipper(Soft).clipOverlappingReads(rec=rec, mate=mate) shouldBe (5, 11)
+      rec.unmapped shouldBe true
+      mate.start shouldBe 111
+      mate.cigar.toString shouldBe "11S5M"
+    }
+  }
+
   it should "clip reads that overlap with one end having a deletion" in {
     val (rec, mate) = pair(1, "60M10D40M", Plus, 50, "10M10D80M10D10M", Minus)
     clipper(Soft).clipOverlappingReads(rec=rec, mate=mate) shouldBe (25, 26)

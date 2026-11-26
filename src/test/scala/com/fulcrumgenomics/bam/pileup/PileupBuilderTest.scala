@@ -188,6 +188,51 @@ class PileupBuilderTest extends UnitSpec {
       piler.safelyClose()
     }
 
+    it should "pile up a skipped reference position as a deletion entry at the base before the skip" in {
+      val builder = new SamBuilder(readLength = ReadLength, sd = Some(TestSequenceDictionary), sort = Some(Coordinate))
+      builder.addFrag(name = "q1", start = 101, cigar = "20M100N30M").foreach(_.bases = "A" * ReadLength)
+
+      val source = builder.toSource
+      val piler  = PileupBuilder(source, accessPattern = accessPattern, mappedPairsOnly = false)
+      val pile   = piler.pileup(Chr1, 150)
+      pile.iterator.toSeq match {
+        case Seq(entry: DeletionEntry) => entry.offset shouldBe 19 // the last base before the skip
+        case entries                   => fail(s"Expected a single deletion entry, found: $entries")
+      }
+      source.safelyClose()
+      piler.safelyClose()
+    }
+
+    it should "raise an exception when piling up a deletion at the end of an alignment" in {
+      val builder = new SamBuilder(readLength = ReadLength, sd = Some(TestSequenceDictionary), sort = Some(Coordinate))
+      builder.addFrag(name = "q1", start = 101, cigar = "50M5D").foreach(_.bases = "A" * ReadLength)
+
+      val source = builder.toSource
+      val piler  = PileupBuilder(source, accessPattern = accessPattern, mappedPairsOnly = false)
+      val ex     = the[IllegalArgumentException] thrownBy piler.pileup(Chr1, 152)
+      ex.getMessage should include ("deleted or skipped at the start or end of the alignment")
+      source.safelyClose()
+      piler.safelyClose()
+    }
+
+    it should "pile up the last aligned base before a deletion, skip, or soft-clipping at the end of an alignment" in {
+      Seq("50M5D", "50M5N", "45M5S", "45M5D5S").foreach { cigar =>
+        val builder = new SamBuilder(readLength = ReadLength, sd = Some(TestSequenceDictionary), sort = Some(Coordinate))
+        builder.addFrag(name = "q1", start = 101, cigar = cigar).foreach(_.bases = "A" * ReadLength)
+
+        val source = builder.toSource
+        val piler  = PileupBuilder(source, accessPattern = accessPattern, mappedPairsOnly = false)
+        val pos    = 100 + (if (cigar.startsWith("45M")) 45 else 50)
+        withClue(s"cigar: $cigar ::") {
+          val pile = piler.pileup(Chr1, pos).pile
+          pile.length shouldBe 1
+          pile.head shouldBe a[BaseEntry]
+        }
+        source.safelyClose()
+        piler.safelyClose()
+      }
+    }
+
     it should "allow a repeated locus query for a coordinate-maintaining call" in {
       val builder = new SamBuilder(readLength = ReadLength, sd = Some(TestSequenceDictionary), sort = Some(Coordinate))
 
