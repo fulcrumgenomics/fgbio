@@ -345,20 +345,40 @@ class SamRecordClipper(val mode: ClippingMode, val autoClipAttributes: Boolean) 
 
   /** As [[numBasesExtendingPastMate]], but assumes the caller has already established that `rec` is in an FR pair. */
   private def numBasesExtendingPastMateOfFrPair(rec: SamRecord, mateUnSoftClippedStart: Int, mateUnSoftClippedEnd: Int): Int = {
-    rec.positiveStrand match {
-      case true if rec.end >= mateUnSoftClippedEnd =>
-        // positive strand record is aligned to/past the mate alignment end: count any bases aligned/soft-clipped after
-        Math.max(0, rec.length - rec.readPosAtRefPos(pos=mateUnSoftClippedEnd, returnLastBaseIfDeleted=false))
-      case true =>
-        // positive strand record alignment ends before the mate alignment end: remove any excess soft-clipped reads
-        Math.max(0, rec.cigar.trailingSoftClippedBases - (mateUnSoftClippedEnd - rec.end))
-      case false if rec.start > mateUnSoftClippedStart =>
-        // negative strand record alignment starts after the mate alignment start: remove any excess soft-clipped reads
-        Math.max(0, rec.cigar.leadingSoftClippedBases - (rec.start - mateUnSoftClippedStart))
-      case false =>
-        // negative strand record alignment starts at or before the mate start: count up to and including one base before
-        Math.max(0, rec.readPosAtRefPos(pos=mateUnSoftClippedStart, returnLastBaseIfDeleted=false) - 1)
+    // Fixed 5' clipping can move the reads' 5' ends past each other. Count the whole read on either strand when
+    // its alignment lies entirely past the mate's un-soft-clipped boundary.
+    if (rec.positiveStrand && mateUnSoftClippedEnd < rec.start) rec.length
+    else if (rec.negativeStrand && mateUnSoftClippedStart > rec.end) rec.length
+    else numBasesPastMateBoundary(rec, mateUnSoftClippedStart, mateUnSoftClippedEnd)
+  }
+
+  /** Counts the bases of an FR read that lie past its mate's boundary by walking the read's bases (excluding
+    * hard-clipped bases) in reference order, placing soft-clipped bases at the reference positions they would occupy if
+    * aligned, and an inserted base just after the reference base it follows.  A positive strand read extends past its
+    * mate for every base after the mate's end, and a negative strand read for every base before the mate's start.
+    * Unlike locating the boundary with readPosAtRefPos, this also handles a boundary that falls in a deletion of the
+    * read. */
+  private def numBasesPastMateBoundary(rec: SamRecord, mateUnSoftClippedStart: Int, mateUnSoftClippedEnd: Int): Int = {
+    var basesBefore = 0 // the number of read bases placed before the mate's start
+    var basesAfter  = 0 // the number of read bases placed after the mate's end
+    var refPos      = rec.start - rec.cigar.leadingSoftClippedBases // the reference position of the next base
+    rec.cigar.foreach { elem =>
+      elem.operator match {
+        case Op.HARD_CLIP => ()
+        case Op.INSERTION =>
+          // Inserted bases lie between `refPos - 1` and `refPos`
+          if (refPos - 1 < mateUnSoftClippedStart) basesBefore += elem.length
+          if (refPos - 1 >= mateUnSoftClippedEnd) basesAfter  += elem.length
+        case op if op.consumesReadBases() => // aligned or soft-clipped bases
+          val (first, last) = (refPos, refPos + elem.length - 1)
+          basesBefore += Math.max(0, Math.min(last, mateUnSoftClippedStart - 1) - first + 1)
+          basesAfter  += Math.max(0, last - Math.max(first, mateUnSoftClippedEnd + 1) + 1)
+          refPos += elem.length
+        case op =>
+          if (op.consumesReferenceBases()) refPos += elem.length
+      }
     }
+    if (rec.positiveStrand) basesAfter else basesBefore
   }
 
   /** Clips the reads in FR read pairs whose alignments extend beyond the far end of their mate's alignment.
@@ -380,15 +400,19 @@ class SamRecordClipper(val mode: ClippingMode, val autoClipAttributes: Boolean) 
     */
   def clipExtendingPastMateEndsOfFrPair(rec: SamRecord, mate: SamRecord): (Int, Int) = {
     if (rec.unmapped || mate.unmapped) (0, 0) else {
+      // Capture both reads' boundaries before clipping either, so that the result does not depend on which read is
+      // clipped first (e.g. clipping may unmap the first read)
+      val (recStart, recEnd)   = (rec.unSoftClippedStart, rec.unSoftClippedEnd)
+      val (mateStart, mateEnd) = (mate.unSoftClippedStart, mate.unSoftClippedEnd)
       val basesClipped1 = clipExtendingPastMateEnd(
         rec                    = rec,
-        mateUnSoftClippedStart = mate.unSoftClippedStart,
-        mateUnSoftClippedEnd   = mate.unSoftClippedEnd,
+        mateUnSoftClippedStart = mateStart,
+        mateUnSoftClippedEnd   = mateEnd,
       )
       val basesClipped2 = clipExtendingPastMateEnd(
         rec                    = mate,
-        mateUnSoftClippedStart = rec.unSoftClippedStart,
-        mateUnSoftClippedEnd   = rec.unSoftClippedEnd,
+        mateUnSoftClippedStart = recStart,
+        mateUnSoftClippedEnd   = recEnd,
       )
       (basesClipped1, basesClipped2)
     }
@@ -408,9 +432,11 @@ class SamRecordClipper(val mode: ClippingMode, val autoClipAttributes: Boolean) 
       mateUnSoftClippedStart = mateUnSoftClippedStart,
       mateUnSoftClippedEnd   = mateUnSoftClippedEnd,
     )
+    // NB: clipEndOfRead and clipStartOfRead take the total clipping including any existing hard clipping, whereas
+    // `totalClippedBases` counts only the bases still in the read
     if (totalClippedBases == 0) 0 else {
-      if (rec.positiveStrand) this.clipEndOfRead(rec, totalClippedBases)
-      else this.clipStartOfRead(rec, totalClippedBases)
+      if (rec.positiveStrand) this.clipEndOfRead(rec, rec.cigar.trailingHardClippedBases + totalClippedBases)
+      else this.clipStartOfRead(rec, rec.cigar.leadingHardClippedBases + totalClippedBases)
     }
   }
 
