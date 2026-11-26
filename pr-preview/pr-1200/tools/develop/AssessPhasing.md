@@ -33,7 +33,7 @@ chromosome will be analyzed and start/stop positions will be ignored.
 |truth-vcf|t|PathToVcf|The VCF with known phased variants.|Required|1||
 |output|o|PathPrefix|The output prefix for all output files.|Required|1||
 |known-intervals|k|PathToIntervals|The interval list over which known phased variants should be kept.|Optional|1||
-|allow-missing-fields-in-vcf-header|m|Boolean|Allow INFO and FORMAT fields that are not described in the VCF headers.  If false, reading a VCF with such a field fails.|Optional|1|true|
+|allow-missing-fields-in-vcf-header|m|Boolean|Allow INFO and FORMAT fields that are not described in the VCF headers.  If false, reading an undeclared field fails, except for FORMAT GT, AD, DP, GQ, PL and FT, which do not require header definitions.|Optional|1|true|
 |skip-mismatching-alleles|s|Boolean|Skip sites where the truth and call are both called but do not share the same alleles.|Optional|1|true|
 |intervals|l|PathToIntervals|Analyze only the given chromosomes in the interval list.  The entire chromosome will be analyzed (start and end ignored).|Optional|1||
 |modify-blocks|b|Boolean|Remove enclosed phased blocks and truncate overlapping blocks.|Optional|1|true|
