@@ -69,8 +69,8 @@ import scala.collection.mutable
   * @param minReadsPerStrand the minimum number of reads to form a single strand consensus from R1 or R2
   * @param maxReadsPerStrand the maximum number of reads to use when building a single strand consensus read before
   *                          triggering downsampling
-  * @param minDuplexLength the minimum length of the duplex region of a consensus read for the consensus read to be
-  *                        built and emitted
+  * @param minDuplexLength the minimum number of positions with non-N calls in both single-strand consensus reads,
+  *                        including disagreements, for the consensus read to be built and emitted
   * @param singleStrandQual Reduce quality scores in single stranded regions of the consensus read to the given quality
   * @param outerBasesQual Reduce the first and last `outer-base-length` bases to the given quality
   * @param outerBasesLength The number of bases at the start and end of the read to reduce quality over *if*
@@ -196,7 +196,7 @@ class CodecConsensusCaller(readNamePrefix: String,
         Nil
       }
       else {
-        // Calculate the max overlap between R1 and R2, and if it's too short then filter those reads
+        // Find the longest alignments to check their reference overlap and phase.
         val longestR1Alignment = r1s.iterator.flatMap(_.sam).maxBy(_.cigar.lengthOnTarget)
         val longestR2Alignment = r2s.iterator.flatMap(_.sam).maxBy(_.cigar.lengthOnTarget)
 
@@ -204,24 +204,31 @@ class CodecConsensusCaller(readNamePrefix: String,
           if (longestR1Alignment.positiveStrand) (longestR1Alignment, longestR2Alignment)
           else (longestR2Alignment, longestR1Alignment)
 
-        // Calculate the overlapping region in reference space; this calculation only works because we
-        // can assert from checks above that we have an FR pair that sequences towards each other.
-        val (overlapStart, overlapEnd) = (longestNegAln.start, longestPosAln.end)
+        // Calculate the overlapping region in reference space, which is the intersection of the aligned
+        // spans of the two alignments.  The checks above assert that we have an FR pair that sequences
+        // towards each other, but that does not stop the two alignments from dovetailing (each ending
+        // past the far end of the other), so the intersection must be taken rather than assumed to run
+        // from the negative strand alignment's start to the positive strand alignment's end.  Reference
+        // positions outside the intersection are aligned over by at most one of the two reads, so
+        // neither the phase check nor the consensus length below can be evaluated there. The minimum
+        // duplex length is checked separately using supported query positions in the SS consensuses.
+        val overlapStart  = Math.max(longestPosAln.start, longestNegAln.start)
+        val overlapEnd    = Math.min(longestPosAln.end, longestNegAln.end)
         val overlapLength = overlapEnd - overlapStart + 1
 
-        // If the overlap isn't long enough then reject the records and return no consensus reads
-        if (overlapLength < minDuplexLength) {
+        // Require a nonempty reference intersection before evaluating phase and consensus length.
+        if (overlapLength <= 0) {
           rejectRecords((r1s.view ++ r2s.view).flatMap(_.sam), RejectionReason.R1R2OverlapTooShort)
           Nil
         }
         else if (
           // Check that the start and end of the overlap are in phase with one another in the longest alignments -
           // i.e. that the length of the overlapping region, in query bases, is the same in both R1 and R2
-          readPosOrZero(longestR1Alignment, overlapStart, returnPriorBase=true)
-            - readPosOrZero(longestR2Alignment, overlapStart, returnPriorBase=true)
+          longestR1Alignment.readPosAtReferencePos(overlapStart, returnPriorBaseIfDeleted=true, returnPriorBaseIfSkipped=true).getOrElse(0)
+            - longestR2Alignment.readPosAtReferencePos(overlapStart, returnPriorBaseIfDeleted=true, returnPriorBaseIfSkipped=true).getOrElse(0)
             !=
-            readPosOrZero(longestR1Alignment, overlapEnd, returnPriorBase=true)
-              - readPosOrZero(longestR2Alignment, overlapEnd, returnPriorBase=true)) {
+            longestR1Alignment.readPosAtReferencePos(overlapEnd, returnPriorBaseIfDeleted=true, returnPriorBaseIfSkipped=true).getOrElse(0)
+              - longestR2Alignment.readPosAtReferencePos(overlapEnd, returnPriorBaseIfDeleted=true, returnPriorBaseIfSkipped=true).getOrElse(0)) {
           rejectRecords((r1s.view ++ r2s.view).flatMap(_.sam), RejectionReason.IndelErrorBetweenStrands)
           Nil
         }
@@ -234,7 +241,7 @@ class CodecConsensusCaller(readNamePrefix: String,
           if (longestR1Alignment.negativeStrand) r1Consensus.revcomp() else r2Consensus.revcomp()
 
           // Calculate the length of the consensus
-          computeConsensusLength(longestPosAln, longestNegAln) match {
+          computeConsensusLength(longestPosAln, longestNegAln, overlapEnd) match {
             case -1 =>
               rejectRecords((r1s.view ++ r2s.view).flatMap(_.sam), RejectionReason.IndelErrorBetweenStrands)
               Nil
@@ -251,7 +258,11 @@ class CodecConsensusCaller(readNamePrefix: String,
               val (duplexBases, duplexErrors) = computeDuplexCounts(paddedR1, paddedR2)
               val duplexErrorRate = if (duplexBases > 0) duplexErrors.toDouble / duplexBases.toDouble else 0
 
-              if (duplexErrors > this.maxDuplexDisagreements || duplexErrorRate > this.maxDuplexDisagreementRate) {
+              if (duplexBases < minDuplexLength) {
+                rejectRecords((r1s.view ++ r2s.view).flatMap(_.sam), RejectionReason.R1R2OverlapTooShort)
+                Nil
+              }
+              else if (duplexErrors > this.maxDuplexDisagreements || duplexErrorRate > this.maxDuplexDisagreementRate) {
                 rejectRecords((r1s.view ++ r2s.view).flatMap(_.sam), RejectionReason.HighDuplexDisagreement)
                 this.consensusReadsFilteredHighDisagreement += 1
                 Nil
@@ -276,30 +287,19 @@ class CodecConsensusCaller(readNamePrefix: String,
     }
   }
 
-  /** Returns the 1-based read position at the given 1-based reference position, or zero if the reference position
-    * falls outside the alignment or is not aligned to a read base.  Positions outside the alignment can occur for
-    * dovetailed pairs, where the computed overlap extends past the alignment of one of the reads.
-    *
-    * @param rec the record to query
-    * @param pos the 1-based reference position
-    * @param returnPriorBase if the reference position is deleted or skipped in the read, true to return the last read
-    *                        base aligned before the deletion or skip, false to return zero
-    */
-  private def readPosOrZero(rec: SamRecord, pos: Int, returnPriorBase: Boolean): Int = {
-    if (pos < rec.start || pos > rec.end) 0
-    else rec.readPosAtReferencePos(pos, returnPriorBaseIfDeleted=returnPriorBase, returnPriorBaseIfSkipped=returnPriorBase).getOrElse(0)
-  }
-
   /**
-    * Computes the length of the consensus read that should be generated. The provided positive and
-    * negative strand alignments _must_ overlap.
+    * Computes the length of the consensus read that should be generated.
     *
     * Returns -1 if the length couldn't be computed because the overlap of the reads ends on an indel.
+    *
+    * @param pos the positive strand alignment
+    * @param neg the negative strand alignment
+    * @param overlapEnd the last reference position that both alignments are aligned over; both alignments _must_
+    *                   span it
     */
-  private def computeConsensusLength(pos: SamRecord, neg: SamRecord): Int = {
-    val refOverlapEnd = pos.end
-    val posReadPos = readPosOrZero(pos, refOverlapEnd, returnPriorBase=false)
-    val negReadPos = readPosOrZero(neg, refOverlapEnd, returnPriorBase=false)
+  private def computeConsensusLength(pos: SamRecord, neg: SamRecord, overlapEnd: Int): Int = {
+    val posReadPos = pos.readPosAtReferencePos(overlapEnd).getOrElse(0)
+    val negReadPos = neg.readPosAtReferencePos(overlapEnd).getOrElse(0)
     if (posReadPos == 0 || negReadPos == 0) -1 else {
       posReadPos + neg.length - negReadPos
     }

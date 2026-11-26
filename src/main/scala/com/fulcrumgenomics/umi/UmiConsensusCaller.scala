@@ -81,7 +81,7 @@ object UmiConsensusCaller {
     case object NonPairedReads           extends _RejectionReason("non_paired_reads",            "Unpaired/fragment reads not supported by Duplex caller", false, true, true)
     case object SingleStrandOnly         extends _RejectionReason("single_strand_only",          "Only Generating One Strand of Duplex Consensus", false, true, true)
     case object PotentialCollision       extends _RejectionReason("potential_umi_collision",     "Potential collision between independent duplex molecules", false, true, true)
-    case object R1R2OverlapTooShort      extends _RejectionReason("r1_r2_overlap_too_short",     "Overlap between R1s and R2s too short for CODEC calling", false, false, true)
+    case object R1R2OverlapTooShort      extends _RejectionReason("r1_r2_overlap_too_short",     "No aligned R1/R2 overlap or too few duplex-supported consensus bases for CODEC calling", false, false, true)
     case object IndelErrorBetweenStrands extends _RejectionReason("indel_error_between_strands", "Indel error between top/bottom strands", false, false, true)
     case object HighDuplexDisagreement   extends _RejectionReason("high_duplex_disagreement",    "Too many errors between top/bottoms strands", false, false, true)
     case object ClipOverlapFailed        extends _RejectionReason("clip_overlap_failed",         "See https://github.com/fulcrumgenomics/fgbio/issues/1090", false, false, true)
