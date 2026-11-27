@@ -85,7 +85,11 @@ When processing data with cell barcodes (e.g. single-cell or single-nuclei seque
 controls how cell identity is incorporated into grouping. Reads at the same genomic coordinates are partitioned
 by cell barcode _before_ molecular index assignment, so reads from different cells will never be grouped together
 even if they share a UMI and mapping position. No correction is performed on the cell barcode itself; it is
-treated as a known/fixed value. The default tag is `CB`.
+treated as a known/fixed value. The default tag is `CB`. Missing and empty cell tags are grouped together.
+Template-coordinate sorting always uses `CB`, including when this tool sorts internally; it does not follow
+a custom `--cell-tag`. Before grouping with a non-CB tag, populate `CB` consistently from that tag on every
+record and re-sort. Re-sorting alone may not fix interleaved custom-tag groups when `CB` is absent or differs.
+Preserve any original `CB` values separately if they are needed.
 
 ## Arguments
 
