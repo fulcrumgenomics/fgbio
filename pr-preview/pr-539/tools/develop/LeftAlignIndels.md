@@ -51,7 +51,8 @@ read that may be changed.  Such reads may not have `=` read bases that the MD ta
 
 When a read's alignment changes, its MD, NM, and UQ tags are re-computed if present, counting a base as a mismatch
 unless the read and reference bases are the same and not `N` (as samtools does).  UQ is removed if the read has no
-base qualities.  The alignment score (AS) is not changed, even when indels are merged or trimmed.  The CIGAR uses
+base qualities.  The minimap2 cs tag is removed when the alignment edit path changes, but kept when only M versus
+=/X notation changes.  The alignment score (AS) is not changed, even when indels are merged or trimmed.  The CIGAR uses
 match (`=`) and mismatch (`X`) operators, with the same definition of a mismatch, when `--use-equals-and-x` is
 given or the read's CIGAR already uses them, otherwise match-or-mismatch (`M`) operators.  A read whose CIGAR
 already uses `=` and `X` operators keeps its CIGAR when no indel is moved.
@@ -88,13 +89,6 @@ requirement.
 Reads with an unavailable query name (`*`) are not grouped with other reads, so their mate information and SA tags
 are not updated.  Unpaired reads that share a query name with another unpaired read are written without updating
 their SA tags, and with `--leading-indel-mode Filter` only those reads with a leading indel are removed.
-
-The output and any index are staged next to the output, then published with separate file moves.  Existing output
-and discoverable indexes are backed up until all moves succeed; caught publication errors restore them.  If a
-restore itself fails, the original error includes the restore errors and the staging directories retain recoverable
-backups.  Uncaught failures, including interruption, also retain recovery files.  Publication is not atomic across
-files or protected against process crashes, and concurrent readers may
-observe intermediate states.  An output that is not a regular file (e.g. `/dev/stdout`) is written directly.
 
 ## Arguments
 
