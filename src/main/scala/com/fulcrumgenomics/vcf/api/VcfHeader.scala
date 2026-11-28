@@ -118,12 +118,52 @@ sealed trait VcfHeaderEntry {}
   * @param name the name of the contig
   * @param length the length of the contig in bases, optional
   * @param assembly the optional name of the assembly from which the contig is drawn
+  * @param md5 the optional MD5 checksum of the contig's sequence
+  * @param species the optional species from which the contig is drawn
+  * @param url the optional URL of the contig's sequence: the `URL` key of the contig line, and the `uri` of a
+  *            [[com.fulcrumgenomics.fasta.SequenceMetadata]]
   */
 case class VcfContigHeader(index: Int,
                            name: String,
                            length: Option[Int] = None,
-                           assembly: Option[String] = None
-                          ) extends VcfHeaderEntry
+                           assembly: Option[String] = None,
+                           md5: Option[String] = None,
+                           species: Option[String] = None,
+                           url: Option[String] = None
+                          ) extends VcfHeaderEntry {
+  /** Returns the contig as a sequence in a sequence dictionary, keeping its index, length, assembly, MD5, species and
+    * URL.  A contig of unknown length is given
+    * [[com.fulcrumgenomics.fasta.SequenceMetadata$.UnknownSequenceLength]]. */
+  def toSequenceMetadata: SequenceMetadata = SequenceMetadata(
+    name     = name,
+    length   = length.getOrElse(SequenceMetadata.UnknownSequenceLength),
+    index    = index,
+    assembly = assembly,
+    md5      = md5,
+    species  = species,
+    uri      = url
+  )
+}
+
+object VcfContigHeader {
+  /** Builds a contig header line from a sequence in a sequence dictionary, keeping its length, assembly, MD5, species
+    * and URL.  A sequence of unknown length is written without a length.
+    */
+  def fromSequenceMetadata(metadata: SequenceMetadata): VcfContigHeader = VcfContigHeader(
+    index    = metadata.index,
+    name     = metadata.name,
+    length   = if (metadata.length == SequenceMetadata.UnknownSequenceLength) None else Some(metadata.length),
+    assembly = metadata.assembly,
+    md5      = metadata.md5,
+    species  = metadata.species,
+    url      = metadata.uri
+  )
+
+  /** Builds the contig header lines for the sequences in a sequence dictionary (see [[fromSequenceMetadata]]). */
+  def fromSequenceDictionary(dict: SequenceDictionary): IndexedSeq[VcfContigHeader] = {
+    dict.iterator.map(fromSequenceMetadata).toIndexedSeq
+  }
+}
 
 
 /**
@@ -197,12 +237,7 @@ case class VcfHeader(contigs: IndexedSeq[VcfContigHeader],
   private[api] val sampleIndex = samples.zipWithIndex.toMap
 
   /** The contig lines represented as a SAM sequence dictionary. */
-  val dict: SequenceDictionary = {
-    val infos = contigs.map { c =>
-      SequenceMetadata(name = c.name, length = c.length.getOrElse(0))
-    }
-    SequenceDictionary(infos:_*)
-  }
+  val dict: SequenceDictionary = SequenceDictionary(contigs.map(_.toSequenceMetadata):_*)
 
   /** The INFO entries organized as a map where the key is the ID of the INFO field. */
   val info: Map[String, VcfInfoHeader]     = infos.map(i => i.id -> i).toMap
@@ -218,4 +253,53 @@ case class VcfHeader(contigs: IndexedSeq[VcfContigHeader],
 
   /** How many lines total are in the header. */
   def size: Int = entries.size
+
+  /**
+    * Returns a copy of this header with the given INFO, FORMAT and FILTER entries added.  Each entry replaces any entry
+    * of the same kind with the same ID, and is placed after this header's other entries of its kind.
+    *
+    * @param entries the INFO, FORMAT and FILTER entries to add
+    * @throws java.lang.IllegalArgumentException if any entry is a contig or other entry, which this method does not add,
+    *                                            or if two entries of the same kind have the same ID
+    */
+  def withEntries(entries: Iterable[VcfHeaderEntry]): VcfHeader = addEntries(entries, replace=true)
+
+  /**
+    * Returns a copy of this header with the given INFO, FORMAT and FILTER entries added, except for those whose ID is
+    * already used by an entry of the same kind, which are kept as they are.  New entries are placed after this header's
+    * other entries of their kind.
+    *
+    * @param entries the INFO, FORMAT and FILTER entries to add
+    * @throws java.lang.IllegalArgumentException if any entry is a contig or other entry, which this method does not add,
+    *                                            or if two entries of the same kind have the same ID
+    */
+  def withEntriesIfAbsent(entries: Iterable[VcfHeaderEntry]): VcfHeader = addEntries(entries, replace=false)
+
+  /** Adds the entries for [[withEntries]] and [[withEntriesIfAbsent]], replacing existing entries if `replace` is true. */
+  private def addEntries(entries: Iterable[VcfHeaderEntry], replace: Boolean): VcfHeader = {
+    entries.foreach {
+      case _: VcfInfoHeader | _: VcfFormatHeader | _: VcfFilterHeader => ()
+      case entry => throw new IllegalArgumentException(s"Only INFO, FORMAT and FILTER entries can be added to a header, found: $entry")
+    }
+
+    def merge[E](existing: Seq[E], added: Iterable[E], id: E => String): Seq[E] = {
+      added.groupBy(id).collectFirst { case (dup, es) if es.size > 1 => dup }.foreach { dup =>
+        throw new IllegalArgumentException(s"More than one entry of the same kind with ID $dup: ${added.filter(id(_) == dup).mkString(", ")}")
+      }
+      if (replace) {
+        val addedIds = added.iterator.map(id).toSet
+        existing.filterNot(e => addedIds.contains(id(e))) ++ added
+      }
+      else {
+        val existingIds = existing.iterator.map(id).toSet
+        existing ++ added.filterNot(e => existingIds.contains(id(e)))
+      }
+    }
+
+    this.copy(
+      infos   = merge[VcfInfoHeader](infos, entries.collect { case e: VcfInfoHeader => e }, _.id),
+      formats = merge[VcfFormatHeader](formats, entries.collect { case e: VcfFormatHeader => e }, _.id),
+      filters = merge[VcfFilterHeader](filters, entries.collect { case e: VcfFilterHeader => e }, _.id)
+    )
+  }
 }

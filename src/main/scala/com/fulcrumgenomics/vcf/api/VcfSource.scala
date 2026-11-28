@@ -45,12 +45,23 @@ import java.io.Closeable
   * FORMAT fields, which HTSJDK parses itself: an invalid value of one of these either fails with HTSJDK's error, or is
   * changed or dropped without an error.
   *
+  * If HTSJDK decodes a span not represented by INFO END or REF length (e.g. from SVLEN or FORMAT LEN), the decoded
+  * end is stored in INFO END so that writing the variant preserves its span and index coverage.
+  *
   * @param reader the underlying HTSJDK [[VCFFileReader]]
   * @param headerTransformer a method to transform the header after being read in.
+  * @param allowMissingFieldsInHeader if true, INFO and FORMAT fields that are not described in the header are read
+  *                                   as [[VcfFieldType.String]] fields of [[VcfCount.Unknown]] count (or as Boolean `true` for a flag,
+  *                                   and the INFO END field as an Int), otherwise reading a variant with such a field
+  *                                   throws an exception.  The FORMAT fields `GT`, `AD`, `DP`, `GQ`, `PL` and `FT`
+  *                                   are exempt: they are read directly without requiring header definitions
+  *                                   regardless of this setting.  HTSJDK may normalize GL to PL or discard missing
+  *                                   FORMAT values before this check.
   * @param description a description of the VCF (e.g. its path) used in error messages
   */
 class VcfSource private(private val reader: AbstractFeatureReader[VariantContext, _],
                         private val headerTransformer: VcfHeader => VcfHeader,
+                        private val allowMissingFieldsInHeader: Boolean,
                         private val description: String) extends View[Variant] with Closeable {
   /** The header associated with the VCF being read. */
   val header: VcfHeader = headerTransformer(VcfConversions.toScalaHeader(reader.getHeader.asInstanceOf[VCFHeader]))
@@ -66,7 +77,7 @@ class VcfSource private(private val reader: AbstractFeatureReader[VariantContext
   private def wrap(it: CloseableIterator[VariantContext]): VariantIterator = {
     new SelfClosingIterator(
       iter   = it.map { vc =>
-        try VcfConversions.toScalaVariant(vc, header) catch {
+        try VcfConversions.toScalaVariant(vc, header, allowMissingFieldsInHeader) catch {
           case ex: InvalidVcfValueException => throw new InvalidVcfValueException(s"${ex.getMessage} in $description", ex)
         }
       },
@@ -108,7 +119,7 @@ object VcfSource {
     * @return a VariantSource for reading from the path given
     */
   def apply(path: PathToVcf): VcfSource = {
-    this.apply(path=path, headerTransformer=identity)
+    this.apply(path=path, headerTransformer=identity, allowMissingFieldsInHeader=false)
   }
 
   /**
@@ -120,6 +131,27 @@ object VcfSource {
     * @return a VariantSource for reading from the path given
     */
   def apply(path: PathToVcf, headerTransformer: VcfHeader => VcfHeader): VcfSource = {
+    this.apply(path=path, headerTransformer=headerTransformer, allowMissingFieldsInHeader=false)
+  }
+
+  /**
+    * Manufactures a variant source for reading from the specified path.  The index, if one exists, will be
+    * auto-discovered based on the path to the VCF.
+    *
+    * @param path the path to a VCF, gzipped VCF or BCF file
+    * @param headerTransformer a method to transform the header after being read in
+    * @param allowMissingFieldsInHeader if true, INFO and FORMAT fields that are not described in the header are read
+    *                                   as [[VcfFieldType.String]] fields of [[VcfCount.Unknown]] count (or as a
+    *                                   Boolean `true` for a flag, and the INFO END field as an Int), as HTSJDK's `VCFFileReader` does,
+    *                                   otherwise reading a variant with such a field throws an exception.  The FORMAT
+    *                                   fields `GT`, `AD`, `DP`, `GQ`, `PL` and `FT` are exempt: they are read directly
+    *                                   without requiring header definitions regardless of this setting.  HTSJDK may
+    *                                   normalize GL to PL or discard missing FORMAT values before this check.
+    * @return a VariantSource for reading from the path given
+    */
+  def apply(path: PathToVcf,
+            headerTransformer: VcfHeader => VcfHeader = identity,
+            allowMissingFieldsInHeader: Boolean = false): VcfSource = {
     // NB: recognize a BCF by its name as HTSJDK does, ignoring case
     val codec  = if (VariantFileType.fromFileName(path.getFileName.toString).orElse(null) == VariantFileType.BCF) {
       new BCF2Codec
@@ -131,7 +163,7 @@ object VcfSource {
     }
 
     val reader = AbstractFeatureReader.getFeatureReader(path.toUri.toString, codec, false)
-    new VcfSource(reader, headerTransformer=headerTransformer, description=path.toString)
+    new VcfSource(reader, headerTransformer=headerTransformer, allowMissingFieldsInHeader=allowMissingFieldsInHeader, description=path.toString)
   }
 
   /** Return the only sample in the VCF source otherwise raise an exception. */

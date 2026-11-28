@@ -48,6 +48,9 @@ private[api] final class InvalidVcfValueException(message: String, cause: Throwa
   * package and should not be exposed publicly.
   */
 private[api] object VcfConversions {
+  /** The key of the INFO field giving the end position of a variant. */
+  private val EndKey: String = "END"
+
   /** Class to allow wrapping an Array into an immutable IndexedSeq without copying. */
   private class ArrayIndexedSeq[T](private val array: Array[T]) extends scala.collection.immutable.IndexedSeq[T] {
     override final def apply(i: Int): T = this.array(i)
@@ -65,9 +68,7 @@ private[api] object VcfConversions {
   /** Converts a Java VCF header into a scala VCF header. */
   def toScalaHeader(in: VCFHeader): VcfHeader = {
     val contigs = in.getContigLines.map { c =>
-      val rec = c.getSAMSequenceRecord
-      val length = if (rec.getSequenceLength == SequenceMetadata.UnknownSequenceLength) None else Some(rec.getSequenceLength)
-      VcfContigHeader(rec.getSequenceIndex, rec.getSequenceName, length, Option(rec.getAssembly))
+      VcfContigHeader.fromSequenceMetadata(SequenceMetadata(c.getSAMSequenceRecord))
     }.toIndexedSeq
 
     val infos = in.getInfoHeaderLines.toIndexedSeq.sortBy(_.getID).map { i =>
@@ -134,10 +135,14 @@ private[api] object VcfConversions {
     }
 
     in.contigs.foreach { i =>
-      val fields = new util.HashMap[String,String]()
+      // Ordered as HTSJDK writes contig lines built from a sequence dictionary
+      val fields = new util.LinkedHashMap[String,String]()
       fields.put("ID", i.name)
-      i.assembly.foreach(a => fields.put("assembly", a))
       i.length.foreach(l => fields.put("length", l.toString))
+      i.assembly.foreach(a => fields.put("assembly", a))
+      i.md5.foreach(m => fields.put("md5", m))
+      i.species.foreach(s => fields.put("species", s))
+      i.url.foreach(u => fields.put("URL", u))
       out.addMetaDataLine(new VCFContigHeaderLine(fields, i.index))
     }
 
@@ -247,10 +252,18 @@ private[api] object VcfConversions {
     * @param in the [[VariantContext]] to be converted
     * @param header the scala [[VcfHeader]] which contains the definitions of all the INFO and FORMAT
     *               fields as well as the ordered list of sample names.
+    * @param allowMissingFieldsInHeader if true, INFO and FORMAT fields not described in the header are kept as
+    *                                   [[VcfFieldType.String]] fields of [[VcfCount.Unknown]] count (or as
+    *                                   Boolean `true` for an INFO flag, and as an Int for the INFO END field),
+    *                                   otherwise an exception is thrown.  The FORMAT fields `GT`, `AD`, `DP`, `GQ`,
+    *                                   `PL` and `FT` are exempt: they are read directly without requiring header
+    *                                   definitions regardless of this setting.  HTSJDK may normalize GL to PL or discard
+    *                                   missing FORMAT values before this check.
     * @return a [[Variant]] instance that is a copy of the [[VariantContext]] and does not rely on it
-    *         post-return
+    *         post-return.  A genotype with no GT (e.g. a VCF whose FORMAT has no GT) is read as a haploid no-call,
+    *         since a [[Genotype]] has at least one call, and so is written back with a GT of `.`.
     */
-  def toScalaVariant(in: VariantContext, header: VcfHeader): Variant = try {
+  def toScalaVariant(in: VariantContext, header: VcfHeader, allowMissingFieldsInHeader: Boolean = false): Variant = try {
     // Build up the allele set
     val scalaAlleles = in.getAlleles.iterator.map(a => Allele(a.getDisplayString)).toIndexedSeq
     val alleleMap    = in.getAlleles.iterator().zip(scalaAlleles).toMap
@@ -261,7 +274,9 @@ private[api] object VcfConversions {
     forloop (from=0, until=in.getNSamples) { sampleIndex =>
       val g = in.getGenotype(sampleIndex)
 
-      val calls = {
+      // NB: a Genotype must have at least one call, so a genotype without a GT is read as a haploid no-call, and so is
+      // written back with a GT of `.`
+      val calls = if (g.getPloidy == 0) IndexedSeq(NoCallAllele) else {
         val buffer = new Array[Allele](g.getPloidy)
         val javaAlleles = g.getAlleles
         forloop (from=0, until=buffer.length) { alleleIndex =>
@@ -291,6 +306,7 @@ private[api] object VcfConversions {
                 throw new InvalidVcfValueException(s"${ex.getMessage} for FORMAT field $key of sample ${g.getSampleName} at ${in.getContig}:${in.getStart}")
               }
               typed.foreach(v => builder += (key -> v))
+            case None if allowMissingFieldsInHeader => toUndescribedValue(value).foreach(v => builder += (key -> v))
             case None     => throw new IllegalStateException(s"Format field $key not described in header.")
           }
         }
@@ -314,6 +330,13 @@ private[api] object VcfConversions {
               throw new InvalidVcfValueException(s"${ex.getMessage} for INFO field $key at ${in.getContig}:${in.getStart}")
             }
             typed.foreach(v => builder += (key -> v))
+          // NB: Variant reads END as an Int, so read an END not described in the header as one
+          case None if allowMissingFieldsInHeader && key == EndKey =>
+            val typed = try toTypedValue(value, VcfFieldType.Integer, Fixed(1)) catch { case ex: InvalidVcfValueException =>
+              throw new InvalidVcfValueException(s"${ex.getMessage} for INFO field $key at ${in.getContig}:${in.getStart}")
+            }
+            typed.foreach(v => builder += (key -> v))
+          case None if allowMissingFieldsInHeader => toUndescribedValue(value).foreach(v => builder += (key -> v))
           case None     => throw new IllegalStateException(s"INFO field $key not described in header.")
         }
       }
@@ -327,6 +350,10 @@ private[api] object VcfConversions {
       else in.getFilters.toSet
     }
 
+    // Preserve spans decoded from SVLEN or FORMAT LEN, rather than deriving them again from REF alone.
+    val scalaEnd = info.get(EndKey).map(_.asInstanceOf[Int]).getOrElse(in.getStart + alleles.ref.length - 1)
+    val attrs = if (scalaEnd == in.getEnd) info else info.updated(EndKey, in.getEnd)
+
     Variant(
       chrom     = in.getContig,
       pos       = in.getStart,
@@ -334,7 +361,7 @@ private[api] object VcfConversions {
       alleles   = alleles,
       qual      = if (in.hasLog10PError) Some(in.getPhredScaledQual) else None,
       filters   = filters,
-      attrs     = info,
+      attrs     = attrs,
       genotypes = new GenotypeMap(gts, header.sampleIndex)
     )
   }
@@ -398,6 +425,16 @@ private[api] object VcfConversions {
   }
 
   /**
+    * Converts the value of an INFO or FORMAT field that is not described in the header.  HTSJDK gives `true` for a
+    * flag, which is kept as Boolean `true` to distinguish it from [[Variant.Missing]]; any other value is treated as a [[VcfFieldType.String]] field with
+    * [[VcfCount.Unknown]] count.
+    */
+  private def toUndescribedValue(value: Any): Option[Any] = value match {
+    case _: java.lang.Boolean => Some(true)
+    case _                    => toTypedValue(value, VcfFieldType.String, VcfCount.Unknown)
+  }
+
+  /**
     * Converts a Scala [[Variant]] back into a [[VariantContext]].
     *
     * @param in the [[Variant]] instance to convert
@@ -411,7 +448,7 @@ private[api] object VcfConversions {
     in.id.foreach(i => builder.id(i))
     in.qual.foreach(q => builder.log10PError(q / -10 ))
     if (in.filters.isEmpty) builder.unfiltered() else builder.filters(in.filters.iterator.toJavaSet)
-    builder.attributes(toJavaAttributeMap(in.attrs, isBcf))
+    builder.attributes(toJavaInfoMap(in.attrs, isBcf))
 
     val genotypes = header.samples.iterator.map { s =>
       val sgt = in.genotypes(s)
@@ -434,10 +471,8 @@ private[api] object VcfConversions {
     builder.genotypes(genotypes).make()
   }
 
-  /**
-    * Converts a map of attributes from the INFO field into a java map that HTSJDK can handle (see [[toJavaValue]]).
-    */
-  private def toJavaAttributeMap(attrs: Map[String,Any], isBcf: Boolean): java.util.LinkedHashMap[String,Any] = {
+  /** Converts the INFO attributes of a variant into a java map that HTSJDK can handle (see [[toJavaValue]]). */
+  private def toJavaInfoMap(attrs: Map[String,Any], isBcf: Boolean): java.util.LinkedHashMap[String,Any] = {
     val out = new util.LinkedHashMap[String,Any]()
     attrs.foreach { case (key, value) => out.put(key, toJavaValue(value, isBcf)) }
     out

@@ -26,25 +26,29 @@ package com.fulcrumgenomics.vcf
 
 import com.fulcrumgenomics.FgBioDef._
 import com.fulcrumgenomics.fasta.SequenceDictionary
-import htsjdk.variant.variantcontext.VariantContext
-import htsjdk.variant.vcf.VCFFileReader
+import com.fulcrumgenomics.vcf.api.{Variant, VcfSource}
 
 import scala.collection.mutable
 
 object VariantMask {
-  /** Generate a variant mask from the provided VCF. */
-  def apply(path: PathToVcf): VariantMask = apply(new VCFFileReader(path))
+  /** Generate a variant mask from the provided VCF.  The mask reads the VCF lazily, one contig at a time, as it is
+    * queried, so the VCF is left open; use the overload that takes a `VcfSource` to close it once done with the mask.
+    */
+  def apply(path: PathToVcf): VariantMask = {
+    val source = VcfSource(path, allowMissingFieldsInHeader=true)
+    try apply(source) catch { case ex: Throwable => source.safelyClose(); throw ex }
+  }
 
-  /** Generate a variant mask from the provided VCF reader. */
-  def apply(reader: VCFFileReader): VariantMask = {
-    import com.fulcrumgenomics.fasta.Converters.FromSAMSequenceDictionary
-    val dict = reader.getFileHeader.getSequenceDictionary.fromSam
-    require(dict != null && dict.length > 0, "Generating a VariantMask requires VCFs contain contig lines.")
-    apply(reader.iterator(), dict)
+  /** Generate a variant mask from the provided VCF source.  The mask reads the source lazily, one contig at a time, as
+    * it is queried, so the source must not be closed until the mask is no longer queried. */
+  def apply(source: VcfSource): VariantMask = {
+    val dict = source.header.dict
+    require(dict.length > 0, "Generating a VariantMask requires VCFs contain contig lines.")
+    apply(source.iterator, dict)
   }
 
   /** Generates a VariantMask from the variants in the provided iterator. */
-  def apply(variants: Iterator[VariantContext], dict: SequenceDictionary) = new VariantMask(variants, dict)
+  def apply(variants: Iterator[Variant], dict: SequenceDictionary) = new VariantMask(variants, dict)
 }
 
 /**
@@ -55,7 +59,7 @@ object VariantMask {
   * @param variants a coordinate sorted iterator of variants
   * @param dict the sequence dictionary for the reference
   */
-class VariantMask(variants: Iterator[VariantContext], val dict: SequenceDictionary) {
+class VariantMask(variants: Iterator[Variant], val dict: SequenceDictionary) {
   private val iterator                    = variants.bufferBetter
   private var currentMask: mutable.BitSet = new mutable.BitSet(0)
   private var currentIndex: Int           = -1
@@ -71,11 +75,11 @@ class VariantMask(variants: Iterator[VariantContext], val dict: SequenceDictiona
 
     val ref  = dict(refIndex)
     val bits = new mutable.BitSet(ref.length)
-    iterator.dropWhile(v => dict(v.getContig).index < refIndex)
-      .takeWhile(v => dict(v.getContig).index == refIndex)
-      .filterNot(v => v.isFiltered)
+    iterator.dropWhile(v => dict(v.chrom).index < refIndex)
+      .takeWhile(v => dict(v.chrom).index == refIndex)
+      .filterNot(_.isFiltered)
       .foreach { v =>
-        forloop (from=v.getStart, until=v.getEnd+1) { i => bits(i-1) = true }
+        forloop (from=v.pos, until=v.end+1) { i => bits(i-1) = true }
       }
 
     this.currentMask   = bits

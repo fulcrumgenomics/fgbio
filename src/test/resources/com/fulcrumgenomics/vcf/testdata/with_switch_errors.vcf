@@ -4,11 +4,11 @@
 ##FORMAT=<ID=FT,Number=.,Type=String,Description="Genotype-level filter">
 ##FORMAT=<ID=GQ,Number=1,Type=Integer,Description="Genotype Quality">
 ##FORMAT=<ID=GT,Number=1,Type=String,Description="Genotype">
-##FORMAT=<ID=NE,Number=1,Type=Float,Description="The confidence (phred-scaled) that the SNV is not a mismatch (single SNV) error.">
+##FORMAT=<ID=NE,Number=1,Type=Float,Description="The confidence (log10) that the SNV is not a mismatch (single SNV) error.">
 ##FORMAT=<ID=PL,Number=G,Type=Integer,Description="Normalized, Phred-scaled likelihoods for genotypes as defined in the VCF specification">
 ##FORMAT=<ID=PR,Number=1,Type=Integer,Description="1 if HapCut2 pruned this variant, 0 otherwise">
 ##FORMAT=<ID=PS,Number=1,Type=Integer,Description="Phase set for the genotype (position of the first variant)">
-##FORMAT=<ID=SE,Number=1,Type=Float,Description="The confidence (phred-scaled) that there is not a switch error occurring immediately before the SNV">
+##FORMAT=<ID=SE,Number=1,Type=Float,Description="The confidence (log10) that there is not a switch error occurring immediately before the SNV">
 ##INFO=<ID=mt,Number=1,Type=String,Description="Variant Type: SUBSTITUTE/INSERT/DELETE">
 ##contig=<ID=sim_chrom,length=300000>
 #CHROM	POS	ID	REF	ALT	QUAL	FILTER	INFO	FORMAT	SIM_INDIVIDUAL

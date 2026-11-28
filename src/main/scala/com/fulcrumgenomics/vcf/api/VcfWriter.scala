@@ -63,7 +63,7 @@ object VcfWriter {
     * and indexing will not occur.
     *
     * @param path the path to write to
-    * @param header the header of the VCF
+    * @param header the header of the VCF; an INFO END definition is added if absent to support normalized spans
     * @param index if true, index the output while writing; must be false to write variants out of coordinate order
     * @param writeFullFormatField if true, write every FORMAT field of each sample, writing `.` for missing values, rather
     *                             than leaving out the trailing missing FORMAT fields of each sample
@@ -74,12 +74,21 @@ object VcfWriter {
             async: Boolean = DefaultUseAsyncIo,
             index: Boolean = true,
             writeFullFormatField: Boolean = false): VcfWriter = {
-    val javaHeader = VcfConversions.toJavaHeader(header)
+    // A reader may normalize a decoded structural-variant/reference-block span into INFO END.
+    val outputHeader = header.withEntriesIfAbsent(Seq(
+      VcfInfoHeader("END", VcfCount.Fixed(1), VcfFieldType.Integer, "End position of the variant.")
+    ))
+    val javaHeader = VcfConversions.toJavaHeader(outputHeader)
     require(!Files.isDirectory(path), s"Path cannot be a directory! Found $path")
+
+    // NB: a header with no contig lines gives an empty dictionary, which HTSJDK cannot index a block-gzipped VCF
+    // against (it needs no dictionary at all), but which it needs to index a plain-text VCF.
+    val outputType = VariantContextWriterBuilder.determineOutputTypeFromFile(path)
+    val dict       = if (header.dict.isEmpty && outputType != VariantContextWriterBuilder.OutputType.VCF) null else header.dict.toSam
 
     val builder = new VariantContextWriterBuilder()
       .setOutputPath(path)
-      .setReferenceDictionary(header.dict.toSam)
+      .setReferenceDictionary(dict)
       .setOption(Options.ALLOW_MISSING_FIELDS_IN_HEADER)
       .setBuffer(Io.bufferSize)
 
@@ -97,7 +106,6 @@ object VcfWriter {
     val writer = builder.build()
     writer.writeHeader(javaHeader)
     // NB: decide whether the output is a BCF as the writer builder does, which ignores case and follows symbolic links
-    val isBcf = VariantContextWriterBuilder.determineOutputTypeFromFile(path) == VariantContextWriterBuilder.OutputType.BCF
-    new VcfWriter(writer, header, isBcf=isBcf)
+    new VcfWriter(writer, outputHeader, isBcf=outputType == VariantContextWriterBuilder.OutputType.BCF)
   }
 }

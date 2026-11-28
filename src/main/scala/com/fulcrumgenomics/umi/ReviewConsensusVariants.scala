@@ -33,11 +33,11 @@ import com.fulcrumgenomics.commons.util.LazyLogging
 import com.fulcrumgenomics.sopt.{arg, clp}
 import com.fulcrumgenomics.umi.ReviewConsensusVariants._
 import com.fulcrumgenomics.util.{Io, Metric}
+import com.fulcrumgenomics.vcf.VariantUtil
+import com.fulcrumgenomics.vcf.api.{VcfSource, Variant => VcfVariant}
 import htsjdk.samtools.SamPairUtil.PairOrientation
 import htsjdk.samtools.reference.{ReferenceSequenceFile, ReferenceSequenceFileFactory}
 import htsjdk.samtools.util._
-import htsjdk.variant.variantcontext.VariantContext
-import htsjdk.variant.vcf.VCFFileReader
 
 import java.nio.file.Path
 import java.util.Collections
@@ -124,7 +124,8 @@ object ReviewConsensusVariants {
 @clp(group=ClpGroups.Umi, description=
   """
     |Extracts data to make reviewing of variant calls from consensus reads easier. Creates
-    |a list of variant sites from the input VCF (SNPs only) or IntervalList then extracts all
+    |a list of variant sites from the input VCF (SNPs only, including SNP sites whose alternate
+    |alleles include a spanning deletion `*`) or IntervalList then extracts all
     |the consensus reads that do not contain a reference allele at the the variant sites, and
     |all raw reads that contributed to those consensus reads.  This will include consensus
     |reads that carry the alternate allele, a third allele, a no-call or a spanning
@@ -168,7 +169,7 @@ class ReviewConsensusVariants
     f"The reference file has no sequence dictionary (use `samtools dict ${this.ref} -o  ${PathUtil.replaceExtension(this.ref, ".dict")}`)"
   )
 
-  /** Simple case class to hold the relevant information from a variant context for easy access. */
+  /** Simple case class to hold the relevant information from a VCF variant for easy access. */
   private[umi] case class Variant(chrom: String, start: Int, refBase: Char, genotype: Option[String], filters: Option[String])
   extends Locatable {
     override def getContig: String= chrom
@@ -297,19 +298,26 @@ class ReviewConsensusVariants
     val buffer = ListBuffer[Variant]()
 
     if (VcfExtensions.exists(ext => path.getFileName.toString.endsWith(ext))) {
-      val in = new VCFFileReader(path, false)
+      val in = VcfSource(path, allowMissingFieldsInHeader=true)
+      this.sample.filterNot(in.header.samples.contains).foreach { s =>
+        in.safelyClose()
+        fail(s"Sample $s not found in VCF ${path.toAbsolutePath}; samples present: ${in.header.samples.mkString(", ")}")
+      }
       val sample = this.sample.orElse {
-        if (in.getFileHeader.getSampleNamesInOrder.size() == 1) Some(in.getFileHeader.getSampleNamesInOrder.get(0))
-        else None
+        if (in.header.samples.length == 1) Some(in.header.samples.head) else None
       }
 
-      in.filter(_.isSNP).filter(v => mafFromGenotype(v, sample).forall(_ <= this.maf)).foreach { v => buffer += Variant(
-        chrom    = v.getContig,
-        start    = v.getStart,
-        refBase  = v.getReference.getBases()(0).toChar.toUpper,
-        genotype = sample.map(v.getGenotype(_).getGenotypeString),
-        filters  = if (v.isFiltered) Some(v.getFilters.toSeq.sorted.mkString(",")) else None
-      )}
+      in.filter(_.isSnp).filter(v => mafFromGenotype(v, sample).forall(_ <= this.maf)).foreach { v =>
+        val filters = v.failedFilters
+        buffer += Variant(
+          chrom    = v.chrom,
+          start    = v.pos,
+          refBase  = v.alleles.ref.value.charAt(0).toUpper,
+          // NB: a genotype with no GT is read as a haploid no-call, so is given as `.`
+          genotype = sample.map(v.gt(_).gtWithBases),
+          filters  = if (filters.isEmpty) None else Some(filters.toSeq.sorted.mkString(","))
+        )
+      }
       in.close()
     }
     else {
@@ -323,17 +331,23 @@ class ReviewConsensusVariants
   }
 
   /** Attempts to determine the minor allele fraction from a VCF genotype object. */
-  private def mafFromGenotype(ctx: VariantContext, sample: Option[String]): Option[Double] = sample match {
-    case None    => None
-    case Some(s) =>
-      val gt = ctx.getGenotype(s)
-      Option(gt.getExtendedAttribute("AF")) match {
-        case Some(af) => Some(af.asInstanceOf[String].toDouble)
-        case None =>
-          val ad = gt.getAD
-          if (ad == null || ad.isEmpty) None
-          else Some (1 - ad(0) / ad.sum.toDouble)
-      }
+  private def mafFromGenotype(variant: VcfVariant, sample: Option[String]): Option[Double] = sample.flatMap { s =>
+    val gt = variant.gt(s)
+    gt.get[Any]("AF") match {
+      case Some(af) => Some(alleleFractionToDouble(af, variant, s))
+      case None     => gt.get[IndexedSeq[Int]]("AD").filter(_.nonEmpty).map(ad => 1 - ad(0) / ad.sum.toDouble)
+    }
+  }
+
+  /** Converts the single value of an `AF` genotype field to a [[Double]]. */
+  private def alleleFractionToDouble(af: Any, variant: VcfVariant, sample: String): Double = {
+    VariantUtil.toDoubles(af, s"AF of sample $sample at ${variant.chrom}:${variant.pos}") match {
+      case Seq(value) => value
+      case values     =>
+        throw new IllegalArgumentException(
+          s"Expected one AF value for sample $sample at ${variant.chrom}:${variant.pos} but found: ${values.mkString(",")}"
+        )
+    }
   }
 
   /**

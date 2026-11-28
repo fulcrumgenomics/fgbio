@@ -65,6 +65,15 @@ object Variant {
   /** The set of filters that are applied to passing variants. */
   val PassingFilters: Set[String] = Set("PASS")
 
+  /** True if the allele is one base long as HTSJDK measures alleles when typing a variant (e.g. in
+    * `VariantContext.isSNP`): a single base, or a spanning deletion (`*`).  Symbolic, breakend and no-call alleles are
+    * not. */
+  private[vcf] def isOneBaseAllele(allele: Allele): Boolean = allele match {
+    case a: Allele.SimpleAllele => a.length == 1
+    case Allele.SpannedAllele   => true
+    case _                      => false
+  }
+
   // Empty collections used in default constructors
   private[api] val EmptyFilters:    Set[String]           = Set.empty
   private[api] val EmptyInfo:       ListMap[String, Any]  = ListMap.empty
@@ -129,6 +138,20 @@ final case class Variant(chrom: String,
 
   /** Returns an iterator over the genotypes for this variant. */
   def gts: Iterator[Genotype] = this.genotypes.valuesIterator
+
+  /** The filters other than `PASS` applied to the variant, empty if it passed (`PASS`) or was not filtered (`.`). */
+  def failedFilters: Set[String] = filters.filterNot(Variant.PassingFilters.contains)
+
+  /** True if the variant has a filter other than `PASS`, false if it passed (`PASS`) or was not filtered (`.`). */
+  def isFiltered: Boolean = failedFilters.nonEmpty
+
+  /**
+    * True if the variant is a SNP as HTSJDK's `VariantContext.isSNP` defines one: it has at least one alternate allele,
+    * and its reference allele and every alternate allele are one base long.  As in HTSJDK, a spanning deletion (`*`)
+    * alternate allele counts as one base, so `A *` and `A C,*` are SNPs, while `AT *` (an indel) and
+    * `A C,<NON_REF>` (a mixed site) are not.
+    */
+  def isSnp: Boolean = alleles.alts.nonEmpty && alleles.forall(Variant.isOneBaseAllele)
 
   /** Returns a [[Variant.LocatableVariant]] for this variant. */
   def toLocatable: Variant.LocatableVariant = new Variant.LocatableVariant(this)

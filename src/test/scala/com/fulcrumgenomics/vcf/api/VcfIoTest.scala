@@ -27,6 +27,7 @@ package com.fulcrumgenomics.vcf.api
 import com.fulcrumgenomics.FgBioDef.PathToVcf
 import com.fulcrumgenomics.commons.CommonsDef.SafelyClosable
 import com.fulcrumgenomics.commons.io.{Io, PathUtil}
+import com.fulcrumgenomics.fasta.SequenceMetadata
 import com.fulcrumgenomics.testing.VcfBuilder.Gt
 import com.fulcrumgenomics.testing.{UnitSpec, VcfBuilder}
 import com.fulcrumgenomics.vcf.api.Allele.NoCallAllele
@@ -79,10 +80,13 @@ class VcfIoTest extends UnitSpec with OptionValues {
     val results = Result(in.header, in.toIndexedSeq)
     in.close()
 
-    // Check that the header didn't get mangled other than perhaps having lines resorted
+    // The writer adds an END definition if absent; all other header entries are preserved, possibly reordered.
+    val expectedInfos = if (header.info.contains("END")) header.infos else {
+      header.infos :+ VcfInfoHeader("END", VcfCount.Fixed(1), VcfFieldType.Integer, "End position of the variant.")
+    }
     results.header.samples should contain theSameElementsInOrderAs header.samples
     results.header.contigs should contain theSameElementsInOrderAs header.contigs
-    results.header.infos   should contain theSameElementsAs        header.infos
+    results.header.infos   should contain theSameElementsAs        expectedInfos
     results.header.formats should contain theSameElementsAs        header.formats
     results.header.filters should contain theSameElementsAs        header.filters
     results.header.others  should contain theSameElementsAs        header.others
@@ -357,6 +361,25 @@ class VcfIoTest extends UnitSpec with OptionValues {
     val source = VcfSource(writeVcf45WithNewNumberCodes())
     source.header.version.value shouldBe VcfVersion.V4_5
     source.safelyClose()
+  }
+
+  it should "write and index a VCF whose header has no contig lines" in {
+    val header  = VcfIoTest.Header.copy(contigs=IndexedSeq.empty)
+    val alleles = AlleleSet(ref=Allele("A"), alts=IndexedSeq(Allele("C")))
+    val variant = Variant(chrom="chr1", pos=100, alleles=alleles, genotypes=Map("s1" -> Genotype(alleles, "s1", alleles.toIndexedSeq)))
+    Seq(VcfExtension, VcfGzExtension).foreach { ext =>
+      val output = makeTempFile(getClass.getSimpleName, ext)
+      val writer = VcfWriter(output, header)
+      writer.write(variant)
+      writer.close()
+      VcfSource(output).map(v => (v.chrom, v.pos)).toSeq shouldBe Seq(("chr1", 100))
+
+      // the index was written, so the VCF can be queried
+      val source = VcfSource(output)
+      source.isQueryable shouldBe true
+      source.query("chr1", 1, 200).map(_.pos).toSeq shouldBe Seq(100)
+      source.safelyClose()
+    }
   }
 
   it should "write a VCF at the version its header declares" in {
@@ -655,5 +678,199 @@ class VcfIoTest extends UnitSpec with OptionValues {
     VcfConversions.formatFloat(Float.PositiveInfinity) shouldBe "Inf"
     VcfConversions.formatFloat(Float.NegativeInfinity) shouldBe "-Inf"
     Seq(0.1f, 1/3f, 123.456f, 3.4028235e38f, 1.4e-45f).foreach { f => VcfConversions.formatFloat(f).toFloat shouldBe f }
+  }
+
+  "VcfSource and VcfWriter" should "round-trip the length, assembly, MD5, species and URL of contig lines" in {
+    val contig = VcfContigHeader(index=0, name="chr1", length=Some(5000), assembly=Some("hg38"),
+      md5=Some("6aef897c3d6ff0c78aff06ac189178dd"), species=Some("Homo sapiens"), url=Some("file:/ref.fa"))
+    val header = VcfIoTest.Header.copy(contigs=IndexedSeq(contig))
+    val output = makeTempFile(getClass.getSimpleName, VcfExtension)
+    VcfWriter(output, header).close()
+
+    Io.readLines(output).filter(_.startsWith("##contig")).toSeq shouldBe Seq(
+      "##contig=<ID=chr1,length=5000,assembly=hg38,md5=6aef897c3d6ff0c78aff06ac189178dd,species=\"Homo sapiens\",URL=file:/ref.fa>"
+    )
+
+    val source = VcfSource(output)
+    source.header.contigs should contain theSameElementsInOrderAs Seq(contig)
+    source.header.dict(0).md5 shouldBe contig.md5
+    source.header.dict(0).assembly shouldBe contig.assembly
+    source.header.dict(0).species shouldBe contig.species
+    source.header.dict(0).uri shouldBe contig.url
+    source.safelyClose()
+  }
+
+  "VcfContigHeader.fromSequenceMetadata" should "keep the length, assembly, MD5, species and URL of the sequence" in {
+    val metadata = SequenceMetadata(name="chr1", length=5000, index=0, assembly=Some("hg38"), md5=Some("abc"),
+      species=Some("Homo sapiens"), uri=Some("file:/ref.fa"))
+    VcfContigHeader.fromSequenceMetadata(metadata) shouldBe VcfContigHeader(index=0, name="chr1", length=Some(5000),
+      assembly=Some("hg38"), md5=Some("abc"), species=Some("Homo sapiens"), url=Some("file:/ref.fa"))
+  }
+
+  it should "leave out the length of a sequence of unknown length" in {
+    VcfContigHeader.fromSequenceMetadata(SequenceMetadata(name="chr1", index=0)).length shouldBe None
+  }
+
+  Seq(
+    ("A", "<DEL>", "SVLEN=-50", "GT", "0/1", 16430),
+    ("A", "<DEL:ME>", "SVLEN=-50", "GT", "0/1", 16430),
+    ("A", "<DUP>,<INS>", "SVLEN=50,500", "GT", "0/1", 16430),
+    ("A", "<INS>,<DEL>", "SVLEN=500,-50", "GT", "0/2", 16430),
+    ("A", "<INV>", "SVLEN=50;END=16390", "GT", "0/1", 16430),
+    ("AAAA", "A", "SVLEN=-50", "GT", "0/1", 16383),
+    ("A", "<INS>", "SVLEN=50", "GT", "0/1", 16380),
+    ("A", "<NON_REF>", ".", "GT:LEN", "0/0:51", 16430)
+  ).foreach { case (ref, alt, info, format, genotype, end) =>
+    it should s"preserve the decoded span of $ref/$alt with $info and $genotype through BCF" in {
+      val input = makeTempFile(getClass.getSimpleName, VcfExtension)
+      Io.writeLines(input, Seq(
+        "##fileformat=VCFv4.2",
+        "##contig=<ID=chr1,length=100000>",
+        "##INFO=<ID=SVLEN,Number=A,Type=Integer,Description=\"Structural variant length\">",
+        "##INFO=<ID=END,Number=1,Type=Integer,Description=\"End position\">",
+        "##FORMAT=<ID=GT,Number=1,Type=String,Description=\"Genotype\">",
+        "##FORMAT=<ID=LEN,Number=1,Type=Integer,Description=\"Reference block length\">",
+        Seq("#CHROM", "POS", "ID", "REF", "ALT", "QUAL", "FILTER", "INFO", "FORMAT", "s1").mkString("\t"),
+        Seq("chr1", "16380", ".", ref, alt, ".", "PASS", info, format, genotype).mkString("\t")
+      ))
+      val source = VcfSource(input)
+      val output = makeTempFile(getClass.getSimpleName, ".bcf")
+      val writer = VcfWriter(output, source.header)
+      try {
+        val variant = source.iterator.next()
+        variant.end shouldBe end
+        writer.header.info("END").description shouldBe "End position"
+        writer.write(variant)
+      }
+      finally { writer.close(); source.close() }
+      val result = VcfSource(output)
+      try {
+        result.iterator.next().end shouldBe end
+        result.query("chr1", end, end).map(_.pos).toIndexedSeq shouldBe IndexedSeq(16380)
+      }
+      finally result.close()
+    }
+  }
+
+  /** Writes a VCF whose single variant has INFO and FORMAT fields that are not described in the header. */
+  private def writeVcfWithUndescribedFields(): PathToVcf = {
+    val vcf = makeTempFile(getClass.getSimpleName, VcfExtension)
+    Io.writeLines(vcf, Seq(
+      "##fileformat=VCFv4.2",
+      "##contig=<ID=chr1,length=5000>",
+      "##INFO=<ID=DP,Number=1,Type=Integer,Description=\"Depth\">",
+      "##FORMAT=<ID=GT,Number=1,Type=String,Description=\"Genotype\">",
+      Seq("#CHROM", "POS", "ID", "REF", "ALT", "QUAL", "FILTER", "INFO", "FORMAT", "s1").mkString("\t"),
+      Seq("chr1", "100", ".", "A", "C", "50", "PASS", "DP=10;XF;XL=a,b;XS=0.5", "GT:XG:XH", "0/1:7:x,y").mkString("\t")
+    ))
+    vcf
+  }
+
+  "VcfSource" should "read a genotype without a GT as a no-call" in {
+    val vcf = makeTempFile(getClass.getSimpleName, VcfExtension)
+    Io.writeLines(vcf, Seq(
+      "##fileformat=VCFv4.2",
+      "##contig=<ID=chr1,length=5000>",
+      "##FORMAT=<ID=DP,Number=1,Type=Integer,Description=\"Depth\">",
+      Seq("#CHROM", "POS", "ID", "REF", "ALT", "QUAL", "FILTER", "INFO", "FORMAT", "s1").mkString("\t"),
+      Seq("chr1", "100", ".", "A", "C", "50", "PASS", ".", "DP", "12").mkString("\t")
+    ))
+    val source = VcfSource(vcf)
+    val gt     = source.iterator.next().gt("s1")
+    gt.isNoCall shouldBe true
+    gt[Int]("DP") shouldBe 12
+    source.safelyClose()
+  }
+
+  it should "read standard FORMAT fields without header definitions even when missing fields are disallowed" in {
+    val vcf = makeTempFile(getClass.getSimpleName, VcfExtension)
+    Io.writeLines(vcf, Seq(
+      "##fileformat=VCFv4.2",
+      "##contig=<ID=chr1,length=5000>",
+      Seq("#CHROM", "POS", "ID", "REF", "ALT", "QUAL", "FILTER", "INFO", "FORMAT", "s1").mkString("\t"),
+      Seq("chr1", "100", ".", "A", "C", "50", "PASS", ".", "GT:AD:DP:GQ:PL:FT", "0|1:7,5:12:40:50,0,70:LowDepth").mkString("\t")
+    ))
+    val source = VcfSource(vcf, allowMissingFieldsInHeader=false)
+    source.header.formats shouldBe empty
+    val gt = source.iterator.next().gt("s1")
+    gt.gtWithBases shouldBe "A|C"
+    gt[IndexedSeq[Int]]("AD") shouldBe IndexedSeq(7, 5)
+    gt[Int]("DP") shouldBe 12
+    gt[Int]("GQ") shouldBe 40
+    gt[IndexedSeq[Int]]("PL") shouldBe IndexedSeq(50, 0, 70)
+    gt[String]("FT") shouldBe "LowDepth"
+    source.safelyClose()
+  }
+
+  it should "fail to read fields not described in the header by default" in {
+    val source = VcfSource(writeVcfWithUndescribedFields())
+    val ex     = intercept[RuntimeException] { source.toIndexedSeq }
+    Iterator.iterate[Throwable](ex)(_.getCause).takeWhile(_ != null).map(_.getMessage).mkString(" ") should include ("not described in header")
+    source.safelyClose()
+  }
+
+  it should "read an END INFO field not described in the header as an Int when allowed" in {
+    val vcf = makeTempFile(getClass.getSimpleName, VcfExtension)
+    Io.writeLines(vcf, Seq(
+      "##fileformat=VCFv4.2",
+      "##contig=<ID=chr1,length=5000>",
+      "##FORMAT=<ID=GT,Number=1,Type=String,Description=\"Genotype\">",
+      Seq("#CHROM", "POS", "ID", "REF", "ALT", "QUAL", "FILTER", "INFO", "FORMAT", "s1").mkString("\t"),
+      Seq("chr1", "100", ".", "A", "<DEL>", "50", "PASS", "END=150", "GT", "0/1").mkString("\t")
+    ))
+    val source  = VcfSource(vcf, allowMissingFieldsInHeader=true)
+    val variant = source.iterator.next()
+    variant[Int]("END") shouldBe 150
+    variant.end shouldBe 150
+    source.safelyClose()
+  }
+
+  it should "allow normalized GL and discarded missing FORMAT values even in strict mode" in {
+    val input = makeTempFile(getClass.getSimpleName, VcfExtension)
+    Io.writeLines(input, Seq(
+      "##fileformat=VCFv4.2",
+      "##contig=<ID=chr1,length=5000>",
+      Seq("#CHROM", "POS", "ID", "REF", "ALT", "QUAL", "FILTER", "INFO", "FORMAT", "s1").mkString("\t"),
+      Seq("chr1", "100", ".", "A", "C", ".", "PASS", ".", "GT:GL:XX", "0/1:-1,0,-2:.").mkString("\t")
+    ))
+    val source = VcfSource(input, allowMissingFieldsInHeader=false)
+    try {
+      val gt = source.iterator.next().gt("s1")
+      gt[IndexedSeq[Int]]("PL") shouldBe IndexedSeq(10, 0, 20)
+      gt.attrs.keySet shouldBe Set("PL")
+    }
+    finally source.close()
+  }
+
+  it should "write an undeclared missing INFO value separately from an undeclared flag" in {
+    val source = VcfSource(writeVcfWithUndescribedFields(), allowMissingFieldsInHeader=true)
+    val output = makeTempFile(getClass.getSimpleName, VcfExtension)
+    val writer = VcfWriter(output, source.header)
+    try {
+      val variant = source.iterator.next()
+      writer.write(variant.copy(attrs=variant.attrs.filter { case (key, _) => key == "XF" }.updated("XM", Variant.Missing)))
+    }
+    finally { writer.close(); source.close() }
+    Io.readLines(output).filterNot(_.startsWith("#")).toIndexedSeq.map(_.split("\t")(7)) shouldBe IndexedSeq("XF;XM=.")
+  }
+
+  it should "read fields not described in the header when allowed, and write them back as they were (with INFO fields sorted)" in {
+    val input   = writeVcfWithUndescribedFields()
+    val source  = VcfSource(input, allowMissingFieldsInHeader=true)
+    val variant = source.iterator.next()
+    variant[Int]("DP") shouldBe 10
+    variant[Seq[String]]("XL") should contain theSameElementsInOrderAs Seq("a", "b")
+    variant[Seq[String]]("XS") should contain theSameElementsInOrderAs Seq("0.5")
+    variant[Boolean]("XF") shouldBe true
+    variant.gt("s1")[Seq[String]]("XG") should contain theSameElementsInOrderAs Seq("7")
+    variant.gt("s1")[Seq[String]]("XH") should contain theSameElementsInOrderAs Seq("x", "y")
+
+    val output = makeTempFile(getClass.getSimpleName, VcfExtension)
+    val writer = VcfWriter(output, source.header)
+    writer.write(variant)
+    writer.close()
+    source.safelyClose()
+
+    Io.readLines(output).filterNot(_.startsWith("#")).toSeq shouldBe Io.readLines(input).filterNot(_.startsWith("#")).toSeq
   }
 }
