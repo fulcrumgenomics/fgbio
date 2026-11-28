@@ -44,7 +44,7 @@ following would happen:
 
 The set of fixed UMIs may be specified on the command line using `--umis umi1 umi2 ...` or via one or
 more files of UMIs with a single sequence per line using `--umi-files umis.txt more_umis.txt`.  Each fixed UMI
-may contain only the bases `A`, `C`, `G`, `T` and `N` (in either case).  If there
+may contain only the bases `A`, `C`, `G`, `T` and `N` (in either case), and may not be all `N`s.  If there
 are multiple UMIs per template, leading to hyphenated UMI tags, the values for the fixed UMIs should
 be single, non-hyphenated UMIs (e.g. if a record has `RX:Z:ACGT-GGCA`, you would use `--umis ACGT GGCA`).
 
