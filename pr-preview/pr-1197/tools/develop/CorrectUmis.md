@@ -21,6 +21,10 @@ same length (e.g. a 6bp UMI is never corrected to a 7bp fixed UMI), and a record
 a length that matches no fixed UMI.  The metrics have one row of `N`s for each fixed UMI length, counting the UMIs
 of that length that could not be matched.
 
+The UMIs in the BAM file must already be trimmed to their true lengths.  For example, if 7 bases were extracted
+for every read but some of the fixed UMIs are 6bp, the 6bp UMIs (with an extra base) are compared only to the 7bp
+fixed UMIs.  A warning is logged at the end for each fixed UMI length that no UMI in the BAM file had.
+
 Multiple UMIs that are concatenated with hyphens (e.g. `AACCAGT-AGGTAGA`) are split apart, corrected individually
 and then re-assembled.  A read is accepted only if all the UMIs can be corrected.
 
@@ -39,7 +43,8 @@ following would happen:
   - AACCA would be rejected because it is 2 mismatches to AAAAA and 3 to CCCCC and 3 < 2 + 2
 
 The set of fixed UMIs may be specified on the command line using `--umis umi1 umi2 ...` or via one or
-more files of UMIs with a single sequence per line using `--umi-files umis.txt more_umis.txt`.  If there
+more files of UMIs with a single sequence per line using `--umi-files umis.txt more_umis.txt`.  Each fixed UMI
+may contain only the bases `A`, `C`, `G`, `T` and `N` (in either case).  If there
 are multiple UMIs per template, leading to hyphenated UMI tags, the values for the fixed UMIs should
 be single, non-hyphenated UMIs (e.g. if a record has `RX:Z:ACGT-GGCA`, you would use `--umis ACGT GGCA`).
 
@@ -69,6 +74,6 @@ reversed (eg. `AAGG-ACTG` is changed to `CAGT-CCTT`).
 |umi-tag|t|String|Tag in which UMIs are stored.|Optional|1|RX|
 |dont-store-original-umis|x|Boolean|Don't store original UMIs upon correction.|Optional|1|false|
 |cache-size||Int|The number of uncorrected UMIs to cache; zero will disable the cache.|Optional|1|100000|
-|min-corrected||Double|The minimum ratio of kept UMIs to accept. A ratio below this will cause a failure (but all files will still be written).|Optional|1||
+|min-corrected||Double|The minimum ratio of kept UMIs to accept. A ratio below this will cause a failure (but all files will still be written).  Not checked if the input has no records.|Optional|1||
 |revcomp||Boolean|Reverse complement the UMIs in the BAM file prior to correcting.|Optional|1|false|
 

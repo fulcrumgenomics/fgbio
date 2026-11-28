@@ -53,6 +53,6 @@ chr2   -1          -1        1011118     1011137
 |slop|S|Int|Match to primer locations +/- this many bases.|Optional|1|5|
 |sort-order|s|SamOrder|Sort order of output BAM file (defaults to input sort order).|Optional|1||
 |ref|r|PathToFasta|Optional reference fasta for recalculating NM, MD and UQ tags.|Optional|1||
-|auto-trim-attributes|a|Boolean|Automatically trim extended attributes that are the same length as bases.|Optional|1|false|
+|auto-trim-attributes|a|Boolean|Automatically trim extended attributes that are the same length as bases, except listed tags that are not per-base data for the read, such as RG.|Optional|1|false|
 |first-of-pair||Boolean|Trim only first of pair reads (R1s) or fragment reads, otherwise both ends of a pair.|Optional|1|false|
 
