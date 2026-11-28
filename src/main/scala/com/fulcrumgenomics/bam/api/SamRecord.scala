@@ -275,10 +275,18 @@ trait SamRecord {
   /** Returns this record as a SAMRecord. */
   def asSam: SAMRecord = this.asInstanceOf[SAMRecord]
 
-  /** Gets the PairOrientation of the record. */
+  /** Gets the PairOrientation of the record. Throws an exception unless the record and its mate are both mapped to
+    * the same reference. Like [[isFrPair]], this is computed from this record alone; when both records are available,
+    * use `SamRecord.pairOrientation(r1, r2)` instead.
+    */
   def pairOrientation: PairOrientation = SamPairUtil.getPairOrientation(this.asSam)
 
-  /** Returns true if the read is mapped in an FR pair, false otherwise. */
+  /** Returns true if the read is mapped in an FR pair, false otherwise.
+    *
+    * This is computed from this record alone, so on the forward-strand record of a dovetail pair it relies on the MC
+    * tag (falling back to TLEN) and can disagree with the mate. When both records are available, use
+    * `SamRecord.isFrPair(r1, r2)` instead.
+    */
   def isFrPair: Boolean = {
     paired &&
       mapped &&
@@ -325,6 +333,34 @@ object SamRecord {
 
   /** The maximum insert size that can be stored in a [[SamRecord]]. */
   val MaximumInsertSize: Int = SAMRecord.MAX_INSERT_SIZE
+
+  /** Returns the orientation of a read pair given both of its records, or `None` if either record is unmapped or the
+    * two are mapped to different references.
+    *
+    * This applies the same rule as htsjdk's `SamPairUtil.getPairOrientation`, but reads each record's position from
+    * the record itself rather than from its mate fields. The per-record `pairOrientation` and `isFrPair` have to
+    * infer the mate's 5' position from the MC tag, or from TLEN when MC is absent, and can then give the two records
+    * of a dovetail pair different answers; they also give stale answers if either record was re-aligned or clipped
+    * after its mate fields were set. Prefer this method whenever both records are available.
+    *
+    * The two records are assumed to be the primary records of the same template; this is not checked.
+    */
+  def pairOrientation(r1: SamRecord, r2: SamRecord): Option[PairOrientation] = {
+    if (r1.unmapped || r2.unmapped || r1.refIndex != r2.refIndex) None
+    else if (r1.positiveStrand == r2.positiveStrand) Some(PairOrientation.TANDEM)
+    else {
+      val (pos, neg) = if (r1.positiveStrand) (r1, r2) else (r2, r1)
+      Some(if (pos.start <= neg.end) PairOrientation.FR else PairOrientation.RF)
+    }
+  }
+
+  /** Returns true if the two records are both paired and mapped as an FR pair, false otherwise. Unlike
+    * the per-record `isFrPair`, this does not depend on the MC tag, TLEN, or the records' mate fields; see
+    * `SamRecord.pairOrientation(r1, r2)`.
+    */
+  def isFrPair(r1: SamRecord, r2: SamRecord): Boolean = {
+    r1.paired && r2.paired && pairOrientation(r1, r2).contains(PairOrientation.FR)
+  }
 
   /** SAMRecord with mixin to add behaviour. */
   private final class EnhancedSamRecord(header: SAMFileHeader) extends SAMRecord(header) with SamRecordIntermediate with SamRecord

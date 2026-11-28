@@ -27,8 +27,8 @@ package com.fulcrumgenomics.bam
 import com.fulcrumgenomics.FgBioDef._
 import com.fulcrumgenomics.bam.api.{SamOrder, SamRecord}
 import com.fulcrumgenomics.testing.SamBuilder.{Minus, Plus}
-import com.fulcrumgenomics.testing.{SamBuilder, UnitSpec}
-import com.fulcrumgenomics.util.{Amplicon, Io, Metric}
+import com.fulcrumgenomics.testing.{DovetailPairs, SamBuilder, UnitSpec}
+import com.fulcrumgenomics.util.{Amplicon, AmpliconDetector, Io, Metric}
 import htsjdk.samtools.util.CoordMath
 import htsjdk.samtools.{CigarOperator => Op}
 
@@ -309,5 +309,16 @@ class TrimPrimersTest extends UnitSpec {
     validate(rec=reads(3), name="q4", fivePrimeSoftClipLength=19) // amplicon 2
     validate(rec=reads(4), name="q5", fivePrimeSoftClipLength=21) // maximum
     validate(rec=reads(5), name="q6", fivePrimeSoftClipLength=19) // amplicon 2
+  }
+
+  it should "trim a dovetail FR pair without MC tags the same as with them" in {
+    val tool = new TrimPrimers(input=makeTempFile("in.", ".bam"), output=makeTempFile("out.", ".bam"), primers=primers, hardClip=true)
+    val detector = AmpliconDetector(amplicons=Seq(Amplicon("chr1", 28, 32, 140, 149)), slop=0, unclippedCoordinates=true)
+    val ((a1, a2), (b1, b2)) = DovetailPairs.withAndWithoutMateCigar()
+    tool.trimReadsForTemplate(detector, Seq(a1, a2))
+    tool.trimReadsForTemplate(detector, Seq(b1, b2))
+    a1.cigar.toString should not be DovetailPairs.ForwardCigar
+    b1.cigar shouldBe a1.cigar
+    b2.cigar shouldBe a2.cigar
   }
 }

@@ -25,7 +25,7 @@
 
 package com.fulcrumgenomics.util
 
-import com.fulcrumgenomics.testing.{SamBuilder, UnitSpec}
+import com.fulcrumgenomics.testing.{DovetailPairs, SamBuilder, UnitSpec}
 import htsjdk.samtools.SamPairUtil
 import org.scalatest.OptionValues
 
@@ -318,5 +318,13 @@ class AmpliconDetectorTest extends UnitSpec with OptionValues {
       val Seq(r1, r2) = builder.addPair(start1=104, cigar1="10H100M10H", start2=118, cigar2="10H100M10H")
       detector.find(r1=r1, r2=r2).value shouldBe amplicons.last
     }
+  }
+
+  "AmpliconDetector.find(r1: SamRecord, r2: SamRecord)" should "find the amplicon for a dovetail FR pair without MC tags" in {
+    val amplicon = Amplicon("chr1", 90, 94, 98, 102)
+    val detector = AmpliconDetector(amplicons=Seq(amplicon), slop=10, unclippedCoordinates=false)
+    val ((a1, a2), (b1, b2)) = DovetailPairs.withAndWithoutMateCigar()
+    detector.find(r1=a1, r2=a2).value shouldBe amplicon
+    detector.find(r1=b1, r2=b2).value shouldBe amplicon
   }
 }

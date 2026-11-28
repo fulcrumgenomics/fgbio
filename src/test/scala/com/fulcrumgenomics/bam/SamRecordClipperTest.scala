@@ -28,7 +28,7 @@ import com.fulcrumgenomics.alignment.Cigar
 import com.fulcrumgenomics.bam.ClippingMode._
 import com.fulcrumgenomics.bam.api.SamRecord
 import com.fulcrumgenomics.testing.SamBuilder.{Minus, Plus, Strand}
-import com.fulcrumgenomics.testing.{SamBuilder, UnitSpec}
+import com.fulcrumgenomics.testing.{DovetailPairs, SamBuilder, UnitSpec}
 import com.fulcrumgenomics.util.NumericTypes.PhredScore
 import org.scalatest.OptionValues
 
@@ -961,5 +961,38 @@ class SamRecordClipperTest extends UnitSpec with OptionValues {
     val Seq(r9, r10) = builder.addPair(start1=100, start2=100, cigar1="30S70M", cigar2="50S50M")
     numBasesExtendingPastMate(clipper(Soft), r9) shouldBe 20
     numBasesExtendingPastMate(clipper(Soft), r10) shouldBe 20
+  }
+
+  "SamRecordClipper.clipExtendingPastMateEnds" should "clip a dovetail FR pair without MC tags the same as with them" in {
+    // 5' ends coincide at 96 and each read extends 49 aligned bases past its mate's 5' end
+    val builder = new SamBuilder(readLength=50)
+    val Seq(a1, a2) = builder.addPair(name="with_mc", contig=0, start1=96, start2=47).toSeq
+    val Seq(b1, b2) = builder.addPair(name="without_mc", contig=0, start1=96, start2=47).toSeq
+    Seq(b1, b2).foreach { r => r.remove("MC"); r.insertSize = 0 }
+    val expected = clipper(Soft).clipExtendingPastMateEnds(rec=a1, mate=a2)
+    expected should not be (0, 0)
+    clipper(Soft).clipExtendingPastMateEnds(rec=b1, mate=b2) shouldBe expected
+    b1.cigar shouldBe a1.cigar
+    b2.cigar shouldBe a2.cigar
+  }
+
+  "SamRecordClipper.clipExtendingPastMateEndsOfFrPair" should "not clip when either read is unmapped" in {
+    Seq(true, false).foreach { unmapRec =>
+      val (rec, mate) = pair(100, "50M", Plus, 90, "50M", Minus)
+      if (unmapRec) rec.unmapped = true else mate.unmapped = true
+      val (recCigar, mateCigar) = (rec.cigar, mate.cigar)
+      clipper(Soft).clipExtendingPastMateEndsOfFrPair(rec=rec, mate=mate) shouldBe (0, 0)
+      rec.cigar shouldBe recCigar
+      mate.cigar shouldBe mateCigar
+    }
+  }
+
+  "SamRecordClipper.clipOverlappingReads" should "clip a dovetail FR pair without MC tags the same as with them" in {
+    val ((a1, a2), (b1, b2)) = DovetailPairs.withAndWithoutMateCigar()
+    val expected = clipper(Soft).clipOverlappingReads(rec=a1, mate=a2)
+    expected should not be (0, 0)
+    clipper(Soft).clipOverlappingReads(rec=b1, mate=b2) shouldBe expected
+    b1.cigar shouldBe a1.cigar
+    b2.cigar shouldBe a2.cigar
   }
 }

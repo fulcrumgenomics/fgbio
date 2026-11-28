@@ -188,7 +188,7 @@ class TrimPrimers
     (rec1, rec2) match {
       case (Some(r1), Some(r2)) =>
         // FR mapped pairs get the full treatment
-        if (r1.isFrPair) {
+        if (SamRecord.isFrPair(r1, r2)) {
           (if (firstOfPair) detector.findPrimer(rec=r1) else detector.find(r1=r1, r2=r2)) match {
             case Some(amplicon) =>
               val leftClip  = amplicon.leftPrimerLength
