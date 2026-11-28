@@ -34,7 +34,10 @@ Indels at the start of a later block of the alignment (after a reference skip) a
 Unmapped reads, reads without stored bases (`SEQ` of `*`), and reads with padding (`P`) CIGAR operators are left
 unchanged.  Read bases stored as `=` (equal to the reference) are compared using the reference base, and are written
 as the reference base when the read's CIGAR changes.  If a resolved base cannot be stored unchanged in SAM/BAM
-(e.g. `U`, which is normalized to `T`), the tool fails with the read's name.
+(e.g. `U`, which is normalized to `T`), the tool fails with the read's name.  The tool also fails if materializing
+`=` changes SEQ on a record with base-modification tags (MM, Mm, ML, Ml, or MN), rather than shifting modification
+calls.  These tags are preserved when SEQ is unchanged.  On contigs marked `TP:circular`, reference lookup and
+trimmed alignment starts wrap at the contig boundary.
 
 When `--ref` is given, the entire reference FASTA is loaded into memory before processing reads.  Plain, gzip, and
 BGZF FASTAs are supported; no index is needed, and any `.fai`, `.gzi`, or `.dict` sidecars are ignored.  Every contig
@@ -53,16 +56,16 @@ read that may be changed.  Such reads may not have `=` read bases that the MD ta
 When a read's alignment changes, its MD, NM, and UQ tags are re-computed if present, counting a base as a mismatch
 unless the read and reference bases are the same and not `N` (as samtools does).  UQ is removed if the read has no
 base qualities.  The BQ, minimap2 cs, ds, and de tags are removed when the alignment edit path changes, but kept
-when only M versus =/X notation changes.  The alignment score (AS) is not changed, even when indels are merged or
-trimmed.  The CIGAR uses match (`=`) and mismatch (`X`) operators, with the same definition of a mismatch, when
+when only M versus =/X notation changes.  The de tag is also removed when adjacent indel operators are coalesced.
+The alignment score (AS) is not changed, even when indels are merged or trimmed.  The CIGAR uses match (`=`) and mismatch (`X`) operators, with the same definition of a mismatch, when
 `--use-equals-and-x` is given or the read's CIGAR already uses them, otherwise match-or-mismatch (`M`) operators.
-A read whose CIGAR already uses `=` and `X` operators keeps its CIGAR when no indel is moved.
+Existing `=` and `X` notation is kept when no indel is moved or coalesced, unless remaining `M` operators are converted.
 
 Mate information (e.g. the MC tag and insert size) is reset for all primary and supplementary reads, including
 those whose alignment did not change; existing ms scores are preserved and absent ms tags are not added.  The mate
 start, insert size, and MC tag of secondary reads are updated from their mate's primary alignment only when its
-original reference, start, strand, and optional MC agree.  The positions, CIGARs, and edit distances in SA tags are
-updated.  An SA tag entry is matched against the original start and CIGAR, accepting exact CIGARs and minimap2-style summaries
+original reference, start, and strand agree, and its MC (if present) exactly matches the original primary CIGAR.
+The positions, CIGARs, and edit distances in SA tags are updated.  An SA tag entry is matched against the original start and CIGAR, accepting exact CIGARs and minimap2-style summaries
 (end clips, the smaller of the aligned query and reference spans as M, then any net I or D).  Hard and soft clips,
 and M versus =/X, are treated equivalently.  An entry is updated only when exactly one alignment of the template
 matches either form, otherwise it is left unchanged and counted.
