@@ -397,9 +397,8 @@ class CollectDuplexSeqMetrics
   private[umi] def updateUmiMetrics(ssGroups: Seq[Seq[SamRecord]]): Unit = {
     // `ab` is the family whose MI sorts first (e.g. `1/A` before `1/B`), and `ba` the other, if any. Order them by MI
     // rather than taking the order given, which is the iteration order of a HashMap and so depends on the hash of the
-    // MI: the UMI observations are summed in this order (`ab` then `ba`, each in input order), which resolves a tied
-    // consensus base, and for a pair whose reads map to the same strand (FF/RR) it also picks the orientation of the
-    // duplex UMI below.
+    // MI. The UMI observations are summed in this deterministic order (`ab` then `ba`, each in input order). For a
+    // pair whose reads map to the same strand (FF/RR), this order also picks the orientation of the duplex UMI below.
     val (ab, ba) = ssGroups.filter(_.nonEmpty).sortBy(_.head[String](this.miTag)) match {
       case Seq(a, b) => (a, b)
       case Seq(a)    => (a, Seq.empty)

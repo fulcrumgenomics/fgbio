@@ -57,6 +57,15 @@ class SimpleConsensusCallerTest extends UnitSpec {
     caller.callConsensus(Seq("GATTACA", "GATTACA", "GATTACA", "NNNNNNN")) shouldBe "GATTACA"
   }
 
+  it should "produce a no-call for tied UMIs in every input order with the production default error rates" in {
+    // A and T are each seen twice at the last position. With the default Q90/Q90 error rates, summation noise
+    // must not turn this tie into a definite base call, regardless of the order the UMIs are added.
+    val caller = new SimpleConsensusCaller()
+    val umis   = Seq("ACGTACGT", "ACGTACGT", "ACGTACGA", "ACGTACGA")
+    val calls  = umis.permutations.map(caller.callConsensus).toSeq
+    calls should contain only "ACGTACGN"
+  }
+
   it should "gracefully handle non-ACGTN bases" in {
     val caller = new SimpleConsensusCaller()
     caller.callConsensus(Seq("GATT-ACA", "GATT-ACA", "GATT-ACA")) shouldBe "GATT-ACA"
