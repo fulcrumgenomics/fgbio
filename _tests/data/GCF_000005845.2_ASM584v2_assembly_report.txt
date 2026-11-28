@@ -1,0 +1,27 @@
+# Assembly name:  ASM584v2
+# Organism name:  Escherichia coli str. K-12 substr. MG1655 (E. coli)
+# Infraspecific name:  strain=K-12 substr. MG1655
+# Taxid:          511145
+# BioSample:      SAMN02604091
+# BioProject:     PRJNA225
+# Submitter:      Univ. Wisconsin
+# Date:           2013-11-03
+# Assembly type:  na
+# Release type:   major
+# Assembly level: Complete Genome
+# Genome representation: full
+# RefSeq category: Reference Genome
+# GenBank assembly accession: GCA_000005845.2
+# RefSeq assembly accession: GCF_000005845.2
+# RefSeq assembly and GenBank assemblies identical: yes
+#
+## Assembly-Unit names:
+## Primary Assembly
+#
+# Ordered by chromosome/plasmid; the chromosomes/plasmids are followed by
+# unlocalized scaffolds.
+# Unplaced scaffolds are listed at the end.
+# RefSeq is equal or derived from GenBank object.
+#
+# Sequence-Name	Sequence-Role	Assigned-Molecule	Assigned-Molecule-Location/Type	GenBank-Accn	Relationship	RefSeq-Accn	Assembly-Unit	Sequence-Length	UCSC-style-name
+U00096.3	assembled-molecule	na	Chromosome	U00096.3	=	NC_000913.3	Primary Assembly	4641652	na

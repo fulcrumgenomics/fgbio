@@ -1,0 +1,44 @@
+# Assembly name:  R64
+# Organism name:  Saccharomyces cerevisiae S288C (brewer's yeast)
+# Infraspecific name:  strain=S288C
+# Taxid:          559292
+# BioProject:     PRJNA43747
+# Submitter:      Saccharomyces Genome Database
+# Date:           2014-12-17
+# Synonyms:       sacCer3	
+# Assembly type:  haploid
+# Release type:   major
+# Assembly level: Complete Genome
+# Genome representation: full
+# RefSeq category: Reference Genome
+# GenBank assembly accession: GCA_000146045.2
+# RefSeq assembly accession: GCF_000146045.2
+# RefSeq assembly and GenBank assemblies identical: no
+#
+## Assembly-Unit names:
+## Primary Assembly
+## non-nuclear
+#
+# Ordered by chromosome/plasmid; the chromosomes/plasmids are followed by
+# unlocalized scaffolds.
+# Unplaced scaffolds are listed at the end.
+# RefSeq is equal or derived from GenBank object.
+#
+# Sequence-Name	Sequence-Role	Assigned-Molecule	Assigned-Molecule-Location/Type	GenBank-Accn	Relationship	RefSeq-Accn	Assembly-Unit	Sequence-Length	UCSC-style-name
+I	assembled-molecule	I	Chromosome	BK006935.2	=	NC_001133.9	Primary Assembly	230218	chrI
+II	assembled-molecule	II	Chromosome	BK006936.2	=	NC_001134.8	Primary Assembly	813184	chrII
+III	assembled-molecule	III	Chromosome	BK006937.2	=	NC_001135.5	Primary Assembly	316620	chrIII
+IV	assembled-molecule	IV	Chromosome	BK006938.2	=	NC_001136.10	Primary Assembly	1531933	chrIV
+V	assembled-molecule	V	Chromosome	BK006939.2	=	NC_001137.3	Primary Assembly	576874	chrV
+VI	assembled-molecule	VI	Chromosome	BK006940.2	=	NC_001138.5	Primary Assembly	270161	chrVI
+VII	assembled-molecule	VII	Chromosome	BK006941.2	=	NC_001139.9	Primary Assembly	1090940	chrVII
+VIII	assembled-molecule	VIII	Chromosome	BK006934.2	=	NC_001140.6	Primary Assembly	562643	chrVIII
+IX	assembled-molecule	IX	Chromosome	BK006942.2	=	NC_001141.2	Primary Assembly	439888	chrIX
+X	assembled-molecule	X	Chromosome	BK006943.2	=	NC_001142.9	Primary Assembly	745751	chrX
+XI	assembled-molecule	XI	Chromosome	BK006944.2	=	NC_001143.9	Primary Assembly	666816	chrXI
+XII	assembled-molecule	XII	Chromosome	BK006945.2	=	NC_001144.5	Primary Assembly	1078177	chrXII
+XIII	assembled-molecule	XIII	Chromosome	BK006946.2	=	NC_001145.3	Primary Assembly	924431	chrXIII
+XIV	assembled-molecule	XIV	Chromosome	BK006947.3	=	NC_001146.8	Primary Assembly	784333	chrXIV
+XV	assembled-molecule	XV	Chromosome	BK006948.2	=	NC_001147.6	Primary Assembly	1091291	chrXV
+XVI	assembled-molecule	XVI	Chromosome	BK006949.2	=	NC_001148.4	Primary Assembly	948066	chrXVI
+MT	assembled-molecule	MT	Mitochondrion	na	<>	NC_001224.1	non-nuclear	85779	chrM
