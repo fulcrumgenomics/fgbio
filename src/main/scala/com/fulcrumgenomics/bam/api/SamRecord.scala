@@ -258,6 +258,140 @@ trait SamRecord {
   @inline final def refPosAtReadPos(pos: Int) = getReferencePositionAtReadPosition(pos)
   @inline final def readPosAtRefPos(pos: Int, returnLastBaseIfDeleted: Boolean) = getReadPositionAtReferencePosition(pos, returnLastBaseIfDeleted)
 
+  /** Reconstructs the reference bases spanned by this record from its read bases, CIGAR, and MD tag.
+    *
+    * The returned bases span the alignment from its start to its end, inclusive: soft-clipped and inserted read bases
+    * are omitted, while deleted reference bases are included, as are skipped (`N` CIGAR operator) reference bases as `N`s
+    * since the MD tag does not store them.  Any ASCII letter is accepted for a mismatched or deleted reference base (e.g.
+    * IUPAC codes).  Adjacent deletions may be given as one run of deleted bases (e.g. `1^AC1`) or as separate runs
+    * (e.g. `1^A0^C1`, as written by htsjdk and samtools), whether the CIGAR has one or more deletion operators.  The MD
+    * tag must start and end with a number, and have a number between each mismatched base and run of deleted bases.  A
+    * match (`=`) CIGAR operator requires a matching base in the MD tag, unless the read and reference bases are both
+    * `N`s.  A mismatch (`X`) CIGAR operator requires a mismatched base in the MD tag that differs from the read base,
+    * unless the read base is an `N`.
+    *
+    * The record must not use `=` for a read base that the MD tag reports as matching the reference, since the
+    * reference base cannot then be determined.
+    *
+    * @throws java.lang.IllegalArgumentException if the MD tag is missing, not a string, or malformed, does not match the
+    *                                            CIGAR, or the reference base for an `=` read base is needed
+    */
+  final def refBasesFromMd: Array[Byte] = refBasesFromMd(includeSkippedBases=true)
+
+  /** Reconstructs reference bases from MD, optionally omitting skipped (N) reference spans. */
+  private[bam] final def refBasesFromMd(includeSkippedBases: Boolean): Array[Byte] = {
+    val md        = get[Any]("MD") match {
+      case Some(value: String) => value
+      case Some(value)         => throw new IllegalArgumentException(
+        s"Cannot get the reference bases as the MD tag is not a string ('$value') for record with name: $name")
+      case None                => throw new IllegalArgumentException(
+        s"Cannot get the reference bases without the MD tag for record with name: $name")
+    }
+    val readBases = this.bases
+    val cigar     = this.cigar
+    require(readBases.length == cigar.lengthOnQuery,
+      s"Cannot get the reference bases from the MD tag without the read bases for record with name: $name")
+    def mdFail(reason: String): Nothing =
+      throw new IllegalArgumentException(s"MD tag '$md' does not match CIGAR '$cigar' ($reason) for record with name: $name")
+
+    val refBases     = Array.newBuilder[Byte]
+    var mdIndex      = 0     // the index of the next character to parse in the MD tag
+    var matchesLeft  = 0     // the number of matching bases left from the last number parsed in the MD tag
+    var inDeletion   = false // true when the MD tag is within a run of deleted bases (after a '^')
+    var expectNumber = true  // true at the start and after a mismatched or deleted base, which must be followed by a number
+    var readOffset   = 0
+
+    // True if the next character in the MD tag satisfies the predicate
+    def nextIs(p: Char => Boolean): Boolean = mdIndex < md.length && p(md.charAt(mdIndex))
+
+    def isLetter(c: Char): Boolean = (c >= 'A' && c <= 'Z') || (c >= 'a' && c <= 'z')
+    def isDigit(c: Char): Boolean = c >= '0' && c <= '9'
+
+    // Parses one digit run when there are no matching bases left
+    def parseMatches(): Unit = {
+      if (matchesLeft == 0 && nextIs(isDigit)) {
+        var number = 0
+        while (nextIs(isDigit)) {
+          val digit = md.charAt(mdIndex) - '0'
+          if (number > (Int.MaxValue - digit) / 10) mdFail("a number of matching bases is too large")
+          number = number * 10 + digit
+          mdIndex += 1
+        }
+        matchesLeft  = number
+        expectNumber = false
+      }
+    }
+
+    // True for an N base, which tools differ on whether to count as a match (e.g. htsjdk) or a mismatch (e.g. samtools)
+    def isNoCall(base: Byte): Boolean = base == 'N' || base == 'n'
+
+    // Fails as a number is missing before a mismatched or deleted base
+    def missingNumber(): Nothing = {
+      if (mdIndex == 0) mdFail("expected a number at the start of the MD tag")
+      else mdFail("expected a number between mismatched or deleted bases")
+    }
+
+    cigar.foreach { elem =>
+      if (elem.operator.consumesReferenceBases() && elem.operator != CigarOperator.D) inDeletion = false
+      elem.operator match {
+        case op @ (CigarOperator.M | CigarOperator.EQ | CigarOperator.X) =>
+          forloop(from=0, until=elem.length) { i =>
+            parseMatches()
+            val readBase = readBases(readOffset + i)
+            if (matchesLeft > 0) {
+              if (op == CigarOperator.X && !isNoCall(readBase)) mdFail("expected a mismatch for an X operator")
+              require(readBase != '=', s"Cannot get the reference base from the MD tag for an '=' read base for record with name: $name")
+              refBases += readBase
+              matchesLeft -= 1
+            }
+            else if (nextIs(isLetter)) {
+              if (expectNumber) missingNumber()
+              val mdBase = md.charAt(mdIndex).toByte
+              if (op == CigarOperator.EQ && !(isNoCall(readBase) && isNoCall(mdBase))) mdFail("expected a match for an = operator")
+              val sameBase = Character.toUpperCase(readBase.toChar) == Character.toUpperCase(mdBase.toChar)
+              if (op == CigarOperator.X && !isNoCall(readBase) && sameBase) mdFail("expected a mismatch for an X operator")
+              refBases += mdBase
+              mdIndex     += 1
+              expectNumber = true
+            }
+            else mdFail("expected a match or mismatch")
+          }
+        case CigarOperator.D =>
+          // Deletions separated only by non-reference-consuming operators may share a run of deleted bases, or start
+          // a new run after a zero (e.g. `^A0^C`).  Otherwise, a new run of deleted bases (after a '^') is required.
+          if (!inDeletion || !nextIs(isLetter)) {
+            parseMatches()
+            if (matchesLeft > 0 || !nextIs(_ == '^')) mdFail("expected a deletion")
+            if (expectNumber) missingNumber()
+            mdIndex   += 1
+            inDeletion = true
+          }
+          forloop(from=0, until=elem.length) { i =>
+            // A new run may start after a zero count, including zero-padded forms (e.g. `^A00^C` for `2D`).
+            if (i > 0 && nextIs(isDigit)) {
+              parseMatches()
+              if (matchesLeft > 0 || !nextIs(_ == '^')) mdFail("expected a deleted base")
+              mdIndex += 1
+            }
+            if (!nextIs(isLetter)) mdFail("expected a deleted base")
+            refBases += md.charAt(mdIndex).toByte
+            mdIndex += 1
+          }
+          expectNumber = true
+        case CigarOperator.N =>
+          // The MD tag does not store skipped bases
+          if (includeSkippedBases) forloop(from=0, until=elem.length) { _ => refBases += 'N'.toByte }
+        case _ => () // I, S, H, and P do not consume reference bases
+      }
+      readOffset += elem.lengthOnQuery
+    }
+
+    parseMatches()
+    if (matchesLeft > 0 || mdIndex < md.length) mdFail("the MD tag is longer than the alignment")
+    if (expectNumber) mdFail("expected a number after the last mismatched or deleted base")
+    refBases.result()
+  }
+
   ////////////////////////////////////////////////////////////////////////////
   // Non-wrapper methods.
   ////////////////////////////////////////////////////////////////////////////
