@@ -35,7 +35,7 @@ the type of each field/column is given, including two commonly used types:
 |[SwitchMetric](#switchmetric)|Summary metrics regarding switchback reads found|
 |[TagFamilySizeMetric](#tagfamilysizemetric)|Metrics produced by `GroupReadsByUmi` to describe the distribution of tag family sizes observed during grouping|
 |[UmiCorrectionMetrics](#umicorrectionmetrics)|Metrics produced by `CorrectUmis` regarding the correction of UMI sequences to a fixed set of known UMIs|
-|[UmiGroupingMetric](#umigroupingmetric)|Metrics produced by `GroupReadsByUmi` to describe reads passed through UMI grouping|
+|[UmiGroupingMetric](#umigroupingmetric)|Metrics produced by `GroupReadsByUmi` to describe primary reads passed through UMI grouping|
 |[UmiMetric](#umimetric)|Metrics produced by `CollectDuplexSeqMetrics` describing the set of observed UMI sequences and the frequency of their observations|
 
 ## Metric File Descriptions
@@ -524,15 +524,17 @@ Metrics produced by `CorrectUmis` regarding the correction of UMI sequences to a
 
 ### UmiGroupingMetric
 
-Metrics produced by `GroupReadsByUmi` to describe reads passed through UMI grouping
+Metrics produced by `GroupReadsByUmi` to describe primary reads passed through UMI grouping.
+All primary records of a rejected template are counted under the first matching filter, including mates that
+would pass that filter individually. Secondary and supplementary records are excluded from these metrics.
 
 |Column|Type|Description|
 |------|----|-----------|
-|accepted_sam_records|Long|The number of SAM records accepted for grouping.|
-|discarded_non_pf|Long|The number of discarded non-PF SAM records.|
-|discarded_poor_alignment|Long|The number of SAM records discarded for poor alignment.|
-|discarded_ns_in_umi|Long|The number of SAM records discarded due to one or more Ns in the UMI.|
-|discarded_umis_to_short|Long|The number of SAM records discarded due to a shorter than expected UMI.|
+|accepted_sam_records|Long|The number of primary SAM records accepted for grouping.|
+|discarded_non_pf|Long|The number of primary SAM records discarded from templates containing a non-PF read.|
+|discarded_poor_alignment|Long|The number of primary SAM records discarded for poor template alignment.|
+|discarded_ns_in_umi|Long|The number of primary SAM records discarded from templates with one or more Ns in a UMI.|
+|discarded_umis_to_short|Long|The number of primary SAM records discarded from templates with a shorter than expected UMI.|
 
 
 ### UmiMetric

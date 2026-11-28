@@ -28,13 +28,17 @@ The output will always be written in template-coordinate order.  Input sorted in
 fgbio 4.1.1 or earlier uses an older ordering which, when several libraries share a position, can split a
 library's UMI families into several molecules.  This tool fails on such input; re-sort it first.
 
-During grouping, reads and templates are filtered out as follows:
+Secondary and supplementary records are discarded first. The remaining primary records are grouped by template,
+and all primary records for a template are discarded if any of the following filters apply:
 
-1. Templates are filtered if all reads for the template are unmapped
-2. Templates are filtered if any non-secondary, non-supplementary read has mapping quality < `min-map-q`
-3. Templates are filtered if any UMI sequence contains one or more `N` bases
-4. Templates are filtered if `--min-umi-length` is specified and the UMI does not meet the length requirement
-5. Records are filtered out if flagged as either secondary or supplementary
+1. Any primary read is non-PF, unless `--include-non-pf-reads` is specified
+2. All primary reads for the template are unmapped
+3. Any mapped primary read has mapping quality < `min-map-q`
+4. Any primary read's UMI sequence contains one or more `N` bases
+5. `--min-umi-length` is specified and any primary read's UMI does not meet the length requirement
+
+Grouping metrics count all primary records of a discarded template under the first matching filter,
+including mates that would pass that filter individually. Secondary and supplementary records are not counted.
 
 Grouping of UMIs is performed by one of four strategies:
 
@@ -58,8 +62,9 @@ Strategies `edit`, `adjacency`, and `paired` make use of the `--edits` parameter
 non-identical UMIs.
 
 By default, all UMIs must be the same length. If `--min-umi-length=len` is specified then reads that have a UMI
-shorter than `len` will be discarded, and when comparing UMIs of different lengths, the first len bases will be
-compared, where `len` is the length of the shortest UMI. The UMI length is the number of [ACGT] bases in the UMI
+shorter than `len` will cause all primary reads of their template to be discarded. When comparing UMIs of different
+lengths, the first len bases will be compared, where `len` is the length of the shortest UMI.
+The UMI length is the number of [ACGT] bases in the UMI
 (i.e. does not count dashes and other non-ACGT characters). This option is not implemented for reads with UMI pairs
 (i.e. using the paired assigner).
 
@@ -104,9 +109,9 @@ Preserve any original `CB` values separately if they are needed.
 |cell-tag|c|String|The tag containing the cell barcode.|Optional|1|CB|
 |mark-duplicates|d|Boolean|Turn on duplicate marking mode.|Optional|1|false|
 |min-map-q|m|Int|Minimum mapping quality for mapped reads.|Optional|1||
-|include-non-pf-reads|n|Boolean|Include non-PF reads.|Optional|1|false|
+|include-non-pf-reads|n|Boolean|Include templates containing non-PF reads.|Optional|1|false|
 |strategy|s|Strategy|The UMI assignment strategy.|Required|1||
 |edits|e|Int|The allowable number of edits between UMIs.|Optional|1|1|
-|min-umi-length|l|Int|The minimum UMI length. If not specified then all UMIs must have the same length, otherwise discard reads with UMIs shorter than this length and allow for differing UMI lengths.|Optional|1||
+|min-umi-length|l|Int|The minimum UMI length. If not specified then all UMIs must have the same length, otherwise discard templates containing a shorter UMI and allow for differing UMI lengths.|Optional|1||
 |threads|@|Int|Number of threads to use when comparing UMIs. Only recommended for amplicon or similar data.|Optional|1|1|
 
