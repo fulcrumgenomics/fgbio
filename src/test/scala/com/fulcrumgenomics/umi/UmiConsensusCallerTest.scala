@@ -24,6 +24,7 @@
 
 package com.fulcrumgenomics.umi
 
+import com.fulcrumgenomics.alignment.Cigar
 import com.fulcrumgenomics.bam.api.SamOrder
 import com.fulcrumgenomics.testing.{SamBuilder, UnitSpec}
 import htsjdk.samtools.SAMFileHeader.GroupOrder
@@ -31,6 +32,44 @@ import htsjdk.samtools.SAMReadGroupRecord
 import org.scalatest.OptionValues
 
 class UmiConsensusCallerTest extends UnitSpec with OptionValues {
+  for (emptyLength <- Seq(10, 20, 30); reverse <- Seq(false, true);
+       (mappedCount, emptyCount) <- Seq((2, 1), (2, 2), (1, 2), (0, 3))) {
+    "UmiConsensusCaller.filterToMostCommonAlignment" should
+      s"separate empty CIGARs of length $emptyLength with support $mappedCount/$emptyCount and reverse=$reverse" in {
+      val builder = new SamBuilder(readLength=20)
+      val mapped = (0 until mappedCount).map { i =>
+        builder.addFrag(name=s"mapped$i", start=100, bases="ACGT" * 5).value
+      }
+      val empty = (0 until emptyCount).map { i =>
+        builder.addFrag(name=s"empty$i", start=100, unmapped=true,
+          bases="A" * emptyLength, quals="I" * emptyLength).value
+      }
+      val reads = mapped ++ empty
+      val input = (if (reverse) reads.reverse else reads).map { rec =>
+        UmiConsensusCaller.SourceRead(rec.name, rec.bases, rec.quals, rec.cigar, Some(rec))
+      }
+      val caller = new VanillaUmiConsensusCaller(readNamePrefix="test")
+      val expected = input.filter(_.cigar.elems.nonEmpty == (mappedCount >= emptyCount))
+      caller.filterToMostCommonAlignment(input).map(_.id) shouldBe expected.map(_.id)
+      val rejected = reads.filter(_.contains(UmiConsensusCaller.RejectReasonTag))
+      rejected.map(_.name).toSet shouldBe (input.map(_.id).toSet -- expected.map(_.id).toSet)
+      rejected.foreach(_[String](UmiConsensusCaller.RejectReasonTag) shouldBe UmiConsensusCaller.RejectionReason.MinorityAlignment.code)
+      caller.totalFiltered shouldBe rejected.size.toLong
+    }
+  }
+
+  it should "prefer a nonempty CIGAR even when the tied empty group has better strand balance" in {
+    val reads = Seq(("20M", true), ("20M", true), ("*", true), ("*", false)).zipWithIndex.map {
+      case ((cigar, strand), i) =>
+        UmiConsensusCaller.SourceRead(s"$strand:$i", ("A" * 20).getBytes, Array.fill[Byte](20)(30), Cigar.fromSam(cigar))
+    }
+    val caller = new VanillaUmiConsensusCaller(readNamePrefix="test")
+    for (input <- Seq(reads, reads.reverse)) {
+      caller.filterToMostCommonAlignment(input, _.id.startsWith("true")).map(_.id) shouldBe
+        input.filter(_.cigar.elems.nonEmpty).map(_.id)
+    }
+  }
+
   "UmiConsensusCaller" should "do nothing when the header has the right sort order in it" in {
     val builder = new SamBuilder(sort=Some(SamOrder.TemplateCoordinate))
     var warning : Option[String] = None

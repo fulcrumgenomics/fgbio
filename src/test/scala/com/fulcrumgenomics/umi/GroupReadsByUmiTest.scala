@@ -258,6 +258,37 @@ class GroupReadsByUmiTest extends UnitSpec with OptionValues with PrivateMethodT
     tReadInfo.cellBarcode.value shouldBe "GTTTA"
   }
 
+  for (strategy <- Seq(Strategy.Identity, Strategy.Edit, Strategy.Adjacency); reverse <- Seq(false, true)) {
+    "GroupReadsByUmi.assignUmiGroups" should s"use only mapped-end orientation with $strategy and reverse=$reverse" in {
+      val builder = new SamBuilder(readLength=10)
+      val templates = for (missingR1 <- Seq(false, true); negative <- Seq(false, true)) yield {
+        val pair = builder.addPair(name=s"$missingR1:$negative", start1=100, start2=100,
+          unmapped1=missingR1, unmapped2= !missingR1, strand1=Plus, strand2=Plus, attrs=Map("RX" -> "ACGT"))
+        pair.find(_.unmapped).value.negativeStrand = negative
+        pair.find(_.mapped).value.mateNegativeStrand = negative
+        Template(r1=Some(pair.head), r2=Some(pair.last))
+      }
+      templates.map(ReadInfo(_, "CB")).distinct should have size 1
+      val tool = new GroupReadsByUmi(strategy=strategy, edits=0)
+      tool.assignUmiGroups(if (reverse) templates.reverse else templates)
+      val ids = templates.map(_.r1.value[String]("MI"))
+      ids(0) shouldBe ids(1)
+      ids(2) shouldBe ids(3)
+      ids(0) should not be ids(2)
+    }
+
+    it should s"treat absent and unmapped mates as unknown orientation with $strategy and reverse=$reverse" in {
+      val builder = new SamBuilder(readLength=10)
+      val fragment = builder.addFrag(start=100, strand=Plus, attrs=Map("RX" -> "ACGT")).value
+      val pair = builder.addPair(start1=100, start2=100, unmapped2=true, strand1=Plus, strand2=Minus,
+        attrs=Map("RX" -> "ACGT"))
+      val templates = Seq(Template(r1=Some(fragment), r2=None), Template(r1=Some(pair.head), r2=Some(pair.last)))
+      templates.map(ReadInfo(_, "CB")).distinct should have size 1
+      new GroupReadsByUmi(strategy=strategy, edits=0).assignUmiGroups(if (reverse) templates.reverse else templates)
+      fragment[String]("MI") shouldBe pair.head[String]("MI")
+    }
+  }
+
   // Test for running the GroupReadsByUmi command line program with some sample input
   "GroupReadsByUmi" should "group reads correctly" in {
     Seq(SamOrder.Coordinate, SamOrder.Queryname, SamOrder.TemplateCoordinate).foreach { sortOrder =>

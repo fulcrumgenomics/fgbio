@@ -351,6 +351,7 @@ trait UmiConsensusCaller[ConsensusRead <: SimpleRead] {
     */
   final def consensusReadsFromSamRecords(recs: Seq[SamRecord]): Seq[SamRecord] = {
     this._totalReads += recs.size
+
     // Ensure that mate cigar is set on all read pairs.  This is needed when using
     // `clipper.numBasesExtendingPastMate` subsequently
     updateMateCigars(recs)
@@ -392,8 +393,10 @@ trait UmiConsensusCaller[ConsensusRead <: SimpleRead] {
   /**
     * Takes in a non-empty seq of SamRecords and filters them such that the returned seq only contains
     * those reads that share the most common alignment of the read sequence to the reference.
-    * If two or more different alignments share equal numbers of reads, the group with the most reads on its
-    * weaker strand (as split by `strand`) is kept, and any remaining tie keeps the smallest CIGAR.
+    * Empty CIGARs group only with other empty CIGARs, allowing all-unmapped ends to form a consensus.
+    * The largest group wins, even if its CIGAR is empty. For equal support, nonempty CIGARs win over empty
+    * CIGARs, then the group with the most reads on its weaker strand (as split by `strand`) is kept,
+    * and any remaining tie keeps the smallest CIGAR.
     *
     * For the purposes of this method all that is implied by "same alignment" is that any
     * insertions or deletions are at the same position and of the same length.  This is done
@@ -414,7 +417,12 @@ trait UmiConsensusCaller[ConsensusRead <: SimpleRead] {
     forloop (from=0, until=sortedIndices.length) { si =>
       val simpleCigar = simplifyCigar(recsIndexed(sortedIndices(si)).cigar)
       var found = false
-      groups.foreach { g => if (simpleCigar.isPrefixOf(g.cigar)) { g.add(si); found = true } }
+      groups.foreach { g =>
+        if (simpleCigar.elems.isEmpty == g.cigar.elems.isEmpty && simpleCigar.isPrefixOf(g.cigar)) {
+          g.add(si)
+          found = true
+        }
+      }
 
       if (!found) {
         val newGroup = new AlignmentGroup(simpleCigar, new mutable.BitSet(sortedIndices.length))
@@ -434,7 +442,9 @@ trait UmiConsensusCaller[ConsensusRead <: SimpleRead] {
           val n = g.flags.count(i => onStrand(i))
           math.min(n, g.size - n)
         }
-        groups.maxBy(g => (g.size, weakerStrandSize(g), g.cigar))(Ordering.Tuple3(Ordering.Int, Ordering.Int, Cigar.cigarOrdering.reverse))
+        groups.maxBy(g => (g.size, g.cigar.elems.nonEmpty, weakerStrandSize(g), g.cigar))(
+          Ordering.Tuple4(Ordering.Int, Ordering.Boolean, Ordering.Int, Cigar.cigarOrdering.reverse)
+        )
       }
       // BitSet tracking which original indices are kept - allows O(n) reconstruction in original order
       val keptIndices = new mutable.BitSet(recsIndexed.length)
