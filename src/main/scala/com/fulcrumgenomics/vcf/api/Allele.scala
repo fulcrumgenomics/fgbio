@@ -53,7 +53,9 @@ object Allele {
 
   /**
     * Returns an allele for the string in question.  The string may be a string of bases containing
-    * `[ACGTNacgtn]`, the no-call string (`.`), a spanned allele (`*`) or a symbolic or break-end allele.
+    * `[ACGTNacgtn]`, the no-call string (`.`), a spanned allele (`*`), a symbolic allele (e.g. `<DEL>`), or a
+    * breakend allele: either a breakend in bracket notation (e.g. `G]17:198982]`) or a single breakend (e.g. `G.` or
+    * `.A`; see section 5.4.9 of the VCF 4.3 specification).
     *
     * The allele that is returned may be newly created or cached.
 
@@ -64,7 +66,14 @@ object Allele {
     case v if v.forall(ch => SequenceUtil.isUpperACGTN(ch.toUpper.toByte)) => SimpleAllele(v)
     case v if v.startsWith("<") && v.endsWith(">") => SymbolicAllele(v)
     case v if v.exists(c => c == '[' || c == ']')  => BreakendAllele(v)
-    case v => throw new IllegalArgumentException(s"Oops, should probably handle allele: $v")
+    case v if isSingleBreakend(v)                  => BreakendAllele(v)
+    case v => throw new IllegalArgumentException(s"Not a valid VCF allele: '$v'")
+  }
+
+  /** True if the value is a single breakend: one or more bases preceded or followed by a `.` (e.g. `G.` or `.A`). */
+  private def isSingleBreakend(value: String): Boolean = {
+    val bases = if (value.startsWith(".")) value.drop(1) else if (value.endsWith(".")) value.dropRight(1) else ""
+    bases.nonEmpty && bases.forall(ch => SequenceUtil.isUpperACGTN(ch.toUpper.toByte))
   }
 
   /** Optimized match-based lookup for expected single-base allele constants. */
@@ -114,6 +123,10 @@ object Allele {
     override def value: String = id
   }
 
-  /** Class for break-end alleles. */
-  case class BreakendAllele private (override val value: String) extends Allele // TODO: what does this need to have
+  /**
+    * Class for breakend alleles, which describe one side of a structural variant or rearrangement (see section 5.4 of
+    * the VCF 4.3 specification).  The value is kept as written: either in bracket notation, giving the mate breakend's
+    * position (e.g. `G]17:198982]` or `[13:123457[T`), or as a single breakend, with no mate (e.g. `G.` or `.A`).
+    */
+  case class BreakendAllele private (override val value: String) extends Allele
 }

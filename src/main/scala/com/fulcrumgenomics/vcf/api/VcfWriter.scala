@@ -38,9 +38,10 @@ import java.nio.file.attribute.BasicFileAttributes
   *
   * @param writer the underlying HTSJDK writer
   * @param header the header of the VCF
+  * @param isBcf true if writing a BCF, false if writing a VCF
   */
-class VcfWriter private(private val writer: VariantContextWriter, val header: VcfHeader) extends Writer[Variant] {
-  override def write(variant: Variant): Unit = writer.add(VcfConversions.toJavaVariant(variant, header))
+class VcfWriter private(private val writer: VariantContextWriter, val header: VcfHeader, isBcf: Boolean) extends Writer[Variant] {
+  override def write(variant: Variant): Unit = writer.add(VcfConversions.toJavaVariant(variant, header, isBcf=isBcf))
   override def close(): Unit = writer.close()
 }
 
@@ -64,9 +65,15 @@ object VcfWriter {
     * @param path the path to write to
     * @param header the header of the VCF
     * @param index if true, index the output while writing; must be false to write variants out of coordinate order
+    * @param writeFullFormatField if true, write every FORMAT field of each sample, writing `.` for missing values, rather
+    *                             than leaving out the trailing missing FORMAT fields of each sample
     * @return a VCF writer to write to the given path
     */
-  def apply(path: PathToVcf, header: VcfHeader, async: Boolean = DefaultUseAsyncIo, index: Boolean = true): VcfWriter = {
+  def apply(path: PathToVcf,
+            header: VcfHeader,
+            async: Boolean = DefaultUseAsyncIo,
+            index: Boolean = true,
+            writeFullFormatField: Boolean = false): VcfWriter = {
     val javaHeader = VcfConversions.toJavaHeader(header)
     require(!Files.isDirectory(path), s"Path cannot be a directory! Found $path")
 
@@ -77,6 +84,7 @@ object VcfWriter {
       .setBuffer(Io.bufferSize)
 
     if (async) builder.setOption(Options.USE_ASYNC_IO) else builder.unsetOption(Options.USE_ASYNC_IO)
+    if (writeFullFormatField) builder.setOption(Options.WRITE_FULL_FORMAT_FIELD)
 
     // Don't index if asked not to, or if the path exists and is not a file or symbolic link (assumed a named pipe).
     if (!index || (Files.exists(path) && Files.readAttributes(path, classOf[BasicFileAttributes]).isOther)) {
@@ -88,6 +96,8 @@ object VcfWriter {
 
     val writer = builder.build()
     writer.writeHeader(javaHeader)
-    new VcfWriter(writer, header)
+    // NB: decide whether the output is a BCF as the writer builder does, which ignores case and follows symbolic links
+    val isBcf = VariantContextWriterBuilder.determineOutputTypeFromFile(path) == VariantContextWriterBuilder.OutputType.BCF
+    new VcfWriter(writer, header, isBcf=isBcf)
   }
 }

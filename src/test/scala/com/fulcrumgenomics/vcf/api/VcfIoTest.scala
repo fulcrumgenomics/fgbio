@@ -24,6 +24,7 @@
 
 package com.fulcrumgenomics.vcf.api
 
+import com.fulcrumgenomics.FgBioDef.PathToVcf
 import com.fulcrumgenomics.commons.CommonsDef.SafelyClosable
 import com.fulcrumgenomics.commons.io.{Io, PathUtil}
 import com.fulcrumgenomics.testing.VcfBuilder.Gt
@@ -388,5 +389,271 @@ class VcfIoTest extends UnitSpec with OptionValues {
     reread.header.version.value shouldBe VcfVersion.V4_5
     reread.header.formats.find(_.id == "XLA").value.count shouldBe VcfCount.OnePerLocalAltAllele
     reread.safelyClose()
+  }
+
+  /** The header lines of the VCFs written by [[writeRawVcf]]. */
+  private val RawHeaderLines: Seq[String] = Seq(
+    "##fileformat=VCFv4.2",
+    "##contig=<ID=chr1,length=5000>",
+    "##INFO=<ID=AF,Number=A,Type=Float,Description=\"af\">",
+    "##INFO=<ID=AC,Number=A,Type=Integer,Description=\"ac\">",
+    "##INFO=<ID=MQ,Number=1,Type=Float,Description=\"mq\">",
+    "##INFO=<ID=S1,Number=1,Type=String,Description=\"s\">",
+    "##INFO=<ID=C1,Number=1,Type=Character,Description=\"c\">",
+    "##INFO=<ID=XN,Number=.,Type=Integer,Description=\"xn\">",
+    "##FORMAT=<ID=GT,Number=1,Type=String,Description=\"Genotype\">",
+    "##FORMAT=<ID=DP,Number=1,Type=Integer,Description=\"Depth\">",
+    "##FORMAT=<ID=GQ,Number=1,Type=Integer,Description=\"GQ\">",
+    "##FORMAT=<ID=FT,Number=1,Type=String,Description=\"Genotype filter\">",
+    "##FORMAT=<ID=PS,Number=1,Type=Integer,Description=\"Phase set\">",
+    "##FORMAT=<ID=XF,Number=2,Type=Float,Description=\"xf\">",
+    "##FORMAT=<ID=XI,Number=2,Type=Integer,Description=\"xi\">",
+    "##FORMAT=<ID=XC,Number=2,Type=Character,Description=\"xc\">",
+    "##FORMAT=<ID=XN,Number=.,Type=Integer,Description=\"xn\">",
+    "##FORMAT=<ID=AD,Number=R,Type=Integer,Description=\"Allelic depths\">",
+    "##FORMAT=<ID=PL,Number=G,Type=Integer,Description=\"Genotype likelihoods\">",
+    Seq("#CHROM", "POS", "ID", "REF", "ALT", "QUAL", "FILTER", "INFO", "FORMAT", "s1", "s2").mkString("\t")
+  )
+
+  /** Writes a two-sample VCF with the given records, each given as its tab-separated fields. */
+  private def writeRawVcf(records: Seq[String]*): PathToVcf = {
+    val vcf = makeTempFile(getClass.getSimpleName, VcfExtension)
+    Io.writeLines(vcf, RawHeaderLines ++ records.map(_.mkString("\t")))
+    vcf
+  }
+
+  /** Reads the VCF or BCF with a VcfSource and writes it back out to the given path with a VcfWriter. */
+  private def copyVcf(input: PathToVcf, output: PathToVcf, writeFullFormatField: Boolean = false): Unit = {
+    val source = VcfSource(input)
+    val writer = VcfWriter(output, source.header, writeFullFormatField=writeFullFormatField)
+    writer ++= source
+    writer.close()
+    source.safelyClose()
+  }
+
+  /** Reads the VCF or BCF with a VcfSource and writes it back out as a VCF with a VcfWriter, returning the records
+    * written as text. */
+  private def roundTripText(input: PathToVcf, writeFullFormatField: Boolean = false): Seq[String] = {
+    val output = makeTempFile(getClass.getSimpleName, VcfExtension)
+    copyVcf(input, output, writeFullFormatField=writeFullFormatField)
+    Io.readLines(output).filterNot(_.startsWith("#")).toSeq
+  }
+
+  "VcfSource and VcfWriter" should "keep missing values in multi-valued INFO and FORMAT fields" in {
+    val vcf = writeRawVcf(
+      Seq("chr1", "100", ".", "A", "C,G", "50", "PASS", "AC=.,3;AF=0.5,.", "GT:XF:XI", "0/1:1.5,.:.,7", "0/0:.,2.5:3,.")
+    )
+
+    val variant = VcfSource(vcf).iterator.next()
+    variant[IndexedSeq[Int]]("AC") shouldBe Seq(Variant.MissingInt, 3)
+    Variant.isMissingValue(variant[IndexedSeq[Float]]("AF").last) shouldBe true
+
+    roundTripText(vcf) shouldBe Seq(
+      Seq("chr1", "100", ".", "A", "C,G", "50", "PASS", "AC=.,3;AF=0.5,.", "GT:XF:XI", "0/1:1.5,.:.,7", "0/0:.,2.5:3,.").mkString("\t")
+    )
+  }
+
+  it should "write a missing Int or Float on its own as a missing value" in {
+    val alleles = AlleleSet(ref=Allele("A"), alts=IndexedSeq(Allele("C")))
+    val variant = Variant(chrom="chr1", pos=100, alleles=alleles, attrs=ListMap("DP" -> Variant.MissingInt, "QD" -> Variant.MissingFloat),
+      genotypes=Map("s1" -> Genotype(alleles, "s1", alleles.toIndexedSeq, attrs=Map("GQ" -> Variant.MissingInt, "AD" -> Seq(1, 2)))))
+    val output = makeTempFile(getClass.getSimpleName, VcfExtension)
+    val writer = VcfWriter(output, VcfIoTest.Header)
+    writer.write(variant)
+    writer.close()
+
+    Io.readLines(output).filterNot(_.startsWith("#")).toSeq shouldBe Seq(
+      Seq("chr1", "100", ".", "A", "C", ".", ".", "DP=.;QD=.", "GT:AD", "0/1:1,2").mkString("\t")
+    )
+  }
+
+  it should "read and write the genotype filters (FT)" in {
+    val vcf = writeRawVcf(Seq("chr1", "100", ".", "A", "C", "50", "PASS", ".", "GT:DP:FT", "0/1:20:lowq", "0/1:30:a;b"))
+
+    val variant = VcfSource(vcf).iterator.next()
+    variant.gt("s1")[String]("FT") shouldBe "lowq"
+    variant.gt("s2")[String]("FT") shouldBe "a;b"
+
+    roundTripText(vcf) shouldBe Seq(Seq("chr1", "100", ".", "A", "C", "50", "PASS", ".", "GT:DP:FT", "0/1:20:lowq", "0/1:30:a;b").mkString("\t"))
+  }
+
+  it should "write genotype filters (FT) given as a sequence" in {
+    val alleles = AlleleSet(ref=Allele("A"), alts=IndexedSeq(Allele("C")))
+    val variant = Variant(chrom="chr1", pos=100, alleles=alleles,
+      genotypes=Map("s1" -> Genotype(alleles, "s1", alleles.toIndexedSeq, attrs=Map("FT" -> Seq("lowq", "lowdp")))))
+    val output = makeTempFile(getClass.getSimpleName, VcfExtension)
+    val writer = VcfWriter(output, VcfIoTest.Header)
+    writer.write(variant)
+    writer.close()
+
+    Io.readLines(output).filterNot(_.startsWith("#")).toSeq shouldBe Seq(
+      Seq("chr1", "100", ".", "A", "C", ".", ".", ".", "GT:FT", "0/1:lowdp;lowq").mkString("\t")
+    )
+  }
+
+  it should "keep the commas in a Number=1 String INFO value" in {
+    val vcf = writeRawVcf(
+      Seq("chr1", "100", ".", "A", "C", "50", "PASS", "S1=a,b", "GT", "0/1", "0/0"),
+      Seq("chr1", "200", ".", "A", "C", "50", "PASS", "S1=.,.", "GT", "0/1", "0/0")
+    )
+    VcfSource(vcf).toIndexedSeq.map(_[String]("S1")) shouldBe Seq("a,b", ".,.")
+    roundTripText(vcf) shouldBe Seq(
+      Seq("chr1", "100", ".", "A", "C", "50", "PASS", "S1=a,b", "GT", "0/1", "0/0").mkString("\t"),
+      Seq("chr1", "200", ".", "A", "C", "50", "PASS", "S1=.,.", "GT", "0/1", "0/0").mkString("\t")
+    )
+  }
+
+  it should "write a BCF to a path whose extension is upper case" in {
+    val vcf = writeRawVcf(Seq("chr1", "100", ".", "A", "C,G", "50", "PASS", "AF=0.5,0.25", "GT:XF", "0/1:1.5,.", "0/0:0.25,2"))
+    val bcf = makeTempFile(getClass.getSimpleName, ".BCF")
+    copyVcf(vcf, bcf)
+    roundTripText(bcf) shouldBe roundTripText(vcf)
+  }
+
+  it should "write Float values as the shortest decimal that reads back as the same Float" in {
+    val vcf = writeRawVcf(
+      Seq("chr1", "100", ".", "A", "C", "50", "PASS", "AF=0.500;MQ=60", "GT:XF", "0/1:0,1e-10", "0/0:12345678.9,-2.50"),
+      Seq("chr1", "200", ".", "A", "C", "50", "PASS", "AF=0.0001;MQ=59.123456789", "GT", "0/1", "0/0")
+    )
+    roundTripText(vcf) shouldBe Seq(
+      // NB: a Float holds only about 7 significant digits, so 12345678.9 and 59.123456789 cannot be kept exactly
+      Seq("chr1", "100", ".", "A", "C", "50", "PASS", "AF=0.5;MQ=60", "GT:XF", "0/1:0,0.0000000001", "0/0:12345679,-2.5").mkString("\t"),
+      Seq("chr1", "200", ".", "A", "C", "50", "PASS", "AF=0.0001;MQ=59.123455", "GT", "0/1", "0/0").mkString("\t")
+    )
+  }
+
+  it should "read NaN and infinite Float values written in any case, with or without a sign" in {
+    val vcf = writeRawVcf(
+      Seq("chr1", "100", ".", "A", "C", "50", "PASS", "MQ=nan", "GT:XF", "0/1:Inf,-INF", "0/0:+infinity,NaN"),
+      Seq("chr1", "200", ".", "A", "C", "50", "PASS", "MQ=-Infinity", "GT", "0/1", "0/0")
+    )
+    val Seq(v1, v2) = VcfSource(vcf).toIndexedSeq
+    v1[Float]("MQ").isNaN shouldBe true
+    v1.gt("s1")[IndexedSeq[Float]]("XF") shouldBe Seq(Float.PositiveInfinity, Float.NegativeInfinity)
+    v1.gt("s2")[IndexedSeq[Float]]("XF").head shouldBe Float.PositiveInfinity
+    v2[Float]("MQ") shouldBe Float.NegativeInfinity
+
+    roundTripText(vcf) shouldBe Seq(
+      Seq("chr1", "100", ".", "A", "C", "50", "PASS", "MQ=NaN", "GT:XF", "0/1:Inf,-Inf", "0/0:Inf,NaN").mkString("\t"),
+      Seq("chr1", "200", ".", "A", "C", "50", "PASS", "MQ=-Inf", "GT", "0/1", "0/0").mkString("\t")
+    )
+  }
+
+  it should "leave out trailing missing FORMAT fields unless asked to write them all" in {
+    val vcf = writeRawVcf(Seq("chr1", "100", ".", "A", "C", "50", "PASS", ".", "GT:DP:GQ:PS", "0/1:10:.:.", "0|1:12:30:100"))
+    roundTripText(vcf) shouldBe Seq(Seq("chr1", "100", ".", "A", "C", "50", "PASS", ".", "GT:DP:GQ:PS", "0/1:10", "0|1:12:30:100").mkString("\t"))
+    roundTripText(vcf, writeFullFormatField=true) shouldBe Seq(
+      Seq("chr1", "100", ".", "A", "C", "50", "PASS", ".", "GT:DP:GQ:PS", "0/1:10:.:.", "0|1:12:30:100").mkString("\t")
+    )
+  }
+
+  it should "round-trip INFO and FORMAT values, including missing values, through a BCF" in {
+    val records = Seq(
+      Seq("chr1", "100", ".", "A", "C,G", "50", "PASS", "AC=.,3;AF=0.5,.;MQ=59.5;S1=a,b", "GT:DP:FT:XF:XI", "0/1:20:lowq:1.5,.:.,7", "0/0:3:.:0.25,2:3,4"),
+      Seq("chr1", "200", ".", "A", "C", "50", "PASS", "AC=1;AF=0.0001;MQ=60", "GT:DP", "0/1:10", "0/0:12")
+    )
+    val vcf = writeRawVcf(records:_*)
+    val bcf = makeTempFile(getClass.getSimpleName, BcfExtension)
+    copyVcf(vcf, bcf)
+
+    val fromVcf = VcfSource(vcf).toIndexedSeq
+    val fromBcf = VcfSource(bcf).toIndexedSeq
+    fromBcf.map(_.attrs.map { case (k, v) => k -> v.toString }) shouldBe fromVcf.map(_.attrs.map { case (k, v) => k -> v.toString })
+    fromBcf.map(_.gts.map(_.attrs.map { case (k, v) => k -> v.toString }).toSeq) shouldBe fromVcf.map(_.gts.map(_.attrs.map { case (k, v) => k -> v.toString }).toSeq)
+
+    roundTripText(bcf) shouldBe roundTripText(vcf)
+  }
+
+  it should "round-trip Character INFO and FORMAT values, including missing values, through a BCF" in {
+    val records = Seq(
+      Seq("chr1", "100", ".", "A", "C", "50", "PASS", "C1=x", "GT:XC", "0/1:a,b", "0/0:.,c"),
+      Seq("chr1", "200", ".", "A", "C", "50", "PASS", "C1=.", "GT:XC", "0/1:.,.", "0/0:d,e")
+    )
+    val vcf = writeRawVcf(records:_*)
+    val bcf = makeTempFile(getClass.getSimpleName, BcfExtension)
+    copyVcf(vcf, bcf)
+
+    val Seq(v1, _) = VcfSource(bcf).toIndexedSeq
+    v1[Char]("C1") shouldBe 'x'
+    v1.gt("s1")[IndexedSeq[Char]]("XC") shouldBe Seq('a', 'b')
+    roundTripText(bcf) shouldBe roundTripText(vcf)
+  }
+
+  it should "write empty multi-valued INFO and FORMAT values, including AD and PL, as missing, through a VCF and a BCF" in {
+    val header  = { val source = VcfSource(writeRawVcf()); try source.header finally source.safelyClose() }
+    val alleles = AlleleSet("A", "C")
+    val variant = Variant(
+      chrom     = "chr1",
+      pos       = 100,
+      alleles   = alleles,
+      attrs     = ListMap("XN" -> Seq.empty[Int]),
+      genotypes = Map(
+        "s1" -> Genotype(alleles, "s1", alleles.toIndexedSeq, attrs=Map("XN" -> Seq.empty[Int], "AD" -> Seq.empty[Int], "PL" -> Seq.empty[Int])),
+        "s2" -> Genotype(alleles, "s2", IndexedSeq(alleles.ref, alleles.ref), attrs=Map("XN" -> Seq(1, 2)))
+      )
+    )
+
+    Seq(VcfExtension, BcfExtension).foreach { ext =>
+      val output = makeTempFile(getClass.getSimpleName, ext)
+      val writer = VcfWriter(output, header)
+      writer += variant
+      writer.close()
+      roundTripText(output) shouldBe Seq(Seq("chr1", "100", ".", "A", "C", ".", ".", ".", "GT:XN", "0/1", "0/0:1,2").mkString("\t"))
+    }
+  }
+
+  it should "read and write single breakend alleles, through a VCF and a BCF" in {
+    val records = Seq(
+      Seq("chr1", "100", "bnd1", "C", "C.", "50", "PASS", ".", "GT", "0/1", "0/0"),
+      Seq("chr1", "200", "bnd2", "T", ".T,G]chr1:300]", "50", "PASS", ".", "GT", "1/2", "0/1")
+    )
+    val vcf = writeRawVcf(records:_*)
+
+    val variants = VcfSource(vcf).toIndexedSeq
+    variants.map(_.alleles.alts.map(_.value)) shouldBe Seq(Seq("C."), Seq(".T", "G]chr1:300]"))
+    variants.flatMap(_.alleles.alts).foreach(_.isInstanceOf[Allele.BreakendAllele] shouldBe true)
+    variants.map(_.gt("s1").gtWithBases) shouldBe Seq("C/C.", ".T/G]chr1:300]")
+    variants.map(_.end) shouldBe Seq(100, 200)
+
+    // VCF -> VCF
+    roundTripText(vcf) shouldBe records.map(_.mkString("\t"))
+
+    // VCF -> BCF -> VCF
+    val bcf = makeTempFile(getClass.getSimpleName, BcfExtension)
+    copyVcf(vcf, bcf)
+    VcfSource(bcf).toIndexedSeq.map(_.alleles.toSeq.map(_.value)) shouldBe variants.map(_.alleles.toSeq.map(_.value))
+    roundTripText(bcf) shouldBe records.map(_.mkString("\t"))
+  }
+
+  it should "fail with a message naming the VCF, record, field, type and value when a typed value is invalid" in {
+    case class Case(info: String, format: String, s1: String, expected: String)
+    Seq(
+      Case("AC=3000000000", "GT",    "0/1",          "Invalid Integer value '3000000000' for INFO field AC at chr1:100"),
+      Case("AC=1,1.5",      "GT",    "0/1",          "Invalid Integer value '1.5' for INFO field AC at chr1:100"),
+      Case("MQ=high",       "GT",    "0/1",          "Invalid Float value 'high' for INFO field MQ at chr1:100"),
+      Case(".",             "GT:PS", "0/1:1.5",      "Invalid Integer value '1.5' for FORMAT field PS of sample s1 at chr1:100"),
+      Case(".",             "GT:XI", "0/1:1,99999999999", "Invalid Integer value '99999999999' for FORMAT field XI of sample s1 at chr1:100")
+    ).foreach { c =>
+      val vcf = writeRawVcf(Seq("chr1", "100", ".", "A", "C", "50", "PASS", c.info, c.format, c.s1, "0/0" + ":." * (c.format.count(_ == ':'))))
+      val source = VcfSource(vcf)
+      val ex = intercept[IllegalArgumentException] { source.toIndexedSeq }
+      source.safelyClose()
+      ex.getMessage shouldBe s"${c.expected} in $vcf"
+    }
+  }
+
+  "VcfConversions.formatFloat" should "format Floats as plain, shortest round-trip decimals" in {
+    VcfConversions.formatFloat(60f) shouldBe "60"
+    VcfConversions.formatFloat(0.5f) shouldBe "0.5"
+    VcfConversions.formatFloat(0.1f) shouldBe "0.1"
+    VcfConversions.formatFloat(1e-10f) shouldBe "0.0000000001"
+    VcfConversions.formatFloat(1.2345679e7f) shouldBe "12345679"
+    VcfConversions.formatFloat(-2.5f) shouldBe "-2.5"
+    VcfConversions.formatFloat(0f) shouldBe "0"
+    VcfConversions.formatFloat(-0f) shouldBe "-0"
+    VcfConversions.formatFloat(Float.NaN) shouldBe "NaN"
+    VcfConversions.formatFloat(Float.PositiveInfinity) shouldBe "Inf"
+    VcfConversions.formatFloat(Float.NegativeInfinity) shouldBe "-Inf"
+    Seq(0.1f, 1/3f, 123.456f, 3.4028235e38f, 1.4e-45f).foreach { f => VcfConversions.formatFloat(f).toFloat shouldBe f }
   }
 }
