@@ -54,9 +54,13 @@ Without `--ref`, the reference bases are reconstructed from each read's MD tag, 
 read that may be changed.  Such reads may not have `=` read bases that the MD tag reports as matching the reference.
 
 When a read's alignment changes, its MD, NM, and UQ tags are re-computed if present, counting a base as a mismatch
-unless the read and reference bases are the same and not `N` (as samtools does).  UQ is removed if the read has no
-base qualities.  The BQ, minimap2 cs, ds, and de tags are removed when the alignment edit path changes, but kept
-when only M versus =/X notation changes.  The de tag is also removed when adjacent indel operators are coalesced.
+unless the read and reference bases are the same, ignoring case (as HTSJDK and other fgbio tools do).  An `N` (or
+another IUPAC code) in both the read and the reference is therefore a match.  This differs from the SAM
+specification's NM definition, under which only `A`, `C`, `G`, and `T` bases can match.  With
+`--samtools-mismatches`, a read and reference base that are both `N` are a mismatch instead (as samtools does).
+Repaired SA tag entries use the same edit distance.  UQ is removed if the read has no base qualities.  The BQ,
+minimap2 cs, ds, and de tags are removed when the alignment edit path changes, but kept when only M versus =/X
+notation changes.  The de tag is also removed when adjacent indel operators are coalesced.
 The alignment score (AS) is not changed, even when indels are merged or trimmed.  The CIGAR uses match (`=`) and mismatch (`X`) operators, with the same definition of a mismatch, when
 `--use-equals-and-x` is given or the read's CIGAR already uses them, otherwise match-or-mismatch (`M`) operators.
 Existing `=` and `X` notation is kept when no indel is moved or coalesced, unless remaining `M` operators are converted.
@@ -105,4 +109,5 @@ their SA tags, and with `--leading-indel-mode Filter` only those reads with a le
 |allow-missing-mates|x|Boolean|If specified, do not fail when reads marked as paired are missing their mate pairs.|Optional|1|false|
 |use-equals-and-x||Boolean|Use match (=) and mismatch (X) SAM CIGAR operators instead of match-or-mismatch (M).|Optional|1|false|
 |leading-indel-mode|l|LeadingIndelMode|What to do with an indel at the start of a read's alignment: trim it from the alignment, keep it, or filter the read's template.|Optional|1|Trim|
+|samtools-mismatches||Boolean|Count a read base and reference base that are both N as a mismatch (as samtools does) in the MD, NM, and UQ tags and the =/X operators, instead of as a match (as HTSJDK and other fgbio tools do).|Optional|1|false|
 
