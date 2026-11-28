@@ -505,7 +505,10 @@ class SamRecordClipper(val mode: ClippingMode, val autoClipAttributes: Boolean) 
       rec.attributes.foreach {
         case (tag, _) if TagsNeverAutoClipped.contains(tag) => ()
         case (tag, s: String)   if s.length == oldLength => rec(tag) = if (fromStart) s.drop(remove) else s.take(newLength)
-        case (tag, a: Array[_]) if a.length == oldLength => rec(tag) = if (fromStart) a.drop(remove) else a.take(newLength)
+        case (tag, a: Array[_]) if a.length == oldLength =>
+          val clipped = if (fromStart) a.drop(remove) else a.take(newLength)
+          if (rec.asSam.isUnsignedArrayAttribute(tag)) rec.asSam.setUnsignedArrayAttribute(tag, clipped)
+          else rec(tag) = clipped
         case _  => ()
       }
     }
