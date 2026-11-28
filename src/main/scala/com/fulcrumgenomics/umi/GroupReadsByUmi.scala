@@ -84,18 +84,15 @@ object GroupReadsByUmi {
     private val UnknownPos    = Int.MaxValue
     private val UnknownStrand = Byte.MaxValue
 
-    /** Looks in all the places the library name can be hiding. Returns the library name
-      * if one is found, otherwise returns "unknown".
-      */
-    private def library(rec: SamRecord): String = {
-      val rg = rec.readGroup
-      if (rg != null && rg.getLibrary != null) rg.getLibrary else "unknown"
-    }
+    /** The library of the record, matching the library used by the [[SamOrder.TemplateCoordinate]] sort. */
+    private def library(rec: SamRecord): String = SamOrder.libraryOf(rec)
 
-    /** Extract a ReadInfo from a SamRecord; mate cigar must be present if a mate exists and is mapped. */
+    /** Extract a ReadInfo from a SamRecord; mate cigar must be present if a mate exists and is mapped.
+      * Missing cell tags use the empty string, matching the template-coordinate sort key. */
     def apply(rec: SamRecord, cellTag: String) : ReadInfo =
       rec.transientAttrs.getOrElseUpdate[ReadInfo](GroupReadsByUmi.ReadInfoTempAttributeName, {
         val lib = library(rec)
+        val cellBarcode = Some(rec.getOrElse[String](cellTag, ""))
         val (ref1, start1, strand1) = positionOf(rec)
         val (ref2, start2, strand2) = if (rec.unpaired || rec.mateUnmapped) (UnknownRef, UnknownPos, UnknownStrand) else {
           val start = (if (rec.matePositiveStrand) rec.mateUnSoftClippedStart else rec.mateUnSoftClippedEnd)
@@ -108,18 +105,20 @@ object GroupReadsByUmi {
             (ref1 == ref2 && start1 < start2) ||
             (ref1 == ref2 && start1 == start2 && strand1 < strand2)
 
-        if (r1Earlier) new ReadInfo(ref1, start1, strand1, ref2, start2, strand2, lib, rec.get(cellTag))
-        else           new ReadInfo(ref2, start2, strand2, ref1, start1, strand1, lib, rec.get(cellTag))
+        if (r1Earlier) new ReadInfo(ref1, start1, strand1, ref2, start2, strand2, lib, cellBarcode)
+        else           new ReadInfo(ref2, start2, strand2, ref1, start1, strand1, lib, cellBarcode)
       })
 
 
-    /** Extract a ReadInfo from a Template object.  R1 primary must be present. */
+    /** Extract a ReadInfo from a Template object. R1 primary must be present.
+      * Missing cell tags use the empty string, matching the template-coordinate sort key. */
     def apply(t: Template, cellTag: String): ReadInfo = {
       val r1 = t.r1.getOrElse(throw new IllegalStateException(s"${t.name} did not have a primary R1 record."))
       val r2 = t.r2
 
       r1.transientAttrs.getOrElseUpdate[ReadInfo](GroupReadsByUmi.ReadInfoTempAttributeName, {
-        val lib                     = library(r1)
+        val lib                   = library(r1)
+        val cellBarcode           = Some(r1.getOrElse[String](cellTag, ""))
         val (ref1, start1, strand1) = positionOf(r1)
         val (ref2, start2, strand2) = r2.map(positionOf).getOrElse((UnknownRef, UnknownPos, UnknownStrand))
 
@@ -128,8 +127,8 @@ object GroupReadsByUmi {
           (ref1 == ref2 && start1 < start2) ||
           (ref1 == ref2 && start1 == start2 && strand1 < strand2)
 
-        if (r1Earlier) new ReadInfo(ref1, start1, strand1, ref2, start2, strand2, lib, t.r1.flatMap(_.get(cellTag)))
-        else           new ReadInfo(ref2, start2, strand2, ref1, start1, strand1, lib, t.r1.flatMap(_.get(cellTag)))
+        if (r1Earlier) new ReadInfo(ref1, start1, strand1, ref2, start2, strand2, lib, cellBarcode)
+        else           new ReadInfo(ref2, start2, strand2, ref1, start1, strand1, lib, cellBarcode)
       })
     }
 
@@ -473,12 +472,14 @@ case class TagFamilySizeMetric(family_size: Int,
                                var fraction_gt_or_eq_family_size: Proportion = 0) extends Metric
 
 /**
- * Metrics produced by `GroupReadsByUmi` to describe reads passed through UMI grouping
- * @param accepted_sam_records The number of SAM records accepted for grouping.
- * @param discarded_non_pf The number of discarded non-PF SAM records.
- * @param discarded_poor_alignment The number of SAM records discarded for poor alignment.
- * @param discarded_ns_in_umi The number of SAM records discarded due to one or more Ns in the UMI.
- * @param discarded_umis_to_short The number of SAM records discarded due to a shorter than expected UMI.
+ * Metrics produced by `GroupReadsByUmi` to describe primary reads passed through UMI grouping.
+ * All primary records of a rejected template are counted under the first matching filter, including mates that
+ * would pass that filter individually. Secondary and supplementary records are excluded from these metrics.
+ * @param accepted_sam_records The number of primary SAM records accepted for grouping.
+ * @param discarded_non_pf The number of primary SAM records discarded from templates containing a non-PF read.
+ * @param discarded_poor_alignment The number of primary SAM records discarded for poor template alignment.
+ * @param discarded_ns_in_umi The number of primary SAM records discarded from templates with one or more Ns in a UMI.
+ * @param discarded_umis_to_short The number of primary SAM records discarded from templates with a shorter than expected UMI.
  */
 case class UmiGroupingMetric(accepted_sam_records: Long,
                              discarded_non_pf: Long,
@@ -521,24 +522,30 @@ object Strategy extends FgBioEnum[Strategy] {
     |Accepts reads in any order (including `unsorted`) and outputs reads sorted by:
     |
     |   1. The lower genome coordinate of the two outer ends of the templates (strand-aware)
-    |   2. Strand orientation
-    |   3. The cellular barcode (CB tag)
-    |   4. The assigned UMI tag
-    |   5. Read Name
-    |   6. The sequencing library
+    |   2. Strand of the lower end, then of the upper end (reverse before forward)
+    |   3. The sequencing library
+    |   4. The cellular barcode (CB tag)
+    |   5. The assigned UMI tag
+    |   6. Read Name
     |
     |It is recommended to sort the reads into template-coordinate (i.e. `SO:unsorted GO:query SS:unsorted:template-coordinate`)
     |prior to running this tool to avoid this tool re-sorting the input.  It is recommended to use
     |`samtools sort --template-coordinate --threads $(nrpoc)` for the pre-sorting.
-    |The output will always be written in template-coordinate order.
+    |The output will always be written in template-coordinate order.  Input sorted into template-coordinate order by
+    |fgbio 4.1.1 or earlier uses an older ordering which, when several libraries share a position, can split a
+    |library's UMI families into several molecules.  This tool fails on such input; re-sort it first.
     |
-    |During grouping, reads and templates are filtered out as follows:
+    |Secondary and supplementary records are discarded first. The remaining primary records are grouped by template,
+    |and all primary records for a template are discarded if any of the following filters apply:
     |
-    |1. Templates are filtered if all reads for the template are unmapped
-    |2. Templates are filtered if any non-secondary, non-supplementary read has mapping quality < `min-map-q`
-    |3. Templates are filtered if any UMI sequence contains one or more `N` bases
-    |4. Templates are filtered if `--min-umi-length` is specified and the UMI does not meet the length requirement
-    |5. Records are filtered out if flagged as either secondary or supplementary
+    |1. Any primary read is non-PF, unless `--include-non-pf-reads` is specified
+    |2. All primary reads for the template are unmapped
+    |3. Any mapped primary read has mapping quality < `min-map-q`
+    |4. Any primary read's UMI sequence contains one or more `N` bases
+    |5. `--min-umi-length` is specified and any primary read's UMI does not meet the length requirement
+    |
+    |Grouping metrics count all primary records of a discarded template under the first matching filter,
+    |including mates that would pass that filter individually. Secondary and supplementary records are not counted.
     |
     |Grouping of UMIs is performed by one of four strategies:
     |
@@ -562,8 +569,9 @@ object Strategy extends FgBioEnum[Strategy] {
     |non-identical UMIs.
     |
     |By default, all UMIs must be the same length. If `--min-umi-length=len` is specified then reads that have a UMI
-    |shorter than `len` will be discarded, and when comparing UMIs of different lengths, the first len bases will be
-    |compared, where `len` is the length of the shortest UMI. The UMI length is the number of [ACGT] bases in the UMI
+    |shorter than `len` will cause all primary reads of their template to be discarded. When comparing UMIs of different
+    |lengths, the first len bases will be compared, where `len` is the length of the shortest UMI.
+    |The UMI length is the number of [ACGT] bases in the UMI
     |(i.e. does not count dashes and other non-ACGT characters). This option is not implemented for reads with UMI pairs
     |(i.e. using the paired assigner).
     |
@@ -589,7 +597,11 @@ object Strategy extends FgBioEnum[Strategy] {
     |controls how cell identity is incorporated into grouping. Reads at the same genomic coordinates are partitioned
     |by cell barcode _before_ molecular index assignment, so reads from different cells will never be grouped together
     |even if they share a UMI and mapping position. No correction is performed on the cell barcode itself; it is
-    |treated as a known/fixed value. The default tag is `CB`.
+    |treated as a known/fixed value. The default tag is `CB`. Missing and empty cell tags are grouped together.
+    |Template-coordinate sorting always uses `CB`, including when this tool sorts internally; it does not follow
+    |a custom `--cell-tag`. Before grouping with a non-CB tag, populate `CB` consistently from that tag on every
+    |record and re-sort. Re-sorting alone may not fix interleaved custom-tag groups when `CB` is absent or differs.
+    |Preserve any original `CB` values separately if they are needed.
   """
 )
 class GroupReadsByUmi
@@ -602,11 +614,11 @@ class GroupReadsByUmi
  @arg(flag='c', doc="The tag containing the cell barcode.") val cellTag: String = SAMTag.CB.name,
  @arg(flag='d', doc="Turn on duplicate marking mode.") val markDuplicates: Boolean = false,
  @arg(flag='m', doc="Minimum mapping quality for mapped reads.") val minMapQ: Option[Int] = None,
- @arg(flag='n', doc="Include non-PF reads.")            val includeNonPfReads: Boolean = false,
+ @arg(flag='n', doc="Include templates containing non-PF reads.") val includeNonPfReads: Boolean = false,
  @arg(flag='s', doc="The UMI assignment strategy.")     val strategy: Strategy,
  @arg(flag='e', doc="The allowable number of edits between UMIs.") val edits: Int = 1,
  @arg(flag='l', doc= """The minimum UMI length. If not specified then all UMIs must have the same length,
-                         |otherwise discard reads with UMIs shorter than this length and allow for differing UMI lengths.
+                         |otherwise discard templates containing a shorter UMI and allow for differing UMI lengths.
                          |""")
     val minUmiLength: Option[Int] = None,
  @arg(flag='@', doc="Number of threads to use when comparing UMIs. Only recommended for amplicon or similar data.") val threads: Int = 1,
@@ -665,19 +677,25 @@ class GroupReadsByUmi
 
     // Filter and sort the input BAM file
     logger.info("Filtering the input.")
-    val filteredIterator = in.iterator
-      .filterNot(r => r.secondary || r.supplementary)
-      .filter(r => (includeNonPfReads || r.pf)                                      || { filteredNonPf += 1; false })
-      .filter(r => (r.mapped || (r.paired && r.mateMapped))                         || { filteredPoorAlignment += 1; false })
-      .filter(r => mapqOk(r, this._minMapQ)                                         || { filteredPoorAlignment += 1; false })
-      .filter(r => !r.get[String](rawTag).exists(_.contains('N'))                   || { filteredNsInUmi += 1; false })
-      .filter { r =>
+    // Assemble primary templates before filtering so that rejecting a read cannot orphan its mate or change
+    // the grouping key relative to the template-coordinate sort key. Canonicalize UMIs only after filtering.
+    val primaryRecords   = in.iterator.filterNot(r => r.secondary || r.supplementary)
+    val primaryTemplates = Bams.templateIterator(primaryRecords, header, Bams.MaxInMemory, Io.tmpDir)
+    val filteredIterator = primaryTemplates
+      .filter(t => (includeNonPfReads || t.primaryReads.forall(_.pf))                  || { filteredNonPf += t.readCount; false })
+      .filter(t => t.primaryReads.forall(r => r.mapped || (r.paired && r.mateMapped))   || { filteredPoorAlignment += t.readCount; false })
+      .filter(t => t.primaryReads.forall(r => mapqOk(r, this._minMapQ))                || { filteredPoorAlignment += t.readCount; false })
+      .filter(t => t.primaryReads.forall(r => !r.get[String](rawTag).exists(_.contains('N'))) || { filteredNsInUmi += t.readCount; false })
+      .filter { t =>
         this.minUmiLength.forall { l =>
-          r.get[String](this.rawTag).forall { umi =>
-            l <= umi.toUpperCase.count(c => SequenceUtil.isUpperACGTN(c.toByte))
+          t.primaryReads.forall { r =>
+            r.get[String](this.rawTag).forall { umi =>
+              l <= umi.toUpperCase.count(c => SequenceUtil.isUpperACGTN(c.toByte))
+            }
           }
-        } || { filterUmisTooShort += 1; false}
+        } || { filterUmisTooShort += t.readCount; false }
       }
+      .flatMap(_.primaryReads)
       .tapEach { r =>
         // If we're able to also group by the UMI because edits aren't allowed, push the trimmed, canonicalized UMI
         // into the assign tag (which must be MI if canTakeNextGroupByUmi is true), since that is used by the
@@ -723,11 +741,17 @@ class GroupReadsByUmi
     // and so the stats should be ready
     if (!skipSorting) logStats()
 
+    // When the input is trusted to already be in template-coordinate order, each group of templates (same ends,
+    // library and cell barcode) must appear exactly once.  A group that reappears at the same lower end means the
+    // input was sorted with a different ordering, which would silently split UMI families, so fail instead.
+    val groupsAtLowerEnd = mutable.HashSet[ReadInfo]()
+
     // Output the reads in the new ordering
     logger.info("Assigning reads to UMIs and outputting.")
     while (templateCoordinateIterator.hasNext) {
       // Take the next set of templates by position and assign UMIs
       val templates = takeNextGroup(templateCoordinateIterator, canTakeNextGroupByUmi=canTakeNextGroupByUmi)
+      if (skipSorting) checkGroupIsContiguous(ReadInfo(templates.head, cellTag=this.cellTag), groupsAtLowerEnd, header)
       assignUmiGroups(templates)
       // Then group the records in the right order (assigned tag, read name, r1, r2)
       val templatesByMi = templates.groupBy { t => t.r1.get.apply[String](this.assignTag) }
@@ -778,10 +802,37 @@ class GroupReadsByUmi
 
   private def logStats(): Unit = {
     logger.info(f"Accepted $kept%,d SAM records for grouping.")
-    if (filteredNonPf > 0) logger.info(f"Filtered out $filteredNonPf%,d non-PF SAM records.")
+    if (filteredNonPf > 0) logger.info(f"Filtered out $filteredNonPf%,d SAM records from templates containing non-PF reads.")
     logger.info(f"Filtered out $filteredPoorAlignment%,d SAM records due to mapping issues.")
-    logger.info(f"Filtered out $filteredNsInUmi%,d SAM records that contained one or more Ns in their UMIs.")
-    this.minUmiLength.foreach { _ => logger.info(f"Filtered out $filterUmisTooShort%,d SAM records that contained UMIs that were too short.") }
+    logger.info(f"Filtered out $filteredNsInUmi%,d SAM records from templates containing one or more Ns in their UMIs.")
+    this.minUmiLength.foreach { _ => logger.info(f"Filtered out $filterUmisTooShort%,d SAM records from templates containing UMIs that were too short.") }
+  }
+
+  /** Fails if a group of templates with the same [[ReadInfo]] was already seen at the same lower end, which means
+    * the pre-sorted input is not in the template-coordinate order this tool requires.
+    *
+    * @param info the [[ReadInfo]] of the group just taken from the input
+    * @param seen the groups seen so far at the current lower end; cleared when the lower end changes
+    * @param header the input header, used to name the reference in the error message
+    */
+  private def checkGroupIsContiguous(info: ReadInfo, seen: mutable.Set[ReadInfo], header: SAMFileHeader): Unit = {
+    if (seen.headOption.exists(s => s.refIndex1 != info.refIndex1 || s.start1 != info.start1)) seen.clear()
+    if (!seen.add(info)) {
+      val position = s"${header.getSequence(info.refIndex1).getSequenceName}:${info.start1}"
+      val cell     = info.cellBarcode.filter(_.nonEmpty).map(cb => s" and cell barcode '$cb'").getOrElse("")
+      val customCellTagGuidance = if (this.cellTag == SAMTag.CB.name) "" else {
+        s" With --cell-tag ${this.cellTag}, these sorters still sort by CB, so re-sorting alone may not fix " +
+        s"interleaved cells when CB is absent or differs. First populate CB consistently from ${this.cellTag} " +
+        "on every record, preserving any original CB values separately if needed, then re-sort."
+      }
+      fail(
+        s"Input is not in the template-coordinate order GroupReadsByUmi requires: templates at $position from " +
+        s"library '${info.library}'$cell are not contiguous. BAMs sorted into template-coordinate order by fgbio " +
+        s"4.1.1 or earlier, or (with cell barcodes) by a samtools release that does not compare them, must be " +
+        s"re-sorted with `fgbio SortBam -s TemplateCoordinate` or `samtools sort --template-coordinate` (1.24 or later)." +
+        customCellTagGuidance
+      )
+    }
   }
 
   /** Consumes the next group of templates with all matching end positions and returns them. */

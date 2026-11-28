@@ -34,6 +34,7 @@ import com.fulcrumgenomics.testing.SamBuilder.{Minus, Plus}
 import com.fulcrumgenomics.testing.{SamBuilder, UnitSpec}
 import com.fulcrumgenomics.umi.GroupReadsByUmi._
 import com.fulcrumgenomics.util.Metric
+import htsjdk.samtools.SAMReadGroupRecord
 import org.scalatest.{OptionValues, PrivateMethodTester}
 
 import java.nio.file.Files
@@ -256,6 +257,19 @@ class GroupReadsByUmiTest extends UnitSpec with OptionValues with PrivateMethodT
     tReadInfo.refIndex2 shouldBe 2
     tReadInfo.start2    shouldBe 290
     tReadInfo.cellBarcode.value shouldBe "GTTTA"
+  }
+
+  for (cellTag <- Seq("CB", "XX"); fromTemplate <- Seq(false, true); r1First <- Seq(false, true)) {
+    it should s"normalize absent and empty $cellTag values with fromTemplate=$fromTemplate and r1First=$r1First" in {
+      Seq(None, Some(""), Some("AA")).foreach { barcode =>
+        val builder = new SamBuilder(readLength=100, sort=None)
+        val Seq(r1, r2) = builder.addPair(start1=if (r1First) 100 else 300, start2=if (r1First) 300 else 100)
+        barcode.foreach(value => r1(cellTag) = value)
+        val info = if (fromTemplate) ReadInfo(Template(r1=Some(r1), r2=Some(r2)), cellTag)
+                   else ReadInfo(r1, cellTag)
+        info.cellBarcode shouldBe Some(barcode.getOrElse(""))
+      }
+    }
   }
 
   // Test for running the GroupReadsByUmi command line program with some sample input
@@ -614,5 +628,342 @@ class GroupReadsByUmiTest extends UnitSpec with OptionValues with PrivateMethodT
       recs.map(_.name) should contain theSameElementsInOrderAs Seq("a01", "a01", "a02", "a02")
       recs.map(r => r[String]("MI")).distinct should have length 1 // all should be assigned to one molecule
     }
+  }
+
+  for (sortOrder <- Seq(SamOrder.Coordinate, SamOrder.TemplateCoordinate); (strategy, edits) <- Seq(Strategy.Identity -> 0, Strategy.Edit -> 1, Strategy.Adjacency -> 1, Strategy.Paired -> 1)) {
+    it should s"group reads by library when the names of two libraries are interleaved with the $strategy strategy and $sortOrder input" in {
+      val builder = new SamBuilder(readLength=100, sort=Some(sortOrder))
+      builder.header.getReadGroups.get(0).setLibrary("libA")
+      val rgB = new SAMReadGroupRecord("B")
+      rgB.setLibrary("libB")
+      rgB.setSample("Sample")
+      builder.header.addReadGroup(rgB)
+
+      Seq("q1", "q3").foreach(n => builder.addPair(name=n, start1=100, start2=300, attrs=Map("RX" -> "ACGT-ACGT")))
+      Seq("q2", "q4").foreach(n => builder.addPair(name=n, start1=100, start2=300, attrs=Map("RX" -> "ACGT-ACGT", "RG" -> "B")))
+
+      val out = Files.createTempFile("umi_grouped.", ".bam")
+      new GroupReadsByUmi(input=builder.toTempFile(), output=out, rawTag="RX", assignTag="MI", strategy=strategy, edits=edits).execute()
+
+      readBamRecs(out).groupBy(r => r[String]("MI")).values.map(_.map(_.name).toSet).toSet shouldBe Set(Set("q1", "q3"), Set("q2", "q4"))
+    }
+  }
+
+  for (sortOrder <- Seq(SamOrder.Coordinate, SamOrder.TemplateCoordinate); strategy <- Strategy.values) {
+    it should s"group absent and empty cell barcodes together with $strategy and $sortOrder input" in {
+      val builder = new SamBuilder(readLength=100, sort=Some(sortOrder))
+      builder.addPair(name="q1", start1=100, start2=300, attrs=Map("RX" -> "ACGT-ACGT"))
+      builder.addPair(name="q2", start1=100, start2=300, attrs=Map("RX" -> "ACGT-ACGT", "CB" -> ""))
+      builder.addPair(name="q3", start1=100, start2=300, attrs=Map("RX" -> "ACGT-ACGT"))
+      builder.addPair(name="q4", start1=100, start2=300, attrs=Map("RX" -> "ACGT-ACGT", "CB" -> "AA"))
+      val out = Files.createTempFile("umi_grouped.", ".bam")
+      new GroupReadsByUmi(input=builder.toTempFile(), output=out, strategy=strategy, edits=if (strategy == Strategy.Identity) 0 else 1).execute()
+
+      val recs = readBamRecs(out)
+      recs.map(r => (r.name, r.firstOfPair)) should contain theSameElementsAs
+        Seq("q1", "q2", "q3", "q4").flatMap(name => Seq(name -> true, name -> false))
+      val families = recs.groupBy(r => r[String]("MI")).values.map(_.map(r => (r.name, r.firstOfPair)).toSet).toSeq
+      families should contain theSameElementsAs Seq(Seq("q1", "q2", "q3"), Seq("q4"))
+        .map(_.flatMap(name => Seq(name -> true, name -> false)).toSet)
+      recs.filter(_.name == "q2").map(_.get[String]("CB")) shouldBe Seq(Some(""), Some(""))
+      recs.filter(r => r.name == "q1" || r.name == "q3").map(_.get[String]("CB")).toSet shouldBe Set(None)
+    }
+  }
+
+  it should "explain custom cell tag recovery and group correctly after CB is populated and input re-sorted" in {
+    val builder = new SamBuilder(readLength=100, sort=Some(SamOrder.TemplateCoordinate))
+    Seq("q1" -> "AA", "q2" -> "BB", "q3" -> "AA").foreach { case (name, barcode) =>
+      builder.addPair(name=name, start1=100, start2=300, attrs=Map("RX" -> "ACGT", "XX" -> barcode))
+    }
+    val out = Files.createTempFile("umi_grouped.", ".bam")
+    val exception = intercept[FailureException] {
+      new GroupReadsByUmi(input=builder.toTempFile(), output=out, cellTag="XX", strategy=Strategy.Adjacency, edits=1).execute()
+    }
+    val message = exception.message.value
+    message should include ("--cell-tag XX")
+    message should include ("sort by CB")
+    message should include ("populate CB consistently from XX")
+    message should include ("re-sorting alone may not fix")
+
+    builder.foreach(rec => rec("CB") = rec[String]("XX"))
+    new GroupReadsByUmi(input=builder.toTempFile(), output=out, cellTag="XX", strategy=Strategy.Adjacency, edits=1).execute()
+    val recs = readBamRecs(out)
+    recs.map(r => (r.name, r.firstOfPair)) should contain theSameElementsAs
+      Seq("q1", "q2", "q3").flatMap(name => Seq(name -> true, name -> false))
+    val families = recs.groupBy(r => r[String]("MI")).values.map(_.map(r => (r.name, r.firstOfPair)).toSet).toSeq
+    families should contain theSameElementsAs Seq(Seq("q1", "q3"), Seq("q2"))
+      .map(_.flatMap(name => Seq(name -> true, name -> false)).toSet)
+  }
+
+  /** Adds a second read group, with the given ID and library, to the builder's header. */
+  private def addReadGroup(builder: SamBuilder, id: String, library: String): Unit = {
+    val rg = new SAMReadGroupRecord(id)
+    rg.setLibrary(library)
+    rg.setSample("Sample")
+    builder.header.addReadGroup(rg)
+  }
+
+  it should "group reads by library when the strand flags of unmapped mates vary with the Paired strategy" in {
+    val builder = new SamBuilder(readLength=100, sort=Some(SamOrder.Coordinate))
+    builder.header.getReadGroups.get(0).setLibrary("libA")
+    addReadGroup(builder, "B", "libB")
+
+    // The unmapped R2's strand flag is set on q1 and q2 and clear on q3 and q4
+    Seq("q1" -> Minus, "q3" -> Plus).foreach { case (n, s) =>
+      builder.addPair(name=n, start1=100, unmapped2=true, strand2=s, attrs=Map("RX" -> "ACGT-TTTT"))
+    }
+    Seq("q2" -> Minus, "q4" -> Plus).foreach { case (n, s) =>
+      builder.addPair(name=n, start1=100, unmapped2=true, strand2=s, attrs=Map("RX" -> "ACGT-TTTT", "RG" -> "B"))
+    }
+
+    val out = Files.createTempFile("umi_grouped.", ".bam")
+    new GroupReadsByUmi(input=builder.toTempFile(), output=out, rawTag="RX", assignTag="MI", strategy=Strategy.Paired, edits=1).execute()
+
+    readBamRecs(out).groupBy(r => r[String]("MI")).values.map(_.map(_.name).toSet).toSet shouldBe Set(Set("q1", "q3"), Set("q2", "q4"))
+  }
+
+  it should "group reads from several read groups of the same library together" in {
+    val builder = new SamBuilder(readLength=100, sort=Some(SamOrder.TemplateCoordinate))
+    builder.header.getReadGroups.get(0).setLibrary("libA")
+    addReadGroup(builder, "A2", "libA")
+
+    Seq("q1", "q3").foreach(n => builder.addPair(name=n, start1=100, start2=300, attrs=Map("RX" -> "ACGT-ACGT")))
+    Seq("q2", "q4").foreach(n => builder.addPair(name=n, start1=100, start2=300, attrs=Map("RX" -> "ACGT-ACGT", "RG" -> "A2")))
+
+    val out = Files.createTempFile("umi_grouped.", ".bam")
+    new GroupReadsByUmi(input=builder.toTempFile(), output=out, rawTag="RX", assignTag="MI", strategy=Strategy.Adjacency, edits=1).execute()
+
+    readBamRecs(out).map(r => r[String]("MI")).distinct should have length 1
+  }
+
+  it should "write reverse-strand templates first, then each library in turn, at one position" in {
+    val builder = new SamBuilder(readLength=100, sort=Some(SamOrder.Coordinate))
+    builder.header.getReadGroups.get(0).setLibrary("libA")
+    addReadGroup(builder, "B", "libB")
+
+    // Lower ends at 5' position 100: forward R1s starting at 100, and reverse R1s ending at 100. Names are chosen
+    // so that name order disagrees with both strand and library order.
+    builder.addPair(name="a", start1=100, start2=300, strand1=Plus,  strand2=Minus, attrs=Map("RX" -> "AAAA", "RG" -> "B"))
+    builder.addPair(name="b", start1=100, start2=300, strand1=Plus,  strand2=Minus, attrs=Map("RX" -> "CCCC"))
+    builder.addPair(name="c", start1=1,   start2=300, strand1=Minus, strand2=Plus,  attrs=Map("RX" -> "GGGG", "RG" -> "B"))
+    builder.addPair(name="d", start1=1,   start2=300, strand1=Minus, strand2=Plus,  attrs=Map("RX" -> "TTTT"))
+
+    val out = Files.createTempFile("umi_grouped.", ".bam")
+    new GroupReadsByUmi(input=builder.toTempFile(), output=out, rawTag="RX", assignTag="MI", strategy=Strategy.Identity, edits=0).execute()
+
+    readBamRecs(out).map(_.name).distinct should contain theSameElementsInOrderAs Seq("d", "c", "b", "a")
+  }
+
+  for (sortOrder <- Seq(SamOrder.Coordinate, SamOrder.TemplateCoordinate);
+       strategy <- Strategy.values;
+       filter <- Seq("PF", "N-in-UMI", "minimum UMI length") if filter != "minimum UMI length" || strategy != Strategy.Paired;
+       failingRead <- Seq(1, 2)) {
+    it should s"discard whole templates when R$failingRead fails $filter with $strategy and $sortOrder input" in {
+      val builder = new SamBuilder(readLength=100, sort=Some(sortOrder))
+      builder.header.getReadGroups.get(0).setLibrary("libA")
+      val umi = if (strategy == Strategy.Paired) "ACGT-TTTT" else "ACGT"
+      Seq("q1", "q2", "q3").foreach { name =>
+        val pair = builder.addPair(name=name, start1=100, start2=300, attrs=Map("RX" -> umi))
+        if (name == "q2") filter match {
+          case "PF"                 => pair(failingRead - 1).pf = false
+          case "N-in-UMI"           => pair(failingRead - 1)("RX") = umi.replace('G', 'N')
+          case "minimum UMI length" => pair(failingRead - 1)("RX") = "ACG"
+        }
+      }
+
+      val in   = builder.toTempFile()
+      val recs = readBamRecs(in)
+      if (sortOrder == SamOrder.TemplateCoordinate) {
+        val keys = recs.map(SamOrder.TemplateCoordinate.sortkey)
+        keys shouldBe keys.sorted
+        recs.map(r => (r.name, r.firstOfPair)) shouldBe
+          Seq("q1", "q2", "q3").flatMap(name => Seq(name -> true, name -> false))
+
+        if (failingRead == 2) {
+          // Removing only R2 would change the template key without changing R1's record sort key.
+          val infos = Seq("q1", "q2", "q3").map { name =>
+            val retained = recs.iterator.filter(r => r.name == name && (name != "q2" || r.firstOfPair))
+            ReadInfo(Template(retained), cellTag="CB")
+          }
+          infos.head shouldBe infos.last
+          infos(1) should not be infos.head
+          infos.map(_.start2) shouldBe Seq(399, Int.MaxValue, 399)
+        }
+      }
+
+      val out     = Files.createTempFile("umi_grouped.", ".bam")
+      val metrics = Files.createTempFile("umi_grouped.", ".metrics.txt")
+      val hist    = Files.createTempFile("umi_grouped.", ".histogram.txt")
+      val tool = new GroupReadsByUmi(input=in, output=out, strategy=strategy,
+        edits=if (strategy == Strategy.Identity) 0 else 1, markDuplicates=true,
+        groupingMetrics=Some(metrics), familySizeHistogram=Some(hist),
+        minUmiLength=if (filter == "minimum UMI length") Some(4) else None)
+      try tool.execute() catch {
+        case exception: FailureException => fail(exception.message.value, exception)
+      }
+
+      val output = readBamRecs(out)
+      output.map(r => (r.name, r.firstOfPair)) should contain theSameElementsAs
+        Seq("q1", "q3").flatMap(name => Seq(name -> true, name -> false))
+      output.map(_[String]("MI")).distinct should have size 1
+      output.count(_.duplicate) shouldBe 2
+      Metric.read[TagFamilySizeMetric](hist).map(m => (m.family_size, m.count)) shouldBe Seq(2 -> 1L)
+      Metric.read[UmiGroupingMetric](metrics) shouldBe Seq(UmiGroupingMetric(4,
+        discarded_non_pf=if (filter == "PF") 2 else 0,
+        discarded_poor_alignment=0,
+        discarded_ns_in_umi=if (filter == "N-in-UMI") 2 else 0,
+        discarded_umis_to_short=if (filter == "minimum UMI length") 2 else 0))
+    }
+  }
+
+  for (sortOrder <- Seq(SamOrder.Coordinate, SamOrder.TemplateCoordinate);
+       strategy <- Strategy.values;
+       failingRead <- Seq(1, 2)) {
+    it should s"retain non-PF R$failingRead and its mate with $strategy and $sortOrder input when included" in {
+      val builder = new SamBuilder(readLength=100, sort=Some(sortOrder))
+      val umi = if (strategy == Strategy.Paired) "ACGT-TTTT" else "ACGT"
+      Seq("q1", "q2", "q3").foreach { name =>
+        val pair = builder.addPair(name=name, start1=100, start2=300, attrs=Map("RX" -> umi))
+        if (name == "q2") pair(failingRead - 1).pf = false
+      }
+      val out     = Files.createTempFile("umi_grouped.", ".bam")
+      val metrics = Files.createTempFile("umi_grouped.", ".metrics.txt")
+      new GroupReadsByUmi(input=builder.toTempFile(), output=out, strategy=strategy,
+        edits=if (strategy == Strategy.Identity) 0 else 1,
+        includeNonPfReads=true, groupingMetrics=Some(metrics)).execute()
+
+      val recs = readBamRecs(out)
+      recs.map(r => (r.name, r.firstOfPair)) should contain theSameElementsAs
+        Seq("q1", "q2", "q3").flatMap(name => Seq(name -> true, name -> false))
+      recs.map(_[String]("MI")).distinct should have size 1
+      recs.count(!_.pf) shouldBe 1
+      Metric.read[UmiGroupingMetric](metrics) shouldBe Seq(UmiGroupingMetric(6, 0, 0, 0, 0))
+    }
+  }
+
+  for (sortOrder <- Seq(SamOrder.Coordinate, SamOrder.TemplateCoordinate);
+       filter <- Seq("PF", "N-in-UMI", "minimum UMI length");
+       failingRead <- Seq(1, 2)) {
+    it should s"filter whole templates using custom tags when R$failingRead fails $filter with $sortOrder input" in {
+      val builder = new SamBuilder(readLength=100, sort=Some(sortOrder))
+      Seq("q1", "q2", "q3").foreach { name =>
+        val pair = builder.addPair(name=name, start1=100, start2=300,
+          attrs=Map("UX" -> "ACGT", "XX" -> "AA", "CB" -> "AA"))
+        if (name == "q2") filter match {
+          case "PF"                 => pair(failingRead - 1).pf = false
+          case "N-in-UMI"           => pair(failingRead - 1)("UX") = "ACGN"
+          case "minimum UMI length" => pair(failingRead - 1)("UX") = "ACG"
+        }
+      }
+      val out = Files.createTempFile("umi_grouped.", ".bam")
+      new GroupReadsByUmi(input=builder.toTempFile(), output=out, strategy=Strategy.Identity, edits=0,
+        rawTag="UX", assignTag="XI", cellTag="XX",
+        minUmiLength=if (filter == "minimum UMI length") Some(4) else None).execute()
+
+      val recs = readBamRecs(out)
+      recs.map(r => (r.name, r.firstOfPair)) should contain theSameElementsAs
+        Seq("q1", "q3").flatMap(name => Seq(name -> true, name -> false))
+      recs.map(_[String]("XI")).distinct should have size 1
+      recs.map(_[String]("UX")).toSet shouldBe Set("ACGT")
+      recs.map(_[String]("XX")).toSet shouldBe Set("AA")
+    }
+  }
+
+  Seq(1, 2).foreach { failingRead =>
+    it should s"reject non-PF templates before canonicalizing UMIs when R$failingRead fails PF" in {
+      val builder = new SamBuilder(readLength=100, sort=Some(SamOrder.Coordinate))
+      builder.addPair(name="q1", start1=100, start2=300, attrs=Map("RX" -> "ACGT"))
+      val pair = builder.addPair(name="q2", start1=100, start2=300)
+      pair(failingRead - 1).pf = false
+      val out = Files.createTempFile("umi_grouped.", ".bam")
+      new GroupReadsByUmi(input=builder.toTempFile(), output=out, strategy=Strategy.Identity, edits=0).execute()
+      readBamRecs(out).map(r => (r.name, r.firstOfPair)) shouldBe Seq("q1" -> true, "q1" -> false)
+    }
+  }
+
+  Seq(false, true).foreach { includeNonPfReads =>
+    it should s"count rejected templates under the first matching filter with includeNonPfReads=$includeNonPfReads" in {
+      val builder = new SamBuilder(readLength=100, sort=Some(SamOrder.TemplateCoordinate))
+      builder.addPair(name="q1", start1=100, start2=300, attrs=Map("RX" -> "ACGT"))
+      val pair = builder.addPair(name="q2", start1=100, start2=300, attrs=Map("RX" -> "ACGT"))
+      pair.head.pf = false
+      pair.last("RX") = "ACGN"
+      val out     = Files.createTempFile("umi_grouped.", ".bam")
+      val metrics = Files.createTempFile("umi_grouped.", ".metrics.txt")
+      new GroupReadsByUmi(input=builder.toTempFile(), output=out, strategy=Strategy.Adjacency, edits=1,
+        includeNonPfReads=includeNonPfReads, groupingMetrics=Some(metrics)).execute()
+
+      readBamRecs(out).map(r => (r.name, r.firstOfPair)) shouldBe Seq("q1" -> true, "q1" -> false)
+      Metric.read[UmiGroupingMetric](metrics) shouldBe Seq(UmiGroupingMetric(2,
+        discarded_non_pf=if (includeNonPfReads) 0 else 2,
+        discarded_poor_alignment=0,
+        discarded_ns_in_umi=if (includeNonPfReads) 2 else 0,
+        discarded_umis_to_short=0))
+    }
+  }
+
+  it should "ignore failing secondary and supplementary records when filtering primary templates" in {
+    val builder = new SamBuilder(readLength=100, sort=Some(SamOrder.TemplateCoordinate))
+    builder.addPair(name="q1", start1=100, start2=300, attrs=Map("RX" -> "ACGT"))
+    Seq(false, true).foreach { supplementary =>
+      builder.addPair(name="q1", start1=100, start2=300, attrs=Map("RX" -> "N")).foreach { rec =>
+        rec.secondary = !supplementary
+        rec.supplementary = supplementary
+        rec.pf = false
+      }
+    }
+    val out     = Files.createTempFile("umi_grouped.", ".bam")
+    val metrics = Files.createTempFile("umi_grouped.", ".metrics.txt")
+    new GroupReadsByUmi(input=builder.toTempFile(), output=out, strategy=Strategy.Adjacency, edits=1,
+      groupingMetrics=Some(metrics), minUmiLength=Some(4)).execute()
+
+    val recs = readBamRecs(out)
+    recs.map(r => (r.name, r.firstOfPair)) shouldBe Seq("q1" -> true, "q1" -> false)
+    recs.forall(r => r.pf && !r.secondary && !r.supplementary) shouldBe true
+    Metric.read[UmiGroupingMetric](metrics) shouldBe Seq(UmiGroupingMetric(2, 0, 0, 0, 0))
+  }
+
+  Seq(true, false).foreach { lowMapqOnR1 =>
+    it should s"discard both mates on valid pre-sorted input when one has low MAPQ with lowMapqOnR1=$lowMapqOnR1" in {
+      val builder = new SamBuilder(readLength=100, sort=Some(SamOrder.TemplateCoordinate))
+      Seq("q1", "q2", "q3").foreach { name =>
+        builder.addPair(name=name, start1=100, start2=300, attrs=Map("RX" -> "ACGT"),
+          mapq1=if (name == "q2" && lowMapqOnR1) 0 else 60,
+          mapq2=if (name == "q2" && !lowMapqOnR1) 0 else 60)
+      }
+      val in = builder.toTempFile()
+      val pair = readBamRecs(in).filter(_.name == "q2")
+      pair.head[Int]("MQ") shouldBe pair.last.mapq
+      pair.last[Int]("MQ") shouldBe pair.head.mapq
+
+      val out     = Files.createTempFile("umi_grouped.", ".bam")
+      val metrics = Files.createTempFile("umi_grouped.", ".metrics.txt")
+      new GroupReadsByUmi(input=in, output=out, strategy=Strategy.Adjacency, edits=1,
+        groupingMetrics=Some(metrics), minMapQ=Some(30)).execute()
+
+      val recs = readBamRecs(out)
+      recs.map(r => (r.name, r.firstOfPair)) should contain theSameElementsAs
+        Seq("q1", "q3").flatMap(name => Seq(name -> true, name -> false))
+      recs.map(_[String]("MI")).distinct should have size 1
+      Metric.read[UmiGroupingMetric](metrics) shouldBe Seq(UmiGroupingMetric(4, 0, 2, 0, 0))
+    }
+  }
+
+  it should "fail on pre-sorted input whose libraries are not contiguous at a position" in {
+    val builder = new SamBuilder(readLength=100, sort=None)
+    SamOrder.TemplateCoordinate.applyTo(builder.header)
+    builder.header.getReadGroups.get(0).setLibrary("libA")
+    addReadGroup(builder, "B", "libB")
+
+    // The order fgbio 4.1.1 and earlier wrote: by name, with the two libraries interleaved
+    builder.addPair(name="q1", start1=100, start2=300, attrs=Map("RX" -> "ACGT-ACGT"))
+    builder.addPair(name="q2", start1=100, start2=300, attrs=Map("RX" -> "ACGT-ACGT", "RG" -> "B"))
+    builder.addPair(name="q3", start1=100, start2=300, attrs=Map("RX" -> "ACGT-ACGT"))
+
+    val out       = Files.createTempFile("umi_grouped.", ".bam")
+    val exception = the[FailureException] thrownBy {
+      new GroupReadsByUmi(input=builder.toTempFile(), output=out, rawTag="RX", assignTag="MI", strategy=Strategy.Adjacency, edits=1).execute()
+    }
+    exception.message.value should include ("library 'libA' are not contiguous")
   }
 }
